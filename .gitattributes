@@ -1,0 +1,45 @@
+# Line endings
+#
+# Normalise every text file to LF inside the repository, and check it out as LF
+# on every platform. This overrides each contributor's local core.autocrlf, so
+# line endings never depend on who cloned the repo or on which OS.
+* text=auto eol=lf
+
+# Files that must keep CRLF to work on Windows.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files: never convert, never diff as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.phar binary
+
+# Excluded from the distributed package
+#
+# `composer install --prefer-dist` downloads an archive built from the git tag.
+# Anything marked export-ignore is left out of that archive, so a consumer's
+# vendor/ directory only receives what the package needs at runtime. None of it
+# affects the git repository itself.
+/.github            export-ignore
+/docs               export-ignore
+/tests              export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/.editorconfig      export-ignore
+/AGENTS.md          export-ignore
+/CONTRIBUTING.md    export-ignore
+/docker-compose.yml export-ignore
+/Dockerfile         export-ignore
+/phpunit.xml.dist   export-ignore
+/pint.json          export-ignore
+/phpstan.neon.dist  export-ignore
