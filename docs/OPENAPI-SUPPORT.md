@@ -258,6 +258,14 @@ The check is deliberately narrow, and each limit below is stated in a test rathe
   is data and is skipped; the map is specification and is followed. Getting this wrong in the
   permissive direction would hide a cycle on precisely the shape the parser dies on, so it is not a
   case where the forgiving choice is the safe one.
+* **Inside that map, each Example Object's `value` is data and is not followed.** It is the one place
+  where meaning comes from position rather than from a name: `value` cannot be treated as data
+  everywhere, because `properties: {value: {…}}` is an ordinary schema. It matters because 3.1
+  recommends this long form over the `example` keyword, so it is the shape a specification whose
+  examples are themselves JSON Schema documents will actually use.
+* **The list of data-carrying keys reasons about names, never about positions.** A schema property
+  genuinely named `default`, `example`, `enum` or `const` is a Schema Object and is not followed. A
+  false negative, and the harmless direction, but real.
 * **A reference aimed at its own ancestor is not caught**, because chains are compared pointer by
   pointer rather than by containment. Another false negative, and harmless for the same reason.
 

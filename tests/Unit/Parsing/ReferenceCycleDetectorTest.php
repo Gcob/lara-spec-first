@@ -120,3 +120,34 @@ it('does not catch a reference aimed at its own ancestor', function (): void {
 
     (new ReferenceCycleDetector)->assertNoCycles($document);
 })->throwsNoExceptions();
+
+// The map of Example Objects is followed, because any of them may be a
+// Reference Object — but each object's `value` is literal data. `value` cannot
+// join the opaque list, since `properties: {value: {...}}` is an ordinary
+// schema; only its position inside an Example Object makes it data.
+it('does not follow the value of an Example Object', function (): void {
+    (new ReferenceCycleDetector)->assertNoCycles(specFixture('example-object-value.yaml'));
+})->throwsNoExceptions();
+
+it('still follows an Example Object that is itself a reference', function (): void {
+    $document = ['components' => ['examples' => [
+        'A' => ['$ref' => '#/components/examples/B'],
+        'B' => ['$ref' => '#/components/examples/A'],
+    ]]];
+
+    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles($document))
+        ->toThrow(CyclicReferenceException::class);
+});
+
+// The opaque list reasons about key names, never about positions, so a schema
+// property that happens to be named like one of them is not followed. A false
+// negative, which is the harmless direction, and stated here because the
+// documented limits claim to be stated in tests rather than in comments.
+it('does not follow a schema property named like a data-carrying key', function (string $name): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['type' => 'object', 'properties' => [$name => ['$ref' => '#/components/schemas/B']]],
+        'B' => ['$ref' => '#/components/schemas/A/properties/'.$name],
+    ]]];
+
+    (new ReferenceCycleDetector)->assertNoCycles($document);
+})->with(['default', 'example', 'enum', 'const'])->throwsNoExceptions();

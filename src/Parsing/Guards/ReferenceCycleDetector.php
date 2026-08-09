@@ -92,9 +92,51 @@ final readonly class ReferenceCycleDetector
         $references = [];
 
         foreach ($node as $key => $child) {
-            if (is_array($child) && ! self::isOpaque($key, $child)) {
-                $references += $this->collect($child, $pointer.'/'.self::escape((string) $key));
+            if (! is_array($child) || self::isOpaque($key, $child)) {
+                continue;
             }
+
+            $childPointer = $pointer.'/'.self::escape((string) $key);
+
+            $references += $key === 'examples'
+                ? $this->collectExampleObjects($child, $childPointer)
+                : $this->collect($child, $childPointer);
+        }
+
+        return $references;
+    }
+
+    /**
+     * Walk a map of Example Objects, which is the one place a key's meaning
+     * depends on where it sits rather than on what it is called.
+     *
+     * The map itself must be followed: an Example Object may be a Reference
+     * Object. But every one of those objects carries a `value` that is literal
+     * data by definition — often, for an API that deals in JSON Schema, a
+     * document with a `$ref` of its own. Following it reads data as a reference
+     * and can refuse a valid document.
+     *
+     * `value` cannot simply join OPAQUE_KEYS: `properties: {value: {...}}` is an
+     * ordinary schema and must be followed. Only its position here makes it
+     * data, and this is where that position is known. Worth the extra method
+     * because 3.1 recommends exactly this long form over the `example` keyword
+     * that the name-based list already covers.
+     *
+     * @param  array<array-key, mixed>  $examples
+     * @return array<string, string>
+     */
+    private function collectExampleObjects(array $examples, string $pointer): array
+    {
+        $references = [];
+
+        foreach ($examples as $name => $example) {
+            if (! is_array($example)) {
+                continue;
+            }
+
+            unset($example['value']);
+
+            $references += $this->collect($example, $pointer.'/'.self::escape((string) $name));
         }
 
         return $references;
