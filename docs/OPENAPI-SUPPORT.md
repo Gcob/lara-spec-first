@@ -149,25 +149,41 @@ the router or the mocker has to ask, the normalization is incomplete.
 | `webhooks`                              | Does not exist                           | Top-level                                     | See the [matrix](#the-support-matrix).                                                                               |
 | `$ref` siblings                         | Ignored                                  | `summary` and `description` allowed alongside | The parser models this (`Reference.php`), we must decide whether we honor it.                                        |
 
-### Open question: does the file parser belong inside the concrete strategy?
+### Where the parser sits: decided
 
-**Status: Open.** Raised, not settled.
-
-The instinct behind the question is right — a single parser for both versions *is* a constraint. But
-the constraint is not where it first appears. The YAML decoding is version-agnostic: `symfony/yaml`
-turns bytes into a PHP array without an opinion about OpenAPI, and you cannot dispatch on a version
-you have not decoded yet. The real limit is
-[cebe's **object model**](#parser-caveats) — its `Schema` class is shaped for 3.0 and lets 3.1
+The question was whether each concrete strategy should own its own file parser. The instinct behind it
+is right — a single parser for both versions *is* a constraint — but the constraint is not where it
+first appears. Decoding is version-agnostic: `symfony/yaml` turns bytes into a PHP array without an
+opinion about OpenAPI, and you cannot dispatch on a version you have not decoded yet. The real limit is
+[cebe's **object model**](#parser-caveats), whose `Schema` class is shaped for 3.0 and lets 3.1
 keywords through as raw arrays.
 
-So the recommendation is: **decode once in shared code, dispatch on the decoded version, and let the
-strategy own the interpretation.** But — and this is the part worth designing for now — the strategy
-interface should be expressed in **our own types, never in `cebe\openapi\` types**. That way a future
-version whose needs cebe cannot meet can bring its own parser behind the same interface, without the
-rest of the package noticing. The seam is cheap to build now and expensive to retrofit.
+**Decision: decode once in shared code, dispatch on the decoded version, and let the strategy own the
+interpretation — with the strategy interface expressed in our own types, never in `cebe\openapi\`
+ones.** A future version whose needs cebe cannot meet can then bring its own parser behind the same
+interface without anything else noticing.
 
-This needs a decision before the first strategy is written, and it belongs in
-[`STACK.md`](./STACK.md) once made.
+**And the containment is enforced, not merely intended.** The package is laid out so that one
+namespace, and only one, may see the parser:
+
+| Namespace | Owns |
+|---|---|
+| `Parsing\` | Reading a document, and the only place `cebe\openapi\` may appear. |
+| `Contract\` | Our own types — what a strategy produces and everything else consumes. |
+| `Generation\` | Emitting PHP. |
+| `Console\` | The commands. |
+| `Routing\` | What the service provider loads at boot. |
+
+The architecture test in `tests/Unit/ArchitectureTest.php` asserts it directly:
+
+```php
+arch('the OpenAPI parser stays inside Parsing')
+    ->expect('cebe\openapi')
+    ->toOnlyBeUsedIn('Gcob\LaraSpecFirst\Parsing');
+```
+
+That is stricter than forbidding the parser to the request path, and simpler: there is one boundary to
+state rather than a list of namespaces to keep current as the package grows.
 
 ## Parser caveats
 

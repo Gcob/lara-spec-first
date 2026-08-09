@@ -1,0 +1,6 @@
+# Rejected: OpenAPI 2.x, which this package does not read.
+swagger: "2.0"
+info:
+  title: Fixture API
+  version: 1.0.0
+paths: {}
