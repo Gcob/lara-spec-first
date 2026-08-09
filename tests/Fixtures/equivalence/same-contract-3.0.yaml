@@ -1,0 +1,49 @@
+# One contract, written as OpenAPI 3.0. Its 3.1 twin next to it describes the
+# same API using every spelling the two versions disagree on. Extraction must
+# not be able to tell them apart — that is the version strategy's whole promise,
+# and this pair is what turns it from an intention into a check.
+openapi: 3.0.3
+info:
+  title: Equivalence API
+  version: 1.0.0
+paths:
+  /users/me:
+    get:
+      operationId: showCurrentUser
+      responses:
+        '200':
+          description: The caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /users/{id}:
+    get:
+      operationId: showUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A user
+    delete:
+      responses:
+        '204':
+          description: Gone
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        name:
+          type: string
+          # 3.0 spells an optional value with `nullable`.
+          nullable: true
+        age:
+          type: integer
+          # 3.0 spells an exclusive bound with a boolean beside the bound.
+          minimum: 0
+          exclusiveMinimum: true

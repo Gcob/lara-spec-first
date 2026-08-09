@@ -13,6 +13,16 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <!--
+            Conformance pins the behaviour of the reading engine, including the
+            OpenAPI parser this package does not own. Its own suite because it
+            is organised by equivalence class rather than by unit, and because a
+            failure here means something outside our code changed under us.
+            See docs/ROADMAP.md.
+        -->
+        <testsuite name="Conformance">
+            <directory>tests/Conformance</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
