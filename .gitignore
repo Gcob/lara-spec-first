@@ -98,6 +98,8 @@ _ide_helper_models.php
 .claude/
 .aider*
 .cursor/
+CLAUDE.local.md
 
 # others
 repomix*
+reviews

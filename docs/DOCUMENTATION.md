@@ -2,11 +2,11 @@
 title: Documentation Guide
 audience: Contributors and agents
 covers: >
-  How documentation is written and organised in this repository: the
-  docs-follow-code rule, the one-topic-one-file principle, the front matter
-  metadata schema and tag vocabulary, and the inventory of every document.
+    How documentation is written and organized in this repository: the
+    docs-follow-code rule, the one-topic-one-file principle, the front matter
+    metadata schema and tag vocabulary, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
-tags: [documentation, conventions, metadata, code-review, onboarding]
+tags: [ documentation, conventions, metadata, code-review, onboarding ]
 ---
 
 # Documentation Guide
@@ -24,7 +24,7 @@ Documentation is part of the definition of done, not a follow-up task. This repo
 package that does not fully exist yet, so drift between doc and code is the expected failure mode here.
 Treat a contradiction between the two as a defect, not a nitpick.
 
-* **Ship the docs in the same change as the code.** A change to behaviour, commands, config keys, or the
+* **Ship the docs in the same change as the code.** A change to behavior, commands, config keys, or the
   public API is incomplete until the affected documents are updated alongside it.
 * **In review, validate the change against what the documentation claims.** Read the relevant files from
   the [inventory](#document-inventory), then check the diff against them. Report every contradiction,
@@ -37,6 +37,9 @@ Treat a contradiction between the two as a defect, not a nitpick.
   `Decided`, that update belongs in the same change that installs it.
 * **A missing doc is a finding.** A new Artisan command, config option, or extension point that ships
   undocumented is an incomplete change.
+* **American spelling.** `honor`, `behavior`, `normalize`, `organize`, `serialization`. The repository
+  was swept once and is consistent; keep it that way. The exception is `composer analyse`, which is a
+  command name, not prose.
 
 ## One topic, one file
 
@@ -71,25 +74,29 @@ inside it.
 The rule applies to a document's own description too. **Every Markdown file declares what it is in its
 own YAML front matter** — no index elsewhere restates it. The same five fields in every file:
 
+Four-space indentation for wrapped values and spaces inside the tag brackets, matching
+`.editorconfig`. The example below is `STACK.md`'s actual front matter — if the two ever differ, this
+example is the one that is wrong.
+
 ```yaml
 ---
 title: Technical Stack
 audience: Contributors and agents
 covers: >
-  Every technology choice with its status and reasoning, the supported PHP and
-  Laravel matrix, and the rules for changing a stack decision.
+    Every technology choice with its status and reasoning, the supported PHP and
+    Laravel matrix, and the rules for changing a stack decision.
 read_before: Touching dependencies, version constraints, or CI configuration.
-tags: [stack, dependencies, versions, php, laravel, ci, decisions]
+tags: [ stack, dependencies, versions, php, laravel, ci, decisions ]
 ---
 ```
 
-| Field | Required | Purpose |
-|---|---|---|
-| `title` | yes | Human-readable name. May differ from the filename. |
-| `audience` | yes | Who the document is written for. |
-| `covers` | yes | The subjects this file owns. If two files claim the same subject, one of them is wrong. |
-| `read_before` | no | The action that should trigger reading this file. This is what makes the set navigable to an agent that has never seen the repository. |
-| `tags` | yes | Subject keywords, for finding relevant documents without opening each one. |
+| Field         | Required | Purpose                                                                                                                                |
+|---------------|----------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `title`       | yes      | Human-readable name. May differ from the filename.                                                                                     |
+| `audience`    | yes      | Who the document is written for.                                                                                                       |
+| `covers`      | yes      | The subjects this file owns. If two files claim the same subject, one of them is wrong.                                                |
+| `read_before` | no       | The action that should trigger reading this file. This is what makes the set navigable to an agent that has never seen the repository. |
+| `tags`        | yes      | Subject keywords, for finding relevant documents without opening each one.                                                             |
 
 Rules:
 
@@ -119,29 +126,31 @@ grep -rl 'tags:.*versions' --include='*.md' .
 
 #### Tag vocabulary
 
-| Tag | Subject |
-|---|---|
-| `agents` | How AI agents should work in this repository |
-| `ci` | Continuous integration and the build matrix |
-| `code-review` | Review priorities and how findings are reported |
-| `conventions` | Commit, naming, and style conventions |
-| `contributing` | How to contribute: setup, pull requests, conduct |
-| `decisions` | Choices made, with their reasoning |
-| `dependencies` | Third-party packages and version constraints |
-| `docker` | The containerised development environment |
-| `documentation` | How documentation itself is written and organised |
-| `laravel` | Laravel version support and framework integration |
-| `metadata` | Front matter and document metadata |
-| `migration` | Moving an existing Code-First app to Spec-First |
-| `onboarding` | Getting a newcomer or a fresh agent productive |
-| `openapi` | The OpenAPI specification and its parsing |
-| `php` | PHP version support and language constraints |
-| `planning` | Roadmap, phases, and sequencing |
-| `scope` | What belongs in this package and what does not |
-| `stack` | Technology choices |
-| `testing` | Test levels, expectations, and the test suite |
-| `versions` | Supported and required versions |
-| `workflow` | The day-to-day process of making a change |
+| Tag               | Subject                                                                         |
+|-------------------|---------------------------------------------------------------------------------|
+| `agents`          | How AI agents should work in this repository                                    |
+| `ci`              | Continuous integration and the build matrix                                     |
+| `code-generation` | Producing PHP from the specification, and the rules that keep it safe to re-run |
+| `code-review`     | Review priorities and how findings are reported                                 |
+| `compatibility`   | What the package honors of a standard, and the promise attached to it          |
+| `conventions`     | Commit, naming, and style conventions                                           |
+| `contributing`    | How to contribute: setup, pull requests, conduct                                |
+| `decisions`       | Choices made, with their reasoning                                              |
+| `dependencies`    | Third-party packages and version constraints                                    |
+| `docker`          | The containerised development environment                                       |
+| `documentation`   | How documentation itself is written and organized                               |
+| `laravel`         | Laravel version support and framework integration                               |
+| `metadata`        | Front matter and document metadata                                              |
+| `migration`       | Moving an existing Code-First app to Spec-First                                 |
+| `onboarding`      | Getting a newcomer or a fresh agent productive                                  |
+| `openapi`         | The OpenAPI specification and its parsing                                       |
+| `php`             | PHP version support and language constraints                                    |
+| `planning`        | Roadmap, phases, and sequencing                                                 |
+| `scope`           | What belongs in this package and what does not                                  |
+| `stack`           | Technology choices                                                              |
+| `testing`         | Test levels, expectations, and the test suite                                   |
+| `versions`        | Supported and required versions                                                 |
+| `workflow`        | The day-to-day process of making a change                                       |
 
 ### `README.md` carries no front matter — deliberately
 
@@ -166,7 +175,13 @@ intentionally carries no descriptions, so there is nothing here that can fall ou
 * [`README.md`](../README.md) — no front matter, [by design](#readmemd-carries-no-front-matter--deliberately)
 * [`CONTRIBUTING.md`](../CONTRIBUTING.md)
 * [`AGENTS.md`](../AGENTS.md)
+* [`docs/CODE-GENERATION.md`](./CODE-GENERATION.md)
+* [`docs/CONTRACT-ARTIFACT.md`](./CONTRACT-ARTIFACT.md)
+* [`docs/DOCTOR.md`](./DOCTOR.md)
 * [`docs/DOCUMENTATION.md`](./DOCUMENTATION.md) — this file
+* [`docs/LIFECYCLE.md`](./LIFECYCLE.md)
+* [`docs/OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md)
+* [`docs/REMOTE-REFERENCES.md`](./REMOTE-REFERENCES.md)
 * [`docs/ROADMAP.md`](./ROADMAP.md)
 * [`docs/STACK.md`](./STACK.md)
 * [`LICENSE`](../LICENSE) — MIT, plain text, no front matter

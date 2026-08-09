@@ -2,11 +2,11 @@
 title: Contributing
 audience: Contributors
 covers: >
-  Development environment (Docker and native), pre-pull-request checks, commit
-  and pull request conventions, code of conduct, and the scope boundaries of
-  the package.
+    Development environment (Docker and native), pre-pull-request checks, commit
+    and pull request conventions, code of conduct, and the scope boundaries of
+    the package.
 read_before: Setting up the project locally or opening a pull request.
-tags: [contributing, workflow, docker, testing, conventions, scope, onboarding]
+tags: [ contributing, workflow, docker, testing, conventions, scope, onboarding ]
 ---
 
 # Contributing to lara-spec-first
@@ -154,7 +154,7 @@ Use `composer format` to apply the formatting rather than only report on them.
 
 A few expectations:
 
-* **New behaviour needs a test.** Bug fixes should include a test that fails before your change.
+* **New behavior needs a test.** Bug fixes should include a test that fails before your change.
 * **Match the surrounding code.** Naming, structure, and comment density should be indistinguishable from
   what is already there.
 * **Keep pull requests focused.** One concern per PR. Unrelated cleanups, however welcome in principle,
@@ -205,7 +205,7 @@ Contributions that likely do **not** fit:
 ## Code of conduct
 
 Be decent to each other. Assume good faith, critique the code and not the person, and remember that most
-people here are volunteering their evenings. Behaviour that makes others unwelcome is not tolerated,
+people here are volunteering their evenings. Behavior that makes others unwelcome is not tolerated,
 regardless of the technical merit attached to it.
 
 ## License
