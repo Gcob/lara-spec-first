@@ -356,6 +356,78 @@ schema registry, a shared contract repository — and closed everywhere else. Ru
 **Status: decided in principle, unimplemented.** The config key name and the exception class are
 public API surface and are not yet chosen.
 
+### A remote reference is a dependency, not a cache entry
+
+Repeated network calls for the same reference are waste, so something has to hold the fetched
+document. The word for that something is **not cache**, and the word is the design.
+
+A cache is expendable by definition. You may clear it at any time, it may expire on its own, and
+nothing about your application changes when it does — that is the contract of the word. None of that
+is true here. A remote `$ref` supplies part of your API contract: drop it and your application can no
+longer describe, route, or validate what it serves. **A remote reference is a dependency**, in the
+full sense the word carries in this ecosystem, and it should be handled the way dependencies are
+handled: a lock file, a vendored copy, and an explicit act to change either.
+
+Two things follow immediately, and each kills a config option that looked reasonable:
+
+* **No duration.** A TTL means the contract can change at a moment nobody chose. Some Tuesday at
+  14:03 an entry expires, the upstream document has moved on, and the application serves a different
+  contract than it did a minute earlier — no deploy, no commit, no review. **A contract changes when
+  someone ships a change, not when a timer fires.** A source of truth that varies with wall-clock time
+  is not a source of truth. No dependency manager resolves your dependencies again because an hour
+  passed, and neither does this.
+* **No cache store.** Routes are registered while the framework boots, so whatever the registration
+  reads has to be available before the container is warm. Depending on Redis to know which routes
+  exist is a boot-time network dependency in the request path, for data that never changes between
+  deploys — and a shared store lets two servers in the same release disagree about the contract, which
+  is precisely the failure a spec exists to prevent.
+
+#### Borrowing the dependency-manager shape
+
+The parts of the pattern worth taking, and only these:
+
+| Piece                                | What it does here                                                                                                                                                                                                                                                                                                                                                                                           |
+|--------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Lock file**                        | One entry per remote reference: the resolved URL, a content hash of what was fetched, and where the local copy lives. Committed. Reviewable in a diff, which is the entire point — a change to your API contract shows up in a pull request instead of in production.                                                                                                                                       |
+| **Vendored copies**                  | The fetched documents, on disk, local. Once they exist, boot resolves everything locally and **the runtime never touches the network** — not on a miss, not on the first request after a restart, never, because there is no lookup to miss.                                                                                                                                                                |
+| **A fetch that only obeys the lock** | The deploy-time operation. It fetches exactly what the lock names, verifies each hash, and resolves nothing new. Reproducible by construction.                                                                                                                                                                                                                                                              |
+| **A separate update**                | The only operation allowed to re-resolve from the spec, refetch, and rewrite the lock. Deliberate, human-initiated, reviewed.                                                                                                                                                                                                                                                                               |
+| **Integrity checking**               | A hash mismatch means the upstream contract changed under you. That is a finding, reported loudly — never a silent refetch. This is the thing a cache can *never* give you, and it is worth the whole mechanism on its own: a remote `$ref` is third-party content that shapes your public API surface, and treating it as untrusted input is the lesson every package ecosystem learned the expensive way. |
+
+The [allowlist](#remote-references-and-the-domain-allowlist) still governs every fetch, but its threat
+model shrinks to almost nothing: outbound requests now happen only inside an explicit, human- or
+CI-triggered operation, never in a request.
+
+#### Where the analogy stops
+
+We are not building a dependency manager, and the borrowed vocabulary must not drag in the rest of it:
+
+* **No version constraints, no resolution, no solver.** A `$ref` is a URL, not a package with a
+  version range. There is nothing to negotiate and no conflicts to resolve.
+* **No registry, and nothing to publish.**
+* **One divergence, deliberate: the vendored copies are committed.** Composer can leave `vendor/` out
+  of version control because Packagist guarantees a published version is immutable. Nothing guarantees
+  that about `https://example.com/schemas/user.yaml` — it can change or vanish tomorrow, and then the
+  lock alone cannot reproduce your build. Committing the copies is what makes an old release still
+  deployable.
+
+**Open.** The names — of the lock file, the vendored directory, and both commands — are public API
+surface under [rule 4](#the-four-rules-that-govern-this-document) and are not chosen. Also open:
+whether a fetched document that itself contains remote references is followed (transitive fetching,
+with the allowlist applying at every hop and every hop recorded in the lock) or refused at depth one.
+
+#### This is separate from compiling the spec
+
+Vendoring makes the *inputs* local. It says nothing about how fast the spec is turned into routes on
+each boot, which is a different question with a different answer — a compiled artifact alongside
+`config:cache` and `route:cache`. The two are easy to conflate and should not be: vendoring alone
+already guarantees no network at boot, whether or not a compiled artifact exists.
+
+The compilation question belongs with `route:cache` in [still to discuss](#still-to-discuss). What is
+settled here regardless: **the doctor reads, it never writes** — it is
+[read-only by contract](#the-contract) — and its report names which sources it read, because a doctor
+that silently checks something other than what runs is worse than no doctor.
+
 ## Laravel constraints we do not fight
 
 This package is a layer built **on** Laravel, not a replacement for its router. Where Laravel's model
