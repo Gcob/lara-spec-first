@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Parsing\Exceptions;
 
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
-use Gcob\LaraSpecFirst\Parsing\SpecVersion;
+use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 use RuntimeException;
 
 /**

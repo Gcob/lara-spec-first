@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
-use Gcob\LaraSpecFirst\Parsing\ReferenceCycleDetector;
+use Gcob\LaraSpecFirst\Parsing\Guards\ReferenceCycleDetector;
 
 // The distinction this class exists to make. If only one test survives a
 // refactor, it should be this pair.

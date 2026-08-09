@@ -7,8 +7,8 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\UnreadableDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\UnsupportedVersionException;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
-use Gcob\LaraSpecFirst\Parsing\SpecVersion;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
+use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 
 function fixturePath(string $name): string
 {
@@ -20,7 +20,7 @@ it('reads a document and carries its version and strategy', function (): void {
 
     expect($document->version)->toBe(SpecVersion::V3_0)
         ->and($document->strategy)->toBeInstanceOf(OpenApi30Strategy::class)
-        ->and($document->data)->toHaveKey('paths')
+        ->and($document->raw)->toHaveKey('paths')
         ->and($document->path)->toEndWith('openapi-3.0.yaml');
 });
 

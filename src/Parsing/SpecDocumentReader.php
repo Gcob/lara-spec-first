@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Parsing;
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\UnreadableDocumentException;
+use Gcob\LaraSpecFirst\Parsing\Guards\ReferenceCycleDetector;
+use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Turns a specification file into a document that later steps can trust.
+ * Turns a specification file into a ParsableSpecDocument — a document that has
+ * cleared every check which must happen before the OpenAPI parser sees it.
  *
  * The order of the checks is the design, not an implementation detail:
  *
@@ -39,7 +42,7 @@ final readonly class SpecDocumentReader
      * @throws Exceptions\InvalidDocumentException the document lacks what its version requires
      * @throws Exceptions\CyclicReferenceException a reference chain never reaches content
      */
-    public function read(string $path): SpecDocument
+    public function read(string $path): ParsableSpecDocument
     {
         $data = $this->decode($path);
         $strategy = $this->strategies->forDocument($data);
@@ -47,7 +50,7 @@ final readonly class SpecDocumentReader
         $strategy->assertDocumentShape($data);
         $this->cycles->assertNoCycles($data);
 
-        return new SpecDocument($path, $strategy->version(), $strategy, $data);
+        return new ParsableSpecDocument($path, $strategy->version(), $strategy, $data);
     }
 
     /**

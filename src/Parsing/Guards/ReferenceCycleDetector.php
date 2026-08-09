@@ -2,12 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Gcob\LaraSpecFirst\Parsing;
+namespace Gcob\LaraSpecFirst\Parsing\Guards;
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
+use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 /**
  * Rejects `$ref` chains that never reach content.
+ *
+ * The last check before the OpenAPI parser is handed a document, and the only
+ * one whose position is not negotiable.
  *
  * The distinction this class exists to make:
  *
@@ -25,6 +29,7 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
  * Stateless on purpose: it is injected into readonly collaborators and reused
  * across documents, so nothing about one document may survive into the next.
  *
+ * @see SpecDocumentReader for the order of the read pipeline
  * @see docs/OPENAPI-SUPPORT.md — "Parser caveats"
  */
 final readonly class ReferenceCycleDetector

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\UnsupportedVersionException;
-use Gcob\LaraSpecFirst\Parsing\SpecVersion;
+use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 
 // Detection is the first thing that happens to a document and the only thing
 // that can happen before a version is known, so it is tested against raw arrays

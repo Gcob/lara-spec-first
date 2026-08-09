@@ -2,12 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Gcob\LaraSpecFirst\Parsing;
+namespace Gcob\LaraSpecFirst\Parsing\Version;
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
+use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 /**
  * One implementation per OpenAPI minor version.
+ *
+ * Selected once the version is known, and consulted from there on — first to
+ * reject a document whose root shape the version forbids, later to normalize
+ * what it contains.
  *
  * The seam exists so that 3.0 and 3.1 disagreements stay in one file each,
  * rather than becoming version checks scattered across the parser, the router
@@ -18,6 +23,7 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
  * whose needs the current parser cannot meet has to be able to bring its own,
  * behind this same interface, without anything else noticing.
  *
+ * @see SpecDocumentReader for the order of the read pipeline
  * @see docs/OPENAPI-SUPPORT.md — "Handling 3.0 and 3.1: the version strategy"
  */
 interface VersionStrategy

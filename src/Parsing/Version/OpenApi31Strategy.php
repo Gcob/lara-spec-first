@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Parsing\Version;
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
-use Gcob\LaraSpecFirst\Parsing\SpecVersion;
-use Gcob\LaraSpecFirst\Parsing\VersionStrategy;
 
 /**
  * Interprets OpenAPI 3.1.x.

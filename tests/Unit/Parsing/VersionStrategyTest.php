@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\UnsupportedVersionException;
-use Gcob\LaraSpecFirst\Parsing\SpecVersion;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
-use Gcob\LaraSpecFirst\Parsing\VersionStrategyFactory;
+use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
+use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 
 it('selects a strategy per version', function (SpecVersion $version, string $expected): void {
     /** @var class-string $expected */

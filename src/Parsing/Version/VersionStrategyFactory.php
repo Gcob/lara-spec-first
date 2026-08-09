@@ -2,11 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Gcob\LaraSpecFirst\Parsing;
+namespace Gcob\LaraSpecFirst\Parsing\Version;
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\UnsupportedVersionException;
-use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
-use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
+use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 /**
  * Picks the strategy that interprets a given document.
@@ -15,6 +14,8 @@ use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
  * inside the file, so there is nothing to dispatch on until the bytes have been
  * read. Adding a version means adding a case here and a class beside the two
  * below — not auditing the codebase for version checks.
+ *
+ * @see SpecDocumentReader for the order of the read pipeline
  */
 final class VersionStrategyFactory
 {
