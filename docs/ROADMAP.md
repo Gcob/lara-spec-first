@@ -17,11 +17,13 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [x] Initialize package structure: `composer.json`, PSR-4 autoloading, the service provider skeleton
   with package discovery, and the development toolchain (Docker, Pest, Pint, Larastan, `just`).
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs.
-- [ ] Build the core Service Provider to dynamically register routes from the spec.
-- [ ] Implement the base abstract controller generation (Generated vs. Extended pattern) — see
-  [`CODE-GENERATION.md`](./CODE-GENERATION.md).
+- [ ] Build the core Service Provider that registers the routes the contract describes. **Open, and it
+  is the first architectural decision to make:** does the provider read the spec at boot, or load what
+  the build already generated? The rest of the documentation assumes the second, and `route:cache`
+  compatibility points the same way — but nothing has settled it, and the two are different packages.
 - [ ] Ship the build command: vendor the remote references, resolve the spec, and generate the routes,
-  the abstract controllers and the stubs. One command, safe to re-run, never overwriting human work.
+  the abstract controllers (Generated vs. Extended pattern) and the stubs. One command, safe to re-run,
+  never overwriting human work. See [`CODE-GENERATION.md`](./CODE-GENERATION.md).
 - [ ] Ship the diagnostic command — `nginx -t` for your contract: what the package will honor, what it
   will not, and the routing table that results. It belongs in this phase, not with the other Artisan
   commands: it is what makes "the spec is the source of truth" verifiable rather than asserted. See
@@ -30,6 +32,9 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 ## Phase 2: Developer Experience & Mocks
 *Goal: Make adoption frictionless and fast.*
 - [ ] Implement automated Faker-based mocking for endpoints lacking concrete controller implementations.
+- [ ] A mock server driven by the spec: serve the whole contract with conforming responses, with no
+  application behind it. Distinct from the in-app fallback above — that one fills the gaps in a real
+  application, this one needs no application at all.
 - [ ] Extend the build to response DTOs and request validation, on top of the Phase 1 routes and
   controllers. Generation and validation are not new commands: they are the Phase 1 build and the
   Phase 1 doctor, doing more. See [`CODE-GENERATION.md`](./CODE-GENERATION.md#response-dtos).

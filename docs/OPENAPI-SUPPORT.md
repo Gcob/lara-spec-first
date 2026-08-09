@@ -128,7 +128,11 @@ intended surface, all provisional:
 | `--json`             | Machine-readable findings, for CI annotation and for tooling that consumes the report.                                                       |
 | `--check=syntax`     | Document validity only: is this valid OpenAPI.                                                                                               |
 | `--check=honored`    | Support findings only: what this package will and will not honor.                                                                            |
-| `--bypass-allowlist` | Resolve remote `$ref` regardless of the [allowlist](#remote-references-and-the-domain-allowlist), for diagnosing why a reference is blocked. |
+
+The doctor takes no flag that lets it reach the network. It has no reason to: every remote reference
+is already [vendored locally](#a-remote-reference-is-a-dependency-not-a-cache-entry), so a blocked or
+missing reference is diagnosed by reading the working tree, and fetching belongs to the build. A
+`--bypass-allowlist` escape hatch, if one is ever wanted, belongs on the fetching path, not here.
 
 Two constraints on any flag added here, and they are the reason this list is short:
 
@@ -136,11 +140,9 @@ Two constraints on any flag added here, and they are the reason this list is sho
   document is valid, not that the package will honor it. The report says which checks were skipped, on
   every run, so a green exit is never mistaken for a full pass.
 * **A flag that changes what the package would actually do makes the run non-representative, and the
-  report must say so.** `--bypass-allowlist` is the clear case: it deliberately does something boot
-  will never do, so a clean run under it does not predict a clean boot. It is a debugging tool for a
-  human at a terminal — the report labels the run as non-representative, and CI has no business using
-  it. Without that label, the flag quietly breaks the one property that makes the exit code worth
-  anything.
+  report must say so.** A clean run under such a flag does not predict a clean boot, so the report
+  labels it, and CI has no business using it. Without that label, a flag quietly breaks the one
+  property that makes the exit code worth anything.
 
 #### Two kinds of finding, never mixed
 
@@ -181,7 +183,8 @@ Provisional, and expected to grow one section per honored construct:
 
 * **The command name.** One command is settled; what it is called is not. Command signatures are
   public API surface under [rule 4](#the-four-rules-that-govern-this-document), so this is worth
-  getting right once. The [Roadmap](./ROADMAP.md) currently names `spec:validate`.
+  getting right once. No name is committed to anywhere yet — the [Roadmap](./ROADMAP.md) describes the
+  command without naming it, deliberately.
 * **The exit codes.** That document faults and package limits exit differently is settled. The numbers
   are not.
 * **What still happens at boot.** `Rejected` fails at boot unless

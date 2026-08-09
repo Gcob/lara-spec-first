@@ -136,6 +136,10 @@ guessing:
   front matter schema, the tag vocabulary, and the **inventory of every document in the repository**.
   Start there when you need to find something.
 * [`docs/STACK.md`](./docs/STACK.md) — every technology choice, its status, and its reasoning.
+* [`docs/OPENAPI-SUPPORT.md`](./docs/OPENAPI-SUPPORT.md) — what the package honours of the
+  specification and what it does not, and why. Read it before writing anything that reads a spec.
+* [`docs/CODE-GENERATION.md`](./docs/CODE-GENERATION.md) — the build, and the rule that generated code
+  and human code never share a file. Read it before writing anything that emits PHP.
 
 Documents are tagged in their front matter, so you can find everything touching a subject without
 opening files:
