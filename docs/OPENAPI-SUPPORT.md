@@ -123,11 +123,11 @@ ships with the first thing that reads a spec** — see the [Roadmap](./ROADMAP.m
 Centralizing every check in one command means that command needs a way to narrow what it runs. The
 intended surface, all provisional:
 
-| Flag                 | Purpose                                                                                                                                      |
-|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| `--json`             | Machine-readable findings, for CI annotation and for tooling that consumes the report.                                                       |
-| `--check=syntax`     | Document validity only: is this valid OpenAPI.                                                                                               |
-| `--check=honored`    | Support findings only: what this package will and will not honor.                                                                            |
+| Flag              | Purpose                                                                                |
+|-------------------|----------------------------------------------------------------------------------------|
+| `--json`          | Machine-readable findings, for CI annotation and for tooling that consumes the report. |
+| `--check=syntax`  | Document validity only: is this valid OpenAPI.                                         |
+| `--check=honored` | Support findings only: what this package will and will not honor.                      |
 
 The doctor takes no flag that lets it reach the network. It has no reason to: every remote reference
 is already [vendored locally](#a-remote-reference-is-a-dependency-not-a-cache-entry), so a blocked or
@@ -419,12 +419,12 @@ path-mirroring layout. Solvable, unsolved.
 
 The parts of the pattern worth taking, and only these:
 
-| Piece                                | What it does here                                                                                                                                                                                                                                                                                                                                                                                           |
-|--------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Vendored copies, committed** | The fetched documents, on disk, in version control. Once they exist, boot resolves everything locally and **the runtime never touches the network** — not on a miss, not on the first request after a restart, never, because there is no lookup to miss. Their diffs are how a change to your API contract shows up in a pull request instead of in production. |
-| **Frozen by default** | The build never reaches the network on its own. A fresh clone builds offline; a missing vendored copy is an error naming the flag to run, never an implicit fetch. |
-| **Fetching is one explicit act** | Adding a reference and refreshing one are both deliberate, flagged operations, because both can change your contract. See [the build](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default). |
-| **Integrity by repository** | Upstream changed under you? The refetch produces a diff, in a commit, in a review. A remote `$ref` is third-party content that shapes your public API surface, and treating it as untrusted input is the lesson every package ecosystem learned the expensive way — git gives us that property without a mechanism of our own. |
+| Piece                            | What it does here                                                                                                                                                                                                                                                                                                                                                |
+|----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Vendored copies, committed**   | The fetched documents, on disk, in version control. Once they exist, boot resolves everything locally and **the runtime never touches the network** — not on a miss, not on the first request after a restart, never, because there is no lookup to miss. Their diffs are how a change to your API contract shows up in a pull request instead of in production. |
+| **Frozen by default**            | The build never reaches the network on its own. A fresh clone builds offline; a missing vendored copy is an error naming the flag to run, never an implicit fetch.                                                                                                                                                                                               |
+| **Fetching is one explicit act** | Adding a reference and refreshing one are both deliberate, flagged operations, because both can change your contract. See [the build](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default).                                                                                                                                                  |
+| **Integrity by repository**      | Upstream changed under you? The refetch produces a diff, in a commit, in a review. A remote `$ref` is third-party content that shapes your public API surface, and treating it as untrusted input is the lesson every package ecosystem learned the expensive way — git gives us that property without a mechanism of our own.                                   |
 
 The [allowlist](#remote-references-and-the-domain-allowlist) still governs every fetch, but its threat
 model shrinks to almost nothing: outbound requests now happen only inside an explicit, human- or
@@ -458,6 +458,146 @@ guarantees no network at boot, whatever the build does afterwards.
 What is settled here regardless: **the doctor reads, it never writes** — it is
 [read-only by contract](#the-contract) — and its report names which sources it read, because a doctor
 that silently checks something other than what runs is worse than no doctor.
+
+## Lifecycle: the extensions this package defines
+
+OpenAPI can say an operation is `deprecated`. It cannot say what comes before deprecation, and it
+cannot say *when the endpoint disappears* — which is the only part a consumer can actually plan
+around. **Decision: the package defines three extension keys to close that gap.**
+
+| Key           | Where     | Value                                                                                   |
+|---------------|-----------|-----------------------------------------------------------------------------------------|
+| `x-audience`  | Operation | `public` or `internal`. Absent means `public`.                                          |
+| `x-lifecycle` | Operation | `beta` or `stable`. Its default [depends on the audience](#two-keys-one-discriminator). |
+| `x-sunset`    | Operation | The date the endpoint stops being served.                                               |
+
+### Two keys, one discriminator
+
+How strong a promise an operation carries, and who it is promised to, are two different questions.
+Two axes, so two keys, with the audience acting as the discriminator that sets the other's default:
+
+| `x-audience`       | Default `x-lifecycle` | Reasoning                                                                                                                      |
+|--------------------|-----------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `public` (default) | `beta`                | Somebody outside this codebase may depend on it. The stage is a claim you have to make.                                        |
+| `internal`         | none                  | Same application on both ends. Requiring a lifecycle stage on every internal route is ceremony for a promise nobody asked for. |
+
+Three constraints make this safe rather than merely convenient:
+
+**`x-audience` itself defaults to `public`.** This is not a coin flip — it is the same principle as
+defaulting to `beta`. Omission must never be the cheaper path to less protection, because omission is
+what happens when a spec is imported, generated, or written in a hurry. Declaring an endpoint internal
+is an act; being treated as public is what happens by default.
+
+**A missing lifecycle is the absence of a claim, not a prohibition.** An internal endpoint can still
+declare `x-lifecycle: stable`, and it can still be `deprecated` with a full
+[`x-sunset` treatment](#the-doctor-rules-that-follow) — internal consumers deserve a removal date as
+much as anyone. They simply do not need a promise on every route to get one.
+
+**Demoting `public` to `internal` is reported.** This is the hole the composite otherwise opens: once
+a breaking change to a `stable` operation fails the build, flipping its audience to `internal` makes
+the failure disappear. That may be entirely legitimate — an endpoint really can stop being public —
+but it is *revoking a promise*, and a promise cannot be revoked silently in a package built on
+contracts. The report names it, in the same spirit as labelling a
+[non-representative run](#planned-flags). Whether it merely reports or requires the same
+`info.version` bump a break would is **open**.
+
+One consequence worth having: the doctor's protection report counts **public** operations only. A
+monolith with two hundred internal routes should not have its *0 of 47 public operations are stable*
+finding drowned by endpoints that were never promised to anyone.
+
+### `deprecated` is native, and stays out of `x-lifecycle`
+
+OpenAPI already has `deprecated: true` on an operation. Putting `deprecated` in `x-lifecycle` as well
+would create a second place to state one fact — the failure this whole package exists to prevent — so
+it is not in the value set at all. **`x-lifecycle` says how strong the promise is. `deprecated` says
+the operation is going away. They are independent, and both can be true.**
+
+Removing it costs nothing and buys two things. There is no agreement rule to write, because there is
+nothing to disagree with. And an operation can be `stable` *and* `deprecated`, which is not a
+contradiction but the normal, well-behaved case: a promise being honoured right up to its stated
+removal date is exactly what a good deprecation looks like.
+
+`x-lifecycle` is then a binary, and what it adds to OpenAPI is one word the specification has no way
+to express: whether an operation is promised at all.
+
+### The doctor rules that follow
+
+| Rule                                             | Why                                                                                                                                                                                  |
+|--------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `deprecated: true` requires `x-sunset`           | Your idea, and the strongest rule here. A deprecation with no end date is a wish. Requiring the date turns "we should remove this someday" into a commitment with a review attached. |
+| `x-sunset` in the past is a finding              | You are serving an endpoint you promised to remove. Nothing else in the system will ever notice.                                                                                     |
+| `x-sunset` approaching is a warning              | With a configurable horizon, so it lands in CI while there is still time to act.                                                                                                     |
+| An unrecognised `x-lifecycle` value is a finding | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                  |
+| `beta` operations are listed                     | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                         |
+
+### Unstable by default, and what `stable` costs us
+
+**Decision: a public operation with no `x-lifecycle` is `beta`.** You cannot claim a stability
+guarantee by omission — claiming one is an act. This is the right default for the same reason the
+[allowlist](#remote-references-and-the-domain-allowlist) is empty by default: the permissive state is
+the one you should have to opt out of, not into.
+
+| Value                        | Means                                  | What the build does                    |
+|------------------------------|----------------------------------------|----------------------------------------|
+| `beta` (default when public) | Not yet promised to anyone.            | Permissive. Change it freely.          |
+| `stable`                     | A production consumer depends on this. | **A breaking change fails the build.** |
+| none (default when internal) | No claim made, and none expected.      | Permissive by intent, not by neglect.  |
+
+Orthogonal to all of them, `deprecated: true`
+[remains native](#deprecated-is-native-and-stays-out-of-x-lifecycle) and can accompany any value.
+
+`stable` is worth promoting to the moment one production consumer exists — unless that consumer
+knowingly signed up for instability, which is what [`x-audience: internal`](#two-keys-one-discriminator)
+records.
+
+Four consequences, because a rule that fails a build has to be right:
+
+**1. Failing on a breaking change requires a baseline, and the baseline should be committed.** You
+cannot diff a contract against nothing. The previous generated tree is not enough — it only captures
+what we generate, and plenty of breaking changes (a response field becoming optional, an enum losing a
+member) never reach a signature. The honest answer is that **the resolved specification is itself a
+build artifact and belongs in version control**, with every `$ref` inlined. It then does three jobs at
+once: it is the baseline for this rule, it makes the *effective* contract reviewable in a pull request
+rather than the fragments it was assembled from, and it is the artifact the runtime loads. One file,
+three problems.
+
+**2. "Breaking" is directional, and the direction inverts between request and response.** This is
+where implementations get it wrong, so it has to be a written table rather than a judgement call:
+adding a required *request* field breaks clients; adding a *response* field usually does not. Removing
+a response field breaks them; removing an optional request field usually does not. Widening an enum
+breaks response consumers and helps request senders; narrowing it does the opposite. That table is
+itself public API under [rule 4](#the-four-rules-that-govern-this-document) — a change to what counts
+as breaking changes whose build fails — and it is large enough to deserve its own phase rather than
+being smuggled into the first release.
+
+**3. The escape hatch already exists in the document: `info.version`.** A build that only says *you
+broke a stable operation* is an obstacle. A build that says **this change requires `info.version` to
+go from `2.4.1` to `3.0.0`, and will pass once it does** has turned enforcement into instruction. It
+needs no config, no flag and no acknowledgement entry — the contract carries its own version, and
+deliberately breaking one becomes indistinguishable from publishing a major, which is exactly what it
+should be. Breaking on purpose stays possible; breaking by accident stops being.
+
+**4. The doctor must report how much of the API is actually protected.** A specification imported from
+elsewhere has no `x-lifecycle` anywhere, so every public operation defaults to `beta` and the strongest
+rule in this document is silently off for the whole API. *47 public operations, 0 stable* is a finding
+under [rule 2](#the-four-rules-that-govern-this-document): protection that is off must never look like
+protection that passed.
+
+### The runtime payoff
+
+This is what makes these keys worth defining rather than documenting a convention: **the generated
+code can act on them.** RFC 8594 standardises a `Sunset` HTTP header carrying exactly this date, and
+the IETF has a companion `Deprecation` header in draft. A contract that declares a sunset can
+therefore produce an endpoint that announces it on every response, to every client, without anyone
+writing that code.
+
+Declared once in the spec, enforced in CI by the doctor, and advertised over HTTP by the generated
+controller — that is the whole thesis of this package applied to a single field.
+
+**Open.** The date format (`x-sunset` should almost certainly be RFC 3339, converted to the HTTP-date
+the header requires); whether emitting the headers is on by default; the warning horizon; and the
+collision risk of a name as generic as `x-lifecycle`, which another tool may already define
+differently. A vendor prefix would remove the ambiguity at the cost of every consumer typing it.
 
 ## Laravel constraints we do not fight
 
@@ -498,9 +638,27 @@ position. Undecided.
 
 ### Parameter names are a naming contract, not a mapping problem
 
-OpenAPI allows `{user-id}` and `{user.id}`; Laravel route parameters must match
-`[A-Za-z_][A-Za-z0-9_]*`. Converting one to the other is trivial — and that triviality is exactly
-what makes it easy to get wrong, because the hard parts are not in the conversion:
+OpenAPI puts almost no constraint on a path parameter's name. `{user-id}`, `{user.id}` and
+`{a_very_long_and_descriptive_parameter_name}` are all legal. The router underneath Laravel is far
+narrower, and it does not fail politely.
+
+**What actually happens.** Laravel compiles its routes through Symfony's compiler, which finds
+placeholders with `#\{(!)?([\w\x80-\xFF]+)\}#` (`vendor/symfony/routing/RouteCompiler.php:118`). `\w`
+is `[A-Za-z0-9_]`, so `{user-id}` is **not recognised as a placeholder at all** — it stays literal
+text, and the route matches only a URL containing the characters `{user-id}`. No exception, no
+warning, an endpoint that silently 404s forever.
+
+It gets worse in a specific way. Laravel's own `Route::compileParameterNames()` uses
+`/\{(.*?)\}/` (`vendor/laravel/framework/src/Illuminate/Routing/Route.php:535`), which accepts
+anything. **The framework's introspection and the framework's matcher disagree**: `parameterNames()`
+reports `user-id` as a parameter of a route that can never bind it. Anything reasoning about the route
+— including our own doctor, if it asked Laravel instead of the spec — would be told a comfortable lie.
+
+And a hard ceiling nobody expects: a placeholder longer than **32 characters** throws a
+`DomainException` from the same compiler (`RouteCompiler.php:145`). OpenAPI has no such limit, so a
+descriptive parameter name is a crash rather than a mismatch.
+
+Given that, the hard parts were never in the conversion:
 
 * **The result is public API.** The converted name appears in controller method signatures and in
   route model binding. Changing the convention later is a **major** release under
@@ -511,9 +669,16 @@ what makes it easy to get wrong, because the hard parts are not in the conversio
   validating it against the spec, both need the original OpenAPI name. The two names have to be kept
   side by side, not converted and forgotten.
 
-**Open:** the exact conversion rule, and whether non-conforming names are converted at all or simply
-`Rejected` with a message telling the author to rename the parameter in the spec. The second is more
-in keeping with rule 3.
+**Leaning: reject, do not convert.** Rule 3 and the position that
+[API design is a skill](./CODE-GENERATION.md#naming-and-the-rename-problem) point the same way — a
+build that refuses `{user-id}` and says *rename this parameter to `user_id` in your specification* is
+teaching a real constraint of the platform, once, at build time. A build that silently converts is
+maintaining a shadow naming scheme forever, and the developer still meets it the first time they read
+a generated signature. The 32-character ceiling is not negotiable either way and must be checked
+before the route is ever compiled.
+
+**Open:** whether that rejection is absolute or has an escape hatch for specs the consumer does not
+own — the case [acknowledgement](#acknowledged-limits-the-consumers-opt-out) exists for.
 
 ### Still to discuss
 
@@ -525,7 +690,10 @@ lost, not because they are decided:
 * `servers`, including path-level and operation-level overrides and server variables with `enum` and
   `default`: what becomes the route prefix.
 * `operationId`: optional in the specification, not guaranteed unique, not guaranteed to be a valid
-  PHP identifier — and it is what names the generated controller and method. Public API surface.
+  PHP identifier — and it is what names the generated controller and method. Public API surface. The
+  naming and rename questions are now answered in
+  [`CODE-GENERATION.md`](./CODE-GENERATION.md#naming-and-the-rename-problem); what remains here is how
+  a missing or unusable `operationId` is reported.
 * `security` to middleware mapping. The most dangerous row in the matrix: registering a route without
   applying the authentication the spec declares publishes an endpoint the contract says is protected.
 * `php artisan route:cache`: generated routes must be serialisable, which means controller strings
@@ -543,34 +711,35 @@ current intent for the first release, not shipped behaviour.
 
 ### Document
 
-| Construct                      | Level     | Note                                                                        |
-|--------------------------------|-----------|-----------------------------------------------------------------------------|
-| `openapi` 3.0.x                | Supported | Dispatches to the 3.0 [strategy](#handling-30-and-31-the-version-strategy). |
-| `openapi` 3.1.x                | Supported | Dispatches to the 3.1 strategy.                                             |
-| Any other version              | Rejected  | Including 2.x. Convert before adopting.                                     |
-| `info`, `externalDocs`, `tags` | Ignored   | Documentation metadata with no routing effect.                              |
-| `jsonSchemaDialect` (3.1)      | Open      | Only the default dialect is realistically honorable.                        |
-| `servers`                      | Open      | See [still to discuss](#still-to-discuss).                                  |
-| `security` (root)              | Open      |                                                                             |
-| `webhooks` (3.1)               | Open      |                                                                             |
-| `x-` extensions                | Ignored   | Preserved by the parser and readable, but the package acts on none of them. |
+| Construct                               | Level     | Note                                                                                                                       |
+|-----------------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------|
+| `openapi` 3.0.x                         | Supported | Dispatches to the 3.0 [strategy](#handling-30-and-31-the-version-strategy).                                                |
+| `openapi` 3.1.x                         | Supported | Dispatches to the 3.1 strategy.                                                                                            |
+| Any other version                       | Rejected  | Including 2.x. Convert before adopting.                                                                                    |
+| `info`, `externalDocs`, `tags`          | Ignored   | Documentation metadata with no routing effect.                                                                             |
+| `jsonSchemaDialect` (3.1)               | Open      | Only the default dialect is realistically honorable.                                                                       |
+| `servers`                               | Open      | See [still to discuss](#still-to-discuss).                                                                                 |
+| `security` (root)                       | Open      |                                                                                                                            |
+| `webhooks` (3.1)                        | Open      |                                                                                                                            |
+| `x-` extensions                         | Ignored   | Preserved by the parser and readable, but the package acts on none of them — except the two it defines itself, below.      |
+| `x-audience`, `x-lifecycle`, `x-sunset` | Open      | The extensions this package defines. Rules and doctor checks: [lifecycle](#lifecycle-the-extensions-this-package-defines). |
 
 ### Paths and operations
 
-| Construct                               | Level     | Note                                                                                                                |
-|-----------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------------|
-| `paths`                                 | Supported | The source of every registered route.                                                                               |
-| Path templating `{param}`               | Partial   | Conforming names only, pending the [naming decision](#parameter-names-are-a-naming-contract-not-a-mapping-problem). |
-| Several parameters in one segment       | Open      |                                                                                                                     |
-| Path Item `$ref`                        | Open      | Special-cased by the parser (`PathItem.php:73-78`).                                                                 |
-| `get`, `post`, `put`, `patch`, `delete` | Supported |                                                                                                                     |
-| `options`                               | Open      | Conflicts with Laravel's own handling.                                                                              |
-| `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                        |
-| `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                            |
-| Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                        |
-| `operationId`                           | Open      | Names the generated controller and method.                                                                          |
-| `deprecated`                            | Ignored   | No runtime effect.                                                                                                  |
-| `callbacks`                             | Open      |                                                                                                                     |
+| Construct                               | Level     | Note                                                                                                                                                                 |
+|-----------------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `paths`                                 | Supported | The source of every registered route.                                                                                                                                |
+| Path templating `{param}`               | Partial   | Conforming names only, pending the [naming decision](#parameter-names-are-a-naming-contract-not-a-mapping-problem).                                                  |
+| Several parameters in one segment       | Open      |                                                                                                                                                                      |
+| Path Item `$ref`                        | Open      | Special-cased by the parser (`PathItem.php:73-78`).                                                                                                                  |
+| `get`, `post`, `put`, `patch`, `delete` | Supported |                                                                                                                                                                      |
+| `options`                               | Open      | Conflicts with Laravel's own handling.                                                                                                                               |
+| `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                         |
+| `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                                                                             |
+| Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                                                                         |
+| `operationId`                           | Open      | Names the generated controller and method.                                                                                                                           |
+| `deprecated`                            | Open      | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](#lifecycle-the-extensions-this-package-defines). |
+| `callbacks`                             | Open      |                                                                                                                                                                      |
 
 ### Parameters, bodies, responses
 

@@ -2,7 +2,8 @@
 title: Code Generation
 audience: Users, contributors and agents
 covers: >
-    The build command and what it produces, the rule that generated code is never
+    The build command and what it produces, the boundary between build time and
+    run time, where generated code lives, the rule that generated code is never
     edited by hand, the difference between regenerated output and one-time stubs,
     and how a contract change surfaces as a static analysis error rather than a
     runtime surprise.
@@ -33,6 +34,38 @@ run has quietly become Code-First again.
 The invariant is structural, not a matter of care. It holds because generated files and
 human-authored files are **disjoint sets** — different files, in different places. The build owns its
 files completely and never opens the others.
+
+## The runtime never sees the spec
+
+**Decision: the service provider does not know a specification exists.** Only the build-time commands
+read one. At boot, the package loads generated PHP and nothing else — no YAML, no parser, no
+resolution, no `$ref`.
+
+Explicit over dynamic, everywhere. The alternative — a provider that parses the contract on every boot
+— was never really compatible with the rest of this document, and saying so plainly is cheaper than
+discovering it halfway through the implementation.
+
+What follows from it:
+
+* **The parser is a build-time dependency in practice.** `cebe\openapi\` classes must never be
+  reachable from the routing or request path. This is not a convention to remember, it is an assertion
+  to write: the existing architecture test in `tests/Unit/` is exactly the place to forbid the runtime
+  namespace from referencing the parser at all.
+* **Boot cost is loading PHP**, which is what `route:cache` and the opcode cache already optimise. No
+  work to memoise, no cache of our own to invent.
+* **The boundary is the production request path, not the process.** Serving a real application's
+  traffic never involves a specification. Other contexts plausibly do, and pretending otherwise now
+  would only mean rewriting this section later: contract testing has to compare a live response
+  against the contract, and a [mock server](./ROADMAP.md) is a spec-driven server by definition. Those
+  are separate execution contexts with their own rules. **Deferred deliberately** — the contexts get
+  enumerated when the first one is built, not guessed at now. Until then, the architecture test
+  forbids the parser to the *routing and request* namespaces specifically, not to the package at
+  large.
+* **It creates one new failure mode, and it must be named:** edit the spec, forget to build, and the
+  application serves the previous contract without a word — because nothing at runtime knows a spec
+  exists to compare against. **Detecting that drift is the doctor's job**, which makes it a required CI
+  check rather than a convenience. A package this strict about contracts cannot ship the one silent
+  way to be out of date.
 
 ## Three kinds of output
 
@@ -134,6 +167,82 @@ abstract layer never enters version control.
 The cost of ignoring the second layer is that a fresh clone does not analyse, autocomplete or run
 until the build has been run once — the `composer install` bargain, which this ecosystem already
 accepts. **Decide it when there is generated output to look at**, not now.
+
+## Where generated code lives
+
+**Decision: a config key, defaulting to `app/Integration` and the namespace `App\Integration`.**
+
+Under `app/` because it is application code the developer will read, extend and debug, not a build
+artefact hidden in `bootstrap/`. Configurable because no default survives contact with every project.
+
+Two details that will otherwise be discovered the hard way:
+
+* **PSR-4 requires the directory segment and the namespace segment to match, including case.** A
+  standard Laravel application maps `App\` to `app/`, so `app/integration` autoloads as
+  `App\integration` — legal PHP, and an immediate source of confusion. The default is `app/Integration`.
+* **Path and namespace are two settings, not one.** Deriving one from the other means guessing at the
+  consumer's autoload map. Both are configured, and the doctor checks they agree with what `composer`
+  actually autoloads — a mismatch there produces class-not-found errors far from their cause.
+
+The config key names and the default are public API surface under
+[rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
+
+## Naming, and the rename problem
+
+The generated class and method names come from `operationId`. That makes an `operationId` far more
+than a label: **it is the name of the class a developer extends**, so renaming one in the spec renames
+a class in their application.
+
+The position on this is the project's position on API design generally: **designing an API is a skill,
+and changing an identifier is a versioning decision.** The package is not going to hide that, and
+versioning is the right answer. But there is a difference between refusing to hide a consequence and
+leaving a beginner to discover it from a fatal error, and the difference costs us very little.
+
+### Identity is the path and the method, not the name
+
+The distinction that makes help possible: an operation's **identity** is its path plus its HTTP
+method, which is what actually addresses it. Its **name** is `operationId`, which is what we generate
+from. Renaming an operation therefore changes the name while the identity holds still — and a build
+that knows both can tell the difference between a rename and a deletion.
+
+That requires no new state file. The build reads the generated tree before overwriting it, and every
+generated file already carries
+[the pointer it came from](#borrowing-from-bundlers-and-where-to-stop). Comparing the two gives:
+
+* **Renames, reported as renames.** *This operation was `listUsers`, it is now `indexUsers`; the class
+  you extended has been replaced.* Naming the old and the new turns a fatal error into an instruction.
+* **Orphans, reported by name.** A human class extending a generated abstract that no longer exists is
+  detectable, and is exactly what a rename leaves behind. The
+  [invariant](#the-invariant-a-build-never-destroys-human-work) means their work is still there — it is
+  just no longer connected to anything, and nobody should have to find that out at runtime.
+
+The honest limit: when the path itself moves, identity and name change together and a rename becomes
+indistinguishable from a delete plus an add. The build should say that it cannot tell, rather than
+guess.
+
+### How it says it
+
+A rename is only useful as a message if it names the code that has to change. The build knows the old
+fully-qualified class name it is about to replace, so it can find the references itself: scan the
+application for that symbol and **report the files that mention it, with line numbers**, alongside the
+old and new names.
+
+That turns the output from *something was renamed* into *these four files reference a class that no
+longer exists*, which is the difference between a notice and a fix. It is a token scan over PHP the
+consumer already has — no AST work, no runtime reflection, nothing to keep in sync.
+
+In [watch](#watching-the-design-loop) the same report arrives while the developer is still holding the
+context in their head, which is when a rename costs almost nothing to absorb. That is the strongest
+argument for watch mode existing at all.
+
+**Open:** how prominent this is — a heading in the build output, a doctor finding, or a non-zero exit
+until the references are updated. Failing the build is defensible under
+[rule 2](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document) and might be intolerable in
+watch. Probably different answers for the two commands.
+
+**Open:** the fallback when `operationId` is absent — deriving from method and path makes any URL
+reorganisation a mass rename — plus collisions between two operations whose ids differ only in
+characters PHP cannot use, and whether the build refuses those outright.
 
 ## Watching: the design loop
 

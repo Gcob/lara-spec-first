@@ -17,10 +17,9 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [x] Initialize package structure: `composer.json`, PSR-4 autoloading, the service provider skeleton
   with package discovery, and the development toolchain (Docker, Pest, Pint, Larastan, `just`).
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs.
-- [ ] Build the core Service Provider that registers the routes the contract describes. **Open, and it
-  is the first architectural decision to make:** does the provider read the spec at boot, or load what
-  the build already generated? The rest of the documentation assumes the second, and `route:cache`
-  compatibility points the same way — but nothing has settled it, and the two are different packages.
+- [ ] Build the core Service Provider that registers the generated routes. It **does not read the
+  spec** — only the build commands do. Explicit over dynamic: see
+  [the runtime never sees the spec](./CODE-GENERATION.md#the-runtime-never-sees-the-spec).
 - [ ] Ship the build command: vendor the remote references, resolve the spec, and generate the routes,
   the abstract controllers (Generated vs. Extended pattern) and the stubs. One command, safe to re-run,
   never overwriting human work. See [`CODE-GENERATION.md`](./CODE-GENERATION.md).
@@ -57,6 +56,19 @@ endpoint, **the route, the form request, the controller and the DTO are all deri
 contract**, and the only thing a developer writes is the model and the business logic that model
 carries. Not less typing for its own sake — less surface where the code and the contract can quietly
 disagree.
+
+## Breaking-change enforcement
+*Goal: a stable operation cannot break without someone deciding to break it.*
+
+Deliberately not slotted into a phase yet: a rule that fails somebody's build has to be right before
+it ships, and it depends on groundwork the earlier phases have not laid. See
+[lifecycle](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us).
+
+- [ ] Commit the resolved specification as a build artifact — the baseline to diff against, the
+  reviewable effective contract, and what the runtime loads, in one file.
+- [ ] The breaking-change table, direction-aware for requests and responses, versioned as public API.
+- [ ] Fail the build on a breaking change to a `stable` operation, naming the `info.version` bump that
+  would make it legitimate.
 
 ## Phase 3: Legacy Bridge & Ecosystem
 *Goal: Turn an existing Code-First Laravel app into a Spec-First one — quickly, simply, and above all reliably.*
