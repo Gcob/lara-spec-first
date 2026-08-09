@@ -34,8 +34,14 @@ The project is in early bootstrap (Phase 1)
 
 * **Spec-First, always.** The OpenAPI contract is the source of truth, and PHP follows from it — never
   the other way around.
+* **Opinionated, and we own it.** Where the specification leaves a choice open, we make one and state
+  it rather than adding a config flag for every fork in the road. A stated opinion you can plan around
+  beats a flexible behaviour nobody can predict.
 * **Parser:** `devizzent/cebe-php-openapi`, a drop-in fork of `cebe/php-openapi` that adds **OpenAPI 3.1**
   support (upstream targets 3.0.x only). Modern design tools export 3.1, so we parse 3.1.
+* **Parsing is not honoring.** We read 3.0.x and 3.1.x; we honor a documented subset of what they
+  allow, and we say so out loud rather than ignoring a contract in silence. What is honored, what is
+  not, and why, lives in [`docs/OPENAPI-SUPPORT.md`](./docs/OPENAPI-SUPPORT.md).
 * **Testing:** Pest, with `Spectator` for contract testing.
 * **AI-Assisted Development:** Built with transparent AI workflows. See [`AGENTS.md`](./AGENTS.md).
 

@@ -124,6 +124,7 @@ grep -rl 'tags:.*versions' --include='*.md' .
 | `agents` | How AI agents should work in this repository |
 | `ci` | Continuous integration and the build matrix |
 | `code-review` | Review priorities and how findings are reported |
+| `compatibility` | What the package honours of a standard, and the promise attached to it |
 | `conventions` | Commit, naming, and style conventions |
 | `contributing` | How to contribute: setup, pull requests, conduct |
 | `decisions` | Choices made, with their reasoning |
@@ -167,6 +168,7 @@ intentionally carries no descriptions, so there is nothing here that can fall ou
 * [`CONTRIBUTING.md`](../CONTRIBUTING.md)
 * [`AGENTS.md`](../AGENTS.md)
 * [`docs/DOCUMENTATION.md`](./DOCUMENTATION.md) — this file
+* [`docs/OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md)
 * [`docs/ROADMAP.md`](./ROADMAP.md)
 * [`docs/STACK.md`](./STACK.md)
 * [`LICENSE`](../LICENSE) — MIT, plain text, no front matter
