@@ -37,6 +37,9 @@ Treat a contradiction between the two as a defect, not a nitpick.
   `Decided`, that update belongs in the same change that installs it.
 * **A missing doc is a finding.** A new Artisan command, config option, or extension point that ships
   undocumented is an incomplete change.
+* **American spelling.** `honor`, `behavior`, `normalize`, `organize`. Older documents still carry
+  British forms in places; they are not worth a sweep, but anything newly written or rewritten uses
+  the American form.
 
 ## One topic, one file
 
@@ -173,8 +176,12 @@ intentionally carries no descriptions, so there is nothing here that can fall ou
 * [`CONTRIBUTING.md`](../CONTRIBUTING.md)
 * [`AGENTS.md`](../AGENTS.md)
 * [`docs/CODE-GENERATION.md`](./CODE-GENERATION.md)
+* [`docs/CONTRACT-ARTIFACT.md`](./CONTRACT-ARTIFACT.md)
+* [`docs/DOCTOR.md`](./DOCTOR.md)
 * [`docs/DOCUMENTATION.md`](./DOCUMENTATION.md) — this file
+* [`docs/LIFECYCLE.md`](./LIFECYCLE.md)
 * [`docs/OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md)
+* [`docs/REMOTE-REFERENCES.md`](./REMOTE-REFERENCES.md)
 * [`docs/ROADMAP.md`](./ROADMAP.md)
 * [`docs/STACK.md`](./STACK.md)
 * [`LICENSE`](../LICENSE) — MIT, plain text, no front matter

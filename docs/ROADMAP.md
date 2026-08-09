@@ -19,7 +19,7 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs,
   behind [one strategy per OpenAPI minor version](./OPENAPI-SUPPORT.md#handling-30-and-31-the-version-strategy)
   so that nothing downstream ever knows which version was loaded.
-- [ ] Produce the [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact): the normalised,
+- [ ] Produce the [contract artifact](./CONTRACT-ARTIFACT.md): the normalised,
   resolved, version-neutral representation of what the package honours. It is the strategy's output and
   what `spec:doctor` checks against, so it is needed here — long before the breaking-change enforcement it will
   later serve as a baseline for.
@@ -39,7 +39,7 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Ship `spec:doctor` — `nginx -t` for your contract: what the package will honor, what it
   will not, and the routing table that results. It belongs in this phase, not with the other Artisan
   commands: it is what makes "the spec is the source of truth" verifiable rather than asserted. See
-  [the doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor).
+  [the doctor](./DOCTOR.md).
 
 ## Phase 2: Developer Experience & Mocks
 *Goal: Make adoption frictionless and fast.*
@@ -75,9 +75,9 @@ disagree.
 
 Deliberately not slotted into a phase yet: a rule that fails somebody's build has to be right before
 it ships, and it depends on groundwork the earlier phases have not laid. See
-[lifecycle](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us).
+[lifecycle](./LIFECYCLE.md#unstable-by-default-and-what-stable-costs-us).
 
-- [ ] Diff the Phase 1 [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact) against its
+- [ ] Diff the Phase 1 [contract artifact](./CONTRACT-ARTIFACT.md) against its
   committed predecessor. Comparisons are made between artifacts, never between specification documents.
 - [ ] The breaking-change table, direction-aware for requests and responses, versioned as public API.
 - [ ] Fail the build on a breaking change to a `stable` operation, naming the `info.version` bump that

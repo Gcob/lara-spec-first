@@ -75,11 +75,11 @@ What follows from it:
 
 ## Three kinds of file, and only two are the build's
 
-| Kind                | Lifecycle                                                                                            | Who owns it                                                                                                   |
-|---------------------|------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| **Generated**       | Rewritten from scratch on every build.                                                               | The package. Never edit — your edit is gone on the next run, by design.                                       |
-| **Vendored inputs** | Never fetched unless asked; [frozen by default](#remote-references-during-a-build-frozen-by-default). | Upstream. See [remote references](./OPENAPI-SUPPORT.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
-| **Your classes**    | Created once by [`spec:make`](#scaffolding-is-specmake-not-a-build-step), on request. The build never touches them. | You, entirely, from the moment the file exists.                                                              |
+| Kind                | Lifecycle                                                                                                           | Who owns it                                                                                                     |
+|---------------------|---------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| **Generated**       | Rewritten from scratch on every build.                                                                              | The package. Never edit — your edit is gone on the next run, by design.                                         |
+| **Vendored inputs** | Never fetched unless asked; [frozen by default](#remote-references-during-a-build-frozen-by-default).               | Upstream. See [remote references](./REMOTE-REFERENCES.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
+| **Your classes**    | Created once by [`spec:make`](#scaffolding-is-specmake-not-a-build-step), on request. The build never touches them. | You, entirely, from the moment the file exists.                                                                 |
 
 The generated kind should be unmistakable at a glance and at grep-time: its own directory, its own
 namespace, and a header on every file saying it is generated and will be overwritten. A developer
@@ -103,7 +103,7 @@ has hand-edits in it to protect.
 ## The build command: `spec:build`
 
 One command, run after any change to the specification, producing every derived output: the
-[contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact), the routes, the abstract controllers,
+[contract artifact](./CONTRACT-ARTIFACT.md), the routes, the abstract controllers,
 the response DTOs and the validation. Everything it writes, it owns.
 
 Its properties:
@@ -112,7 +112,7 @@ Its properties:
   diff on an unchanged spec, that is a defect.
 * **Ordered, and it stops.** Check the vendored references are present, parse, normalise into the
   prospective artifact, **compare it against the committed one**, then generate. A spec that fails
-  [the doctor's](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor) hard checks does not reach
+  [the doctor's](./DOCTOR.md) hard checks does not reach
   the generator — half-generated output from a broken contract is worse than no output. The comparison
   sits before generation for the same reason: nothing is written until it is known to be allowed.
 * **It never writes outside its own directories.** No exceptions, no conditions. This is the
@@ -138,7 +138,7 @@ contract without anyone deciding to. Under a frozen default:
 
 Fetching therefore has one entry point in `build`: an explicit flag, whether the document is missing or
 already vendored. Working name `--update-refs`, matching the install/update vocabulary the
-[dependency framing](./OPENAPI-SUPPORT.md#borrowing-the-dependency-manager-shape) already borrows.
+[dependency framing](./REMOTE-REFERENCES.md#borrowing-the-dependency-manager-shape) already borrows.
 Whether missing and stale documents need *separate* flags is open — one flag is simpler, two let you
 add a reference without silently refreshing the others.
 
@@ -154,7 +154,7 @@ The build writes files; git decides which are tracked. That is already every con
 opinion from us. Adding a config option here would be inventing a second, worse `.gitignore`.
 
 **One exception, and it is not optional: the vendored references must be committed.** There is
-[no lock file](./OPENAPI-SUPPORT.md#no-lock-file-git-is-the-lock) — the committed copies *are* the
+[no lock file](./REMOTE-REFERENCES.md#no-lock-file-git-is-the-lock) — the committed copies *are* the
 lock. Ignoring that directory does not save you noise, it removes the only mechanism that makes a
 build reproducible and an old release deployable. The doctor should detect it and report it as a
 finding rather than let it be discovered during an incident.
@@ -164,10 +164,10 @@ finding rather than let it be discovered during an incident.
 **Decision: the build emits an interface plus an abstract class**, splitting the output along the line
 that matters:
 
-| Layer | Carries | Naturally |
-|---|---|---|
-| **Interface** | The contract surface: method signatures, DTO shapes, the things a change to the spec actually changes. | Committed — this is the diff a reviewer wants, and it is small. |
-| **Abstract class** | The mechanics that implement the interface. Predictable, derivable, and noisy in a diff. | A candidate for ignoring, since an idempotent build reproduces it exactly. |
+| Layer              | Carries                                                                                                | Naturally                                                                  |
+|--------------------|--------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| **Interface**      | The contract surface: method signatures, DTO shapes, the things a change to the spec actually changes. | Committed — this is the diff a reviewer wants, and it is small.            |
+| **Abstract class** | The mechanics that implement the interface. Predictable, derivable, and noisy in a diff.               | A candidate for ignoring, since an idempotent build reproduces it exactly. |
 
 It fits the [split](#the-split-is-what-makes-a-contract-change-loud) rather than complicating it: the
 interface is what a human subclass is checked against, so the compile-time error survives even if the
@@ -222,7 +222,7 @@ Two details that will otherwise be discovered the hard way:
   actually autoloads — a mismatch there produces class-not-found errors far from their cause.
 
 The config key names and the default are public API surface under
-[rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
+[rule 4](./OPENAPI-SUPPORT.md#the-four-rules).
 
 ## Scaffolding is `spec:make`, not a build step
 
@@ -245,7 +245,7 @@ The two alternatives are worse, and for reasons this document has already commit
 
 * **Not registering the route** would mean the contract describes an endpoint that does not exist, and
   a client would get a `404` indistinguishable from a typo. That is
-  [rule 2](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document) violated at the level of the
+  [rule 2](./OPENAPI-SUPPORT.md#the-four-rules) violated at the level of the
   wire: the spec says the endpoint is there, and nothing anywhere says otherwise.
 * **Pointing at a class that does not exist** produces a class-not-found fatal at request time — an
   internal error blaming the consumer's application for a state the package created on purpose.
@@ -271,7 +271,7 @@ first is not a matter of taste:
 **The consequence to state plainly:** the generated route refers to your class by its fully-qualified
 name, so the name and namespace are load-bearing. Moving the file is fine; moving it somewhere it no
 longer autoloads under the expected name breaks the route. The
-[doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor) reports that as a missing
+[doctor](./DOCTOR.md) reports that as a missing
 implementation rather than letting it surface as a class-not-found at runtime.
 
 ### Not a flag on `spec:build`
@@ -303,7 +303,7 @@ running it** — the same pattern as the
 The trap is printing one line per operation. A specification with two hundred operations, on the day
 somebody adopts this package, would answer with two hundred commands — which is not a list, it is a
 wall, arriving at the worst possible moment. So the build **summarises, and the
-[doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor) holds the full list**, which is the
+[doctor](./DOCTOR.md) holds the full list**, which is the
 division of labour those two commands already have.
 
 It summarises **by `tags`**, because the specification already carries the author's own grouping and
@@ -391,7 +391,7 @@ argument for watch mode existing at all.
 
 **Open:** how prominent this is — a heading in the build output, a doctor finding, or a non-zero exit
 until the references are updated. Failing the build is defensible under
-[rule 2](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document) and might be intolerable in
+[rule 2](./OPENAPI-SUPPORT.md#the-four-rules) and might be intolerable in
 watch. Probably different answers for the two commands.
 
 ### When `operationId` is absent, derive from method and path
@@ -404,7 +404,7 @@ The objection to raise and dismiss: deriving from the path means that reorganisi
 classes. True — and **proportionate**, because changing a path *is* a change to the contract. Consumers
 have to update their calls; you having to update a class name is the same event, visible in your own
 code. For a `stable` operation the build already refuses the change until
-[`info.version`](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us) says so, and for a
+[`info.version`](./LIFECYCLE.md#unstable-by-default-and-what-stable-costs-us) says so, and for a
 `beta` one churn is what `beta` means. The case that would have been unfair — renaming a path
 *parameter*, which changes nothing on the wire — is already excluded by normalising identity.
 
@@ -415,7 +415,7 @@ fallback, and it is the kind of nudge the doctor should make rather than the bui
 **Decision: `operationId` is required on `public` + `stable` operations, and optional everywhere else.**
 A stable operation's generated class name is a promise made to your own codebase, so it deserves to be
 chosen rather than computed — while a `beta` or `internal` operation can be sketched without ceremony.
-The rule reuses the [lifecycle](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us)
+The rule reuses the [lifecycle](./LIFECYCLE.md#unstable-by-default-and-what-stable-costs-us)
 vocabulary instead of inventing one of its own, and it lands where it costs least: nobody meets it
 while exploring, and everybody meets it at the moment they promise an endpoint to someone.
 
@@ -493,7 +493,7 @@ Two other decisions depend on it, which is the real reason it stands alone:
 * [Rename detection](#identity-is-the-path-and-the-method-not-the-name) compares the pointers in the
   existing generated tree against the ones the new build would emit. Without the annotation there is
   no comparison to make and no rename to report.
-* The [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact) is keyed by the same identity,
+* The [contract artifact](./CONTRACT-ARTIFACT.md) is keyed by the same identity,
   so a finding in the artifact diff and a header in a generated file name the same thing.
 
 ## Response DTOs
@@ -545,7 +545,7 @@ missing or malformed.
 
 * The config key names for the [generated location](#where-generated-code-lives) — the location's
   *default* is decided, what the keys are called is not. Public API surface under
-  [rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
+  [rule 4](./OPENAPI-SUPPORT.md#the-four-rules).
 * Which [per-type flags](#per-type-flags-belong-here) `spec:make` accepts.
 * Whether the second of the [two layers](#two-layers) is an abstract class or a trait.
 * Whether fetching a *missing* reference and refreshing a *stale* one share one flag or take two.

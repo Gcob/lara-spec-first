@@ -3,12 +3,10 @@ title: OpenAPI Support
 audience: Users, contributors and agents
 covers: >
     What the package honors of the OpenAPI specification and what it does not:
-    the support levels and their compatibility promise, the `spec:doctor`
-    command that reports them and the acknowledgement config that waives them,
-    how OpenAPI 3.0 and 3.1 differences are handled, remote references and their
-    vendoring, the lifecycle extensions this package defines, the contract
-    artifact, the parser caveats behind these limits, and the Laravel
-    constraints the package deliberately does not fight.
+    the four rules that govern every such decision, the support levels and their
+    compatibility promise, the construct-by-construct matrix, how OpenAPI 3.0
+    and 3.1 differences are handled, the parser caveats behind these limits, and
+    the Laravel constraints the package deliberately does not fight.
 read_before: >
     Implementing anything that reads a spec, registers a route, or changes what
     the package accepts from a specification file.
@@ -31,7 +29,17 @@ source of truth.
 > genuinely undecided and must not be presented as settled — the same discipline
 > [`STACK.md`](./STACK.md) applies to its own Status column.
 
-## The four rules that govern this document
+Four subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below
+still govern all of them:
+
+| Document                                         | Owns                                                             |
+|--------------------------------------------------|------------------------------------------------------------------|
+| [`DOCTOR.md`](./DOCTOR.md)                       | How any of this is reported, and how a consumer accepts a limit. |
+| [`CONTRACT-ARTIFACT.md`](./CONTRACT-ARTIFACT.md) | The normalized form every comparison goes through.               |
+| [`REMOTE-REFERENCES.md`](./REMOTE-REFERENCES.md) | A `$ref` that points at a URL.                                   |
+| [`LIFECYCLE.md`](./LIFECYCLE.md)                 | How strong a promise each operation carries.                     |
+
+## The four rules
 
 **1. Parsing is not honoring.** The parser reads both 3.0.x and 3.1.x. The package *honors* a
 subset. Every promise this project makes must be about behavior, never about a version number. "We
@@ -40,8 +48,8 @@ support 3.1" is meaningless; "we register routes from `paths`, and we reject `tr
 **2. Silence is the enemy.** A construct the package does not honor must produce a diagnostic. If a
 spec declares something and the package ignores it without a word, the document has stopped being the
 source of truth and nobody finds out until production. This is the single most important rule here,
-and it is the reason the [support levels](#support-levels) distinguish *ignored with a diagnostic*
-from *ignored*.
+and it is why the [support levels](#support-levels) below are six rather than two: each one exists to
+say something specific out loud, or to be explicit that there is nothing to say.
 
 **3. Opinionated, and we own it.** Where the specification leaves a choice open, this package makes
 one and states it, rather than inventing configuration for every fork in the road. A stated opinion
@@ -60,7 +68,7 @@ API surface, exactly like class names and config keys:
 ## Support levels
 
 Six levels. Every one except `Supported` and `Out of scope` says something out loud, and only two of
-them can make the [exit code](#the-contract) non-zero:
+them can make the [exit code](./DOCTOR.md#the-contract) non-zero:
 
 | Level            | Meaning                                                                       | Behaviour                                                                                                                              | Exit code |
 |------------------|-------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|-----------|
@@ -75,7 +83,7 @@ them can make the [exit code](#the-contract) non-zero:
 package has not built yet is `Ignored`, every `Ignored` is a finding, and since `info` is mandatory in
 every OpenAPI document, *no specification could ever exit zero* — which would kill the one property
 that makes `spec:doctor` usable as a CI gate, and would push consumers to
-[acknowledge](#acknowledged-limits-the-consumers-opt-out) everything on day one, leaving them deaf when
+[acknowledge](./DOCTOR.md#acknowledged-limits-the-consumers-opt-out) everything on day one, leaving them deaf when
 real support arrives.
 
 The distinction is about whose problem it is. `Ignored` says *your document says something this
@@ -86,191 +94,6 @@ about our roadmap, not a defect in your contract, and it does not get to fail yo
 changes nothing is an `Ignored` row — annoying to be told about, fatal to nobody. A `trace` operation
 the package cannot route is `Rejected`, because loading the spec anyway would leave a documented
 endpoint silently missing.
-
-### Where the diagnostics go: the doctor
-
-Rule 2 has an obvious failure mode. A package that reports every unhonored construct at boot is a
-package that shouts on every request, and a tool that shouts constantly gets its output filtered out —
-at which point the diagnostic exists and nobody reads it, which is rule 2 defeated by its own
-enforcement.
-
-**Decision: the diagnostics get their own command, `spec:doctor`. `nginx -t`, not a log line.**
-
-The model is deliberate. `nginx` does not warn you about your configuration on every request; it gives
-you one command that answers *"is this configuration good?"*, exits non-zero when it is not, and is
-therefore the thing you run before a reload and the thing CI runs on every commit. That is the shape
-this package needs, for the same reason: a Spec-First package's most valuable output is not "your
-request failed", it is **"here is exactly what your contract will and will not do once loaded"** —
-and that answer is worth reading *before* the app runs, not during.
-
-This is not a Phase 2 developer-experience nicety. **It is the enforcement mechanism for rule 2, so it
-ships with the first thing that reads a spec** — see the [Roadmap](./ROADMAP.md).
-
-#### The contract
-
-* **One command, not two — validation is centralized.** "Is my document valid OpenAPI" and "will this
-  package honor it" are genuinely different questions, and they are deliberately answered in one
-  place. Every check that reads the spec shares one report format, one exit contract, and one place to
-  add the next check. Splitting them would mean two commands to wire into CI, two output formats to
-  parse, and a standing question about which one to run. Validity is the doctor's first section, not a
-  separate command.
-* **The exit code is the API.** Zero means the spec is fully honored. Non-zero means it is not. That
-  single property is what makes it usable as a CI gate and a pre-deploy gate, and it is what stops the
-  report from becoming decorative.
-* **Machine-readable output.** Real specs are large, and the report grows with them. A `--json` flag
-  lets CI annotate a pull request instead of dumping a wall of text, and lets tooling — including AI
-  agents, which is a first-class use case for this package — consume the findings without parsing
-  prose. Cheap to design in, awkward to retrofit.
-* **Read-only, always.** It never writes a cache, never touches the database, never mutates state, so
-  it is safe to run anywhere it has something to read. That caveat is real: a deployment that ships
-  only the generated PHP has no specification on disk, and the doctor's contract checks have nothing to
-  work from there. Its natural homes are development and CI, where the whole repository is present.
-* **Report everything, not the first failure.** `nginx -t` stops at the first syntax error because a
-  config file is a linear thing. A support matrix is not: a developer needs the full list of what was
-  ignored in one pass, otherwise adoption becomes a whack-a-mole loop.
-* **Every finding names the document position.** File, JSON pointer, and the
-  [support level](#support-levels) that applies. A finding you cannot locate is a rumor.
-* **It reports the outcome, not only the problems.** The resolved routing table — which routes will
-  exist, in which order, mapped to which controller and method, and whether that controller exists —
-  is the single most useful thing this command can print. Most runs will be clean, and a command that
-  prints nothing on success teaches the developer nothing about what the spec actually did.
-
-#### Planned flags
-
-Centralizing every check in one command means that command needs a way to narrow what it runs. The
-intended surface, all provisional:
-
-| Flag              | Purpose                                                                                |
-|-------------------|----------------------------------------------------------------------------------------|
-| `--json`          | Machine-readable findings, for CI annotation and for tooling that consumes the report. |
-| `--check=syntax`  | Document validity only: is this valid OpenAPI.                                         |
-| `--check=honored` | Support findings only: what this package will and will not honor.                      |
-
-Those two values do not partition the [sections below](#what-it-checks) — drift, installation and
-artifact freshness fall under neither, and inventing a value per section would turn a filter into a
-second command. **Open:** whether `--check` names sections directly rather than naming two categories.
-
-The doctor takes no flag that lets it reach the network. It has no reason to: every remote reference
-is already [vendored locally](#a-remote-reference-is-a-dependency-not-a-cache-entry), so a blocked or
-missing reference is diagnosed by reading the working tree, and fetching belongs to the build. A
-`--bypass-allowlist` escape hatch, if one is ever wanted, belongs on the fetching path, not here.
-
-Two constraints on any flag added here, and they are the reason this list is short:
-
-* **A filtered run's exit code covers only what it ran.** `--check=syntax` exiting zero means the
-  document is valid, not that the package will honor it. The report says which checks were skipped, on
-  every run, so a green exit is never mistaken for a full pass.
-* **A flag that changes what the package would actually do makes the run non-representative, and the
-  report must say so.** A clean run under such a flag does not predict a clean boot, so the report
-  labels it, and CI has no business using it. Without that label, a flag quietly breaks the one
-  property that makes the exit code worth anything.
-
-#### Two kinds of finding, never mixed
-
-A single command answering both questions only works if the report never blurs them. **"Your document
-is broken" and "this package cannot honor your document" are different problems, with different
-owners, different fixes, and different urgency** — and a developer who cannot tell them apart at a
-glance will treat the whole report as noise.
-
-| Class              | Means                                                                                                                                           | Who fixes it                                                           | How                                                                                                                        |
-|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
-| **Document fault** | The document is not valid OpenAPI, or is internally inconsistent: schema violations, an unresolvable `$ref`, a path parameter declared nowhere. | The spec author.                                                       | Fix the document. There is no other option, and the package will not guess.                                                |
-| **Package limit**  | The document is correct. This package does not honor the construct.                                                                             | Us, eventually — it is a roadmap item, not a defect in their contract. | The consumer changes the spec, waits for support, or [acknowledges the limit](#acknowledged-limits-the-consumers-opt-out). |
-
-The distinction has to survive into the output, not just the prose here: separate sections, distinct
-labels, and — proposed — **distinct exit codes**, so a CI pipeline can gate hard on document faults
-while treating package limits as a softer signal. `0` clean, one code for faults, another for limits.
-The exact numbers are open; the fact that they differ should not be.
-
-The rule that follows from this: **a package limit is never reported as if the consumer made a
-mistake.** They wrote a valid contract. We are the ones who cannot serve all of it yet, and the
-message says so.
-
-#### What it checks
-
-Provisional, and expected to grow one section per honored construct:
-
-| Section           | Answers                                                                                                                                                                                                                                                                       |
-|-------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Configuration     | Are the spec files found and readable? Which allowlist and options are in effect?                                                                                                                                                                                             |
-| Document validity | Is this valid OpenAPI? The parser does not answer this in its library API — see [parser caveats](#parser-caveats) — so the doctor owns it.                                                                                                                                    |
-| Version           | Which version was detected, and which [strategy](#handling-30-and-31-the-version-strategy) will handle it.                                                                                                                                                                    |
-| References        | Unresolved `$ref`, references blocked by the [allowlist](#remote-references-and-the-domain-allowlist), recursion.                                                                                                                                                             |
-| Support findings  | Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position.                                                                                                                                                                                       |
-| Routing outcome   | The routes that will be registered, in order, with their targets — plus shadowing, where an earlier templated path swallows a later literal one.                                                                                                                              |
-| Security          | Operations declaring `security` that the package does not enforce. This gets its own section rather than a line among others, because it is the one finding that can turn a documented-as-protected endpoint into a public one.                                               |
-| Drift             | Whether the generated code still matches the specification. The runtime [cannot notice](./CODE-GENERATION.md#the-runtime-never-sees-the-spec) that someone edited the spec and forgot to build, so this check is the only thing standing between that mistake and production. |
-| Lifecycle         | The [`x-sunset` and `x-lifecycle` rules](#the-doctor-rules-that-follow), plus the coverage report: how many public operations are actually `stable`, and therefore how much of the API is protected at all.                                                                   |
-| Installation      | That the vendored directory is not gitignored, and that the generated path and namespace agree with what `composer` autoloads. Both are silent misconfigurations whose symptoms appear far from their cause.                                                                  |
-| Artifact          | Whether the committed [contract artifact](#the-contract-artifact) is current, and whether its format version predates the installed package.                                                                                                                                  |
-
-#### Open questions on the doctor
-
-* **The exit codes.** That document faults and package limits exit differently is settled. The numbers
-  are not.
-* **What still happens at boot.** `Rejected` fails at boot unless
-  [acknowledged](#acknowledged-limits-the-consumers-opt-out), in which case the construct is skipped —
-  the doctor is a check, not a substitute for refusing to load a spec the package cannot serve.
-  Whether anything *below* `Rejected` surfaces at boot at all, or whether the doctor is the only
-  channel, is still open. Since the runtime loads generated PHP rather than a specification, "at boot"
-  now means "baked into what the build emitted", which narrows the question rather than answering it.
-
-When a command reference document exists, the usage details move there and this section keeps only the
-reasoning. It lives here for now because the doctor is what makes the
-[support levels](#support-levels) mean anything.
-
-### Acknowledged limits: the consumer's opt-out
-
-**Decision: a consumer can declare, in configuration, that they accept a limit — and the package then
-stops treating it as a problem.**
-
-Rule 2 assumes the reader can act on the diagnostic. Often they cannot. The spec comes from another
-team, from a vendor, from a generator that always emits the same construct, and it is not theirs to
-change. For that developer a permanent, unfixable warning is not information — it is a broken window,
-and the first thing they will look for is the switch that turns the whole package quiet. Better to
-hand them a precise switch than to let them reach for a blunt one.
-
-Acknowledgement is not the same as suppression, and the difference is the whole design:
-
-* **It is enumerated, never global.** You list the specific constructs you accept. There is no
-  "silence everything" option, because a spec that grows a new unhonored construct next month must
-  still speak up — you never acknowledged *that* one.
-* **It stays visible.** Acknowledged items still appear in the doctor's report, in their own section,
-  not folded into a count and not hidden. They stop *failing*; they do not stop *existing*. A
-  configuration file nobody ever reads again is how accepted debt becomes forgotten debt.
-* **Stale acknowledgements are themselves a finding.** When a construct you acknowledged no longer
-  occurs in your spec, or the package has since grown support for it, the doctor says so, and you
-  delete the line. Without this, the config only ever accumulates.
-* **It is reviewable.** It lives in the application's config file, in version control, in diffs. The
-  closest analogue in this ecosystem is a PHPStan baseline: an explicit, versioned list of accepted
-  debt, where new violations still fail the build.
-
-#### Acknowledging changes behavior, not just noise
-
-This is the part that must never be understated in the documentation we ship. Acknowledging a
-`Rejected` construct is what allows the spec to load at all — so it is also the moment the construct
-is **dropped**. Acknowledge a `trace` operation and the document still describes an endpoint that will
-answer 404. That is a legitimate choice, and it is the consumer's to make, but the report has to state
-the consequence in those terms rather than reporting a clean bill of health.
-
-Which is why **security acknowledgements are never collapsed.** A consumer may accept that the package
-does not enforce a declared security scheme — that is their call — but every affected operation is
-listed individually, on every run, forever. This is the one place where being annoying is the correct
-behavior: the finding is that an endpoint the contract describes as protected is not.
-
-#### Open questions on acknowledgement
-
-* **Granularity.** Per construct (`trace: accepted` everywhere) covers the vendor-generator case that
-  motivates the feature. Per construct *and* location covers the one weird endpoint. Starting at the
-  construct level and widening later is a **minor** release; the reverse is not.
-* **Whether a reason string is required.** Requiring a justification on each entry is friction that
-  pays for itself the day someone reads the config a year later and cannot remember why. It is also
-  the kind of opinionated requirement [rule 3](#the-four-rules-that-govern-this-document) invites.
-* **The scope of a `Rejected` acknowledgement** — skipping the offending operation is the leading
-  answer, with a `rejected_behavior: skip | fail` style option if the choice turns out to be worth
-  giving away. Deliberately left to be settled against real code rather than in the abstract: the
-  difference between the two only becomes concrete once there is a spec loader to watch.
-* **The config keys themselves.** Public API surface. Not chosen.
 
 ## Handling 3.0 and 3.1: the version strategy
 
@@ -294,7 +117,7 @@ The seam matters more than the pattern. Putting it in the wrong place duplicates
 | Concern                                  | Where it belongs     | Why                                                                                                                                                                                                         |
 |------------------------------------------|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Reading the file, YAML/JSON decoding     | **Shared**           | Byte-level work, identical in both versions. You also cannot know the version until the document is decoded — `openapi: 3.1.0` is a field *inside* the file. Dispatch happens after decoding, never before. |
-| Multi-file loading and `$ref` resolution | **Shared**           | JSON Reference mechanics are the same. The [allowlist](#remote-references-and-the-domain-allowlist) is a security policy, not a version concern.                                                            |
+| Multi-file loading and `$ref` resolution | **Shared**           | JSON Reference mechanics are the same. The [allowlist](./REMOTE-REFERENCES.md) is a security policy, not a version concern.                                                                                 |
 | Schema interpretation                    | **Version-specific** | This is where 3.0 and 3.1 genuinely disagree. See the table below.                                                                                                                                          |
 | Document shape rules                     | **Version-specific** | `paths` is required in 3.0 and optional in 3.1; `webhooks` exists only in 3.1.                                                                                                                              |
 | Route registration                       | **Shared**           | It consumes the normalised output, and must never see a version number.                                                                                                                                     |
@@ -345,355 +168,16 @@ Line numbers cite the versions in `composer.lock` at the time of writing — inc
 `laravel/framework` 13.x for the [Laravel constraints](#laravel-constraints-we-do-not-fight) below.
 The behaviour is what matters and it holds across the supported range; the line numbers may not.
 
-| Caveat                                                                                                                               | Evidence                             | What it means for us                                                                                                                                                                                                                                                                                                                                                                                                |
-|--------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `validate()` is structural only. Validation against the OpenAPI JSON Schema exists **only in the CLI tool**, not in the library API. | Parser `README.md`, `OpenApi.php:86` | We cannot rely on the parser to reject a malformed spec. Rejecting bad documents is our job, and it is a headline feature of a Spec-First package.                                                                                                                                                                                                                                                                  |
-| Unknown properties are kept **as raw PHP arrays**, silently.                                                                         | `SpecBaseObject.php:142-144`         | 3.1 JSON Schema keywords (`const`, `prefixItems`, `$defs`, `if`/`then`/`else`, `patternProperties`, `dependentSchemas`, `unevaluatedProperties`, `contentMediaType`) survive, but never as `Schema` objects — **and any `$ref` inside them is never resolved**. The most dangerous caveat on this page, because nothing fails: you get a value, it is just wrong. It will bite the Faker mocker in Phase 2 hardest. |
-| `type` is declared as a string but 3.1 arrays pass through unvalidated.                                                              | `Schema.php:92`                      | Our code must accept `string\|array` everywhere it touches a type, or normalise it at the boundary.                                                                                                                                                                                                                                                                                                                 |
-| `exclusiveMinimum` / `exclusiveMaximum` accept both booleans and numbers with no version check.                                      | `Schema.php:155-161`                 | The same property means different things depending on the document version. Only the strategy should ever see the raw form.                                                                                                                                                                                                                                                                                         |
-| A Path Item's `$ref` is special-cased and is not a normal `Reference`.                                                               | `PathItem.php:73-78`                 | Path-level `$ref` needs its own handling in the router.                                                                                                                                                                                                                                                                                                                                                             |
-| Remote `$ref` by URL is resolved transparently.                                                                                      | `Reader.php`, `ReferenceContext`     | Network I/O during boot, and an SSRF surface. See [below](#remote-references-and-the-domain-allowlist).                                                                                                                                                                                                                                                                                                             |
-| `paths` is not required for 3.1 documents.                                                                                           | `OpenApi.php:91`                     | Zero routes is a valid outcome, not an error.                                                                                                                                                                                                                                                                                                                                                                       |
-
-## Remote references and the domain allowlist
-
-**Decision: remote `$ref` targets are resolved only from an explicitly allowlisted set of domains,
-configured by the consuming application.**
-
-An OpenAPI document that can pull `$ref: https://example.com/schemas/user.yaml` turns a config file
-into a network client running with the application's credentials and network position. Two problems,
-not one:
-
-* **Security.** An untrusted or compromised spec reaches whatever the application server can reach —
-  internal services, cloud metadata endpoints. The spec file is usually reviewed like documentation,
-  not like code that makes outbound requests.
-* **Availability.** A remote host that is slow or down becomes a boot failure for an application that
-  has nothing to do with it.
-
-An allowlist is the right shape because it is flexible where teams genuinely need it — an internal
-schema registry, a shared contract repository — and closed everywhere else. Rules:
-
-* **Empty by default.** No allowlist means no remote references. Local files keep working; a project
-  that never uses remote `$ref` never sees this feature.
-* **A blocked reference is an error, never a skip.** A silently unresolved `$ref` is an unhonored
-  contract, which rule 2 forbids.
-* **The exception names the offending reference, the document position, and the config key to
-  change.** "Unresolvable reference" is a support ticket; the full triple is a fix.
-* **Matching is on the host, exactly.** No wildcard subdomains, no partial matches — `evil-example.com`
-  must never satisfy an entry for `example.com`.
-
-**Status: decided in principle, unimplemented.** The config key name and the exception class are
-public API surface and are not yet chosen.
-
-### A remote reference is a dependency, not a cache entry
-
-Repeated network calls for the same reference are waste, so something has to hold the fetched
-document. The word for that something is **not cache**, and the word is the design.
-
-A cache is expendable by definition. You may clear it at any time, it may expire on its own, and
-nothing about your application changes when it does — that is the contract of the word. None of that
-is true here. A remote `$ref` supplies part of your API contract: drop it and your application can no
-longer describe, route, or validate what it serves. **A remote reference is a dependency**, in the
-full sense the word carries in this ecosystem, and it should be handled the way dependencies are
-handled: a vendored copy under version control, and an explicit act to change it.
-
-Two things follow immediately, and each kills a config option that looked reasonable:
-
-* **No duration.** A TTL means the contract can change at a moment nobody chose. Some Tuesday at
-  14:03 an entry expires, the upstream document has moved on, and the application serves a different
-  contract than it did a minute earlier — no deploy, no commit, no review. **A contract changes when
-  someone ships a change, not when a timer fires.** A source of truth that varies with wall-clock time
-  is not a source of truth. No dependency manager resolves your dependencies again because an hour
-  passed, and neither does this.
-* **No cache store.** Routes are registered while the framework boots, so whatever the registration
-  reads has to be available before the container is warm. Depending on Redis to know which routes
-  exist is a boot-time network dependency in the request path, for data that never changes between
-  deploys — and a shared store lets two servers in the same release disagree about the contract, which
-  is precisely the failure a spec exists to prevent.
-
-#### No lock file: git is the lock
-
-The dependency analogy suggests a lock file. It should not be taken, and working out why sharpens the
-whole design.
-
-A lock file exists to pin something mutable to something exact — a version range to a resolved
-version, a resolved version to a content hash. **Here there is no version to pin**: a `$ref` is a URL,
-and the only thing that could be recorded is a hash of bytes we are already about to store on disk. So
-the lock would restate, less usefully, what the vendored copy already is.
-
-Less usefully, because of the review argument. A lock file diff says *a hash changed*. A vendored
-document diff says *this response gained a required field*. For an API contract, the second is the
-entire value, and only committed copies produce it. Git already content-addresses every file, so the
-integrity check the lock was there to provide is a property of the repository, not something to
-reimplement.
-
-**Decision: the vendored copies are committed, and there is no lock file.** Two consequences to design
-around:
-
-* **The local path must encode where the document came from**, since nothing else records provenance.
-  A layout mirroring host and path — one directory per host, the URL's path beneath it — is
-  self-documenting, greppable, and reviewable. Fetching from the same URL twice must land in the same
-  place, or the whole scheme leaks.
-* **Detecting local tampering requires a refetch.** Without a recorded hash, a hand-edited vendored
-  copy is caught by code review rather than by the tool. That is an honest trade, not an oversight:
-  the edit does show up in a diff, and re-fetching is what the update path does anyway.
-
-**Open.** URLs with query strings, very long paths, and case-insensitive filesystems all complicate a
-path-mirroring layout. Solvable, unsolved.
-
-#### Borrowing the dependency-manager shape
-
-The parts of the pattern worth taking, and only these:
-
-| Piece                            | What it does here                                                                                                                                                                                                                                                                                                                                                |
-|----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Vendored copies, committed**   | The fetched documents, on disk, in version control. Once they exist, boot resolves everything locally and **the runtime never touches the network** — not on a miss, not on the first request after a restart, never, because there is no lookup to miss. Their diffs are how a change to your API contract shows up in a pull request instead of in production. |
-| **Frozen by default**            | The build never reaches the network on its own. A fresh clone builds offline; a missing vendored copy is an error naming the flag to run, never an implicit fetch.                                                                                                                                                                                               |
-| **Fetching is one explicit act** | Adding a reference and refreshing one are both deliberate, flagged operations, because both can change your contract. See [the build](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default).                                                                                                                                                  |
-| **Integrity by repository**      | Upstream changed under you? The refetch produces a diff, in a commit, in a review. A remote `$ref` is third-party content that shapes your public API surface, and treating it as untrusted input is the lesson every package ecosystem learned the expensive way — git gives us that property without a mechanism of our own.                                   |
-
-The [allowlist](#remote-references-and-the-domain-allowlist) still governs every fetch, but its threat
-model shrinks to almost nothing: outbound requests now happen only inside an explicit, human- or
-CI-triggered operation, never in a request.
-
-#### Where the analogy stops
-
-We are not building a dependency manager, and the borrowed vocabulary must not drag in the rest of it:
-
-* **No version constraints, no resolution, no solver.** A `$ref` is a URL, not a package with a
-  version range. There is nothing to negotiate and no conflicts to resolve.
-* **No registry, and nothing to publish.**
-* **No lock file** — [git already is one](#no-lock-file-git-is-the-lock).
-* **One divergence, deliberate: the vendored copies are committed.** Composer can leave `vendor/` out
-  of version control because Packagist guarantees a published version is immutable. Nothing guarantees
-  that about `https://example.com/schemas/user.yaml` — it can change or vanish tomorrow. Committing
-  the copies is what makes an old release still deployable, and it is why no lock file is needed.
-
-**Open.** The names of the vendored directory and of the refetch flag are public API surface under
-[rule 4](#the-four-rules-that-govern-this-document) and are not chosen. Also open: whether a fetched
-document that itself contains remote references is followed — transitive fetching, with the allowlist
-applying at every hop — or refused at depth one.
-
-#### Vendoring is one part of the build
-
-Vendoring makes the *inputs* local. Turning those inputs into routes, controllers and validation is a
-separate job, and both belong to the same command — see
-[`CODE-GENERATION.md`](./CODE-GENERATION.md). Do not conflate the two: vendoring alone already
-guarantees no network at boot, whatever the build does afterwards.
-
-What is settled here regardless: **the doctor reads, it never writes** — it is
-[read-only by contract](#the-contract) — and its report names which sources it read, because a doctor
-that silently checks something other than what runs is worse than no doctor.
-
-## Lifecycle: the extensions this package defines
-
-OpenAPI can say an operation is `deprecated`. It cannot say what comes before deprecation, and it
-cannot say *when the endpoint disappears* — which is the only part a consumer can actually plan
-around. **Decision: the package defines three extension keys to close that gap.**
-
-| Key           | Where     | Value                                                                                   |
-|---------------|-----------|-----------------------------------------------------------------------------------------|
-| `x-audience`  | Operation | `public` or `internal`. Absent means `public`.                                          |
-| `x-lifecycle` | Operation | `beta` or `stable`. Its default [depends on the audience](#two-keys-one-discriminator). |
-| `x-sunset`    | Operation | The date the endpoint stops being served.                                               |
-
-### Two keys, one discriminator
-
-How strong a promise an operation carries, and who it is promised to, are two different questions.
-Two axes, so two keys, with the audience acting as the discriminator that sets the other's default:
-
-| `x-audience`       | Default `x-lifecycle` | Reasoning                                                                                                                      |
-|--------------------|-----------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| `public` (default) | `beta`                | Somebody outside this codebase may depend on it. The stage is a claim you have to make.                                        |
-| `internal`         | none                  | Same application on both ends. Requiring a lifecycle stage on every internal route is ceremony for a promise nobody asked for. |
-
-Three constraints make this safe rather than merely convenient:
-
-**`x-audience` itself defaults to `public`.** This is not a coin flip — it is the same principle as
-defaulting to `beta`. Omission must never be the cheaper path to less protection, because omission is
-what happens when a spec is imported, generated, or written in a hurry. Declaring an endpoint internal
-is an act; being treated as public is what happens by default.
-
-**A missing lifecycle is the absence of a claim, not a prohibition.** An internal endpoint can still
-declare `x-lifecycle: stable`, and it can still be `deprecated` with a full
-[`x-sunset` treatment](#the-doctor-rules-that-follow) — internal consumers deserve a removal date as
-much as anyone. They simply do not need a promise on every route to get one.
-
-**Demoting `public` to `internal` is reported.** This is the hole the composite otherwise opens: once
-a breaking change to a `stable` operation fails the build, flipping its audience to `internal` makes
-the failure disappear. That may be entirely legitimate — an endpoint really can stop being public —
-but it is *revoking a promise*, and a promise cannot be revoked silently in a package built on
-contracts. The report names it, in the same spirit as labelling a
-[non-representative run](#planned-flags). Whether it merely reports or requires the same
-`info.version` bump a break would is **open**.
-
-One consequence worth having: the doctor's protection report counts **public** operations only. A
-monolith with two hundred internal routes should not have its *0 of 47 public operations are stable*
-finding drowned by endpoints that were never promised to anyone.
-
-### `deprecated` is native, and stays out of `x-lifecycle`
-
-OpenAPI already has `deprecated: true` on an operation. Putting `deprecated` in `x-lifecycle` as well
-would create a second place to state one fact — the failure this whole package exists to prevent — so
-it is not in the value set at all. **`x-lifecycle` says how strong the promise is. `deprecated` says
-the operation is going away. They are independent, and both can be true.**
-
-Removing it costs nothing and buys two things. There is no agreement rule to write, because there is
-nothing to disagree with. And an operation can be `stable` *and* `deprecated`, which is not a
-contradiction but the normal, well-behaved case: a promise being honoured right up to its stated
-removal date is exactly what a good deprecation looks like.
-
-`x-lifecycle` is then a binary, and what it adds to OpenAPI is one word the specification has no way
-to express: whether an operation is promised at all.
-
-### The doctor rules that follow
-
-| Rule                                                               | Why                                                                                                                                                                                          |
-|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `deprecated: true` requires `x-sunset`                             | Your idea, and the strongest rule here. A deprecation with no end date is a wish. Requiring the date turns "we should remove this someday" into a commitment with a review attached.         |
-| `x-sunset` in the past is a finding                                | You are serving an endpoint you promised to remove. Nothing else in the system will ever notice.                                                                                             |
-| `x-sunset` approaching is a warning                                | With a configurable horizon, so it lands in CI while there is still time to act.                                                                                                             |
-| An unrecognised `x-lifecycle` value is a finding                   | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                          |
-| `beta` operations are listed                                       | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                                 |
-| A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path). |
-
-### Unstable by default, and what `stable` costs us
-
-**Decision: a public operation with no `x-lifecycle` is `beta`.** You cannot claim a stability
-guarantee by omission — claiming one is an act. This is the right default for the same reason the
-[allowlist](#remote-references-and-the-domain-allowlist) is empty by default: the permissive state is
-the one you should have to opt out of, not into.
-
-| Value                        | Means                                  | What the build does                    |
-|------------------------------|----------------------------------------|----------------------------------------|
-| `beta` (default when public) | Not yet promised to anyone.            | Permissive. Change it freely.          |
-| `stable`                     | A production consumer depends on this. | **A breaking change fails the build.** |
-| none (default when internal) | No claim made, and none expected.      | Permissive by intent, not by neglect.  |
-
-Orthogonal to all of them, `deprecated: true`
-[remains native](#deprecated-is-native-and-stays-out-of-x-lifecycle) and can accompany any value.
-
-`stable` is worth promoting to the moment one production consumer exists — unless that consumer
-knowingly signed up for instability, which is what [`x-audience: internal`](#two-keys-one-discriminator)
-records.
-
-Four consequences, because a rule that fails a build has to be right:
-
-**1. Failing on a breaking change requires a baseline, and the baseline is
-[an artifact of our own](#the-contract-artifact).** Not the two specification documents, and not the
-generated code.
-
-**2. "Breaking" is directional, and the direction inverts between request and response.** This is
-where implementations get it wrong, so it has to be a written table rather than a judgement call:
-adding a required *request* field breaks clients; adding a *response* field usually does not. Removing
-a response field breaks them; removing an optional request field usually does not. Widening an enum
-breaks response consumers and helps request senders; narrowing it does the opposite. That table is
-itself public API under [rule 4](#the-four-rules-that-govern-this-document) — a change to what counts
-as breaking changes whose build fails — and it is large enough to deserve its own phase rather than
-being smuggled into the first release.
-
-**3. The escape hatch already exists in the document: `info.version`.** A build that only says *you
-broke a stable operation* is an obstacle. A build that says **this change requires `info.version` to
-go from `2.4.1` to `3.0.0`, and will pass once it does** has turned enforcement into instruction. It
-needs no config, no flag and no acknowledgement entry — the contract carries its own version, and
-deliberately breaking one becomes indistinguishable from publishing a major, which is exactly what it
-should be. Breaking on purpose stays possible; breaking by accident stops being.
-
-**4. The doctor must report how much of the API is actually protected.** A specification imported from
-elsewhere has no `x-lifecycle` anywhere, so every public operation defaults to `beta` and the strongest
-rule in this document is silently off for the whole API. *47 public operations, 0 stable* is a finding
-under [rule 2](#the-four-rules-that-govern-this-document): protection that is off must never look like
-protection that passed.
-
-### The runtime payoff
-
-This is what makes these keys worth defining rather than documenting a convention: **the generated
-code can act on them.** RFC 8594 standardises a `Sunset` HTTP header carrying exactly this date, and
-the IETF has a companion `Deprecation` header in draft. A contract that declares a sunset can
-therefore produce an endpoint that announces it on every response, to every client, without anyone
-writing that code.
-
-Declared once in the spec, enforced in CI by the doctor, and advertised over HTTP by the generated
-controller — that is the whole thesis of this package applied to a single field.
-
-**Open.** The date format (`x-sunset` should almost certainly be RFC 3339, converted to the HTTP-date
-the header requires); whether emitting the headers is on by default; the warning horizon; and the
-collision risk of a name as generic as `x-lifecycle`, which another tool may already define
-differently. A vendor prefix would remove the ambiguity at the cost of every consumer typing it.
-
-## The contract artifact
-
-**Decision: the build produces a normalised representation of the contract — resolved, version-neutral,
-containing only what the package honours — and comparisons are made between artifacts, never between
-specification documents.**
-
-Three candidates were on the table, and the reasons the other two lose are worth keeping:
-
-**Specification against specification** is the obvious one and the trap. Two documents can describe
-the identical contract and differ everywhere: extracting a schema into `components` restructures the
-file without changing a promise; reordering keys changes nothing at all. And the decisive case —
-**migrating a spec from 3.0 to 3.1 rewrites `nullable` into `type: [x, "null"]` and turns
-`exclusiveMinimum` from a boolean into a number.** A document-level diff would report that as a
-breaking change to every affected operation, and the build would fail an entire API for a migration
-that changed nothing. Worse, teaching the diff to understand both spellings drags version handling
-back out of the [strategy](#handling-30-and-31-the-version-strategy) and into a second place, which is
-the arrangement that decision exists to prevent.
-
-**Generated code against the new specification** loses for a different reason: it is asymmetric and
-lossy. You would be reconstructing a contract from PHP that was never meant to carry all of it — a
-response field becoming optional, an enum losing a member, a description of a status code never reach
-a signature. It also couples breaking-change detection to naming conventions, so changing how
-controllers are named would look like every operation changed, and it stops working entirely the
-moment a consumer [gitignores the generated tree](./CODE-GENERATION.md#which-generated-code-is-committed).
-
-**Artifact against artifact** avoids both, and the reason it works is that the artifact is *already*
-the boundary this documentation defines elsewhere: it is the output of the version strategy, the point
-past which [nothing knows which OpenAPI version was loaded](#what-is-shared-and-what-is-version-specific).
-A 3.0 document and its 3.1 translation normalise to the same artifact, so the migration produces an
-empty diff — which is the correct answer.
-
-It is also **four things we had already decided we needed, in one file**:
-
-* The baseline for breaking-change detection.
-* The *effective* contract, reviewable in a pull request — one file with every `$ref` inlined, rather
-  than the fragments it was assembled from.
-* What `spec:doctor` compares against. The doctor reads **both**: it derives a prospective artifact
-  from the specification and checks it against the committed one, which is the only way drift and
-  staleness can be detected at all. What it never does is judge the contract from the specification
-  alone, so the doctor and the build cannot disagree about what the contract says.
-* What the spec-driven contexts load — the mock server, contract testing — while the production
-  request path still [never sees a specification](./CODE-GENERATION.md#the-runtime-never-sees-the-spec).
-
-Four rules make it work:
-
-* **Compare before writing.** The build computes the prospective artifact in memory, diffs it against
-  the committed one, and only then writes. Writing first destroys the baseline, which is an easy
-  implementation bug with no symptom until the day it matters.
-* **What the package honours must be in the artifact.** Normalisation is lossy by design, and the loss
-  is exactly the blind spot: anything left out can never be protected from a breaking change. So the
-  artifact grows whenever the [support matrix](#the-support-matrix) does — same change, same commit.
-* **Keyed by identity, canonically ordered — with document order recorded as data.** Path plus method
-  [identifies an operation](./CODE-GENERATION.md#identity-is-the-path-and-the-method-not-the-name), and
-  a stable serialisation order is what keeps a diff small enough to read. But this package has decided
-  that [the specification's own order decides which route wins](#route-order-the-spec-files-order-is-the-route-order),
-  so that order is **semantic**, and normalising it away would let somebody move `/users/me` below
-  `/users/{id}` — changing which route answers a request — and produce an empty artifact diff. The
-  registration index is therefore a field in the artifact, not a property of how the file happens to be
-  written. Serialisation order and routing order are two different things and only one of them is
-  cosmetic.
-* **Versioned, and opaque.** The artifact carries its own format version so a package upgrade can
-  detect an old one and regenerate rather than misread it. It is committed for review, not published
-  for consumption: it is not an interchange format, and it is not the file to hand another team. Give
-  them the specification.
-
-* **Committed, and never gitignored.** It carries the same exception as the
-  [vendored references](#no-lock-file-git-is-the-lock): `.gitignore` is the mechanism everywhere else,
-  but ignoring this file removes the baseline that breaking-change detection depends on. `spec:doctor`
-  checks it in the same breath as the vendored directory.
-
-**Open.** Its name, its serialisation, and its location — with the constraint that it must sit outside
-any directory a consumer would plausibly ignore wholesale. Whether a stale artifact — one whose format
-version predates the installed package — is regenerated silently or reported first.
+| Caveat                                                                                                                               | Evidence                                                                                                                              | What it means for us                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|--------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `validate()` is structural only. Validation against the OpenAPI JSON Schema exists **only in the CLI tool**, not in the library API. | Parser `README.md`, `OpenApi.php:86`                                                                                                  | We cannot rely on the parser to reject a malformed spec. Rejecting bad documents is our job, and it is a headline feature of a Spec-First package.                                                                                                                                                                                                                                                                                                     |
+| Unknown properties are kept **as raw PHP arrays**, silently.                                                                         | `SpecBaseObject.php:142-144`                                                                                                          | 3.1 JSON Schema keywords (`const`, `prefixItems`, `$defs`, `if`/`then`/`else`, `patternProperties`, `dependentSchemas`, `unevaluatedProperties`, `contentMediaType`) survive, but never as `Schema` objects — **and any `$ref` inside them is never resolved**. The most dangerous caveat on this page, because nothing fails: you get a value, it is just wrong. It will bite the Faker mocker in Phase 2 hardest.                                    |
+| `type` is declared as a string but 3.1 arrays pass through unvalidated.                                                              | `Schema.php:92`                                                                                                                       | Our code must accept `string\|array` everywhere it touches a type, or normalise it at the boundary.                                                                                                                                                                                                                                                                                                                                                    |
+| `exclusiveMinimum` / `exclusiveMaximum` accept both booleans and numbers with no version check.                                      | `Schema.php:155-161`                                                                                                                  | The same property means different things depending on the document version. Only the strategy should ever see the raw form.                                                                                                                                                                                                                                                                                                                            |
+| A Path Item's `$ref` is special-cased and is not a normal `Reference`.                                                               | `PathItem.php:73-78`                                                                                                                  | Path-level `$ref` needs its own handling in the router.                                                                                                                                                                                                                                                                                                                                                                                                |
+| Remote `$ref` by URL is resolved transparently.                                                                                      | `Reader.php`, `ReferenceContext`                                                                                                      | Network I/O during boot, and an SSRF surface. See [below](./REMOTE-REFERENCES.md).                                                                                                                                                                                                                                                                                                                                                                     |
+| `paths` is not required for 3.1 documents.                                                                                           | `OpenApi.php:91`                                                                                                                      | Zero routes is a valid outcome, not an error.                                                                                                                                                                                                                                                                                                                                                                                                          |
+| A pure `$ref` cycle exhausts memory instead of raising.                                                                              | Verified: `A: {$ref: B}` / `B: {$ref: A}` under `RESOLVE_MODE_ALL` dies in `JsonPointer.php:108` with *Allowed memory size exhausted* | The parser does carry cycle checks (`Reference.php:324,330`), but this shape recurses past them. A malformed document takes the process down rather than producing a diagnostic — the one failure mode the doctor cannot report on, because it never gets to return. **Detecting `$ref` cycles is our job, before the document reaches the parser.** An ordinary recursive *schema* is fine; the two are [different things](#references-and-security). |
 
 ## Laravel constraints we do not fight
 
@@ -711,7 +195,7 @@ That is a deliberate trade, and it is the reason some rows in the matrix say `Re
 priority between them. Laravel resolves the first route registered. Rather than invent a sorting rule
 and hide it, **routes are registered in document order, and the document order decides**.
 
-This is [rule 3](#the-four-rules-that-govern-this-document) in action: put the specific path above the
+This is [rule 3](#the-four-rules) in action: put the specific path above the
 templated one in your YAML, and it wins. The alternative — sorting literal segments ahead of
 templated ones — is defensible, but it means a consumer reading their own spec top to bottom cannot
 predict their own routing. An opinion you can see beats a heuristic you cannot.
@@ -729,7 +213,7 @@ Per the rule above, we do not work around the router. The operation is `Rejected
 
 **Open:** whether an entire document containing `trace` fails to load, or the operation alone is
 refused while the rest of the document still loads. The second is friendlier; the first is more
-honest. Either way [the doctor](#where-the-diagnostics-go-the-doctor) names the operation and its
+honest. Either way [the doctor](./DOCTOR.md) names the operation and its
 position. Undecided.
 
 ### Parameter names are a naming contract, not a mapping problem
@@ -758,7 +242,7 @@ Given that, the hard parts were never in the conversion:
 
 * **The result is public API.** The converted name appears in controller method signatures and in
   route model binding. Changing the convention later is a **major** release under
-  [rule 4](#the-four-rules-that-govern-this-document).
+  [rule 4](#the-four-rules).
 * **Conversion is not injective.** `{user-id}` and `{user.id}` in the same path both reduce to
   `user_id`. A collision must be an error, not a last-writer-wins.
 * **The mapping has to survive the round trip.** Reading a parameter back out of the request, and
@@ -774,7 +258,7 @@ a generated signature. The 32-character ceiling is not negotiable either way and
 before the route is ever compiled.
 
 **Open:** whether that rejection is absolute or has an escape hatch for specs the consumer does not
-own — the case [acknowledgement](#acknowledged-limits-the-consumers-opt-out) exists for.
+own — the case [acknowledgement](./DOCTOR.md#acknowledged-limits-the-consumers-opt-out) exists for.
 
 ### Still to discuss
 
@@ -814,14 +298,14 @@ current intent for the first release, not shipped behaviour.
 | `openapi` 3.0.x                         | Supported    | Dispatches to the 3.0 [strategy](#handling-30-and-31-the-version-strategy).                                                                                                                                                          |
 | `openapi` 3.1.x                         | Supported    | Dispatches to the 3.1 strategy.                                                                                                                                                                                                      |
 | Any other version                       | Rejected     | Including 2.x. Convert before adopting.                                                                                                                                                                                              |
-| `info`, `externalDocs`                  | Out of scope | Documentation metadata with no routing effect. `info.version` becomes load-bearing only for [breaking-change enforcement](#unstable-by-default-and-what-stable-costs-us).                                                            |
+| `info`, `externalDocs`                  | Out of scope | Documentation metadata with no routing effect. `info.version` becomes load-bearing only for [breaking-change enforcement](./LIFECYCLE.md#unstable-by-default-and-what-stable-costs-us).                                              |
 | `tags`                                  | Partial      | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./CODE-GENERATION.md#the-build-names-the-command-instead-of-running-it). |
 | `jsonSchemaDialect` (3.1)               | Open         | Only the default dialect is realistically honorable.                                                                                                                                                                                 |
 | `servers`                               | Open         | See [still to discuss](#still-to-discuss).                                                                                                                                                                                           |
 | `security` (root)                       | Open         |                                                                                                                                                                                                                                      |
 | `webhooks` (3.1)                        | Open         |                                                                                                                                                                                                                                      |
 | `x-` extensions                         | Out of scope | Preserved by the parser and readable, but the package acts on none of them — except the three it defines itself, on the row beneath.                                                                                                 |
-| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The extensions this package defines: read and checked by the doctor. The breaking-change enforcement `x-lifecycle` gates is [not phased yet](./ROADMAP.md). Rules: [lifecycle](#lifecycle-the-extensions-this-package-defines).      |
+| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The extensions this package defines: read and checked by the doctor. The breaking-change enforcement `x-lifecycle` gates is [not phased yet](./ROADMAP.md). Rules: [lifecycle](./LIFECYCLE.md).                                      |
 
 ### Paths and operations
 
@@ -837,7 +321,7 @@ current intent for the first release, not shipped behaviour.
 | `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                                                                                                                                 |
 | Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                                                                                                                             |
 | `operationId`                           | Partial   | Names the generated controller and method. **Required on `public` + `stable` operations**; elsewhere the [method and path](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path) stand in for it. |
-| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](#lifecycle-the-extensions-this-package-defines).                                                     |
+| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](./LIFECYCLE.md).                                                                                     |
 | `callbacks`                             | Open      |                                                                                                                                                                                                                          |
 
 ### Parameters, bodies, responses
@@ -864,13 +348,15 @@ current intent for the first release, not shipped behaviour.
 
 ### References and security
 
-| Construct                        | Level     | Note                                                                                                                                                                                                                 |
-|----------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Local `$ref` within the document | Supported |                                                                                                                                                                                                                      |
-| `$ref` to another local file     | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                 |
-| Remote `$ref` by URL             | Partial   | [Allowlisted domains only](#remote-references-and-the-domain-allowlist); anything else is an error.                                                                                                                  |
-| Recursive `$ref`                 | Rejected  | The parser detects cycles by identity and throws `UnresolvableReferenceException` (`Reference.php:324,330`) — no depth limit, no silent degradation. A recursive `$ref` fails the load, which is the honest outcome. |
-| `securitySchemes` and `security` | Open      | See [still to discuss](#still-to-discuss).                                                                                                                                                                           |
+| Construct                                                            | Level     | Note                                                                                                                                                                                                                                                  |
+|----------------------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Local `$ref` within the document                                     | Supported |                                                                                                                                                                                                                                                       |
+| `$ref` to another local file                                         | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                                                  |
+| Remote `$ref` by URL                                                 | Partial   | [Allowlisted domains only](./REMOTE-REFERENCES.md); anything else is an error.                                                                                                                                                                        |
+| Recursive schema (`$ref` back to an ancestor)                        | Supported | A self-referential schema — a tree, a comment thread, nested categories — resolves. Verified: under `RESOLVE_MODE_ALL` the parser walks it on demand without limit or error; under `RESOLVE_MODE_INLINE` the inner `$ref` stays a `Reference` object. |
+| Pure `$ref` cycle (`A` → `B` → `A`)                                  | Rejected  | A reference chain pointing only at other references and looping back. **The parser does not fail gracefully here** — see [parser caveats](#parser-caveats). The doctor must catch it before the parser is handed the document.                        |
+| `$dynamicRef`, `$dynamicAnchor`, `$recursiveRef`, `$recursiveAnchor` | Rejected  | JSON Schema 2019-09/2020-12 dynamic-scope resolution, reachable only in 3.1. A different feature from a recursive schema, and rare outside meta-schemas. Rejected with a message that says which of the two you probably meant.                       |
+| `securitySchemes` and `security`                                     | Open      | See [still to discuss](#still-to-discuss).                                                                                                                                                                                                            |
 
 ## Changing this document
 
