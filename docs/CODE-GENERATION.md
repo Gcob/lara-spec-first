@@ -18,8 +18,14 @@ tags: [ code-generation, openapi, scope, decisions, laravel ]
 Spec-First only pays off if the contract reaches the code. This document owns how it gets there: **one
 build command turns the specification into PHP, and the result is safe to regenerate at any time.**
 
-> **Nothing described here is implemented yet.** Phase 1 of the [Roadmap](./ROADMAP.md). This states
-> intent and reasoning; items marked `Open` are undecided.
+> **Almost all of this is intent rather than behaviour**, and like
+> [`OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md) this file marks the difference per section rather than
+> per file, so the banner does not become a little more wrong with every release. Items marked `Open`
+> are undecided.
+>
+> **Shipped:** only the path normalization that
+> [identity](#identity-is-the-path-and-the-method-not-the-name) rests on. No build command exists, no
+> code is generated, and nothing detects a rename.
 
 What the build reads, and what it refuses to read, is a different subject and lives in
 [`OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md).

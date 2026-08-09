@@ -31,8 +31,9 @@ source of truth.
 > settled — the same discipline [`STACK.md`](./STACK.md) applies to its own Status column.
 >
 > **Shipped:** [reading a document](#reading-a-document), and
-> [where the parser sits](#where-the-parser-sits-decided). Nothing yet hands a document to the OpenAPI
-> parser, and nothing registers a route.
+> [where the parser sits](#where-the-parser-sits-decided). The first `Contract\` types exist — a path
+> template and its normalized form — but nothing yet hands a document to the OpenAPI parser, produces
+> a contract artifact, or registers a route.
 
 Four subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below
 still govern all of them:
@@ -174,7 +175,7 @@ and only one, may see the parser:
 | Namespace     | Owns                                                                   | Built   |
 |---------------|------------------------------------------------------------------------|---------|
 | `Parsing\`    | Reading a document, and the only place `cebe\openapi\` may appear.     | Yes     |
-| `Contract\`   | Our own types — what a strategy produces and everything else consumes. | Not yet |
+| `Contract\`   | Our own types — what a strategy produces and everything else consumes. | Started |
 | `Generation\` | Emitting PHP.                                                          | Not yet |
 | `Console\`    | The commands.                                                          | Not yet |
 | `Routing\`    | What the service provider loads at boot.                               | Not yet |
