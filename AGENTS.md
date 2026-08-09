@@ -2,10 +2,10 @@
 title: Agent Guidance
 audience: AI coding agents
 covers: >
-  The three-places rule (code, docs, tests), day-to-day working rules for
-  agents, the automated testing requirement, and code review priorities.
+    The three-places rule (code, docs, tests), day-to-day working rules for
+    agents, the automated testing requirement, and code review priorities.
 read_before: Making any change to this repository.
-tags: [agents, workflow, testing, code-review, conventions, onboarding]
+tags: [ agents, workflow, testing, code-review, conventions, onboarding ]
 ---
 
 # AGENTS.md
@@ -29,11 +29,11 @@ config.** It holds every technology choice, its status, and the reasoning behind
 Code, documentation, and tests move together. A change is not finished when the code works — it is
 finished when all three are updated, in the same commit.
 
-| Place | What it answers | Rule |
-|---|---|---|
-| **Code** | What the package does. | The behaviour itself. |
+| Place             | What it answers                       | Rule                                                                                                         |
+|-------------------|---------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| **Code**          | What the package does.                | The behaviour itself.                                                                                        |
 | **Documentation** | What it is *supposed* to do, and why. | Docs follow the code. Never let the two contradict — see [`docs/DOCUMENTATION.md`](./docs/DOCUMENTATION.md). |
-| **Tests** | Proof that it actually does it. | Tests follow the code. New behaviour means new tests — see [below](#automated-tests-are-required). |
+| **Tests**         | Proof that it actually does it.       | Tests follow the code. New behaviour means new tests — see [below](#automated-tests-are-required).           |
 
 Yes, this is three times the surface area for a single behaviour change. That cost is deliberate, and it
 is small in practice: writing tests and documentation is exactly the kind of work an agent does quickly

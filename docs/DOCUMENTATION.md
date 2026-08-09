@@ -71,25 +71,29 @@ inside it.
 The rule applies to a document's own description too. **Every Markdown file declares what it is in its
 own YAML front matter** — no index elsewhere restates it. The same five fields in every file:
 
+Four-space indentation for wrapped values and spaces inside the tag brackets, matching
+`.editorconfig`. The example below is `STACK.md`'s actual front matter — if the two ever differ, this
+example is the one that is wrong.
+
 ```yaml
 ---
 title: Technical Stack
 audience: Contributors and agents
 covers: >
-  Every technology choice with its status and reasoning, the supported PHP and
-  Laravel matrix, and the rules for changing a stack decision.
+    Every technology choice with its status and reasoning, the supported PHP and
+    Laravel matrix, and the rules for changing a stack decision.
 read_before: Touching dependencies, version constraints, or CI configuration.
-tags: [stack, dependencies, versions, php, laravel, ci, decisions]
+tags: [ stack, dependencies, versions, php, laravel, ci, decisions ]
 ---
 ```
 
-| Field | Required | Purpose |
-|---|---|---|
-| `title` | yes | Human-readable name. May differ from the filename. |
-| `audience` | yes | Who the document is written for. |
-| `covers` | yes | The subjects this file owns. If two files claim the same subject, one of them is wrong. |
-| `read_before` | no | The action that should trigger reading this file. This is what makes the set navigable to an agent that has never seen the repository. |
-| `tags` | yes | Subject keywords, for finding relevant documents without opening each one. |
+| Field         | Required | Purpose                                                                                                                                |
+|---------------|----------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `title`       | yes      | Human-readable name. May differ from the filename.                                                                                     |
+| `audience`    | yes      | Who the document is written for.                                                                                                       |
+| `covers`      | yes      | The subjects this file owns. If two files claim the same subject, one of them is wrong.                                                |
+| `read_before` | no       | The action that should trigger reading this file. This is what makes the set navigable to an agent that has never seen the repository. |
+| `tags`        | yes      | Subject keywords, for finding relevant documents without opening each one.                                                             |
 
 Rules:
 
@@ -119,31 +123,31 @@ grep -rl 'tags:.*versions' --include='*.md' .
 
 #### Tag vocabulary
 
-| Tag | Subject |
-|---|---|
-| `agents` | How AI agents should work in this repository |
-| `ci` | Continuous integration and the build matrix |
+| Tag               | Subject                                                                         |
+|-------------------|---------------------------------------------------------------------------------|
+| `agents`          | How AI agents should work in this repository                                    |
+| `ci`              | Continuous integration and the build matrix                                     |
 | `code-generation` | Producing PHP from the specification, and the rules that keep it safe to re-run |
-| `code-review` | Review priorities and how findings are reported |
-| `compatibility` | What the package honours of a standard, and the promise attached to it |
-| `conventions` | Commit, naming, and style conventions |
-| `contributing` | How to contribute: setup, pull requests, conduct |
-| `decisions` | Choices made, with their reasoning |
-| `dependencies` | Third-party packages and version constraints |
-| `docker` | The containerised development environment |
-| `documentation` | How documentation itself is written and organised |
-| `laravel` | Laravel version support and framework integration |
-| `metadata` | Front matter and document metadata |
-| `migration` | Moving an existing Code-First app to Spec-First |
-| `onboarding` | Getting a newcomer or a fresh agent productive |
-| `openapi` | The OpenAPI specification and its parsing |
-| `php` | PHP version support and language constraints |
-| `planning` | Roadmap, phases, and sequencing |
-| `scope` | What belongs in this package and what does not |
-| `stack` | Technology choices |
-| `testing` | Test levels, expectations, and the test suite |
-| `versions` | Supported and required versions |
-| `workflow` | The day-to-day process of making a change |
+| `code-review`     | Review priorities and how findings are reported                                 |
+| `compatibility`   | What the package honours of a standard, and the promise attached to it          |
+| `conventions`     | Commit, naming, and style conventions                                           |
+| `contributing`    | How to contribute: setup, pull requests, conduct                                |
+| `decisions`       | Choices made, with their reasoning                                              |
+| `dependencies`    | Third-party packages and version constraints                                    |
+| `docker`          | The containerised development environment                                       |
+| `documentation`   | How documentation itself is written and organised                               |
+| `laravel`         | Laravel version support and framework integration                               |
+| `metadata`        | Front matter and document metadata                                              |
+| `migration`       | Moving an existing Code-First app to Spec-First                                 |
+| `onboarding`      | Getting a newcomer or a fresh agent productive                                  |
+| `openapi`         | The OpenAPI specification and its parsing                                       |
+| `php`             | PHP version support and language constraints                                    |
+| `planning`        | Roadmap, phases, and sequencing                                                 |
+| `scope`           | What belongs in this package and what does not                                  |
+| `stack`           | Technology choices                                                              |
+| `testing`         | Test levels, expectations, and the test suite                                   |
+| `versions`        | Supported and required versions                                                 |
+| `workflow`        | The day-to-day process of making a change                                       |
 
 ### `README.md` carries no front matter — deliberately
 

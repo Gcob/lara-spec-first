@@ -2,10 +2,10 @@
 title: Project Roadmap
 audience: Users and contributors
 covers: >
-  The vision and the three delivery phases: foundations, developer experience
-  and mocks, and the Code-First to Spec-First migration bridge.
+    The vision and the three delivery phases: foundations, developer experience
+    and mocks, and the Code-First to Spec-First migration bridge.
 read_before: Proposing or starting new work, to check which phase it belongs to.
-tags: [planning, migration, scope, openapi, testing]
+tags: [ planning, migration, scope, openapi, testing ]
 ---
 
 # Project Roadmap: lara-spec-first
@@ -21,7 +21,7 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
   so that nothing downstream ever knows which version was loaded.
 - [ ] Produce the [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact): the normalised,
   resolved, version-neutral representation of what the package honours. It is the strategy's output and
-  what `spec:doctor` reads, so it is needed here — long before the breaking-change enforcement it will
+  what `spec:doctor` checks against, so it is needed here — long before the breaking-change enforcement it will
   later serve as a baseline for.
 - [ ] Build the core Service Provider that registers the generated routes. It **does not read the
   spec** — only the build commands do. Explicit over dynamic: see
@@ -29,9 +29,13 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Ship `spec:build`: resolve the spec into the contract artifact and generate the routes and
   the abstract controllers (Generated vs. Extended pattern). Safe to re-run, and it writes only files
   it owns. See [`CODE-GENERATION.md`](./CODE-GENERATION.md).
-- [ ] Ship `spec:make`, which scaffolds the concrete class for one named operation, on request — the only command that creates a file the developer will own. The build never scaffolds; it
-  prints the commands to run. See
+- [ ] Ship `spec:make`: the only command that creates a file the developer will own. It scaffolds a
+  named operation, or a whole `--tag`, or `--all` — never as a side effect of a build. `spec:build`
+  itself never scaffolds; it prints the commands to run. See
   [scaffolding](./CODE-GENERATION.md#scaffolding-is-specmake-not-a-build-step).
+- [ ] Answer unimplemented operations with `501`, from a package-provided handler that names the
+  `spec:make` command to run. See
+  [501](./CODE-GENERATION.md#an-unimplemented-operation-answers-501).
 - [ ] Ship `spec:doctor` — `nginx -t` for your contract: what the package will honor, what it
   will not, and the routing table that results. It belongs in this phase, not with the other Artisan
   commands: it is what makes "the spec is the source of truth" verifiable rather than asserted. See

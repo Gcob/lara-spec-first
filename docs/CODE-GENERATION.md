@@ -232,9 +232,28 @@ Laravel already has this shape and every Laravel developer already has the refle
 file, when you ask, once. Reusing the word costs no new concept — and it removes the only exception the
 [invariant](#the-invariant-a-build-never-destroys-human-work) ever had.
 
-Nothing forces the build to do it instead. An operation with no implementation is not a broken
-application: it falls through to the [Faker mock](./ROADMAP.md), which is the whole point of that
-feature. So the build has no reason to write a file pre-emptively, and every reason not to.
+Nothing forces the build to do it instead, because an operation with no implementation is not a broken
+application — provided the package says what happens to it.
+
+### An unimplemented operation answers 501
+
+**Decision: the build registers the route and points it at a package-provided handler that returns
+`501 Not Implemented`**, with a body naming the operation and the `spec:make` command that implements
+it.
+
+The two alternatives are worse, and for reasons this document has already committed to:
+
+* **Not registering the route** would mean the contract describes an endpoint that does not exist, and
+  a client would get a `404` indistinguishable from a typo. That is
+  [rule 2](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document) violated at the level of the
+  wire: the spec says the endpoint is there, and nothing anywhere says otherwise.
+* **Pointing at a class that does not exist** produces a class-not-found fatal at request time — an
+  internal error blaming the consumer's application for a state the package created on purpose.
+
+`501` is the status code HTTP already has for exactly this: the server recognises the request and has
+not implemented it. It is honest to the client, it is greppable in logs, and it is the seam the
+[Faker mock](./ROADMAP.md) plugs into in Phase 2 — same route, same handler position, a better answer
+in the body. Nothing about the Phase 1 shape has to change for the mock to arrive.
 
 ### Where your classes go
 
@@ -425,10 +444,11 @@ watch mode that can leak into them, because the intent was never written down an
 That earns watch permissions build refuses:
 
 * **Fetch new references automatically** as they appear in the spec.
-* **Refresh every reference on a cadence, up to every request**, for someone iterating against a
-  contract that is moving under them. Network I/O in the request path is banned everywhere else in
-  this package; here it is legitimate, and only because a human explicitly started the process that
-  does it.
+* **Refresh every reference on a cadence**, for someone iterating against a contract that is moving
+  under them — on file change, or on an interval. It stays a *rebuild* trigger: since
+  [the runtime never sees the spec](#the-runtime-never-sees-the-spec), there is no request path left
+  that could fetch anything, in watch or anywhere else. What watch changes is how often the build
+  runs and whether it may reach the network while doing so, never what happens during a request.
 * **Rebuild on change**, which is the point of the mode.
 
 Two rules keep it honest:

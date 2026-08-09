@@ -2,11 +2,11 @@
 title: Contributing
 audience: Contributors
 covers: >
-  Development environment (Docker and native), pre-pull-request checks, commit
-  and pull request conventions, code of conduct, and the scope boundaries of
-  the package.
+    Development environment (Docker and native), pre-pull-request checks, commit
+    and pull request conventions, code of conduct, and the scope boundaries of
+    the package.
 read_before: Setting up the project locally or opening a pull request.
-tags: [contributing, workflow, docker, testing, conventions, scope, onboarding]
+tags: [ contributing, workflow, docker, testing, conventions, scope, onboarding ]
 ---
 
 # Contributing to lara-spec-first

@@ -2,10 +2,13 @@
 title: OpenAPI Support
 audience: Users, contributors and agents
 covers: >
-    What the package honors of the OpenAPI specification and what it does not,
-    the support levels and their compatibility promise, how OpenAPI 3.0 and 3.1
-    differences are handled, the parser caveats behind those limits, and the
-    Laravel constraints the package deliberately does not fight.
+    What the package honors of the OpenAPI specification and what it does not:
+    the support levels and their compatibility promise, the `spec:doctor`
+    command that reports them and the acknowledgement config that waives them,
+    how OpenAPI 3.0 and 3.1 differences are handled, remote references and their
+    vendoring, the lifecycle extensions this package defines, the contract
+    artifact, the parser caveats behind these limits, and the Laravel
+    constraints the package deliberately does not fight.
 read_before: >
     Implementing anything that reads a spec, registers a route, or changes what
     the package accepts from a specification file.
@@ -56,15 +59,28 @@ API surface, exactly like class names and config keys:
 
 ## Support levels
 
-Five levels, and every one of them except `Supported` says something out loud:
+Six levels. Every one except `Supported` and `Out of scope` says something out loud, and only two of
+them can make the [exit code](#the-contract) non-zero:
 
-| Level            | Meaning                                                   | Behaviour                                                                                                                              |
-|------------------|-----------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| **Supported**    | The construct is read and honored.                        | Nothing to report.                                                                                                                     |
-| **Partial**      | Honored under stated conditions; outside them, it is not. | Diagnostic when a document leaves the supported subset. The conditions are written in this file, never left to the reader to discover. |
-| **Ignored**      | Read, understood, deliberately not acted on.              | Diagnostic. The spec stays valid and the package keeps working, but the consumer is told the construct had no effect.                  |
-| **Rejected**     | The package cannot honor it and will not pretend to.      | Hard error. The spec does not load.                                                                                                    |
-| **Out of scope** | Not this package's concern at all.                        | No diagnostic. Listed here only so nobody has to wonder.                                                                               |
+| Level            | Meaning                                                                       | Behaviour                                                                                                                              | Exit code |
+|------------------|-------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| **Supported**    | The construct is read and honored.                                            | Nothing to report.                                                                                                                     | —         |
+| **Partial**      | Honored under stated conditions; outside them, it is not.                     | Diagnostic when a document leaves the supported subset. The conditions are written in this file, never left to the reader to discover. | Non-zero  |
+| **Ignored**      | In scope, present in the document, understood, and deliberately not acted on. | Diagnostic. The spec stays valid and the package keeps working, but the consumer is told the construct had no effect.                  | Non-zero  |
+| **Deferred**     | Recognised, support planned, not built yet.                                   | One summary line per document, never one per occurrence.                                                                               | —         |
+| **Rejected**     | The package cannot honor it and will not pretend to.                          | Hard error. The spec does not load.                                                                                                    | Non-zero  |
+| **Out of scope** | Not this package's concern at all.                                            | No diagnostic. Listed here only so nobody has to wonder.                                                                               | —         |
+
+**`Deferred` exists because the exit code has to stay reachable.** Without it, every construct the
+package has not built yet is `Ignored`, every `Ignored` is a finding, and since `info` is mandatory in
+every OpenAPI document, *no specification could ever exit zero* — which would kill the one property
+that makes `spec:doctor` usable as a CI gate, and would push consumers to
+[acknowledge](#acknowledged-limits-the-consumers-opt-out) everything on day one, leaving them deaf when
+real support arrives.
+
+The distinction is about whose problem it is. `Ignored` says *your document says something this
+package will not act on* — worth failing over. `Deferred` says *we have not built this yet* — a fact
+about our roadmap, not a defect in your contract, and it does not get to fail your pipeline.
 
 `Ignored` and `Rejected` differ in blast radius, not in honesty. A `deprecated: true` flag that
 changes nothing is an `Ignored` row — annoying to be told about, fatal to nobody. A `trace` operation
@@ -105,9 +121,10 @@ ships with the first thing that reads a spec** — see the [Roadmap](./ROADMAP.m
   lets CI annotate a pull request instead of dumping a wall of text, and lets tooling — including AI
   agents, which is a first-class use case for this package — consume the findings without parsing
   prose. Cheap to design in, awkward to retrofit.
-* **Read-only, always.** It never writes a cache, never touches the database, never mutates state.
-  Safe to run anywhere, including production, which is precisely where you want it when a contract
-  behaves differently than staging.
+* **Read-only, always.** It never writes a cache, never touches the database, never mutates state, so
+  it is safe to run anywhere it has something to read. That caveat is real: a deployment that ships
+  only the generated PHP has no specification on disk, and the doctor's contract checks have nothing to
+  work from there. Its natural homes are development and CI, where the whole repository is present.
 * **Report everything, not the first failure.** `nginx -t` stops at the first syntax error because a
   config file is a linear thing. A support matrix is not: a developer needs the full list of what was
   ignored in one pass, otherwise adoption becomes a whack-a-mole loop.
@@ -128,6 +145,10 @@ intended surface, all provisional:
 | `--json`          | Machine-readable findings, for CI annotation and for tooling that consumes the report. |
 | `--check=syntax`  | Document validity only: is this valid OpenAPI.                                         |
 | `--check=honored` | Support findings only: what this package will and will not honor.                      |
+
+Those two values do not partition the [sections below](#what-it-checks) — drift, installation and
+artifact freshness fall under neither, and inventing a value per section would turn a filter into a
+second command. **Open:** whether `--check` names sections directly rather than naming two categories.
 
 The doctor takes no flag that lets it reach the network. It has no reason to: every remote reference
 is already [vendored locally](#a-remote-reference-is-a-dependency-not-a-cache-entry), so a blocked or
@@ -287,7 +308,7 @@ the router or the mocker has to ask, the normalization is incomplete.
 |-----------------------------------------|------------------------------------------|-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
 | Nullability                             | `nullable: true`                         | `type: [string, "null"]`                      | Two spellings of one idea. The normalised form must be one thing, and the choice of which is ours to make and state. |
 | `type`                                  | A single string                          | A string or an array of strings               | The parser declares this `Type::STRING` (`Schema.php:92`) and does not enforce it, so an array arrives unchecked.    |
-| `exclusiveMinimum` / `exclusiveMaximum` | Boolean, modifying `minimum` / `maximum` | A number, standing on its own                 | One property name, two semantics (`Schema.php:154-161`).                                                             |
+| `exclusiveMinimum` / `exclusiveMaximum` | Boolean, modifying `minimum` / `maximum` | A number, standing on its own                 | One property name, two semantics (`Schema.php:155-161`).                                                             |
 | Examples                                | `example` (singular, any value)          | `examples` (an array)                         | Both keys can appear. Precedence is ours to define.                                                                  |
 | Schema dialect                          | A JSON Schema subset                     | Full JSON Schema 2020-12                      | The widest gap, and the source of most of the [parser caveats](#parser-caveats).                                     |
 | `paths`                                 | Required                                 | Optional                                      | A valid 3.1 document with only `webhooks` and `components` must produce zero routes without failing.                 |
@@ -320,12 +341,16 @@ Every row below was verified against the vendored `devizzent/cebe-php-openapi`. 
 criticisms of the library — it is a low-level reader and it says so. They are the constraints our
 layer has to compensate for.
 
+Line numbers cite the versions in `composer.lock` at the time of writing — including
+`laravel/framework` 13.x for the [Laravel constraints](#laravel-constraints-we-do-not-fight) below.
+The behaviour is what matters and it holds across the supported range; the line numbers may not.
+
 | Caveat                                                                                                                               | Evidence                             | What it means for us                                                                                                                                                                                                                                                                                                                                                                                                |
 |--------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `validate()` is structural only. Validation against the OpenAPI JSON Schema exists **only in the CLI tool**, not in the library API. | Parser `README.md`, `OpenApi.php:86` | We cannot rely on the parser to reject a malformed spec. Rejecting bad documents is our job, and it is a headline feature of a Spec-First package.                                                                                                                                                                                                                                                                  |
 | Unknown properties are kept **as raw PHP arrays**, silently.                                                                         | `SpecBaseObject.php:142-144`         | 3.1 JSON Schema keywords (`const`, `prefixItems`, `$defs`, `if`/`then`/`else`, `patternProperties`, `dependentSchemas`, `unevaluatedProperties`, `contentMediaType`) survive, but never as `Schema` objects — **and any `$ref` inside them is never resolved**. The most dangerous caveat on this page, because nothing fails: you get a value, it is just wrong. It will bite the Faker mocker in Phase 2 hardest. |
 | `type` is declared as a string but 3.1 arrays pass through unvalidated.                                                              | `Schema.php:92`                      | Our code must accept `string\|array` everywhere it touches a type, or normalise it at the boundary.                                                                                                                                                                                                                                                                                                                 |
-| `exclusiveMinimum` / `exclusiveMaximum` accept both booleans and numbers with no version check.                                      | `Schema.php:154-161`                 | The same property means different things depending on the document version. Only the strategy should ever see the raw form.                                                                                                                                                                                                                                                                                         |
+| `exclusiveMinimum` / `exclusiveMaximum` accept both booleans and numbers with no version check.                                      | `Schema.php:155-161`                 | The same property means different things depending on the document version. Only the strategy should ever see the raw form.                                                                                                                                                                                                                                                                                         |
 | A Path Item's `$ref` is special-cased and is not a normal `Reference`.                                                               | `PathItem.php:73-78`                 | Path-level `$ref` needs its own handling in the router.                                                                                                                                                                                                                                                                                                                                                             |
 | Remote `$ref` by URL is resolved transparently.                                                                                      | `Reader.php`, `ReferenceContext`     | Network I/O during boot, and an SSRF surface. See [below](#remote-references-and-the-domain-allowlist).                                                                                                                                                                                                                                                                                                             |
 | `paths` is not required for 3.1 documents.                                                                                           | `OpenApi.php:91`                     | Zero routes is a valid outcome, not an error.                                                                                                                                                                                                                                                                                                                                                                       |
@@ -523,13 +548,13 @@ to express: whether an operation is promised at all.
 
 ### The doctor rules that follow
 
-| Rule                                             | Why                                                                                                                                                                                  |
-|--------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `deprecated: true` requires `x-sunset`           | Your idea, and the strongest rule here. A deprecation with no end date is a wish. Requiring the date turns "we should remove this someday" into a commitment with a review attached. |
-| `x-sunset` in the past is a finding              | You are serving an endpoint you promised to remove. Nothing else in the system will ever notice.                                                                                     |
-| `x-sunset` approaching is a warning              | With a configurable horizon, so it lands in CI while there is still time to act.                                                                                                     |
-| An unrecognised `x-lifecycle` value is a finding | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                  |
-| `beta` operations are listed                     | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                         |
+| Rule                                                               | Why                                                                                                                                                                                          |
+|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `deprecated: true` requires `x-sunset`                             | Your idea, and the strongest rule here. A deprecation with no end date is a wish. Requiring the date turns "we should remove this someday" into a commitment with a review attached.         |
+| `x-sunset` in the past is a finding                                | You are serving an endpoint you promised to remove. Nothing else in the system will ever notice.                                                                                             |
+| `x-sunset` approaching is a warning                                | With a configurable horizon, so it lands in CI while there is still time to act.                                                                                                             |
+| An unrecognised `x-lifecycle` value is a finding                   | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                          |
+| `beta` operations are listed                                       | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                                 |
 | A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path). |
 
 ### Unstable by default, and what `stable` costs us
@@ -580,7 +605,23 @@ rule in this document is silently off for the whole API. *47 public operations, 
 under [rule 2](#the-four-rules-that-govern-this-document): protection that is off must never look like
 protection that passed.
 
-### The contract artifact
+### The runtime payoff
+
+This is what makes these keys worth defining rather than documenting a convention: **the generated
+code can act on them.** RFC 8594 standardises a `Sunset` HTTP header carrying exactly this date, and
+the IETF has a companion `Deprecation` header in draft. A contract that declares a sunset can
+therefore produce an endpoint that announces it on every response, to every client, without anyone
+writing that code.
+
+Declared once in the spec, enforced in CI by the doctor, and advertised over HTTP by the generated
+controller — that is the whole thesis of this package applied to a single field.
+
+**Open.** The date format (`x-sunset` should almost certainly be RFC 3339, converted to the HTTP-date
+the header requires); whether emitting the headers is on by default; the warning horizon; and the
+collision risk of a name as generic as `x-lifecycle`, which another tool may already define
+differently. A vendor prefix would remove the ambiguity at the cost of every consumer typing it.
+
+## The contract artifact
 
 **Decision: the build produces a normalised representation of the contract — resolved, version-neutral,
 containing only what the package honours — and comparisons are made between artifacts, never between
@@ -616,8 +657,10 @@ It is also **four things we had already decided we needed, in one file**:
 * The baseline for breaking-change detection.
 * The *effective* contract, reviewable in a pull request — one file with every `$ref` inlined, rather
   than the fragments it was assembled from.
-* What the [doctor](#where-the-diagnostics-go-the-doctor) reads, so the doctor and the build cannot
-  disagree about what the contract says.
+* What `spec:doctor` compares against. The doctor reads **both**: it derives a prospective artifact
+  from the specification and checks it against the committed one, which is the only way drift and
+  staleness can be detected at all. What it never does is judge the contract from the specification
+  alone, so the doctor and the build cannot disagree about what the contract says.
 * What the spec-driven contexts load — the mock server, contract testing — while the production
   request path still [never sees a specification](./CODE-GENERATION.md#the-runtime-never-sees-the-spec).
 
@@ -629,32 +672,28 @@ Four rules make it work:
 * **What the package honours must be in the artifact.** Normalisation is lossy by design, and the loss
   is exactly the blind spot: anything left out can never be protected from a breaking change. So the
   artifact grows whenever the [support matrix](#the-support-matrix) does — same change, same commit.
-* **Keyed by identity, canonically ordered.** Path plus method
-  [identifies an operation](./CODE-GENERATION.md#identity-is-the-path-and-the-method-not-the-name); a
-  stable ordering is what keeps a diff small enough to read.
+* **Keyed by identity, canonically ordered — with document order recorded as data.** Path plus method
+  [identifies an operation](./CODE-GENERATION.md#identity-is-the-path-and-the-method-not-the-name), and
+  a stable serialisation order is what keeps a diff small enough to read. But this package has decided
+  that [the specification's own order decides which route wins](#route-order-the-spec-files-order-is-the-route-order),
+  so that order is **semantic**, and normalising it away would let somebody move `/users/me` below
+  `/users/{id}` — changing which route answers a request — and produce an empty artifact diff. The
+  registration index is therefore a field in the artifact, not a property of how the file happens to be
+  written. Serialisation order and routing order are two different things and only one of them is
+  cosmetic.
 * **Versioned, and opaque.** The artifact carries its own format version so a package upgrade can
   detect an old one and regenerate rather than misread it. It is committed for review, not published
   for consumption: it is not an interchange format, and it is not the file to hand another team. Give
   them the specification.
 
-**Open.** Its name, its serialisation, and its location. Whether a stale artifact — one whose format
+* **Committed, and never gitignored.** It carries the same exception as the
+  [vendored references](#no-lock-file-git-is-the-lock): `.gitignore` is the mechanism everywhere else,
+  but ignoring this file removes the baseline that breaking-change detection depends on. `spec:doctor`
+  checks it in the same breath as the vendored directory.
+
+**Open.** Its name, its serialisation, and its location — with the constraint that it must sit outside
+any directory a consumer would plausibly ignore wholesale. Whether a stale artifact — one whose format
 version predates the installed package — is regenerated silently or reported first.
-
-### The runtime payoff
-
-This is what makes these keys worth defining rather than documenting a convention: **the generated
-code can act on them.** RFC 8594 standardises a `Sunset` HTTP header carrying exactly this date, and
-the IETF has a companion `Deprecation` header in draft. A contract that declares a sunset can
-therefore produce an endpoint that announces it on every response, to every client, without anyone
-writing that code.
-
-Declared once in the spec, enforced in CI by the doctor, and advertised over HTTP by the generated
-controller — that is the whole thesis of this package applied to a single field.
-
-**Open.** The date format (`x-sunset` should almost certainly be RFC 3339, converted to the HTTP-date
-the header requires); whether emitting the headers is on by default; the warning horizon; and the
-collision risk of a name as generic as `x-lifecycle`, which another tool may already define
-differently. A vendor prefix would remove the ambiguity at the cost of every consumer typing it.
 
 ## Laravel constraints we do not fight
 
@@ -770,48 +809,48 @@ current intent for the first release, not shipped behaviour.
 
 ### Document
 
-| Construct                               | Level     | Note                                                                                                                                                                                                                                 |
-|-----------------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `openapi` 3.0.x                         | Supported | Dispatches to the 3.0 [strategy](#handling-30-and-31-the-version-strategy).                                                                                                                                                          |
-| `openapi` 3.1.x                         | Supported | Dispatches to the 3.1 strategy.                                                                                                                                                                                                      |
-| Any other version                       | Rejected  | Including 2.x. Convert before adopting.                                                                                                                                                                                              |
-| `info`, `externalDocs`                  | Ignored   | Documentation metadata with no routing effect. `info.version` becomes load-bearing only for [breaking-change enforcement](#unstable-by-default-and-what-stable-costs-us).                                                            |
-| `tags`                                  | Partial   | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./CODE-GENERATION.md#the-build-names-the-command-instead-of-running-it). |
-| `jsonSchemaDialect` (3.1)               | Open      | Only the default dialect is realistically honorable.                                                                                                                                                                                 |
-| `servers`                               | Open      | See [still to discuss](#still-to-discuss).                                                                                                                                                                                           |
-| `security` (root)                       | Open      |                                                                                                                                                                                                                                      |
-| `webhooks` (3.1)                        | Open      |                                                                                                                                                                                                                                      |
-| `x-` extensions                         | Ignored   | Preserved by the parser and readable, but the package acts on none of them — except the three it defines itself, on the row beneath.                                                                                                 |
-| `x-audience`, `x-lifecycle`, `x-sunset` | Partial   | The extensions this package defines: read and checked by the doctor. The breaking-change enforcement `x-lifecycle` gates is [not phased yet](./ROADMAP.md). Rules: [lifecycle](#lifecycle-the-extensions-this-package-defines).      |
+| Construct                               | Level        | Note                                                                                                                                                                                                                                 |
+|-----------------------------------------|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `openapi` 3.0.x                         | Supported    | Dispatches to the 3.0 [strategy](#handling-30-and-31-the-version-strategy).                                                                                                                                                          |
+| `openapi` 3.1.x                         | Supported    | Dispatches to the 3.1 strategy.                                                                                                                                                                                                      |
+| Any other version                       | Rejected     | Including 2.x. Convert before adopting.                                                                                                                                                                                              |
+| `info`, `externalDocs`                  | Out of scope | Documentation metadata with no routing effect. `info.version` becomes load-bearing only for [breaking-change enforcement](#unstable-by-default-and-what-stable-costs-us).                                                            |
+| `tags`                                  | Partial      | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./CODE-GENERATION.md#the-build-names-the-command-instead-of-running-it). |
+| `jsonSchemaDialect` (3.1)               | Open         | Only the default dialect is realistically honorable.                                                                                                                                                                                 |
+| `servers`                               | Open         | See [still to discuss](#still-to-discuss).                                                                                                                                                                                           |
+| `security` (root)                       | Open         |                                                                                                                                                                                                                                      |
+| `webhooks` (3.1)                        | Open         |                                                                                                                                                                                                                                      |
+| `x-` extensions                         | Out of scope | Preserved by the parser and readable, but the package acts on none of them — except the three it defines itself, on the row beneath.                                                                                                 |
+| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The extensions this package defines: read and checked by the doctor. The breaking-change enforcement `x-lifecycle` gates is [not phased yet](./ROADMAP.md). Rules: [lifecycle](#lifecycle-the-extensions-this-package-defines).      |
 
 ### Paths and operations
 
-| Construct                               | Level     | Note                                                                                                                                                                 |
-|-----------------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `paths`                                 | Supported | The source of every registered route.                                                                                                                                |
-| Path templating `{param}`               | Partial   | Conforming names only, pending the [naming decision](#parameter-names-are-a-naming-contract-not-a-mapping-problem).                                                  |
-| Several parameters in one segment       | Open      |                                                                                                                                                                      |
-| Path Item `$ref`                        | Open      | Special-cased by the parser (`PathItem.php:73-78`).                                                                                                                  |
-| `get`, `post`, `put`, `patch`, `delete` | Supported |                                                                                                                                                                      |
-| `options`                               | Open      | Conflicts with Laravel's own handling.                                                                                                                               |
-| `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                         |
-| `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                                                                             |
-| Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                                                                         |
-| `operationId`                           | Partial   | Names the generated controller and method. **Required on `public` + `stable` operations**; elsewhere the [method and path](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path) stand in for it.              |
-| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](#lifecycle-the-extensions-this-package-defines). |
-| `callbacks`                             | Open      |                                                                                                                                                                      |
+| Construct                               | Level     | Note                                                                                                                                                                                                                     |
+|-----------------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `paths`                                 | Supported | The source of every registered route.                                                                                                                                                                                    |
+| Path templating `{param}`               | Partial   | Conforming names only, pending the [naming decision](#parameter-names-are-a-naming-contract-not-a-mapping-problem).                                                                                                      |
+| Several parameters in one segment       | Open      |                                                                                                                                                                                                                          |
+| Path Item `$ref`                        | Open      | Special-cased by the parser (`PathItem.php:73-78`).                                                                                                                                                                      |
+| `get`, `post`, `put`, `patch`, `delete` | Supported |                                                                                                                                                                                                                          |
+| `options`                               | Open      | Conflicts with Laravel's own handling.                                                                                                                                                                                   |
+| `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                                                                             |
+| `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                                                                                                                                 |
+| Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                                                                                                                             |
+| `operationId`                           | Partial   | Names the generated controller and method. **Required on `public` + `stable` operations**; elsewhere the [method and path](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path) stand in for it. |
+| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](#lifecycle-the-extensions-this-package-defines).                                                     |
+| `callbacks`                             | Open      |                                                                                                                                                                                                                          |
 
 ### Parameters, bodies, responses
 
-| Construct                                         | Level   | Note                                        |
-|---------------------------------------------------|---------|---------------------------------------------|
-| `parameters` (`path`)                             | Partial | Needed for routing. Validation is Phase 2.  |
-| `parameters` (`query`, `header`, `cookie`)        | Ignored | No routing effect. Phase 2 for validation.  |
-| `style`, `explode`, `allowReserved`, `deepObject` | Open    | Phase 2.                                    |
-| `requestBody`                                     | Ignored | Phase 2.                                    |
-| `responses`                                       | Ignored | Phase 2, and the input to the Faker mocker. |
-| `links`                                           | Open    |                                             |
-| Media type `encoding`                             | Open    | Phase 2.                                    |
+| Construct                                         | Level    | Note                                        |
+|---------------------------------------------------|----------|---------------------------------------------|
+| `parameters` (`path`)                             | Partial  | Needed for routing. Validation is Phase 2.  |
+| `parameters` (`query`, `header`, `cookie`)        | Deferred | No routing effect. Phase 2 for validation.  |
+| `style`, `explode`, `allowReserved`, `deepObject` | Open     | Phase 2.                                    |
+| `requestBody`                                     | Deferred | Phase 2.                                    |
+| `responses`                                       | Deferred | Phase 2, and the input to the Faker mocker. |
+| `links`                                           | Open     |                                             |
+| Media type `encoding`                             | Open     | Phase 2.                                    |
 
 ### Schemas
 
@@ -825,13 +864,13 @@ current intent for the first release, not shipped behaviour.
 
 ### References and security
 
-| Construct                        | Level     | Note                                                                                                |
-|----------------------------------|-----------|-----------------------------------------------------------------------------------------------------|
-| Local `$ref` within the document | Supported |                                                                                                     |
-| `$ref` to another local file     | Supported | Multi-file specs are a Phase 1 goal.                                                                |
-| Remote `$ref` by URL             | Partial   | [Allowlisted domains only](#remote-references-and-the-domain-allowlist); anything else is an error. |
-| Recursive `$ref`                 | Open      | The parser stops at a depth rather than resolving infinitely.                                       |
-| `securitySchemes` and `security` | Open      | See [still to discuss](#still-to-discuss).                                                          |
+| Construct                        | Level     | Note                                                                                                                                                                                                                 |
+|----------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Local `$ref` within the document | Supported |                                                                                                                                                                                                                      |
+| `$ref` to another local file     | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                 |
+| Remote `$ref` by URL             | Partial   | [Allowlisted domains only](#remote-references-and-the-domain-allowlist); anything else is an error.                                                                                                                  |
+| Recursive `$ref`                 | Rejected  | The parser detects cycles by identity and throws `UnresolvableReferenceException` (`Reference.php:324,330`) — no depth limit, no silent degradation. A recursive `$ref` fails the load, which is the honest outcome. |
+| `securitySchemes` and `security` | Open      | See [still to discuss](#still-to-discuss).                                                                                                                                                                           |
 
 ## Changing this document
 
