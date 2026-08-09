@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\UnsupportedVersionException;
 use Gcob\LaraSpecFirst\Parsing\SpecVersion;
-use Symfony\Component\Yaml\Yaml;
 
 // Detection is the first thing that happens to a document and the only thing
 // that can happen before a version is known, so it is tested against raw arrays
@@ -49,8 +48,7 @@ it('rejects a version field that is not a version', function (): void {
 });
 
 it('detects the version of the fixture documents', function (string $fixture, SpecVersion $expected): void {
-    /** @var array<string, mixed> $document */
-    $document = Yaml::parseFile(__DIR__.'/../../Fixtures/'.$fixture);
+    $document = specFixture($fixture);
 
     expect(SpecVersion::detect($document))->toBe($expected);
 })->with([
@@ -60,8 +58,7 @@ it('detects the version of the fixture documents', function (string $fixture, Sp
 ]);
 
 it('rejects the OpenAPI 2.x fixture', function (): void {
-    /** @var array<string, mixed> $document */
-    $document = Yaml::parseFile(__DIR__.'/../../Fixtures/swagger-2.0.yaml');
+    $document = specFixture('swagger-2.0.yaml');
 
     expect(fn () => SpecVersion::detect($document))->toThrow(UnsupportedVersionException::class);
 });

@@ -1,0 +1,29 @@
+# Accepted: an ordinary self-referential schema. The reference is reached
+# through content, so the chain ends at a schema rather than at another
+# reference. Trees, comment threads and nested categories all look like this.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /nodes:
+    get:
+      operationId: listNodes
+      responses:
+        '200':
+          description: A tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        name:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'

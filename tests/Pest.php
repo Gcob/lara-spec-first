@@ -3,7 +3,25 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Tests\TestCase;
+use Symfony\Component\Yaml\Yaml;
 
 // Feature tests run inside a booted Laravel application; unit tests do not, so
 // they stay fast and framework-free.
 uses(TestCase::class)->in('Feature');
+
+/**
+ * Decode a specification fixture from tests/Fixtures.
+ *
+ * Fixtures are read as plain arrays rather than through any loader: everything
+ * under Parsing works on the decoded document, and a test that had to boot a
+ * loader to reach it would be testing two things at once.
+ *
+ * @return array<string, mixed>
+ */
+function specFixture(string $name): array
+{
+    /** @var array<string, mixed> $document */
+    $document = Yaml::parseFile(__DIR__.'/Fixtures/'.$name);
+
+    return $document;
+}

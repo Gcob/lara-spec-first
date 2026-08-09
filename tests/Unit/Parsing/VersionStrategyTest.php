@@ -8,7 +8,6 @@ use Gcob\LaraSpecFirst\Parsing\SpecVersion;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
 use Gcob\LaraSpecFirst\Parsing\VersionStrategyFactory;
-use Symfony\Component\Yaml\Yaml;
 
 it('selects a strategy per version', function (SpecVersion $version, string $expected): void {
     /** @var class-string $expected */
@@ -40,8 +39,7 @@ it('requires paths at 3.0', function (): void {
 });
 
 it('accepts a 3.1 document carrying webhooks but no paths', function (): void {
-    /** @var array<string, mixed> $document */
-    $document = Yaml::parseFile(__DIR__.'/../../Fixtures/openapi-3.1-webhooks-only.yaml');
+    $document = specFixture('openapi-3.1-webhooks-only.yaml');
 
     (new OpenApi31Strategy)->assertDocumentShape($document);
 })->throwsNoExceptions();
@@ -54,8 +52,7 @@ it('rejects a 3.1 document carrying none of the root keys', function (): void {
 });
 
 it('accepts the fixture documents at their own version', function (string $fixture): void {
-    /** @var array<string, mixed> $document */
-    $document = Yaml::parseFile(__DIR__.'/../../Fixtures/'.$fixture);
+    $document = specFixture($fixture);
 
     (new VersionStrategyFactory)->forDocument($document)->assertDocumentShape($document);
 })->with([

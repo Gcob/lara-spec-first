@@ -1,0 +1,114 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Gcob\LaraSpecFirst\Parsing;
+
+use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
+
+/**
+ * Rejects `$ref` chains that never reach content.
+ *
+ * The distinction this class exists to make:
+ *
+ *   A recursive *schema* refers back to an ancestor through content — a tree, a
+ *   comment thread, nested categories. It resolves, and it is ordinary API
+ *   modelling.
+ *
+ *   A pure *reference cycle* is a chain of Reference Objects pointing only at
+ *   one another. There is no schema at the end of it, so it can never resolve.
+ *
+ * The second is the only document fault that takes the parser down rather than
+ * raising, so it has to be caught here, on the decoded array, before the parser
+ * is handed anything.
+ *
+ * @see docs/OPENAPI-SUPPORT.md — "Parser caveats"
+ */
+final class ReferenceCycleDetector
+{
+    /**
+     * Reference Objects in the document, keyed by their own JSON pointer.
+     *
+     * @var array<string, string> pointer of the reference => pointer it targets
+     */
+    private array $references = [];
+
+    /**
+     * @param  array<string, mixed>  $document
+     *
+     * @throws CyclicReferenceException
+     */
+    public function assertNoCycles(array $document): void
+    {
+        $this->references = [];
+        $this->collect($document, '');
+
+        foreach (array_keys($this->references) as $start) {
+            $this->follow($start);
+        }
+    }
+
+    /**
+     * Record every node carrying a local `$ref`.
+     *
+     * References into another file or over the network are skipped: resolving
+     * them needs the vendored copies, which is a later concern. A cycle that
+     * only closes across files is therefore out of reach here, and that limit
+     * is deliberate rather than forgotten.
+     *
+     * @param  array<array-key, mixed>  $node
+     */
+    private function collect(array $node, string $pointer): void
+    {
+        if (isset($node['$ref']) && is_string($node['$ref'])) {
+            if (str_starts_with($node['$ref'], '#/')) {
+                // Keyed the same way targets are written, `#` included, so that
+                // following a chain is a plain lookup rather than a conversion.
+                $this->references['#'.$pointer] = $node['$ref'];
+            }
+
+            // A Reference Object carries nothing else worth walking: 3.1 allows
+            // `summary` and `description` beside it, and neither can hold a ref.
+            return;
+        }
+
+        foreach ($node as $key => $child) {
+            if (is_array($child)) {
+                $this->collect($child, $pointer.'/'.self::escape((string) $key));
+            }
+        }
+    }
+
+    /**
+     * Follow one chain until it reaches content, or closes on itself.
+     *
+     * @throws CyclicReferenceException
+     */
+    private function follow(string $start): void
+    {
+        $chain = [$start];
+        $seen = [$start => true];
+        $current = $start;
+
+        while (isset($this->references[$current])) {
+            $target = $this->references[$current];
+            $chain[] = $target;
+
+            if (isset($seen[$target])) {
+                throw CyclicReferenceException::chain($chain);
+            }
+
+            $seen[$target] = true;
+            $current = $target;
+        }
+    }
+
+    /**
+     * JSON Pointer escaping, so that a path segment containing `/` or `~` — a
+     * URL template such as `/users/{id}`, for instance — still round-trips.
+     */
+    private static function escape(string $segment): string
+    {
+        return str_replace(['~', '/'], ['~0', '~1'], $segment);
+    }
+}
