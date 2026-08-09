@@ -1,0 +1,10 @@
+# Valid at 3.1: the third root key that satisfies the requirement, alongside
+# `paths` and `webhooks`.
+openapi: "3.1.0"
+info:
+  title: Fixture API
+  version: 1.0.0
+components:
+  schemas:
+    User:
+      type: object

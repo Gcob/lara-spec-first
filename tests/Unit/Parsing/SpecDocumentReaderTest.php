@@ -10,13 +10,8 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 
-function fixturePath(string $name): string
-{
-    return __DIR__.'/../../Fixtures/'.$name;
-}
-
 it('reads a document and carries its version and strategy', function (): void {
-    $document = (new SpecDocumentReader)->read(fixturePath('openapi-3.0.yaml'));
+    $document = (new SpecDocumentReader)->read(specFixturePath('openapi-3.0.yaml'));
 
     expect($document->version)->toBe(SpecVersion::V3_0)
         ->and($document->strategy)->toBeInstanceOf(OpenApi30Strategy::class)
@@ -25,7 +20,7 @@ it('reads a document and carries its version and strategy', function (): void {
 });
 
 it('reads both supported versions', function (string $name, SpecVersion $expected): void {
-    expect((new SpecDocumentReader)->read(fixturePath($name))->version)->toBe($expected);
+    expect((new SpecDocumentReader)->read(specFixturePath($name))->version)->toBe($expected);
 })->with([
     ['openapi-3.0.yaml', SpecVersion::V3_0],
     ['openapi-3.1.yaml', SpecVersion::V3_1],
@@ -37,54 +32,73 @@ it('reads both supported versions', function (string $name, SpecVersion $expecte
 // has to come after decoding and before anything else touches the document.
 
 it('reports a file that is not there', function (): void {
-    expect(fn () => (new SpecDocumentReader)->read(fixturePath('nope.yaml')))
+    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('nope.yaml')))
         ->toThrow(UnreadableDocumentException::class, 'No specification file at');
 });
 
 it('reports malformed YAML with the parser reason', function (): void {
-    expect(fn () => (new SpecDocumentReader)->read(fixturePath('malformed.yaml')))
+    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('malformed.yaml')))
         ->toThrow(UnreadableDocumentException::class, 'is not valid YAML or JSON');
 });
 
 it('reports a document that is not a mapping', function (): void {
-    expect(fn () => (new SpecDocumentReader)->read(fixturePath('not-a-mapping.yaml')))
+    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('not-a-mapping.yaml')))
         ->toThrow(UnreadableDocumentException::class, 'must be a mapping');
 });
 
 it('rejects a version it does not implement', function (): void {
-    expect(fn () => (new SpecDocumentReader)->read(fixturePath('swagger-2.0.yaml')))
+    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('swagger-2.0.yaml')))
         ->toThrow(UnsupportedVersionException::class);
 });
 
 it('rejects a cyclic document before the parser can see it', function (): void {
-    expect(fn () => (new SpecDocumentReader)->read(fixturePath('cycle-pointer.yaml')))
+    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('cycle-pointer.yaml')))
         ->toThrow(CyclicReferenceException::class);
 });
 
 it('accepts a recursive schema', function (): void {
-    expect((new SpecDocumentReader)->read(fixturePath('recursive-schema.yaml'))->version)
+    expect((new SpecDocumentReader)->read(specFixturePath('recursive-schema.yaml'))->version)
         ->toBe(SpecVersion::V3_0);
 });
 
 it('rejects a document missing what its version requires', function (): void {
-    $path = sys_get_temp_dir().'/lsf-no-paths.yaml';
-    file_put_contents($path, "openapi: 3.0.3\ninfo:\n  title: t\n  version: 1.0.0\n");
+    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('openapi-3.0-no-paths.yaml')))
+        ->toThrow(InvalidDocumentException::class);
+});
+
+// One code path for both formats is a stated decision, so a real JSON fixture
+// is what keeps it honest.
+it('reads JSON through the same path', function (): void {
+    expect((new SpecDocumentReader)->read(specFixturePath('openapi-3.1.json'))->version)
+        ->toBe(SpecVersion::V3_1);
+});
+
+it('accepts an empty mapping and complains about the missing version, not the shape', function (): void {
+    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('empty-mapping.json')))
+        ->toThrow(UnsupportedVersionException::class, 'declares no "openapi" version field');
+});
+
+it('calls a root-level list a list', function (): void {
+    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('root-list.yaml')))
+        ->toThrow(UnreadableDocumentException::class, 'decodes to a list');
+});
+
+it('accepts the third root key 3.1 allows', function (): void {
+    expect((new SpecDocumentReader)->read(specFixturePath('openapi-3.1-components-only.yaml'))->version)
+        ->toBe(SpecVersion::V3_1);
+});
+
+it('reports a file it cannot read', function (): void {
+    $path = tempnam(sys_get_temp_dir(), 'lsf-');
+    assert(is_string($path));
+    file_put_contents($path, "openapi: 3.0.3\npaths: {}\n");
+    chmod($path, 0o000);
 
     try {
         expect(fn () => (new SpecDocumentReader)->read($path))
-            ->toThrow(InvalidDocumentException::class);
+            ->toThrow(UnreadableDocumentException::class, 'Check its permissions');
     } finally {
-        @unlink($path);
+        chmod($path, 0o600);
+        unlink($path);
     }
-});
-
-it('reads JSON through the same path', function (): void {
-    $path = sys_get_temp_dir().'/lsf-spec.json';
-    file_put_contents($path, '{"openapi":"3.1.0","info":{"title":"t","version":"1.0.0"},"paths":{}}');
-
-    try {
-        expect((new SpecDocumentReader)->read($path)->version)->toBe(SpecVersion::V3_1);
-    } finally {
-        @unlink($path);
-    }
-});
+})->skip(fn (): bool => is_readable('/proc/1/mem') || posix_geteuid() === 0, 'root reads everything');

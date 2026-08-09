@@ -1,0 +1,16 @@
+# Accepted: `$ref` here is a literal key inside an example value, not a
+# Reference Object. A spec describing an API that itself handles JSON Schema
+# will contain these, and rejecting it would refuse a valid document.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    A:
+      type: object
+      example:
+        $ref: '#/components/schemas/B'
+    B:
+      $ref: '#/components/schemas/A/example'

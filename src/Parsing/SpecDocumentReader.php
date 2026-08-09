@@ -80,8 +80,16 @@ final readonly class SpecDocumentReader
             throw UnreadableDocumentException::malformed($path, $e->getMessage());
         }
 
-        if (! is_array($decoded) || array_is_list($decoded)) {
+        // `array_is_list([])` is true, so an empty mapping — `{}` — would other-
+        // wise be reported as "not a mapping", sending its author to look for a
+        // syntax fault that is not there. An empty document is a mapping; what
+        // it lacks is an `openapi` field, and the next step says so precisely.
+        if (! is_array($decoded)) {
             throw UnreadableDocumentException::notAMapping($path, get_debug_type($decoded));
+        }
+
+        if ($decoded !== [] && array_is_list($decoded)) {
+            throw UnreadableDocumentException::notAMapping($path, 'a list');
         }
 
         /** @var array<string, mixed> $decoded */

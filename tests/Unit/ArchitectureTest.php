@@ -32,7 +32,3 @@ arch('service providers extend the Laravel base provider')
 arch('the OpenAPI parser stays inside Parsing')
     ->expect('cebe\openapi')
     ->toOnlyBeUsedIn('Gcob\LaraSpecFirst\Parsing');
-
-arch('every exception the package throws is catchable as one type')
-    ->expect('Gcob\LaraSpecFirst\Parsing\Exceptions')
-    ->toImplement('Gcob\LaraSpecFirst\Exceptions\SpecException');

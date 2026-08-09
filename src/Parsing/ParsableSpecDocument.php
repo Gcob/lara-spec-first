@@ -15,6 +15,11 @@ use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategy;
  * document is correct, and `$raw` says exactly what it is not.
  *
  * @see SpecDocumentReader for the checks it cleared, in the order they ran
+ *
+ * @internal Not public API. `$raw` in particular is a whole decoded document
+ *           leaving Parsing\, which is the shape this package says it does not
+ *           want to export — it survives only until Contract\ types replace it,
+ *           and this tag is what keeps that replacement a non-breaking change.
  */
 final readonly class ParsableSpecDocument
 {

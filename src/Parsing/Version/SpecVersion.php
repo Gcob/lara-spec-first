@@ -10,9 +10,8 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 /**
  * The OpenAPI minor versions this package understands.
  *
- * Produced by the first step of the read pipeline that decides anything: the
- * document has been decoded, and nothing else can happen until it is known
- * which version wrote it.
+ * The first thing the read pipeline decides, and what everything after it
+ * dispatches on.
  *
  * This is one of our own types on purpose: it is the value everything
  * downstream of the parser dispatches on, so nothing outside Parsing has to

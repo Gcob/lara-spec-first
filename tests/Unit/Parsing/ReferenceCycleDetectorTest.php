@@ -81,3 +81,30 @@ it('accepts the documents that carry no cycle', function (string $name): void {
     'openapi-3.1.yaml',
     'openapi-3.1-webhooks-only.yaml',
 ])->throwsNoExceptions();
+
+// `$ref` is a legal key name inside a value. An API that itself handles JSON
+// Schema will carry one in an example, and refusing to load such a document
+// would be the worst failure this class can produce — a valid contract turned
+// away, where a false negative would merely leave the parser to complain.
+it('does not read a literal $ref inside a value as a reference', function (): void {
+    (new ReferenceCycleDetector)->assertNoCycles(specFixture('ref-inside-example.yaml'));
+})->throwsNoExceptions();
+
+it('treats every data-carrying key as opaque', function (string $key): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['type' => 'object', $key => ['$ref' => '#/components/schemas/B']],
+        'B' => ['$ref' => '#/components/schemas/A/'.$key],
+    ]]];
+
+    (new ReferenceCycleDetector)->assertNoCycles($document);
+})->with(['example', 'examples', 'default', 'enum', 'const'])->throwsNoExceptions();
+
+// Stated so the gap is visible: `follow()` compares pointers for equality, not
+// containment, so a reference aimed at one of its own ancestors is not caught.
+// A false negative, which leaves the parser to fail rather than refusing a
+// document that was fine.
+it('does not catch a reference aimed at its own ancestor', function (): void {
+    $document = ['components' => ['schemas' => ['A' => ['$ref' => '#/components/schemas']]]];
+
+    (new ReferenceCycleDetector)->assertNoCycles($document);
+})->throwsNoExceptions();

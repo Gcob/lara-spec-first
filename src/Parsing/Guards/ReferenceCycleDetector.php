@@ -29,11 +29,25 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
  * Stateless on purpose: it is injected into readonly collaborators and reused
  * across documents, so nothing about one document may survive into the next.
  *
+ * @internal Not public API — a step of the read pipeline, reachable only through
+ *           SpecDocumentReader.
+ *
  * @see SpecDocumentReader for the order of the read pipeline
  * @see docs/OPENAPI-SUPPORT.md — "Parser caveats"
  */
 final readonly class ReferenceCycleDetector
 {
+    /**
+     * Keys whose contents are data, not specification.
+     *
+     * `$ref` is an ordinary key name inside a value — an API that itself handles
+     * JSON Schema will have one in an `example`. Walking into these would read a
+     * literal as a reference and reject a perfectly valid document, which for a
+     * `Rejected`-level check is the worst outcome available: a false negative
+     * merely leaves the parser to complain, a false positive refuses to load.
+     */
+    private const OPAQUE_KEYS = ['example', 'examples', 'default', 'enum', 'const'];
+
     /**
      * @param  array<string, mixed>  $document
      *
@@ -75,7 +89,7 @@ final readonly class ReferenceCycleDetector
         $references = [];
 
         foreach ($node as $key => $child) {
-            if (is_array($child)) {
+            if (is_array($child) && ! in_array($key, self::OPAQUE_KEYS, true)) {
                 $references += $this->collect($child, $pointer.'/'.self::escape((string) $key));
             }
         }

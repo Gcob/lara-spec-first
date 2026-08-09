@@ -10,14 +10,14 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 /**
  * Picks the strategy that interprets a given document.
  *
- * Dispatch happens *after* decoding and never before: the version is a field
- * inside the file, so there is nothing to dispatch on until the bytes have been
- * read. Adding a version means adding a case here and a class beside the two
- * below — not auditing the codebase for version checks.
+ * Adding a version means adding a case here and a class beside the two below —
+ * not auditing the codebase for version checks.
+ *
+ * @internal Not public API — how a strategy is chosen is ours to change.
  *
  * @see SpecDocumentReader for the order of the read pipeline
  */
-final class VersionStrategyFactory
+final readonly class VersionStrategyFactory
 {
     /**
      * Select a strategy from a decoded specification document.

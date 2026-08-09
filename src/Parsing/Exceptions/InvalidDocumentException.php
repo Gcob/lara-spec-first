@@ -25,9 +25,10 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     public static function missingRootKey(SpecVersion $version, array $expected): self
     {
         return new self(sprintf(
-            'An OpenAPI %s document must declare %s at its root, and this one declares none of them.',
+            'An OpenAPI %s document must declare %s at its root, and this one %s.',
             $version->value,
-            self::orList($expected)
+            self::orList($expected),
+            count($expected) === 1 ? 'does not' : 'declares none of them'
         ));
     }
 

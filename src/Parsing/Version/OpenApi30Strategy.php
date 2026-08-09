@@ -24,6 +24,9 @@ final class OpenApi30Strategy implements VersionStrategy
         return SpecVersion::V3_0;
     }
 
+    /**
+     * @param  array<string, mixed>  $document
+     */
     public function assertDocumentShape(array $document): void
     {
         foreach (self::REQUIRED_ROOT_KEYS as $key) {

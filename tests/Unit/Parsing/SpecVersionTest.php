@@ -17,6 +17,12 @@ it('detects the supported versions', function (string $declared, SpecVersion $ex
     ['3.1.0', SpecVersion::V3_1],
     ['3.1.1', SpecVersion::V3_1],
     ['3.1.1-rc.1', SpecVersion::V3_1],
+    // The specification requires major.minor.patch, but a document written by
+    // hand often omits the patch. Detection reads the first two segments and
+    // stops, so this is accepted deliberately rather than by accident: the
+    // version we dispatch on is the minor one, and no patch digit changes it.
+    ['3.1', SpecVersion::V3_1],
+    ['3.0', SpecVersion::V3_0],
 ]);
 
 it('names OpenAPI 2.x rather than calling it unreadable', function (): void {

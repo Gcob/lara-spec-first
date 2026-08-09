@@ -25,3 +25,15 @@ function specFixture(string $name): array
 
     return $document;
 }
+
+/**
+ * The path of a specification fixture, for the code that reads files itself.
+ *
+ * Beside specFixture() on purpose: the pair makes the choice visible — a test
+ * working on a decoded document takes the array, a test exercising the reader
+ * takes the path.
+ */
+function specFixturePath(string $name): string
+{
+    return __DIR__.'/Fixtures/'.$name;
+}
