@@ -19,6 +19,14 @@ services:
       - .:/app
       - composer-cache:/tmp/composer
     working_dir: /app
+    ports:
+      # `composer serve` runs the Workbench application — a real Laravel app
+      # with the package loaded — on port 8000 inside the container. Without
+      # this mapping it would be unreachable from the host browser.
+      #
+      # The host port is 13100, a nod to OpenAPI 3.1.0 and deliberately clear of
+      # the crowded 3000/5000/8000/8080 range.
+      - "${SERVE_PORT:-13100}:8000"
 
 volumes:
   composer-cache:

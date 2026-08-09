@@ -47,8 +47,14 @@ php := "docker compose run --rm php"
 default:
     @just --list
 
-# Build the development image. PHP version mirrors a CI matrix cell.
-build php_version="8.3":
+# Named `image`, not `build`, so it is never confused with `build-workbench`,
+# which rebuilds the Workbench application rather than the container.
+#
+# NOTE: `just --list` shows only the LAST comment line above a recipe. Keep the
+# one-line summary immediately above it, and any explanation above a blank line.
+
+# Build the development Docker image. PHP version mirrors a CI matrix cell.
+image php_version="8.3":
     PHP_VERSION={{php_version}} docker compose build
 
 # Install dependencies.
@@ -79,6 +85,26 @@ analyse:
 check:
     {{php}} composer check
 
+# The orchestration lives in scripts/check-lowest.sh, invoked by the Composer
+# script, so contributors working natively get the same command. Run this before
+# opening a pull request.
+
+# Run the checks against the LOWEST supported versions, then restore the newest.
+check-lowest:
+    {{php}} composer check:lowest
+
+# Workbench is a real Laravel app living in workbench/, with this package
+# loaded. Use it to exercise routes by hand; the Pest suite remains the fast
+# feedback loop. Override the host port with SERVE_PORT if 13100 is taken.
+
+# Serve the Workbench application at http://localhost:13100
+serve:
+    docker compose run --rm --service-ports php composer serve
+
+# Rebuild the Workbench application (assets, sqlite database, migrations).
+build-workbench:
+    {{php}} composer build
+
 # Open a shell inside the development container.
 shell:
     {{php}} sh
@@ -86,4 +112,4 @@ shell:
 # Remove the container, its volumes, and the installed dependencies.
 clean:
     docker compose down --volumes --remove-orphans
-    rm -rf vendor composer.lock
+    rm -rf vendor composer.lock build

@@ -32,7 +32,10 @@
 # affects the git repository itself.
 /.github            export-ignore
 /docs               export-ignore
+/scripts            export-ignore
 /tests              export-ignore
+/workbench          export-ignore
+/testbench.yaml     export-ignore
 /.gitattributes     export-ignore
 /.gitignore         export-ignore
 /.editorconfig      export-ignore
