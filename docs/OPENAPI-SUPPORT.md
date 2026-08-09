@@ -5,8 +5,9 @@ covers: >
     What the package honors of the OpenAPI specification and what it does not:
     the four rules that govern every such decision, the support levels and their
     compatibility promise, the construct-by-construct matrix, how OpenAPI 3.0
-    and 3.1 differences are handled, the parser caveats behind these limits, and
-    the Laravel constraints the package deliberately does not fight.
+    and 3.1 differences are handled, the order in which a document is read and
+    why it cannot change, the parser caveats behind these limits, and the
+    Laravel constraints the package deliberately does not fight.
 read_before: >
     Implementing anything that reads a spec, registers a route, or changes what
     the package accepts from a specification file.
@@ -166,13 +167,13 @@ interface without anything else noticing.
 **And the containment is enforced, not merely intended.** The package is laid out so that one
 namespace, and only one, may see the parser:
 
-| Namespace | Owns |
-|---|---|
-| `Parsing\` | Reading a document, and the only place `cebe\openapi\` may appear. |
-| `Contract\` | Our own types — what a strategy produces and everything else consumes. |
-| `Generation\` | Emitting PHP. |
-| `Console\` | The commands. |
-| `Routing\` | What the service provider loads at boot. |
+| Namespace     | Owns                                                                   |
+|---------------|------------------------------------------------------------------------|
+| `Parsing\`    | Reading a document, and the only place `cebe\openapi\` may appear.     |
+| `Contract\`   | Our own types — what a strategy produces and everything else consumes. |
+| `Generation\` | Emitting PHP.                                                          |
+| `Console\`    | The commands.                                                          |
+| `Routing\`    | What the service provider loads at boot.                               |
 
 The architecture test in `tests/Unit/ArchitectureTest.php` asserts it directly:
 
@@ -205,6 +206,38 @@ The behavior is what matters and it holds across the supported range; the line n
 | Remote `$ref` by URL is resolved transparently.                                                                                      | `Reader.php`, `ReferenceContext`                                                                                                      | Network I/O during boot, and an SSRF surface. See [below](./REMOTE-REFERENCES.md).                                                                                                                                                                                                                                                                                                                                                                     |
 | `paths` is not required for 3.1 documents.                                                                                           | `OpenApi.php:91`                                                                                                                      | Zero routes is a valid outcome, not an error.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | A pure `$ref` cycle exhausts memory instead of raising.                                                                              | Verified: `A: {$ref: B}` / `B: {$ref: A}` under `RESOLVE_MODE_ALL` dies in `JsonPointer.php:108` with *Allowed memory size exhausted* | The parser does carry cycle checks (`Reference.php:324,330`), but this shape recurses past them. A malformed document takes the process down rather than producing a diagnostic — the one failure mode the doctor cannot report on, because it never gets to return. **Detecting `$ref` cycles is our job, before the document reaches the parser.** An ordinary recursive *schema* is fine; the two are [different things](#references-and-security). |
+
+## Reading a document
+
+Before any rule above can apply, a file has to become a document. Four steps, and **the order is the
+design rather than an implementation detail** — each one is impossible before the one that precedes it,
+and the last one is impossible after.
+
+| Step       | What it does                                                                   | Why it sits there                                                                                                                                                                                                                          |
+|------------|--------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Decode** | YAML or JSON into an array.                                                    | Nothing can be decided about bytes. One code path serves both formats, because YAML 1.2 is a superset of JSON — branching on the file extension would only add a way to reject a correctly written document for carrying the wrong suffix. |
+| **Detect** | Read `openapi`, pick the [strategy](#handling-30-and-31-the-version-strategy). | The version is a field *inside* the file, so dispatch cannot happen any earlier than this.                                                                                                                                                 |
+| **Shape**  | Check the root keys the version requires.                                      | Needs the version to be known: `paths` is required at 3.0 and optional at 3.1, and that single difference is the whole reason this step is version-specific.                                                                               |
+| **Cycles** | Reject a `$ref` chain that never reaches content.                              | Last, and necessarily before the parser. See below.                                                                                                                                                                                        |
+
+**Why the cycle check cannot move.** A pure reference cycle is the one document fault the parser does
+not survive: it recurses past its own guards and exhausts memory rather than raising
+([parser caveats](#parser-caveats)). Once the parser holds the document there is no exception left to
+catch and no process left to report with — which makes it the only failure mode `spec:doctor` could
+never tell you about, because it never returns. So the check runs on the decoded array, before
+anything is handed over, and it cannot be folded into a wrapper around the parser.
+
+The check knows only what a single file can tell it. References into another file or over the network
+are skipped, since resolving them needs the vendored copies that a later step loads, so a cycle that
+closes only across files is out of reach here. That limit is deliberate, and it is stated in a test
+rather than in a comment.
+
+**What comes out is narrow on purpose.** The result says the document *may be parsed* — not that it is
+correct. It has not been validated against the OpenAPI schema, no `$ref` has been resolved, and the 3.0
+and 3.1 spellings of the same idea are both still present exactly as written. Normalizing them is the
+[contract artifact](./CONTRACT-ARTIFACT.md)'s job, and reporting what is wrong with the contents is
+[the doctor](./DOCTOR.md)'s. Refusing to load and reporting a fault are different jobs, and only the
+first one happens here.
 
 ## Laravel constraints we do not fight
 
