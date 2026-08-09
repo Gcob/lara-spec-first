@@ -22,17 +22,13 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
  * raising, so it has to be caught here, on the decoded array, before the parser
  * is handed anything.
  *
+ * Stateless on purpose: it is injected into readonly collaborators and reused
+ * across documents, so nothing about one document may survive into the next.
+ *
  * @see docs/OPENAPI-SUPPORT.md — "Parser caveats"
  */
-final class ReferenceCycleDetector
+final readonly class ReferenceCycleDetector
 {
-    /**
-     * Reference Objects in the document, keyed by their own JSON pointer.
-     *
-     * @var array<string, string> pointer of the reference => pointer it targets
-     */
-    private array $references = [];
-
     /**
      * @param  array<string, mixed>  $document
      *
@@ -40,16 +36,18 @@ final class ReferenceCycleDetector
      */
     public function assertNoCycles(array $document): void
     {
-        $this->references = [];
-        $this->collect($document, '');
+        $references = $this->collect($document, '');
 
-        foreach (array_keys($this->references) as $start) {
-            $this->follow($start);
+        foreach (array_keys($references) as $start) {
+            $this->follow($start, $references);
         }
     }
 
     /**
-     * Record every node carrying a local `$ref`.
+     * Every node carrying a local `$ref`, keyed by its own JSON pointer.
+     *
+     * Keys are written the same way targets are, `#` included, so following a
+     * chain is a plain lookup rather than a conversion.
      *
      * References into another file or over the network are skipped: resolving
      * them needs the vendored copies, which is a later concern. A cycle that
@@ -57,41 +55,44 @@ final class ReferenceCycleDetector
      * is deliberate rather than forgotten.
      *
      * @param  array<array-key, mixed>  $node
+     * @return array<string, string> pointer of the reference => pointer it targets
      */
-    private function collect(array $node, string $pointer): void
+    private function collect(array $node, string $pointer): array
     {
         if (isset($node['$ref']) && is_string($node['$ref'])) {
-            if (str_starts_with($node['$ref'], '#/')) {
-                // Keyed the same way targets are written, `#` included, so that
-                // following a chain is a plain lookup rather than a conversion.
-                $this->references['#'.$pointer] = $node['$ref'];
-            }
-
             // A Reference Object carries nothing else worth walking: 3.1 allows
             // `summary` and `description` beside it, and neither can hold a ref.
-            return;
+            return str_starts_with($node['$ref'], '#/')
+                ? ['#'.$pointer => $node['$ref']]
+                : [];
         }
+
+        $references = [];
 
         foreach ($node as $key => $child) {
             if (is_array($child)) {
-                $this->collect($child, $pointer.'/'.self::escape((string) $key));
+                $references += $this->collect($child, $pointer.'/'.self::escape((string) $key));
             }
         }
+
+        return $references;
     }
 
     /**
      * Follow one chain until it reaches content, or closes on itself.
      *
+     * @param  array<string, string>  $references
+     *
      * @throws CyclicReferenceException
      */
-    private function follow(string $start): void
+    private function follow(string $start, array $references): void
     {
         $chain = [$start];
         $seen = [$start => true];
         $current = $start;
 
-        while (isset($this->references[$current])) {
-            $target = $this->references[$current];
+        while (isset($references[$current])) {
+            $target = $references[$current];
             $chain[] = $target;
 
             if (isset($seen[$target])) {
