@@ -38,15 +38,18 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 final readonly class ReferenceCycleDetector
 {
     /**
-     * Keys whose contents are data, not specification.
+     * Keys whose contents are always data, not specification.
      *
      * `$ref` is an ordinary key name inside a value — an API that itself handles
      * JSON Schema will have one in an `example`. Walking into these would read a
      * literal as a reference and reject a perfectly valid document, which for a
-     * `Rejected`-level check is the worst outcome available: a false negative
-     * merely leaves the parser to complain, a false positive refuses to load.
+     * `Rejected`-level check is the worst outcome available: a false positive
+     * refuses a contract that was fine.
+     *
+     * `examples` is deliberately absent: it is two different things wearing one
+     * name, and only its shape tells them apart. See isOpaque().
      */
-    private const OPAQUE_KEYS = ['example', 'examples', 'default', 'enum', 'const'];
+    private const OPAQUE_KEYS = ['example', 'default', 'enum', 'const'];
 
     /**
      * @param  array<string, mixed>  $document
@@ -89,12 +92,35 @@ final readonly class ReferenceCycleDetector
         $references = [];
 
         foreach ($node as $key => $child) {
-            if (is_array($child) && ! in_array($key, self::OPAQUE_KEYS, true)) {
+            if (is_array($child) && ! self::isOpaque($key, $child)) {
                 $references += $this->collect($child, $pointer.'/'.self::escape((string) $key));
             }
         }
 
         return $references;
+    }
+
+    /**
+     * Whether a key's contents are data rather than specification.
+     *
+     * `examples` is the whole reason this is a method and not a lookup. The
+     * JSON Schema keyword is a **list** of literal values, so a `$ref` inside it
+     * is a literal. The OpenAPI field of the same name — on Components, a Media
+     * Type Object, a Parameter — is a **map** of Example Objects, and an Example
+     * Object may itself be a Reference Object. Treating both as data would hide
+     * a real cycle, and hiding one is not the harmless direction here: this is
+     * precisely the shape on which the parser exhausts memory instead of
+     * raising, so there would be nothing left to catch it downstream.
+     *
+     * @param  array<array-key, mixed>  $child
+     */
+    private static function isOpaque(int|string $key, array $child): bool
+    {
+        if ($key === 'examples') {
+            return array_is_list($child);
+        }
+
+        return in_array($key, self::OPAQUE_KEYS, true);
     }
 
     /**

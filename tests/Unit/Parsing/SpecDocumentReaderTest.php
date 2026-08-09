@@ -88,11 +88,18 @@ it('accepts the third root key 3.1 allows', function (): void {
         ->toBe(SpecVersion::V3_1);
 });
 
+// The skip measures the very thing it guards against rather than inferring it
+// from the environment: it writes a file, removes every permission, and asks
+// whether it can still be read. An earlier version tested /proc/1/mem and
+// posix_geteuid(), which skipped inside the project's own Docker container — a
+// test that never runs where the code is written is worth less than no test —
+// and depended on ext-posix, which the package does not require.
 it('reports a file it cannot read', function (): void {
     $path = tempnam(sys_get_temp_dir(), 'lsf-');
     assert(is_string($path));
     file_put_contents($path, "openapi: 3.0.3\npaths: {}\n");
     chmod($path, 0o000);
+    clearstatcache(true, $path);
 
     try {
         expect(fn () => (new SpecDocumentReader)->read($path))
@@ -101,4 +108,14 @@ it('reports a file it cannot read', function (): void {
         chmod($path, 0o600);
         unlink($path);
     }
-})->skip(fn (): bool => is_readable('/proc/1/mem') || posix_geteuid() === 0, 'root reads everything');
+})->skip(function (): bool {
+    $probe = tempnam(sys_get_temp_dir(), 'lsf-probe-');
+    assert(is_string($probe));
+    chmod($probe, 0o000);
+    clearstatcache(true, $probe);
+    $readsAnything = is_readable($probe);
+    chmod($probe, 0o600);
+    unlink($probe);
+
+    return $readsAnything;
+}, 'this user reads files it has no permission on');

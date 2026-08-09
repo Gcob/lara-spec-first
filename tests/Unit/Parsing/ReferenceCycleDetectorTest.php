@@ -97,7 +97,19 @@ it('treats every data-carrying key as opaque', function (string $key): void {
     ]]];
 
     (new ReferenceCycleDetector)->assertNoCycles($document);
-})->with(['example', 'examples', 'default', 'enum', 'const'])->throwsNoExceptions();
+})->with(['example', 'default', 'enum', 'const'])->throwsNoExceptions();
+
+// `examples` is two different things wearing one name, and only its shape tells
+// them apart. Both directions matter, so both are asserted: reading the OpenAPI
+// map as data would hide a cycle on exactly the shape the parser dies on.
+it('ignores a $ref inside the JSON Schema examples keyword, which is a list', function (): void {
+    (new ReferenceCycleDetector)->assertNoCycles(specFixture('schema-examples-list.yaml'));
+})->throwsNoExceptions();
+
+it('still catches a cycle through OpenAPI Example Objects, which are a map', function (): void {
+    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles(specFixture('cycle-in-example-objects.yaml')))
+        ->toThrow(CyclicReferenceException::class);
+});
 
 // Stated so the gap is visible: `follow()` compares pointers for equality, not
 // containment, so a reference aimed at one of its own ancestors is not caught.

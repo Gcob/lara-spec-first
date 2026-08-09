@@ -248,11 +248,16 @@ The check is deliberately narrow, and each limit below is stated in a test rathe
 * **It knows only what a single file can tell it.** References into another file or over the network
   are skipped, since resolving them needs the vendored copies that a later step loads, so a cycle
   closing only across files is out of reach.
-* **A `$ref` inside a value is a value.** `example`, `examples`, `default`, `enum` and `const` carry
-  data, and `$ref` is a legal key name in data — a specification describing an API that itself handles
-  JSON Schema will contain one. The check does not descend into them. It is the one place where a
-  false negative is clearly correct: this check can refuse to load, so mistaking a literal for a
-  reference would turn away a valid contract, where missing one merely leaves the parser to complain.
+* **A `$ref` inside a value is a value.** `example`, `default`, `enum` and `const` carry data, and
+  `$ref` is a legal key name in data — a specification describing an API that itself handles JSON
+  Schema will contain one. The check does not descend into them, because mistaking a literal for a
+  reference would turn away a valid contract, and this check refuses to load rather than reporting.
+* **`examples` is two things wearing one name, and the shape decides.** The JSON Schema keyword is a
+  *list* of literal values; the OpenAPI field of the same name — on Components, a Media Type Object, a
+  Parameter — is a *map* of Example Objects, and an Example Object may be a Reference Object. The list
+  is data and is skipped; the map is specification and is followed. Getting this wrong in the
+  permissive direction would hide a cycle on precisely the shape the parser dies on, so it is not a
+  case where the forgiving choice is the safe one.
 * **A reference aimed at its own ancestor is not caught**, because chains are compared pointer by
   pointer rather than by containment. Another false negative, and harmless for the same reason.
 

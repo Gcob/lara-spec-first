@@ -5,9 +5,16 @@ declare(strict_types=1);
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
 
 /**
+ * Every class the package declares, derived from the file tree.
+ *
+ * Deliberately not filtered by filename: keying off a `*Exception.php`
+ * convention would make this test depend on a rule nothing else asserts, and
+ * the first exception named otherwise would slip through while the suite stayed
+ * green. Asking PHP what is a Throwable costs the same and cannot drift.
+ *
  * @return list<class-string>
  */
-function exceptionClassesInSrc(): array
+function classesInSrc(): array
 {
     $src = dirname(__DIR__, 2).'/src';
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($src));
@@ -15,7 +22,7 @@ function exceptionClassesInSrc(): array
 
     /** @var SplFileInfo $file */
     foreach ($files as $file) {
-        if (! $file->isFile() || ! str_ends_with($file->getFilename(), 'Exception.php')) {
+        if (! $file->isFile() || $file->getExtension() !== 'php') {
             continue;
         }
 
@@ -30,17 +37,21 @@ function exceptionClassesInSrc(): array
     return $classes;
 }
 
-// SpecException promises a consuming application that one `catch` is enough.
-// Scanning the tree rather than naming a namespace is what makes the promise
-// survive the first exception born in Generation\ or Console\ — an assertion
-// scoped to Parsing\Exceptions would stay green while the promise broke.
-it('finds every exception in the package', function (): void {
-    expect(exceptionClassesInSrc())->not->toBeEmpty();
+it('finds the classes it is about to check', function (): void {
+    expect(classesInSrc())->not->toBeEmpty();
 });
 
-it('makes every exception catchable as one type', function (): void {
-    foreach (exceptionClassesInSrc() as $class) {
-        expect(interface_exists($class) || is_a($class, SpecException::class, true))
-            ->toBeTrue("{$class} must implement ".SpecException::class);
+// SpecException promises a consuming application that one `catch` is enough.
+// Walking the tree rather than naming a namespace is what makes the promise
+// survive the first exception born in Generation\ or Console\ — an assertion
+// scoped to Parsing\Exceptions would stay green while the promise broke.
+it('makes every throwable in the package catchable as one type', function (): void {
+    foreach (classesInSrc() as $class) {
+        if (! is_a($class, Throwable::class, true)) {
+            continue;
+        }
+
+        expect(is_a($class, SpecException::class, true))
+            ->toBeTrue("{$class} is throwable, so it must implement ".SpecException::class);
     }
 });
