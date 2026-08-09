@@ -61,7 +61,7 @@ Five levels, and every one of them except `Supported` says something out loud:
 | Level            | Meaning                                                   | Behaviour                                                                                                                              |
 |------------------|-----------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
 | **Supported**    | The construct is read and honored.                        | Nothing to report.                                                                                                                     |
-| **Partial**      | honored under stated conditions; outside them, it is not. | Diagnostic when a document leaves the supported subset. The conditions are written in this file, never left to the reader to discover. |
+| **Partial**      | Honored under stated conditions; outside them, it is not. | Diagnostic when a document leaves the supported subset. The conditions are written in this file, never left to the reader to discover. |
 | **Ignored**      | Read, understood, deliberately not acted on.              | Diagnostic. The spec stays valid and the package keeps working, but the consumer is told the construct had no effect.                  |
 | **Rejected**     | The package cannot honor it and will not pretend to.      | Hard error. The spec does not load.                                                                                                    |
 | **Out of scope** | Not this package's concern at all.                        | No diagnostic. Listed here only so nobody has to wonder.                                                                               |
@@ -71,20 +71,181 @@ changes nothing is an `Ignored` row — annoying to be told about, fatal to nobo
 the package cannot route is `Rejected`, because loading the spec anyway would leave a documented
 endpoint silently missing.
 
-### Diagnostic modes
+### Where the diagnostics go: the doctor
 
-Because rule 2 conflicts with rule 3 in one place — a strict package is a loud package, and loud
-packages get their warnings suppressed — the intent is a single configurable knob:
+Rule 2 has an obvious failure mode. A package that reports every unhonored construct at boot is a
+package that shouts on every request, and a tool that shouts constantly gets its output filtered out —
+at which point the diagnostic exists and nobody reads it, which is rule 2 defeated by its own
+enforcement.
 
-| Mode     | `Partial` / `Ignored` becomes   | Intended for                                        |
-|----------|---------------------------------|-----------------------------------------------------|
-| `strict` | An exception at boot.           | CI, and the default for new adopters.               |
-| `warn`   | A logged warning plus a report. | Migrating an existing app route by route (Phase 3). |
+**Decision: the diagnostics get their own command. `nginx -t`, not a log line.**
 
-`Rejected` is not affected by the mode. It is always an error.
+The model is deliberate. `nginx` does not warn you about your configuration on every request; it gives
+you one command that answers *"is this configuration good?"*, exits non-zero when it is not, and is
+therefore the thing you run before a reload and the thing CI runs on every commit. That is the shape
+this package needs, for the same reason: a Spec-First package's most valuable output is not "your
+request failed", it is **"here is exactly what your contract will and will not do once loaded"** —
+and that answer is worth reading *before* the app runs, not during.
 
-**Status: proposed.** The config key names, the default mode, and where the report surfaces
-(a `spec:validate` command is a Phase 2 item on the [Roadmap](./ROADMAP.md)) are all undecided.
+This is not a Phase 2 developer-experience nicety. **It is the enforcement mechanism for rule 2, so it
+ships with the first thing that reads a spec** — see the [Roadmap](./ROADMAP.md).
+
+#### The contract
+
+* **One command, not two — validation is centralized.** "Is my document valid OpenAPI" and "will this
+  package honor it" are genuinely different questions, and they are deliberately answered in one
+  place. Every check that reads the spec shares one report format, one exit contract, and one place to
+  add the next check. Splitting them would mean two commands to wire into CI, two output formats to
+  parse, and a standing question about which one to run. Validity is the doctor's first section, not a
+  separate command.
+* **The exit code is the API.** Zero means the spec is fully honored. Non-zero means it is not. That
+  single property is what makes it usable as a CI gate and a pre-deploy gate, and it is what stops the
+  report from becoming decorative.
+* **Machine-readable output.** Real specs are large, and the report grows with them. A `--json` flag
+  lets CI annotate a pull request instead of dumping a wall of text, and lets tooling — including AI
+  agents, which is a first-class use case for this package — consume the findings without parsing
+  prose. Cheap to design in, awkward to retrofit.
+* **Read-only, always.** It never writes a cache, never touches the database, never mutates state.
+  Safe to run anywhere, including production, which is precisely where you want it when a contract
+  behaves differently than staging.
+* **Report everything, not the first failure.** `nginx -t` stops at the first syntax error because a
+  config file is a linear thing. A support matrix is not: a developer needs the full list of what was
+  ignored in one pass, otherwise adoption becomes a whack-a-mole loop.
+* **Every finding names the document position.** File, JSON pointer, and the
+  [support level](#support-levels) that applies. A finding you cannot locate is a rumor.
+* **It reports the outcome, not only the problems.** The resolved routing table — which routes will
+  exist, in which order, mapped to which controller and method, and whether that controller exists —
+  is the single most useful thing this command can print. Most runs will be clean, and a command that
+  prints nothing on success teaches the developer nothing about what the spec actually did.
+
+#### Planned flags
+
+Centralizing every check in one command means that command needs a way to narrow what it runs. The
+intended surface, all provisional:
+
+| Flag                 | Purpose                                                                                                                                      |
+|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| `--json`             | Machine-readable findings, for CI annotation and for tooling that consumes the report.                                                       |
+| `--check=syntax`     | Document validity only: is this valid OpenAPI.                                                                                               |
+| `--check=honored`    | Support findings only: what this package will and will not honor.                                                                            |
+| `--bypass-allowlist` | Resolve remote `$ref` regardless of the [allowlist](#remote-references-and-the-domain-allowlist), for diagnosing why a reference is blocked. |
+
+Two constraints on any flag added here, and they are the reason this list is short:
+
+* **A filtered run's exit code covers only what it ran.** `--check=syntax` exiting zero means the
+  document is valid, not that the package will honor it. The report says which checks were skipped, on
+  every run, so a green exit is never mistaken for a full pass.
+* **A flag that changes what the package would actually do makes the run non-representative, and the
+  report must say so.** `--bypass-allowlist` is the clear case: it deliberately does something boot
+  will never do, so a clean run under it does not predict a clean boot. It is a debugging tool for a
+  human at a terminal — the report labels the run as non-representative, and CI has no business using
+  it. Without that label, the flag quietly breaks the one property that makes the exit code worth
+  anything.
+
+#### Two kinds of finding, never mixed
+
+A single command answering both questions only works if the report never blurs them. **"Your document
+is broken" and "this package cannot honor your document" are different problems, with different
+owners, different fixes, and different urgency** — and a developer who cannot tell them apart at a
+glance will treat the whole report as noise.
+
+| Class              | Means                                                                                                                                           | Who fixes it                                                           | How                                                                                                                        |
+|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
+| **Document fault** | The document is not valid OpenAPI, or is internally inconsistent: schema violations, an unresolvable `$ref`, a path parameter declared nowhere. | The spec author.                                                       | Fix the document. There is no other option, and the package will not guess.                                                |
+| **Package limit**  | The document is correct. This package does not honor the construct.                                                                             | Us, eventually — it is a roadmap item, not a defect in their contract. | The consumer changes the spec, waits for support, or [acknowledges the limit](#acknowledged-limits-the-consumers-opt-out). |
+
+The distinction has to survive into the output, not just the prose here: separate sections, distinct
+labels, and — proposed — **distinct exit codes**, so a CI pipeline can gate hard on document faults
+while treating package limits as a softer signal. `0` clean, one code for faults, another for limits.
+The exact numbers are open; the fact that they differ should not be.
+
+The rule that follows from this: **a package limit is never reported as if the consumer made a
+mistake.** They wrote a valid contract. We are the ones who cannot serve all of it yet, and the
+message says so.
+
+#### What it checks
+
+Provisional, and expected to grow one section per honored construct:
+
+| Section           | Answers                                                                                                                                                                                                                         |
+|-------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Configuration     | Are the spec files found and readable? Which allowlist and options are in effect?                                                                                                                                               |
+| Document validity | Is this valid OpenAPI? The parser does not answer this in its library API — see [parser caveats](#parser-caveats) — so the doctor owns it.                                                                                      |
+| Version           | Which version was detected, and which [strategy](#handling-30-and-31-the-version-strategy) will handle it.                                                                                                                      |
+| References        | Unresolved `$ref`, references blocked by the [allowlist](#remote-references-and-the-domain-allowlist), recursion.                                                                                                               |
+| Support findings  | Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position.                                                                                                                                         |
+| Routing outcome   | The routes that will be registered, in order, with their targets — plus shadowing, where an earlier templated path swallows a later literal one.                                                                                |
+| Security          | Operations declaring `security` that the package does not enforce. This gets its own section rather than a line among others, because it is the one finding that can turn a documented-as-protected endpoint into a public one. |
+
+#### Open questions on the doctor
+
+* **The command name.** One command is settled; what it is called is not. Command signatures are
+  public API surface under [rule 4](#the-four-rules-that-govern-this-document), so this is worth
+  getting right once. The [Roadmap](./ROADMAP.md) currently names `spec:validate`.
+* **The exit codes.** That document faults and package limits exit differently is settled. The numbers
+  are not.
+* **What still happens at boot.** `Rejected` fails at boot unless
+  [acknowledged](#acknowledged-limits-the-consumers-opt-out), in which case the construct is skipped —
+  the doctor is a check, not a substitute for refusing to load a spec the package cannot serve.
+  Whether anything *below* `Rejected` surfaces at boot at all, or whether the doctor is the only
+  channel, is still open and interacts with how the spec is cached.
+
+When a command reference document exists, the usage details move there and this section keeps only the
+reasoning. It lives here for now because the doctor is what makes the
+[support levels](#support-levels) mean anything.
+
+### Acknowledged limits: the consumer's opt-out
+
+**Decision: a consumer can declare, in configuration, that they accept a limit — and the package then
+stops treating it as a problem.**
+
+Rule 2 assumes the reader can act on the diagnostic. Often they cannot. The spec comes from another
+team, from a vendor, from a generator that always emits the same construct, and it is not theirs to
+change. For that developer a permanent, unfixable warning is not information — it is a broken window,
+and the first thing they will look for is the switch that turns the whole package quiet. Better to
+hand them a precise switch than to let them reach for a blunt one.
+
+Acknowledgement is not the same as suppression, and the difference is the whole design:
+
+* **It is enumerated, never global.** You list the specific constructs you accept. There is no
+  "silence everything" option, because a spec that grows a new unhonored construct next month must
+  still speak up — you never acknowledged *that* one.
+* **It stays visible.** Acknowledged items still appear in the doctor's report, in their own section,
+  not folded into a count and not hidden. They stop *failing*; they do not stop *existing*. A
+  configuration file nobody ever reads again is how accepted debt becomes forgotten debt.
+* **Stale acknowledgements are themselves a finding.** When a construct you acknowledged no longer
+  occurs in your spec, or the package has since grown support for it, the doctor says so, and you
+  delete the line. Without this, the config only ever accumulates.
+* **It is reviewable.** It lives in the application's config file, in version control, in diffs. The
+  closest analogue in this ecosystem is a PHPStan baseline: an explicit, versioned list of accepted
+  debt, where new violations still fail the build.
+
+#### Acknowledging changes behavior, not just noise
+
+This is the part that must never be understated in the documentation we ship. Acknowledging a
+`Rejected` construct is what allows the spec to load at all — so it is also the moment the construct
+is **dropped**. Acknowledge a `trace` operation and the document still describes an endpoint that will
+answer 404. That is a legitimate choice, and it is the consumer's to make, but the report has to state
+the consequence in those terms rather than reporting a clean bill of health.
+
+Which is why **security acknowledgements are never collapsed.** A consumer may accept that the package
+does not enforce a declared security scheme — that is their call — but every affected operation is
+listed individually, on every run, forever. This is the one place where being annoying is the correct
+behavior: the finding is that an endpoint the contract describes as protected is not.
+
+#### Open questions on acknowledgement
+
+* **Granularity.** Per construct (`trace: accepted` everywhere) covers the vendor-generator case that
+  motivates the feature. Per construct *and* location covers the one weird endpoint. Starting at the
+  construct level and widening later is a **minor** release; the reverse is not.
+* **Whether a reason string is required.** Requiring a justification on each entry is friction that
+  pays for itself the day someone reads the config a year later and cannot remember why. It is also
+  the kind of opinionated requirement [rule 3](#the-four-rules-that-govern-this-document) invites.
+* **The scope of a `Rejected` acknowledgement** — skipping the offending operation is the leading
+  answer, with a `rejected_behavior: skip | fail` style option if the choice turns out to be worth
+  giving away. Deliberately left to be settled against real code rather than in the abstract: the
+  difference between the two only becomes concrete once there is a spec loader to watch.
+* **The config keys themselves.** Public API surface. Not chosen.
 
 ## Handling 3.0 and 3.1: the version strategy
 
@@ -114,7 +275,7 @@ The seam matters more than the pattern. Putting it in the wrong place duplicates
 | Route registration                       | **Shared**           | It consumes the normalised output, and must never see a version number.                                                                                                                                     |
 
 The test of a correct seam: **nothing downstream of the strategy knows which version was loaded.** If
-the router or the mocker has to ask, the normalisation is incomplete.
+the router or the mocker has to ask, the normalization is incomplete.
 
 ### The differences the strategy must absorb
 
@@ -227,9 +388,10 @@ a documented property of this package, not a bug report.
 
 Per the rule above, we do not work around the router. The operation is `Rejected`.
 
-**Open:** whether an entire document containing `trace` fails to load, or the operation is refused
-individually under the [diagnostic mode](#diagnostic-modes). The second is friendlier; the first is
-more honest. Undecided.
+**Open:** whether an entire document containing `trace` fails to load, or the operation alone is
+refused while the rest of the document still loads. The second is friendlier; the first is more
+honest. Either way [the doctor](#where-the-diagnostics-go-the-doctor) names the operation and its
+position. Undecided.
 
 ### Parameter names are a naming contract, not a mapping problem
 

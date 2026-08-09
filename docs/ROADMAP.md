@@ -19,11 +19,16 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs.
 - [ ] Build the core Service Provider to dynamically register routes from the spec.
 - [ ] Implement the base abstract controller generation (Generated vs. Extended pattern).
+- [ ] Ship the diagnostic command — `nginx -t` for your contract: what the package will honor, what it
+  will not, and the routing table that results. It belongs in this phase, not with the other Artisan
+  commands: it is what makes "the spec is the source of truth" verifiable rather than asserted. See
+  [the doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor).
 
 ## Phase 2: Developer Experience & Mocks
 *Goal: Make adoption frictionless and fast.*
 - [ ] Implement automated Faker-based mocking for endpoints lacking concrete controller implementations.
-- [ ] Add Artisan commands (`php:artisan spec:generate`, `php artisan spec:validate`).
+- [ ] Add the remaining Artisan commands (`php artisan spec:generate`). Spec validation is **not** a
+  separate command: it is the first section of the Phase 1 diagnostic command.
 - [ ] Support OpenAPI versioning directories (`v1/`, `v2/`).
 
 ## Phase 3: Legacy Bridge & Ecosystem
