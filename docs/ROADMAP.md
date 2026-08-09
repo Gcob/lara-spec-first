@@ -20,9 +20,12 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Build the core Service Provider that registers the generated routes. It **does not read the
   spec** — only the build commands do. Explicit over dynamic: see
   [the runtime never sees the spec](./CODE-GENERATION.md#the-runtime-never-sees-the-spec).
-- [ ] Ship the build command: vendor the remote references, resolve the spec, and generate the routes,
-  the abstract controllers (Generated vs. Extended pattern) and the stubs. One command, safe to re-run,
-  never overwriting human work. See [`CODE-GENERATION.md`](./CODE-GENERATION.md).
+- [ ] Ship the build command: resolve the spec into the contract artifact and generate the routes and
+  the abstract controllers (Generated vs. Extended pattern). Safe to re-run, and it writes only files
+  it owns. See [`CODE-GENERATION.md`](./CODE-GENERATION.md).
+- [ ] Ship the `make:`-style command that scaffolds the concrete class for an operation, once, on
+  request — the only command that creates a file the developer will own. See
+  [scaffolding](./CODE-GENERATION.md#scaffolding-is-a-make-command-not-a-build-step).
 - [ ] Ship the diagnostic command — `nginx -t` for your contract: what the package will honor, what it
   will not, and the routing table that results. It belongs in this phase, not with the other Artisan
   commands: it is what makes "the spec is the source of truth" verifiable rather than asserted. See

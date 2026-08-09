@@ -4,7 +4,7 @@ audience: Users, contributors and agents
 covers: >
     The build command and what it produces, the boundary between build time and
     run time, where generated code lives, the rule that generated code is never
-    edited by hand, the difference between regenerated output and one-time stubs,
+    edited by hand, why scaffolding a class you will own is a separate command,
     and how a contract change surfaces as a static analysis error rather than a
     runtime surprise.
 read_before: >
@@ -34,6 +34,12 @@ run has quietly become Code-First again.
 The invariant is structural, not a matter of care. It holds because generated files and
 human-authored files are **disjoint sets** — different files, in different places. The build owns its
 files completely and never opens the others.
+
+**There is no exception clause, deliberately.** An earlier draft let the build create a starter class
+when one was missing, which sounded harmless and was not: "the build never writes a file it does not
+own, except when it does" is a rule that erodes, and every later feature would have argued for its own
+carve-out. Creating a class a human will own is
+[a different command's job](#scaffolding-is-a-make-command-not-a-build-step).
 
 ## The runtime never sees the spec
 
@@ -67,13 +73,13 @@ What follows from it:
   check rather than a convenience. A package this strict about contracts cannot ship the one silent
   way to be out of date.
 
-## Three kinds of output
+## Three kinds of file, and only two are the build's
 
-| Kind                | Lifecycle                                             | Who owns it                                                                                                   |
-|---------------------|-------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| **Generated**       | Rewritten from scratch on every build.                | The package. Never edit — your edit is gone on the next run, by design.                                       |
-| **Stubs**           | Written once, when absent. Never touched again, ever. | You, from the moment it exists. The build checks existence and skips.                                         |
-| **Vendored inputs** | Fetched when missing, refreshed only on request.      | Upstream. See [remote references](./OPENAPI-SUPPORT.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
+| Kind                | Lifecycle                                                                                            | Who owns it                                                                                                   |
+|---------------------|------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| **Generated**       | Rewritten from scratch on every build.                                                               | The package. Never edit — your edit is gone on the next run, by design.                                       |
+| **Vendored inputs** | Never fetched unless asked; [frozen by default](#remote-references-during-a-build-frozen-by-default). | Upstream. See [remote references](./OPENAPI-SUPPORT.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
+| **Your classes**    | Created once by [`make:`](#scaffolding-is-a-make-command-not-a-build-step), on request. The build never touches them. | You, entirely, from the moment the file exists.                                                              |
 
 The generated kind should be unmistakable at a glance and at grep-time: its own directory, its own
 namespace, and a header on every file saying it is generated and will be overwritten. A developer
@@ -96,19 +102,22 @@ has hand-edits in it to protect.
 
 ## The build command
 
-One command, run after any change to the specification, producing every derived artifact: the
-resolved spec, the routes, the abstract controllers, the response DTOs, the validation, and any stub
-that does not exist yet.
+One command, run after any change to the specification, producing every derived output: the
+[contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact), the routes, the abstract controllers,
+the response DTOs and the validation. Everything it writes, it owns.
 
 Its properties:
 
 * **Idempotent.** Running it twice in a row changes nothing the second time. If a build produces a
   diff on an unchanged spec, that is a defect.
-* **Ordered, and it stops.** Vendoring, then parsing, then generation. A spec that fails
+* **Ordered, and it stops.** Check the vendored references are present, parse, normalise into the
+  prospective artifact, **compare it against the committed one**, then generate. A spec that fails
   [the doctor's](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor) hard checks does not reach
-  the generator — half-generated output from a broken contract is worse than no output.
-* **It never writes outside its own directories**, with the sole exception of creating a stub that
-  does not exist. This is the invariant, in one sentence, and it is testable.
+  the generator — half-generated output from a broken contract is worse than no output. The comparison
+  sits before generation for the same reason: nothing is written until it is known to be allowed.
+* **It never writes outside its own directories.** No exceptions, no conditions. This is the
+  [invariant](#the-invariant-a-build-never-destroys-human-work) in one sentence, and it is testable —
+  which is the point of stating it without a clause.
 
 ### Remote references during a build: frozen by default
 
@@ -187,6 +196,40 @@ Two details that will otherwise be discovered the hard way:
 The config key names and the default are public API surface under
 [rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
 
+## Scaffolding is a `make:` command, not a build step
+
+**Decision: the build never creates a class you will own. A `make:`-style command does, on request.**
+
+Laravel already has this shape and every Laravel developer already has the reflex: `make:` creates one
+file, when you ask, once. Reusing it costs no new concept — and it removes the only exception the
+[invariant](#the-invariant-a-build-never-destroys-human-work) ever had.
+
+Nothing forces the build to do it instead. An operation with no implementation is not a broken
+application: it falls through to the [Faker mock](./ROADMAP.md), which is the whole point of that
+feature. So the build has no reason to write a file pre-emptively, and every reason not to.
+
+### Where your classes go
+
+**In the application's own controller location, not in the generated directory.** Two reasons, and the
+first is not a matter of taste:
+
+* **`.gitignore` works by directory, and we made `.gitignore`
+  [the mechanism](#which-generated-code-is-committed).** Put your classes inside the generated tree and
+  a consumer who ignores that tree loses their own work. That single fact rules the option out.
+* **It is an ordinary Laravel controller.** Once the file exists it has nothing to do with this package
+  except that it extends a generated class. Your conventions, your IDE, your tests and your `make:`
+  habits all already point at that directory. The generated abstract is the unusual object here; the
+  concrete class is not.
+
+**The consequence to state plainly:** the generated route refers to your class by its fully-qualified
+name, so the name and namespace are load-bearing. Moving the file is fine; moving it somewhere it no
+longer autoloads under the expected name breaks the route. The
+[doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor) reports that as a missing
+implementation rather than letting it surface as a class-not-found at runtime.
+
+**Open:** whether `make:` can scaffold every unimplemented operation in one go, or deliberately only
+one at a time. Bulk is convenient and is also how a hundred empty classes get committed by accident.
+
 ## Naming, and the rename problem
 
 The generated class and method names come from `operationId`. That makes an `operationId` far more
@@ -205,9 +248,15 @@ method, which is what actually addresses it. Its **name** is `operationId`, whic
 from. Renaming an operation therefore changes the name while the identity holds still — and a build
 that knows both can tell the difference between a rename and a deletion.
 
+Identity has to be normalised to be useful: **the names of path parameters are not part of it.**
+Renaming `/users/{id}` to `/users/{userId}` changes nothing a client can observe — the URL on the wire
+is identical, and the template variable is documentation. Identity is therefore the method plus the
+path with its parameters reduced to positions, so that rename produces no diff at all. It also means
+`/users/{id}` and `/users/{slug}` share an identity and collide — which is correct, because those two
+routes already collide in the router, and surfacing it is a service rather than a limitation.
+
 That requires no new state file. The build reads the generated tree before overwriting it, and every
-generated file already carries
-[the pointer it came from](#borrowing-from-bundlers-and-where-to-stop). Comparing the two gives:
+generated file already carries [the pointer it came from](#the-source-map). Comparing the two gives:
 
 * **Renames, reported as renames.** *This operation was `listUsers`, it is now `indexUsers`; the class
   you extended has been replaced.* Naming the old and the new turns a fatal error into an instruction.
@@ -240,9 +289,32 @@ until the references are updated. Failing the build is defensible under
 [rule 2](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document) and might be intolerable in
 watch. Probably different answers for the two commands.
 
-**Open:** the fallback when `operationId` is absent — deriving from method and path makes any URL
-reorganisation a mass rename — plus collisions between two operations whose ids differ only in
-characters PHP cannot use, and whether the build refuses those outright.
+### When `operationId` is absent, derive from method and path
+
+**Decision: the fallback is the operation's [identity](#identity-is-the-path-and-the-method-not-the-name)
+— its HTTP method and its normalised path.** There is nothing else that both exists on every operation
+and means something to a reader.
+
+The objection to raise and dismiss: deriving from the path means that reorganising URLs renames
+classes. True — and **proportionate**, because changing a path *is* a change to the contract. Consumers
+have to update their calls; you having to update a class name is the same event, visible in your own
+code. For a `stable` operation the build already refuses the change until
+[`info.version`](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us) says so, and for a
+`beta` one churn is what `beta` means. The case that would have been unfair — renaming a path
+*parameter*, which changes nothing on the wire — is already excluded by normalising identity.
+
+What the fallback genuinely costs is readability: a derived name will never read as well as
+`listActiveSubscriptions`. That is an argument for writing `operationId`, not against having a
+fallback, and it is the kind of nudge the doctor should make rather than the build enforce.
+
+**Proposed, open:** require `operationId` on `public` + `stable` operations only. A stable operation's
+generated class name is a promise made to your own codebase, so it deserves to be chosen rather than
+computed — while a `beta` or `internal` operation can be sketched without ceremony. It reuses the
+[lifecycle](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us) vocabulary instead of
+inventing a rule of its own.
+
+**Open:** collisions between two `operationId` values that differ only in characters PHP cannot use in
+an identifier, and whether the build refuses them outright.
 
 ## Watching: the design loop
 
@@ -287,12 +359,31 @@ the famous, recurring price. A package whose entire purpose is that code and con
 cannot pay that price. So the split is in the **process**, never in the **product**: watch adds
 triggers, fetching and diagnostics; it does not add, remove or reshape a single generated line.
 
-Which leaves the one bundler nicety that does translate, and it turns out to be worth having in every
-mode rather than just development: **a source map for API design.** Every generated file can carry the
-JSON pointer it came from — the operation, the schema, the exact position in the spec — so that a
-developer, a reviewer or an AI agent reading generated PHP can jump straight to the contract that
-produced it. It costs nothing at runtime in PHP, so there is no reason to strip it for production, and
-emitting it unconditionally keeps the output identical between modes.
+The one bundler nicety that does translate is [the source map](#the-source-map), and it turns out to
+be worth having in every mode rather than only in development — which is why it has its own section
+rather than living here.
+
+## The source map
+
+**Decision: every generated file carries the JSON pointer it came from** — the operation, the schema,
+the exact position in the specification.
+
+It is the same idea a bundler's source map serves, and the same need: generated code is read by people
+who did not write it, and the first question any of them has is *where did this come from?* A
+developer debugging, a reviewer judging a diff, an AI agent working in the repository — all three are
+one annotation away from the contract instead of grepping for it.
+
+It costs nothing at runtime in PHP, so it is emitted **unconditionally**, in every mode. That is what
+keeps [watch and build output identical](#borrowing-from-bundlers-and-where-to-stop), and it is why
+this is not a development-only nicety.
+
+Two other decisions depend on it, which is the real reason it stands alone:
+
+* [Rename detection](#identity-is-the-path-and-the-method-not-the-name) compares the pointers in the
+  existing generated tree against the ones the new build would emit. Without the annotation there is
+  no comparison to make and no rename to report.
+* The [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact) is keyed by the same identity,
+  so a finding in the artifact diff and a header in a generated file name the same thing.
 
 ## Response DTOs
 
@@ -341,15 +432,16 @@ missing or malformed.
 
 ## Open questions
 
-* The command name, the generated namespace and directory, and the stub location. All public API
-  surface under [rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
+* The command names, and the generated namespace and directory. All public API surface under
+  [rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
+* Whether [`make:`](#scaffolding-is-a-make-command-not-a-build-step) scaffolds one operation at a time
+  or all of them at once.
 * Whether the build emits [two layers](#the-idea-worth-designing-for-two-layers), and if so which one
   a consumer is expected to ignore.
 * Whether fetching a *missing* reference and refreshing a *stale* one share one flag or take two.
 * What [watch](#watching-the-design-loop) takes as parameters — in particular how "refresh references
   on every request" is asked for, and how the mode announces itself.
-* How controllers and methods are named — this depends on `operationId`, which is still
-  [open](./OPENAPI-SUPPORT.md#still-to-discuss).
+* Whether `operationId` becomes [required for `public` + `stable` operations](#when-operationid-is-absent-derive-from-method-and-path).
 * Whether `spatie/laravel-data` becomes a dependency or only an influence.
 * **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated
   validation are Phase 2 — the same build command doing more, not a new one. See the

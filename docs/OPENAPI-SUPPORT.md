@@ -178,6 +178,10 @@ Provisional, and expected to grow one section per honored construct:
 | Support findings  | Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position.                                                                                                                                         |
 | Routing outcome   | The routes that will be registered, in order, with their targets — plus shadowing, where an earlier templated path swallows a later literal one.                                                                                |
 | Security          | Operations declaring `security` that the package does not enforce. This gets its own section rather than a line among others, because it is the one finding that can turn a documented-as-protected endpoint into a public one. |
+| Drift             | Whether the generated code still matches the specification. The runtime [cannot notice](./CODE-GENERATION.md#the-runtime-never-sees-the-spec) that someone edited the spec and forgot to build, so this check is the only thing standing between that mistake and production. |
+| Lifecycle         | The [`x-sunset` and `x-lifecycle` rules](#the-doctor-rules-that-follow), plus the coverage report: how many public operations are actually `stable`, and therefore how much of the API is protected at all. |
+| Installation      | That the vendored directory is not gitignored, and that the generated path and namespace agree with what `composer` autoloads. Both are silent misconfigurations whose symptoms appear far from their cause. |
+| Artifact          | Whether the committed [contract artifact](#the-contract-artifact) is current, and whether its format version predates the installed package. |
 
 #### Open questions on the doctor
 
@@ -191,7 +195,8 @@ Provisional, and expected to grow one section per honored construct:
   [acknowledged](#acknowledged-limits-the-consumers-opt-out), in which case the construct is skipped —
   the doctor is a check, not a substitute for refusing to load a spec the package cannot serve.
   Whether anything *below* `Rejected` surfaces at boot at all, or whether the doctor is the only
-  channel, is still open and interacts with how the spec is cached.
+  channel, is still open. Since the runtime loads generated PHP rather than a specification, "at boot"
+  now means "baked into what the build emitted", which narrows the question rather than answering it.
 
 When a command reference document exists, the usage details move there and this section keeps only the
 reasoning. It lives here for now because the doctor is what makes the
@@ -751,8 +756,10 @@ lost, not because they are decided:
   a missing or unusable `operationId` is reported.
 * `security` to middleware mapping. The most dangerous row in the matrix: registering a route without
   applying the authentication the spec declares publishes an endpoint the contract says is protected.
-* `php artisan route:cache`: generated routes must be serialisable, which means controller strings
-  and no closures. Plus the cost of parsing a spec on every boot.
+* `php artisan route:cache`: mostly answered by
+  [generating the routes](./CODE-GENERATION.md#the-runtime-never-sees-the-spec) rather than deriving
+  them at boot. What remains is the concrete requirement that generated routes be serialisable —
+  controller strings, no closures — and confirming it against a real `route:cache` run.
 * `webhooks` (3.1) and `callbacks`: not routes on this server.
 * `HEAD` and `OPTIONS`: Laravel handles HEAD for GET automatically, so an explicit `head` operation
   conflicts.
