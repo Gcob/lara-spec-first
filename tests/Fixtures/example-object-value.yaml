@@ -1,0 +1,17 @@
+# Accepted: an Example Object's `value` is literal data by definition. Here the
+# value is itself a JSON Schema document carrying a `$ref`, which is what an API
+# that deals in JSON Schema documents its examples with. 3.1 recommends this
+# long form over the `example` keyword, so it is the shape most likely to occur.
+openapi: "3.1.0"
+info:
+  title: Fixture API
+  version: 1.0.0
+paths: {}
+components:
+  examples:
+    SchemaSample:
+      summary: an example whose value is itself a JSON Schema document
+      value:
+        $ref: '#/components/examples/Pointer'
+    Pointer:
+      $ref: '#/components/examples/SchemaSample/value'

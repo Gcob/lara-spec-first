@@ -54,9 +54,11 @@ discovering it halfway through the implementation.
 What follows from it:
 
 * **The parser is a build-time dependency in practice.** `cebe\openapi\` classes must never be
-  reachable from the routing or request path. This is not a convention to remember, it is an assertion
-  to write: the existing architecture test in `tests/Unit/` is exactly the place to forbid the runtime
-  namespace from referencing the parser at all.
+  reachable from the routing or request path. This is not a convention to remember: the architecture
+  test contains the parser to
+  [one namespace](./OPENAPI-SUPPORT.md#where-the-parser-sits-decided), which forbids it to the request
+  path and to everything else at once. The assertion is written and passes today without constraining
+  anything, since no file imports the parser yet; it starts doing work with the first import.
 * **Boot cost is loading PHP**, which is what `route:cache` and the opcode cache already optimize. No
   work to memoize, no cache of our own to invent.
 * **The boundary is the production request path, not the process.** Serving a real application's
@@ -64,9 +66,8 @@ What follows from it:
   would only mean rewriting this section later: contract testing has to compare a live response
   against the contract, and a [mock server](./ROADMAP.md) is a spec-driven server by definition. Those
   are separate execution contexts with their own rules. **Deferred deliberately** — the contexts get
-  enumerated when the first one is built, not guessed at now. Until then, the architecture test
-  forbids the parser to the *routing and request* namespaces specifically, not to the package at
-  large.
+  enumerated when the first one is built, not guessed at now. Nothing about containing the parser to
+  `Parsing\` blocks them: a mock server reads a contract through the same door as everything else.
 * **It creates one new failure mode, and it must be named:** edit the spec, forget to build, and the
   application serves the previous contract without a word — because nothing at runtime knows a spec
   exists to compare against. **Detecting that drift is the doctor's job**, which makes it a required CI

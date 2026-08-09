@@ -26,7 +26,7 @@
 
 set -u
 
-RUNTIME_PACKAGES="illuminate/routing illuminate/support orchestra/testbench"
+RUNTIME_PACKAGES="illuminate/routing illuminate/support symfony/yaml orchestra/testbench"
 
 restore() {
     composer update --with-all-dependencies --no-interaction

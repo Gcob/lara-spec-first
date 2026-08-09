@@ -1,0 +1,14 @@
+# Rejected: `components.examples` is a map of Example Objects, and an Example
+# Object may be a Reference Object — so this is a pure reference cycle wearing a
+# keyword that also exists in JSON Schema with the opposite meaning.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths: {}
+components:
+  examples:
+    A:
+      $ref: '#/components/examples/B'
+    B:
+      $ref: '#/components/examples/A'

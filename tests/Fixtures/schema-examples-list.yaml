@@ -1,0 +1,15 @@
+# Accepted: the JSON Schema `examples` keyword is a list of literal values, so a
+# `$ref` written inside one is data, not a reference.
+openapi: "3.1.0"
+info:
+  title: Fixture API
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    A:
+      type: object
+      examples:
+        - $ref: '#/components/schemas/B'
+    B:
+      $ref: '#/components/schemas/A/examples/0'

@@ -5,8 +5,9 @@ covers: >
     What the package honors of the OpenAPI specification and what it does not:
     the four rules that govern every such decision, the support levels and their
     compatibility promise, the construct-by-construct matrix, how OpenAPI 3.0
-    and 3.1 differences are handled, the parser caveats behind these limits, and
-    the Laravel constraints the package deliberately does not fight.
+    and 3.1 differences are handled, the order in which a document is read and
+    why it cannot change, the parser caveats behind these limits, and the
+    Laravel constraints the package deliberately does not fight.
 read_before: >
     Implementing anything that reads a spec, registers a route, or changes what
     the package accepts from a specification file.
@@ -23,11 +24,15 @@ ecosystem honors the whole specification, and a Spec-First package that quietly 
 contract is worse than one that never claimed to read it — the whole promise is that the spec is the
 source of truth.
 
-> **Nothing described here is implemented yet.** The project is in Phase 1 of the
-> [Roadmap](./ROADMAP.md) and the package does not parse a spec or register a route. This document
-> states the **intent** for the first release and the reasoning behind it. Rows marked `Open` are
-> genuinely undecided and must not be presented as settled — the same discipline
-> [`STACK.md`](./STACK.md) applies to its own Status column.
+> **Most of this is intent rather than behaviour, and the difference is marked per section rather than
+> per file** — this document fills in gradually across Phase 1, so a single banner would be a little
+> more wrong with every release. Everything not named below states the **intent** for the first release
+> and the reasoning behind it. Rows marked `Open` are genuinely undecided and must not be presented as
+> settled — the same discipline [`STACK.md`](./STACK.md) applies to its own Status column.
+>
+> **Shipped:** [reading a document](#reading-a-document), and
+> [where the parser sits](#where-the-parser-sits-decided). Nothing yet hands a document to the OpenAPI
+> parser, and nothing registers a route.
 
 Four subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below
 still govern all of them:
@@ -125,13 +130,13 @@ The reasoning:
 
 The seam matters more than the pattern. Putting it in the wrong place duplicates work for no gain:
 
-| Concern                                  | Where it belongs     | Why                                                                                                                                                                                                         |
-|------------------------------------------|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Reading the file, YAML/JSON decoding     | **Shared**           | Byte-level work, identical in both versions. You also cannot know the version until the document is decoded — `openapi: 3.1.0` is a field *inside* the file. Dispatch happens after decoding, never before. |
-| Multi-file loading and `$ref` resolution | **Shared**           | JSON Reference mechanics are the same. The [allowlist](./REMOTE-REFERENCES.md) is a security policy, not a version concern.                                                                                 |
-| Schema interpretation                    | **Version-specific** | This is where 3.0 and 3.1 genuinely disagree. See the table below.                                                                                                                                          |
-| Document shape rules                     | **Version-specific** | `paths` is required in 3.0 and optional in 3.1; `webhooks` exists only in 3.1.                                                                                                                              |
-| Route registration                       | **Shared**           | It consumes the normalized output, and must never see a version number.                                                                                                                                     |
+| Concern                                  | Where it belongs     | Why                                                                                                                                |
+|------------------------------------------|----------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| Reading the file, YAML/JSON decoding     | **Shared**           | Byte-level work, identical in both versions. See [reading a document](#reading-a-document) for the order the steps run in and why. |
+| Multi-file loading and `$ref` resolution | **Shared**           | JSON Reference mechanics are the same. The [allowlist](./REMOTE-REFERENCES.md) is a security policy, not a version concern.        |
+| Schema interpretation                    | **Version-specific** | This is where 3.0 and 3.1 genuinely disagree. See the table below.                                                                 |
+| Document shape rules                     | **Version-specific** | `paths` is required in 3.0 and optional in 3.1; `webhooks` exists only in 3.1.                                                     |
+| Route registration                       | **Shared**           | It consumes the normalized output, and must never see a version number.                                                            |
 
 The test of a correct seam: **nothing downstream of the strategy knows which version was loaded.** If
 the router or the mocker has to ask, the normalization is incomplete.
@@ -149,25 +154,53 @@ the router or the mocker has to ask, the normalization is incomplete.
 | `webhooks`                              | Does not exist                           | Top-level                                     | See the [matrix](#the-support-matrix).                                                                               |
 | `$ref` siblings                         | Ignored                                  | `summary` and `description` allowed alongside | The parser models this (`Reference.php`), we must decide whether we honor it.                                        |
 
-### Open question: does the file parser belong inside the concrete strategy?
+### Where the parser sits: decided
 
-**Status: Open.** Raised, not settled.
-
-The instinct behind the question is right — a single parser for both versions *is* a constraint. But
-the constraint is not where it first appears. The YAML decoding is version-agnostic: `symfony/yaml`
-turns bytes into a PHP array without an opinion about OpenAPI, and you cannot dispatch on a version
-you have not decoded yet. The real limit is
-[cebe's **object model**](#parser-caveats) — its `Schema` class is shaped for 3.0 and lets 3.1
+The question was whether each concrete strategy should own its own file parser. The instinct behind it
+is right — a single parser for both versions *is* a constraint — but the constraint is not where it
+first appears. Decoding is version-agnostic: `symfony/yaml` turns bytes into a PHP array without an
+opinion about OpenAPI, and you cannot dispatch on a version you have not decoded yet. The real limit is
+[cebe's **object model**](#parser-caveats), whose `Schema` class is shaped for 3.0 and lets 3.1
 keywords through as raw arrays.
 
-So the recommendation is: **decode once in shared code, dispatch on the decoded version, and let the
-strategy own the interpretation.** But — and this is the part worth designing for now — the strategy
-interface should be expressed in **our own types, never in `cebe\openapi\` types**. That way a future
-version whose needs cebe cannot meet can bring its own parser behind the same interface, without the
-rest of the package noticing. The seam is cheap to build now and expensive to retrofit.
+**Decision: decode once in shared code, dispatch on the decoded version, and let the strategy own the
+interpretation — with the strategy interface expressed in our own types, never in `cebe\openapi\`
+ones.** A future version whose needs cebe cannot meet can then bring its own parser behind the same
+interface without anything else noticing.
 
-This needs a decision before the first strategy is written, and it belongs in
-[`STACK.md`](./STACK.md) once made.
+**And the containment has an assertion behind it.** The package is laid out so that one namespace,
+and only one, may see the parser:
+
+| Namespace     | Owns                                                                   | Built   |
+|---------------|------------------------------------------------------------------------|---------|
+| `Parsing\`    | Reading a document, and the only place `cebe\openapi\` may appear.     | Yes     |
+| `Contract\`   | Our own types — what a strategy produces and everything else consumes. | Not yet |
+| `Generation\` | Emitting PHP.                                                          | Not yet |
+| `Console\`    | The commands.                                                          | Not yet |
+| `Routing\`    | What the service provider loads at boot.                               | Not yet |
+
+Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document. It has one member
+today and is expected to stay small by design: this doctrine sends almost every check to
+[the doctor](./DOCTOR.md), which *reports*, and keeps here only what makes loading impossible at all.
+The one other guard already implied by a decision elsewhere is the check that vendored references are
+present, which [frozen by default](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default)
+requires.
+
+The architecture test in `tests/Unit/ArchitectureTest.php` asserts it directly:
+
+```php
+arch('the OpenAPI parser stays inside Parsing')
+    ->expect('cebe\openapi')
+    ->toOnlyBeUsedIn('Gcob\LaraSpecFirst\Parsing');
+```
+
+That is stricter than forbidding the parser to the request path, and simpler: there is one boundary to
+state rather than a list of namespaces to keep current as the package grows.
+
+**Honest about what it proves today.** No file in `src/` imports the parser yet, so the assertion is
+true by vacuity — it guards the door of a room that is still empty. It becomes binding with the first
+`use cebe\openapi\…` anyone writes, which is exactly when it is needed, and writing it now costs
+nothing where retrofitting it after the imports exist would cost an audit.
 
 ## Parser caveats
 
@@ -189,6 +222,59 @@ The behavior is what matters and it holds across the supported range; the line n
 | Remote `$ref` by URL is resolved transparently.                                                                                      | `Reader.php`, `ReferenceContext`                                                                                                      | Network I/O during boot, and an SSRF surface. See [below](./REMOTE-REFERENCES.md).                                                                                                                                                                                                                                                                                                                                                                     |
 | `paths` is not required for 3.1 documents.                                                                                           | `OpenApi.php:91`                                                                                                                      | Zero routes is a valid outcome, not an error.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | A pure `$ref` cycle exhausts memory instead of raising.                                                                              | Verified: `A: {$ref: B}` / `B: {$ref: A}` under `RESOLVE_MODE_ALL` dies in `JsonPointer.php:108` with *Allowed memory size exhausted* | The parser does carry cycle checks (`Reference.php:324,330`), but this shape recurses past them. A malformed document takes the process down rather than producing a diagnostic — the one failure mode the doctor cannot report on, because it never gets to return. **Detecting `$ref` cycles is our job, before the document reaches the parser.** An ordinary recursive *schema* is fine; the two are [different things](#references-and-security). |
+
+## Reading a document
+
+Before any rule above can apply, a file has to become a document. Four steps, and **the order is the
+design rather than an implementation detail** — each one is impossible before the one that precedes it,
+and the last one is impossible after.
+
+| Step       | What it does                                                                   | Why it sits there                                                                                                                                                                                                                          |
+|------------|--------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Decode** | YAML or JSON into an array.                                                    | Nothing can be decided about bytes. One code path serves both formats, because YAML 1.2 is a superset of JSON — branching on the file extension would only add a way to reject a correctly written document for carrying the wrong suffix. |
+| **Detect** | Read `openapi`, pick the [strategy](#handling-30-and-31-the-version-strategy). | The version is a field *inside* the file, so dispatch cannot happen any earlier than this.                                                                                                                                                 |
+| **Shape**  | Check the root keys the version requires.                                      | Needs the version to be known: `paths` is required at 3.0 and optional at 3.1, and that single difference is the whole reason this step is version-specific.                                                                               |
+| **Cycles** | Reject a `$ref` chain that never reaches content.                              | Last, and necessarily before the parser. See below.                                                                                                                                                                                        |
+
+**Why the cycle check cannot move.** A pure reference cycle is the one document fault the parser does
+not survive: it recurses past its own guards and exhausts memory rather than raising
+([parser caveats](#parser-caveats)). Once the parser holds the document there is no exception left to
+catch and no process left to report with — which makes it the only failure mode `spec:doctor` could
+never tell you about, because it never returns. So the check runs on the decoded array, before
+anything is handed over, and it cannot be folded into a wrapper around the parser.
+
+The check is deliberately narrow, and each limit below is stated in a test rather than in a comment.
+
+* **It knows only what a single file can tell it.** References into another file or over the network
+  are skipped, since resolving them needs the vendored copies that a later step loads, so a cycle
+  closing only across files is out of reach.
+* **A `$ref` inside a value is a value.** `example`, `default`, `enum` and `const` carry data, and
+  `$ref` is a legal key name in data — a specification describing an API that itself handles JSON
+  Schema will contain one. The check does not descend into them, because mistaking a literal for a
+  reference would turn away a valid contract, and this check refuses to load rather than reporting.
+* **`examples` is two things wearing one name, and the shape decides.** The JSON Schema keyword is a
+  *list* of literal values; the OpenAPI field of the same name — on Components, a Media Type Object, a
+  Parameter — is a *map* of Example Objects, and an Example Object may be a Reference Object. The list
+  is data and is skipped; the map is specification and is followed. Getting this wrong in the
+  permissive direction would hide a cycle on precisely the shape the parser dies on, so it is not a
+  case where the forgiving choice is the safe one.
+* **Inside that map, each Example Object's `value` is data and is not followed.** It is the one place
+  where meaning comes from position rather than from a name: `value` cannot be treated as data
+  everywhere, because `properties: {value: {…}}` is an ordinary schema. It matters because 3.1
+  recommends this long form over the `example` keyword, so it is the shape a specification whose
+  examples are themselves JSON Schema documents will actually use.
+* **The list of data-carrying keys reasons about names, never about positions.** A schema property
+  genuinely named `default`, `example`, `enum` or `const` is a Schema Object and is not followed. A
+  false negative, and the harmless direction, but real.
+* **A reference aimed at its own ancestor is not caught**, because chains are compared pointer by
+  pointer rather than by containment. Another false negative, and harmless for the same reason.
+
+**What comes out is narrow on purpose.** The result says the document *may be parsed* — not that it is
+correct. It has not been validated against the OpenAPI schema, no `$ref` has been resolved, and the 3.0
+and 3.1 spellings of the same idea are both still present exactly as written. Normalizing them is the
+[contract artifact](./CONTRACT-ARTIFACT.md)'s job, and reporting what is wrong with the contents is
+[the doctor](./DOCTOR.md)'s. Refusing to load and reporting a fault are different jobs, and only the
+first one happens here.
 
 ## Laravel constraints we do not fight
 

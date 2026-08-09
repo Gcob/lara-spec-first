@@ -1,0 +1,6 @@
+# Rejected at 3.0: `paths` is required at this version. Valid as 3.1 would be,
+# which is exactly the difference the strategies exist to carry.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0

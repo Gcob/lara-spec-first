@@ -1,0 +1,12 @@
+# Valid at 3.1 and impossible at 3.0: no `paths` at all. Produces zero routes,
+# which is an outcome rather than an error.
+openapi: "3.1.0"
+info:
+  title: Fixture API
+  version: 1.0.0
+webhooks:
+  userCreated:
+    post:
+      responses:
+        '200':
+          description: Acknowledged

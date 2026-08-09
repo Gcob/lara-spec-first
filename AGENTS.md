@@ -16,8 +16,9 @@ This package is **Spec-First**: the OpenAPI contract is the source of truth, and
 When a change would make the code authoritative over the spec, it is going the wrong way.
 
 The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/ROADMAP.md)). The package
-structure, the toolchain and the test suite are in place; the package itself does not parse a spec or
-register a route yet.
+structure, the toolchain and the test suite are in place. It now reads a specification file — decoding
+it, detecting its version and refusing what it cannot serve — but it does not yet hand anything to the
+OpenAPI parser, and it registers no routes.
 
 Verify your work with `just check` (or `composer check`) — Pint, Larastan, then Pest.
 

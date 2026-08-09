@@ -1,0 +1,14 @@
+# Rejected: a chain of Reference Objects that never reaches a schema. This is
+# the shape that exhausts the parser's memory rather than raising, so it has to
+# be caught before the document is handed over.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    A:
+      $ref: '#/components/schemas/B'
+    B:
+      $ref: '#/components/schemas/A'
