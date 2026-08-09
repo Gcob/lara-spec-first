@@ -179,16 +179,38 @@ accepts. **Decide it when there is generated output to look at**, not now.
 
 ## Where generated code lives
 
-**Decision: a config key, defaulting to `app/Integration` and the namespace `App\Integration`.**
+**Decision: a config key, defaulting to `app/Http/Generated` and the namespace `App\Http\Generated`.**
 
 Under `app/` because it is application code the developer will read, extend and debug, not a build
-artefact hidden in `bootstrap/`. Configurable because no default survives contact with every project.
+artefact hidden in `bootstrap/`. Under `app/Http/` because that is where Laravel already puts
+controllers, form requests and middleware — everything generated here is HTTP-layer machinery, and it
+belongs beside the concrete controllers that extend it rather than in a directory of its own
+invention. Configurable because no default survives contact with every project.
+
+**The name has a job.** It appears in every `use` statement, every stack trace and every IDE
+autocomplete for the lifetime of the project, so it should say *do not edit this* without anyone
+having to look it up. `Generated` does that in one word; a name like `Integration` says nothing about
+ownership, which is the only thing a reader needs from it at a glance.
+
+**One configurable root, with fixed sub-namespaces beneath it** — `Controllers`, `Data`, and whatever
+follows — rather than a separate config key per kind of output. A team that keeps its DTOs in
+`App\Data` will notice the difference, and it is a small one: these are files nobody may edit, so
+where they sit matters far less than for hand-written code. What one root buys is worth more:
+
+* **`.gitignore` is one line.** [The mechanism we chose](#which-generated-code-is-committed) works by
+  directory, so a split tree means several entries, and a consumer who forgets one ends up with half a
+  generated tree committed and half not.
+* **"Everything under here is generated" is only a rule while there is one *here*.**
+* **Widening later is a minor release, narrowing is a major one** — the same reasoning
+  [`STACK.md`](./STACK.md) applies to version support. If per-kind overrides turn out to be wanted,
+  they can be added without breaking anyone; starting with them and removing them cannot.
 
 Two details that will otherwise be discovered the hard way:
 
 * **PSR-4 requires the directory segment and the namespace segment to match, including case.** A
-  standard Laravel application maps `App\` to `app/`, so `app/integration` autoloads as
-  `App\integration` — legal PHP, and an immediate source of confusion. The default is `app/Integration`.
+  standard Laravel application maps `App\` to `app/`, so `app/http/generated` autoloads as
+  `App\http\generated` — legal PHP, and an immediate source of confusion. Every segment is capitalised
+  in the default for that reason.
 * **Path and namespace are two settings, not one.** Deriving one from the other means guessing at the
   consumer's autoload map. Both are configured, and the doctor checks they agree with what `composer`
   actually autoloads — a mismatch there produces class-not-found errors far from their cause.
@@ -227,8 +249,66 @@ longer autoloads under the expected name breaks the route. The
 [doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor) reports that as a missing
 implementation rather than letting it surface as a class-not-found at runtime.
 
-**Open:** whether `make:` can scaffold every unimplemented operation in one go, or deliberately only
-one at a time. Bulk is convenient and is also how a hundred empty classes get committed by accident.
+### Not a flag on `build`
+
+`build --make` is the tempting shortcut, and the analogy that suggests it does not survive contact.
+
+`make:model --controller --migration` creates several files **for one thing you just named**: one
+subject, one invocation, a human present. `build` does not operate on an operation you named — it
+operates on the whole specification. So `build --make` means *scaffold every missing implementation*,
+which is how a hundred empty classes get committed by accident.
+
+The deeper cost is that it makes the invariant conditional again: *the build never writes a file it
+does not own, unless you pass `--make`*. The architecture test stops being absolute, and the next
+feature has a precedent to point at.
+
+The counter-argument is real and worth recording, because it comes from this document's own logic: a
+flag typed by a human **is** explicit intent, exactly as [watch](#watching-the-design-loop) is. But
+that is precisely why watch is a separate command rather than a flag — a flag ends up in a Procfile or
+a deploy script, and then it is creating files unattended. Same risk, same answer. It is also why
+watch cannot scaffold either: watch must never produce output `build` would not.
+
+### The build names the command instead of running it
+
+What the shortcut was really asking for is ergonomics, and those can be had without touching the
+invariant. **When the build finds operations with no implementation, it names the command rather than
+running it** — the same pattern as the
+[rename report naming the files to fix](#how-it-says-it).
+
+The trap is printing one line per operation. A specification with two hundred operations, on the day
+somebody adopts this package, would answer with two hundred commands — which is not a list, it is a
+wall, arriving at the worst possible moment. So the build **summarises, and the
+[doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor) holds the full list**, which is the
+division of labour those two commands already have.
+
+It summarises **by `tags`**, because the specification already carries the author's own grouping and
+inventing a second one would be worse than using theirs:
+
+```
+47 operations have no implementation:
+  Users (12)   php artisan spec:make --tag=Users
+  Orders (8)   php artisan spec:make --tag=Orders
+  … 5 more tags. Full list: php artisan spec:doctor
+```
+
+Which settles the bulk question that was open here, and revises the earlier reasoning: the objection
+was never to bulk itself, it was to `build` doing it as a side effect. **`spec:make --tag=` and
+`--all` are legitimate**, because a human typed them and creating files is that command's entire job.
+Two guards keep the hundred-empty-classes scenario away: bulk is never the default, and it lists what
+it is about to create and asks before doing it.
+
+Adopting tag by tag is also the shape [Phase 3](./ROADMAP.md) wants — a migration that proceeds route
+by route rather than in one leap.
+
+### Per-type flags belong here
+
+The `make:model -mc` instinct is right; it just attaches to this command rather than to `build`. Once
+`make:` is the thing that takes an operation's name, flags for what to create alongside it are natural
+and bounded — a test, a DTO subclass, a policy — because they all concern the one operation you named.
+
+**Open:** which types earn a flag. The list should be short, and each entry has to be something a
+developer genuinely wants *per operation* rather than something the build already produces for the
+whole contract.
 
 ## Naming, and the rename problem
 
@@ -434,8 +514,7 @@ missing or malformed.
 
 * The command names, and the generated namespace and directory. All public API surface under
   [rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
-* Whether [`make:`](#scaffolding-is-a-make-command-not-a-build-step) scaffolds one operation at a time
-  or all of them at once.
+* Which [per-type flags](#per-type-flags-belong-here) `make:` accepts.
 * Whether the build emits [two layers](#the-idea-worth-designing-for-two-layers), and if so which one
   a consumer is expected to ignore.
 * Whether fetching a *missing* reference and refreshing a *stale* one share one flag or take two.

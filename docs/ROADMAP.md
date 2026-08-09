@@ -23,8 +23,9 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Ship the build command: resolve the spec into the contract artifact and generate the routes and
   the abstract controllers (Generated vs. Extended pattern). Safe to re-run, and it writes only files
   it owns. See [`CODE-GENERATION.md`](./CODE-GENERATION.md).
-- [ ] Ship the `make:`-style command that scaffolds the concrete class for an operation, once, on
-  request — the only command that creates a file the developer will own. See
+- [ ] Ship the `make:`-style command that scaffolds the concrete class for one named operation, on
+  request — the only command that creates a file the developer will own. The build never scaffolds; it
+  prints the commands to run. See
   [scaffolding](./CODE-GENERATION.md#scaffolding-is-a-make-command-not-a-build-step).
 - [ ] Ship the diagnostic command — `nginx -t` for your contract: what the package will honor, what it
   will not, and the routing table that results. It belongs in this phase, not with the other Artisan
