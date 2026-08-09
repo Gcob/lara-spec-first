@@ -39,7 +39,7 @@ files completely and never opens the others.
 when one was missing, which sounded harmless and was not: "the build never writes a file it does not
 own, except when it does" is a rule that erodes, and every later feature would have argued for its own
 carve-out. Creating a class a human will own is
-[a different command's job](#scaffolding-is-a-make-command-not-a-build-step).
+[a different command's job](#scaffolding-is-specmake-not-a-build-step).
 
 ## The runtime never sees the spec
 
@@ -79,7 +79,7 @@ What follows from it:
 |---------------------|------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | **Generated**       | Rewritten from scratch on every build.                                                               | The package. Never edit — your edit is gone on the next run, by design.                                       |
 | **Vendored inputs** | Never fetched unless asked; [frozen by default](#remote-references-during-a-build-frozen-by-default). | Upstream. See [remote references](./OPENAPI-SUPPORT.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
-| **Your classes**    | Created once by [`make:`](#scaffolding-is-a-make-command-not-a-build-step), on request. The build never touches them. | You, entirely, from the moment the file exists.                                                              |
+| **Your classes**    | Created once by [`spec:make`](#scaffolding-is-specmake-not-a-build-step), on request. The build never touches them. | You, entirely, from the moment the file exists.                                                              |
 
 The generated kind should be unmistakable at a glance and at grep-time: its own directory, its own
 namespace, and a header on every file saying it is generated and will be overwritten. A developer
@@ -100,7 +100,7 @@ a compile-time error in the code that implements it, not a 500 in production.** 
 generated side must be free to change shape without asking permission. It can only be free if nobody
 has hand-edits in it to protect.
 
-## The build command
+## The build command: `spec:build`
 
 One command, run after any change to the specification, producing every derived output: the
 [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact), the routes, the abstract controllers,
@@ -142,7 +142,7 @@ already vendored. Working name `--update-refs`, matching the install/update voca
 Whether missing and stale documents need *separate* flags is open — one flag is simpler, two let you
 add a reference without silently refreshing the others.
 
-None of which should make designing an API tedious. That is what [watch mode](#watching-the-design-loop)
+None of which should make designing an API tedious. That is what [watch mode](#watching-specwatch)
 is for, and it is a different command precisely so that `build` can stay this strict.
 
 ### Which generated code is committed
@@ -159,15 +159,15 @@ lock. Ignoring that directory does not save you noise, it removes the only mecha
 build reproducible and an old release deployable. The doctor should detect it and report it as a
 finding rather than let it be discovered during an incident.
 
-#### The idea worth designing for: two layers
+#### Two layers
 
-Generating **an interface plus an abstract class or trait** splits the output along the line that
-matters for this question:
+**Decision: the build emits an interface plus an abstract class**, splitting the output along the line
+that matters:
 
 | Layer | Carries | Naturally |
 |---|---|---|
 | **Interface** | The contract surface: method signatures, DTO shapes, the things a change to the spec actually changes. | Committed — this is the diff a reviewer wants, and it is small. |
-| **Abstract class or trait** | The mechanics that implement the interface. Predictable, derivable, and noisy in a diff. | A candidate for ignoring, since an idempotent build reproduces it exactly. |
+| **Abstract class** | The mechanics that implement the interface. Predictable, derivable, and noisy in a diff. | A candidate for ignoring, since an idempotent build reproduces it exactly. |
 
 It fits the [split](#the-split-is-what-makes-a-contract-change-loud) rather than complicating it: the
 interface is what a human subclass is checked against, so the compile-time error survives even if the
@@ -175,7 +175,13 @@ abstract layer never enters version control.
 
 The cost of ignoring the second layer is that a fresh clone does not analyse, autocomplete or run
 until the build has been run once — the `composer install` bargain, which this ecosystem already
-accepts. **Decide it when there is generated output to look at**, not now.
+accepts. Which layer a given project chooses to ignore stays that project's call: this is still
+[`.gitignore`'s decision](#which-generated-code-is-committed), not a config key.
+
+**Open:** whether the second layer is an abstract class or a trait. An abstract class gives one
+inheritance slot to the developer and takes it; a trait leaves it free and composes, at the cost of
+not being able to declare abstract members quite as directly. It is a question best settled against
+real generated output.
 
 ## Where generated code lives
 
@@ -218,12 +224,12 @@ Two details that will otherwise be discovered the hard way:
 The config key names and the default are public API surface under
 [rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
 
-## Scaffolding is a `make:` command, not a build step
+## Scaffolding is `spec:make`, not a build step
 
-**Decision: the build never creates a class you will own. A `make:`-style command does, on request.**
+**Decision: the build never creates a class you will own. `spec:make` does, on request.**
 
-Laravel already has this shape and every Laravel developer already has the reflex: `make:` creates one
-file, when you ask, once. Reusing it costs no new concept — and it removes the only exception the
+Laravel already has this shape and every Laravel developer already has the reflex: a `make` creates one
+file, when you ask, once. Reusing the word costs no new concept — and it removes the only exception the
 [invariant](#the-invariant-a-build-never-destroys-human-work) ever had.
 
 Nothing forces the build to do it instead. An operation with no implementation is not a broken
@@ -249,13 +255,13 @@ longer autoloads under the expected name breaks the route. The
 [doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor) reports that as a missing
 implementation rather than letting it surface as a class-not-found at runtime.
 
-### Not a flag on `build`
+### Not a flag on `spec:build`
 
-`build --make` is the tempting shortcut, and the analogy that suggests it does not survive contact.
+`spec:build --make` is the tempting shortcut, and the analogy that suggests it does not survive contact.
 
 `make:model --controller --migration` creates several files **for one thing you just named**: one
 subject, one invocation, a human present. `build` does not operate on an operation you named — it
-operates on the whole specification. So `build --make` means *scaffold every missing implementation*,
+operates on the whole specification. So `spec:build --make` means *scaffold every missing implementation*,
 which is how a hundred empty classes get committed by accident.
 
 The deeper cost is that it makes the invariant conditional again: *the build never writes a file it
@@ -263,7 +269,7 @@ does not own, unless you pass `--make`*. The architecture test stops being absol
 feature has a precedent to point at.
 
 The counter-argument is real and worth recording, because it comes from this document's own logic: a
-flag typed by a human **is** explicit intent, exactly as [watch](#watching-the-design-loop) is. But
+flag typed by a human **is** explicit intent, exactly as [watch](#watching-specwatch) is. But
 that is precisely why watch is a separate command rather than a flag — a flag ends up in a Procfile or
 a deploy script, and then it is creating files unattended. Same risk, same answer. It is also why
 watch cannot scaffold either: watch must never produce output `build` would not.
@@ -303,7 +309,7 @@ by route rather than in one leap.
 ### Per-type flags belong here
 
 The `make:model -mc` instinct is right; it just attaches to this command rather than to `build`. Once
-`make:` is the thing that takes an operation's name, flags for what to create alongside it are natural
+`spec:make` is the thing that takes an operation's name, flags for what to create alongside it are natural
 and bounded — a test, a DTO subclass, a policy — because they all concern the one operation you named.
 
 **Open:** which types earn a flag. The list should be short, and each entry has to be something a
@@ -360,7 +366,7 @@ That turns the output from *something was renamed* into *these four files refere
 longer exists*, which is the difference between a notice and a fix. It is a token scan over PHP the
 consumer already has — no AST work, no runtime reflection, nothing to keep in sync.
 
-In [watch](#watching-the-design-loop) the same report arrives while the developer is still holding the
+In [watch](#watching-specwatch) the same report arrives while the developer is still holding the
 context in their head, which is when a rename costs almost nothing to absorb. That is the strongest
 argument for watch mode existing at all.
 
@@ -387,22 +393,27 @@ What the fallback genuinely costs is readability: a derived name will never read
 `listActiveSubscriptions`. That is an argument for writing `operationId`, not against having a
 fallback, and it is the kind of nudge the doctor should make rather than the build enforce.
 
-**Proposed, open:** require `operationId` on `public` + `stable` operations only. A stable operation's
-generated class name is a promise made to your own codebase, so it deserves to be chosen rather than
-computed — while a `beta` or `internal` operation can be sketched without ceremony. It reuses the
-[lifecycle](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us) vocabulary instead of
-inventing a rule of its own.
+**Decision: `operationId` is required on `public` + `stable` operations, and optional everywhere else.**
+A stable operation's generated class name is a promise made to your own codebase, so it deserves to be
+chosen rather than computed — while a `beta` or `internal` operation can be sketched without ceremony.
+The rule reuses the [lifecycle](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us)
+vocabulary instead of inventing one of its own, and it lands where it costs least: nobody meets it
+while exploring, and everybody meets it at the moment they promise an endpoint to someone.
+
+It also means promoting an operation to `stable` is the moment its name gets chosen deliberately —
+which is exactly when a derived name would otherwise harden into something nobody picked and nobody
+can now change without a major version.
 
 **Open:** collisions between two `operationId` values that differ only in characters PHP cannot use in
 an identifier, and whether the build refuses them outright.
 
-## Watching: the design loop
+## Watching: `spec:watch`
 
 A build that is strict on purpose must not make API design tedious. Someone actively shaping a
 contract changes files constantly, and asking them to type a fetch flag between every save is how a
 good rule earns a bad reputation.
 
-**Decision: a separate `watch` command owns the development loop.** Not a flag on `build`.
+**Decision: a separate command, `spec:watch`, owns the development loop.** Not a flag on `spec:build`.
 
 The reason is the one that makes the whole scheme safe, and it is a genuinely better answer than a
 config key: **a command is intent that cannot be forgotten.** A config option saying "auto-fetch is
@@ -476,7 +487,7 @@ the design:
 * **The behaviour is yours.** Hydration is where real applications differ, and a generated DTO you
   cannot teach to build itself from your model is a generated DTO people will wrap or abandon.
 
-The [two-layer split](#the-idea-worth-designing-for-two-layers) resolves this cleanly: the generated
+The [two-layer split](#two-layers) resolves this cleanly: the generated
 layer declares the shape and a default `from()`; your class overrides `from()` and adds whatever else
 it needs. Hackable where it should be, fixed where the contract speaks.
 
@@ -512,15 +523,14 @@ missing or malformed.
 
 ## Open questions
 
-* The command names, and the generated namespace and directory. All public API surface under
+* The config key names for the [generated location](#where-generated-code-lives) — the location's
+  *default* is decided, what the keys are called is not. Public API surface under
   [rule 4](./OPENAPI-SUPPORT.md#the-four-rules-that-govern-this-document).
-* Which [per-type flags](#per-type-flags-belong-here) `make:` accepts.
-* Whether the build emits [two layers](#the-idea-worth-designing-for-two-layers), and if so which one
-  a consumer is expected to ignore.
+* Which [per-type flags](#per-type-flags-belong-here) `spec:make` accepts.
+* Whether the second of the [two layers](#two-layers) is an abstract class or a trait.
 * Whether fetching a *missing* reference and refreshing a *stale* one share one flag or take two.
-* What [watch](#watching-the-design-loop) takes as parameters — in particular how "refresh references
+* What [watch](#watching-specwatch) takes as parameters — in particular how "refresh references
   on every request" is asked for, and how the mode announces itself.
-* Whether `operationId` becomes [required for `public` + `stable` operations](#when-operationid-is-absent-derive-from-method-and-path).
 * Whether `spatie/laravel-data` becomes a dependency or only an influence.
 * **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated
   validation are Phase 2 — the same build command doing more, not a new one. See the

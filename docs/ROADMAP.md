@@ -16,18 +16,23 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 *Goal: Prove the core concept with a working proof-of-concept.*
 - [x] Initialize package structure: `composer.json`, PSR-4 autoloading, the service provider skeleton
   with package discovery, and the development toolchain (Docker, Pest, Pint, Larastan, `just`).
-- [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs.
+- [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs,
+  behind [one strategy per OpenAPI minor version](./OPENAPI-SUPPORT.md#handling-30-and-31-the-version-strategy)
+  so that nothing downstream ever knows which version was loaded.
+- [ ] Produce the [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact): the normalised,
+  resolved, version-neutral representation of what the package honours. It is the strategy's output and
+  what `spec:doctor` reads, so it is needed here — long before the breaking-change enforcement it will
+  later serve as a baseline for.
 - [ ] Build the core Service Provider that registers the generated routes. It **does not read the
   spec** — only the build commands do. Explicit over dynamic: see
   [the runtime never sees the spec](./CODE-GENERATION.md#the-runtime-never-sees-the-spec).
-- [ ] Ship the build command: resolve the spec into the contract artifact and generate the routes and
+- [ ] Ship `spec:build`: resolve the spec into the contract artifact and generate the routes and
   the abstract controllers (Generated vs. Extended pattern). Safe to re-run, and it writes only files
   it owns. See [`CODE-GENERATION.md`](./CODE-GENERATION.md).
-- [ ] Ship the `make:`-style command that scaffolds the concrete class for one named operation, on
-  request — the only command that creates a file the developer will own. The build never scaffolds; it
+- [ ] Ship `spec:make`, which scaffolds the concrete class for one named operation, on request — the only command that creates a file the developer will own. The build never scaffolds; it
   prints the commands to run. See
-  [scaffolding](./CODE-GENERATION.md#scaffolding-is-a-make-command-not-a-build-step).
-- [ ] Ship the diagnostic command — `nginx -t` for your contract: what the package will honor, what it
+  [scaffolding](./CODE-GENERATION.md#scaffolding-is-specmake-not-a-build-step).
+- [ ] Ship `spec:doctor` — `nginx -t` for your contract: what the package will honor, what it
   will not, and the routing table that results. It belongs in this phase, not with the other Artisan
   commands: it is what makes "the spec is the source of truth" verifiable rather than asserted. See
   [the doctor](./OPENAPI-SUPPORT.md#where-the-diagnostics-go-the-doctor).
@@ -42,10 +47,10 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
   controllers. Generation and validation are not new commands: they are the Phase 1 build and the
   Phase 1 doctor, doing more. See [`CODE-GENERATION.md`](./CODE-GENERATION.md#response-dtos).
 - [ ] Support OpenAPI versioning directories (`v1/`, `v2/`).
-- [ ] Ship the `watch` command: the design loop, rebuilding on change and allowed to fetch references
-  that `build` deliberately refuses to. A separate command because a running process states intent
+- [ ] Ship `spec:watch`: the design loop, rebuilding on change and allowed to fetch references that
+  `spec:build` deliberately refuses to. A separate command because a running process states intent
   every time and dies with the terminal, where a config key would quietly follow you into CI. See
-  [watching](./CODE-GENERATION.md#watching-the-design-loop).
+  [watching](./CODE-GENERATION.md#watching-specwatch).
 - [ ] Spec-driven test data, so that testing an endpoint does not start by writing a factory. The
   schema already states the shape, the constraints and often the examples — the package should be able
   to produce a conforming payload from it. **Where this stops matters and must be said plainly:** a
@@ -68,10 +73,8 @@ Deliberately not slotted into a phase yet: a rule that fails somebody's build ha
 it ships, and it depends on groundwork the earlier phases have not laid. See
 [lifecycle](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us).
 
-- [ ] The [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact): a normalised, resolved,
-  version-neutral representation of what the package honours, committed. The baseline to diff against,
-  the reviewable effective contract, and what the doctor reads — one file. Comparisons are made
-  between artifacts, never between specification documents.
+- [ ] Diff the Phase 1 [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact) against its
+  committed predecessor. Comparisons are made between artifacts, never between specification documents.
 - [ ] The breaking-change table, direction-aware for requests and responses, versioned as public API.
 - [ ] Fail the build on a breaking change to a `stable` operation, naming the `info.version` bump that
   would make it legitimate.

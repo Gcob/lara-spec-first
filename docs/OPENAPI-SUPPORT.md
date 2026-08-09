@@ -78,7 +78,7 @@ package that shouts on every request, and a tool that shouts constantly gets its
 at which point the diagnostic exists and nobody reads it, which is rule 2 defeated by its own
 enforcement.
 
-**Decision: the diagnostics get their own command. `nginx -t`, not a log line.**
+**Decision: the diagnostics get their own command, `spec:doctor`. `nginx -t`, not a log line.**
 
 The model is deliberate. `nginx` does not warn you about your configuration on every request; it gives
 you one command that answers *"is this configuration good?"*, exits non-zero when it is not, and is
@@ -185,10 +185,6 @@ Provisional, and expected to grow one section per honored construct:
 
 #### Open questions on the doctor
 
-* **The command name.** One command is settled; what it is called is not. Command signatures are
-  public API surface under [rule 4](#the-four-rules-that-govern-this-document), so this is worth
-  getting right once. No name is committed to anywhere yet — the [Roadmap](./ROADMAP.md) describes the
-  command without naming it, deliberately.
 * **The exit codes.** That document faults and package limits exit differently is settled. The numbers
   are not.
 * **What still happens at boot.** `Rejected` fails at boot unless
@@ -534,6 +530,7 @@ to express: whether an operation is promised at all.
 | `x-sunset` approaching is a warning              | With a configurable horizon, so it lands in CI while there is still time to act.                                                                                                     |
 | An unrecognised `x-lifecycle` value is a finding | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                  |
 | `beta` operations are listed                     | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                         |
+| A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path). |
 
 ### Unstable by default, and what `stable` costs us
 
@@ -779,13 +776,13 @@ current intent for the first release, not shipped behaviour.
 | `openapi` 3.1.x                         | Supported | Dispatches to the 3.1 strategy.                                                                                                                                                                                                      |
 | Any other version                       | Rejected  | Including 2.x. Convert before adopting.                                                                                                                                                                                              |
 | `info`, `externalDocs`                  | Ignored   | Documentation metadata with no routing effect. `info.version` becomes load-bearing only for [breaking-change enforcement](#unstable-by-default-and-what-stable-costs-us).                                                            |
-| `tags`                                  | Open      | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./CODE-GENERATION.md#the-build-names-the-command-instead-of-running-it). |
+| `tags`                                  | Partial   | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./CODE-GENERATION.md#the-build-names-the-command-instead-of-running-it). |
 | `jsonSchemaDialect` (3.1)               | Open      | Only the default dialect is realistically honorable.                                                                                                                                                                                 |
 | `servers`                               | Open      | See [still to discuss](#still-to-discuss).                                                                                                                                                                                           |
 | `security` (root)                       | Open      |                                                                                                                                                                                                                                      |
 | `webhooks` (3.1)                        | Open      |                                                                                                                                                                                                                                      |
-| `x-` extensions                         | Ignored   | Preserved by the parser and readable, but the package acts on none of them — except the two it defines itself, below.                                                                                                                |
-| `x-audience`, `x-lifecycle`, `x-sunset` | Open      | The extensions this package defines. Rules and doctor checks: [lifecycle](#lifecycle-the-extensions-this-package-defines).                                                                                                           |
+| `x-` extensions                         | Ignored   | Preserved by the parser and readable, but the package acts on none of them — except the three it defines itself, on the row beneath.                                                                                                 |
+| `x-audience`, `x-lifecycle`, `x-sunset` | Partial   | The extensions this package defines: read and checked by the doctor. The breaking-change enforcement `x-lifecycle` gates is [not phased yet](./ROADMAP.md). Rules: [lifecycle](#lifecycle-the-extensions-this-package-defines).      |
 
 ### Paths and operations
 
@@ -800,8 +797,8 @@ current intent for the first release, not shipped behaviour.
 | `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                         |
 | `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                                                                             |
 | Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                                                                         |
-| `operationId`                           | Open      | Names the generated controller and method.                                                                                                                           |
-| `deprecated`                            | Open      | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](#lifecycle-the-extensions-this-package-defines). |
+| `operationId`                           | Partial   | Names the generated controller and method. **Required on `public` + `stable` operations**; elsewhere the [method and path](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path) stand in for it.              |
+| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](#lifecycle-the-extensions-this-package-defines). |
 | `callbacks`                             | Open      |                                                                                                                                                                      |
 
 ### Parameters, bodies, responses
