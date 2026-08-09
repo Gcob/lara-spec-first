@@ -28,6 +28,9 @@ Homestead.json
 .phpunit.result.cache
 .phpunit.cache/
 
+# PHPStan result cache (phpstan.neon.dist sets tmpDir here).
+/build/
+
 # Local override of phpstan.neon.dist, for trying a level or a rule without
 # committing it.
 phpstan.neon

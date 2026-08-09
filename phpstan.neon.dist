@@ -11,3 +11,7 @@ parameters:
         # tests assert conventions rather than behaviour and contain no logic
         # worth analysing, so excluding the file costs nothing.
         - tests/Unit/ArchitectureTest.php
+    # Persist the result cache in the project directory. The container is
+    # disposable (`docker compose run --rm`), so without this every run
+    # re-analyses everything from scratch. `just clean` removes it.
+    tmpDir: build/phpstan

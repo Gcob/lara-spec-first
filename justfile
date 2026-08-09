@@ -85,23 +85,13 @@ analyse:
 check:
     {{php}} composer check
 
-# Your normal install resolves to the newest supported Laravel, so anything
-# that only exists in 13 passes locally and breaks for everyone else. Run this
-# before opening a pull request.
-#
-# Written as one shell block on purpose: just aborts a recipe at the first
-# failing line, so a plain three-line recipe would skip the restore exactly when
-# the check fails — leaving you silently on Laravel 12 for everything after.
+# The orchestration lives in scripts/check-lowest.sh, invoked by the Composer
+# script, so contributors working natively get the same command. Run this before
+# opening a pull request.
 
-# Run the checks against the OLDEST supported Laravel (12), then restore 13.
-check-laravel12:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    {{php}} composer update --with-all-dependencies "orchestra/testbench:^10.11"
-    {{php}} composer check
-    status=$?
-    {{php}} composer update --with-all-dependencies
-    exit $status
+# Run the checks against the LOWEST supported versions, then restore the newest.
+check-lowest:
+    {{php}} composer check:lowest
 
 # Workbench is a real Laravel app living in workbench/, with this package
 # loaded. Use it to exercise routes by hand; the Pest suite remains the fast
@@ -122,4 +112,4 @@ shell:
 # Remove the container, its volumes, and the installed dependencies.
 clean:
     docker compose down --volumes --remove-orphans
-    rm -rf vendor composer.lock
+    rm -rf vendor composer.lock build

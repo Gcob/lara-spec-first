@@ -26,9 +26,17 @@ class User extends Authenticatable
     ];
 
     /**
-     * Never serialised, whatever the OpenAPI contract says. This is a floor,
-     * not a description of any response shape — see docs/STACK.md for why the
-     * spec, not the model, defines what an endpoint returns.
+     * Never serialised, whatever the OpenAPI contract says.
+     *
+     * This is a floor, not a description of any response shape: the spec
+     * defines what an endpoint returns. Keeping it matters precisely because
+     * this package is meant to live alongside legacy code — controllers, jobs
+     * and exports that never pass through the spec at all, where nothing else
+     * would stop a password hash from leaving.
+     *
+     * The rule of thumb: $hidden holds only what appears in no response, ever.
+     * The moment it varies the shape between endpoints, it is doing the spec's
+     * job and has become the problem.
      *
      * @var list<string>
      */

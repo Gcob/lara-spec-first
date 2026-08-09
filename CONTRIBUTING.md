@@ -83,8 +83,8 @@ separate Laravel project for.
 
 ```bash
 just serve                                          
-# or:
-docker compose run --rm --service-ports php composer serve
+# or
+composer serve
 ```
 
 Then open <http://localhost:13100>. Set `SERVE_PORT` if that port is taken.
@@ -111,8 +111,18 @@ fatals. It has been rewritten to the property form, which works on both.
 Check the lower bound before opening a pull request:
 
 ```bash
-just check-laravel12                                # runs the suite on Laravel 12, then restores 13
+just check-lowest
+# or
+composer check:lowest                              
 ```
+
+It installs the lowest **Laravel and Testbench** this package allows, runs the full check suite against
+them, and restores the newest. It reports failure if the downgrade or the restore itself fails, so a
+pass always means the lower bound was really exercised.
+
+The development tooling — Pint, Larastan, Pest — is deliberately left at its current version. Otherwise
+a minor Pint release that changes a formatting rule would turn this red while the Laravel lower bound is
+perfectly healthy, and a failure here needs to mean one thing only: **the lower bound is broken**.
 
 Two habits that prevent most of these:
 
@@ -127,8 +137,9 @@ Two habits that prevent most of these:
 Run the full check suite:
 
 ```bash
-just check                                    # or:
-docker compose run --rm php composer check
+just check                                    
+# or
+composer check
 ```
 
 It covers:
