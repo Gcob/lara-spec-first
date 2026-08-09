@@ -38,6 +38,10 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Answer unimplemented operations with `501`, from a package-provided handler that names the
   `spec:make` command to run. See
   [501](./CODE-GENERATION.md#an-unimplemented-operation-answers-501).
+- [ ] **Remote reference vendoring.** `lara-spec-first.remote_references.allowed_hosts` exists and
+  refuses to pretend: naming a host throws until this lands. What it needs is the fetch itself, the
+  vendored copy committed beside the specification, and the resolution of the reference against that
+  copy rather than the network. See [remote references](./REMOTE-REFERENCES.md).
 - [ ] A conformance suite over the reading engine, organized by equivalence class.
   **Not routine coverage — a deliberate answer to a risk already observed.** Two defects with no
   symptom have been found in the OpenAPI parser within days of first use, on a surface no wider than

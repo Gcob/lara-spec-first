@@ -1,0 +1,17 @@
+# Refused: the parser resolves a URL by fetching it, so without a guard the
+# first document handed over decides where the application connects.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: 'https://example.com/schemas.yaml#/components/schemas/User'

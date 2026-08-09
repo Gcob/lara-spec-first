@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst;
 
+use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
+use Illuminate\Contracts\Config\Repository;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -14,22 +17,89 @@ use Illuminate\Support\ServiceProvider;
  */
 class LaraSpecFirstServiceProvider extends ServiceProvider
 {
+    private const string CONFIG_FILE = __DIR__.'/../config/lara-spec-first.php';
+
     /**
      * Bind the package's services into the container.
      *
-     * Empty on purpose, and it will stay that way for the reading side: the
-     * runtime never sees a specification, so nothing here may reach for the
-     * reader or the parser. What lands here is what boot() needs to register
-     * generated routes.
+     * Nothing here may reach for the reader or the parser: the runtime never
+     * sees a specification, so what belongs in this method is configuration and
+     * the wiring the build-time commands will resolve.
      *
      * @see docs/CODE-GENERATION.md — "The runtime never sees the spec"
      */
-    public function register(): void {}
+    public function register(): void
+    {
+        $this->mergeConfigDeeply(self::CONFIG_FILE, 'lara-spec-first');
+
+        // Constructed with the configured hosts rather than reading config
+        // itself, so the guard stays a plain object a unit test can build.
+        $this->app->bind(RemoteReferenceGuard::class, static function (Application $app): RemoteReferenceGuard {
+            /** @var list<string> $hosts */
+            $hosts = $app->make(Repository::class)->get('lara-spec-first.remote_references.allowed_hosts', []);
+
+            return new RemoteReferenceGuard($hosts);
+        });
+    }
+
+    /**
+     * Merge the package's defaults under whatever the application published.
+     *
+     * Laravel's own `mergeConfigFrom()` merges one level deep, which is enough
+     * for a flat file and wrong for a nested one: an application that publishes
+     * the config and edits a single nested value replaces our whole sub-array,
+     * and every key added to that section in a later release silently arrives
+     * missing. A published config would then rot with each upgrade, and nothing
+     * would say so.
+     */
+    private function mergeConfigDeeply(string $path, string $key): void
+    {
+        /** @var array<string, mixed> $defaults */
+        $defaults = require $path;
+
+        $config = $this->app->make(Repository::class);
+
+        /** @var array<string, mixed> $published */
+        $published = $config->get($key, []);
+
+        $config->set($key, self::deepMerge($defaults, $published));
+    }
+
+    /**
+     * Published values win; defaults fill in what they leave out.
+     *
+     * Only associative arrays are descended into. A list is a value the
+     * application chose in full — merging `allowed_hosts` element by element
+     * would make a host impossible to remove, which is the opposite of what a
+     * setting named after trust should do.
+     *
+     * @param  array<string, mixed>  $defaults
+     * @param  array<string, mixed>  $published
+     * @return array<string, mixed>
+     */
+    private static function deepMerge(array $defaults, array $published): array
+    {
+        foreach ($published as $key => $value) {
+            $default = $defaults[$key] ?? null;
+
+            $defaults[$key] = is_array($default) && $default !== [] && ! array_is_list($default) && is_array($value)
+                ? self::deepMerge($default, $value)
+                : $value;
+        }
+
+        return $defaults;
+    }
 
     /**
      * Boot the package once every provider has been registered.
      *
-     * Contract-driven route registration will happen here.
+     * Contract-driven route registration will happen here, loading generated
+     * PHP rather than reading a specification.
      */
-    public function boot(): void {}
+    public function boot(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->publishes([self::CONFIG_FILE => $this->app->configPath('lara-spec-first.php')], 'lara-spec-first-config');
+        }
+    }
 }

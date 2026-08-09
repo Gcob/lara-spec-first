@@ -11,7 +11,9 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
+use Gcob\LaraSpecFirst\Parsing\Exceptions\ParserFailedException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
+use Throwable;
 
 /**
  * Turns a read document into the operations of the contract.
@@ -116,8 +118,16 @@ final readonly class OperationExtractor
      */
     private function parse(ParsableSpecDocument $document): OpenApi
     {
-        $parsed = new OpenApi($document->raw);
-        $parsed->resolveReferences(new ReferenceContext($parsed, $document->path));
+        try {
+            $parsed = new OpenApi($document->raw);
+            $parsed->resolveReferences(new ReferenceContext($parsed, $document->path));
+        } catch (Throwable $failure) {
+            // Everything `cebe\openapi\` throws extends plain \Exception and
+            // implements nothing of ours, so an unwrapped one would travel
+            // through a consumer's `catch (SpecException)` untouched. Containing
+            // the parser has to cover what it throws, not only what it returns.
+            throw ParserFailedException::wrap($document->path, $failure);
+        }
 
         return $parsed;
     }
