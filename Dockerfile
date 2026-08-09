@@ -26,6 +26,12 @@ RUN apk add --no-cache --virtual .build-deps ${PHPIZE_DEPS} \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# The base image ships memory_limit=128M, which PHPStan exceeds while analysing
+# a Laravel application graph — it crashes its worker with a bare
+# "child process error (exit code 255)" that names no cause. Development tooling
+# needs headroom; this is a CLI container, never a production runtime.
+RUN printf 'memory_limit = 512M\n' > /usr/local/etc/php/conf.d/zz-development.ini
+
 # Composer runs as the host user (see compose.yaml), which has no home directory
 # inside the container. Point its cache somewhere writable instead.
 ENV COMPOSER_HOME=/tmp/composer \

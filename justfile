@@ -47,8 +47,14 @@ php := "docker compose run --rm php"
 default:
     @just --list
 
-# Build the development image. PHP version mirrors a CI matrix cell.
-build php_version="8.3":
+# Named `image`, not `build`, so it is never confused with `build-workbench`,
+# which rebuilds the Workbench application rather than the container.
+#
+# NOTE: `just --list` shows only the LAST comment line above a recipe. Keep the
+# one-line summary immediately above it, and any explanation above a blank line.
+
+# Build the development Docker image. PHP version mirrors a CI matrix cell.
+image php_version="8.3":
     PHP_VERSION={{php_version}} docker compose build
 
 # Install dependencies.
@@ -78,6 +84,36 @@ analyse:
 # Run every pre-pull-request check: formatting, static analysis, tests.
 check:
     {{php}} composer check
+
+# Your normal install resolves to the newest supported Laravel, so anything
+# that only exists in 13 passes locally and breaks for everyone else. Run this
+# before opening a pull request.
+#
+# Written as one shell block on purpose: just aborts a recipe at the first
+# failing line, so a plain three-line recipe would skip the restore exactly when
+# the check fails — leaving you silently on Laravel 12 for everything after.
+
+# Run the checks against the OLDEST supported Laravel (12), then restore 13.
+check-laravel12:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    {{php}} composer update --with-all-dependencies "orchestra/testbench:^10.11"
+    {{php}} composer check
+    status=$?
+    {{php}} composer update --with-all-dependencies
+    exit $status
+
+# Workbench is a real Laravel app living in workbench/, with this package
+# loaded. Use it to exercise routes by hand; the Pest suite remains the fast
+# feedback loop. Override the host port with SERVE_PORT if 13100 is taken.
+
+# Serve the Workbench application at http://localhost:13100
+serve:
+    docker compose run --rm --service-ports php composer serve
+
+# Rebuild the Workbench application (assets, sqlite database, migrations).
+build-workbench:
+    {{php}} composer build
 
 # Open a shell inside the development container.
 shell:

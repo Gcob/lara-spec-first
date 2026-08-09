@@ -11,4 +11,3 @@ parameters:
         # tests assert conventions rather than behaviour and contain no logic
         # worth analysing, so excluding the file costs nothing.
         - tests/Unit/ArchitectureTest.php
-    tmpDir: build/phpstan

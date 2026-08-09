@@ -75,6 +75,53 @@ All three paths are first-class. Docker and `just` are thin wrappers that invoke
 Composer scripts** — neither carries logic of its own. Our CI runs the suite *without* Docker, across a
 matrix of PHP and Laravel versions, so the native path is guaranteed to keep working.
 
+## The Workbench application
+
+`workbench/` holds a real Laravel application with this package already loaded, provided by
+`orchestra/workbench`. It is how you exercise the package by hand — the thing you would otherwise need a
+separate Laravel project for.
+
+```bash
+just serve                                          
+# or:
+docker compose run --rm --service-ports php composer serve
+```
+
+Then open <http://localhost:13100>. Set `SERVE_PORT` if that port is taken.
+
+* Add routes to try out in `workbench/routes/web.php`.
+* `composer build` (or `just build-workbench`) rebuilds its assets, sqlite database and migrations.
+* The skeleton is committed, so every contributor gets the same development application. Only its
+  runtime output (storage, published assets, the sqlite file) is ignored.
+
+The Pest suite stays the fast feedback loop; Workbench is for the things a test cannot show you.
+
+### Your code must run on Laravel 12 *and* 13
+
+This package supports both. That applies to `src/`, to `tests/`, and to `workbench/` alike.
+
+**The trap:** a normal `composer install` resolves to the *newest* supported Laravel. Anything that
+exists only in 13 will pass on your machine and break for every contributor and user on 12 — silently,
+until CI or a bug report catches it.
+
+It is not hypothetical. Workbench scaffolds its `User` model with the `#[Fillable]` and `#[Hidden]` PHP
+attributes, which were introduced in Laravel 13; on Laravel 12 those classes do not exist and the model
+fatals. It has been rewritten to the property form, which works on both.
+
+Check the lower bound before opening a pull request:
+
+```bash
+just check-laravel12                                # runs the suite on Laravel 12, then restores 13
+```
+
+Two habits that prevent most of these:
+
+* **Never assert on framework defaults.** A test that expected the router to be empty passed on Laravel
+  13 and failed on 12, because Testbench registers a different number of its own routes. Assert on what
+  *this package* does, not on the state the framework happens to start in.
+* **Check the version a symbol landed in** before using it — Laravel's release notes list what each
+  major added. If a feature is 13-only, either use the form that works on both, or guard it.
+
 ## Before you open a pull request
 
 Run the full check suite:

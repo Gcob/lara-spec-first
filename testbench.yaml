@@ -1,0 +1,38 @@
+laravel: '@testbench'
+
+providers:
+  # Composer package discovery reads the manifest of packages installed in
+  # vendor/. This package is the root package, so it is never in that manifest
+  # and must be registered here by hand — without this line the Workbench
+  # application boots without it, silently.
+  - Gcob\LaraSpecFirst\LaraSpecFirstServiceProvider
+  # - Workbench\App\Providers\WorkbenchServiceProvider
+
+migrations:
+  - workbench/database/migrations
+
+seeders:
+  - Workbench\Database\Seeders\DatabaseSeeder
+
+workbench:
+  start: '/'
+  install: true
+  health: false
+  discovers:
+    web: true
+    api: true
+    commands: true
+    components: false
+    factories: true
+    views: false
+  build:
+    - asset-publish
+    - create-sqlite-db
+    - db-wipe
+    - migrate-fresh
+  assets:
+    - laravel-assets
+  sync:
+    - from: storage
+      to: workbench/storage
+      reverse: true

@@ -42,7 +42,10 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Gcob\\LaraSpecFirst\\Tests\\": "tests/"
+            "Gcob\\LaraSpecFirst\\Tests\\": "tests/",
+            "Workbench\\App\\": "workbench/app/",
+            "Workbench\\Database\\Factories\\": "workbench/database/factories/",
+            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
         }
     },
     "scripts": {
@@ -55,6 +58,18 @@
             "@format:check",
             "@analyse",
             "@test"
+        ],
+        "post-autoload-dump": [
+            "@clear",
+            "@prepare"
+        ],
+        "clear": "@php vendor/bin/testbench package:purge-skeleton --ansi",
+        "prepare": "@php vendor/bin/testbench package:discover --ansi",
+        "build": "@php vendor/bin/testbench workbench:build --ansi",
+        "serve": [
+            "Composer\\Config::disableProcessTimeout",
+            "@build",
+            "@php vendor/bin/testbench serve --host=0.0.0.0 --ansi"
         ]
     },
     "scripts-descriptions": {
@@ -63,7 +78,9 @@
         "format": "Apply Laravel Pint formatting.",
         "format:check": "Report formatting issues without changing files.",
         "analyse": "Run PHPStan static analysis.",
-        "check": "Run every pre-pull-request check: formatting, static analysis, tests."
+        "check": "Run every pre-pull-request check: formatting, static analysis, tests.",
+        "build": "Rebuild the Workbench application (assets, database, migrations).",
+        "serve": "Serve the Workbench application on the PHP development server. Binds 0.0.0.0 so it is reachable from outside the Docker container; running natively, this also exposes it on your local network."
     },
     "extra": {
         "laravel": {
