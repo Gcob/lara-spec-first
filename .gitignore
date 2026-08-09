@@ -1,5 +1,10 @@
 /vendor/
 node_modules/
+
+# Libraries do not commit their lock file: Composer ignores it when the package
+# is installed as a dependency, and pinning it here would hide incompatibilities
+# across the supported PHP x Laravel matrix.
+composer.lock
 npm-debug.log
 yarn-error.log
 
@@ -21,6 +26,10 @@ Homestead.yaml
 Homestead.json
 /.vagrant
 .phpunit.result.cache
+.phpunit.cache/
+/build/
+phpstan.neon
+pint.json.bak
 
 /public/build
 /storage/pail

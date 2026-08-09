@@ -1,0 +1,14 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    excludePaths:
+        # Pest's arch() DSL is a fluent chain PHPStan cannot resolve. These
+        # tests assert conventions rather than behaviour and contain no logic
+        # worth analysing, so excluding the file costs nothing.
+        - tests/Unit/ArchitectureTest.php
+    tmpDir: build/phpstan

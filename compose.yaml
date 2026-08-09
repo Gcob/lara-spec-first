@@ -1,0 +1,24 @@
+# Development environment for contributors — provided, not required.
+# See CONTRIBUTING.md.
+#
+# This file is a thin wrapper: every command run through it is a Composer script
+# declared in composer.json. Nothing here carries logic of its own, so a
+# contributor working natively runs exactly the same commands.
+
+services:
+  php:
+    build:
+      context: .
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.3}
+    # Run as the host user so files created in the mounted volume (vendor/,
+    # composer.lock, coverage reports) are not owned by root. The justfile
+    # exports UID and GID; the defaults cover the common Linux case.
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - .:/app
+      - composer-cache:/tmp/composer
+    working_dir: /app
+
+volumes:
+  composer-cache:

@@ -1,0 +1,84 @@
+{
+    "name": "gcob/lara-spec-first",
+    "description": "A Spec-First API framework and integration layer for Laravel. Define your contracts with OpenAPI, generate stubs for AI, mock endpoints instantly with Faker, and seamlessly bridge legacy code.",
+    "keywords": [
+        "laravel",
+        "openapi",
+        "spec-first",
+        "api",
+        "contract",
+        "mocking",
+        "code-generation"
+    ],
+    "homepage": "https://github.com/Gcob/lara-spec-first",
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Jacob",
+            "role": "Maintainer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/Gcob/lara-spec-first/issues",
+        "source": "https://github.com/Gcob/lara-spec-first"
+    },
+    "require": {
+        "php": "^8.3",
+        "devizzent/cebe-php-openapi": "^1.1",
+        "illuminate/routing": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.10",
+        "laravel/pint": "^1.30",
+        "orchestra/testbench": "^10.11 || ^11.0",
+        "pestphp/pest": "^4.7 || ^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Gcob\\LaraSpecFirst\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Gcob\\LaraSpecFirst\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test:coverage": "pest --coverage",
+        "format": "pint",
+        "format:check": "pint --test",
+        "analyse": "phpstan analyse",
+        "check": [
+            "@format:check",
+            "@analyse",
+            "@test"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run the Pest test suite.",
+        "test:coverage": "Run the test suite with a coverage report.",
+        "format": "Apply Laravel Pint formatting.",
+        "format:check": "Report formatting issues without changing files.",
+        "analyse": "Run PHPStan static analysis.",
+        "check": "Run every pre-pull-request check: formatting, static analysis, tests."
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Gcob\\LaraSpecFirst\\LaraSpecFirstServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "phpstan/extension-installer": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

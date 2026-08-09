@@ -15,8 +15,11 @@ Guidance for AI coding agents working on `lara-spec-first`.
 This package is **Spec-First**: the OpenAPI contract is the source of truth, and PHP follows from it.
 When a change would make the code authoritative over the spec, it is going the wrong way.
 
-The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/ROADMAP.md)). Most of the stack is
-chosen but not yet installed — there is no `composer.json` yet.
+The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/ROADMAP.md)). The package
+structure, the toolchain and the test suite are in place; the package itself does not parse a spec or
+register a route yet.
+
+Verify your work with `just check` (or `composer check`) — Pint, Larastan, then Pest.
 
 **Read [`docs/STACK.md`](./docs/STACK.md) before touching dependencies, version constraints, or CI
 config.** It holds every technology choice, its status, and the reasoning behind it.

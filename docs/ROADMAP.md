@@ -14,7 +14,8 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 
 ## Phase 1: The Foundation (Current)
 *Goal: Prove the core concept with a working proof-of-concept.*
-- [ ] Initialize package structure (`composer.json`, Service Provider).
+- [x] Initialize package structure: `composer.json`, PSR-4 autoloading, the service provider skeleton
+  with package discovery, and the development toolchain (Docker, Pest, Pint, Larastan, `just`).
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs.
 - [ ] Build the core Service Provider to dynamically register routes from the spec.
 - [ ] Implement the base abstract controller generation (Generated vs. Extended pattern).

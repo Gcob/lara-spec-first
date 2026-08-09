@@ -17,9 +17,8 @@ contribution, and how changes get merged.
 ## Project status
 
 `lara-spec-first` is in **early bootstrap** — we are working through
-[Phase 1 of the Roadmap](./docs/ROADMAP.md). The public API is not stable yet, and some of the tooling
-described below is still being put in place. Commands marked _(not yet available)_ will start working as
-Phase 1 lands.
+[Phase 1 of the Roadmap](./docs/ROADMAP.md). The public API is not stable yet, and the package does not
+do anything useful for a consumer so far. The tooling below, however, is in place and works today.
 
 Right now, the most valuable contribution is **design feedback**. Opening an issue to challenge an
 architectural decision is worth more to us today than a pull request.
@@ -50,6 +49,21 @@ docker compose run --rm php composer install
 docker compose run --rm php composer test
 ```
 
+### With Docker and `just` (shortest)
+
+If you have [`just`](https://github.com/casey/just), the `justfile` wraps the commands above:
+
+```bash
+just install
+just test
+just check
+just            # list every recipe
+```
+
+**Read the `justfile` before running a recipe from a branch you did not write.** It executes shell
+commands, and so do `composer.json` scripts, the `Dockerfile` and `compose.yaml` — the file carries a
+security note explaining what to look for.
+
 ### Natively (if you already have PHP and Composer)
 
 ```bash
@@ -57,25 +71,28 @@ composer install
 composer test
 ```
 
-Both paths are first-class. The Docker setup is a thin convenience wrapper that invokes the **exact same
-Composer scripts** — it never carries its own logic. Our CI runs the suite *without* Docker, across a
+All three paths are first-class. Docker and `just` are thin wrappers that invoke the **exact same
+Composer scripts** — neither carries logic of its own. Our CI runs the suite *without* Docker, across a
 matrix of PHP and Laravel versions, so the native path is guaranteed to keep working.
 
 ## Before you open a pull request
 
-Run the full check suite: _(not yet available — Phase 1)_
+Run the full check suite:
 
 ```bash
+just check                                    # or:
 docker compose run --rm php composer check
 ```
 
-This is expected to cover:
+It covers:
 
-| Check       | Command             | What it does                              |
-|-------------|---------------------|-------------------------------------------|
-| Tests       | `composer test`     | Runs the test suite against `testbench`   |
-| Code style  | `composer format`   | Applies Laravel Pint (PSR-12)             |
-| Static      | `composer analyse`  | Runs PHPStan                              |
+| Check       | Command                | What it does                                                  |
+|-------------|------------------------|---------------------------------------------------------------|
+| Code style  | `composer format:check`| Reports Pint (Laravel preset) issues without writing files     |
+| Static      | `composer analyse`     | Runs PHPStan via Larastan at level 8                           |
+| Tests       | `composer test`        | Runs the Pest suite against a Laravel app booted by `testbench`|
+
+Use `composer format` to apply the formatting rather than only report on them.
 
 A few expectations:
 
