@@ -19,8 +19,8 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs,
   behind [one strategy per OpenAPI minor version](./OPENAPI-SUPPORT.md#handling-30-and-31-the-version-strategy)
   so that nothing downstream ever knows which version was loaded.
-- [ ] Produce the [contract artifact](./CONTRACT-ARTIFACT.md): the normalised,
-  resolved, version-neutral representation of what the package honours. It is the strategy's output and
+- [ ] Produce the [contract artifact](./CONTRACT-ARTIFACT.md): the normalized,
+  resolved, version-neutral representation of what the package honors. It is the strategy's output and
   what `spec:doctor` checks against, so it is needed here — long before the breaking-change enforcement it will
   later serve as a baseline for.
 - [ ] Build the core Service Provider that registers the generated routes. It **does not read the
@@ -101,7 +101,7 @@ Three properties matter, in this order:
 * **Simple** — adoptable route by route, never a big-bang rewrite.
 * **Fast** — the boring parts should be mechanical.
 
-- [ ] Tooling to bootstrap a spec from an existing Code-First app, and to verify it against real behaviour before
+- [ ] Tooling to bootstrap a spec from an existing Code-First app, and to verify it against real behavior before
   cutover. *(Design in progress — more to come.)*
 - [ ] First-class integration with `Spectator` for automated contract testing in CI/CD pipelines.
 - [ ] Comprehensive documentation and real-world migration examples.

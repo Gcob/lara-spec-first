@@ -57,8 +57,8 @@ What follows from it:
   reachable from the routing or request path. This is not a convention to remember, it is an assertion
   to write: the existing architecture test in `tests/Unit/` is exactly the place to forbid the runtime
   namespace from referencing the parser at all.
-* **Boot cost is loading PHP**, which is what `route:cache` and the opcode cache already optimise. No
-  work to memoise, no cache of our own to invent.
+* **Boot cost is loading PHP**, which is what `route:cache` and the opcode cache already optimize. No
+  work to memoize, no cache of our own to invent.
 * **The boundary is the production request path, not the process.** Serving a real application's
   traffic never involves a specification. Other contexts plausibly do, and pretending otherwise now
   would only mean rewriting this section later: contract testing has to compare a live response
@@ -95,7 +95,7 @@ Say an operation gains a required parameter. The build rewrites the generated ab
 signature changes. Every concrete subclass a developer wrote now fails to satisfy its parent, and
 PHP — plus PHPStan at [level 8](./STACK.md) — says so immediately, by name, before anything runs.
 
-That is the whole payoff of Spec-First expressed in one behaviour: **a change to the contract becomes
+That is the whole payoff of Spec-First expressed in one behavior: **a change to the contract becomes
 a compile-time error in the code that implements it, not a 500 in production.** It is also why the
 generated side must be free to change shape without asking permission. It can only be free if nobody
 has hand-edits in it to protect.
@@ -110,7 +110,7 @@ Its properties:
 
 * **Idempotent.** Running it twice in a row changes nothing the second time. If a build produces a
   diff on an unchanged spec, that is a defect.
-* **Ordered, and it stops.** Check the vendored references are present, parse, normalise into the
+* **Ordered, and it stops.** Check the vendored references are present, parse, normalize into the
   prospective artifact, **compare it against the committed one**, then generate. A spec that fails
   [the doctor's](./DOCTOR.md) hard checks does not reach
   the generator — half-generated output from a broken contract is worse than no output. The comparison
@@ -133,7 +133,7 @@ contract without anyone deciding to. Under a frozen default:
   One deliberate command, and the new document lands in the next commit as a reviewable diff.
 * A missing vendored copy in CI or production means somebody forgot to commit it — the pipeline says
   so instead of papering over it with a fetch.
-* There is no environment-dependent behaviour to reason about. The build does the same thing on a
+* There is no environment-dependent behavior to reason about. The build does the same thing on a
   laptop and in CI, which is the property that makes a build trustworthy.
 
 Fetching therefore has one entry point in `build`: an explicit flag, whether the document is missing or
@@ -250,7 +250,7 @@ The two alternatives are worse, and for reasons this document has already commit
 * **Pointing at a class that does not exist** produces a class-not-found fatal at request time — an
   internal error blaming the consumer's application for a state the package created on purpose.
 
-`501` is the status code HTTP already has for exactly this: the server recognises the request and has
+`501` is the status code HTTP already has for exactly this: the server recognizes the request and has
 not implemented it. It is honest to the client, it is greppable in logs, and it is the seam the
 [Faker mock](./ROADMAP.md) plugs into in Phase 2 — same route, same handler position, a better answer
 in the body. Nothing about the Phase 1 shape has to change for the mock to arrive.
@@ -353,7 +353,7 @@ method, which is what actually addresses it. Its **name** is `operationId`, whic
 from. Renaming an operation therefore changes the name while the identity holds still — and a build
 that knows both can tell the difference between a rename and a deletion.
 
-Identity has to be normalised to be useful: **the names of path parameters are not part of it.**
+Identity has to be normalized to be useful: **the names of path parameters are not part of it.**
 Renaming `/users/{id}` to `/users/{userId}` changes nothing a client can observe — the URL on the wire
 is identical, and the template variable is documentation. Identity is therefore the method plus the
 path with its parameters reduced to positions, so that rename produces no diff at all. It also means
@@ -397,16 +397,16 @@ watch. Probably different answers for the two commands.
 ### When `operationId` is absent, derive from method and path
 
 **Decision: the fallback is the operation's [identity](#identity-is-the-path-and-the-method-not-the-name)
-— its HTTP method and its normalised path.** There is nothing else that both exists on every operation
+— its HTTP method and its normalized path.** There is nothing else that both exists on every operation
 and means something to a reader.
 
-The objection to raise and dismiss: deriving from the path means that reorganising URLs renames
+The objection to raise and dismiss: deriving from the path means that reorganizing URLs renames
 classes. True — and **proportionate**, because changing a path *is* a change to the contract. Consumers
 have to update their calls; you having to update a class name is the same event, visible in your own
 code. For a `stable` operation the build already refuses the change until
 [`info.version`](./LIFECYCLE.md#unstable-by-default-and-what-stable-costs-us) says so, and for a
 `beta` one churn is what `beta` means. The case that would have been unfair — renaming a path
-*parameter*, which changes nothing on the wire — is already excluded by normalising identity.
+*parameter*, which changes nothing on the wire — is already excluded by normalizing identity.
 
 What the fallback genuinely costs is readability: a derived name will never read as well as
 `listActiveSubscriptions`. That is an argument for writing `operationId`, not against having a
@@ -504,7 +504,7 @@ the design:
 * **The shape is generated, and not yours.** Properties, types and nullability come from the response
   schema. A hand-edited shape is drift from the contract by definition, and it is exactly what
   Spec-First exists to prevent.
-* **The behaviour is yours.** Hydration is where real applications differ, and a generated DTO you
+* **The behavior is yours.** Hydration is where real applications differ, and a generated DTO you
   cannot teach to build itself from your model is a generated DTO people will wrap or abandon.
 
 The [two-layer split](#two-layers) resolves this cleanly: the generated
@@ -513,7 +513,7 @@ it needs. Hackable where it should be, fixed where the contract speaks.
 
 `spatie/laravel-data` is the reference for what good feels like here, and its `from($model)` ergonomics
 are the target. **Whether we depend on it or only take the shape is undecided** and belongs in
-[`STACK.md`](./STACK.md) once settled — a dependency buys casting, validation and serialisation for
+[`STACK.md`](./STACK.md) once settled — a dependency buys casting, validation and serialization for
 free, at the cost of binding generated code to another package's API and release cycle.
 
 ## Appending into human-owned files
@@ -527,7 +527,7 @@ straight answer rather than a maybe.
 
 Why it is harder here than in an IDE: PhpStorm runs one action, on one file, with a human watching and
 undo one keystroke away. A build runs unattended, in CI, across every file at once. The failure modes
-that follow are not hypothetical — re-running duplicates injected code unless the tool can recognise
+that follow are not hypothetical — re-running duplicates injected code unless the tool can recognize
 its own previous output, which means markers inside human files; a contract change requires *removing*
 previously injected code, which is materially harder than adding it; and formatting will fight Pint
 until somebody loses.
@@ -549,8 +549,8 @@ missing or malformed.
 * Which [per-type flags](#per-type-flags-belong-here) `spec:make` accepts.
 * Whether the second of the [two layers](#two-layers) is an abstract class or a trait.
 * Whether fetching a *missing* reference and refreshing a *stale* one share one flag or take two.
-* What [watch](#watching-specwatch) takes as parameters — in particular how "refresh references
-  on every request" is asked for, and how the mode announces itself.
+* What [watch](#watching-specwatch) takes as parameters — in particular how its rebuild cadence is
+  expressed, and how the mode announces itself while it is running.
 * Whether `spatie/laravel-data` becomes a dependency or only an influence.
 * **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated
   validation are Phase 2 — the same build command doing more, not a new one. See the

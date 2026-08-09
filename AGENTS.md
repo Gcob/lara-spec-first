@@ -31,20 +31,20 @@ finished when all three are updated, in the same commit.
 
 | Place             | What it answers                       | Rule                                                                                                         |
 |-------------------|---------------------------------------|--------------------------------------------------------------------------------------------------------------|
-| **Code**          | What the package does.                | The behaviour itself.                                                                                        |
+| **Code**          | What the package does.                | The behavior itself.                                                                                         |
 | **Documentation** | What it is *supposed* to do, and why. | Docs follow the code. Never let the two contradict — see [`docs/DOCUMENTATION.md`](./docs/DOCUMENTATION.md). |
-| **Tests**         | Proof that it actually does it.       | Tests follow the code. New behaviour means new tests — see [below](#automated-tests-are-required).           |
+| **Tests**         | Proof that it actually does it.       | Tests follow the code. New behavior means new tests — see [below](#automated-tests-are-required).            |
 
-Yes, this is three times the surface area for a single behaviour change. That cost is deliberate, and it
+Yes, this is three times the surface area for a single behavior change. That cost is deliberate, and it
 is small in practice: writing tests and documentation is exactly the kind of work an agent does quickly
 and well. What it buys is worth far more than the keystrokes:
 
 * **Guard rails.** Tests catch the regression a reviewer would have skimmed past. Docs catch the design
   drift a test cannot see. Neither is redundant with the other.
-* **Onboarding.** The next agent or contributor learns intent from the docs and behaviour from the tests,
+* **Onboarding.** The next agent or contributor learns intent from the docs and behavior from the tests,
   without reading the whole codebase first. In a repository worked on largely by AI, this is the memory —
   nothing else carries context between sessions.
-* **Regression safety.** Every behaviour that is documented and tested is a behaviour that cannot quietly
+* **Regression safety.** Every behavior that is documented and tested is a behavior that cannot quietly
   disappear in a later refactor.
 
 Two rules keep this from eroding:
@@ -52,7 +52,7 @@ Two rules keep this from eroding:
 * **Never trade one place for the others.** Do not ship code with "docs to follow" or "tests to follow".
   A partial change is an unfinished change, not a fast one.
 * **If a change genuinely needs no doc or test update, say so and say why.** A pure rename with no
-  behavioural effect is a fair exemption. Silence is not — an unexplained gap reads as an oversight.
+  behavioral effect is a fair exemption. Silence is not — an unexplained gap reads as an oversight.
 
 ## Working notes for agents
 
@@ -71,9 +71,9 @@ Two rules keep this from eroding:
 Tests follow the code exactly as documentation does — they are the third of the
 [three places](#every-change-lands-in-three-places) every change must land.
 
-A change that alters behaviour and ships without tests is not complete, and "too small to test" is not an
+A change that alters behavior and ships without tests is not complete, and "too small to test" is not an
 accepted reason — small changes are precisely the ones that regress unnoticed. In review, check the diff
-against the test suite the same way you check it against the docs: behaviour with no test covering it is
+against the test suite the same way you check it against the docs: behavior with no test covering it is
 a finding.
 
 | Level      | Scope                                                                | Notes                                                                        |
@@ -99,13 +99,13 @@ Review in this order. The list is a priority ranking, not a checklist to run in 
 incomplete change is not worth reviewing for style.
 
 1. **The three places — this is the first thing you check, before reading a line of logic.**
-   Did the change land in code, documentation, *and* tests? A behaviour change missing its docs or its
+   Did the change land in code, documentation, *and* tests? A behavior change missing its docs or its
    tests is an **incomplete change**, and you report it as such. Do not treat it as a minor follow-up, do
    not offer to "add them later", and do not approve the change on the grounds that the code itself is
    correct. This is the highest-severity category of finding in this repository.
 2. **Direction of truth.** Does the change keep the OpenAPI spec authoritative over the code? Anything
    that makes PHP the source of truth is a design defect, however well written.
-3. **Correctness.** Logic, edge cases, failure paths, `$ref` resolution, behaviour across OpenAPI 3.0
+3. **Correctness.** Logic, edge cases, failure paths, `$ref` resolution, behavior across OpenAPI 3.0
    and 3.1.
 4. **Stack compliance.** No syntax newer than PHP 8.3 in `src/`. No dependency or version constraint that
    contradicts [`docs/STACK.md`](./docs/STACK.md), and no choice invented for a row still marked
@@ -132,7 +132,7 @@ How to report:
 Two documents govern most of what you will need. Read the one that owns your subject rather than
 guessing:
 
-* [`docs/DOCUMENTATION.md`](./docs/DOCUMENTATION.md) — how documentation is written and organised, the
+* [`docs/DOCUMENTATION.md`](./docs/DOCUMENTATION.md) — how documentation is written and organized, the
   front matter schema, the tag vocabulary, and the **inventory of every document in the repository**.
   Start there when you need to find something.
 * [`docs/STACK.md`](./docs/STACK.md) — every technology choice, its status, and its reasoning.

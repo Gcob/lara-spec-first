@@ -45,8 +45,12 @@ ships with the first thing that reads a spec** — see the [Roadmap](./ROADMAP.m
   add the next check. Splitting them would mean two commands to wire into CI, two output formats to
   parse, and a standing question about which one to run. Validity is the doctor's first section, not a
   separate command.
-* **The exit code is the API.** Zero means the spec is fully honored. Non-zero means it is not. That
-  single property is what makes it usable as a CI gate and a pre-deploy gate, and it is what stops the
+* **The exit code is the API.** Non-zero means at least one construct in the document will not be
+  honored as written. Zero means none will — with one deliberate exception:
+  [`Deferred`](./OPENAPI-SUPPORT.md#support-levels) rows report what the package has not built yet,
+  and do not fail a pipeline over our roadmap. Zero is therefore *nothing here is being dropped
+  without a decision behind it*, not *everything in this document is implemented*. That single
+  property is what makes the command usable as a CI gate and a pre-deploy gate, and what stops the
   report from becoming decorative.
 * **Machine-readable output.** Real specs are large, and the report grows with them. A `--json` flag
   lets CI annotate a pull request instead of dumping a wall of text, and lets tooling — including AI
@@ -82,10 +86,11 @@ artifact freshness fall under neither, and inventing a value per section would t
 second command. **Open:** whether `--check` names sections directly rather than naming two categories.
 
 The doctor takes no flag that lets it reach the network. It has no reason to: every remote reference
-is already [vendored locally](./REMOTE-REFERENCES.md#a-remote-reference-is-a-dependency-not-a-cache-entry), so a blocked
-or
-missing reference is diagnosed by reading the working tree, and fetching belongs to the build. A
-`--bypass-allowlist` escape hatch, if one is ever wanted, belongs on the fetching path, not here.
+is already
+[vendored locally](./REMOTE-REFERENCES.md#a-remote-reference-is-a-dependency-not-a-cache-entry), so a
+blocked or missing reference is diagnosed by reading the working tree, and fetching belongs to the
+build. A `--bypass-allowlist` escape hatch, if one is ever wanted, belongs on the fetching path, not
+here.
 
 Two constraints on any flag added here, and they are the reason this list is short:
 

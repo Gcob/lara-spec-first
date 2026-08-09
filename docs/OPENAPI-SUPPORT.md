@@ -57,27 +57,38 @@ a consumer can plan around beats a flexible behavior nobody can predict. See the
 [project philosophy](../README.md#stack--philosophy).
 
 **4. Support levels are a compatibility contract.** Once published, this matrix is part of the public
-API surface, exactly like class names and config keys:
+API surface, exactly like class names and config keys. It moves along **two independent axes**, and
+conflating them is how a guarantee gets weakened without anyone noticing.
 
-* Moving a row **towards** more support (`Rejected` to `Ignored`, `Ignored` to `Partial`, `Partial`
-  to `Supported`) is a **minor** release. It cannot break a spec that worked before.
-* Moving a row **away** from support is a **major** release. Someone's contract stops being honored.
+**How much of the contract is honored** — `Rejected`, then `Ignored` and `Deferred` together, then
+`Partial`, then `Supported`. `Ignored` and `Deferred` share a rung deliberately: both mean *not acted
+on*, and they differ only on the second axis.
+
+* Moving a row **up** this ladder is a **minor** release. It cannot break a spec that worked before.
+* Moving a row **down** is a **major** release. Someone's contract stops being honored.
 * Changing *how* a `Supported` row behaves — the route order, the controller naming convention, the
   parameter mapping — is also **major**. Consumers have code written against it.
+
+**What it does to the exit code** — this is not a ladder, and every move on it is **major, in either
+direction.** Making a row noisier breaks pipelines that were green; making it quieter silently stops a
+pipeline from catching something it used to catch. The second is the more dangerous of the two and the
+easier to mistake for an improvement: `Ignored` to `Deferred` looks like generosity and is in fact the
+removal of a gate. A package whose entire promise is that a contract cannot drift unnoticed does not
+get to weaken its own detection in a minor release.
 
 ## Support levels
 
 Six levels. Every one except `Supported` and `Out of scope` says something out loud, and only two of
 them can make the [exit code](./DOCTOR.md#the-contract) non-zero:
 
-| Level            | Meaning                                                                       | Behaviour                                                                                                                              | Exit code |
-|------------------|-------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| **Supported**    | The construct is read and honored.                                            | Nothing to report.                                                                                                                     | —         |
-| **Partial**      | Honored under stated conditions; outside them, it is not.                     | Diagnostic when a document leaves the supported subset. The conditions are written in this file, never left to the reader to discover. | Non-zero  |
-| **Ignored**      | In scope, present in the document, understood, and deliberately not acted on. | Diagnostic. The spec stays valid and the package keeps working, but the consumer is told the construct had no effect.                  | Non-zero  |
-| **Deferred**     | Recognised, support planned, not built yet.                                   | One summary line per document, never one per occurrence.                                                                               | —         |
-| **Rejected**     | The package cannot honor it and will not pretend to.                          | Hard error. The spec does not load.                                                                                                    | Non-zero  |
-| **Out of scope** | Not this package's concern at all.                                            | No diagnostic. Listed here only so nobody has to wonder.                                                                               | —         |
+| Level            | Meaning                                                                       | Behavior                                                                                                                               | Exit code                                                                                              |
+|------------------|-------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------|
+| **Supported**    | The construct is read and honored.                                            | Nothing to report.                                                                                                                     | —                                                                                                      |
+| **Partial**      | Honored under stated conditions; outside them, it is not.                     | Diagnostic when a document leaves the supported subset. The conditions are written in this file, never left to the reader to discover. | Non-zero **only when the document leaves the supported subset** — a spec that stays inside it is clean |
+| **Ignored**      | In scope, present in the document, understood, and deliberately not acted on. | Diagnostic. The spec stays valid and the package keeps working, but the consumer is told the construct had no effect.                  | Non-zero                                                                                               |
+| **Deferred**     | Recognized, support planned, not built yet.                                   | One summary line per document, never one per occurrence.                                                                               | —                                                                                                      |
+| **Rejected**     | The package cannot honor it and will not pretend to.                          | Hard error. The spec does not load.                                                                                                    | Non-zero                                                                                               |
+| **Out of scope** | Not this package's concern at all.                                            | No diagnostic. Listed here only so nobody has to wonder.                                                                               | —                                                                                                      |
 
 **`Deferred` exists because the exit code has to stay reachable.** Without it, every construct the
 package has not built yet is `Ignored`, every `Ignored` is a finding, and since `info` is mandatory in
@@ -120,7 +131,7 @@ The seam matters more than the pattern. Putting it in the wrong place duplicates
 | Multi-file loading and `$ref` resolution | **Shared**           | JSON Reference mechanics are the same. The [allowlist](./REMOTE-REFERENCES.md) is a security policy, not a version concern.                                                                                 |
 | Schema interpretation                    | **Version-specific** | This is where 3.0 and 3.1 genuinely disagree. See the table below.                                                                                                                                          |
 | Document shape rules                     | **Version-specific** | `paths` is required in 3.0 and optional in 3.1; `webhooks` exists only in 3.1.                                                                                                                              |
-| Route registration                       | **Shared**           | It consumes the normalised output, and must never see a version number.                                                                                                                                     |
+| Route registration                       | **Shared**           | It consumes the normalized output, and must never see a version number.                                                                                                                                     |
 
 The test of a correct seam: **nothing downstream of the strategy knows which version was loaded.** If
 the router or the mocker has to ask, the normalization is incomplete.
@@ -129,7 +140,7 @@ the router or the mocker has to ask, the normalization is incomplete.
 
 | Subject                                 | 3.0.x                                    | 3.1.x                                         | Note                                                                                                                 |
 |-----------------------------------------|------------------------------------------|-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
-| Nullability                             | `nullable: true`                         | `type: [string, "null"]`                      | Two spellings of one idea. The normalised form must be one thing, and the choice of which is ours to make and state. |
+| Nullability                             | `nullable: true`                         | `type: [string, "null"]`                      | Two spellings of one idea. The normalized form must be one thing, and the choice of which is ours to make and state. |
 | `type`                                  | A single string                          | A string or an array of strings               | The parser declares this `Type::STRING` (`Schema.php:92`) and does not enforce it, so an array arrives unchecked.    |
 | `exclusiveMinimum` / `exclusiveMaximum` | Boolean, modifying `minimum` / `maximum` | A number, standing on its own                 | One property name, two semantics (`Schema.php:155-161`).                                                             |
 | Examples                                | `example` (singular, any value)          | `examples` (an array)                         | Both keys can appear. Precedence is ours to define.                                                                  |
@@ -166,13 +177,13 @@ layer has to compensate for.
 
 Line numbers cite the versions in `composer.lock` at the time of writing — including
 `laravel/framework` 13.x for the [Laravel constraints](#laravel-constraints-we-do-not-fight) below.
-The behaviour is what matters and it holds across the supported range; the line numbers may not.
+The behavior is what matters and it holds across the supported range; the line numbers may not.
 
 | Caveat                                                                                                                               | Evidence                                                                                                                              | What it means for us                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 |--------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `validate()` is structural only. Validation against the OpenAPI JSON Schema exists **only in the CLI tool**, not in the library API. | Parser `README.md`, `OpenApi.php:86`                                                                                                  | We cannot rely on the parser to reject a malformed spec. Rejecting bad documents is our job, and it is a headline feature of a Spec-First package.                                                                                                                                                                                                                                                                                                     |
 | Unknown properties are kept **as raw PHP arrays**, silently.                                                                         | `SpecBaseObject.php:142-144`                                                                                                          | 3.1 JSON Schema keywords (`const`, `prefixItems`, `$defs`, `if`/`then`/`else`, `patternProperties`, `dependentSchemas`, `unevaluatedProperties`, `contentMediaType`) survive, but never as `Schema` objects — **and any `$ref` inside them is never resolved**. The most dangerous caveat on this page, because nothing fails: you get a value, it is just wrong. It will bite the Faker mocker in Phase 2 hardest.                                    |
-| `type` is declared as a string but 3.1 arrays pass through unvalidated.                                                              | `Schema.php:92`                                                                                                                       | Our code must accept `string\|array` everywhere it touches a type, or normalise it at the boundary.                                                                                                                                                                                                                                                                                                                                                    |
+| `type` is declared as a string but 3.1 arrays pass through unvalidated.                                                              | `Schema.php:92`                                                                                                                       | Our code must accept `string\|array` everywhere it touches a type, or normalize it at the boundary.                                                                                                                                                                                                                                                                                                                                                    |
 | `exclusiveMinimum` / `exclusiveMaximum` accept both booleans and numbers with no version check.                                      | `Schema.php:155-161`                                                                                                                  | The same property means different things depending on the document version. Only the strategy should ever see the raw form.                                                                                                                                                                                                                                                                                                                            |
 | A Path Item's `$ref` is special-cased and is not a normal `Reference`.                                                               | `PathItem.php:73-78`                                                                                                                  | Path-level `$ref` needs its own handling in the router.                                                                                                                                                                                                                                                                                                                                                                                                |
 | Remote `$ref` by URL is resolved transparently.                                                                                      | `Reader.php`, `ReferenceContext`                                                                                                      | Network I/O during boot, and an SSRF surface. See [below](./REMOTE-REFERENCES.md).                                                                                                                                                                                                                                                                                                                                                                     |
@@ -200,7 +211,7 @@ templated one in your YAML, and it wins. The alternative — sorting literal seg
 templated ones — is defensible, but it means a consumer reading their own spec top to bottom cannot
 predict their own routing. An opinion you can see beats a heuristic you cannot.
 
-The cost is stated plainly: **reordering keys in a spec file can change routing behaviour.** That is
+The cost is stated plainly: **reordering keys in a spec file can change routing behavior.** That is
 a documented property of this package, not a bug report.
 
 ### `trace` cannot be routed
@@ -224,7 +235,7 @@ narrower, and it does not fail politely.
 
 **What actually happens.** Laravel compiles its routes through Symfony's compiler, which finds
 placeholders with `#\{(!)?([\w\x80-\xFF]+)\}#` (`vendor/symfony/routing/RouteCompiler.php:118`). `\w`
-is `[A-Za-z0-9_]`, so `{user-id}` is **not recognised as a placeholder at all** — it stays literal
+is `[A-Za-z0-9_]`, so `{user-id}` is **not recognized as a placeholder at all** — it stays literal
 text, and the route matches only a URL containing the characters `{user-id}`. No exception, no
 warning, an endpoint that silently 404s forever.
 
@@ -278,7 +289,7 @@ lost, not because they are decided:
   applying the authentication the spec declares publishes an endpoint the contract says is protected.
 * `php artisan route:cache`: mostly answered by
   [generating the routes](./CODE-GENERATION.md#the-runtime-never-sees-the-spec) rather than deriving
-  them at boot. What remains is the concrete requirement that generated routes be serialisable —
+  them at boot. What remains is the concrete requirement that generated routes be serializable —
   controller strings, no closures — and confirming it against a real `route:cache` run.
 * `webhooks` (3.1) and `callbacks`: not routes on this server.
 * `HEAD` and `OPTIONS`: Laravel handles HEAD for GET automatically, so an explicit `head` operation
@@ -289,7 +300,7 @@ lost, not because they are decided:
 ## The support matrix
 
 **Every row is provisional.** `Open` means the discussion has not happened; the other values are
-current intent for the first release, not shipped behaviour.
+current intent for the first release, not shipped behavior.
 
 ### Document
 
@@ -341,7 +352,7 @@ current intent for the first release, not shipped behaviour.
 | Construct                                                                                                                                                     | Level | Note                                                                                                                                                                              |
 |---------------------------------------------------------------------------------------------------------------------------------------------------------------|-------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Core JSON Schema subset shared by 3.0 and 3.1                                                                                                                 | Open  | Phase 2 defines how far this goes.                                                                                                                                                |
-| `nullable` / `type: [..., "null"]`                                                                                                                            | Open  | Normalised by the strategy; the normal form is not chosen.                                                                                                                        |
+| `nullable` / `type: [..., "null"]`                                                                                                                            | Open  | Normalized by the strategy; the normal form is not chosen.                                                                                                                        |
 | `allOf`, `oneOf`, `anyOf`, `not`                                                                                                                              | Open  |                                                                                                                                                                                   |
 | `discriminator`, `xml`                                                                                                                                        | Open  |                                                                                                                                                                                   |
 | 3.1-only keywords (`const`, `prefixItems`, `$defs`, `if`/`then`/`else`, `patternProperties`, `dependentSchemas`, `unevaluatedProperties`, `contentMediaType`) | Open  | Blocked on a [parser caveat](#parser-caveats): the parser hands these back as raw arrays with unresolved `$ref`. Whatever we decide, it cannot be "read them from cebe and hope". |
@@ -362,8 +373,8 @@ current intent for the first release, not shipped behaviour.
 
 The rules in [`DOCUMENTATION.md`](./DOCUMENTATION.md) apply, plus two specific to this file:
 
-* **A row changes in the same commit as the behaviour it describes.** This matrix is the definition of
-  done for any change to what the package accepts from a spec. A behaviour change that leaves the
+* **A row changes in the same commit as the behavior it describes.** This matrix is the definition of
+  done for any change to what the package accepts from a spec. A behavior change that leaves the
   matrix stale is an incomplete change, exactly as
   [`AGENTS.md`](../AGENTS.md#every-change-lands-in-three-places) states.
 * **State the release impact when moving a row.** Rule 4 makes direction meaningful: say whether the

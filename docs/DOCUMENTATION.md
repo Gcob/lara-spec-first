@@ -2,7 +2,7 @@
 title: Documentation Guide
 audience: Contributors and agents
 covers: >
-    How documentation is written and organised in this repository: the
+    How documentation is written and organized in this repository: the
     docs-follow-code rule, the one-topic-one-file principle, the front matter
     metadata schema and tag vocabulary, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
@@ -24,7 +24,7 @@ Documentation is part of the definition of done, not a follow-up task. This repo
 package that does not fully exist yet, so drift between doc and code is the expected failure mode here.
 Treat a contradiction between the two as a defect, not a nitpick.
 
-* **Ship the docs in the same change as the code.** A change to behaviour, commands, config keys, or the
+* **Ship the docs in the same change as the code.** A change to behavior, commands, config keys, or the
   public API is incomplete until the affected documents are updated alongside it.
 * **In review, validate the change against what the documentation claims.** Read the relevant files from
   the [inventory](#document-inventory), then check the diff against them. Report every contradiction,
@@ -37,9 +37,9 @@ Treat a contradiction between the two as a defect, not a nitpick.
   `Decided`, that update belongs in the same change that installs it.
 * **A missing doc is a finding.** A new Artisan command, config option, or extension point that ships
   undocumented is an incomplete change.
-* **American spelling.** `honor`, `behavior`, `normalize`, `organize`. Older documents still carry
-  British forms in places; they are not worth a sweep, but anything newly written or rewritten uses
-  the American form.
+* **American spelling.** `honor`, `behavior`, `normalize`, `organize`, `serialization`. The repository
+  was swept once and is consistent; keep it that way. The exception is `composer analyse`, which is a
+  command name, not prose.
 
 ## One topic, one file
 
@@ -132,13 +132,13 @@ grep -rl 'tags:.*versions' --include='*.md' .
 | `ci`              | Continuous integration and the build matrix                                     |
 | `code-generation` | Producing PHP from the specification, and the rules that keep it safe to re-run |
 | `code-review`     | Review priorities and how findings are reported                                 |
-| `compatibility`   | What the package honours of a standard, and the promise attached to it          |
+| `compatibility`   | What the package honors of a standard, and the promise attached to it          |
 | `conventions`     | Commit, naming, and style conventions                                           |
 | `contributing`    | How to contribute: setup, pull requests, conduct                                |
 | `decisions`       | Choices made, with their reasoning                                              |
 | `dependencies`    | Third-party packages and version constraints                                    |
 | `docker`          | The containerised development environment                                       |
-| `documentation`   | How documentation itself is written and organised                               |
+| `documentation`   | How documentation itself is written and organized                               |
 | `laravel`         | Laravel version support and framework integration                               |
 | `metadata`        | Front matter and document metadata                                              |
 | `migration`       | Moving an existing Code-First app to Spec-First                                 |

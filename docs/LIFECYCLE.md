@@ -73,7 +73,7 @@ the operation is going away. They are independent, and both can be true.**
 
 Removing it costs nothing and buys two things. There is no agreement rule to write, because there is
 nothing to disagree with. And an operation can be `stable` *and* `deprecated`, which is not a
-contradiction but the normal, well-behaved case: a promise being honoured right up to its stated
+contradiction but the normal, well-behaved case: a promise being honored right up to its stated
 removal date is exactly what a good deprecation looks like.
 
 `x-lifecycle` is then a binary, and what it adds to OpenAPI is one word the specification has no way
@@ -86,7 +86,7 @@ to express: whether an operation is promised at all.
 | `deprecated: true` requires `x-sunset`                             | Your idea, and the strongest rule here. A deprecation with no end date is a wish. Requiring the date turns "we should remove this someday" into a commitment with a review attached.         |
 | `x-sunset` in the past is a finding                                | You are serving an endpoint you promised to remove. Nothing else in the system will ever notice.                                                                                             |
 | `x-sunset` approaching is a warning                                | With a configurable horizon, so it lands in CI while there is still time to act.                                                                                                             |
-| An unrecognised `x-lifecycle` value is a finding                   | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                          |
+| An unrecognized `x-lifecycle` value is a finding                   | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                          |
 | `beta` operations are listed                                       | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                                 |
 | A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path). |
 
