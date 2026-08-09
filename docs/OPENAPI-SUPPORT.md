@@ -552,14 +552,9 @@ records.
 
 Four consequences, because a rule that fails a build has to be right:
 
-**1. Failing on a breaking change requires a baseline, and the baseline should be committed.** You
-cannot diff a contract against nothing. The previous generated tree is not enough — it only captures
-what we generate, and plenty of breaking changes (a response field becoming optional, an enum losing a
-member) never reach a signature. The honest answer is that **the resolved specification is itself a
-build artifact and belongs in version control**, with every `$ref` inlined. It then does three jobs at
-once: it is the baseline for this rule, it makes the *effective* contract reviewable in a pull request
-rather than the fragments it was assembled from, and it is the artifact the runtime loads. One file,
-three problems.
+**1. Failing on a breaking change requires a baseline, and the baseline is
+[an artifact of our own](#the-contract-artifact).** Not the two specification documents, and not the
+generated code.
 
 **2. "Breaking" is directional, and the direction inverts between request and response.** This is
 where implementations get it wrong, so it has to be a written table rather than a judgement call:
@@ -582,6 +577,66 @@ elsewhere has no `x-lifecycle` anywhere, so every public operation defaults to `
 rule in this document is silently off for the whole API. *47 public operations, 0 stable* is a finding
 under [rule 2](#the-four-rules-that-govern-this-document): protection that is off must never look like
 protection that passed.
+
+### The contract artifact
+
+**Decision: the build produces a normalised representation of the contract — resolved, version-neutral,
+containing only what the package honours — and comparisons are made between artifacts, never between
+specification documents.**
+
+Three candidates were on the table, and the reasons the other two lose are worth keeping:
+
+**Specification against specification** is the obvious one and the trap. Two documents can describe
+the identical contract and differ everywhere: extracting a schema into `components` restructures the
+file without changing a promise; reordering keys changes nothing at all. And the decisive case —
+**migrating a spec from 3.0 to 3.1 rewrites `nullable` into `type: [x, "null"]` and turns
+`exclusiveMinimum` from a boolean into a number.** A document-level diff would report that as a
+breaking change to every affected operation, and the build would fail an entire API for a migration
+that changed nothing. Worse, teaching the diff to understand both spellings drags version handling
+back out of the [strategy](#handling-30-and-31-the-version-strategy) and into a second place, which is
+the arrangement that decision exists to prevent.
+
+**Generated code against the new specification** loses for a different reason: it is asymmetric and
+lossy. You would be reconstructing a contract from PHP that was never meant to carry all of it — a
+response field becoming optional, an enum losing a member, a description of a status code never reach
+a signature. It also couples breaking-change detection to naming conventions, so changing how
+controllers are named would look like every operation changed, and it stops working entirely the
+moment a consumer [gitignores the generated tree](./CODE-GENERATION.md#which-generated-code-is-committed).
+
+**Artifact against artifact** avoids both, and the reason it works is that the artifact is *already*
+the boundary this documentation defines elsewhere: it is the output of the version strategy, the point
+past which [nothing knows which OpenAPI version was loaded](#what-is-shared-and-what-is-version-specific).
+A 3.0 document and its 3.1 translation normalise to the same artifact, so the migration produces an
+empty diff — which is the correct answer.
+
+It is also **four things we had already decided we needed, in one file**:
+
+* The baseline for breaking-change detection.
+* The *effective* contract, reviewable in a pull request — one file with every `$ref` inlined, rather
+  than the fragments it was assembled from.
+* What the [doctor](#where-the-diagnostics-go-the-doctor) reads, so the doctor and the build cannot
+  disagree about what the contract says.
+* What the spec-driven contexts load — the mock server, contract testing — while the production
+  request path still [never sees a specification](./CODE-GENERATION.md#the-runtime-never-sees-the-spec).
+
+Four rules make it work:
+
+* **Compare before writing.** The build computes the prospective artifact in memory, diffs it against
+  the committed one, and only then writes. Writing first destroys the baseline, which is an easy
+  implementation bug with no symptom until the day it matters.
+* **What the package honours must be in the artifact.** Normalisation is lossy by design, and the loss
+  is exactly the blind spot: anything left out can never be protected from a breaking change. So the
+  artifact grows whenever the [support matrix](#the-support-matrix) does — same change, same commit.
+* **Keyed by identity, canonically ordered.** Path plus method
+  [identifies an operation](./CODE-GENERATION.md#identity-is-the-path-and-the-method-not-the-name); a
+  stable ordering is what keeps a diff small enough to read.
+* **Versioned, and opaque.** The artifact carries its own format version so a package upgrade can
+  detect an old one and regenerate rather than misread it. It is committed for review, not published
+  for consumption: it is not an interchange format, and it is not the file to hand another team. Give
+  them the specification.
+
+**Open.** Its name, its serialisation, and its location. Whether a stale artifact — one whose format
+version predates the installed package — is regenerated silently or reported first.
 
 ### The runtime payoff
 

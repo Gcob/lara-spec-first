@@ -64,8 +64,10 @@ Deliberately not slotted into a phase yet: a rule that fails somebody's build ha
 it ships, and it depends on groundwork the earlier phases have not laid. See
 [lifecycle](./OPENAPI-SUPPORT.md#unstable-by-default-and-what-stable-costs-us).
 
-- [ ] Commit the resolved specification as a build artifact — the baseline to diff against, the
-  reviewable effective contract, and what the runtime loads, in one file.
+- [ ] The [contract artifact](./OPENAPI-SUPPORT.md#the-contract-artifact): a normalised, resolved,
+  version-neutral representation of what the package honours, committed. The baseline to diff against,
+  the reviewable effective contract, and what the doctor reads — one file. Comparisons are made
+  between artifacts, never between specification documents.
 - [ ] The breaking-change table, direction-aware for requests and responses, versioned as public API.
 - [ ] Fail the build on a breaking change to a `stable` operation, naming the `info.version` bump that
   would make it legitimate.
