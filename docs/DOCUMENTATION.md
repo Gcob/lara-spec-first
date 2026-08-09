@@ -2,11 +2,11 @@
 title: Documentation Guide
 audience: Contributors and agents
 covers: >
-  How documentation is written and organised in this repository: the
-  docs-follow-code rule, the one-topic-one-file principle, the front matter
-  metadata schema and tag vocabulary, and the inventory of every document.
+    How documentation is written and organised in this repository: the
+    docs-follow-code rule, the one-topic-one-file principle, the front matter
+    metadata schema and tag vocabulary, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
-tags: [documentation, conventions, metadata, code-review, onboarding]
+tags: [ documentation, conventions, metadata, code-review, onboarding ]
 ---
 
 # Documentation Guide
@@ -123,6 +123,7 @@ grep -rl 'tags:.*versions' --include='*.md' .
 |---|---|
 | `agents` | How AI agents should work in this repository |
 | `ci` | Continuous integration and the build matrix |
+| `code-generation` | Producing PHP from the specification, and the rules that keep it safe to re-run |
 | `code-review` | Review priorities and how findings are reported |
 | `compatibility` | What the package honours of a standard, and the promise attached to it |
 | `conventions` | Commit, naming, and style conventions |
@@ -167,6 +168,7 @@ intentionally carries no descriptions, so there is nothing here that can fall ou
 * [`README.md`](../README.md) — no front matter, [by design](#readmemd-carries-no-front-matter--deliberately)
 * [`CONTRIBUTING.md`](../CONTRIBUTING.md)
 * [`AGENTS.md`](../AGENTS.md)
+* [`docs/CODE-GENERATION.md`](./CODE-GENERATION.md)
 * [`docs/DOCUMENTATION.md`](./DOCUMENTATION.md) — this file
 * [`docs/OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md)
 * [`docs/ROADMAP.md`](./ROADMAP.md)

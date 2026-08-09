@@ -366,7 +366,7 @@ nothing about your application changes when it does — that is the contract of 
 is true here. A remote `$ref` supplies part of your API contract: drop it and your application can no
 longer describe, route, or validate what it serves. **A remote reference is a dependency**, in the
 full sense the word carries in this ecosystem, and it should be handled the way dependencies are
-handled: a lock file, a vendored copy, and an explicit act to change either.
+handled: a vendored copy under version control, and an explicit act to change it.
 
 Two things follow immediately, and each kills a config option that looked reasonable:
 
@@ -382,17 +382,46 @@ Two things follow immediately, and each kills a config option that looked reason
   deploys — and a shared store lets two servers in the same release disagree about the contract, which
   is precisely the failure a spec exists to prevent.
 
+#### No lock file: git is the lock
+
+The dependency analogy suggests a lock file. It should not be taken, and working out why sharpens the
+whole design.
+
+A lock file exists to pin something mutable to something exact — a version range to a resolved
+version, a resolved version to a content hash. **Here there is no version to pin**: a `$ref` is a URL,
+and the only thing that could be recorded is a hash of bytes we are already about to store on disk. So
+the lock would restate, less usefully, what the vendored copy already is.
+
+Less usefully, because of the review argument. A lock file diff says *a hash changed*. A vendored
+document diff says *this response gained a required field*. For an API contract, the second is the
+entire value, and only committed copies produce it. Git already content-addresses every file, so the
+integrity check the lock was there to provide is a property of the repository, not something to
+reimplement.
+
+**Decision: the vendored copies are committed, and there is no lock file.** Two consequences to design
+around:
+
+* **The local path must encode where the document came from**, since nothing else records provenance.
+  A layout mirroring host and path — one directory per host, the URL's path beneath it — is
+  self-documenting, greppable, and reviewable. Fetching from the same URL twice must land in the same
+  place, or the whole scheme leaks.
+* **Detecting local tampering requires a refetch.** Without a recorded hash, a hand-edited vendored
+  copy is caught by code review rather than by the tool. That is an honest trade, not an oversight:
+  the edit does show up in a diff, and re-fetching is what the update path does anyway.
+
+**Open.** URLs with query strings, very long paths, and case-insensitive filesystems all complicate a
+path-mirroring layout. Solvable, unsolved.
+
 #### Borrowing the dependency-manager shape
 
 The parts of the pattern worth taking, and only these:
 
 | Piece                                | What it does here                                                                                                                                                                                                                                                                                                                                                                                           |
 |--------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Lock file**                        | One entry per remote reference: the resolved URL, a content hash of what was fetched, and where the local copy lives. Committed. Reviewable in a diff, which is the entire point — a change to your API contract shows up in a pull request instead of in production.                                                                                                                                       |
-| **Vendored copies**                  | The fetched documents, on disk, local. Once they exist, boot resolves everything locally and **the runtime never touches the network** — not on a miss, not on the first request after a restart, never, because there is no lookup to miss.                                                                                                                                                                |
-| **A fetch that only obeys the lock** | The deploy-time operation. It fetches exactly what the lock names, verifies each hash, and resolves nothing new. Reproducible by construction.                                                                                                                                                                                                                                                              |
-| **A separate update**                | The only operation allowed to re-resolve from the spec, refetch, and rewrite the lock. Deliberate, human-initiated, reviewed.                                                                                                                                                                                                                                                                               |
-| **Integrity checking**               | A hash mismatch means the upstream contract changed under you. That is a finding, reported loudly — never a silent refetch. This is the thing a cache can *never* give you, and it is worth the whole mechanism on its own: a remote `$ref` is third-party content that shapes your public API surface, and treating it as untrusted input is the lesson every package ecosystem learned the expensive way. |
+| **Vendored copies, committed** | The fetched documents, on disk, in version control. Once they exist, boot resolves everything locally and **the runtime never touches the network** — not on a miss, not on the first request after a restart, never, because there is no lookup to miss. Their diffs are how a change to your API contract shows up in a pull request instead of in production. |
+| **Frozen by default** | The build never reaches the network on its own. A fresh clone builds offline; a missing vendored copy is an error naming the flag to run, never an implicit fetch. |
+| **Fetching is one explicit act** | Adding a reference and refreshing one are both deliberate, flagged operations, because both can change your contract. See [the build](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default). |
+| **Integrity by repository** | Upstream changed under you? The refetch produces a diff, in a commit, in a review. A remote `$ref` is third-party content that shapes your public API surface, and treating it as untrusted input is the lesson every package ecosystem learned the expensive way — git gives us that property without a mechanism of our own. |
 
 The [allowlist](#remote-references-and-the-domain-allowlist) still governs every fetch, but its threat
 model shrinks to almost nothing: outbound requests now happen only inside an explicit, human- or
@@ -405,26 +434,25 @@ We are not building a dependency manager, and the borrowed vocabulary must not d
 * **No version constraints, no resolution, no solver.** A `$ref` is a URL, not a package with a
   version range. There is nothing to negotiate and no conflicts to resolve.
 * **No registry, and nothing to publish.**
+* **No lock file** — [git already is one](#no-lock-file-git-is-the-lock).
 * **One divergence, deliberate: the vendored copies are committed.** Composer can leave `vendor/` out
   of version control because Packagist guarantees a published version is immutable. Nothing guarantees
-  that about `https://example.com/schemas/user.yaml` — it can change or vanish tomorrow, and then the
-  lock alone cannot reproduce your build. Committing the copies is what makes an old release still
-  deployable.
+  that about `https://example.com/schemas/user.yaml` — it can change or vanish tomorrow. Committing
+  the copies is what makes an old release still deployable, and it is why no lock file is needed.
 
-**Open.** The names — of the lock file, the vendored directory, and both commands — are public API
-surface under [rule 4](#the-four-rules-that-govern-this-document) and are not chosen. Also open:
-whether a fetched document that itself contains remote references is followed (transitive fetching,
-with the allowlist applying at every hop and every hop recorded in the lock) or refused at depth one.
+**Open.** The names of the vendored directory and of the refetch flag are public API surface under
+[rule 4](#the-four-rules-that-govern-this-document) and are not chosen. Also open: whether a fetched
+document that itself contains remote references is followed — transitive fetching, with the allowlist
+applying at every hop — or refused at depth one.
 
-#### This is separate from compiling the spec
+#### Vendoring is one part of the build
 
-Vendoring makes the *inputs* local. It says nothing about how fast the spec is turned into routes on
-each boot, which is a different question with a different answer — a compiled artifact alongside
-`config:cache` and `route:cache`. The two are easy to conflate and should not be: vendoring alone
-already guarantees no network at boot, whether or not a compiled artifact exists.
+Vendoring makes the *inputs* local. Turning those inputs into routes, controllers and validation is a
+separate job, and both belong to the same command — see
+[`CODE-GENERATION.md`](./CODE-GENERATION.md). Do not conflate the two: vendoring alone already
+guarantees no network at boot, whatever the build does afterwards.
 
-The compilation question belongs with `route:cache` in [still to discuss](#still-to-discuss). What is
-settled here regardless: **the doctor reads, it never writes** — it is
+What is settled here regardless: **the doctor reads, it never writes** — it is
 [read-only by contract](#the-contract) — and its report names which sources it read, because a doctor
 that silently checks something other than what runs is worse than no doctor.
 

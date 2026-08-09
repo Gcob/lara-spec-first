@@ -18,7 +18,10 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
   with package discovery, and the development toolchain (Docker, Pest, Pint, Larastan, `just`).
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs.
 - [ ] Build the core Service Provider to dynamically register routes from the spec.
-- [ ] Implement the base abstract controller generation (Generated vs. Extended pattern).
+- [ ] Implement the base abstract controller generation (Generated vs. Extended pattern) — see
+  [`CODE-GENERATION.md`](./CODE-GENERATION.md).
+- [ ] Ship the build command: vendor the remote references, resolve the spec, and generate the routes,
+  the abstract controllers and the stubs. One command, safe to re-run, never overwriting human work.
 - [ ] Ship the diagnostic command — `nginx -t` for your contract: what the package will honor, what it
   will not, and the routing table that results. It belongs in this phase, not with the other Artisan
   commands: it is what makes "the spec is the source of truth" verifiable rather than asserted. See
@@ -27,9 +30,28 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 ## Phase 2: Developer Experience & Mocks
 *Goal: Make adoption frictionless and fast.*
 - [ ] Implement automated Faker-based mocking for endpoints lacking concrete controller implementations.
-- [ ] Add the remaining Artisan commands (`php artisan spec:generate`). Spec validation is **not** a
-  separate command: it is the first section of the Phase 1 diagnostic command.
+- [ ] Extend the build to response DTOs and request validation, on top of the Phase 1 routes and
+  controllers. Generation and validation are not new commands: they are the Phase 1 build and the
+  Phase 1 doctor, doing more. See [`CODE-GENERATION.md`](./CODE-GENERATION.md#response-dtos).
 - [ ] Support OpenAPI versioning directories (`v1/`, `v2/`).
+- [ ] Ship the `watch` command: the design loop, rebuilding on change and allowed to fetch references
+  that `build` deliberately refuses to. A separate command because a running process states intent
+  every time and dies with the terminal, where a config key would quietly follow you into CI. See
+  [watching](./CODE-GENERATION.md#watching-the-design-loop).
+- [ ] Spec-driven test data, so that testing an endpoint does not start by writing a factory. The
+  schema already states the shape, the constraints and often the examples — the package should be able
+  to produce a conforming payload from it. **Where this stops matters and must be said plainly:** a
+  schema describes shapes, not domain truth. Referential integrity, business invariants and database
+  constraints are not in it. Spec-driven data can replace a factory for HTTP-level and mock-server
+  tests; it cannot replace one for tests that persist to a database.
+
+### The thesis this phase is proving
+
+Taken together, the generated pipeline is the point of the whole package: for an ordinary CRUD
+endpoint, **the route, the form request, the controller and the DTO are all derived from the
+contract**, and the only thing a developer writes is the model and the business logic that model
+carries. Not less typing for its own sake — less surface where the code and the contract can quietly
+disagree.
 
 ## Phase 3: Legacy Bridge & Ecosystem
 *Goal: Turn an existing Code-First Laravel app into a Spec-First one — quickly, simply, and above all reliably.*

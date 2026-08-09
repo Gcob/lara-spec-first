@@ -18,6 +18,9 @@ architecture while letting your business logic live safely in standard Laravel c
   already run. See the [Roadmap](./docs/ROADMAP.md).
 * **Instant Mocks:** Fallback to automatic Faker-powered responses if the concrete implementation isn't written yet.
 * **AI-Ready:** Designed to output clean stubs that AI coding agents can easily understand and implement.
+* **Safe to regenerate:** Generated code and your code never share a file, so the build can be re-run
+  at any time without losing work — and a contract change surfaces as a static analysis error, not a
+  production incident. See [`docs/CODE-GENERATION.md`](./docs/CODE-GENERATION.md).
 
 ---
 
