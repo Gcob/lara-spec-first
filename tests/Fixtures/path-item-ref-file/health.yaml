@@ -1,0 +1,4 @@
+get:
+  operationId: healthFromAnotherFile
+  responses:
+    '200': { description: Fine }

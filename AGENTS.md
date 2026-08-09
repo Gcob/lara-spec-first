@@ -83,6 +83,7 @@ a finding.
 | Feature    | The package running inside a real Laravel application.               | Booted through the package test harness. Covers routing, controllers, mocks. |
 | Contract   | Live responses validated against the OpenAPI spec.                   | The signature test type of a Spec-First package. Guards the core promise.    |
 | Regression | A test reproducing a reported bug.                                   | Must fail before the fix and pass after it.                                  |
+| Conformance | The reading engine against a partitioned input space.               | Organized by equivalence class rather than by example, so coverage can be argued. Every parser defect found earns a permanent case — see the [Roadmap](./docs/ROADMAP.md). |
 
 Expectations:
 

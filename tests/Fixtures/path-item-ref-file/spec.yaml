@@ -1,0 +1,10 @@
+# Accepted: a Path Item living in another file. Resolving it needs both the
+# parser and the path of the document it came from, which is why the reader
+# carries that path forward.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /health:
+    $ref: 'health.yaml'

@@ -223,6 +223,50 @@ The behavior is what matters and it holds across the supported range; the line n
 | Remote `$ref` by URL is resolved transparently.                                                                                      | `Reader.php`, `ReferenceContext`                                                                                                      | Network I/O during boot, and an SSRF surface. See [below](./REMOTE-REFERENCES.md).                                                                                                                                                                                                                                                                                                                                                                     |
 | `paths` is not required for 3.1 documents.                                                                                           | `OpenApi.php:91`                                                                                                                      | Zero routes is a valid outcome, not an error.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | A pure `$ref` cycle exhausts memory instead of raising.                                                                              | Verified: `A: {$ref: B}` / `B: {$ref: A}` under `RESOLVE_MODE_ALL` dies in `JsonPointer.php:108` with *Allowed memory size exhausted* | The parser does carry cycle checks (`Reference.php:324,330`), but this shape recurses past them. A malformed document takes the process down rather than producing a diagnostic — the one failure mode the doctor cannot report on, because it never gets to return. **Detecting `$ref` cycles is our job, before the document reaches the parser.** An ordinary recursive *schema* is fine; the two are [different things](#references-and-security). |
+| `components.pathItems` is not modelled at all.                                                                                       | Verified: `Components::attributes()` lists nine keys and `pathItems` is not among them                                                | A 3.1 document reusing a Path Item through `#/components/pathItems/…` resolves to a plain value, ends up with **no operations, and no error** — the endpoint disappears in silence, which is the one outcome this package must never produce. Refused where it is read, naming the two forms that do work: a `$ref` to another path, and a `$ref` to another file. Both verified.                                                                      |
+
+## What we depend on the parser for
+
+Two of the caveats above are not inconveniences, they are failures with no
+symptom: a pure `$ref` cycle takes the process down, and `components.pathItems`
+loses an endpoint without a word. Both were found within days of first use, on a
+surface no wider than paths and references. That is worth writing down honestly
+rather than discovering again later.
+
+The exposure is contained — `cebe\openapi\` may appear in one namespace and an
+[architecture test says so](#where-the-parser-sits-decided) — but containment
+says *where* the dependency lives, not *how much* of it there is. This list is
+the second half: everything the package actually asks the parser to do. It is
+also, deliberately, the specification a replacement would have to meet.
+
+| What we use it for                                                 | Why not ourselves                                                                             |
+|--------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| Resolving `$ref` within a document                                 | Mechanical, but easy to get subtly wrong.                                                     |
+| Resolving `$ref` into another file, relative to the referring file | The fiddly part: relative paths, nested documents, and the same target reached by two routes. |
+| Traversing Path Items and their operations                         | Convenience only. We could walk the resolved array ourselves.                                 |
+
+**Nothing else.** Every further use is a decision to widen the exposure, and
+belongs in a pull request that says so.
+
+**Adding an interface in front of it would be premature today**, and the reason
+is not that the dependency is fine — it is that we have used it for paths and
+references only. The place the object model is weakest is schemas, which is
+where 3.1 diverges most and where the parser keeps unknown keywords as raw
+arrays. An interface designed before that point would be shaped by the easy half
+of the problem, and an adapter shaped by the wrong half leaks the original's
+model anyway. **The decision belongs at the moment schema normalization starts**,
+with evidence from the hard part rather than a guess made from the easy one.
+
+What the list above does in the meantime is make the answer cheap when that
+moment comes: three behaviours, two of which are one problem, is an estimate
+rather than an open question.
+
+**And the protection chosen instead is behavioural.** An adapter guards against
+swapping a dependency; what has actually gone wrong twice is the dependency
+being wrong, which an interface would not have caught either time. So the answer
+is a [conformance suite organized by equivalence class](./ROADMAP.md) — which
+ends up serving the adapter's purpose as well, since a suite a replacement must
+pass is a stronger contract than an interface it must implement.
 
 ## Reading a document
 
@@ -412,7 +456,7 @@ current intent for the first release, not shipped behavior.
 | `paths`                                 | Supported | The source of every registered route.                                                                                                                                                                                    |
 | Path templating `{param}`               | Partial   | Conforming names only, pending the [naming decision](#parameter-names-are-a-naming-contract-not-a-mapping-problem).                                                                                                      |
 | Several parameters in one segment       | Open      |                                                                                                                                                                                                                          |
-| Path Item `$ref`                        | Open      | Special-cased by the parser (`PathItem.php:73-78`).                                                                                                                                                                      |
+| Path Item `$ref`                        | Partial   | A reference to another path or to another file resolves. A reference into `components.pathItems` (3.1) is refused, because the parser [drops it in silence](#parser-caveats).                                            |
 | `get`, `post`, `put`, `patch`, `delete` | Supported |                                                                                                                                                                                                                          |
 | `options`                               | Open      | Conflicts with Laravel's own handling.                                                                                                                                                                                   |
 | `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                                                                             |
