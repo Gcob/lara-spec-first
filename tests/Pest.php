@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\HttpMethod;
+use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Tests\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
@@ -36,4 +39,22 @@ function specFixture(string $name): array
 function specFixturePath(string $name): string
 {
     return __DIR__.'/Fixtures/'.$name;
+}
+
+/**
+ * An operation with a recognisable operationId, for tests about how operations
+ * are held rather than about what they contain.
+ *
+ * Beside the fixture helpers rather than in a test file: Pest loads every test
+ * into one process, so a global function declared in one of them is a fatal
+ * error waiting for the second file that wants the same name.
+ */
+function operationNamed(string $method, string $path, int $index = 0): Operation
+{
+    return new Operation(
+        $index,
+        HttpMethod::from($method),
+        PathTemplate::fromString($path),
+        $method.'-'.$path,
+    );
 }

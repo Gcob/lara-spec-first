@@ -32,3 +32,16 @@ arch('service providers extend the Laravel base provider')
 arch('the OpenAPI parser stays inside Parsing')
     ->expect('cebe\openapi')
     ->toOnlyBeUsedIn('Gcob\LaraSpecFirst\Parsing');
+
+// Contract\ is what every other layer consumes, so it must know nothing about
+// the layer that produces it. The inversion is easy to introduce by accident —
+// a `{@see}` in a docblock is enough to add the import — and impossible to see
+// in a diff once it is there.
+arch('the contract knows nothing about how it was produced')
+    ->expect('Gcob\LaraSpecFirst\Contract')
+    ->not->toUse([
+        'Gcob\LaraSpecFirst\Parsing',
+        'Gcob\LaraSpecFirst\Generation',
+        'Gcob\LaraSpecFirst\Console',
+        'Gcob\LaraSpecFirst\Routing',
+    ]);

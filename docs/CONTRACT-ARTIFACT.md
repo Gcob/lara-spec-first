@@ -17,7 +17,15 @@ tags: [ openapi, compatibility, decisions, code-generation, versions ]
 Every comparison this package makes between two versions of a contract goes through one file. This
 document owns what that file is and why it exists.
 
-> **Not implemented yet.** Phase 1 of the [Roadmap](./ROADMAP.md). Items marked `Open` are undecided.
+> **Mostly intent, marked per section**, the same discipline [`OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md)
+> applies to its own status. Items marked `Open` are undecided.
+>
+> **Shipped:** the artifact as an in-memory value object —
+> [`Contract\ContractArtifact`](../src/Contract/ContractArtifact.php). It assembles the operations a
+> [strategy](./OPENAPI-SUPPORT.md#handling-30-and-31-the-version-strategy) extracts, keyed by identity
+> and canonically ordered by path then method, with `toArray()` giving the shape [below](#the-shape).
+> Nothing yet writes that shape to a file, reads one back, or diffs two, so `spec:build` and
+> `spec:doctor` still have everything ahead of them.
 
 **Decision: the build produces a normalized representation of the contract — resolved, version-neutral,
 containing only what the package honors — and comparisons are made between artifacts, never between
@@ -89,6 +97,33 @@ Five rules make it work:
   mechanism everywhere else, but ignoring this file removes the baseline that breaking-change
   detection depends on. `spec:doctor` checks it in the same breath as the vendored directory.
 
-**Open.** Its name, its serialization, and its location — with the constraint that it must sit outside
-any directory a consumer would plausibly ignore wholesale. Whether a stale artifact — one whose format
-version predates the installed package — is regenerated silently or reported first.
+## The shape
+
+`ContractArtifact::toArray()` gives the logical shape the rules above describe — a format version, and
+every operation canonically ordered with the document's own position carried as a field:
+
+```php
+[
+    'formatVersion' => '1',
+    'operations' => [
+        ['index' => 1, 'method' => 'post', 'path' => '/users', 'operationId' => null],
+        ['index' => 0, 'method' => 'get', 'path' => '/users/{id}', 'operationId' => 'showUser'],
+    ],
+]
+```
+
+The indexes above are deliberately out of step with the order: the document wrote `get /users/{id}`
+first, and the artifact still lists `/users` first because that is where a reader looks for it. Which
+of the two orders means what is the point of carrying both.
+
+`path` is the template as written (`/users/{id}`, not `/users/{}`): rebuilding an `Operation` needs the
+parameter names back, and the normalized form has already thrown them away. Canonical order is by path,
+then by method in the order a Path Item declares its verbs in — `get`, `put`, `post`, `delete`,
+`options`, `head`, `patch` — rather than alphabetically, so operations on one path stay grouped the way a
+person reading the specification would expect.
+
+**Open.** Whether this shape is written to disk as JSON, as a PHP file like the published config, or
+something else; the artifact's file name; and its location — with the constraint that it must sit
+outside any directory a consumer would plausibly ignore wholesale. Whether a stale artifact — one whose
+format version predates the installed package — is regenerated silently or reported first. And reading
+one back (`fromArray()` or equivalent): nothing needs it yet, because nothing writes one yet.
