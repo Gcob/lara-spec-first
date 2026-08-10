@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst;
 
+use Gcob\LaraSpecFirst\Configuration\ConfigurationMerger;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
@@ -45,12 +46,7 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
     /**
      * Merge the package's defaults under whatever the application published.
      *
-     * Laravel's own `mergeConfigFrom()` merges one level deep, which is enough
-     * for a flat file and wrong for a nested one: an application that publishes
-     * the config and edits a single nested value replaces our whole sub-array,
-     * and every key added to that section in a later release silently arrives
-     * missing. A published config would then rot with each upgrade, and nothing
-     * would say so.
+     * Deeply, for the reasons {@see ConfigurationMerger} carries.
      */
     private function mergeConfigDeeply(string $path, string $key): void
     {
@@ -62,32 +58,7 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
         /** @var array<string, mixed> $published */
         $published = $config->get($key, []);
 
-        $config->set($key, self::deepMerge($defaults, $published));
-    }
-
-    /**
-     * Published values win; defaults fill in what they leave out.
-     *
-     * Only associative arrays are descended into. A list is a value the
-     * application chose in full — merging `allowed_hosts` element by element
-     * would make a host impossible to remove, which is the opposite of what a
-     * setting named after trust should do.
-     *
-     * @param  array<string, mixed>  $defaults
-     * @param  array<string, mixed>  $published
-     * @return array<string, mixed>
-     */
-    private static function deepMerge(array $defaults, array $published): array
-    {
-        foreach ($published as $key => $value) {
-            $default = $defaults[$key] ?? null;
-
-            $defaults[$key] = is_array($default) && $default !== [] && ! array_is_list($default) && is_array($value)
-                ? self::deepMerge($default, $value)
-                : $value;
-        }
-
-        return $defaults;
+        $config->set($key, ConfigurationMerger::defaultsUnder($defaults, $published));
     }
 
     /**

@@ -9,8 +9,6 @@ use RuntimeException;
 /**
  * A setting exists, the behaviour behind it does not.
  *
- * magik is coming soon.
- *
  * Thrown rather than ignored on purpose. A configuration key that is read and
  * quietly does nothing is worse than one that is missing: the developer who
  * sets it has every reason to believe it took effect, and the package that

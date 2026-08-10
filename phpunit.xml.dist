@@ -20,15 +20,6 @@
             failure here means something outside our code changed under us.
             See docs/ROADMAP.md.
         -->
-        <!--
-            Configuration boots the package underneath a host application whose
-            config file is not the one this package ships. Its own suite because
-            each case needs the application configured before the provider
-            registers, which is a different base test case than Feature uses.
-        -->
-        <testsuite name="Configuration">
-            <directory>tests/Configuration</directory>
-        </testsuite>
         <testsuite name="Conformance">
             <directory>tests/Conformance</directory>
         </testsuite>

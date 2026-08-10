@@ -52,7 +52,8 @@ schema registry, a shared contract repository — and closed everywhere else. Ru
 | Default | `[]` — no host, therefore no remote reference |
 
 **The package's defaults are merged *deeply* underneath whatever an application
-published.** Laravel's own `mergeConfigFrom()` merges one level, which is right
+published**, by [`ConfigurationMerger`](../src/Configuration/ConfigurationMerger.php) rather than by
+Laravel's helper. Laravel's own `mergeConfigFrom()` merges one level, which is right
 for a flat file and wrong for a nested one: an application that publishes this
 file and edits a single nested value replaces the whole sub-array, so every key
 added to that section in a later release arrives missing — a published config

@@ -47,7 +47,7 @@ final readonly class PathTemplate
         }
 
         $names = self::parseParameterNames($template);
-        $normalized = (string) preg_replace('/\{[^{}]*\}/', '{}', $template);
+        $normalized = (string) preg_replace('/\{[^{}]*}/', '{}', $template);
 
         return new self($template, $names, $normalized);
     }
@@ -75,7 +75,7 @@ final readonly class PathTemplate
             throw InvalidPathTemplateException::unbalanced($template);
         }
 
-        preg_match_all('/\{([^{}]*)\}/', $template, $matches, PREG_OFFSET_CAPTURE);
+        preg_match_all('/\{([^{}]*)}/', $template, $matches);
 
         $braces = substr_count($template, '{');
         if (count($matches[0]) !== $braces) {
@@ -84,7 +84,7 @@ final readonly class PathTemplate
 
         $names = [];
 
-        foreach ($matches[1] as [$name]) {
+        foreach ($matches[1] as $name) {
             if ($name === '') {
                 throw InvalidPathTemplateException::emptyParameter($template);
             }
