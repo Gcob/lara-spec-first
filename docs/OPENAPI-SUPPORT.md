@@ -31,8 +31,9 @@ source of truth.
 > settled — the same discipline [`STACK.md`](./STACK.md) applies to its own Status column.
 >
 > **Shipped:** [reading a document](#reading-a-document), and
-> [where the parser sits](#where-the-parser-sits-decided). Nothing yet hands a document to the OpenAPI
-> parser, and nothing registers a route.
+> [where the parser sits](#where-the-parser-sits-decided). The first `Contract\` types exist — a path
+> template and its normalized form — but nothing yet hands a document to the OpenAPI parser, produces
+> a contract artifact, or registers a route.
 
 Four subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below
 still govern all of them:
@@ -174,17 +175,18 @@ and only one, may see the parser:
 | Namespace     | Owns                                                                   | Built   |
 |---------------|------------------------------------------------------------------------|---------|
 | `Parsing\`    | Reading a document, and the only place `cebe\openapi\` may appear.     | Yes     |
-| `Contract\`   | Our own types — what a strategy produces and everything else consumes. | Not yet |
+| `Contract\`   | Our own types — what a strategy produces and everything else consumes. | Started |
 | `Generation\` | Emitting PHP.                                                          | Not yet |
 | `Console\`    | The commands.                                                          | Not yet |
 | `Routing\`    | What the service provider loads at boot.                               | Not yet |
 
-Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document. It has one member
-today and is expected to stay small by design: this doctrine sends almost every check to
-[the doctor](./DOCTOR.md), which *reports*, and keeps here only what makes loading impossible at all.
-The one other guard already implied by a decision elsewhere is the check that vendored references are
-present, which [frozen by default](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default)
-requires.
+Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document — the reference cycle
+detector and the remote reference guard. It is expected to stay small by design: this doctrine sends
+almost every check to [the doctor](./DOCTOR.md), which *reports*, and keeps here only what makes
+loading impossible or unsafe. Both of the current members earn that: one guards a failure the parser
+does not survive, the other a request it would make on a stranger's behalf. The remaining guard already
+implied by a decision elsewhere is the check that vendored references are present, which
+[frozen by default](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default) requires.
 
 The architecture test in `tests/Unit/ArchitectureTest.php` asserts it directly:
 
@@ -219,22 +221,67 @@ The behavior is what matters and it holds across the supported range; the line n
 | `type` is declared as a string but 3.1 arrays pass through unvalidated.                                                              | `Schema.php:92`                                                                                                                       | Our code must accept `string\|array` everywhere it touches a type, or normalize it at the boundary.                                                                                                                                                                                                                                                                                                                                                    |
 | `exclusiveMinimum` / `exclusiveMaximum` accept both booleans and numbers with no version check.                                      | `Schema.php:155-161`                                                                                                                  | The same property means different things depending on the document version. Only the strategy should ever see the raw form.                                                                                                                                                                                                                                                                                                                            |
 | A Path Item's `$ref` is special-cased and is not a normal `Reference`.                                                               | `PathItem.php:73-78`                                                                                                                  | Path-level `$ref` needs its own handling in the router.                                                                                                                                                                                                                                                                                                                                                                                                |
-| Remote `$ref` by URL is resolved transparently.                                                                                      | `Reader.php`, `ReferenceContext`                                                                                                      | Network I/O during boot, and an SSRF surface. See [below](./REMOTE-REFERENCES.md).                                                                                                                                                                                                                                                                                                                                                                     |
+| Remote `$ref` by URL is resolved transparently, by calling `file_get_contents()` on it.                                              | `ReferenceContext.php:217`                                                                                                            | Network I/O and an SSRF surface, handed to whoever wrote the document. Refused [before the parser sees it](#reading-a-document); see [remote references](./REMOTE-REFERENCES.md).                                                                                                                                                                                                                                                                      |
 | `paths` is not required for 3.1 documents.                                                                                           | `OpenApi.php:91`                                                                                                                      | Zero routes is a valid outcome, not an error.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | A pure `$ref` cycle exhausts memory instead of raising.                                                                              | Verified: `A: {$ref: B}` / `B: {$ref: A}` under `RESOLVE_MODE_ALL` dies in `JsonPointer.php:108` with *Allowed memory size exhausted* | The parser does carry cycle checks (`Reference.php:324,330`), but this shape recurses past them. A malformed document takes the process down rather than producing a diagnostic — the one failure mode the doctor cannot report on, because it never gets to return. **Detecting `$ref` cycles is our job, before the document reaches the parser.** An ordinary recursive *schema* is fine; the two are [different things](#references-and-security). |
+| `components.pathItems` is not modelled at all.                                                                                       | Verified: `Components::attributes()` lists nine keys and `pathItems` is not among them                                                | A 3.1 document reusing a Path Item through `#/components/pathItems/…` resolves to a plain value, ends up with **no operations, and no error** — the endpoint disappears in silence, which is the one outcome this package must never produce. Refused where it is read, naming the two forms that do work: a `$ref` to another path, and a `$ref` to another file. Both verified.                                                                      |
+
+## What we depend on the parser for
+
+Two of the caveats above are not inconveniences, they are failures with no
+symptom: a pure `$ref` cycle takes the process down, and `components.pathItems`
+loses an endpoint without a word. Both were found within days of first use, on a
+surface no wider than paths and references. That is worth writing down honestly
+rather than discovering again later.
+
+The exposure is contained — `cebe\openapi\` may appear in one namespace and an
+[architecture test says so](#where-the-parser-sits-decided) — but containment
+says *where* the dependency lives, not *how much* of it there is. This list is
+the second half: everything the package actually asks the parser to do. It is
+also, deliberately, the specification a replacement would have to meet.
+
+| What we use it for                                                 | Why not ourselves                                                                             |
+|--------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| Resolving `$ref` within a document                                 | Mechanical, but easy to get subtly wrong.                                                     |
+| Resolving `$ref` into another file, relative to the referring file | The fiddly part: relative paths, nested documents, and the same target reached by two routes. |
+| Traversing Path Items and their operations                         | Convenience only. We could walk the resolved array ourselves.                                 |
+
+**Nothing else.** Every further use is a decision to widen the exposure, and
+belongs in a pull request that says so.
+
+**Adding an interface in front of it would be premature today**, and the reason
+is not that the dependency is fine — it is that we have used it for paths and
+references only. The place the object model is weakest is schemas, which is
+where 3.1 diverges most and where the parser keeps unknown keywords as raw
+arrays. An interface designed before that point would be shaped by the easy half
+of the problem, and an adapter shaped by the wrong half leaks the original's
+model anyway. **The decision belongs at the moment schema normalization starts**,
+with evidence from the hard part rather than a guess made from the easy one.
+
+What the list above does in the meantime is make the answer cheap when that
+moment comes: three behaviours, two of which are one problem, is an estimate
+rather than an open question.
+
+**And the protection chosen instead is behavioural.** An adapter guards against
+swapping a dependency; what has actually gone wrong twice is the dependency
+being wrong, which an interface would not have caught either time. So the answer
+is a [conformance suite organized by equivalence class](./ROADMAP.md) — which
+ends up serving the adapter's purpose as well, since a suite a replacement must
+pass is a stronger contract than an interface it must implement.
 
 ## Reading a document
 
-Before any rule above can apply, a file has to become a document. Four steps, and **the order is the
+Before any rule above can apply, a file has to become a document. Five steps, and **the order is the
 design rather than an implementation detail** — each one is impossible before the one that precedes it,
-and the last one is impossible after.
+and the last two are impossible after.
 
-| Step       | What it does                                                                   | Why it sits there                                                                                                                                                                                                                          |
-|------------|--------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Decode** | YAML or JSON into an array.                                                    | Nothing can be decided about bytes. One code path serves both formats, because YAML 1.2 is a superset of JSON — branching on the file extension would only add a way to reject a correctly written document for carrying the wrong suffix. |
-| **Detect** | Read `openapi`, pick the [strategy](#handling-30-and-31-the-version-strategy). | The version is a field *inside* the file, so dispatch cannot happen any earlier than this.                                                                                                                                                 |
-| **Shape**  | Check the root keys the version requires.                                      | Needs the version to be known: `paths` is required at 3.0 and optional at 3.1, and that single difference is the whole reason this step is version-specific.                                                                               |
-| **Cycles** | Reject a `$ref` chain that never reaches content.                              | Last, and necessarily before the parser. See below.                                                                                                                                                                                        |
+| Step            | What it does                                                                   | Why it sits there                                                                                                                                                                                                                          |
+|-----------------|--------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Decode**      | YAML or JSON into an array.                                                    | Nothing can be decided about bytes. One code path serves both formats, because YAML 1.2 is a superset of JSON — branching on the file extension would only add a way to reject a correctly written document for carrying the wrong suffix. |
+| **Detect**      | Read `openapi`, pick the [strategy](#handling-30-and-31-the-version-strategy). | The version is a field *inside* the file, so dispatch cannot happen any earlier than this.                                                                                                                                                 |
+| **Shape**       | Check the root keys the version requires.                                      | Needs the version to be known: `paths` is required at 3.0 and optional at 3.1, and that single difference is the whole reason this step is version-specific.                                                                               |
+| **Cycles**      | Reject a `$ref` chain that never reaches content.                              | Last, and necessarily before the parser. See below.                                                                                                                                                                                        |
+| **Remote refs** | Refuse a `$ref` that would be fetched over the network.                        | Also before the parser: it resolves a URL by calling `file_get_contents()` on it (`ReferenceContext.php:217`), so by the time it raises, the request has been made and the document has already chosen where the application connects.     |
 
 **Why the cycle check cannot move.** A pure reference cycle is the one document fault the parser does
 not survive: it recurses past its own guards and exhausts memory rather than raising
@@ -411,7 +458,7 @@ current intent for the first release, not shipped behavior.
 | `paths`                                 | Supported | The source of every registered route.                                                                                                                                                                                    |
 | Path templating `{param}`               | Partial   | Conforming names only, pending the [naming decision](#parameter-names-are-a-naming-contract-not-a-mapping-problem).                                                                                                      |
 | Several parameters in one segment       | Open      |                                                                                                                                                                                                                          |
-| Path Item `$ref`                        | Open      | Special-cased by the parser (`PathItem.php:73-78`).                                                                                                                                                                      |
+| Path Item `$ref`                        | Partial   | A reference to another path or to another file resolves. A reference into `components.pathItems` (3.1) is refused, because the parser [drops it in silence](#parser-caveats).                                            |
 | `get`, `post`, `put`, `patch`, `delete` | Supported |                                                                                                                                                                                                                          |
 | `options`                               | Open      | Conflicts with Laravel's own handling.                                                                                                                                                                                   |
 | `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                                                                             |
@@ -445,15 +492,15 @@ current intent for the first release, not shipped behavior.
 
 ### References and security
 
-| Construct                                                            | Level     | Note                                                                                                                                                                                                                                                  |
-|----------------------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Local `$ref` within the document                                     | Supported |                                                                                                                                                                                                                                                       |
-| `$ref` to another local file                                         | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                                                  |
-| Remote `$ref` by URL                                                 | Partial   | [Allowlisted domains only](./REMOTE-REFERENCES.md); anything else is an error.                                                                                                                                                                        |
-| Recursive schema (`$ref` back to an ancestor)                        | Supported | A self-referential schema — a tree, a comment thread, nested categories — resolves. Verified: under `RESOLVE_MODE_ALL` the parser walks it on demand without limit or error; under `RESOLVE_MODE_INLINE` the inner `$ref` stays a `Reference` object. |
-| Pure `$ref` cycle (`A` → `B` → `A`)                                  | Rejected  | A reference chain pointing only at other references and looping back. **The parser does not fail gracefully here** — see [parser caveats](#parser-caveats). The doctor must catch it before the parser is handed the document.                        |
-| `$dynamicRef`, `$dynamicAnchor`, `$recursiveRef`, `$recursiveAnchor` | Rejected  | JSON Schema 2019-09/2020-12 dynamic-scope resolution, reachable only in 3.1. A different feature from a recursive schema, and rare outside meta-schemas. Rejected with a message that says which of the two you probably meant.                       |
-| `securitySchemes` and `security`                                     | Open      | See [still to discuss](#still-to-discuss).                                                                                                                                                                                                            |
+| Construct                                                            | Level     | Note                                                                                                                                                                                                                                                   |
+|----------------------------------------------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Local `$ref` within the document                                     | Supported |                                                                                                                                                                                                                                                        |
+| `$ref` to another local file                                         | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                                                   |
+| Remote `$ref` by URL                                                 | Rejected  | [Allowlisted hosts only](./REMOTE-REFERENCES.md), and the allowlist is empty until a project declares one — which it cannot yet, so every remote reference is refused today. Refused before the parser sees it, since resolving one means fetching it. |
+| Recursive schema (`$ref` back to an ancestor)                        | Supported | A self-referential schema — a tree, a comment thread, nested categories — resolves. Verified: under `RESOLVE_MODE_ALL` the parser walks it on demand without limit or error; under `RESOLVE_MODE_INLINE` the inner `$ref` stays a `Reference` object.  |
+| Pure `$ref` cycle (`A` → `B` → `A`)                                  | Rejected  | A reference chain pointing only at other references and looping back. **The parser does not fail gracefully here** — see [parser caveats](#parser-caveats). The doctor must catch it before the parser is handed the document.                         |
+| `$dynamicRef`, `$dynamicAnchor`, `$recursiveRef`, `$recursiveAnchor` | Rejected  | JSON Schema 2019-09/2020-12 dynamic-scope resolution, reachable only in 3.1. A different feature from a recursive schema, and rare outside meta-schemas. Rejected with a message that says which of the two you probably meant.                        |
+| `securitySchemes` and `security`                                     | Open      | See [still to discuss](#still-to-discuss).                                                                                                                                                                                                             |
 
 ## Changing this document
 

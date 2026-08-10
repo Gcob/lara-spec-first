@@ -13,7 +13,9 @@ tags: [ planning, migration, scope, openapi, testing ]
 This document outlines the vision, phases, and milestones for `lara-spec-first`.
 
 ## Phase 1: The Foundation (Current)
+
 *Goal: Prove the core concept with a working proof-of-concept.*
+
 - [x] Initialize package structure: `composer.json`, PSR-4 autoloading, the service provider skeleton
   with package discovery, and the development toolchain (Docker, Pest, Pint, Larastan, `just`).
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs,
@@ -36,13 +38,44 @@ This document outlines the vision, phases, and milestones for `lara-spec-first`.
 - [ ] Answer unimplemented operations with `501`, from a package-provided handler that names the
   `spec:make` command to run. See
   [501](./CODE-GENERATION.md#an-unimplemented-operation-answers-501).
+- [ ] **Remote reference vendoring.** `lara-spec-first.remote_references.allowed_hosts` exists and
+  refuses to pretend: naming a host throws until this lands. What it needs is the fetch itself, the
+  vendored copy committed beside the specification, and the resolution of the reference against that
+  copy rather than the network. See [remote references](./REMOTE-REFERENCES.md).
+- [ ] A conformance suite over the reading engine, organized by equivalence class.
+  **Not routine coverage — a deliberate answer to a risk already observed.** Two defects with no
+  symptom have been found in the OpenAPI parser within days of first use, on a surface no wider than
+  paths and references: a pure `$ref` cycle exhausts memory instead of raising, and
+  `components.pathItems` loses an endpoint without reporting anything. Both are recorded in
+  [parser caveats](./OPENAPI-SUPPORT.md#parser-caveats), and neither would have been prevented by
+  putting an interface in front of the parser — an adapter guards against *swapping* a dependency,
+  where what has actually gone wrong is the dependency *being wrong*. Behaviour is therefore what gets
+  pinned.
+
+  The suite partitions the input space rather than accumulating examples, so that coverage can be
+  argued instead of hoped for: by version, with the same contract written as 3.0 and as 3.1 and
+  required to normalize identically — the version strategy's entire promise, and the
+  one class that already exists (`tests/Conformance/`); by reference form (local, cross-file, blocked, cyclic, recursive
+  schema, and each
+  form a Path Item reference can take); by the positions where OpenAPI mixes data with specification;
+  by document shape (empty, no paths, webhooks-only, components-only); and by failure class, keeping
+  document faults, package limits and parser defects distinct in the assertions the way
+  [the doctor](./DOCTOR.md#two-kinds-of-finding-never-mixed) keeps them distinct in its report.
+
+  Every defect found in the parser earns a permanent case, so the list of what we know about it can
+  only grow. And the suite ends up being what an adapter was wanted for: **the acceptance criteria a
+  replacement parser would have to meet.** An interface would only prove a substitute compiles; this
+  proves one behaves.
+
 - [ ] Ship `spec:doctor` — `nginx -t` for your contract: what the package will honor, what it
   will not, and the routing table that results. It belongs in this phase, not with the other Artisan
   commands: it is what makes "the spec is the source of truth" verifiable rather than asserted. See
   [the doctor](./DOCTOR.md).
 
 ## Phase 2: Developer Experience & Mocks
+
 *Goal: Make adoption frictionless and fast.*
+
 - [ ] Implement automated Faker-based mocking for endpoints lacking concrete controller implementations.
 - [ ] A mock server driven by the spec: serve the whole contract with conforming responses, with no
   application behind it. Distinct from the in-app fallback above — that one fills the gaps in a real
@@ -71,6 +104,7 @@ carries. Not less typing for its own sake — less surface where the code and th
 disagree.
 
 ## Breaking-change enforcement
+
 *Goal: a stable operation cannot break without someone deciding to break it.*
 
 Deliberately not slotted into a phase yet: a rule that fails somebody's build has to be right before
@@ -84,6 +118,7 @@ it ships, and it depends on groundwork the earlier phases have not laid. See
   would make it legitimate.
 
 ## Phase 3: Legacy Bridge & Ecosystem
+
 *Goal: Turn an existing Code-First Laravel app into a Spec-First one — quickly, simply, and above all reliably.*
 
 The hard part of adopting Spec-First is not the new code, it is the app you already have. An established API has

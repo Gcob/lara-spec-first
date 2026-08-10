@@ -32,6 +32,17 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
         ));
     }
 
+    public static function duplicateEndpoint(string $identity, string $first, string $second): self
+    {
+        return new self(sprintf(
+            'Two operations address the same endpoint: "%s" and "%s" both resolve to `%s`. '.
+            'Whatever their parameters are named, one URL cannot reach two operations.',
+            $first,
+            $second,
+            $identity
+        ));
+    }
+
     /**
      * @param  non-empty-list<string>  $keys
      */

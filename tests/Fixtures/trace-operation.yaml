@@ -1,0 +1,10 @@
+# Rejected: Laravel has no TRACE verb, so this endpoint could not be registered.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /debug:
+    trace:
+      responses:
+        '200': { description: Echoed }

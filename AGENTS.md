@@ -77,12 +77,13 @@ accepted reason — small changes are precisely the ones that regress unnoticed.
 against the test suite the same way you check it against the docs: behavior with no test covering it is
 a finding.
 
-| Level      | Scope                                                                | Notes                                                                        |
-|------------|----------------------------------------------------------------------|------------------------------------------------------------------------------|
-| Unit       | A single class in isolation: parsing, name resolution, path mapping. | Fast, no framework boot. Should be the bulk of the suite.                    |
-| Feature    | The package running inside a real Laravel application.               | Booted through the package test harness. Covers routing, controllers, mocks. |
-| Contract   | Live responses validated against the OpenAPI spec.                   | The signature test type of a Spec-First package. Guards the core promise.    |
-| Regression | A test reproducing a reported bug.                                   | Must fail before the fix and pass after it.                                  |
+| Level       | Scope                                                                | Notes                                                                                                                                                                                            |
+|-------------|----------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Unit        | A single class in isolation: parsing, name resolution, path mapping. | Fast, no framework boot. Should be the bulk of the suite.                                                                                                                                        |
+| Feature     | The package running inside a real Laravel application.               | Booted through the package test harness. Covers routing, controllers, mocks.                                                                                                                     |
+| Contract    | Live responses validated against the OpenAPI spec.                   | The signature test type of a Spec-First package. Guards the core promise.                                                                                                                        |
+| Regression  | A test reproducing a reported bug.                                   | Must fail before the fix and pass after it.                                                                                                                                                      |
+| Conformance | The reading engine against a partitioned input space.                | `tests/Conformance/`. Organized by equivalence class rather than by example, so coverage can be argued. Every parser defect found earns a permanent case — see the [Roadmap](./docs/ROADMAP.md). |
 
 Expectations:
 

@@ -17,7 +17,13 @@ tags: [ openapi, dependencies, decisions, scope, compatibility ]
 Every other input to the build sits in the repository. A `$ref` pointing at a URL does not, and this
 document owns what the package does about that difference.
 
-> **Not implemented yet.** Phase 1 of the [Roadmap](./ROADMAP.md). Items marked `Open` are undecided.
+> **Mostly intent, marked per section.** Items marked `Open` are undecided.
+>
+> **Shipped:** the setting, and the strict half of what it means. `lara-spec-first.remote_references.allowed_hosts`
+> exists and defaults to empty; every remote reference is refused before the parser can fetch it,
+> which is exactly what an empty allowlist means. Naming a host **throws** rather than quietly doing
+> nothing, because the fetching and vendoring behind it is not built — a setting that is read and
+> ignored tells whoever set it that it took effect.
 
 **Decision: remote `$ref` targets are resolved only from an explicitly allowlisted set of domains,
 configured by the consuming application.**
@@ -37,6 +43,34 @@ schema registry, a shared contract repository — and closed everywhere else. Ru
 
 * **Empty by default.** No allowlist means no remote references. Local files keep working; a project
   that never uses remote `$ref` never sees this feature.
+### The setting
+
+| | |
+|---|---|
+| File | `config/lara-spec-first.php`, published with `--tag=lara-spec-first-config` |
+| Key | `remote_references.allowed_hosts` |
+| Default | `[]` — no host, therefore no remote reference |
+
+**The package's defaults are merged *deeply* underneath whatever an application
+published**, by [`ConfigurationMerger`](../src/Configuration/ConfigurationMerger.php) rather than by
+Laravel's helper. Laravel's own `mergeConfigFrom()` merges one level, which is right
+for a flat file and wrong for a nested one: an application that publishes this
+file and edits a single nested value replaces the whole sub-array, so every key
+added to that section in a later release arrives missing — a published config
+that rots a little with each upgrade, silently. Lists are the exception and are
+replaced wholesale, because merging `allowed_hosts` element by element would
+make a host impossible to remove, which is the opposite of what a setting named
+after trust should do.
+
+When there is more than one setting to describe, this belongs in a document of
+its own rather than under whichever feature happened to need the first one.
+
+Rules:
+
+* **A setting that is not backed yet refuses instead of lying.** Naming a host today throws
+  `NotImplementedYetException`, which names the setting, what it will do, and the roadmap item that
+  removes the exception. An empty allowlist and an unimplemented one would otherwise be
+  indistinguishable, and the developer who configured it would conclude the package is broken.
 * **A blocked reference is an error, never a skip.** A silently unresolved `$ref` is an unhonored
   contract, which rule 2 forbids.
 * **The exception names the offending reference, the document position, and the config key to

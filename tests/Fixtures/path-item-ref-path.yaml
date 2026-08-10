@@ -1,0 +1,14 @@
+# Accepted: a Path Item that refers to another path. Only the parser can resolve
+# this, which makes it the first behaviour here that genuinely needs it.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200': { description: Fine }
+  /healthz:
+    $ref: '#/paths/~1health'

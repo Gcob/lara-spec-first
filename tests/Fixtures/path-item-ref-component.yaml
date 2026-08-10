@@ -1,0 +1,17 @@
+# Rejected: the parser does not model `components.pathItems`, so it resolves
+# this reference to a plain value and leaves the path with no operations at all,
+# without reporting anything. Loading it would drop the endpoint in silence.
+openapi: "3.1.0"
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /health:
+    $ref: '#/components/pathItems/health'
+components:
+  pathItems:
+    health:
+      get:
+        operationId: health
+        responses:
+          '200': { description: Fine }

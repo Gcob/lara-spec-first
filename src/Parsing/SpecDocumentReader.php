@@ -6,6 +6,7 @@ namespace Gcob\LaraSpecFirst\Parsing;
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\UnreadableDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Guards\ReferenceCycleDetector;
+use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
@@ -22,8 +23,10 @@ use Symfony\Component\Yaml\Yaml;
  *   3. shape         — what the version requires at the document root
  *   4. cycles        — before the parser is handed anything, because a pure
  *                      reference cycle exhausts its memory rather than raising
+ *   5. remote refs   — also before, because the parser resolves a URL by
+ *                      fetching it, and by then the request has been made
  *
- * Only after all four does anything reach the OpenAPI parser. The guard has to
+ * Only after all five does anything reach the OpenAPI parser. The guard has to
  * sit here rather than inside a parser wrapper: once cebe has the document, a
  * cyclic one takes the process down and there is no exception left to catch.
  *
@@ -34,6 +37,7 @@ final readonly class SpecDocumentReader
     public function __construct(
         private VersionStrategyFactory $strategies = new VersionStrategyFactory,
         private ReferenceCycleDetector $cycles = new ReferenceCycleDetector,
+        private RemoteReferenceGuard $remote = new RemoteReferenceGuard,
     ) {}
 
     /**
@@ -49,6 +53,7 @@ final readonly class SpecDocumentReader
 
         $strategy->assertDocumentShape($data);
         $this->cycles->assertNoCycles($data);
+        $this->remote->assertNoRemoteReferences($data);
 
         return new ParsableSpecDocument($path, $strategy->version(), $strategy, $data);
     }
