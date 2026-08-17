@@ -107,8 +107,7 @@ The rules:
 The rule applies to a document's own description too. **Every Markdown file declares what it is in its own YAML front
 matter** — no index elsewhere restates it. The same five fields in every file:
 
-The indentation of wrapped values and the spacing inside the tag brackets belong to
-[the formatter](#formatting-is-a-command-not-a-discipline), not to you. The example below is `stack.md`'s actual front
+Indentation and bracket spacing come from [the formatter](#formatting). The example below is `stack.md`'s actual front
 matter — if the two ever differ, this example is the one that is wrong.
 
 ```yaml
@@ -197,27 +196,19 @@ This is a decision, not an oversight. **Do not add front matter to `README.md`.*
 
 Every other Markdown document in the repository takes the full set of fields.
 
-## Formatting is a command, not a discipline
+## Formatting
 
-Prose in this repository is hard-wrapped to the column limit in `.editorconfig`, so that changing one word produces a
-one-line diff instead of a repainted paragraph. **Nobody maintains that wrapping by hand:**
+Markdown formatting is not maintained by hand. Run it after editing documentation:
 
 ```bash
-just format-md          # composer format:md, for anyone working natively
+just format-md          # composer format:md, natively
 just format-md-check    # reports what needs it, writes nothing
 ```
 
-- **Run it after any edit that changes line lengths** — including a rename in a path that other documents link to, which
-  is what first left half of these files ragged. A reflowed paragraph is the expected diff; a paragraph carrying two
-  words on its last three lines is the damage the command exists to undo.
-- **The formatter is authoritative wherever it has an opinion:** wrapping, list markers, table padding, front matter
-  indentation, bracket spacing. Do not hand-tune what it will rewrite, and do not raise it in review — a reviewer asking
-  for a reflow is asking someone to run a command.
-- **It has no opinion about content.** Every rule above this section is still yours to enforce, and no formatter can
-  tell you that a topic landed in the wrong file.
+`.editorconfig` and `.prettierrc.json` define what it does — line width, indentation, wrapping. Read them there rather
+than here. The recipes are in the `justfile`, the tool row is in [`stack.md`](../project/stack.md).
 
-The tool, the pinned version and the reason it runs outside the PHP container are a stack decision — see
-[`stack.md`](../project/stack.md).
+Everything above this section is about content, and no formatter checks any of it.
 
 ## Document inventory
 

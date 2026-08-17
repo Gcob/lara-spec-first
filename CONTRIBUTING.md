@@ -151,7 +151,7 @@ It covers:
 Use `composer format` to apply the formatting rather than only report on them.
 
 **Markdown is formatted by a separate command**, because it needs Node rather than PHP and therefore runs outside the
-container:
+container. Run it whenever you edit documentation; it is not part of `composer check`.
 
 ```bash
 just format-md
@@ -159,10 +159,8 @@ just format-md
 composer format:md
 ```
 
-Run it whenever you edit documentation. It reflows prose to the column limit in `.editorconfig` and aligns tables, so
-nobody re-wraps a paragraph by hand — see
-[`docs/contributing/documentation.md`](./docs/contributing/documentation.md#formatting-is-a-command-not-a-discipline).
-It is deliberately not part of `composer check`.
+What it does is defined in `.editorconfig` and `.prettierrc.json` — see
+[`docs/contributing/documentation.md`](./docs/contributing/documentation.md#formatting).
 
 A few expectations:
 

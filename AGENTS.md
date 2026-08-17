@@ -62,6 +62,10 @@ Two rules keep this from eroding:
   through the same Composer script.
 - **Public API is expensive to change.** Once the package is published, class names, config keys, and Artisan command
   signatures become a compatibility contract. Flag such changes explicitly.
+- **Never format by hand — run the tool.** Do not rewrap prose, realign table columns, or count line widths yourself: it
+  is slow, and the next command overwrites it anyway. Run `just format-md` after editing Markdown and `just format`
+  after editing PHP. The settings live in `.editorconfig`, `.prettierrc.json` and `pint.json`; the recipes are in the
+  `justfile`. Same for reviews: formatting is not a finding.
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)** — see `CONTRIBUTING.md`.
 - **No emojis in documentation.**
 
