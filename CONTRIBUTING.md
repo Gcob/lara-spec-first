@@ -17,7 +17,7 @@ contribution, and how changes get merged.
 ## Project status
 
 `lara-spec-first` is in **early bootstrap** — we are working through
-[Phase 1 of the Roadmap](./docs/ROADMAP.md). The public API is not stable yet, and the package does not
+[Phase 1 of the Roadmap](./docs/project/roadmap.md). The public API is not stable yet, and the package does not
 do anything useful for a consumer so far. The tooling below, however, is in place and works today.
 
 Right now, the most valuable contribution is **design feedback**. Opening an issue to challenge an
@@ -152,6 +152,20 @@ It covers:
 
 Use `composer format` to apply the formatting rather than only report on them.
 
+**Markdown is formatted by a separate command**, because it needs Node rather than PHP and therefore
+runs outside the container:
+
+```bash
+just format-md
+# or
+composer format:md
+```
+
+Run it whenever you edit documentation. It reflows prose to the column limit in `.editorconfig` and
+aligns tables, so nobody re-wraps a paragraph by hand — see
+[`docs/contributing/documentation.md`](./docs/contributing/documentation.md#formatting-is-a-command-not-a-discipline).
+It is deliberately not part of `composer check`.
+
 A few expectations:
 
 * **New behavior needs a test.** Bug fixes should include a test that fails before your change.
@@ -192,7 +206,7 @@ Contributions that fit naturally:
 * Anything that eases migration for existing Laravel apps adopting the pattern route by route.
 * Better OpenAPI coverage (`$ref` resolution, `oneOf`/`anyOf`, 3.1 features).
 * Migration tooling that helps a Code-First app become Spec-First. Generating a spec from existing PHP is
-  explicitly **in scope** — but as a *one-time on-ramp* (see [Phase 3](./docs/ROADMAP.md)), not as an
+  explicitly **in scope** — but as a *one-time on-ramp* (see [Phase 3](./docs/project/roadmap.md)), not as an
   ongoing workflow. Tools like `Scramble` already extract specs well; we want to build on them and on
   making that cutover verifiable, not to reimplement them.
 

@@ -41,7 +41,7 @@ final readonly class ParsableSpecDocument
      *                                     not interpreted anything yet, and producing the normalized
      *                                     form is the contract artifact's job.
      *
-     * @see docs/CONTRACT-ARTIFACT.md
+     * @see docs/internals/contract-artifact.md
      */
     public function __construct(
         public string $path,

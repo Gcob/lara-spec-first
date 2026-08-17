@@ -33,7 +33,7 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
  *           SpecDocumentReader.
  *
  * @see SpecDocumentReader for the order of the read pipeline
- * @see docs/OPENAPI-SUPPORT.md — "Parser caveats"
+ * @see docs/guide/openapi-support.md — "Parser caveats"
  */
 final readonly class ReferenceCycleDetector
 {

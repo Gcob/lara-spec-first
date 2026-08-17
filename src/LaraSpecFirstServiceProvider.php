@@ -27,7 +27,7 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
      * sees a specification, so what belongs in this method is configuration and
      * the wiring the build-time commands will resolve.
      *
-     * @see docs/CODE-GENERATION.md — "The runtime never sees the spec"
+     * @see docs/guide/code-generation.md — "The runtime never sees the spec"
      */
     public function register(): void
     {

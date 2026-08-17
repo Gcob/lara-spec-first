@@ -30,7 +30,7 @@ use Symfony\Component\Yaml\Yaml;
  * sit here rather than inside a parser wrapper: once cebe has the document, a
  * cyclic one takes the process down and there is no exception left to catch.
  *
- * @see docs/OPENAPI-SUPPORT.md — "Parser caveats"
+ * @see docs/guide/openapi-support.md — "Parser caveats"
  */
 final readonly class SpecDocumentReader
 {

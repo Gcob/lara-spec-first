@@ -15,7 +15,7 @@ use RuntimeException;
  * raising. Detecting it is therefore ours, and it has to happen before the
  * document is handed over.
  *
- * @see docs/OPENAPI-SUPPORT.md — "Parser caveats"
+ * @see docs/guide/openapi-support.md — "Parser caveats"
  */
 final class CyclicReferenceException extends RuntimeException implements SpecException
 {

@@ -18,7 +18,7 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
  * touch the specification document or the parser's own representation of it.
  *
  * @see SpecDocumentReader for the order of the read pipeline
- * @see docs/OPENAPI-SUPPORT.md — "Handling 3.0 and 3.1: the version strategy"
+ * @see docs/guide/openapi-support.md — "Handling 3.0 and 3.1: the version strategy"
  */
 enum SpecVersion: string
 {

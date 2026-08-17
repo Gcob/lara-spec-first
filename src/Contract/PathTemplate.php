@@ -22,7 +22,7 @@ use Gcob\LaraSpecFirst\Contract\Exceptions\InvalidPathTemplateException;
  * That is correct: those two paths already collide in any router, so surfacing
  * it is a service rather than a limitation.
  *
- * @see docs/CODE-GENERATION.md — "Identity is the path and the method, not the name"
+ * @see docs/guide/code-generation.md — "Identity is the path and the method, not the name"
  */
 final readonly class PathTemplate
 {

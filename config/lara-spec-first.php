@@ -17,7 +17,7 @@ return [
     | a host throws rather than silently doing nothing, because the fetching and
     | vendoring behind this setting is not built yet.
     |
-    | See docs/REMOTE-REFERENCES.md.
+    | See docs/guide/remote-references.md.
     |
     */
 
