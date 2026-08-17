@@ -1,0 +1,66 @@
+name: Documentation
+
+# Builds and publishes the VitePress site to GitHub Pages.
+#
+# Inert until two things are true: this workflow is on the default branch, and
+# Pages is set to "GitHub Actions" in the repository settings. Until then it never
+# runs, and nothing is published.
+#
+# The build fails on a dead internal link, so a renamed or moved document cannot be
+# published with links pointing at where it used to be.
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "**.md"
+            - ".vitepress/**"
+            - "package.json"
+            - "package-lock.json"
+            - ".github/workflows/docs.yml"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+# One deployment at a time, and never cancel one in flight: a cancelled deploy can
+# leave the site half published.
+concurrency:
+    group: pages
+    cancel-in-progress: false
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  # `lastUpdated` reads each page's timestamp from git history, which
+                  # a shallow clone does not carry.
+                  fetch-depth: 0
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - uses: actions/configure-pages@v5
+
+            - run: npm ci
+            - run: npm run docs:build
+
+            - uses: actions/upload-pages-artifact@v3
+              with:
+                  path: .vitepress/dist
+
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - id: deployment
+              uses: actions/deploy-pages@v4

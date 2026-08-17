@@ -66,6 +66,8 @@ Two rules keep this from eroding:
   is slow, and the next command overwrites it anyway. Run `just format-md` after editing Markdown and `just format`
   after editing PHP. The settings live in `.editorconfig`, `.prettierrc.json` and `pint.json`; the recipes are in the
   `justfile`. Same for reviews: formatting is not a finding.
+- **Let the docs build find your dead links.** Moving or renaming a document breaks every link into it.
+  `just docs-build` fails on the first one and names the file — faster and more complete than grepping for the old path.
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)** — see `CONTRIBUTING.md`.
 - **No emojis in documentation.**
 

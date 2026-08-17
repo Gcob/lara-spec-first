@@ -210,6 +210,21 @@ than here. The recipes are in the `justfile`, the tool row is in [`stack.md`](..
 
 Everything above this section is about content, and no formatter checks any of it.
 
+## The documentation site
+
+Every document in the [inventory](#document-inventory) is published as a page of the site, including the ones at the
+repository root.
+
+```bash
+just docs-install   # once
+just docs           # local server, hot reload
+just docs-build     # static build; fails on a dead internal link
+```
+
+`.vitepress/config.mts` decides what is published, in what order and under which group. Page titles come from front
+matter, so a document is named in one place only. Deployment is `.github/workflows/docs.yml`, and the tool row is in
+[`stack.md`](../project/stack.md).
+
 ## Document inventory
 
 Each document declares its own `title`, `audience`, `covers`, `read_before`, and `tags` in its
@@ -243,6 +258,6 @@ Repository root:
 - [`README.md`](../../README.md) — no front matter, [by design](#readmemd-carries-no-front-matter--deliberately)
 - [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — `Contributors`
 - [`AGENTS.md`](../../AGENTS.md) — `AI coding agents`
-- [`LICENSE`](../../LICENSE) — MIT, plain text, no front matter
+- [`LICENSE`](https://github.com/Gcob/lara-spec-first/blob/main/LICENSE) — MIT, plain text, no front matter
 
 Adding a Markdown document to the repository means adding it here **and** giving it front matter.

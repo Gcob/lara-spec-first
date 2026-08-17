@@ -150,17 +150,11 @@ It covers:
 
 Use `composer format` to apply the formatting rather than only report on them.
 
-**Markdown is formatted by a separate command**, because it needs Node rather than PHP and therefore runs outside the
-container. Run it whenever you edit documentation; it is not part of `composer check`.
-
-```bash
-just format-md
-# or
-composer format:md
-```
-
-What it does is defined in `.editorconfig` and `.prettierrc.json` — see
-[`docs/contributing/documentation.md`](./docs/contributing/documentation.md#formatting).
+**Markdown has its own commands**, one to format it and one to build the documentation site. Both need Node rather than
+PHP, so they run outside the container and are not part of `composer check`. Run them whenever you edit documentation —
+the commands are in [`docs/contributing/documentation.md`](./docs/contributing/documentation.md), under
+[formatting](./docs/contributing/documentation.md#formatting) and
+[the documentation site](./docs/contributing/documentation.md#the-documentation-site).
 
 A few expectations:
 
@@ -220,5 +214,5 @@ attached to it.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](./LICENSE) that covers this
-project.
+By contributing, you agree that your contributions will be licensed under the
+[MIT License](https://github.com/Gcob/lara-spec-first/blob/main/LICENSE) that covers this project.

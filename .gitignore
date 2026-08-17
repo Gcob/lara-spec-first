@@ -1,6 +1,12 @@
 /vendor/
 node_modules/
 
+# Documentation site: the VitePress config is committed, its cache and its build
+# output are not. package-lock.json IS committed, so `npm ci` resolves the same
+# tree in CI.
+.vitepress/cache/
+.vitepress/dist/
+
 # Libraries do not commit their lock file: Composer ignores it when the package
 # is installed as a dependency, and pinning it here would hide incompatibilities
 # across the supported PHP x Laravel matrix.
