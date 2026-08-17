@@ -1,6 +1,6 @@
 ---
 title: Operation Lifecycle
-audience: Users, contributors and agents
+audience: Users
 covers: >
     The `x-audience`, `x-lifecycle` and `x-sunset` extensions this package
     defines: how strong a promise each operation carries, why an operation is
@@ -18,7 +18,7 @@ OpenAPI can say an operation is deprecated. It cannot say how strong a promise t
 before that, nor when it disappears — which is the only part a consumer can plan around. This document
 owns the extensions that close the gap, and the enforcement that gives them teeth.
 
-> **Not implemented yet.** Phase 1 of the [Roadmap](./ROADMAP.md). Items marked `Open` are undecided.
+> **Not implemented yet.** Phase 1 of the [Roadmap](../project/roadmap.md). Items marked `Open` are undecided.
 
 OpenAPI can say an operation is `deprecated`. It cannot say what comes before deprecation, and it
 cannot say *when the endpoint disappears* — which is the only part a consumer can actually plan
@@ -57,7 +57,7 @@ a breaking change to a `stable` operation fails the build, flipping its audience
 the failure disappear. That may be entirely legitimate — an endpoint really can stop being public —
 but it is *revoking a promise*, and a promise cannot be revoked silently in a package built on
 contracts. The report names it, in the same spirit as labelling a
-[non-representative run](./DOCTOR.md#planned-flags). Whether it merely reports or requires the same
+[non-representative run](./doctor.md#planned-flags). Whether it merely reports or requires the same
 `info.version` bump a break would is **open**.
 
 One consequence worth having: the doctor's protection report counts **public** operations only. A
@@ -88,13 +88,13 @@ to express: whether an operation is promised at all.
 | `x-sunset` approaching is a warning                                | With a configurable horizon, so it lands in CI while there is still time to act.                                                                                                             |
 | An unrecognized `x-lifecycle` value is a finding                   | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                          |
 | `beta` operations are listed                                       | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                                 |
-| A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path). |
+| A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path). |
 
 ## Unstable by default, and what `stable` costs us
 
 **Decision: a public operation with no `x-lifecycle` is `beta`.** You cannot claim a stability
 guarantee by omission — claiming one is an act. This is the right default for the same reason the
-[allowlist](./REMOTE-REFERENCES.md) is empty by default: the permissive state is
+[allowlist](./remote-references.md) is empty by default: the permissive state is
 the one you should have to opt out of, not into.
 
 | Value                        | Means                                  | What the build does                    |
@@ -113,7 +113,7 @@ records.
 Four consequences, because a rule that fails a build has to be right:
 
 **1. Failing on a breaking change requires a baseline, and the baseline is
-[an artifact of our own](./CONTRACT-ARTIFACT.md).** Not the two specification documents, and not the
+[an artifact of our own](../internals/contract-artifact.md).** Not the two specification documents, and not the
 generated code.
 
 **2. "Breaking" is directional, and the direction inverts between request and response.** This is
@@ -121,7 +121,7 @@ where implementations get it wrong, so it has to be a written table rather than 
 adding a required *request* field breaks clients; adding a *response* field usually does not. Removing
 a response field breaks them; removing an optional request field usually does not. Widening an enum
 breaks response consumers and helps request senders; narrowing it does the opposite. That table is
-itself public API under [rule 4](./OPENAPI-SUPPORT.md#the-four-rules) — a change to what counts
+itself public API under [rule 4](./openapi-support.md#the-four-rules) — a change to what counts
 as breaking changes whose build fails — and it is large enough to deserve its own phase rather than
 being smuggled into the first release.
 
@@ -135,7 +135,7 @@ should be. Breaking on purpose stays possible; breaking by accident stops being.
 **4. The doctor must report how much of the API is actually protected.** A specification imported from
 elsewhere has no `x-lifecycle` anywhere, so every public operation defaults to `beta` and the strongest
 rule in this document is silently off for the whole API. *47 public operations, 0 stable* is a finding
-under [rule 2](./OPENAPI-SUPPORT.md#the-four-rules): protection that is off must never look like
+under [rule 2](./openapi-support.md#the-four-rules): protection that is off must never look like
 protection that passed.
 
 ## The runtime payoff

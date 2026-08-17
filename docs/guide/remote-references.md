@@ -1,6 +1,6 @@
 ---
 title: Remote References
-audience: Users, contributors and agents
+audience: Users
 covers: >
     How a `$ref` pointing at a URL is handled: the domain allowlist and why it
     is empty by default, why a fetched document is treated as a dependency
@@ -52,7 +52,7 @@ schema registry, a shared contract repository — and closed everywhere else. Ru
 | Default | `[]` — no host, therefore no remote reference |
 
 **The package's defaults are merged *deeply* underneath whatever an application
-published**, by [`ConfigurationMerger`](../src/Configuration/ConfigurationMerger.php) rather than by
+published**, by [`ConfigurationMerger`](https://github.com/Gcob/lara-spec-first/blob/main/src/Configuration/ConfigurationMerger.php) rather than by
 Laravel's helper. Laravel's own `mergeConfigFrom()` merges one level, which is right
 for a flat file and wrong for a nested one: an application that publishes this
 file and edits a single nested value replaces the whole sub-array, so every key
@@ -145,10 +145,10 @@ The parts of the pattern worth taking, and only these:
 |----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Vendored copies, committed**   | The fetched documents, on disk, in version control. Once they exist, boot resolves everything locally and **the runtime never touches the network** — not on a miss, not on the first request after a restart, never, because there is no lookup to miss. Their diffs are how a change to your API contract shows up in a pull request instead of in production. |
 | **Frozen by default**            | The build never reaches the network on its own. A fresh clone builds offline; a missing vendored copy is an error naming the flag to run, never an implicit fetch.                                                                                                                                                                                               |
-| **Fetching is one explicit act** | Adding a reference and refreshing one are both deliberate, flagged operations, because both can change your contract. See [the build](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default).                                                                                                                                                  |
+| **Fetching is one explicit act** | Adding a reference and refreshing one are both deliberate, flagged operations, because both can change your contract. See [the build](./code-generation.md#remote-references-during-a-build-frozen-by-default).                                                                                                                                                  |
 | **Integrity by repository**      | Upstream changed under you? The refetch produces a diff, in a commit, in a review. A remote `$ref` is third-party content that shapes your public API surface, and treating it as untrusted input is the lesson every package ecosystem learned the expensive way — git gives us that property without a mechanism of our own.                                   |
 
-The [allowlist](./REMOTE-REFERENCES.md) still governs every fetch, but its threat
+The [allowlist](#the-setting) still governs every fetch, but its threat
 model shrinks to almost nothing: outbound requests now happen only inside an explicit, human- or
 CI-triggered operation, never in a request.
 
@@ -166,7 +166,7 @@ We are not building a dependency manager, and the borrowed vocabulary must not d
   the copies is what makes an old release still deployable, and it is why no lock file is needed.
 
 **Open.** The names of the vendored directory and of the refetch flag are public API surface under
-[rule 4](./OPENAPI-SUPPORT.md#the-four-rules) and are not chosen. Also open: whether a fetched
+[rule 4](./openapi-support.md#the-four-rules) and are not chosen. Also open: whether a fetched
 document that itself contains remote references is followed — transitive fetching, with the allowlist
 applying at every hop — or refused at depth one.
 
@@ -174,9 +174,9 @@ applying at every hop — or refused at depth one.
 
 Vendoring makes the *inputs* local. Turning those inputs into routes, controllers and validation is a
 separate job, and both belong to the same command — see
-[`CODE-GENERATION.md`](./CODE-GENERATION.md). Do not conflate the two: vendoring alone already
+[`code-generation.md`](./code-generation.md). Do not conflate the two: vendoring alone already
 guarantees no network at boot, whatever the build does afterwards.
 
 What is settled here regardless: **the doctor reads, it never writes** — it is
-[read-only by contract](./DOCTOR.md#the-contract) — and its report names which sources it read, because a doctor
+[read-only by contract](./doctor.md#the-contract) — and its report names which sources it read, because a doctor
 that silently checks something other than what runs is worse than no doctor.

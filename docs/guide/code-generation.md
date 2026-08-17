@@ -1,6 +1,6 @@
 ---
 title: Code Generation
-audience: Users, contributors and agents
+audience: Users
 covers: >
     The build command and what it produces, the boundary between build time and
     run time, where generated code lives, the rule that generated code is never
@@ -19,7 +19,7 @@ Spec-First only pays off if the contract reaches the code. This document owns ho
 build command turns the specification into PHP, and the result is safe to regenerate at any time.**
 
 > **Almost all of this is intent rather than behaviour**, and like
-> [`OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md) this file marks the difference per section rather than
+> [`openapi-support.md`](./openapi-support.md) this file marks the difference per section rather than
 > per file, so the banner does not become a little more wrong with every release. Items marked `Open`
 > are undecided.
 >
@@ -28,7 +28,7 @@ build command turns the specification into PHP, and the result is safe to regene
 > code is generated, and nothing detects a rename.
 
 What the build reads, and what it refuses to read, is a different subject and lives in
-[`OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md).
+[`openapi-support.md`](./openapi-support.md).
 
 ## The invariant: a build never destroys human work
 
@@ -62,7 +62,7 @@ What follows from it:
 * **The parser is a build-time dependency in practice.** `cebe\openapi\` classes must never be
   reachable from the routing or request path. This is not a convention to remember: the architecture
   test contains the parser to
-  [one namespace](./OPENAPI-SUPPORT.md#where-the-parser-sits-decided), which forbids it to the request
+  [one namespace](./openapi-support.md#where-the-parser-sits-decided), which forbids it to the request
   path and to everything else at once. The assertion is written and passes today without constraining
   anything, since no file imports the parser yet; it starts doing work with the first import.
 * **Boot cost is loading PHP**, which is what `route:cache` and the opcode cache already optimize. No
@@ -70,7 +70,7 @@ What follows from it:
 * **The boundary is the production request path, not the process.** Serving a real application's
   traffic never involves a specification. Other contexts plausibly do, and pretending otherwise now
   would only mean rewriting this section later: contract testing has to compare a live response
-  against the contract, and a [mock server](./ROADMAP.md) is a spec-driven server by definition. Those
+  against the contract, and a [mock server](../project/roadmap.md) is a spec-driven server by definition. Those
   are separate execution contexts with their own rules. **Deferred deliberately** — the contexts get
   enumerated when the first one is built, not guessed at now. Nothing about containing the parser to
   `Parsing\` blocks them: a mock server reads a contract through the same door as everything else.
@@ -85,7 +85,7 @@ What follows from it:
 | Kind                | Lifecycle                                                                                                           | Who owns it                                                                                                     |
 |---------------------|---------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
 | **Generated**       | Rewritten from scratch on every build.                                                                              | The package. Never edit — your edit is gone on the next run, by design.                                         |
-| **Vendored inputs** | Never fetched unless asked; [frozen by default](#remote-references-during-a-build-frozen-by-default).               | Upstream. See [remote references](./REMOTE-REFERENCES.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
+| **Vendored inputs** | Never fetched unless asked; [frozen by default](#remote-references-during-a-build-frozen-by-default).               | Upstream. See [remote references](./remote-references.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
 | **Your classes**    | Created once by [`spec:make`](#scaffolding-is-specmake-not-a-build-step), on request. The build never touches them. | You, entirely, from the moment the file exists.                                                                 |
 
 The generated kind should be unmistakable at a glance and at grep-time: its own directory, its own
@@ -100,7 +100,7 @@ extended by human-written concrete classes.**
 
 Say an operation gains a required parameter. The build rewrites the generated abstract, whose method
 signature changes. Every concrete subclass a developer wrote now fails to satisfy its parent, and
-PHP — plus PHPStan at [level 8](./STACK.md) — says so immediately, by name, before anything runs.
+PHP — plus PHPStan at [level 8](../project/stack.md) — says so immediately, by name, before anything runs.
 
 That is the whole payoff of Spec-First expressed in one behavior: **a change to the contract becomes
 a compile-time error in the code that implements it, not a 500 in production.** It is also why the
@@ -110,7 +110,7 @@ has hand-edits in it to protect.
 ## The build command: `spec:build`
 
 One command, run after any change to the specification, producing every derived output: the
-[contract artifact](./CONTRACT-ARTIFACT.md), the routes, the abstract controllers,
+[contract artifact](../internals/contract-artifact.md), the routes, the abstract controllers,
 the response DTOs and the validation. Everything it writes, it owns.
 
 Its properties:
@@ -119,7 +119,7 @@ Its properties:
   diff on an unchanged spec, that is a defect.
 * **Ordered, and it stops.** Check the vendored references are present, parse, normalize into the
   prospective artifact, **compare it against the committed one**, then generate. A spec that fails
-  [the doctor's](./DOCTOR.md) hard checks does not reach
+  [the doctor's](./doctor.md) hard checks does not reach
   the generator — half-generated output from a broken contract is worse than no output. The comparison
   sits before generation for the same reason: nothing is written until it is known to be allowed.
 * **It never writes outside its own directories.** No exceptions, no conditions. This is the
@@ -145,7 +145,7 @@ contract without anyone deciding to. Under a frozen default:
 
 Fetching therefore has one entry point in `build`: an explicit flag, whether the document is missing or
 already vendored. Working name `--update-refs`, matching the install/update vocabulary the
-[dependency framing](./REMOTE-REFERENCES.md#borrowing-the-dependency-manager-shape) already borrows.
+[dependency framing](./remote-references.md#borrowing-the-dependency-manager-shape) already borrows.
 Whether missing and stale documents need *separate* flags is open — one flag is simpler, two let you
 add a reference without silently refreshing the others.
 
@@ -161,7 +161,7 @@ The build writes files; git decides which are tracked. That is already every con
 opinion from us. Adding a config option here would be inventing a second, worse `.gitignore`.
 
 **One exception, and it is not optional: the vendored references must be committed.** There is
-[no lock file](./REMOTE-REFERENCES.md#no-lock-file-git-is-the-lock) — the committed copies *are* the
+[no lock file](./remote-references.md#no-lock-file-git-is-the-lock) — the committed copies *are* the
 lock. Ignoring that directory does not save you noise, it removes the only mechanism that makes a
 build reproducible and an old release deployable. The doctor should detect it and report it as a
 finding rather than let it be discovered during an incident.
@@ -215,7 +215,7 @@ where they sit matters far less than for hand-written code. What one root buys i
   generated tree committed and half not.
 * **"Everything under here is generated" is only a rule while there is one *here*.**
 * **Widening later is a minor release, narrowing is a major one** — the same reasoning
-  [`STACK.md`](./STACK.md) applies to version support. If per-kind overrides turn out to be wanted,
+  [`stack.md`](../project/stack.md) applies to version support. If per-kind overrides turn out to be wanted,
   they can be added without breaking anyone; starting with them and removing them cannot.
 
 Two details that will otherwise be discovered the hard way:
@@ -229,7 +229,7 @@ Two details that will otherwise be discovered the hard way:
   actually autoloads — a mismatch there produces class-not-found errors far from their cause.
 
 The config key names and the default are public API surface under
-[rule 4](./OPENAPI-SUPPORT.md#the-four-rules).
+[rule 4](./openapi-support.md#the-four-rules).
 
 ## Scaffolding is `spec:make`, not a build step
 
@@ -252,14 +252,14 @@ The two alternatives are worse, and for reasons this document has already commit
 
 * **Not registering the route** would mean the contract describes an endpoint that does not exist, and
   a client would get a `404` indistinguishable from a typo. That is
-  [rule 2](./OPENAPI-SUPPORT.md#the-four-rules) violated at the level of the
+  [rule 2](./openapi-support.md#the-four-rules) violated at the level of the
   wire: the spec says the endpoint is there, and nothing anywhere says otherwise.
 * **Pointing at a class that does not exist** produces a class-not-found fatal at request time — an
   internal error blaming the consumer's application for a state the package created on purpose.
 
 `501` is the status code HTTP already has for exactly this: the server recognizes the request and has
 not implemented it. It is honest to the client, it is greppable in logs, and it is the seam the
-[Faker mock](./ROADMAP.md) plugs into in Phase 2 — same route, same handler position, a better answer
+[Faker mock](../project/roadmap.md) plugs into in Phase 2 — same route, same handler position, a better answer
 in the body. Nothing about the Phase 1 shape has to change for the mock to arrive.
 
 ### Where your classes go
@@ -278,7 +278,7 @@ first is not a matter of taste:
 **The consequence to state plainly:** the generated route refers to your class by its fully-qualified
 name, so the name and namespace are load-bearing. Moving the file is fine; moving it somewhere it no
 longer autoloads under the expected name breaks the route. The
-[doctor](./DOCTOR.md) reports that as a missing
+[doctor](./doctor.md) reports that as a missing
 implementation rather than letting it surface as a class-not-found at runtime.
 
 ### Not a flag on `spec:build`
@@ -310,7 +310,7 @@ running it** — the same pattern as the
 The trap is printing one line per operation. A specification with two hundred operations, on the day
 somebody adopts this package, would answer with two hundred commands — which is not a list, it is a
 wall, arriving at the worst possible moment. So the build **summarises, and the
-[doctor](./DOCTOR.md) holds the full list**, which is the
+[doctor](./doctor.md) holds the full list**, which is the
 division of labour those two commands already have.
 
 It summarises **by `tags`**, because the specification already carries the author's own grouping and
@@ -329,7 +329,7 @@ was never to bulk itself, it was to `build` doing it as a side effect. **`spec:m
 Two guards keep the hundred-empty-classes scenario away: bulk is never the default, and it lists what
 it is about to create and asks before doing it.
 
-Adopting tag by tag is also the shape [Phase 3](./ROADMAP.md) wants — a migration that proceeds route
+Adopting tag by tag is also the shape [Phase 3](../project/roadmap.md) wants — a migration that proceeds route
 by route rather than in one leap.
 
 ### Per-type flags belong here
@@ -398,7 +398,7 @@ argument for watch mode existing at all.
 
 **Open:** how prominent this is — a heading in the build output, a doctor finding, or a non-zero exit
 until the references are updated. Failing the build is defensible under
-[rule 2](./OPENAPI-SUPPORT.md#the-four-rules) and might be intolerable in
+[rule 2](./openapi-support.md#the-four-rules) and might be intolerable in
 watch. Probably different answers for the two commands.
 
 ### When `operationId` is absent, derive from method and path
@@ -411,7 +411,7 @@ The objection to raise and dismiss: deriving from the path means that reorganizi
 classes. True — and **proportionate**, because changing a path *is* a change to the contract. Consumers
 have to update their calls; you having to update a class name is the same event, visible in your own
 code. For a `stable` operation the build already refuses the change until
-[`info.version`](./LIFECYCLE.md#unstable-by-default-and-what-stable-costs-us) says so, and for a
+[`info.version`](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) says so, and for a
 `beta` one churn is what `beta` means. The case that would have been unfair — renaming a path
 *parameter*, which changes nothing on the wire — is already excluded by normalizing identity.
 
@@ -422,7 +422,7 @@ fallback, and it is the kind of nudge the doctor should make rather than the bui
 **Decision: `operationId` is required on `public` + `stable` operations, and optional everywhere else.**
 A stable operation's generated class name is a promise made to your own codebase, so it deserves to be
 chosen rather than computed — while a `beta` or `internal` operation can be sketched without ceremony.
-The rule reuses the [lifecycle](./LIFECYCLE.md#unstable-by-default-and-what-stable-costs-us)
+The rule reuses the [lifecycle](./lifecycle.md#unstable-by-default-and-what-stable-costs-us)
 vocabulary instead of inventing one of its own, and it lands where it costs least: nobody meets it
 while exploring, and everybody meets it at the moment they promise an endpoint to someone.
 
@@ -500,7 +500,7 @@ Two other decisions depend on it, which is the real reason it stands alone:
 * [Rename detection](#identity-is-the-path-and-the-method-not-the-name) compares the pointers in the
   existing generated tree against the ones the new build would emit. Without the annotation there is
   no comparison to make and no rename to report.
-* The [contract artifact](./CONTRACT-ARTIFACT.md) is keyed by the same identity,
+* The [contract artifact](../internals/contract-artifact.md) is keyed by the same identity,
   so a finding in the artifact diff and a header in a generated file name the same thing.
 
 ## Response DTOs
@@ -520,7 +520,7 @@ it needs. Hackable where it should be, fixed where the contract speaks.
 
 `spatie/laravel-data` is the reference for what good feels like here, and its `from($model)` ergonomics
 are the target. **Whether we depend on it or only take the shape is undecided** and belongs in
-[`STACK.md`](./STACK.md) once settled — a dependency buys casting, validation and serialization for
+[`stack.md`](../project/stack.md) once settled — a dependency buys casting, validation and serialization for
 free, at the cost of binding generated code to another package's API and release cycle.
 
 ## Appending into human-owned files
@@ -552,7 +552,7 @@ missing or malformed.
 
 * The config key names for the [generated location](#where-generated-code-lives) — the location's
   *default* is decided, what the keys are called is not. Public API surface under
-  [rule 4](./OPENAPI-SUPPORT.md#the-four-rules).
+  [rule 4](./openapi-support.md#the-four-rules).
 * Which [per-type flags](#per-type-flags-belong-here) `spec:make` accepts.
 * Whether the second of the [two layers](#two-layers) is an abstract class or a trait.
 * Whether fetching a *missing* reference and refreshing a *stale* one share one flag or take two.
@@ -561,4 +561,4 @@ missing or malformed.
 * Whether `spatie/laravel-data` becomes a dependency or only an influence.
 * **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated
   validation are Phase 2 — the same build command doing more, not a new one. See the
-  [Roadmap](./ROADMAP.md).
+  [Roadmap](../project/roadmap.md).

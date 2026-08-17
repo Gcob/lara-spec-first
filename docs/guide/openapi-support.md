@@ -1,6 +1,6 @@
 ---
 title: OpenAPI Support
-audience: Users, contributors and agents
+audience: Users
 covers: >
     What the package honors of the OpenAPI specification and what it does not:
     the four rules that govern every such decision, the support levels and their
@@ -28,7 +28,7 @@ source of truth.
 > per file** — this document fills in gradually across Phase 1, so a single banner would be a little
 > more wrong with every release. Everything not named below states the **intent** for the first release
 > and the reasoning behind it. Rows marked `Open` are genuinely undecided and must not be presented as
-> settled — the same discipline [`STACK.md`](./STACK.md) applies to its own Status column.
+> settled — the same discipline [`stack.md`](../project/stack.md) applies to its own Status column.
 >
 > **Shipped:** [reading a document](#reading-a-document), and
 > [where the parser sits](#where-the-parser-sits-decided). The first `Contract\` types exist — a path
@@ -40,10 +40,10 @@ still govern all of them:
 
 | Document                                         | Owns                                                             |
 |--------------------------------------------------|------------------------------------------------------------------|
-| [`DOCTOR.md`](./DOCTOR.md)                       | How any of this is reported, and how a consumer accepts a limit. |
-| [`CONTRACT-ARTIFACT.md`](./CONTRACT-ARTIFACT.md) | The normalized form every comparison goes through.               |
-| [`REMOTE-REFERENCES.md`](./REMOTE-REFERENCES.md) | A `$ref` that points at a URL.                                   |
-| [`LIFECYCLE.md`](./LIFECYCLE.md)                 | How strong a promise each operation carries.                     |
+| [`doctor.md`](./doctor.md)                       | How any of this is reported, and how a consumer accepts a limit. |
+| [`contract-artifact.md`](../internals/contract-artifact.md) | The normalized form every comparison goes through.               |
+| [`remote-references.md`](./remote-references.md) | A `$ref` that points at a URL.                                   |
+| [`lifecycle.md`](./lifecycle.md)                 | How strong a promise each operation carries.                     |
 
 ## The four rules
 
@@ -60,7 +60,7 @@ say something specific out loud, or to be explicit that there is nothing to say.
 **3. Opinionated, and we own it.** Where the specification leaves a choice open, this package makes
 one and states it, rather than inventing configuration for every fork in the road. A stated opinion
 a consumer can plan around beats a flexible behavior nobody can predict. See the
-[project philosophy](../README.md#stack--philosophy).
+[project philosophy](../../README.md#stack--philosophy).
 
 **4. Support levels are a compatibility contract.** Once published, this matrix is part of the public
 API surface, exactly like class names and config keys. It moves along **two independent axes**, and
@@ -85,7 +85,7 @@ get to weaken its own detection in a minor release.
 ## Support levels
 
 Six levels. Every one except `Supported` and `Out of scope` says something out loud, and only two of
-them can make the [exit code](./DOCTOR.md#the-contract) non-zero:
+them can make the [exit code](./doctor.md#the-contract) non-zero:
 
 | Level            | Meaning                                                                       | Behavior                                                                                                                               | Exit code                                                                                              |
 |------------------|-------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------|
@@ -100,7 +100,7 @@ them can make the [exit code](./DOCTOR.md#the-contract) non-zero:
 package has not built yet is `Ignored`, every `Ignored` is a finding, and since `info` is mandatory in
 every OpenAPI document, *no specification could ever exit zero* — which would kill the one property
 that makes `spec:doctor` usable as a CI gate, and would push consumers to
-[acknowledge](./DOCTOR.md#acknowledged-limits-the-consumers-opt-out) everything on day one, leaving them deaf when
+[acknowledge](./doctor.md#acknowledged-limits-the-consumers-opt-out) everything on day one, leaving them deaf when
 real support arrives.
 
 The distinction is about whose problem it is. `Ignored` says *your document says something this
@@ -134,7 +134,7 @@ The seam matters more than the pattern. Putting it in the wrong place duplicates
 | Concern                                  | Where it belongs     | Why                                                                                                                                |
 |------------------------------------------|----------------------|------------------------------------------------------------------------------------------------------------------------------------|
 | Reading the file, YAML/JSON decoding     | **Shared**           | Byte-level work, identical in both versions. See [reading a document](#reading-a-document) for the order the steps run in and why. |
-| Multi-file loading and `$ref` resolution | **Shared**           | JSON Reference mechanics are the same. The [allowlist](./REMOTE-REFERENCES.md) is a security policy, not a version concern.        |
+| Multi-file loading and `$ref` resolution | **Shared**           | JSON Reference mechanics are the same. The [allowlist](./remote-references.md) is a security policy, not a version concern.        |
 | Schema interpretation                    | **Version-specific** | This is where 3.0 and 3.1 genuinely disagree. See the table below.                                                                 |
 | Document shape rules                     | **Version-specific** | `paths` is required in 3.0 and optional in 3.1; `webhooks` exists only in 3.1.                                                     |
 | Route registration                       | **Shared**           | It consumes the normalized output, and must never see a version number.                                                            |
@@ -182,11 +182,11 @@ and only one, may see the parser:
 
 Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document — the reference cycle
 detector and the remote reference guard. It is expected to stay small by design: this doctrine sends
-almost every check to [the doctor](./DOCTOR.md), which *reports*, and keeps here only what makes
+almost every check to [the doctor](./doctor.md), which *reports*, and keeps here only what makes
 loading impossible or unsafe. Both of the current members earn that: one guards a failure the parser
 does not survive, the other a request it would make on a stranger's behalf. The remaining guard already
 implied by a decision elsewhere is the check that vendored references are present, which
-[frozen by default](./CODE-GENERATION.md#remote-references-during-a-build-frozen-by-default) requires.
+[frozen by default](./code-generation.md#remote-references-during-a-build-frozen-by-default) requires.
 
 The architecture test in `tests/Unit/ArchitectureTest.php` asserts it directly:
 
@@ -221,7 +221,7 @@ The behavior is what matters and it holds across the supported range; the line n
 | `type` is declared as a string but 3.1 arrays pass through unvalidated.                                                              | `Schema.php:92`                                                                                                                       | Our code must accept `string\|array` everywhere it touches a type, or normalize it at the boundary.                                                                                                                                                                                                                                                                                                                                                    |
 | `exclusiveMinimum` / `exclusiveMaximum` accept both booleans and numbers with no version check.                                      | `Schema.php:155-161`                                                                                                                  | The same property means different things depending on the document version. Only the strategy should ever see the raw form.                                                                                                                                                                                                                                                                                                                            |
 | A Path Item's `$ref` is special-cased and is not a normal `Reference`.                                                               | `PathItem.php:73-78`                                                                                                                  | Path-level `$ref` needs its own handling in the router.                                                                                                                                                                                                                                                                                                                                                                                                |
-| Remote `$ref` by URL is resolved transparently, by calling `file_get_contents()` on it.                                              | `ReferenceContext.php:217`                                                                                                            | Network I/O and an SSRF surface, handed to whoever wrote the document. Refused [before the parser sees it](#reading-a-document); see [remote references](./REMOTE-REFERENCES.md).                                                                                                                                                                                                                                                                      |
+| Remote `$ref` by URL is resolved transparently, by calling `file_get_contents()` on it.                                              | `ReferenceContext.php:217`                                                                                                            | Network I/O and an SSRF surface, handed to whoever wrote the document. Refused [before the parser sees it](#reading-a-document); see [remote references](./remote-references.md).                                                                                                                                                                                                                                                                      |
 | `paths` is not required for 3.1 documents.                                                                                           | `OpenApi.php:91`                                                                                                                      | Zero routes is a valid outcome, not an error.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | A pure `$ref` cycle exhausts memory instead of raising.                                                                              | Verified: `A: {$ref: B}` / `B: {$ref: A}` under `RESOLVE_MODE_ALL` dies in `JsonPointer.php:108` with *Allowed memory size exhausted* | The parser does carry cycle checks (`Reference.php:324,330`), but this shape recurses past them. A malformed document takes the process down rather than producing a diagnostic — the one failure mode the doctor cannot report on, because it never gets to return. **Detecting `$ref` cycles is our job, before the document reaches the parser.** An ordinary recursive *schema* is fine; the two are [different things](#references-and-security). |
 | `components.pathItems` is not modelled at all.                                                                                       | Verified: `Components::attributes()` lists nine keys and `pathItems` is not among them                                                | A 3.1 document reusing a Path Item through `#/components/pathItems/…` resolves to a plain value, ends up with **no operations, and no error** — the endpoint disappears in silence, which is the one outcome this package must never produce. Refused where it is read, naming the two forms that do work: a `$ref` to another path, and a `$ref` to another file. Both verified.                                                                      |
@@ -265,7 +265,7 @@ rather than an open question.
 **And the protection chosen instead is behavioural.** An adapter guards against
 swapping a dependency; what has actually gone wrong twice is the dependency
 being wrong, which an interface would not have caught either time. So the answer
-is a [conformance suite organized by equivalence class](./ROADMAP.md) — which
+is a [conformance suite organized by equivalence class](../project/roadmap.md) — which
 ends up serving the adapter's purpose as well, since a suite a replacement must
 pass is a stronger contract than an interface it must implement.
 
@@ -319,8 +319,8 @@ The check is deliberately narrow, and each limit below is stated in a test rathe
 **What comes out is narrow on purpose.** The result says the document *may be parsed* — not that it is
 correct. It has not been validated against the OpenAPI schema, no `$ref` has been resolved, and the 3.0
 and 3.1 spellings of the same idea are both still present exactly as written. Normalizing them is the
-[contract artifact](./CONTRACT-ARTIFACT.md)'s job, and reporting what is wrong with the contents is
-[the doctor](./DOCTOR.md)'s. Refusing to load and reporting a fault are different jobs, and only the
+[contract artifact](../internals/contract-artifact.md)'s job, and reporting what is wrong with the contents is
+[the doctor](./doctor.md)'s. Refusing to load and reporting a fault are different jobs, and only the
 first one happens here.
 
 ## Laravel constraints we do not fight
@@ -357,7 +357,7 @@ Per the rule above, we do not work around the router. The operation is `Rejected
 
 **Open:** whether an entire document containing `trace` fails to load, or the operation alone is
 refused while the rest of the document still loads. The second is friendlier; the first is more
-honest. Either way [the doctor](./DOCTOR.md) names the operation and its
+honest. Either way [the doctor](./doctor.md) names the operation and its
 position. Undecided.
 
 ### Parameter names are a naming contract, not a mapping problem
@@ -394,7 +394,7 @@ Given that, the hard parts were never in the conversion:
   side by side, not converted and forgotten.
 
 **Leaning: reject, do not convert.** Rule 3 and the position that
-[API design is a skill](./CODE-GENERATION.md#naming-and-the-rename-problem) point the same way — a
+[API design is a skill](./code-generation.md#naming-and-the-rename-problem) point the same way — a
 build that refuses `{user-id}` and says *rename this parameter to `user_id` in your specification* is
 teaching a real constraint of the platform, once, at build time. A build that silently converts is
 maintaining a shadow naming scheme forever, and the developer still meets it the first time they read
@@ -402,7 +402,7 @@ a generated signature. The 32-character ceiling is not negotiable either way and
 before the route is ever compiled.
 
 **Open:** whether that rejection is absolute or has an escape hatch for specs the consumer does not
-own — the case [acknowledgement](./DOCTOR.md#acknowledged-limits-the-consumers-opt-out) exists for.
+own — the case [acknowledgement](./doctor.md#acknowledged-limits-the-consumers-opt-out) exists for.
 
 ### Still to discuss
 
@@ -416,12 +416,12 @@ lost, not because they are decided:
 * `operationId`: optional in the specification, not guaranteed unique, not guaranteed to be a valid
   PHP identifier — and it is what names the generated controller and method. Public API surface. The
   naming and rename questions are now answered in
-  [`CODE-GENERATION.md`](./CODE-GENERATION.md#naming-and-the-rename-problem); what remains here is how
+  [`code-generation.md`](./code-generation.md#naming-and-the-rename-problem); what remains here is how
   a missing or unusable `operationId` is reported.
 * `security` to middleware mapping. The most dangerous row in the matrix: registering a route without
   applying the authentication the spec declares publishes an endpoint the contract says is protected.
 * `php artisan route:cache`: mostly answered by
-  [generating the routes](./CODE-GENERATION.md#the-runtime-never-sees-the-spec) rather than deriving
+  [generating the routes](./code-generation.md#the-runtime-never-sees-the-spec) rather than deriving
   them at boot. What remains is the concrete requirement that generated routes be serializable —
   controller strings, no closures — and confirming it against a real `route:cache` run.
 * `webhooks` (3.1) and `callbacks`: not routes on this server.
@@ -442,14 +442,14 @@ current intent for the first release, not shipped behavior.
 | `openapi` 3.0.x                         | Supported    | Dispatches to the 3.0 [strategy](#handling-30-and-31-the-version-strategy).                                                                                                                                                          |
 | `openapi` 3.1.x                         | Supported    | Dispatches to the 3.1 strategy.                                                                                                                                                                                                      |
 | Any other version                       | Rejected     | Including 2.x. Convert before adopting.                                                                                                                                                                                              |
-| `info`, `externalDocs`                  | Out of scope | Documentation metadata with no routing effect. `info.version` becomes load-bearing only for [breaking-change enforcement](./LIFECYCLE.md#unstable-by-default-and-what-stable-costs-us).                                              |
-| `tags`                                  | Partial      | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./CODE-GENERATION.md#the-build-names-the-command-instead-of-running-it). |
+| `info`, `externalDocs`                  | Out of scope | Documentation metadata with no routing effect. `info.version` becomes load-bearing only for [breaking-change enforcement](./lifecycle.md#unstable-by-default-and-what-stable-costs-us).                                              |
+| `tags`                                  | Partial      | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./code-generation.md#the-build-names-the-command-instead-of-running-it). |
 | `jsonSchemaDialect` (3.1)               | Open         | Only the default dialect is realistically honorable.                                                                                                                                                                                 |
 | `servers`                               | Open         | See [still to discuss](#still-to-discuss).                                                                                                                                                                                           |
 | `security` (root)                       | Open         |                                                                                                                                                                                                                                      |
 | `webhooks` (3.1)                        | Open         |                                                                                                                                                                                                                                      |
 | `x-` extensions                         | Out of scope | Preserved by the parser and readable, but the package acts on none of them — except the three it defines itself, on the row beneath.                                                                                                 |
-| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The extensions this package defines: read and checked by the doctor. The breaking-change enforcement `x-lifecycle` gates is [not phased yet](./ROADMAP.md). Rules: [lifecycle](./LIFECYCLE.md).                                      |
+| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The extensions this package defines: read and checked by the doctor. The breaking-change enforcement `x-lifecycle` gates is [not phased yet](../project/roadmap.md). Rules: [lifecycle](./lifecycle.md).                                      |
 
 ### Paths and operations
 
@@ -464,8 +464,8 @@ current intent for the first release, not shipped behavior.
 | `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                                                                             |
 | `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                                                                                                                                 |
 | Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                                                                                                                             |
-| `operationId`                           | Partial   | Names the generated controller and method. **Required on `public` + `stable` operations**; elsewhere the [method and path](./CODE-GENERATION.md#when-operationid-is-absent-derive-from-method-and-path) stand in for it. |
-| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](./LIFECYCLE.md).                                                                                     |
+| `operationId`                           | Partial   | Names the generated controller and method. **Required on `public` + `stable` operations**; elsewhere the [method and path](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path) stand in for it. |
+| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](./lifecycle.md).                                                                                     |
 | `callbacks`                             | Open      |                                                                                                                                                                                                                          |
 
 ### Parameters, bodies, responses
@@ -496,7 +496,7 @@ current intent for the first release, not shipped behavior.
 |----------------------------------------------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Local `$ref` within the document                                     | Supported |                                                                                                                                                                                                                                                        |
 | `$ref` to another local file                                         | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                                                   |
-| Remote `$ref` by URL                                                 | Rejected  | [Allowlisted hosts only](./REMOTE-REFERENCES.md), and the allowlist is empty until a project declares one — which it cannot yet, so every remote reference is refused today. Refused before the parser sees it, since resolving one means fetching it. |
+| Remote `$ref` by URL                                                 | Rejected  | [Allowlisted hosts only](./remote-references.md), and the allowlist is empty until a project declares one — which it cannot yet, so every remote reference is refused today. Refused before the parser sees it, since resolving one means fetching it. |
 | Recursive schema (`$ref` back to an ancestor)                        | Supported | A self-referential schema — a tree, a comment thread, nested categories — resolves. Verified: under `RESOLVE_MODE_ALL` the parser walks it on demand without limit or error; under `RESOLVE_MODE_INLINE` the inner `$ref` stays a `Reference` object.  |
 | Pure `$ref` cycle (`A` → `B` → `A`)                                  | Rejected  | A reference chain pointing only at other references and looping back. **The parser does not fail gracefully here** — see [parser caveats](#parser-caveats). The doctor must catch it before the parser is handed the document.                         |
 | `$dynamicRef`, `$dynamicAnchor`, `$recursiveRef`, `$recursiveAnchor` | Rejected  | JSON Schema 2019-09/2020-12 dynamic-scope resolution, reachable only in 3.1. A different feature from a recursive schema, and rare outside meta-schemas. Rejected with a message that says which of the two you probably meant.                        |
@@ -504,11 +504,11 @@ current intent for the first release, not shipped behavior.
 
 ## Changing this document
 
-The rules in [`DOCUMENTATION.md`](./DOCUMENTATION.md) apply, plus two specific to this file:
+The rules in [`documentation.md`](../contributing/documentation.md) apply, plus two specific to this file:
 
 * **A row changes in the same commit as the behavior it describes.** This matrix is the definition of
   done for any change to what the package accepts from a spec. A behavior change that leaves the
   matrix stale is an incomplete change, exactly as
-  [`AGENTS.md`](../AGENTS.md#every-change-lands-in-three-places) states.
+  [`AGENTS.md`](../../AGENTS.md#every-change-lands-in-three-places) states.
 * **State the release impact when moving a row.** Rule 4 makes direction meaningful: say whether the
   move is minor or major, in the commit message.

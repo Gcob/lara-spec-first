@@ -1,6 +1,6 @@
 ---
 title: The Doctor
-audience: Users, contributors and agents
+audience: Users
 covers: >
     The `spec:doctor` command: why diagnostics live in a command rather than in
     the request path, its output contract and flags, the two classes of finding
@@ -16,9 +16,9 @@ tags: [ openapi, compatibility, decisions, workflow, code-review ]
 
 `spec:doctor` is how this package keeps its second rule: **a construct it does not honor must produce
 a diagnostic.** What is honored in the first place lives in
-[`OPENAPI-SUPPORT.md`](./OPENAPI-SUPPORT.md); this document owns how any of it is reported.
+[`openapi-support.md`](./openapi-support.md); this document owns how any of it is reported.
 
-> **Not implemented yet.** Phase 1 of the [Roadmap](./ROADMAP.md). Items marked `Open` are undecided.
+> **Not implemented yet.** Phase 1 of the [Roadmap](../project/roadmap.md). Items marked `Open` are undecided.
 
 Rule 2 has an obvious failure mode. A package that reports every unhonored construct at boot is a
 package that shouts on every request, and a tool that shouts constantly gets its output filtered out —
@@ -35,7 +35,7 @@ request failed", it is **"here is exactly what your contract will and will not d
 and that answer is worth reading *before* the app runs, not during.
 
 This is not a Phase 2 developer-experience nicety. **It is the enforcement mechanism for rule 2, so it
-ships with the first thing that reads a spec** — see the [Roadmap](./ROADMAP.md).
+ships with the first thing that reads a spec** — see the [Roadmap](../project/roadmap.md).
 
 ## The contract
 
@@ -47,7 +47,7 @@ ships with the first thing that reads a spec** — see the [Roadmap](./ROADMAP.m
   separate command.
 * **The exit code is the API.** Non-zero means at least one construct in the document will not be
   honored as written. Zero means none will — with one deliberate exception:
-  [`Deferred`](./OPENAPI-SUPPORT.md#support-levels) rows report what the package has not built yet,
+  [`Deferred`](./openapi-support.md#support-levels) rows report what the package has not built yet,
   and do not fail a pipeline over our roadmap. Zero is therefore *nothing here is being dropped
   without a decision behind it*, not *everything in this document is implemented*. That single
   property is what makes the command usable as a CI gate and a pre-deploy gate, and what stops the
@@ -64,7 +64,7 @@ ships with the first thing that reads a spec** — see the [Roadmap](./ROADMAP.m
   config file is a linear thing. A support matrix is not: a developer needs the full list of what was
   ignored in one pass, otherwise adoption becomes a whack-a-mole loop.
 * **Every finding names the document position.** File, JSON pointer, and the
-  [support level](./OPENAPI-SUPPORT.md#support-levels) that applies. A finding you cannot locate is a rumor.
+  [support level](./openapi-support.md#support-levels) that applies. A finding you cannot locate is a rumor.
 * **It reports the outcome, not only the problems.** The resolved routing table — which routes will
   exist, in which order, mapped to which controller and method, and whether that controller exists —
   is the single most useful thing this command can print. Most runs will be clean, and a command that
@@ -87,7 +87,7 @@ second command. **Open:** whether `--check` names sections directly rather than 
 
 The doctor takes no flag that lets it reach the network. It has no reason to: every remote reference
 is already
-[vendored locally](./REMOTE-REFERENCES.md#a-remote-reference-is-a-dependency-not-a-cache-entry), so a
+[vendored locally](./remote-references.md#a-remote-reference-is-a-dependency-not-a-cache-entry), so a
 blocked or missing reference is diagnosed by reading the working tree, and fetching belongs to the
 build. A `--bypass-allowlist` escape hatch, if one is ever wanted, belongs on the fetching path, not
 here.
@@ -130,16 +130,16 @@ Provisional, and expected to grow one section per honored construct:
 | Section           | Answers                                                                                                                                                                                                                                                                       |
 |-------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Configuration     | Are the spec files found and readable? Which allowlist and options are in effect?                                                                                                                                                                                             |
-| Document validity | Is this valid OpenAPI? The parser does not answer this in its library API — see [parser caveats](./OPENAPI-SUPPORT.md#parser-caveats) — so the doctor owns it.                                                                                                                |
-| Version           | Which version was detected, and which [strategy](./OPENAPI-SUPPORT.md#handling-30-and-31-the-version-strategy) will handle it.                                                                                                                                                |
-| References        | Unresolved `$ref`, references blocked by the [allowlist](./REMOTE-REFERENCES.md), and **`$ref` cycles — checked before the document reaches the parser**, which exhausts memory on them rather than raising. See the [parser caveats](./OPENAPI-SUPPORT.md#parser-caveats).   |
+| Document validity | Is this valid OpenAPI? The parser does not answer this in its library API — see [parser caveats](./openapi-support.md#parser-caveats) — so the doctor owns it.                                                                                                                |
+| Version           | Which version was detected, and which [strategy](./openapi-support.md#handling-30-and-31-the-version-strategy) will handle it.                                                                                                                                                |
+| References        | Unresolved `$ref`, references blocked by the [allowlist](./remote-references.md), and **`$ref` cycles — checked before the document reaches the parser**, which exhausts memory on them rather than raising. See the [parser caveats](./openapi-support.md#parser-caveats).   |
 | Support findings  | Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position.                                                                                                                                                                                       |
 | Routing outcome   | The routes that will be registered, in order, with their targets — plus shadowing, where an earlier templated path swallows a later literal one.                                                                                                                              |
 | Security          | Operations declaring `security` that the package does not enforce. This gets its own section rather than a line among others, because it is the one finding that can turn a documented-as-protected endpoint into a public one.                                               |
-| Drift             | Whether the generated code still matches the specification. The runtime [cannot notice](./CODE-GENERATION.md#the-runtime-never-sees-the-spec) that someone edited the spec and forgot to build, so this check is the only thing standing between that mistake and production. |
-| Lifecycle         | The [`x-sunset` and `x-lifecycle` rules](./LIFECYCLE.md#the-doctor-rules-that-follow), plus the coverage report: how many public operations are actually `stable`, and therefore how much of the API is protected at all.                                                     |
+| Drift             | Whether the generated code still matches the specification. The runtime [cannot notice](./code-generation.md#the-runtime-never-sees-the-spec) that someone edited the spec and forgot to build, so this check is the only thing standing between that mistake and production. |
+| Lifecycle         | The [`x-sunset` and `x-lifecycle` rules](./lifecycle.md#the-doctor-rules-that-follow), plus the coverage report: how many public operations are actually `stable`, and therefore how much of the API is protected at all.                                                     |
 | Installation      | That the vendored directory is not gitignored, and that the generated path and namespace agree with what `composer` autoloads. Both are silent misconfigurations whose symptoms appear far from their cause.                                                                  |
-| Artifact          | Whether the committed [contract artifact](./CONTRACT-ARTIFACT.md) is current, and whether its format version predates the installed package.                                                                                                                                  |
+| Artifact          | Whether the committed [contract artifact](../internals/contract-artifact.md) is current, and whether its format version predates the installed package.                                                                                                                                  |
 
 ## Open questions on the doctor
 
@@ -154,7 +154,7 @@ Provisional, and expected to grow one section per honored construct:
 
 When a command reference document exists, the usage details move there and this section keeps only the
 reasoning. It lives here for now because the doctor is what makes the
-[support levels](./OPENAPI-SUPPORT.md#support-levels) mean anything.
+[support levels](./openapi-support.md#support-levels) mean anything.
 
 ## Acknowledged limits: the consumer's opt-out
 
@@ -202,7 +202,7 @@ behavior: the finding is that an endpoint the contract describes as protected is
   construct level and widening later is a **minor** release; the reverse is not.
 * **Whether a reason string is required.** Requiring a justification on each entry is friction that
   pays for itself the day someone reads the config a year later and cannot remember why. It is also
-  the kind of opinionated requirement [rule 3](./OPENAPI-SUPPORT.md#the-four-rules) invites.
+  the kind of opinionated requirement [rule 3](./openapi-support.md#the-four-rules) invites.
 * **The scope of a `Rejected` acknowledgement** — skipping the offending operation is the leading
   answer, with a `rejected_behavior: skip | fail` style option if the choice turns out to be worth
   giving away. Deliberately left to be settled against real code rather than in the abstract: the
