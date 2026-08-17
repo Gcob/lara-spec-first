@@ -31,7 +31,10 @@
 # vendor/ directory only receives what the package needs at runtime. None of it
 # affects the git repository itself.
 /.github            export-ignore
+/.vitepress         export-ignore
 /docs               export-ignore
+/package.json       export-ignore
+/package-lock.json  export-ignore
 /scripts            export-ignore
 /tests              export-ignore
 /workbench          export-ignore
@@ -41,8 +44,10 @@
 /.editorconfig      export-ignore
 /AGENTS.md          export-ignore
 /CONTRIBUTING.md    export-ignore
-/docker-compose.yml export-ignore
+/compose.yaml       export-ignore
 /Dockerfile         export-ignore
+/justfile           export-ignore
 /phpunit.xml.dist   export-ignore
 /pint.json          export-ignore
+/.prettierrc.json   export-ignore
 /phpstan.neon.dist  export-ignore

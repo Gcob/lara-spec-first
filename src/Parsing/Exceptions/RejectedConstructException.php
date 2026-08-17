@@ -14,7 +14,7 @@ use RuntimeException;
  * is built on, and the reason the message never suggests the author made a
  * mistake. They did not: we are the ones who cannot serve all of it.
  *
- * @see docs/DOCTOR.md — "Two kinds of finding, never mixed"
+ * @see docs/guide/doctor.md — "Two kinds of finding, never mixed"
  */
 final class RejectedConstructException extends RuntimeException implements SpecException
 {

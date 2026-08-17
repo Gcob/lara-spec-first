@@ -25,7 +25,7 @@ use Throwable;
  * @internal Not public API — reachable through the reading pipeline.
  *
  * @see SpecDocumentReader for the order of the read pipeline
- * @see docs/CONTRACT-ARTIFACT.md
+ * @see docs/internals/contract-artifact.md
  */
 final readonly class OperationExtractor
 {

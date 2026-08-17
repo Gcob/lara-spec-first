@@ -24,7 +24,7 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
  * behind this same interface, without anything else noticing.
  *
  * @see SpecDocumentReader for the order of the read pipeline
- * @see docs/OPENAPI-SUPPORT.md — "Handling 3.0 and 3.1: the version strategy"
+ * @see docs/guide/openapi-support.md — "Handling 3.0 and 3.1: the version strategy"
  */
 interface VersionStrategy
 {

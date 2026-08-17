@@ -14,7 +14,7 @@ use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 //
 // It is a conformance test rather than a unit test because what it pins is the
 // behaviour of the whole reading engine, including the parser we do not own.
-// See docs/ROADMAP.md.
+// See docs/project/roadmap.md.
 
 /**
  * @return list<Operation>

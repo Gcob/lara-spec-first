@@ -1,0 +1,90 @@
+name: Documentation
+
+# Builds the VitePress site on every pull request, and publishes it to GitHub Pages
+# from the default branch.
+#
+# The build is where a broken documentation link is caught, so it runs on the pull
+# request: a failure there is a red check on the change that caused it, rather than
+# a red deployment after the merge.
+#
+# Publishing stays inert until two things are true: this workflow is on the default
+# branch, and Pages is set to "GitHub Actions" in the repository settings.
+
+# The two path filters are identical and must stay that way. They are written twice
+# because GitHub Actions does not support YAML anchors.
+on:
+    push:
+        branches: [main]
+        paths:
+            - "**.md"
+            - ".vitepress/**"
+            - "package.json"
+            - "package-lock.json"
+            - ".github/workflows/docs.yml"
+    pull_request:
+        paths:
+            - "**.md"
+            - ".vitepress/**"
+            - "package.json"
+            - "package-lock.json"
+            - ".github/workflows/docs.yml"
+    workflow_dispatch:
+
+# Read-only by default. The token that can publish is granted to the deploy job
+# alone, so the job that runs `npm ci` — and with it every dependency's install
+# script — never holds it.
+permissions:
+    contents: read
+
+# One deployment at a time, and never cancel one in flight: a cancelled deploy can
+# leave the site half published.
+concurrency:
+    group: pages
+    cancel-in-progress: false
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  # `lastUpdated` reads each page's timestamp from git history, which
+                  # a shallow clone does not carry.
+                  fetch-depth: 0
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - run: npm ci
+
+            # Fails on a dead internal link. That is the check this job exists for on
+            # a pull request.
+            - run: npm run docs:build
+
+            - uses: actions/upload-pages-artifact@v3
+              if: github.event_name != 'pull_request'
+              with:
+                  path: .vitepress/dist
+
+    deploy:
+        needs: build
+        if: github.event_name != 'pull_request'
+        runs-on: ubuntu-latest
+
+        # Only this job gets the publishing token. `actions/configure-pages` is
+        # deliberately absent: its one output is the base path, and `base` is set in
+        # .vitepress/config.mts, so requiring it would mean handing `pages: write` to
+        # the build as well.
+        permissions:
+            pages: write
+            id-token: write
+
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+
+        steps:
+            - id: deployment
+              uses: actions/deploy-pages@v4

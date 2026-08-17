@@ -25,7 +25,7 @@ final class NotImplementedYetException extends RuntimeException implements SpecE
         return new self(sprintf(
             'The setting "%s" is not implemented yet, so this package will not pretend it took '.
             'effect. It will %s. Until then the only supported value is the default. See "%s" in '.
-            'docs/ROADMAP.md.',
+            'docs/project/roadmap.md.',
             $key,
             $whatItWillDo,
             $roadmapItem

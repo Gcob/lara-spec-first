@@ -27,7 +27,7 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
  * @internal Not public API — a step of the read pipeline.
  *
  * @see SpecDocumentReader for the order of the read pipeline
- * @see docs/REMOTE-REFERENCES.md
+ * @see docs/guide/remote-references.md
  */
 final readonly class RemoteReferenceGuard
 {

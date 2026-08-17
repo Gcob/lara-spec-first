@@ -11,7 +11,7 @@ namespace Gcob\LaraSpecFirst\Contract;
  * ends up here, in our own types — which is what lets a future version bring a
  * different parser without anything downstream noticing.
  *
- * @see docs/CONTRACT-ARTIFACT.md
+ * @see docs/internals/contract-artifact.md
  */
 final readonly class Operation
 {

@@ -77,6 +77,39 @@ coverage:
 format:
     {{php}} composer format
 
+# The only recipe that does not go through the container: Prettier is a Node tool
+# and the PHP image carries none. The script picks npx when Node is installed and
+# borrows a throwaway Docker container otherwise, so it works either way — and
+# `composer format:md` runs the same script, so the native path still matches.
+
+# Reflow Markdown prose to the .editorconfig column limit and align tables.
+format-md:
+    ./scripts/format-markdown.sh
+
+# Report which Markdown files need reformatting, without writing.
+format-md-check:
+    ./scripts/format-markdown.sh --check
+
+# The documentation site is Node as well, so these recipes also run outside the
+# container. Run `just docs-install` once first. What the site contains and how it
+# is laid out is decided in .vitepress/config.mts.
+
+# Install the documentation site's dependencies.
+docs-install:
+    npm install
+
+# Serve the documentation site locally, with hot reload.
+docs:
+    npm run docs:dev
+
+# Build the static documentation site into .vitepress/dist.
+docs-build:
+    npm run docs:build
+
+# Serve the built site exactly as it will be published.
+docs-preview:
+    npm run docs:preview
+
 # Run static analysis.
 analyse:
     {{php}} composer analyse

@@ -12,7 +12,7 @@ namespace Gcob\LaraSpecFirst\Contract;
  * and the contract artifact holds only what the package honors, which means a
  * `trace` operation is refused where it is read rather than carried this far.
  *
- * @see docs/OPENAPI-SUPPORT.md — "`trace` cannot be routed"
+ * @see docs/guide/openapi-support.md — "`trace` cannot be routed"
  */
 enum HttpMethod: string
 {

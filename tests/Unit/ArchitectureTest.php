@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 // Architecture tests enforce the conventions documented in AGENTS.md and
-// docs/STACK.md mechanically, so a review never has to catch them by eye.
+// docs/project/stack.md mechanically, so a review never has to catch them by eye.
 
 arch('source files declare strict types')
     ->expect('Gcob\LaraSpecFirst')
@@ -28,7 +28,7 @@ arch('service providers extend the Laravel base provider')
 // as real as the types crossing it, so Parsing must return Contract objects and
 // never arrays — and that is worth its own assertion once Contract exists.
 //
-// See docs/OPENAPI-SUPPORT.md
+// See docs/guide/openapi-support.md
 arch('the OpenAPI parser stays inside Parsing')
     ->expect('cebe\openapi')
     ->toOnlyBeUsedIn('Gcob\LaraSpecFirst\Parsing');

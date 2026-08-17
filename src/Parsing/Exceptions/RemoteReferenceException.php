@@ -14,7 +14,7 @@ use RuntimeException;
  * allowlist means no remote references" is the behaviour that default
  * describes. What is missing is the configuration to widen it, not the rule.
  *
- * @see docs/REMOTE-REFERENCES.md
+ * @see docs/guide/remote-references.md
  */
 final class RemoteReferenceException extends RuntimeException implements SpecException
 {

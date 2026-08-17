@@ -15,7 +15,7 @@ use RuntimeException;
  * Distinct from UnsupportedVersionException on purpose: this is a document
  * fault, not a package limit, and the two are never reported as the same thing.
  *
- * @see docs/DOCTOR.md — "Two kinds of finding, never mixed"
+ * @see docs/guide/doctor.md — "Two kinds of finding, never mixed"
  */
 final class InvalidDocumentException extends RuntimeException implements SpecException
 {
