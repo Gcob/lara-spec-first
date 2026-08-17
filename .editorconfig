@@ -16,6 +16,8 @@ trim_trailing_whitespace = true
 # Markdown: two trailing spaces are a hard line break, so they must survive.
 [*.md]
 trim_trailing_whitespace = false
+indent_size = 4
+max_line_length = 120
 
 [*.{yml,yaml}]
 indent_size = 2

@@ -45,4 +45,5 @@
 /Dockerfile         export-ignore
 /phpunit.xml.dist   export-ignore
 /pint.json          export-ignore
+/.prettierrc.json   export-ignore
 /phpstan.neon.dist  export-ignore

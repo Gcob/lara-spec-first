@@ -54,6 +54,8 @@
         "test:coverage": "pest --coverage",
         "format": "pint",
         "format:check": "pint --test",
+        "format:md": "scripts/format-markdown.sh",
+        "format:md:check": "scripts/format-markdown.sh --check",
         "analyse": "phpstan analyse",
         "check": [
             "@format:check",
@@ -82,6 +84,8 @@
         "test:coverage": "Run the test suite with a coverage report.",
         "format": "Apply Laravel Pint formatting.",
         "format:check": "Report formatting issues without changing files.",
+        "format:md": "Reflow Markdown prose to the .editorconfig column limit and align tables. Runs Prettier outside the PHP container, since the image carries no Node.",
+        "format:md:check": "Report which Markdown files need reformatting, without changing them.",
         "analyse": "Run PHPStan static analysis.",
         "check": "Run every pre-pull-request check: formatting, static analysis, tests.",
         "check:lowest": "Run the same checks against the lowest supported Laravel and Testbench, then restore the newest. Development tooling is left alone.",
