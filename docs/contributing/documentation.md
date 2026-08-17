@@ -219,7 +219,10 @@ repository root.
 just docs-install   # once
 just docs           # local server, hot reload
 just docs-build     # static build; fails on a dead internal link
+just docs-preview   # serves the built site as it will be published
 ```
+
+The same build runs on every pull request, so a dead link is a red check rather than a red deployment.
 
 `.vitepress/config.mts` decides what is published, in what order and under which group. Page titles come from front
 matter, so a document is named in one place only. Deployment is `.github/workflows/docs.yml`, and the tool row is in

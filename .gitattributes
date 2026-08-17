@@ -44,8 +44,9 @@
 /.editorconfig      export-ignore
 /AGENTS.md          export-ignore
 /CONTRIBUTING.md    export-ignore
-/docker-compose.yml export-ignore
+/compose.yaml       export-ignore
 /Dockerfile         export-ignore
+/justfile           export-ignore
 /phpunit.xml.dist   export-ignore
 /pint.json          export-ignore
 /.prettierrc.json   export-ignore

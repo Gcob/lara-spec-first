@@ -11,6 +11,10 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
 const REPOSITORY = 'https://github.com/Gcob/lara-spec-first'
 
+// GitHub Pages serves a project site from a subdirectory. Used by `base`, by the
+// sitemap, and by the README link rule below, which must agree with it.
+const BASE = '/lara-spec-first/'
+
 /**
  * A sidebar group. `directory` is published in `sequence` order; anything found in
  * the directory but missing from `sequence` is appended alphabetically, so a new
@@ -130,17 +134,50 @@ export default defineConfig({
 
     // GitHub Pages serves a project site from a subdirectory. Both this and the
     // sitemap hostname change if a custom domain is ever pointed at it.
-    base: '/lara-spec-first/',
+    base: BASE,
     sitemap: {
-        hostname: 'https://gcob.github.io/lara-spec-first/',
+        hostname: 'https://gcob.github.io' + BASE,
+    },
+
+    markdown: {
+        config: (md) => {
+            // The rewrite above publishes README.md as the home page, so no /README
+            // page exists — but a relative link to it is resolved against the source
+            // tree and compiles to /README, which answers nothing. VitePress's
+            // dead-link check does not catch it either: the source file is right
+            // there. Rewrite those links to the site root, which is that file.
+            //
+            // This runs before VitePress's own link rule, which is the only place a
+            // user hook can run, so the href here is still the source one and the
+            // result is deliberately left root-relative: normalization and the base
+            // prefix are then applied to it like any other internal link. Writing an
+            // already-based URL would get the base added a second time.
+            const normalize = md.renderer.rules.link_open
+
+            md.renderer.rules.link_open = (tokens, index, options, env, self) => {
+                const href = tokens[index].attrGet('href')
+                const readme = href?.match(/(?:^|\/)README(?:\.md)?(#.*)?$/)
+
+                if (href && readme && !/^[a-z][a-z\d+\-.]*:/i.test(href)) {
+                    tokens[index].attrSet('href', '/' + (readme[1] ?? ''))
+                }
+
+                return normalize
+                    ? normalize(tokens, index, options, env, self)
+                    : self.renderToken(tokens, index, options, env, self)
+            }
+        },
     },
 
     cleanUrls: true,
     lastUpdated: true,
 
-    // A dead link fails the build, which is how a rename gets caught. The one
-    // exception is the local Workbench server, which CONTRIBUTING.md tells a
-    // contributor to open and which is unreachable from any build.
+    // A dead link fails the build, which is how a rename gets caught. It compares
+    // against the source tree, so it catches a link to a file that is not there —
+    // not a link to a file that exists but is published elsewhere, which is what the
+    // README rule above handles. The one exception below is the local Workbench
+    // server, which CONTRIBUTING.md tells a contributor to open and which is
+    // unreachable from any build.
     ignoreDeadLinks: [/^https?:\/\/localhost(:\d+)?/],
 
     head: [
