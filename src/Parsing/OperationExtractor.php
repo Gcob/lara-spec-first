@@ -7,7 +7,14 @@ namespace Gcob\LaraSpecFirst\Parsing;
 use cebe\openapi\ReferenceContext;
 use cebe\openapi\spec\OpenApi;
 use cebe\openapi\spec\Operation as ParsedOperation;
+use cebe\openapi\spec\SecurityRequirement;
+use DateTimeImmutable;
+use DateTimeInterface;
+use DateTimeZone;
+use Exception;
+use Gcob\LaraSpecFirst\Contract\Audience;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
+use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
@@ -33,7 +40,9 @@ final readonly class OperationExtractor
      * @return list<Operation> in the order the document writes them
      *
      * @throws RejectedConstructException the document uses something we refuse to serve
-     * @throws InvalidDocumentException two operations address one endpoint
+     * @throws InvalidDocumentException two operations address one endpoint, or an
+     *                                  extension this package defines carries a
+     *                                  value it does not
      */
     public function extract(ParsableSpecDocument $document): array
     {
@@ -53,18 +62,29 @@ final readonly class OperationExtractor
                 $method = HttpMethod::tryFrom($verb)
                     ?? throw RejectedConstructException::traceOperation((string) $path);
 
-                $extracted = new Operation($index++, $method, $template, $this->operationId($operation));
+                $endpoint = $verb.' '.$path;
+                $audience = $this->audience($operation, $endpoint);
+
+                $extracted = new Operation(
+                    $index++,
+                    $method,
+                    $template,
+                    $this->operationId($operation),
+                    array_values(array_filter($operation->tags, is_string(...))),
+                    $audience,
+                    $this->lifecycle($operation, $audience, $endpoint),
+                    $operation->deprecated,
+                    $this->sunset($operation, $endpoint),
+                    $this->security($operation),
+                );
+
                 $identity = $extracted->identity();
 
                 if (isset($seen[$identity])) {
-                    throw InvalidDocumentException::duplicateEndpoint(
-                        $identity,
-                        $seen[$identity],
-                        $verb.' '.$path
-                    );
+                    throw InvalidDocumentException::duplicateEndpoint($identity, $seen[$identity], $endpoint);
                 }
 
-                $seen[$identity] = $verb.' '.$path;
+                $seen[$identity] = $endpoint;
                 $operations[] = $extracted;
             }
         }
@@ -147,5 +167,189 @@ final readonly class OperationExtractor
         $id = $operation->operationId;
 
         return $id === '' ? null : $id;
+    }
+
+    /**
+     * Who the operation is promised to, resolved rather than as written.
+     *
+     * @throws InvalidDocumentException
+     *
+     * @see docs/guide/lifecycle.md — "Two keys, one discriminator"
+     */
+    private function audience(ParsedOperation $operation, string $endpoint): Audience
+    {
+        $written = $this->stringExtension($operation, 'x-audience', $endpoint);
+
+        if ($written === null) {
+            return Audience::default();
+        }
+
+        return Audience::tryFrom($written) ?? throw InvalidDocumentException::unknownExtensionValue(
+            'x-audience',
+            $written,
+            $endpoint,
+            Audience::values()
+        );
+    }
+
+    /**
+     * How strong a promise the operation carries, resolved the same way.
+     *
+     * The audience is passed in rather than read again: it is the discriminator
+     * that decides what silence means here.
+     *
+     * @throws InvalidDocumentException
+     */
+    private function lifecycle(ParsedOperation $operation, Audience $audience, string $endpoint): ?Lifecycle
+    {
+        $written = $this->stringExtension($operation, 'x-lifecycle', $endpoint);
+
+        if ($written === null) {
+            return $audience->defaultLifecycle();
+        }
+
+        return Lifecycle::tryFrom($written) ?? throw InvalidDocumentException::unknownExtensionValue(
+            'x-lifecycle',
+            $written,
+            $endpoint,
+            Lifecycle::values()
+        );
+    }
+
+    /**
+     * The date `x-sunset` states, normalized to one spelling and not validated.
+     *
+     * YAML decodes an unquoted date to a Unix timestamp, so `2026-06-01` and
+     * `"2026-06-01"` reach us as an int and as a string while stating one
+     * promise. Validating the date itself is a doctor rule, not a reason to
+     * refuse a contract.
+     *
+     * @throws InvalidDocumentException
+     *
+     * @see docs/guide/lifecycle.md — "The doctor rules that follow"
+     */
+    private function sunset(ParsedOperation $operation, string $endpoint): ?string
+    {
+        $value = $operation->getExtensions()['x-sunset'] ?? null;
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return $this->asOneSpelling(new DateTimeImmutable('@'.(int) $value));
+        }
+
+        if (! is_string($value)) {
+            throw InvalidDocumentException::extensionNotAString('x-sunset', get_debug_type($value), $endpoint);
+        }
+
+        // Recorded verbatim when it cannot be read as a moment, rather than
+        // refused: an unusable date is a doctor finding, and failing the read
+        // over one would turn a report into an outage.
+        return $this->asMoment($value) ?? $value;
+    }
+
+    /**
+     * Read a written date, or null when it is not one.
+     *
+     * Deliberately stricter than PHP's own parsing, which accepts `next tuesday`
+     * and would resolve it against the day the build happens to run.
+     */
+    private function asMoment(string $value): ?string
+    {
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})(?:[Tt ].*)?$/', $value, $written) !== 1) {
+            return null;
+        }
+
+        try {
+            $moment = new DateTimeImmutable($value, new DateTimeZone('UTC'));
+        } catch (Exception) {
+            return null;
+        }
+
+        // `2026-02-30` parses by rolling into March, and recording the rolled
+        // date would answer a claim its author did not make.
+        if ($moment->format('Y-m-d') !== $written[1]) {
+            return null;
+        }
+
+        return $this->asOneSpelling($moment);
+    }
+
+    /**
+     * The one spelling the artifact writes for a moment.
+     *
+     * A date carrying a time is a different promise, so it is not flattened into
+     * a plain one.
+     */
+    private function asOneSpelling(DateTimeImmutable $moment): string
+    {
+        $utc = $moment->setTimezone(new DateTimeZone('UTC'));
+
+        return $utc->format('H:i:s') === '00:00:00'
+            ? $utc->format('Y-m-d')
+            : $utc->format(DateTimeInterface::ATOM);
+    }
+
+    /**
+     * The security requirements as the document states them, in three states:
+     * inherited, explicitly none, or a list.
+     *
+     * @return list<array<string, list<string>>>|null
+     *
+     * @see docs/internals/contract-artifact.md — "What it holds today"
+     */
+    private function security(ParsedOperation $operation): ?array
+    {
+        /** @var list<SecurityRequirement>|null $requirements */
+        $requirements = $operation->security;
+
+        if ($requirements === null) {
+            return null;
+        }
+
+        $normalized = [];
+
+        foreach ($requirements as $requirement) {
+            /** @var array<string, mixed> $schemes */
+            $schemes = (array) $requirement->getSerializableData();
+
+            $one = [];
+
+            foreach ($schemes as $scheme => $scopes) {
+                $one[(string) $scheme] = is_array($scopes)
+                    ? array_values(array_filter($scopes, is_string(...)))
+                    : [];
+            }
+
+            // Schemes inside one requirement are ANDed, so their order says
+            // nothing. The requirements themselves are left as written.
+            ksort($one);
+
+            $normalized[] = $one;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Read an extension this package defines, insisting it is text.
+     *
+     * @throws InvalidDocumentException
+     */
+    private function stringExtension(ParsedOperation $operation, string $name, string $endpoint): ?string
+    {
+        $value = $operation->getExtensions()[$name] ?? null;
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (! is_string($value)) {
+            throw InvalidDocumentException::extensionNotAString($name, get_debug_type($value), $endpoint);
+        }
+
+        return $value;
     }
 }

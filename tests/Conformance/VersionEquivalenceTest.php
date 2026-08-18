@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\ContractArtifact;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
@@ -46,6 +47,15 @@ it('extracts one contract from two spellings of it', function (): void {
 
     expect(array_map($describe, extractEquivalenceFixture('same-contract-3.1.yaml')))
         ->toBe(array_map($describe, extractEquivalenceFixture('same-contract-3.0.yaml')));
+});
+
+// Byte-for-byte, because that is what a reviewer and `git diff` will see.
+it('produces one artifact from two spellings of one contract', function (): void {
+    $artifact = static fn (string $fixture): string => ContractArtifact::fromOperations(
+        extractEquivalenceFixture($fixture)
+    )->toJson();
+
+    expect($artifact('same-contract-3.1.yaml'))->toBe($artifact('same-contract-3.0.yaml'));
 });
 
 // Stated separately so a failure says which half broke: the counts matching

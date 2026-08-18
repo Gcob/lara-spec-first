@@ -1,0 +1,56 @@
+# The states an operation's `security` can be in. The difference between the
+# first two is the one worth a fixture: saying nothing inherits the document's
+# requirements, while an empty list overrides them to require nothing — the
+# opposite meaning, written almost identically.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKey:
+      type: apiKey
+      name: X-Api-Key
+      in: header
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /token
+          scopes:
+            read: Read anything
+            write: Change anything
+security:
+  - bearerAuth: []
+paths:
+  /inherits:
+    get:
+      operationId: inheritsSecurity
+      responses:
+        '200': { description: OK }
+  /explicitly-open:
+    get:
+      operationId: explicitlyOpen
+      security: []
+      responses:
+        '200': { description: OK }
+  /both-required:
+    get:
+      operationId: bothRequired
+      # Written out of alphabetical order on purpose: the two are ANDed, so
+      # their order says nothing and the artifact sorts them.
+      security:
+        - bearerAuth: []
+          apiKey: []
+      responses:
+        '200': { description: OK }
+  /scoped:
+    get:
+      operationId: scopedOperation
+      security:
+        - oauth2: [read, write]
+      responses:
+        '200': { description: OK }

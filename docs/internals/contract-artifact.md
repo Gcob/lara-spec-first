@@ -15,7 +15,10 @@ tags: [openapi, compatibility, decisions, code-generation, versions]
 Every comparison this package makes between two versions of a contract goes through one file. This document owns what
 that file is and why it exists.
 
-> **Not implemented yet.** Phase 1 of the [Roadmap](../project/roadmap.md). Items marked `Open` are undecided.
+> **Partly implemented.** The artifact's shape, its ordering and its serialization exist — `Contract\ContractArtifact`
+> builds one from the operations the reading engine extracts. Nothing writes it to disk yet, because that is
+> `spec:build`'s job and `spec:build` is still ahead of us on the [Roadmap](../project/roadmap.md). Items marked `Open`
+> are undecided.
 
 **Decision: the build produces a normalized representation of the contract — resolved, version-neutral, containing only
 what the package honors — and comparisons are made between artifacts, never between specification documents.**
@@ -80,6 +83,80 @@ Five rules make it work:
   everywhere else, but ignoring this file removes the baseline that breaking-change detection depends on. `spec:doctor`
   checks it in the same breath as the vendored directory.
 
-**Open.** Its name, its serialization, and its location — with the constraint that it must sit outside any directory a
-consumer would plausibly ignore wholesale. Whether a stale artifact — one whose format version predates the installed
-package — is regenerated silently or reported first.
+## The file
+
+**Decided: JSON, named `generated-spec-artefact.json`, written beside the specification unless
+`lara-spec-first.artifact.path` says otherwise.**
+
+JSON rather than PHP or YAML: it is data, not code, and the runtime never loads it — only the build-time commands and
+the spec-driven contexts do. It is pretty-printed with its slashes left alone, because `\/users\/{id}` is not something
+to make a reviewer read.
+
+Beside the specification rather than under `storage/`, and that is not a matter of taste. A stock Laravel application
+ships a `storage/app/.gitignore` containing `*`, so an artifact written there would be gitignored **by default** —
+removing the baseline breaking-change detection depends on, without anybody deciding it should, and with no symptom
+until the day it should have stopped a release. The
+[vendored references](../guide/remote-references.md#no-lock-file-git-is-the-lock) sit beside the specification for the
+same reason. An application may still move it anywhere it likes; what it may not do is put it somewhere ignored, and
+`spec:doctor` says so.
+
+## What it holds today
+
+Format version `0.1`, and `0.x` is deliberate: the format changes with every
+[support matrix](../guide/openapi-support.md#the-support-matrix) row that lands, and calling it `1.0` would promise a
+stability nothing here has earned.
+
+```json
+{
+    "artifactVersion": "0.1",
+    "operations": {
+        "get /users/{}": {
+            "index": 1,
+            "method": "get",
+            "path": "/users/{id}",
+            "operationId": "showUser",
+            "tags": ["users"],
+            "audience": "public",
+            "lifecycle": "beta",
+            "deprecated": false,
+            "sunset": null,
+            "security": null
+        }
+    }
+}
+```
+
+Four things in that fragment are decisions rather than shape:
+
+- **The key is the identity, and the body repeats the path as written.** The key normalizes every parameter to `{}`, so
+  renaming `{id}` to `{userId}` is a rename rather than a deletion and an addition. But the literal path has to be there
+  too: parameter names are what the generated controller's arguments are called, so losing them would let a signature
+  change produce no diff at all.
+- **`index` is the document's order, carried as data.** The file is serialized by endpoint and then by method, which is
+  a different order and a purely cosmetic one. Moving a path within the specification therefore changes exactly one
+  field — the one that decides [which route wins](../guide/openapi-support.md#route-order-the-spec-files-order-is-the-route-order).
+- **`audience` and `lifecycle` are effective, not as written.** An operation that declares neither is recorded as
+  `public` and `beta`, so adding those keys explicitly to a specification produces no diff: nothing about the contract
+  changed. The artifact records what is true, not what somebody typed. An unrecognized value is refused rather than
+  defaulted — see [lifecycle](../guide/lifecycle.md#two-keys-one-discriminator).
+- **`sunset` is one spelling of a moment, or the text as written.** YAML decodes an unquoted date to a Unix timestamp,
+  so `2026-06-01`, `"2026-06-01"` and `"2026-06-01T00:00:00Z"` reach the package as three different values describing
+  one promise, and they have to come out as one. A value that cannot be read as a moment is recorded verbatim rather
+  than refused or resolved — `next tuesday` is a
+  [doctor finding](../guide/lifecycle.md#the-doctor-rules-that-follow), and resolving it against the day the build ran
+  would let the artifact change while the contract did not.
+- **`security` distinguishes three states**, and the last two are opposites: `null` when the operation says nothing and
+  inherits the document's requirements, `[]` when it explicitly overrides them to require nothing, and a list of
+  requirements otherwise. How any of it maps to middleware is still open; recording it is what makes its removal show up
+  in a diff instead of quietly publishing an endpoint the contract says is protected.
+
+`summary`, `description` and `externalDocs` are absent because they change no behavior, and every field that is not
+here only widens the diff. Parameters, request bodies and responses are absent for the opposite reason: they are not
+modeled yet. Their absence is not a gap to be filled with empty placeholders — `"responses": {}` would claim an
+operation declares none, which is a different statement from not having looked. The format version is what says the
+artifact does not cover them, and it goes to `0.2` in the same commit as the first row of the matrix that does.
+
+**Open.** Whether a stale artifact — one whose format version predates the installed package — is regenerated silently
+or reported first. Whether `info.version` belongs in the artifact; it becomes load-bearing only with
+[breaking-change enforcement](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us), and adding it before
+then would put something in the artifact the package does not act on.

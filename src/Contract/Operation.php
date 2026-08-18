@@ -17,28 +17,41 @@ final readonly class Operation
 {
     /**
      * @param  int  $index  where the specification writes it, counting from zero.
-     *                      Not decoration: this package has decided that the
-     *                      document's own order settles which route wins when two
-     *                      match, so the position is part of the contract and has
-     *                      to survive normalization rather than be recovered from
-     *                      however a file happens to be serialized.
+     *                      Semantic, not decoration: the document's order settles
+     *                      which route wins when two match.
      * @param  string|null  $operationId  as written, or null when the document omits
-     *                                    it — deriving a name is the generator's
-     *                                    job, not the contract's
+     *                                    it — deriving a name is the generator's job
+     * @param  list<string>  $tags  in the order the document writes them
+     * @param  Audience  $audience  effective, not as written: an absent `x-audience`
+     *                              is already resolved to its default here
+     * @param  Lifecycle|null  $lifecycle  effective in the same sense; null is the
+     *                                     absence of a claim
+     * @param  string|null  $sunset  as `x-sunset` states it, unparsed — whether the
+     *                               date is valid and whether it has passed are
+     *                               doctor rules
+     * @param  list<array<string, list<string>>>|null  $security  null when the operation
+     *                                                            says nothing and inherits
+     *                                                            the document's, empty when
+     *                                                            it explicitly requires
+     *                                                            nothing
      */
     public function __construct(
         public int $index,
         public HttpMethod $method,
         public PathTemplate $path,
         public ?string $operationId,
+        public array $tags = [],
+        public Audience $audience = Audience::Public,
+        public ?Lifecycle $lifecycle = Lifecycle::Beta,
+        public bool $deprecated = false,
+        public ?string $sunset = null,
+        public ?array $security = null,
     ) {}
 
     /**
      * What addresses this operation, independently of what anything is named.
      *
-     * The method plus the [normalized path](PathTemplate::class): renaming a path
-     * parameter or an `operationId` leaves this untouched, which is what makes a
-     * rename tellable from a deletion.
+     * @see docs/guide/code-generation.md — "Identity is the path and the method, not the name"
      */
     public function identity(): string
     {

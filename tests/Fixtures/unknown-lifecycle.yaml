@@ -1,0 +1,15 @@
+# A typo in an extension this package defines. Nothing else in an OpenAPI
+# toolchain validates `x-` keys, so `stabel` is silent everywhere — and silence
+# here would leave an operation its author believes is promised falling back to
+# the default and losing every protection the word was written to buy.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /typo:
+    get:
+      operationId: typoOperation
+      x-lifecycle: stabel
+      responses:
+        '200': { description: OK }

@@ -1,0 +1,51 @@
+# The lifecycle extensions this package defines, in the four states that matter:
+# stated by omission, declared internal, fully promised, and the same promise
+# written with its date quoted. The last pair exists because YAML decodes an
+# unquoted date to a timestamp, so the two spellings arrive as different PHP
+# types while describing one promise.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /public-by-omission:
+    get:
+      operationId: publicByOmission
+      responses:
+        '200': { description: OK }
+  /internal:
+    get:
+      operationId: internalOperation
+      x-audience: internal
+      responses:
+        '200': { description: OK }
+  /promised:
+    get:
+      operationId: promisedOperation
+      tags: [billing, legacy]
+      x-audience: public
+      x-lifecycle: stable
+      deprecated: true
+      x-sunset: 2026-06-01
+      responses:
+        '200': { description: OK }
+  /promised-quoted:
+    get:
+      operationId: promisedQuotedOperation
+      x-lifecycle: stable
+      deprecated: true
+      x-sunset: '2026-06-01'
+      responses:
+        '200': { description: OK }
+  /promised-with-a-time:
+    get:
+      operationId: promisedWithATimeOperation
+      x-sunset: '2026-06-01T00:00:00Z'
+      responses:
+        '200': { description: OK }
+  /promised-nonsense:
+    get:
+      operationId: promisedNonsenseOperation
+      x-sunset: next tuesday
+      responses:
+        '200': { description: OK }

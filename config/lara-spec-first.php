@@ -25,4 +25,32 @@ return [
         'allowed_hosts' => [],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | The contract artifact
+    |--------------------------------------------------------------------------
+    |
+    | The normalized contract the build writes: what the package honors, with
+    | every reference resolved and every OpenAPI version difference absorbed.
+    | Comparisons between two versions of a contract are made between artifacts,
+    | never between specification documents.
+    |
+    | Null means "beside the specification", under the name the package owns.
+    | Put it wherever you like, with one hard constraint: it has to be committed.
+    | It is the baseline breaking-change detection compares against, so a
+    | gitignored artifact is not a smaller feature, it is a silently absent one.
+    | `storage/` is the trap worth naming — a stock Laravel application ignores
+    | everything under `storage/app/`, so an artifact written there disappears
+    | without anybody deciding it should.
+    |
+    | Read by `spec:build`, which does not exist yet.
+    |
+    | See docs/internals/contract-artifact.md.
+    |
+    */
+
+    'artifact' => [
+        'path' => null,
+    ],
+
 ];

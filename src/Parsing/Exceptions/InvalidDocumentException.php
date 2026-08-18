@@ -44,6 +44,45 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     }
 
     /**
+     * An extension this package defines carries a value it does not define.
+     *
+     * Refused rather than defaulted, and refused rather than reported only
+     * because the doctor does not exist yet: a refusal can be relaxed into a
+     * finding without breaking anybody, and the reverse cannot.
+     *
+     * @param  non-empty-list<string>  $allowed
+     *
+     * @see docs/guide/lifecycle.md — "The doctor rules that follow"
+     */
+    public static function unknownExtensionValue(string $extension, string $written, string $endpoint, array $allowed): self
+    {
+        return new self(sprintf(
+            '`%s` on `%s` is "%s", which this package does not define. It reads %s. '.
+            'An extension nothing validates is worth exactly as much as the care taken writing it.',
+            $extension,
+            $endpoint,
+            $written,
+            self::orList($allowed)
+        ));
+    }
+
+    /**
+     * An extension this package defines carries something that is not text.
+     *
+     * Its own message rather than the one above: listing allowed values would
+     * answer a question the author did not ask.
+     */
+    public static function extensionNotAString(string $extension, string $type, string $endpoint): self
+    {
+        return new self(sprintf(
+            '`%s` on `%s` is %s, and this package reads it as text.',
+            $extension,
+            $endpoint,
+            $type
+        ));
+    }
+
+    /**
      * @param  non-empty-list<string>  $keys
      */
     private static function orList(array $keys): string
