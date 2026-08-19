@@ -73,9 +73,9 @@ provisional:
 | `--check=syntax`  | Document validity only: is this valid OpenAPI.                                         |
 | `--check=honored` | Support findings only: what this package will and will not honor.                      |
 
-Those two values do not partition the [sections below](#what-it-checks) — drift, installation and artifact freshness
-fall under neither, and inventing a value per section would turn a filter into a second command. **Open:** whether
-`--check` names sections directly rather than naming two categories.
+Those two values do not partition the [sections below](#what-it-checks) — drift and installation fall under neither, and
+inventing a value per section would turn a filter into a second command. **Open:** whether `--check` names sections
+directly rather than naming two categories.
 
 The doctor takes no flag that lets it reach the network. It has no reason to: every remote reference is already
 [vendored locally](./remote-references.md#a-remote-reference-is-a-dependency-not-a-cache-entry), so a blocked or missing
@@ -126,7 +126,6 @@ Provisional, and expected to grow one section per honored construct:
 | Drift             | Whether the generated code still matches the specification. The runtime [cannot notice](./code-generation.md#the-runtime-never-sees-the-spec) that someone edited the spec and forgot to build, so this check is the only thing standing between that mistake and production. |
 | Lifecycle         | The [`x-sunset` and `x-lifecycle` rules](./lifecycle.md#the-doctor-rules-that-follow), plus the coverage report: how many public operations are actually `stable`, and therefore how much of the API is protected at all.                                                     |
 | Installation      | That the vendored directory is not gitignored, and that the generated path and namespace agree with what `composer` autoloads. Both are silent misconfigurations whose symptoms appear far from their cause.                                                                  |
-| Artifact          | Whether the committed [contract artifact](../internals/contract-artifact.md) is current, and whether its format version predates the installed package.                                                                                                                       |
 
 ## Open questions on the doctor
 

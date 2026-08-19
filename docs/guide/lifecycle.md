@@ -106,9 +106,8 @@ instability, which is what [`x-audience: internal`](#two-keys-one-discriminator)
 
 Four consequences, because a rule that fails a build has to be right:
 
-**1. Failing on a breaking change requires a baseline, and the baseline is
-[an artifact of our own](../internals/contract-artifact.md).** Not the two specification documents, and not the
-generated code.
+**1. Failing on a breaking change requires a baseline, and the baseline is the specification itself — its previously
+committed version.** Not the generated code, which was never meant to carry the whole contract.
 
 **2. "Breaking" is directional, and the direction inverts between request and response.** This is where implementations
 get it wrong, so it has to be a written table rather than a judgement call: adding a required _request_ field breaks

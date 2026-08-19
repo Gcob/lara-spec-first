@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use Gcob\LaraSpecFirst\Contract\ContractArtifact;
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
@@ -36,6 +36,9 @@ it('reads the pair as the two different versions they claim to be', function ():
         ->toBe(SpecVersion::V3_1);
 });
 
+// Every field the extractor produces, not a sample of them — this is the test
+// that pins the version strategy's entire promise: nothing downstream, not even
+// a reviewer reading a diff, may be able to tell which version was read.
 it('extracts one contract from two spellings of it', function (): void {
     $describe = static fn (Operation $operation): array => [
         'index' => $operation->index,
@@ -43,19 +46,21 @@ it('extracts one contract from two spellings of it', function (): void {
         'template' => $operation->path->template,
         'parameters' => $operation->path->parameterNames,
         'operationId' => $operation->operationId,
+        'tags' => $operation->tags,
+        'audience' => $operation->audience,
+        'lifecycle' => $operation->lifecycle,
+        'deprecated' => $operation->deprecated,
+        'sunset' => $operation->sunset,
+        'security' => $operation->security === null
+            ? null
+            : array_map(
+                static fn (SecurityRequirement $requirement): array => $requirement->toArray(),
+                $operation->security
+            ),
     ];
 
     expect(array_map($describe, extractEquivalenceFixture('same-contract-3.1.yaml')))
         ->toBe(array_map($describe, extractEquivalenceFixture('same-contract-3.0.yaml')));
-});
-
-// Byte-for-byte, because that is what a reviewer and `git diff` will see.
-it('produces one artifact from two spellings of one contract', function (): void {
-    $artifact = static fn (string $fixture): string => ContractArtifact::fromOperations(
-        extractEquivalenceFixture($fixture)
-    )->toJson();
-
-    expect($artifact('same-contract-3.1.yaml'))->toBe($artifact('same-contract-3.0.yaml'));
 });
 
 // Stated separately so a failure says which half broke: the counts matching

@@ -77,12 +77,12 @@ documents used to declare `Users, contributors and agents`, which is indistingui
 that teaches a consumer how a build works _and_ rules a reviewer must enforce serves neither reader well, and nothing in
 the repository objected. The tree objects.
 
-| `audience`               | Lives in                                | Answers                                              |
-| ------------------------ | --------------------------------------- | ---------------------------------------------------- |
-| `Users`                  | `docs/guide/`                           | How to use the package, and what it promises.        |
-| `Users and contributors` | `docs/project/`                         | Where the project is going, and what it is built on. |
-| `Contributors`           | `docs/internals/`, `docs/contributing/` | Why it is built this way, and how to work on it.     |
-| `AI coding agents`       | `AGENTS.md`                             | How an agent works in this repository.               |
+| `audience`               | Lives in             | Answers                                              |
+| ------------------------ | -------------------- | ---------------------------------------------------- |
+| `Users`                  | `docs/guide/`        | How to use the package, and what it promises.        |
+| `Users and contributors` | `docs/project/`      | Where the project is going, and what it is built on. |
+| `Contributors`           | `docs/contributing/` | Why it is built this way, and how to work on it.     |
+| `AI coding agents`       | `AGENTS.md`          | How an agent works in this repository.               |
 
 The rules:
 
@@ -247,10 +247,6 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 - [`roadmap.md`](../project/roadmap.md)
 - [`stack.md`](../project/stack.md)
-
-`docs/internals/` — `Contributors`:
-
-- [`contract-artifact.md`](../internals/contract-artifact.md)
 
 `docs/contributing/` — `Contributors`:
 

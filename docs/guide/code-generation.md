@@ -98,16 +98,15 @@ change shape without asking permission. It can only be free if nobody has hand-e
 
 ## The build command: `spec:build`
 
-One command, run after any change to the specification, producing every derived output: the
-[contract artifact](../internals/contract-artifact.md), the routes, the abstract controllers, the response DTOs and the
-validation. Everything it writes, it owns.
+One command, run after any change to the specification, producing every derived output: the routes, the abstract
+controllers, the response DTOs and the validation. Everything it writes, it owns.
 
 Its properties:
 
 - **Idempotent.** Running it twice in a row changes nothing the second time. If a build produces a diff on an unchanged
   spec, that is a defect.
-- **Ordered, and it stops.** Check the vendored references are present, parse, normalize into the prospective artifact,
-  **compare it against the committed one**, then generate. A spec that fails [the doctor's](./doctor.md) hard checks
+- **Ordered, and it stops.** Check the vendored references are present, parse, normalize in memory, **compare against
+  the previously committed specification**, then generate. A spec that fails [the doctor's](./doctor.md) hard checks
   does not reach the generator — half-generated output from a broken contract is worse than no output. The comparison
   sits before generation for the same reason: nothing is written until it is known to be allowed.
 - **It never writes outside its own directories.** No exceptions, no conditions. This is the
@@ -460,8 +459,8 @@ Two other decisions depend on it, which is the real reason it stands alone:
 - [Rename detection](#identity-is-the-path-and-the-method-not-the-name) compares the pointers in the existing generated
   tree against the ones the new build would emit. Without the annotation there is no comparison to make and no rename to
   report.
-- The [contract artifact](../internals/contract-artifact.md) is keyed by the same identity, so a finding in the artifact
-  diff and a header in a generated file name the same thing.
+- Breaking-change detection is keyed by the same identity, so a finding in that comparison and a header in a generated
+  file name the same thing.
 
 ## Response DTOs
 

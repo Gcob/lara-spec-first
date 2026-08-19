@@ -41,7 +41,7 @@ paths:
     get:
       operationId: bothRequired
       # Written out of alphabetical order on purpose: the two are ANDed, so
-      # their order says nothing and the artifact sorts them.
+      # their order says nothing and the package sorts them.
       security:
         - bearerAuth: []
           apiKey: []

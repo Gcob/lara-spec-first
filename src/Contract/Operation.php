@@ -10,8 +10,6 @@ namespace Gcob\LaraSpecFirst\Contract;
  * Everything the parser had to say about this operation that the package honors
  * ends up here, in our own types — which is what lets a future version bring a
  * different parser without anything downstream noticing.
- *
- * @see docs/internals/contract-artifact.md
  */
 final readonly class Operation
 {

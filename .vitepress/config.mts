@@ -48,11 +48,6 @@ const SECTIONS: Section[] = [
         sequence: ['roadmap', 'stack'],
     },
     {
-        text: 'Internals',
-        directory: 'docs/internals',
-        sequence: ['contract-artifact'],
-    },
-    {
         text: 'Contributing',
         directory: 'docs/contributing',
         sequence: ['documentation'],
@@ -197,7 +192,6 @@ export default defineConfig({
         nav: [
             { text: 'Guide', link: '/docs/guide/openapi-support' },
             { text: 'Project', link: '/docs/project/roadmap' },
-            { text: 'Internals', link: '/docs/internals/contract-artifact' },
             { text: 'Contributing', link: '/docs/contributing/documentation' },
         ],
 

@@ -33,7 +33,6 @@ use Throwable;
  * @internal Not public API — reachable through the reading pipeline.
  *
  * @see SpecDocumentReader for the order of the read pipeline
- * @see docs/internals/contract-artifact.md
  */
 final readonly class OperationExtractor
 {
@@ -279,7 +278,7 @@ final readonly class OperationExtractor
     }
 
     /**
-     * The one spelling the artifact writes for a moment.
+     * The one spelling this package writes for a moment.
      *
      * A date carrying a time is a different promise, so it is not flattened into
      * a plain one.
@@ -298,8 +297,6 @@ final readonly class OperationExtractor
      * inherited, explicitly none, or a list.
      *
      * @return list<SecurityRequirement>|null
-     *
-     * @see docs/internals/contract-artifact.md — "What it holds today"
      */
     private function security(ParsedOperation $operation): ?array
     {
