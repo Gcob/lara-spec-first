@@ -4,6 +4,7 @@
 > AI, mock endpoints instantly with Faker, and seamlessly bridge legacy code.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation](https://img.shields.io/badge/docs-VitePress-brightgreen.svg)](https://gcob.github.io/lara-spec-first/)
 
 ## Why `lara-spec-first`?
 
