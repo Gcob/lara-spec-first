@@ -473,14 +473,86 @@ The DTOs are how a response schema becomes a PHP type. Two properties, and the t
 - **The behavior is yours.** Hydration is where real applications differ, and a generated DTO you cannot teach to build
   itself from your model is a generated DTO people will wrap or abandon.
 
-The [two-layer split](#two-layers) resolves this cleanly: the generated layer declares the shape and a default `from()`;
-your class overrides `from()` and adds whatever else it needs. Hackable where it should be, fixed where the contract
-speaks.
+**Decision: a DTO is `final readonly`.** It is a value object mirroring a piece of the contract, not a class with
+behavior of its own to grow — the same reasoning that makes
+[`Operation`](https://github.com/Gcob/lara-spec-first/blob/main/src/Contract/Operation.php) and its neighbors
+`final readonly` in this package's own types. Which rules out the [two-layer split](#two-layers) that customization
+elsewhere in this document relies on: there is no abstract DTO to extend, because there is no DTO to extend, full stop.
 
-`spatie/laravel-data` is the reference for what good feels like here, and its `from($model)` ergonomics are the target.
-**Whether we depend on it or only take the shape is undecided** and belongs in [`stack.md`](../project/stack.md) once
-settled — a dependency buys casting, validation and serialization for free, at the cost of binding generated code to
-another package's API and release cycle.
+### Factories, not subclasses, are where behavior lives
+
+**A note on the name, before anything else.** This "factory" is the design pattern — a class whose one job is
+constructing another object — not Laravel's own model factories, which generate fake data for tests and carry
+`HasFactory` and `Factory::class` with them. The two share a word and nothing else. Nothing here touches, extends, or
+competes with `Illuminate\Database\Eloquent\Factories`.
+
+Hydration therefore cannot live on the DTO itself. It lives one level removed, in a **factory** — an ordinary class, not
+final, whose only job is turning a source (a model, an array, whatever the response needs) into the DTO.
+
+**Decision: the build generates one factory per DTO**, mapping by naming convention — the same nomenclature-driven
+matching already used [when `operationId` is absent](#when-operationid-is-absent-derive-from-method-and-path) — with a
+default implementation that covers the ordinary case: properties that already exist on the source, under the same name.
+This is what makes the other ninety-six DTOs in a hundred-DTO contract need nothing from a developer at all.
+
+### Overriding a factory: extend it, in a directory the project declares
+
+Most response shapes need nothing beyond the default mapping. The few that do should not cost the other ninety-six.
+**Decision: a project overrides a factory by writing a class that `extends` the generated one** — no fixed name, no
+fixed file, and no service provider to touch.
+
+**The generated factory never disappears, even once overridden.** It is not replaced, it is extended — the override
+would have nothing to inherit from otherwise, and a developer would be starting from an empty file instead of a working
+default mapping they only need to adjust in part. Every generated factory therefore exists for every DTO, always,
+whether or not a project has ever looked at it.
+
+The build finds the override itself, by scanning a **configured set of directories — not the whole project** — for a
+class extending each generated factory, and wiring whichever it finds in place of the generated default. The directories
+are named in configuration, the same shape as [`remote_references.allowed_hosts`](./remote-references.md): empty by
+default, and nothing is scanned until a project says where to look. Scanning the whole application would mean touching
+every autoloaded class, vendored packages included, on every build, for a feature four DTOs out of a hundred will ever
+use — the cost has to be bounded by what the project actually declares, not by how large `vendor/` happens to be.
+
+**Exactly one override per factory.** Extending a generated factory twice is not a project needing two behaviors from
+one thing, it is two behaviors with no rule for which wins. The build refuses to guess: finding two classes that extend
+the same generated factory is a hard error, naming both offending classes and the factory they both claim, not a silent
+pick of whichever the classmap happened to load first.
+
+This is detection **at build time**, deliberately, not a runtime `class_exists()` check scattered across every place a
+DTO gets built — the same reasoning as [everywhere else in this document](#the-runtime-never-sees-the-spec): explicit
+over dynamic, and the cost paid once rather than on every request. The consequence to state plainly: an override added
+without rerunning the build has not taken effect yet — a case for [drift](./doctor.md#what-it-checks), not a new failure
+mode.
+
+**Open:** the config key's name, and whether it recurses into subdirectories by default; the exact mechanism for finding
+the `extends` relationship — reflection over the classes the configured directories autoload is the leading answer,
+rather than [the token scan rename detection already uses](#how-it-says-it), since an `extends` clause needs the
+language's own resolution of `use` imports and aliases to be trustworthy, not a match on spelling; and the name of the
+exception thrown when two classes claim one factory.
+
+### The docblock says what happened, and what to do next
+
+**Decision: every generated factory carries a docblock summarizing, concisely, what the automatic mapping found** —
+which properties matched by name, which did not, and anything a reader would want to check first before trusting the
+default. The same audience [the source map](#the-source-map) already serves: a developer who did not write this file,
+and an AI coding agent working in the repository, which is a first-class consideration for this package — a concise,
+templated summary is exactly the shape an agent can act on without first reading the mapping logic itself.
+
+**Its last line depends on whether an override exists**, and it is the
+[naming-the-command pattern](#the-build-names-the-command-instead-of-running-it) applied one level down from operations
+to factories:
+
+- **No override found:** the docblock names the `spec:make` [flag](#per-type-flags-belong-here) that scaffolds one.
+  Discovering the extension point should not require reading this document first.
+- **An override found:** the scaffold instruction is replaced by `@see` pointing at the file the build detected, so a
+  reader — human or agent — lands on the actual behavior in one jump, instead of reading a generated default that is not
+  what actually runs.
+
+`spatie/laravel-data` remains a candidate for the generated shape itself — its casting, validation and serialization are
+useful independently of who builds the object — but its own `from()`-override ergonomics are no longer the fit they once
+were: a `Data` object is not `final`, and this design deliberately does not lean on DTO-level inheritance for
+customization. **Whether we depend on it or only take the shape is undecided** and belongs in
+[`stack.md`](../project/stack.md) once settled — a dependency buys casting, validation and serialization for free, at
+the cost of binding generated code to another package's API and release cycle.
 
 ## Appending into human-owned files
 
@@ -515,5 +587,8 @@ regions ever read or written, and a hard failure rather than a guess when the re
 - What [watch](#watching-specwatch) takes as parameters — in particular how its rebuild cadence is expressed, and how
   the mode announces itself while it is running.
 - Whether `spatie/laravel-data` becomes a dependency or only an influence.
+- The [factory override scan](#overriding-a-factory-extend-it-in-a-directory-the-project-declares): the config key's
+  name, whether it recurses by default, the exact mechanism for finding the `extends` relationship, and the name of the
+  exception thrown when two classes claim one factory.
 - **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated validation are
   Phase 2 — the same build command doing more, not a new one. See the [Roadmap](../project/roadmap.md).
