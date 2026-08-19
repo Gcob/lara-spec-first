@@ -40,6 +40,7 @@ const SECTIONS: Section[] = [
             'doctor',
             'lifecycle',
             'security',
+            'rate-limiting',
             'remote-references',
         ],
     },

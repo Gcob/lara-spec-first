@@ -143,11 +143,13 @@ Two documents govern most of what you will need. Read the one that owns your sub
 - [`docs/guide/code-generation.md`](./docs/guide/code-generation.md) — the build, and the rule that generated code and
   human code never share a file. Read it before writing anything that emits PHP.
 
-Four more documents own one subject each, and each says in its `read_before` when to open it:
+Five more documents own one subject each, and each says in its `read_before` when to open it:
 [`docs/guide/doctor.md`](./docs/guide/doctor.md) (what the package reports),
 [`docs/guide/remote-references.md`](./docs/guide/remote-references.md) (`$ref` over the network),
 [`docs/guide/lifecycle.md`](./docs/guide/lifecycle.md) (how strong a promise an operation carries),
-[`docs/guide/security.md`](./docs/guide/security.md) (how `security` becomes an authorization check).
+[`docs/guide/security.md`](./docs/guide/security.md) (how `security` becomes an authorization check),
+[`docs/guide/rate-limiting.md`](./docs/guide/rate-limiting.md) (reading a limit neither OpenAPI nor the community
+standardized).
 
 Documents are tagged in their front matter, so you can find everything touching a subject without opening files:
 

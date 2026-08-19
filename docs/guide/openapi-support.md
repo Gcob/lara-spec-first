@@ -33,7 +33,7 @@ claimed to read it — the whole promise is that the spec is the source of truth
 > already normalizes them identically. Not yet built: registering a route from any of it, `spec:build`, and
 > `spec:doctor`.
 
-Four subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below still govern all of
+Five subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below still govern all of
 them:
 
 | Document                                         | Owns                                                             |
@@ -42,6 +42,7 @@ them:
 | [`remote-references.md`](./remote-references.md) | A `$ref` that points at a URL.                                   |
 | [`lifecycle.md`](./lifecycle.md)                 | How strong a promise each operation carries.                     |
 | [`security.md`](./security.md)                   | How `security` becomes an authorization check.                   |
+| [`rate-limiting.md`](./rate-limiting.md)         | Reading a limit neither OpenAPI nor the community standardized.  |
 
 ## The four rules
 

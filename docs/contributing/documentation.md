@@ -177,6 +177,7 @@ grep -rl 'tags:.*versions' --include='*.md' .
 | `openapi`         | The OpenAPI specification and its parsing                                       |
 | `php`             | PHP version support and language constraints                                    |
 | `planning`        | Roadmap, phases, and sequencing                                                 |
+| `rate-limiting`   | Rate limits: how the specification declares one and how the package reads it    |
 | `scope`           | What belongs in this package and what does not                                  |
 | `security`        | Authentication, authorization, and the boundary of what the spec can express    |
 | `stack`           | Technology choices                                                              |
@@ -242,6 +243,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 - [`doctor.md`](../guide/doctor.md)
 - [`lifecycle.md`](../guide/lifecycle.md)
 - [`openapi-support.md`](../guide/openapi-support.md)
+- [`rate-limiting.md`](../guide/rate-limiting.md)
 - [`remote-references.md`](../guide/remote-references.md)
 - [`security.md`](../guide/security.md)
 
