@@ -8,6 +8,7 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 
 /**
  * Operations written in an order that is deliberately not the canonical one, so
@@ -72,7 +73,7 @@ it('records the lifecycle state of an operation', function (): void {
         lifecycle: Lifecycle::Stable,
         deprecated: true,
         sunset: '2026-06-01',
-        security: [['bearerAuth' => []]],
+        security: [SecurityRequirement::fromSchemes(['bearerAuth' => []])],
     );
 
     expect(ContractArtifact::fromOperations([$operation])->toArray()['operations']['get /reports'])->toBe([

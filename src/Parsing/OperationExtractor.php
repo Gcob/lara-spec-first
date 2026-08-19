@@ -7,7 +7,7 @@ namespace Gcob\LaraSpecFirst\Parsing;
 use cebe\openapi\ReferenceContext;
 use cebe\openapi\spec\OpenApi;
 use cebe\openapi\spec\Operation as ParsedOperation;
-use cebe\openapi\spec\SecurityRequirement;
+use cebe\openapi\spec\SecurityRequirement as ParsedSecurityRequirement;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
@@ -17,6 +17,7 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\ParserFailedException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
@@ -296,13 +297,13 @@ final readonly class OperationExtractor
      * The security requirements as the document states them, in three states:
      * inherited, explicitly none, or a list.
      *
-     * @return list<array<string, list<string>>>|null
+     * @return list<SecurityRequirement>|null
      *
      * @see docs/internals/contract-artifact.md — "What it holds today"
      */
     private function security(ParsedOperation $operation): ?array
     {
-        /** @var list<SecurityRequirement>|null $requirements */
+        /** @var list<ParsedSecurityRequirement>|null $requirements */
         $requirements = $operation->security;
 
         if ($requirements === null) {
@@ -323,11 +324,8 @@ final readonly class OperationExtractor
                     : [];
             }
 
-            // Schemes inside one requirement are ANDed, so their order says
-            // nothing. The requirements themselves are left as written.
-            ksort($one);
-
-            $normalized[] = $one;
+            // The requirements themselves are left in the order written.
+            $normalized[] = SecurityRequirement::fromSchemes($one);
         }
 
         return $normalized;

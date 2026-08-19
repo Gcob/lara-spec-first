@@ -6,6 +6,7 @@ use Gcob\LaraSpecFirst\Contract\Audience;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
 use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
@@ -17,6 +18,17 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 function extractFrom(string $fixture): array
 {
     return (new OperationExtractor)->extract((new SpecDocumentReader)->read(specFixturePath($fixture)));
+}
+
+/**
+ * @return list<array<string, list<string>>>
+ */
+function schemesOf(Operation $operation): array
+{
+    return array_map(
+        static fn (SecurityRequirement $requirement): array => $requirement->schemes,
+        $operation->security ?? []
+    );
 }
 
 it('extracts every operation of every path', function (): void {
@@ -158,11 +170,11 @@ it('tells an inherited security requirement from an explicit opt-out', function 
 });
 
 it('sorts the schemes inside one requirement, which are ANDed and unordered', function (): void {
-    expect(extractFrom('security-states.yaml')[2]->security)
+    expect(schemesOf(extractFrom('security-states.yaml')[2]))
         ->toBe([['apiKey' => [], 'bearerAuth' => []]]);
 });
 
 it('keeps the scopes a requirement asks for', function (): void {
-    expect(extractFrom('security-states.yaml')[3]->security)
+    expect(schemesOf(extractFrom('security-states.yaml')[3]))
         ->toBe([['oauth2' => ['read', 'write']]]);
 });

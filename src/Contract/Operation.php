@@ -29,11 +29,10 @@ final readonly class Operation
      * @param  string|null  $sunset  as `x-sunset` states it, unparsed — whether the
      *                               date is valid and whether it has passed are
      *                               doctor rules
-     * @param  list<array<string, list<string>>>|null  $security  null when the operation
-     *                                                            says nothing and inherits
-     *                                                            the document's, empty when
-     *                                                            it explicitly requires
-     *                                                            nothing
+     * @param  list<SecurityRequirement>|null  $security  null when the operation says
+     *                                                    nothing and inherits the
+     *                                                    document's, empty when it
+     *                                                    explicitly requires nothing
      */
     public function __construct(
         public int $index,

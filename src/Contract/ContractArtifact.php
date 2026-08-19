@@ -64,7 +64,12 @@ final readonly class ContractArtifact
                 'lifecycle' => $operation->lifecycle?->value,
                 'deprecated' => $operation->deprecated,
                 'sunset' => $operation->sunset,
-                'security' => $operation->security,
+                'security' => $operation->security === null
+                    ? null
+                    : array_map(
+                        static fn (SecurityRequirement $requirement): array => $requirement->toArray(),
+                        $operation->security
+                    ),
             ];
         }
 
