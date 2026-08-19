@@ -2,12 +2,13 @@
 title: Controllers
 audience: Users
 covers: >
-    Why there is no grouped or invokable controller, why the package ships one controller and composes behavior through
-    a context object instead of an inheritance chain, `DefaultContext`, `ModelContext` and `ModelCollectionContext` and
-    how an operation's specification picks one, why `context()` is `final` on the generated file, how a single-item and
-    a collection response are told apart from the schema, why mass-assignment write defaults have no opt-out, the doctor
-    check that validates a model against what the specification actually sends it, and scaffolding one controller at a
-    time.
+    Why there is no grouped or invokable controller and why the route method is always named `routeAction`, why the
+    package ships one controller and composes behavior through a context object instead of an inheritance chain,
+    `DefaultContext`, `ModelContext` and `ModelCollectionContext` and how an operation's specification picks one, why
+    `context()` is `final` while the generated class is not, why middleware is an overridable method rather than a
+    separate mechanism, how a single-item and a collection response are told apart from the schema, why mass-assignment
+    write defaults have no opt-out, the doctor check that validates a model against what the specification actually
+    sends it, and scaffolding one controller at a time.
 read_before: >
     Implementing anything that turns an operation into a controller, or touching what `spec:make` scaffolds.
 tags: [code-generation, openapi, decisions, scope, laravel]
@@ -22,8 +23,14 @@ assumes about your application, and where a developer's own code attaches to it.
 
 ## One controller per operation, and nothing grouped
 
-**Decision: every operation gets its own generated controller, with one method named after the operation.** Not a
-resource controller carrying several operations, and not an invokable class.
+**Decision: every operation gets its own generated controller, carrying exactly one route method, always named
+`routeAction`.** Not a resource controller holding several operations, and not an invokable class.
+
+**One fixed method name rather than one derived from the operation**, and the reasoning is predictability: every
+controller this package generates has `routeAction`, so "which method do I override" has one answer, forever, with no
+naming convention to learn and no derived spelling to reconstruct. The operation's identity is carried by the class name
+and stated exactly in [the file's own docblock](./code-generation.md#every-generated-file-explains-itself), which is
+where a reader looks anyway.
 
 Both alternatives were considered and both fail for reasons specific to this package rather than to controllers in
 general:
@@ -31,15 +38,15 @@ general:
 - **Grouping breaks incremental implementation.** A controller generated with five abstract methods needs a concrete
   subclass implementing all five before PHP will instantiate it — you cannot ship three today and two tomorrow. The
   candidate for grouping was `x-controller` naming which operations share a class; it was dropped for exactly this
-  reason, on top of introducing a second naming key that [identity](#identity-is-the-path-and-the-method-not-the-name)
-  in [`code-generation.md`](./code-generation.md) does not model.
-- **An invokable breaks the one string that makes this codebase greppable.** A method named after the operation means
-  `grep showUser` finds the specification and the code in one search. An invokable's class name carries that information
-  instead, transformed through whatever naming convention was chosen — a second spelling of one fact, and the exact
-  duplication [`operationId`-derived naming](./code-generation.md#naming-and-the-rename-problem) already guards against.
-  It also does more damage than the DRY argument suggests: it is precisely the kind of gap an AI agent, reading a
-  handful of files rather than a codebase, has no way to close by inference — which is a first-class concern for this
-  package, stated in [the docblock norm](./code-generation.md#every-generated-file-explains-itself).
+  reason, on top of introducing a second naming key that
+  [identity](./code-generation.md#identity-is-the-path-and-the-method-not-the-name) does not model.
+- **An invokable trades a real symbol for a magic one.** `routeAction` appears in the generated route registration, in
+  stack traces, in IDE navigation, and in a grep for every spec-driven action at once. `__invoke` appears in none of
+  them: it is a magic method whose name says nothing about what it does, and the route registration degrades from an
+  explicit `[Controller::class, 'routeAction']` pair to a bare class string. **This is a narrower argument than an
+  earlier draft of this document made** — that draft derived the method name from the operation and claimed a single
+  `grep showUser` spanning specification and code, which a fixed name gives up. What survives is the part that matters:
+  a named, greppable symbol beats a magic one, and the operation's own name is still one docblock line away.
 
 The
 [override mechanism is the one factories already use](./code-generation.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares):
@@ -66,8 +73,8 @@ instead.** `SpecController` is deliberately thin — a handful of methods, each 
 every operation's generated controller extends it, full stop. There is no second or third controller to choose between.
 
 ```php
-// Generated, one per operation.
-final class ShowUserController extends SpecController
+// Generated, one per operation. Not `final`: a human subclass extends this to take control.
+class ShowUserController extends SpecController
 {
     final protected function context(): ModelContext
     {
@@ -83,10 +90,31 @@ final class ShowUserController extends SpecController
 }
 ```
 
-`getQuery()` and `getResponse()` live on `SpecController`, each with a default body that delegates to
-`$this->context()`, and each freely overridable in a human subclass — overriding one no longer means understanding which
-ancestor among several currently provides it, because there is exactly one ancestor, and it does exactly one thing: ask
-the context.
+**The generated class is deliberately not `final`, and `context()` is.** The class has to stay open, because
+[extending it is how a project takes control](#one-controller-per-operation-and-nothing-grouped); `context()` is closed,
+because which model an operation reads is the specification's answer and not a subclass's.
+
+`getQuery()`, `getResponse()` and `middleware()` live on `SpecController`, each with a default body, and each freely
+overridable in a human subclass — overriding one no longer means working out which ancestor among several currently
+provides it, because there is exactly one ancestor, and it does exactly one thing: ask the context.
+
+### Middleware is one of those methods, not a separate mechanism
+
+**Decision: `SpecController` implements Laravel's own `HasMiddleware` interface, with a default `middleware()` returning
+nothing.** A project that needs middleware on one operation overrides that method in its subclass, which means
+middleware is the same shape as every other extension point here rather than a second thing to learn — no `implements`
+clause to remember, and one list of overridable methods to read.
+
+**Everything the specification derives stays on the route, never in `middleware()`.** That is already what
+[`security.md`](./security.md#one-middleware-one-question-does-the-model-have-the-scope) decided for the scope check,
+and keeping it there is what makes overriding `middleware()` safe: Laravel combines route middleware with controller
+middleware rather than replacing one with the other, so **a subclass cannot drop its own security by forgetting
+`parent::middleware()`**. There is no such discipline to remember, because there is nothing of ours in that method to
+preserve.
+
+Two consequences of using Laravel's interface as-is rather than inventing our own: `middleware()` is `static` where the
+other three are instance methods, and being `static` it cannot read `$this->context()` — so middleware stays
+declarative, which is the right constraint anyway.
 
 ## `DefaultContext`, `ModelContext`, `ModelCollectionContext`
 
