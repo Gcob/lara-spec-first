@@ -29,13 +29,6 @@ it('publishes a configuration whose default allows no host', function (): void {
     expect(config('lara-spec-first.remote_references.allowed_hosts'))->toBe([]);
 });
 
-// Null rather than a path: the artifact is written beside the specification
-// unless an application says otherwise, and picking a directory here would mean
-// picking one before knowing where the specification lives.
-it('defaults the artifact to no configured path of its own', function (): void {
-    expect(config('lara-spec-first.artifact.path'))->toBeNull();
-});
-
 // The guard is resolved with whatever the application configured, which is the
 // only reason the setting is worth having at all.
 it('builds the remote reference guard from the configuration', function (): void {

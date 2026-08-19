@@ -39,9 +39,9 @@ final readonly class ParsableSpecDocument
      *                                     **not normalized**, so the 3.0 and 3.1 spellings of one
      *                                     idea are both still here — `$strategy` is attached but has
      *                                     not interpreted anything yet, and producing the normalized
-     *                                     form is the contract artifact's job.
+     *                                     form is the strategy's job from here on.
      *
-     * @see docs/internals/contract-artifact.md
+     * @see docs/guide/openapi-support.md — "Handling 3.0 and 3.1: the version strategy"
      */
     public function __construct(
         public string $path,

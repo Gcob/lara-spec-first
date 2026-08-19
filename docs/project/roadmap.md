@@ -21,14 +21,11 @@ _Goal: Prove the core concept with a working proof-of-concept._
 - [ ] Integrate `devizzent/cebe-php-openapi` (OpenAPI 3.0.x + 3.1.x) to parse single or multi-file YAML specs, behind
       [one strategy per OpenAPI minor version](../guide/openapi-support.md#handling-30-and-31-the-version-strategy) so
       that nothing downstream ever knows which version was loaded.
-- [ ] Produce the [contract artifact](../internals/contract-artifact.md): the normalized, resolved, version-neutral
-      representation of what the package honors. It is the strategy's output and what `spec:doctor` checks against, so
-      it is needed here — long before the breaking-change enforcement it will later serve as a baseline for.
 - [ ] Build the core Service Provider that registers the generated routes. It **does not read the spec** — only the
       build commands do. Explicit over dynamic: see
       [the runtime never sees the spec](../guide/code-generation.md#the-runtime-never-sees-the-spec).
-- [ ] Ship `spec:build`: resolve the spec into the contract artifact and generate the routes and the abstract
-      controllers (Generated vs. Extended pattern). Safe to re-run, and it writes only files it owns. See
+- [ ] Ship `spec:build`: resolve the spec and generate the routes and the abstract controllers (Generated vs. Extended
+      pattern). Safe to re-run, and it writes only files it owns. See
       [`code-generation.md`](../guide/code-generation.md).
 - [ ] Ship `spec:make`: the only command that creates a file the developer will own. It scaffolds a named operation, or
       a whole `--tag`, or `--all` — never as a side effect of a build. `spec:build` itself never scaffolds; it prints
@@ -101,8 +98,9 @@ Deliberately not slotted into a phase yet: a rule that fails somebody's build ha
 depends on groundwork the earlier phases have not laid. See
 [lifecycle](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us).
 
-- [ ] Diff the Phase 1 [contract artifact](../internals/contract-artifact.md) against its committed predecessor.
-      Comparisons are made between artifacts, never between specification documents.
+- [ ] Diff the specification against its previously committed version, read from git rather than from a separate file
+      the build writes, normalizing 3.0/3.1 differences in memory before comparing. See
+      [the baseline](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us).
 - [ ] The breaking-change table, direction-aware for requests and responses, versioned as public API.
 - [ ] Fail the build on a breaking change to a `stable` operation, naming the `info.version` bump that would make it
       legitimate.

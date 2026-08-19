@@ -9,8 +9,6 @@ namespace Gcob\LaraSpecFirst\Contract;
  *
  * An operation carries a list of these, and satisfying any one of them is
  * enough — OpenAPI ORs the list and ANDs what is inside each entry.
- *
- * @see docs/internals/contract-artifact.md — "What it holds today"
  */
 final readonly class SecurityRequirement
 {
@@ -31,13 +29,5 @@ final readonly class SecurityRequirement
         ksort($schemes);
 
         return new self($schemes);
-    }
-
-    /**
-     * @return array<string, list<string>>
-     */
-    public function toArray(): array
-    {
-        return $this->schemes;
     }
 }

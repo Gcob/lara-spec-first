@@ -143,9 +143,8 @@ Two documents govern most of what you will need. Read the one that owns your sub
 - [`docs/guide/code-generation.md`](./docs/guide/code-generation.md) — the build, and the rule that generated code and
   human code never share a file. Read it before writing anything that emits PHP.
 
-Four more documents own one subject each, and each says in its `read_before` when to open it:
+Three more documents own one subject each, and each says in its `read_before` when to open it:
 [`docs/guide/doctor.md`](./docs/guide/doctor.md) (what the package reports),
-[`docs/internals/contract-artifact.md`](./docs/internals/contract-artifact.md) (how two contracts are compared),
 [`docs/guide/remote-references.md`](./docs/guide/remote-references.md) (`$ref` over the network),
 [`docs/guide/lifecycle.md`](./docs/guide/lifecycle.md) (how strong a promise an operation carries).
 

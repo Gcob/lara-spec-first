@@ -9,8 +9,8 @@ namespace Gcob\LaraSpecFirst\Contract;
  *
  * `trace` is deliberately absent. OpenAPI defines it on a Path Item, but Laravel
  * has no TRACE verb, so an operation written under it cannot become a route —
- * and the contract artifact holds only what the package honors, which means a
- * `trace` operation is refused where it is read rather than carried this far.
+ * and this package honors only what it can route, which means a `trace`
+ * operation is refused where the document is read rather than carried this far.
  *
  * @see docs/guide/openapi-support.md — "`trace` cannot be routed"
  */
