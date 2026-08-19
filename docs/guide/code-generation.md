@@ -4,7 +4,8 @@ audience: Users
 covers: >
     The build command and what it produces, the boundary between build time and run time, where generated code lives,
     the rule that generated code is never edited by hand, why scaffolding a class you will own is a separate command,
-    and how a contract change surfaces as a static analysis error rather than a runtime surprise.
+    the docblock every generated file carries so that a human or an AI agent can navigate it without guessing, and how a
+    contract change surfaces as a static analysis error rather than a runtime surprise.
 read_before: >
     Writing anything that emits PHP from a specification, or changing what the build command does.
 tags: [code-generation, openapi, scope, decisions, laravel]
@@ -464,6 +465,63 @@ Two other decisions depend on it, which is the real reason it stands alone:
 - Breaking-change detection is keyed by the same identity, so a finding in that comparison and a header in a generated
   file name the same thing.
 
+## Every generated file explains itself
+
+The source map answers _where did this come from_. It is one part of a larger norm, and this section owns the whole of
+it.
+
+**Decision: every file the build emits carries a docblock written for someone who did not write it, and it is a
+requirement rather than a courtesy.** Not a banner saying "generated, do not edit" and nothing else — that says who owns
+the file, which is [already settled elsewhere](#three-kinds-of-file-and-only-two-are-the-builds), and it is not what a
+reader opening the file actually needs.
+
+**This package optimizes for AI-assisted development as a stated goal, not as a side effect.** Developer experience is
+the other half, and the two pull in the same direction here far more often than they conflict: what a coding agent needs
+is what a new team member needs, made explicit instead of assumed. An agent reads a handful of files, not a codebase; it
+cannot infer a convention from ten sibling examples the way a person skimming a directory can; and it has no way to know
+that the interesting behavior lives in a class three directories away unless the file says so. Every guess it has to
+make is a chance to write something plausible and wrong — into your application. So the generated file states what would
+otherwise have to be guessed.
+
+Three things belong in that docblock, and each answers a question a reader actually has:
+
+| Part           | Answers                                  | Content                                                                                                                            |
+| -------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **Provenance** | Where did this come from?                | The [JSON pointer](#the-source-map) into the specification — the operation, the schema, the exact position.                        |
+| **Findings**   | What did the build work out, or resolve? | What generating this file discovered and decided: what matched, what did not, which defaults were resolved, what looked ambiguous. |
+| **Navigation** | Where do I go from here?                 | `@see` to the files this one relates to — above all, to the extension point's actual implementation.                               |
+
+**Findings are the part that has to stay honest.** A summary that says nothing costs a reader the time it takes to
+discover that. What earns its place is what the build knew and the reader cannot see: a property the mapping could not
+match, a default that was resolved rather than declared, a name derived because `operationId` was absent, two things
+that collided. If generating a file was entirely unremarkable, the docblock says so in one line rather than padding
+itself — a reliable "nothing to flag here" is information too, and it is only reliable if the interesting cases are
+genuinely called out.
+
+**Navigation follows one rule: point at what actually runs.** Where a generated file has an extension point, the
+docblock either names the command that creates it or `@see`s the code that already did:
+
+- **Nothing extends it yet:** name the `spec:make` invocation that scaffolds one. Discovering the extension point should
+  never require reading this documentation first. It is
+  [the same pattern](#the-build-names-the-command-instead-of-running-it) as the build naming commands rather than
+  running them.
+- **Something extends it:** the scaffold instruction is replaced by `@see` at the file the build detected — so a reader,
+  human or agent, lands on the behavior that actually executes rather than studying a generated default that has been
+  overridden.
+
+That second case is what makes the norm worth the effort. A generated default and the class that replaced it are the
+single most common way to misread this kind of codebase, and one annotation removes the mistake entirely.
+
+**It is testable, and it should be tested.** The docblock is output, so the generator's own test suite asserts it is
+there and carries all three parts — the same way
+[any other behavior earns a test](../../AGENTS.md#automated-tests-are-required). A norm that only lives in prose erodes
+the first time someone adds a new kind of generated file in a hurry.
+
+**Open:** how much of this is a fixed template versus per-kind, and whether the findings section has a machine-readable
+form. The doctor already learned that lesson — its `--json` exists because
+[tooling and agents should not have to parse prose](./doctor.md#the-contract) — and the same argument plausibly applies
+here, against the cost of putting a data format inside a comment.
+
 ## Response DTOs
 
 The DTOs are how a response schema becomes a PHP type. Two properties, and the tension between them is the design:
@@ -529,23 +587,19 @@ rather than [the token scan rename detection already uses](#how-it-says-it), sin
 language's own resolution of `use` imports and aliases to be trustworthy, not a match on spelling; and the name of the
 exception thrown when two classes claim one factory.
 
-### The docblock says what happened, and what to do next
+### What a factory's docblock carries
 
-**Decision: every generated factory carries a docblock summarizing, concisely, what the automatic mapping found** —
-which properties matched by name, which did not, and anything a reader would want to check first before trusting the
-default. The same audience [the source map](#the-source-map) already serves: a developer who did not write this file,
-and an AI coding agent working in the repository, which is a first-class consideration for this package — a concise,
-templated summary is exactly the shape an agent can act on without first reading the mapping logic itself.
+Factories follow the norm [every generated file follows](#every-generated-file-explains-itself); what is specific to
+them is what counts as a finding worth reporting. **The mapping's own result:** which properties matched the source by
+name, which did not, and anything a reader should check before trusting the default — because a factory that silently
+skipped a property is the one thing a reader cannot see by looking at it.
 
-**Its last line depends on whether an override exists**, and it is the
-[naming-the-command pattern](#the-build-names-the-command-instead-of-running-it) applied one level down from operations
-to factories:
-
-- **No override found:** the docblock names the `spec:make` [flag](#per-type-flags-belong-here) that scaffolds one.
-  Discovering the extension point should not require reading this document first.
-- **An override found:** the scaffold instruction is replaced by `@see` pointing at the file the build detected, so a
-  reader — human or agent — lands on the actual behavior in one jump, instead of reading a generated default that is not
-  what actually runs.
+Its navigation line is the general rule applied to
+[the override scan](#overriding-a-factory-extend-it-in-a-directory-the-project-declares): the `spec:make`
+[flag](#per-type-flags-belong-here) that scaffolds an override when none was found, replaced by `@see` at the detected
+class when one was. Since the generated factory
+[stays in place even when overridden](#overriding-a-factory-extend-it-in-a-directory-the-project-declares), that
+annotation is the only thing distinguishing the default a reader is looking at from the behavior that actually runs.
 
 `spatie/laravel-data` remains a candidate for the generated shape itself — its casting, validation and serialization are
 useful independently of who builds the object — but its own `from()`-override ergonomics are no longer the fit they once

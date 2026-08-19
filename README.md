@@ -18,7 +18,10 @@ architecture while letting your business logic live safely in standard Laravel c
   route without breaking existing apps. Already Code-First? Phase 3 will bootstrap your spec from the code you already
   run. See the [Roadmap](./docs/project/roadmap.md).
 - **Instant Mocks:** Fallback to automatic Faker-powered responses if the concrete implementation isn't written yet.
-- **AI-Ready:** Designed to output clean stubs that AI coding agents can easily understand and implement.
+- **Built for AI-assisted coding, and we say it out loud:** a stated goal, not a side effect. Every generated file
+  explains itself — where in the contract it came from, what the build worked out while emitting it, and an `@see` at
+  the code that actually runs. Your agent shouldn't have to guess. See
+  [`code-generation.md`](./docs/guide/code-generation.md#every-generated-file-explains-itself).
 - **Safe to regenerate:** Generated code and your code never share a file, so the build can be re-run at any time
   without losing work — and a contract change surfaces as a static analysis error, not a production incident. See
   [`docs/guide/code-generation.md`](./docs/guide/code-generation.md).
@@ -46,8 +49,12 @@ The project is in early bootstrap (Phase 1)
 - **Parsing is not honoring.** We read 3.0.x and 3.1.x; we honor a documented subset of what they allow, and we say so
   out loud rather than ignoring a contract in silence. What is honored, what is not, and why, lives in
   [`docs/guide/openapi-support.md`](./docs/guide/openapi-support.md).
+- **Two goals, stated together: developer experience and AI-assisted coding.** They pull in the same direction more
+  often than they conflict — what an agent needs is what a new teammate needs, made explicit instead of assumed. Where
+  the OpenAPI ecosystem never standardized something, we would rather be flexible and pleasant than literal and rigid.
 - **Testing:** Pest, with `Spectator` for contract testing.
-- **AI-Assisted Development:** Built with transparent AI workflows. See [`AGENTS.md`](./AGENTS.md).
+- **AI-Assisted Development:** this repository is itself built with transparent AI workflows — a separate claim from the
+  goal above, which is about your project. See [`AGENTS.md`](./AGENTS.md).
 
 Every technology choice, its status, and the reasoning behind it live in
 [`docs/project/stack.md`](./docs/project/stack.md).
