@@ -3,8 +3,8 @@ title: Rate Limiting
 audience: Users
 covers: >
     Why OpenAPI has no vocabulary for rate limits and the two informal conventions specifications use instead, the
-    adapter interface that normalizes reading either one, the two built-in drivers, and the one config mapping this
-    package asks for instead of matching by name.
+    adapter interface that normalizes reading either one, and the two built-in drivers with their mapping keys. The
+    driver mechanism itself is owned by drivers.md.
 read_before: >
     Implementing anything that reads or reports a rate limit, or touching the rate-limiting configuration.
 tags: [openapi, rate-limiting, decisions, scope, laravel]
@@ -39,15 +39,12 @@ depending on where it came from. The IETF draft's `RateLimit-Reset` is _seconds 
 `X-RateLimit-Reset` is usually an _absolute_ Unix timestamp. Two conventions describing one moment cannot leak that
 difference past the adapter.
 
-## The one place this package asks for a mapping, not a name
-
-Everywhere else in this document set, customization is driven by nomenclature: an `operationId` derives a class name, a
-`securitySchemes` name matches a guard, a factory override is found by what it `extends`. Rate limiting is the
-exception, and deliberately so — **there is no name to match by**, because the community never converged on one. Asking
-a project to declare, explicitly, which field or header means what is not a shortcut around designing a convention; it
-is the honest response to there not being one.
-
 ## Two built-in drivers
+
+Rate limiting is [driver-based](./drivers.md), and that document owns the mechanism: a driver knows **where** the limit
+is declared, the config mapping says **what this project's fields are called**, and a project that needs a convention
+neither built-in driver covers [registers its own](./drivers.md#turnkey-by-default-yours-when-you-need-it) from its
+service provider. What follows here is only what is specific to rate limits.
 
 **Decision: the driver is configured, not detected**, exactly because detection has nothing reliable to key off. Two
 ship with the package:
@@ -76,9 +73,9 @@ The same shape, pointed at extension fields instead of header names:
 ],
 ```
 
-**Open:** whether `driver` also accepts a fully-qualified class name implementing `RateLimitAdapterInterface` directly,
-for a project whose convention is neither of the two — the same shape Laravel itself uses for a custom cache or queue
-driver, and consistent with this package's own goal of DX over rigidity: two defaults should not mean two choices.
+Two built-ins are not two choices: a convention neither of them covers is a
+[driver the project writes itself](./drivers.md#turnkey-by-default-yours-when-you-need-it), which is the mechanism's
+whole point rather than an escape hatch.
 
 ## Open: what the adapter's answer actually powers
 
