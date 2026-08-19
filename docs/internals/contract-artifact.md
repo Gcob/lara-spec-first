@@ -134,7 +134,8 @@ Four things in that fragment are decisions rather than shape:
   change produce no diff at all.
 - **`index` is the document's order, carried as data.** The file is serialized by endpoint and then by method, which is
   a different order and a purely cosmetic one. Moving a path within the specification therefore changes exactly one
-  field — the one that decides [which route wins](../guide/openapi-support.md#route-order-the-spec-files-order-is-the-route-order).
+  field — the one that decides
+  [which route wins](../guide/openapi-support.md#route-order-the-spec-files-order-is-the-route-order).
 - **`audience` and `lifecycle` are effective, not as written.** An operation that declares neither is recorded as
   `public` and `beta`, so adding those keys explicitly to a specification produces no diff: nothing about the contract
   changed. The artifact records what is true, not what somebody typed. An unrecognized value is refused rather than
@@ -142,19 +143,18 @@ Four things in that fragment are decisions rather than shape:
 - **`sunset` is one spelling of a moment, or the text as written.** YAML decodes an unquoted date to a Unix timestamp,
   so `2026-06-01`, `"2026-06-01"` and `"2026-06-01T00:00:00Z"` reach the package as three different values describing
   one promise, and they have to come out as one. A value that cannot be read as a moment is recorded verbatim rather
-  than refused or resolved — `next tuesday` is a
-  [doctor finding](../guide/lifecycle.md#the-doctor-rules-that-follow), and resolving it against the day the build ran
-  would let the artifact change while the contract did not.
+  than refused or resolved — `next tuesday` is a [doctor finding](../guide/lifecycle.md#the-doctor-rules-that-follow),
+  and resolving it against the day the build ran would let the artifact change while the contract did not.
 - **`security` distinguishes three states**, and the last two are opposites: `null` when the operation says nothing and
   inherits the document's requirements, `[]` when it explicitly overrides them to require nothing, and a list of
   requirements otherwise. How any of it maps to middleware is still open; recording it is what makes its removal show up
   in a diff instead of quietly publishing an endpoint the contract says is protected.
 
-`summary`, `description` and `externalDocs` are absent because they change no behavior, and every field that is not
-here only widens the diff. Parameters, request bodies and responses are absent for the opposite reason: they are not
-modeled yet. Their absence is not a gap to be filled with empty placeholders — `"responses": {}` would claim an
-operation declares none, which is a different statement from not having looked. The format version is what says the
-artifact does not cover them, and it goes to `0.2` in the same commit as the first row of the matrix that does.
+`summary`, `description` and `externalDocs` are absent because they change no behavior, and every field that is not here
+only widens the diff. Parameters, request bodies and responses are absent for the opposite reason: they are not modeled
+yet. Their absence is not a gap to be filled with empty placeholders — `"responses": {}` would claim an operation
+declares none, which is a different statement from not having looked. The format version is what says the artifact does
+not cover them, and it goes to `0.2` in the same commit as the first row of the matrix that does.
 
 **Open.** Whether a stale artifact — one whose format version predates the installed package — is regenerated silently
 or reported first. Whether `info.version` belongs in the artifact; it becomes load-bearing only with
