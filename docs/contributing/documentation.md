@@ -242,6 +242,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 `docs/guide/` — `Users`:
 
 - [`code-generation.md`](../guide/code-generation.md)
+- [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
 - [`drivers.md`](../guide/drivers.md)
 - [`lifecycle.md`](../guide/lifecycle.md)

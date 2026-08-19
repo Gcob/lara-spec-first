@@ -244,6 +244,10 @@ it. It is honest to the client, it is greppable in logs, and it is the seam the 
 plugs into in Phase 2 — same route, same handler position, a better answer in the body. Nothing about the Phase 1 shape
 has to change for the mock to arrive.
 
+This is the default for [`BasicSpecController`](./controllers.md#two-base-controllers-and-the-specification-picks-one)
+specifically — an operation with no `x-model` and no override. `ModelSpecController` answers most reads and writes
+without a subclass at all; [`controllers.md`](./controllers.md) owns which operations get which.
+
 ### Where your classes go
 
 **In the application's own controller location, not in the generated directory.** Two reasons, and the first is not a
@@ -284,13 +288,20 @@ What the shortcut was really asking for is ergonomics, and those can be had with
 build finds operations with no implementation, it names the command rather than running it** — the same pattern as the
 [rename report naming the files to fix](#how-it-says-it).
 
+**The atomic form names one operation, and every other form is sugar over it:** `spec:make showUser` scaffolds
+[one controller](./controllers.md#one-controller-per-operation-and-nothing-grouped), extending whichever base its own
+specification selects. Nothing else in this package creates a grouped file, so there is nothing a bulk invocation could
+produce that is not simply this, run several times.
+
 The trap is printing one line per operation. A specification with two hundred operations, on the day somebody adopts
 this package, would answer with two hundred commands — which is not a list, it is a wall, arriving at the worst possible
 moment. So the build **summarises, and the [doctor](./doctor.md) holds the full list**, which is the division of labour
 those two commands already have.
 
 It summarises **by `tags`**, because the specification already carries the author's own grouping and inventing a second
-one would be worse than using theirs:
+one would be worse than using theirs — this is a grouping of the _printed list_, never of the files `spec:make` creates,
+each of which stays
+[one controller for one operation](./controllers.md#one-controller-per-operation-and-nothing-grouped):
 
 ```
 47 operations have no implementation:
@@ -301,8 +312,9 @@ one would be worse than using theirs:
 
 Which settles the bulk question that was open here, and revises the earlier reasoning: the objection was never to bulk
 itself, it was to `build` doing it as a side effect. **`spec:make --tag=` and `--all` are legitimate**, because a human
-typed them and creating files is that command's entire job. Two guards keep the hundred-empty-classes scenario away:
-bulk is never the default, and it lists what it is about to create and asks before doing it.
+typed them and creating files is that command's entire job — a loop over the singular invocation above, not a second
+mechanism. Two guards keep the hundred-empty-classes scenario away: bulk is never the default, and it lists what it is
+about to create and asks before doing it.
 
 Adopting tag by tag is also the shape [Phase 3](../project/roadmap.md) wants — a migration that proceeds route by route
 rather than in one leap.
