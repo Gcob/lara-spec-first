@@ -39,6 +39,7 @@ const SECTIONS: Section[] = [
             'code-generation',
             'doctor',
             'lifecycle',
+            'security',
             'remote-references',
         ],
     },
