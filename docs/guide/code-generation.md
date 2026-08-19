@@ -106,9 +106,11 @@ Its properties:
 - **Idempotent.** Running it twice in a row changes nothing the second time. If a build produces a diff on an unchanged
   spec, that is a defect.
 - **Ordered, and it stops.** Check the vendored references are present, parse, normalize in memory, **compare against
-  the previously committed specification**, then generate. A spec that fails [the doctor's](./doctor.md) hard checks
-  does not reach the generator — half-generated output from a broken contract is worse than no output. The comparison
-  sits before generation for the same reason: nothing is written until it is known to be allowed.
+  the specification's previously committed version, read from git**, then generate. A spec that fails
+  [the doctor's](./doctor.md) hard checks does not reach the generator — half-generated output from a broken contract is
+  worse than no output. The comparison sits before generation for the same reason: nothing is written until it is known
+  to be allowed. See [the baseline](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) for what "previously
+  committed" means and why it depends on git history rather than a file the build writes.
 - **It never writes outside its own directories.** No exceptions, no conditions. This is the
   [invariant](#the-invariant-a-build-never-destroys-human-work) in one sentence, and it is testable — which is the point
   of stating it without a clause.

@@ -107,7 +107,12 @@ instability, which is what [`x-audience: internal`](#two-keys-one-discriminator)
 Four consequences, because a rule that fails a build has to be right:
 
 **1. Failing on a breaking change requires a baseline, and the baseline is the specification itself — its previously
-committed version.** Not the generated code, which was never meant to carry the whole contract.
+committed version, read from git.** Not the generated code, which was never meant to carry the whole contract, and not a
+separate file the build writes: the specification is the only artifact this package keeps, so there is nothing else to
+compare against. `git show` against the merge base is the mechanism, in the same spirit as
+[git being the lock file](./remote-references.md#no-lock-file-git-is-the-lock) for vendored references — which means the
+comparison needs history to exist, and [the doctor](./doctor.md#what-it-checks) is where a shallow clone or an untracked
+specification gets caught, before it is mistaken for "nothing changed".
 
 **2. "Breaking" is directional, and the direction inverts between request and response.** This is where implementations
 get it wrong, so it has to be a written table rather than a judgement call: adding a required _request_ field breaks

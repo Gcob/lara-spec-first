@@ -98,9 +98,9 @@ Deliberately not slotted into a phase yet: a rule that fails somebody's build ha
 depends on groundwork the earlier phases have not laid. See
 [lifecycle](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us).
 
-- [ ] Diff the specification against its previously committed version, normalizing 3.0/3.1 differences in memory before
-      comparing. The specification is the only artifact this package keeps; there is no separate normalized file to
-      compare instead.
+- [ ] Diff the specification against its previously committed version, read from git rather than from a separate file
+      the build writes, normalizing 3.0/3.1 differences in memory before comparing. See
+      [the baseline](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us).
 - [ ] The breaking-change table, direction-aware for requests and responses, versioned as public API.
 - [ ] Fail the build on a breaking change to a `stable` operation, naming the `info.version` bump that would make it
       legitimate.

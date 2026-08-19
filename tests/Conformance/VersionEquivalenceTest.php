@@ -54,7 +54,7 @@ it('extracts one contract from two spellings of it', function (): void {
         'security' => $operation->security === null
             ? null
             : array_map(
-                static fn (SecurityRequirement $requirement): array => $requirement->toArray(),
+                static fn (SecurityRequirement $requirement): array => $requirement->schemes,
                 $operation->security
             ),
     ];

@@ -30,12 +30,4 @@ final readonly class SecurityRequirement
 
         return new self($schemes);
     }
-
-    /**
-     * @return array<string, list<string>>
-     */
-    public function toArray(): array
-    {
-        return $this->schemes;
-    }
 }
