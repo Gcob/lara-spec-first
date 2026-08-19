@@ -244,9 +244,9 @@ it. It is honest to the client, it is greppable in logs, and it is the seam the 
 plugs into in Phase 2 — same route, same handler position, a better answer in the body. Nothing about the Phase 1 shape
 has to change for the mock to arrive.
 
-This is the default for [`BasicSpecController`](./controllers.md#two-base-controllers-and-the-specification-picks-one)
-specifically — an operation with no `x-model` and no override. `ModelSpecController` answers most reads and writes
-without a subclass at all; [`controllers.md`](./controllers.md) owns which operations get which.
+This is the default for [`DefaultContext`](./controllers.md#defaultcontext-modelcontext-modelcollectioncontext)
+specifically — an operation with no `x-model` and no override. `ModelContext` answers most reads and writes without a
+subclass at all; [`controllers.md`](./controllers.md) owns which operations get which.
 
 ### Where your classes go
 
@@ -289,9 +289,10 @@ build finds operations with no implementation, it names the command rather than 
 [rename report naming the files to fix](#how-it-says-it).
 
 **The atomic form names one operation, and every other form is sugar over it:** `spec:make showUser` scaffolds
-[one controller](./controllers.md#one-controller-per-operation-and-nothing-grouped), extending whichever base its own
-specification selects. Nothing else in this package creates a grouped file, so there is nothing a bulk invocation could
-produce that is not simply this, run several times.
+[one controller](./controllers.md#one-controller-per-operation-and-nothing-grouped), constructing whichever
+[context](./controllers.md#defaultcontext-modelcontext-modelcollectioncontext) its own specification selects. Nothing
+else in this package creates a grouped file, so there is nothing a bulk invocation could produce that is not simply
+this, run several times.
 
 The trap is printing one line per operation. A specification with two hundred operations, on the day somebody adopts
 this package, would answer with two hundred commands — which is not a list, it is a wall, arriving at the worst possible
