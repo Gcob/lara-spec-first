@@ -36,11 +36,15 @@ on:
 permissions:
     contents: read
 
-# One deployment at a time, and never cancel one in flight: a cancelled deploy can
-# leave the site half published.
+# Only the runs that publish share the `pages` queue, and none of them is ever
+# cancelled in flight: a cancelled deploy can leave the site half published.
+#
+# Pull request builds are queued per branch instead. They publish nothing, so putting
+# them in the `pages` queue only meant that a build still running when its pull
+# request got merged pushed the deployment of that merge behind it.
 concurrency:
-    group: pages
-    cancel-in-progress: false
+    group: ${{ github.event_name == 'pull_request' && format('docs-pr-{0}', github.ref) || 'pages' }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
     build:
