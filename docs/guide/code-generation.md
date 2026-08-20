@@ -4,8 +4,10 @@ audience: Users
 covers: >
     The build command and what it produces, the boundary between build time and run time, where generated code lives,
     the rule that generated code is never edited by hand, why scaffolding a class you will own is a separate command,
-    the docblock every generated file carries so that a human or an AI agent can navigate it without guessing, and how a
-    contract change surfaces as a static analysis error rather than a runtime surprise.
+    the docblock every generated file carries so that a human or an AI agent can navigate it without guessing, the
+    comment that sits above a reference to generated code and what to do when that class goes missing, why the
+    specification the build reads is private and how a sanitized copy is produced for publication, and how a contract
+    change surfaces as a static analysis error rather than a runtime surprise.
 read_before: >
     Writing anything that emits PHP from a specification, or changing what the build command does.
 tags: [code-generation, openapi, scope, decisions, laravel]
@@ -177,6 +179,115 @@ chooses to ignore stays that project's call: this is still
 developer and takes it; a trait leaves it free and composes, at the cost of not being able to declare abstract members
 quite as directly. It is a question best settled against real generated output.
 
+## The specification the build reads is private
+
+**Decision: the specification this package consumes is an internal document, and nothing assumes it is safe to
+publish.** That is not caution for its own sake: the extensions that make the build useful are precisely the ones that
+describe the inside of the application.
+
+| Extension                                                                         | What publishing it hands out                                                       |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`x-model`](./controllers.md#how-the-semantic-is-detected)                        | Your Eloquent class names, so the shape of your database and its relationships.    |
+| [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) | Your application's namespace layout, and which endpoints carry hand-written logic. |
+
+Neither means anything to a consumer of the API, and both help somebody map an application they are attacking. A
+document written for the build is simply not the same document as one written for the public, and treating them as one
+file is how internal detail gets published by accident.
+
+**Decision: `spec:build` can emit a sanitized copy for publication, and does so only when a project configures a path
+for it.** Not by default, in the same spirit as the [remote-reference allowlist](./remote-references.md) and the factory
+scan: a feature nobody asked for should not start writing files.
+
+**The strip list denies by default rather than allowing by default.** Configuration says which extensions to _keep_, not
+which to remove, and every other `x-` extension is dropped. The reverse would fail the day a project adds an extension
+of its own and forgets to list it, which is exactly when the failure costs the most and is least likely to be noticed.
+This is the same posture the allowlist takes for hosts, applied to information disclosure.
+
+The default keep list is the extensions written _for_ consumers rather than for the build:
+[`x-audience`, `x-lifecycle` and `x-sunset`](./lifecycle.md) exist so that a client can plan around a promise and its
+removal date, so stripping them would remove the one part of this package's own vocabulary the public document should
+carry.
+
+Two properties hold it together:
+
+- **The public copy is output, never input.** The build reads the private document and nothing else, so there is never a
+  question of which one is authoritative. It is generated, so it belongs to the build, carries a header saying so, and
+  is never hand-edited — the same rule as
+  [every other generated file](#three-kinds-of-file-and-only-two-are-the-builds).
+- **The doctor reports what is being removed.** A strip list is a security boundary, and a security boundary nobody can
+  see is one nobody maintains. Printing the resolved keep list, what it dropped, and how many operations were excluded
+  turns "did we publish our model names" into a one-command answer rather than an audit.
+
+### Internal operations are excluded, not merely stripped
+
+Stripping a key and dropping an operation are different acts, and the weaker one is not enough. Removing
+`x-audience: internal` from an operation still publishes the operation, which invites exactly the outside consumer the
+extension existed to say there wasn't one.
+
+**Decision: the public copy carries `public` operations only. An operation marked
+[`x-audience: internal`](./lifecycle.md#two-keys-one-discriminator) is removed from it entirely.**
+
+`public` being the default means an operation that says nothing gets published, and that is deliberate rather than
+convenient: it is the direction [`lifecycle.md`](./lifecycle.md#two-keys-one-discriminator) already set for this key,
+where declaring an endpoint internal is an act and being treated as public is what happens by omission. One key, one
+default, and two documents that agree about it.
+
+**Removing the operation is not enough on its own, and this is the part an implementation will get wrong.** An excluded
+operation leaves things behind that still describe the inside of the application:
+
+- **Schemas nothing references any more.** Drop `POST /internal/audits` while `components/schemas/AuditPayload` stays
+  and the internal data shape is published anyway, so the exclusion accomplished nothing. **Components left unreferenced
+  once internal operations are gone must be pruned**, and the pruning has to be transitive: a removed schema can orphan
+  the schemas it referenced in turn.
+- **Path Items with nothing left inside.** Every operation on a path being internal leaves an empty object rather than
+  no path, which names an endpoint while claiming it has no methods.
+- **Tags used only by internal operations**, left dangling at the document root.
+
+**Two edges worth naming rather than discovering.** A document whose every operation is internal produces a public copy
+with no operations at all — valid at 3.1, invalid at 3.0 where `paths` is
+[required](./openapi-support.md#the-differences-the-strategy-must-absorb), and in either case far more likely a
+misconfiguration than an intent, so it is a finding rather than a file. And exclusion gives
+[breaking-change detection](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) a second reason to care about
+this key: flipping an operation to `internal` removes it from the published document, which is the most breaking change
+there is for whoever was already calling it. `lifecycle.md` already says that flip must be reported rather than pass
+quietly.
+
+### Where the public copy goes
+
+**Decision: configuration names a filesystem disk and a path within it, and an empty setting means nothing is
+published.** A disk rather than a bare path, because that is Laravel's own abstraction for "where files go" — the same
+setting then publishes to local storage, to S3, or to whatever a project already has configured, without this package
+knowing the difference.
+
+**The default is `storage/`, and it is the right home here for exactly the reason it was the wrong one elsewhere.** A
+stock Laravel application ships a `storage/app/.gitignore` containing `*`. For a file that must be committed that is a
+trap, which is why the contract baseline is [read from git](./lifecycle.md#unstable-by-default-and-what-stable-costs-us)
+rather than kept there. The public copy is the opposite case: it is derived, the build reproduces it exactly, and
+committing it would mean reviewing a generated diff on every contract change. Being gitignored by default is the correct
+outcome, so the default that produces it is the correct default.
+
+**One precision, because "the default disk" would not work.** Laravel's default disk is `local`, rooted at
+`storage/app/private` and deliberately not reachable over HTTP. Serving the document directly means the `public` disk —
+rooted at `storage/app/public`, with a URL — and it means `php artisan storage:link` has been run. Documenting the
+`public` disk as the default, and saying that a symlink is a prerequisite, is cheaper than letting a consumer discover
+that a file exists and answers 404.
+
+Two consequences to state rather than let anyone hit:
+
+- **A remote disk means the build writes over the network.** That is not what
+  [frozen by default](#remote-references-during-a-build-frozen-by-default) forbids — that rule protects the build's
+  _inputs_, since an input fetched silently can change the contract, and an output written somewhere cannot. But the
+  asymmetry is worth naming so nobody reads it as an oversight, and a project may reasonably decide publishing belongs
+  to its deploy step rather than to `spec:build`.
+- **A published copy can go stale.** Edit the specification, forget to build, and the document being served describes a
+  contract the application no longer honors — publicly, which is worse than the internal version of the same mistake. It
+  is the same failure the [drift check](./doctor.md#what-it-checks) already exists for, and the published copy belongs
+  in its scope.
+
+**Open:** the config key names, whether the sanitized copy is emitted in the document's own format or normalized to
+JSON, and whether an operation's `summary` and `description` need a keep-or-strip decision of their own — internal notes
+end up in those fields far more often than anyone intends.
+
 ## Where generated code lives
 
 **Decision: a config key, defaulting to `app/Http/Generated` and the namespace `App\Http\Generated`.**
@@ -244,9 +355,10 @@ it. It is honest to the client, it is greppable in logs, and it is the seam the 
 plugs into in Phase 2 — same route, same handler position, a better answer in the body. Nothing about the Phase 1 shape
 has to change for the mock to arrive.
 
-This is the default for [`DefaultContext`](./controllers.md#defaultcontext-modelcontext-modelcollectioncontext)
-specifically — an operation with no `x-model` and no override. `ModelContext` answers most reads and writes without a
-subclass at all; [`controllers.md`](./controllers.md) owns which operations get which.
+This is what an operation gets when the build could
+[detect no CRUD semantic for it](./controllers.md#how-the-semantic-is-detected) — no `x-model`, or a shape the package
+refuses to guess at — and nobody has overridden it. An operation the build did understand answers from a generated
+default with no subclass at all; [`controllers.md`](./controllers.md) owns which is which.
 
 ### Where your classes go
 
@@ -289,10 +401,10 @@ build finds operations with no implementation, it names the command rather than 
 [rename report naming the files to fix](#how-it-says-it).
 
 **The atomic form names one operation, and every other form is sugar over it:** `spec:make showUser` scaffolds
-[one controller](./controllers.md#one-controller-per-operation-and-nothing-grouped), constructing whichever
-[context](./controllers.md#defaultcontext-modelcontext-modelcollectioncontext) its own specification selects. Nothing
-else in this package creates a grouped file, so there is nothing a bulk invocation could produce that is not simply
-this, run several times.
+[one controller](./controllers.md#one-controller-per-operation-one-method-named-routeaction), carrying whichever
+[CRUD default its own specification implies](./controllers.md#how-the-semantic-is-detected). Nothing else in this
+package creates a grouped file, so there is nothing a bulk invocation could produce that is not simply this, run several
+times.
 
 The trap is printing one line per operation. A specification with two hundred operations, on the day somebody adopts
 this package, would answer with two hundred commands — which is not a list, it is a wall, arriving at the worst possible
@@ -302,7 +414,7 @@ those two commands already have.
 It summarises **by `tags`**, because the specification already carries the author's own grouping and inventing a second
 one would be worse than using theirs — this is a grouping of the _printed list_, never of the files `spec:make` creates,
 each of which stays
-[one controller for one operation](./controllers.md#one-controller-per-operation-and-nothing-grouped):
+[one controller for one operation](./controllers.md#one-controller-per-operation-one-method-named-routeaction):
 
 ```
 47 operations have no implementation:
@@ -534,6 +646,57 @@ the first time someone adds a new kind of generated file in a hurry.
 form. The doctor already learned that lesson — its `--json` exists because
 [tooling and agents should not have to parse prose](./doctor.md#the-contract) — and the same argument plausibly applies
 here, against the cost of putting a data format inside a comment.
+
+### A reference to generated code says what to do when it goes missing
+
+A class-not-found on generated code is the most likely error anyone meets with this package, and the least informative
+one PHP knows how to raise. **Decision: every reference to generated code carries a comment saying what to do about
+it**, grouped above the block rather than repeated over each line — four generated references in one file should not
+mean four copies of one paragraph.
+
+**Two commands write that comment, and neither may write the other's files.** The build writes it into generated files
+that reference other generated files. Only [`spec:make`](#scaffolding-is-specmake-not-a-build-step) writes it into a
+file a developer will own, once, at the moment it creates that file — the build
+[never writes outside its own directories](#the-invariant-a-build-never-destroys-human-work), and that rule has no
+exception for a helpful comment. From then on the comment belongs to the developer, including the freedom to delete it.
+
+**The comment sits where the reference is, which for a scaffolded controller is not an import.** Because a custom
+controller
+[extends its generated parent by fully-qualified name](./controllers.md#two-classes-found-by-name-rather-than-by-a-scan),
+there is no `use` statement to annotate — so the comment goes above the class:
+
+```php
+namespace App\Http\Controllers;
+
+// The parent below is generated. If PHP cannot find it, run `php artisan spec:build`
+// (or `spec:watch`). If it still fails, the specification no longer has an
+// `x-controller` pointing here. Note that the spec's git history will show what changed.
+class UserController extends \App\Http\Generated\Controllers\UserController
+{
+}
+```
+
+That is the one reference `spec:make` created, so it is the one it annotates. Anything a developer imports afterwards —
+a DTO, a factory — they added knowingly, and a comment explaining their own import back to them is noise. In a generated
+file importing other generated files the same comment applies above the `use` block, minus the `x-controller` line,
+since a DTO's name follows its schema rather than that extension.
+
+Three situations sit behind those three lines, which is why the first answer is a command rather than an explanation:
+
+- **The build has not run here.** On a fresh clone this is the normal state rather than a mistake, because
+  [`.gitignore` decides what is committed](#which-generated-code-is-committed) and a project may legitimately ignore the
+  generated tree — the `composer install` bargain, stated in [two layers](#two-layers). Running it is the whole fix.
+- **The name changed in the specification.** A controller's generated name follows
+  [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) and a DTO's follows its schema name,
+  so the class moved because somebody edited one of those. The build
+  [reports that as a rename](#identity-is-the-path-and-the-method-not-the-name), naming the old and the new, so running
+  it does not merely fix the tree — it tells you what to change the import to.
+- **It was removed outright.** Only here does the build have nothing to offer, because there is no new name to report,
+  and the specification's own history is what says what happened.
+
+It is also, deliberately, the last line of defense rather than the first. [The doctor](./doctor.md) reports drift and
+orphans before anyone reaches a stack trace; this comment is for the developer who met the error first and has not
+thought to run it yet.
 
 ## Response DTOs
 
