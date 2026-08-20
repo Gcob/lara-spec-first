@@ -33,7 +33,7 @@ claimed to read it — the whole promise is that the spec is the source of truth
 > already normalizes them identically. Not yet built: registering a route from any of it, `spec:build`, and
 > `spec:doctor`.
 
-Three subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below still govern all of
+Seven subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below still govern all of
 them:
 
 | Document                                         | Owns                                                             |
@@ -41,6 +41,10 @@ them:
 | [`doctor.md`](./doctor.md)                       | How any of this is reported, and how a consumer accepts a limit. |
 | [`remote-references.md`](./remote-references.md) | A `$ref` that points at a URL.                                   |
 | [`lifecycle.md`](./lifecycle.md)                 | How strong a promise each operation carries.                     |
+| [`security.md`](./security.md)                   | How `security` becomes an authorization check.                   |
+| [`drivers.md`](./drivers.md)                     | Extending the package where OpenAPI standardized nothing.        |
+| [`rate-limiting.md`](./rate-limiting.md)         | Reading a limit neither OpenAPI nor the community standardized.  |
+| [`pagination.md`](./pagination.md)               | The same problem, for pages.                                     |
 
 ## The four rules
 
@@ -386,8 +390,6 @@ are decided:
   it is what names the generated controller and method. Public API surface. The naming and rename questions are now
   answered in [`code-generation.md`](./code-generation.md#naming-and-the-rename-problem); what remains here is how a
   missing or unusable `operationId` is reported.
-- `security` to middleware mapping. The most dangerous row in the matrix: registering a route without applying the
-  authentication the spec declares publishes an endpoint the contract says is protected.
 - `php artisan route:cache`: mostly answered by
   [generating the routes](./code-generation.md#the-runtime-never-sees-the-spec) rather than deriving them at boot. What
   remains is the concrete requirement that generated routes be serializable — controller strings, no closures — and
@@ -415,8 +417,10 @@ first release, not shipped behavior.
 | `servers`                               | Open         | See [still to discuss](#still-to-discuss).                                                                                                                                                                                                                                                                                                                                                                |
 | `security` (root)                       | Open         | Not yet decided, and the consequence is worth stating: the root block itself is not read into anything the package keeps. An operation's own `security` — absent, empty or a list — is recorded, but what an absent one actually inherits is not, so changing or removing the root `security` block silently changes what every inheriting operation requires, with nothing in `Contract\` reflecting it. |
 | `webhooks` (3.1)                        | Open         |                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `x-` extensions                         | Out of scope | Preserved by the parser and readable, but the package acts on none of them — except the three it defines itself, on the row beneath.                                                                                                                                                                                                                                                                      |
-| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The extensions this package defines. Read with defaults resolved and an unrecognized value refused rather than silently taken as the default. The doctor's rules over them, and the breaking-change enforcement `x-lifecycle` gates, are [not built yet](../project/roadmap.md). Rules: [lifecycle](./lifecycle.md).                                                                                      |
+| `x-` extensions                         | Out of scope | Preserved by the parser and readable, but the package acts on none of them — except the ones it defines itself, on the rows beneath.                                                                                                                                                                                                                                                                      |
+| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The lifecycle extensions this package defines. Read with defaults resolved and an unrecognized value refused rather than silently taken as the default. The doctor's rules over them, and the breaking-change enforcement `x-lifecycle` gates, are [not built yet](../project/roadmap.md). Rules: [lifecycle](./lifecycle.md).                                                                            |
+| `x-controller`                          | Partial      | Names the class of an operation's custom controller, which is also what makes that operation customizable at all: without it the generated controller is `final`. Rules: [controllers](./controllers.md#the-specification-decides-what-is-customizable).                                                                                                                                                  |
+| `x-model`                               | Partial      | Names the Eloquent model an operation reads and writes. It supplies the generated controller's default query, its route-model-binding type hint, and the CRUD default the build emits. Rules: [controllers](./controllers.md#how-the-semantic-is-detected).                                                                                                                                               |
 
 ### Paths and operations
 
@@ -459,15 +463,15 @@ first release, not shipped behavior.
 
 ### References and security
 
-| Construct                                                            | Level     | Note                                                                                                                                                                                                                                                                                               |
-| -------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Local `$ref` within the document                                     | Supported |                                                                                                                                                                                                                                                                                                    |
-| `$ref` to another local file                                         | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                                                                                               |
-| Remote `$ref` by URL                                                 | Rejected  | [Allowlisted hosts only](./remote-references.md), and the allowlist is empty until a project declares one — which it cannot yet, so every remote reference is refused today. Refused before the parser sees it, since resolving one means fetching it.                                             |
-| Recursive schema (`$ref` back to an ancestor)                        | Supported | A self-referential schema — a tree, a comment thread, nested categories — resolves. Verified: under `RESOLVE_MODE_ALL` the parser walks it on demand without limit or error; under `RESOLVE_MODE_INLINE` the inner `$ref` stays a `Reference` object.                                              |
-| Pure `$ref` cycle (`A` → `B` → `A`)                                  | Rejected  | A reference chain pointing only at other references and looping back. **The parser does not fail gracefully here** — see [parser caveats](#parser-caveats). The doctor must catch it before the parser is handed the document.                                                                     |
-| `$dynamicRef`, `$dynamicAnchor`, `$recursiveRef`, `$recursiveAnchor` | Rejected  | JSON Schema 2019-09/2020-12 dynamic-scope resolution, reachable only in 3.1. A different feature from a recursive schema, and rare outside meta-schemas. Rejected with a message that says which of the two you probably meant.                                                                    |
-| `securitySchemes` and `security`                                     | Open      | See [still to discuss](#still-to-discuss). An operation's own `security` distinguishes inheriting the document's requirements from explicitly requiring nothing, so that removing it stays visible — how that distinction is tracked is undecided. Mapping any of it to middleware is not decided. |
+| Construct                                                            | Level     | Note                                                                                                                                                                                                                                                                       |
+| -------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local `$ref` within the document                                     | Supported |                                                                                                                                                                                                                                                                            |
+| `$ref` to another local file                                         | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                                                                       |
+| Remote `$ref` by URL                                                 | Rejected  | [Allowlisted hosts only](./remote-references.md), and the allowlist is empty until a project declares one — which it cannot yet, so every remote reference is refused today. Refused before the parser sees it, since resolving one means fetching it.                     |
+| Recursive schema (`$ref` back to an ancestor)                        | Supported | A self-referential schema — a tree, a comment thread, nested categories — resolves. Verified: under `RESOLVE_MODE_ALL` the parser walks it on demand without limit or error; under `RESOLVE_MODE_INLINE` the inner `$ref` stays a `Reference` object.                      |
+| Pure `$ref` cycle (`A` → `B` → `A`)                                  | Rejected  | A reference chain pointing only at other references and looping back. **The parser does not fail gracefully here** — see [parser caveats](#parser-caveats). The doctor must catch it before the parser is handed the document.                                             |
+| `$dynamicRef`, `$dynamicAnchor`, `$recursiveRef`, `$recursiveAnchor` | Rejected  | JSON Schema 2019-09/2020-12 dynamic-scope resolution, reachable only in 3.1. A different feature from a recursive schema, and rare outside meta-schemas. Rejected with a message that says which of the two you probably meant.                                            |
+| `securitySchemes` and `security`                                     | Partial   | An operation's own `security` distinguishes inheriting the document's requirements from explicitly requiring nothing, so that removing it stays visible — how that distinction is tracked is undecided. Mapping it to middleware is decided: [security.md](./security.md). |
 
 ## Changing this document
 

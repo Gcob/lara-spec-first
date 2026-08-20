@@ -157,31 +157,35 @@ grep -rl 'tags:.*versions' --include='*.md' .
 
 #### Tag vocabulary
 
-| Tag               | Subject                                                                         |
-| ----------------- | ------------------------------------------------------------------------------- |
-| `agents`          | How AI agents should work in this repository                                    |
-| `ci`              | Continuous integration and the build matrix                                     |
-| `code-generation` | Producing PHP from the specification, and the rules that keep it safe to re-run |
-| `code-review`     | Review priorities and how findings are reported                                 |
-| `compatibility`   | What the package honors of a standard, and the promise attached to it           |
-| `conventions`     | Commit, naming, and style conventions                                           |
-| `contributing`    | How to contribute: setup, pull requests, conduct                                |
-| `decisions`       | Choices made, with their reasoning                                              |
-| `dependencies`    | Third-party packages and version constraints                                    |
-| `docker`          | The containerised development environment                                       |
-| `documentation`   | How documentation itself is written and organized                               |
-| `laravel`         | Laravel version support and framework integration                               |
-| `metadata`        | Front matter and document metadata                                              |
-| `migration`       | Moving an existing Code-First app to Spec-First                                 |
-| `onboarding`      | Getting a newcomer or a fresh agent productive                                  |
-| `openapi`         | The OpenAPI specification and its parsing                                       |
-| `php`             | PHP version support and language constraints                                    |
-| `planning`        | Roadmap, phases, and sequencing                                                 |
-| `scope`           | What belongs in this package and what does not                                  |
-| `stack`           | Technology choices                                                              |
-| `testing`         | Test levels, expectations, and the test suite                                   |
-| `versions`        | Supported and required versions                                                 |
-| `workflow`        | The day-to-day process of making a change                                       |
+| Tag               | Subject                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------- |
+| `agents`          | How AI agents should work in this repository                                       |
+| `ci`              | Continuous integration and the build matrix                                        |
+| `code-generation` | Producing PHP from the specification, and the rules that keep it safe to re-run    |
+| `code-review`     | Review priorities and how findings are reported                                    |
+| `compatibility`   | What the package honors of a standard, and the promise attached to it              |
+| `conventions`     | Commit, naming, and style conventions                                              |
+| `contributing`    | How to contribute: setup, pull requests, conduct                                   |
+| `decisions`       | Choices made, with their reasoning                                                 |
+| `dependencies`    | Third-party packages and version constraints                                       |
+| `docker`          | The containerised development environment                                          |
+| `documentation`   | How documentation itself is written and organized                                  |
+| `drivers`         | The driver extension mechanism and the features built on it                        |
+| `laravel`         | Laravel version support and framework integration                                  |
+| `metadata`        | Front matter and document metadata                                                 |
+| `migration`       | Moving an existing Code-First app to Spec-First                                    |
+| `onboarding`      | Getting a newcomer or a fresh agent productive                                     |
+| `openapi`         | The OpenAPI specification and its parsing                                          |
+| `pagination`      | Paging a collection: how a specification declares one and how the package reads it |
+| `php`             | PHP version support and language constraints                                       |
+| `planning`        | Roadmap, phases, and sequencing                                                    |
+| `rate-limiting`   | Rate limits: how the specification declares one and how the package reads it       |
+| `scope`           | What belongs in this package and what does not                                     |
+| `security`        | Authentication, authorization, and the boundary of what the spec can express       |
+| `stack`           | Technology choices                                                                 |
+| `testing`         | Test levels, expectations, and the test suite                                      |
+| `versions`        | Supported and required versions                                                    |
+| `workflow`        | The day-to-day process of making a change                                          |
 
 ### `README.md` carries no front matter — deliberately
 
@@ -238,10 +242,15 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 `docs/guide/` — `Users`:
 
 - [`code-generation.md`](../guide/code-generation.md)
+- [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
+- [`drivers.md`](../guide/drivers.md)
 - [`lifecycle.md`](../guide/lifecycle.md)
 - [`openapi-support.md`](../guide/openapi-support.md)
+- [`pagination.md`](../guide/pagination.md)
+- [`rate-limiting.md`](../guide/rate-limiting.md)
 - [`remote-references.md`](../guide/remote-references.md)
+- [`security.md`](../guide/security.md)
 
 `docs/project/` — `Users and contributors`:
 

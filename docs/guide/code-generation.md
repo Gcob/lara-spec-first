@@ -4,7 +4,10 @@ audience: Users
 covers: >
     The build command and what it produces, the boundary between build time and run time, where generated code lives,
     the rule that generated code is never edited by hand, why scaffolding a class you will own is a separate command,
-    and how a contract change surfaces as a static analysis error rather than a runtime surprise.
+    the docblock every generated file carries so that a human or an AI agent can navigate it without guessing, the
+    comment that sits above a reference to generated code and what to do when that class goes missing, why the
+    specification the build reads is private and how a sanitized copy is produced for publication, and how a contract
+    change surfaces as a static analysis error rather than a runtime surprise.
 read_before: >
     Writing anything that emits PHP from a specification, or changing what the build command does.
 tags: [code-generation, openapi, scope, decisions, laravel]
@@ -176,6 +179,126 @@ chooses to ignore stays that project's call: this is still
 developer and takes it; a trait leaves it free and composes, at the cost of not being able to declare abstract members
 quite as directly. It is a question best settled against real generated output.
 
+**And it no longer applies to DTOs, which is a reversal worth naming.** An earlier version of this document made
+response DTOs the canonical example of this split: a generated abstract declaring the shape, a human subclass overriding
+`from()`. [DTOs are now `final readonly`](#response-dtos) and their customization lives in a factory instead, because a
+value object mirroring the contract has no behavior of its own to extend. The two layers still describe the controller
+seam; they no longer describe DTOs. Said plainly so that a reader coming from the old version reads a changed position
+rather than a contradiction.
+
+## The specification the build reads is private
+
+**Decision: the specification this package consumes is an internal document, and nothing assumes it is safe to
+publish.** That is not caution for its own sake: the extensions that make the build useful are precisely the ones that
+describe the inside of the application.
+
+| Extension                                                                         | What publishing it hands out                                                       |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`x-model`](./controllers.md#how-the-semantic-is-detected)                        | Your Eloquent class names, so the shape of your database and its relationships.    |
+| [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) | Your application's namespace layout, and which endpoints carry hand-written logic. |
+
+Neither means anything to a consumer of the API, and both help somebody map an application they are attacking. A
+document written for the build is simply not the same document as one written for the public, and treating them as one
+file is how internal detail gets published by accident.
+
+**Decision: `spec:build` can emit a sanitized copy for publication, and does so only when a project names a disk to put
+it on.** Not by default, in the same spirit as the [remote-reference allowlist](./remote-references.md) and the factory
+scan: a feature nobody asked for should not start writing files.
+
+**The strip list denies by default rather than allowing by default.** Configuration says which extensions to _keep_, not
+which to remove, and every other `x-` extension is dropped. The reverse would fail the day a project adds an extension
+of its own and forgets to list it, which is exactly when the failure costs the most and is least likely to be noticed.
+This is the same posture the allowlist takes for hosts, applied to information disclosure.
+
+The default keep list is the extensions that tell a consumer something they can act on:
+[`x-lifecycle` and `x-sunset`](./lifecycle.md) exist so a client can plan around how strong a promise is and when it
+ends, so stripping them would remove the one part of this package's own vocabulary the public document should carry.
+
+**`x-audience` is deliberately not on that list**, even though it is a consumer-facing extension elsewhere. Once
+[internal operations are removed outright](#internal-operations-are-excluded-not-merely-stripped), every operation left
+in the published copy is `public` — so the key would publish a constant, and a constant tells a reader nothing. It is
+the exclusion that carries the information, not the annotation that survived it.
+
+Two properties hold it together:
+
+- **The public copy is output, never input.** The build reads the private document and nothing else, so there is never a
+  question of which one is authoritative. It is generated, so it belongs to the build, carries a header saying so, and
+  is never hand-edited — the same rule as
+  [every other generated file](#three-kinds-of-file-and-only-two-are-the-builds).
+- **The doctor reports what is being removed.** A strip list is a security boundary, and a security boundary nobody can
+  see is one nobody maintains. Printing the resolved keep list, what it dropped, and how many operations were excluded
+  turns "did we publish our model names" into a one-command answer rather than an audit.
+
+### Internal operations are excluded, not merely stripped
+
+Stripping a key and dropping an operation are different acts, and the weaker one is not enough. Removing
+`x-audience: internal` from an operation still publishes the operation, which invites exactly the outside consumer the
+extension existed to say there wasn't one.
+
+**Decision: the public copy carries `public` operations only. An operation marked
+[`x-audience: internal`](./lifecycle.md#two-keys-one-discriminator) is removed from it entirely.**
+
+`public` being the default means an operation that says nothing gets published, and that is deliberate rather than
+convenient: it is the direction [`lifecycle.md`](./lifecycle.md#two-keys-one-discriminator) already set for this key,
+where declaring an endpoint internal is an act and being treated as public is what happens by omission. One key, one
+default, and two documents that agree about it.
+
+**Removing the operation is not enough on its own, and this is the part an implementation will get wrong.** An excluded
+operation leaves things behind that still describe the inside of the application:
+
+- **Schemas nothing references any more.** Drop `POST /internal/audits` while `components/schemas/AuditPayload` stays
+  and the internal data shape is published anyway, so the exclusion accomplished nothing. **Components left unreferenced
+  once internal operations are gone must be pruned**, and the pruning has to be transitive: a removed schema can orphan
+  the schemas it referenced in turn.
+- **Path Items with nothing left inside.** Every operation on a path being internal leaves an empty object rather than
+  no path, which names an endpoint while claiming it has no methods.
+- **Tags used only by internal operations**, left dangling at the document root.
+
+**Two edges worth naming rather than discovering.** A document whose every operation is internal produces a public copy
+with no operations at all — valid at 3.1, invalid at 3.0 where `paths` is
+[required](./openapi-support.md#the-differences-the-strategy-must-absorb), and in either case far more likely a
+misconfiguration than an intent, so it is a finding rather than a file. And exclusion gives
+[breaking-change detection](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) a second reason to care about
+this key: flipping an operation to `internal` removes it from the published document, which is the most breaking change
+there is for whoever was already calling it. `lifecycle.md` already says that flip must be reported rather than pass
+quietly.
+
+### Where the public copy goes
+
+**Decision: configuration names a filesystem disk and a path within it. The disk is the switch: it is `null` out of the
+box, and nothing is published until a project sets it.** A disk rather than a bare path, because that is Laravel's own
+abstraction for "where files go" — the same setting then publishes to local storage, to S3, or to whatever a project
+already has configured, without this package knowing the difference. The path has a shipped value because a path with
+nothing to put it on is not a decision anybody has to make.
+
+**The disk to reach for is `public`, and it is not the one Laravel would pick for you.** Laravel's own default disk is
+`local`, rooted at `storage/app/private` and deliberately unreachable over HTTP — a file published there exists and
+answers 404. Serving the document means the `public` disk, rooted at `storage/app/public`, and it means
+`php artisan storage:link` has been run. Naming both the disk and its prerequisite is cheaper than letting somebody
+discover the 404.
+
+**Landing under `storage/` is right here for exactly the reason it was wrong elsewhere.** A stock Laravel application
+ships a `storage/app/.gitignore` containing `*`. For a file that must be committed that is a trap, which is why the
+contract baseline is [read from git](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) rather than kept
+there. The public copy is the opposite case: it is derived, the build reproduces it exactly, and committing it would
+mean reviewing a generated diff on every contract change. Being gitignored is the correct outcome for it.
+
+Two consequences to state rather than let anyone hit:
+
+- **A remote disk means the build writes over the network.** That is not what
+  [frozen by default](#remote-references-during-a-build-frozen-by-default) forbids — that rule protects the build's
+  _inputs_, since an input fetched silently can change the contract, and an output written somewhere cannot. But the
+  asymmetry is worth naming so nobody reads it as an oversight, and a project may reasonably decide publishing belongs
+  to its deploy step rather than to `spec:build`.
+- **A published copy can go stale.** Edit the specification, forget to build, and the document being served describes a
+  contract the application no longer honors — publicly, which is worse than the internal version of the same mistake. It
+  is the same failure the [drift check](./doctor.md#what-it-checks) already exists for, and the published copy belongs
+  in its scope.
+
+**Open:** the config key names, whether the sanitized copy is emitted in the document's own format or normalized to
+JSON, and whether an operation's `summary` and `description` need a keep-or-strip decision of their own — internal notes
+end up in those fields far more often than anyone intends.
+
 ## Where generated code lives
 
 **Decision: a config key, defaulting to `app/Http/Generated` and the namespace `App\Http\Generated`.**
@@ -243,6 +366,11 @@ it. It is honest to the client, it is greppable in logs, and it is the seam the 
 plugs into in Phase 2 — same route, same handler position, a better answer in the body. Nothing about the Phase 1 shape
 has to change for the mock to arrive.
 
+This is what an operation gets when the build could
+[detect no CRUD semantic for it](./controllers.md#how-the-semantic-is-detected) — no `x-model`, or a shape the package
+refuses to guess at — and nobody has overridden it. An operation the build did understand answers from a generated
+default with no subclass at all; [`controllers.md`](./controllers.md) owns which is which.
+
 ### Where your classes go
 
 **In the application's own controller location, not in the generated directory.** Two reasons, and the first is not a
@@ -283,13 +411,21 @@ What the shortcut was really asking for is ergonomics, and those can be had with
 build finds operations with no implementation, it names the command rather than running it** — the same pattern as the
 [rename report naming the files to fix](#how-it-says-it).
 
+**The atomic form names one operation, and every other form is sugar over it:** `spec:make showUser` scaffolds
+[one controller](./controllers.md#one-controller-per-operation-one-method-named-routeaction), carrying whichever
+[CRUD default its own specification implies](./controllers.md#how-the-semantic-is-detected). Nothing else in this
+package creates a grouped file, so there is nothing a bulk invocation could produce that is not simply this, run several
+times.
+
 The trap is printing one line per operation. A specification with two hundred operations, on the day somebody adopts
 this package, would answer with two hundred commands — which is not a list, it is a wall, arriving at the worst possible
 moment. So the build **summarises, and the [doctor](./doctor.md) holds the full list**, which is the division of labour
 those two commands already have.
 
 It summarises **by `tags`**, because the specification already carries the author's own grouping and inventing a second
-one would be worse than using theirs:
+one would be worse than using theirs — this is a grouping of the _printed list_, never of the files `spec:make` creates,
+each of which stays
+[one controller for one operation](./controllers.md#one-controller-per-operation-one-method-named-routeaction):
 
 ```
 47 operations have no implementation:
@@ -300,8 +436,9 @@ one would be worse than using theirs:
 
 Which settles the bulk question that was open here, and revises the earlier reasoning: the objection was never to bulk
 itself, it was to `build` doing it as a side effect. **`spec:make --tag=` and `--all` are legitimate**, because a human
-typed them and creating files is that command's entire job. Two guards keep the hundred-empty-classes scenario away:
-bulk is never the default, and it lists what it is about to create and asks before doing it.
+typed them and creating files is that command's entire job — a loop over the singular invocation above, not a second
+mechanism. Two guards keep the hundred-empty-classes scenario away: bulk is never the default, and it lists what it is
+about to create and asks before doing it.
 
 Adopting tag by tag is also the shape [Phase 3](../project/roadmap.md) wants — a migration that proceeds route by route
 rather than in one leap.
@@ -464,6 +601,114 @@ Two other decisions depend on it, which is the real reason it stands alone:
 - Breaking-change detection is keyed by the same identity, so a finding in that comparison and a header in a generated
   file name the same thing.
 
+## Every generated file explains itself
+
+The source map answers _where did this come from_. It is one part of a larger norm, and this section owns the whole of
+it.
+
+**Decision: every file the build emits carries a docblock written for someone who did not write it, and it is a
+requirement rather than a courtesy.** Not a banner saying "generated, do not edit" and nothing else — that says who owns
+the file, which is [already settled elsewhere](#three-kinds-of-file-and-only-two-are-the-builds), and it is not what a
+reader opening the file actually needs.
+
+**This package optimizes for AI-assisted development as a stated goal, not as a side effect.** Developer experience is
+the other half, and the two pull in the same direction here far more often than they conflict: what a coding agent needs
+is what a new team member needs, made explicit instead of assumed. An agent reads a handful of files, not a codebase; it
+cannot infer a convention from ten sibling examples the way a person skimming a directory can; and it has no way to know
+that the interesting behavior lives in a class three directories away unless the file says so. Every guess it has to
+make is a chance to write something plausible and wrong — into your application. So the generated file states what would
+otherwise have to be guessed.
+
+Three things belong in that docblock, and each answers a question a reader actually has:
+
+| Part           | Answers                                  | Content                                                                                                                            |
+| -------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **Provenance** | Where did this come from?                | The [JSON pointer](#the-source-map) into the specification — the operation, the schema, the exact position.                        |
+| **Findings**   | What did the build work out, or resolve? | What generating this file discovered and decided: what matched, what did not, which defaults were resolved, what looked ambiguous. |
+| **Navigation** | Where do I go from here?                 | `@see` to the files this one relates to — above all, to the extension point's actual implementation.                               |
+
+**Findings are the part that has to stay honest.** A summary that says nothing costs a reader the time it takes to
+discover that. What earns its place is what the build knew and the reader cannot see: a property the mapping could not
+match, a default that was resolved rather than declared, a name derived because `operationId` was absent, two things
+that collided. If generating a file was entirely unremarkable, the docblock says so in one line rather than padding
+itself — a reliable "nothing to flag here" is information too, and it is only reliable if the interesting cases are
+genuinely called out.
+
+**Navigation follows one rule: point at what actually runs.** Where a generated file has an extension point, the
+docblock either names the command that creates it or `@see`s the code that already did:
+
+- **Nothing extends it yet:** name the `spec:make` invocation that scaffolds one. Discovering the extension point should
+  never require reading this documentation first. It is
+  [the same pattern](#the-build-names-the-command-instead-of-running-it) as the build naming commands rather than
+  running them.
+- **Something extends it:** the scaffold instruction is replaced by `@see` at the file the build detected — so a reader,
+  human or agent, lands on the behavior that actually executes rather than studying a generated default that has been
+  overridden.
+
+That second case is what makes the norm worth the effort. A generated default and the class that replaced it are the
+single most common way to misread this kind of codebase, and one annotation removes the mistake entirely.
+
+**It is testable, and it should be tested.** The docblock is output, so the generator's own test suite asserts it is
+there and carries all three parts — the same way
+[any other behavior earns a test](../../AGENTS.md#automated-tests-are-required). A norm that only lives in prose erodes
+the first time someone adds a new kind of generated file in a hurry.
+
+**Open:** how much of this is a fixed template versus per-kind, and whether the findings section has a machine-readable
+form. The doctor already learned that lesson — its `--json` exists because
+[tooling and agents should not have to parse prose](./doctor.md#the-contract) — and the same argument plausibly applies
+here, against the cost of putting a data format inside a comment.
+
+### A reference to generated code says what to do when it goes missing
+
+A class-not-found on generated code is the most likely error anyone meets with this package, and the least informative
+one PHP knows how to raise. **Decision: every reference to generated code carries a comment saying what to do about
+it**, grouped above the block rather than repeated over each line — four generated references in one file should not
+mean four copies of one paragraph.
+
+**Two commands write that comment, and neither may write the other's files.** The build writes it into generated files
+that reference other generated files. Only [`spec:make`](#scaffolding-is-specmake-not-a-build-step) writes it into a
+file a developer will own, once, at the moment it creates that file — the build
+[never writes outside its own directories](#the-invariant-a-build-never-destroys-human-work), and that rule has no
+exception for a helpful comment. From then on the comment belongs to the developer, including the freedom to delete it.
+
+**The comment sits where the reference is, which for a scaffolded controller is not an import.** Because a custom
+controller
+[extends its generated parent by fully-qualified name](./controllers.md#two-classes-found-by-name-rather-than-by-a-scan),
+there is no `use` statement to annotate — so the comment goes above the class:
+
+```php
+namespace App\Http\Controllers;
+
+// The parent below is generated. If PHP cannot find it, run `php artisan spec:build`
+// (or `spec:watch`). If it still fails, the specification no longer has an
+// `x-controller` pointing here. Note that the spec's git history will show what changed.
+class UserController extends \App\Http\Generated\Controllers\UserController
+{
+}
+```
+
+That is the one reference `spec:make` created, so it is the one it annotates. Anything a developer imports afterwards —
+a DTO, a factory — they added knowingly, and a comment explaining their own import back to them is noise. In a generated
+file importing other generated files the same comment applies above the `use` block, minus the `x-controller` line,
+since a DTO's name follows its schema rather than that extension.
+
+Three situations sit behind those three lines, which is why the first answer is a command rather than an explanation:
+
+- **The build has not run here.** On a fresh clone this is the normal state rather than a mistake, because
+  [`.gitignore` decides what is committed](#which-generated-code-is-committed) and a project may legitimately ignore the
+  generated tree — the `composer install` bargain, stated in [two layers](#two-layers). Running it is the whole fix.
+- **The name changed in the specification.** A controller's generated name follows
+  [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) and a DTO's follows its schema name,
+  so the class moved because somebody edited one of those. The build
+  [reports that as a rename](#identity-is-the-path-and-the-method-not-the-name), naming the old and the new, so running
+  it does not merely fix the tree — it tells you what to change the import to.
+- **It was removed outright.** Only here does the build have nothing to offer, because there is no new name to report,
+  and the specification's own history is what says what happened.
+
+It is also, deliberately, the last line of defense rather than the first. [The doctor](./doctor.md) reports drift and
+orphans before anyone reaches a stack trace; this comment is for the developer who met the error first and has not
+thought to run it yet.
+
 ## Response DTOs
 
 The DTOs are how a response schema becomes a PHP type. Two properties, and the tension between them is the design:
@@ -473,14 +718,82 @@ The DTOs are how a response schema becomes a PHP type. Two properties, and the t
 - **The behavior is yours.** Hydration is where real applications differ, and a generated DTO you cannot teach to build
   itself from your model is a generated DTO people will wrap or abandon.
 
-The [two-layer split](#two-layers) resolves this cleanly: the generated layer declares the shape and a default `from()`;
-your class overrides `from()` and adds whatever else it needs. Hackable where it should be, fixed where the contract
-speaks.
+**Decision: a DTO is `final readonly`.** It is a value object mirroring a piece of the contract, not a class with
+behavior of its own to grow — the same reasoning that makes
+[`Operation`](https://github.com/Gcob/lara-spec-first/blob/main/src/Contract/Operation.php) and its neighbors
+`final readonly` in this package's own types. Which rules out the [two-layer split](#two-layers) that customization
+elsewhere in this document relies on: there is no abstract DTO to extend, because there is no DTO to extend, full stop.
 
-`spatie/laravel-data` is the reference for what good feels like here, and its `from($model)` ergonomics are the target.
-**Whether we depend on it or only take the shape is undecided** and belongs in [`stack.md`](../project/stack.md) once
-settled — a dependency buys casting, validation and serialization for free, at the cost of binding generated code to
-another package's API and release cycle.
+### Factories, not subclasses, are where behavior lives
+
+**A note on the name, before anything else.** This "factory" is the design pattern — a class whose one job is
+constructing another object — not Laravel's own model factories, which generate fake data for tests and carry
+`HasFactory` and `Factory::class` with them. The two share a word and nothing else. Nothing here touches, extends, or
+competes with `Illuminate\Database\Eloquent\Factories`.
+
+Hydration therefore cannot live on the DTO itself. It lives one level removed, in a **factory** — an ordinary class, not
+final, whose only job is turning a source (a model, an array, whatever the response needs) into the DTO.
+
+**Decision: the build generates one factory per DTO**, mapping by naming convention — the same nomenclature-driven
+matching already used [when `operationId` is absent](#when-operationid-is-absent-derive-from-method-and-path) — with a
+default implementation that covers the ordinary case: properties that already exist on the source, under the same name.
+This is what makes the other ninety-six DTOs in a hundred-DTO contract need nothing from a developer at all.
+
+### Overriding a factory: extend it, in a directory the project declares
+
+Most response shapes need nothing beyond the default mapping. The few that do should not cost the other ninety-six.
+**Decision: a project overrides a factory by writing a class that `extends` the generated one** — no fixed name, no
+fixed file, and no service provider to touch.
+
+**The generated factory never disappears, even once overridden.** It is not replaced, it is extended — the override
+would have nothing to inherit from otherwise, and a developer would be starting from an empty file instead of a working
+default mapping they only need to adjust in part. Every generated factory therefore exists for every DTO, always,
+whether or not a project has ever looked at it.
+
+The build finds the override itself, by scanning a **configured set of directories — not the whole project** — for a
+class extending each generated factory, and wiring whichever it finds in place of the generated default. The directories
+are named in configuration, the same shape as [`remote_references.allowed_hosts`](./remote-references.md): empty by
+default, and nothing is scanned until a project says where to look. Scanning the whole application would mean touching
+every autoloaded class, vendored packages included, on every build, for a feature four DTOs out of a hundred will ever
+use — the cost has to be bounded by what the project actually declares, not by how large `vendor/` happens to be.
+
+**Exactly one override per factory.** Extending a generated factory twice is not a project needing two behaviors from
+one thing, it is two behaviors with no rule for which wins. The build refuses to guess: finding two classes that extend
+the same generated factory is a hard error, naming both offending classes and the factory they both claim, not a silent
+pick of whichever the classmap happened to load first.
+
+This is detection **at build time**, deliberately, not a runtime `class_exists()` check scattered across every place a
+DTO gets built — the same reasoning as [everywhere else in this document](#the-runtime-never-sees-the-spec): explicit
+over dynamic, and the cost paid once rather than on every request. The consequence to state plainly: an override added
+without rerunning the build has not taken effect yet — a case for [drift](./doctor.md#what-it-checks), not a new failure
+mode.
+
+**Open:** the config key's name, and whether it recurses into subdirectories by default; the exact mechanism for finding
+the `extends` relationship — reflection over the classes the configured directories autoload is the leading answer,
+rather than [the token scan rename detection already uses](#how-it-says-it), since an `extends` clause needs the
+language's own resolution of `use` imports and aliases to be trustworthy, not a match on spelling; and the name of the
+exception thrown when two classes claim one factory.
+
+### What a factory's docblock carries
+
+Factories follow the norm [every generated file follows](#every-generated-file-explains-itself); what is specific to
+them is what counts as a finding worth reporting. **The mapping's own result:** which properties matched the source by
+name, which did not, and anything a reader should check before trusting the default — because a factory that silently
+skipped a property is the one thing a reader cannot see by looking at it.
+
+Its navigation line is the general rule applied to
+[the override scan](#overriding-a-factory-extend-it-in-a-directory-the-project-declares): the `spec:make`
+[flag](#per-type-flags-belong-here) that scaffolds an override when none was found, replaced by `@see` at the detected
+class when one was. Since the generated factory
+[stays in place even when overridden](#overriding-a-factory-extend-it-in-a-directory-the-project-declares), that
+annotation is the only thing distinguishing the default a reader is looking at from the behavior that actually runs.
+
+`spatie/laravel-data` remains a candidate for the generated shape itself — its casting, validation and serialization are
+useful independently of who builds the object — but its own `from()`-override ergonomics are no longer the fit they once
+were: a `Data` object is not `final`, and this design deliberately does not lean on DTO-level inheritance for
+customization. **Whether we depend on it or only take the shape is undecided** and belongs in
+[`stack.md`](../project/stack.md) once settled — a dependency buys casting, validation and serialization for free, at
+the cost of binding generated code to another package's API and release cycle.
 
 ## Appending into human-owned files
 
@@ -515,5 +828,8 @@ regions ever read or written, and a hard failure rather than a guess when the re
 - What [watch](#watching-specwatch) takes as parameters — in particular how its rebuild cadence is expressed, and how
   the mode announces itself while it is running.
 - Whether `spatie/laravel-data` becomes a dependency or only an influence.
+- The [factory override scan](#overriding-a-factory-extend-it-in-a-directory-the-project-declares): the config key's
+  name, whether it recurses by default, the exact mechanism for finding the `extends` relationship, and the name of the
+  exception thrown when two classes claim one factory.
 - **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated validation are
   Phase 2 — the same build command doing more, not a new one. See the [Roadmap](../project/roadmap.md).

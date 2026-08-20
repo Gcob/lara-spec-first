@@ -37,8 +37,13 @@ const SECTIONS: Section[] = [
         sequence: [
             'openapi-support',
             'code-generation',
+            'controllers',
             'doctor',
             'lifecycle',
+            'security',
+            'drivers',
+            'rate-limiting',
+            'pagination',
             'remote-references',
         ],
     },
