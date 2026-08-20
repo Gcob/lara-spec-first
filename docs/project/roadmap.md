@@ -72,7 +72,7 @@ at boot without reading a specification to do it, and it generates nothing for t
 
 Two namespaces name the gap precisely, and they do not exist: `Generation\` and `Console\` have neither a directory nor
 a file. There is no Artisan command and no generated PHP, so an application using this package registers no route in
-practice — what boots is a loader with nothing to load. Five of the six blocks in `config/lara-spec-first.php` are
+practice — what boots is a loader with nothing to load. Four of the six blocks in `config/lara-spec-first.php` are
 marked `TODO` in the file itself and are inert, which the file says out loud rather than leaving to be discovered, and
 which [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
@@ -290,7 +290,7 @@ every decision is already unchangeable.
 - [ ] **The CI test matrix.** PHP 8.3 / 8.4 / 8.5 against Laravel 12 / 13, six valid combinations with no `exclude`
       block, plus the lowest-dependency run. The docs workflow already exists; this does not. It is the `Planned` CI row
       in [`stack.md`](./stack.md).
-- [ ] **Ship only the config keys that do something.** Five of the six blocks in `config/lara-spec-first.php` are inert,
+- [ ] **Ship only the config keys that do something.** Four of the six blocks in `config/lara-spec-first.php` are inert,
       and the file admits it in a comment: _a `TODO` block is inert, changing it has no effect, and nothing will tell
       you so._ That is precisely the behavior the package refuses elsewhere, where
       [a setting that is not backed yet throws](../guide/remote-references.md#the-setting) rather than lying. A key

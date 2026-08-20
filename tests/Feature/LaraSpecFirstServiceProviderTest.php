@@ -65,10 +65,14 @@ it('builds the remote reference guard from the configuration', function (): void
 });
 
 // Every setting below belongs to a feature that is documented and decided but
-// not built. Nothing reads them yet, so what is worth pinning is the default —
-// it is public API surface the moment the package ships, and a default that
-// drifts silently is how a consumer's configuration stops meaning what it said.
+// not built, with one exception noted where it applies. Nothing reads them yet,
+// so what is worth pinning is the default — it is public API surface the moment
+// the package ships, and a default that drifts silently is how a consumer's
+// configuration stops meaning what it said.
 
+// The exception: `generated.path` is read at boot, so its default is behavior
+// rather than only a promise. `generated.namespace` is still only a promise,
+// because nothing emits a class into it yet.
 it('defaults the generated tree to a path and namespace that agree', function (): void {
     expect(config('lara-spec-first.generated.path'))->toBe('app/Http/Generated')
         ->and(config('lara-spec-first.generated.namespace'))->toBe('App\\Http\\Generated');
