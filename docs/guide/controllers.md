@@ -19,7 +19,13 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 An operation needs something to answer it. This document owns what that something is: how many files it takes, what it
 assumes about your application, and where a developer's own code attaches to it.
 
-> **Not implemented yet, and not yet slotted into a phase.** Items marked `Open` are undecided.
+> **Not implemented yet, and this document spans two phases.** [Phase 1](../project/roadmap.md#phase-1-the-foundation):
+> the two-class seam, `x-controller`, `routeAction`, the thin `SpecController` base with its `middleware()` method, the
+> `501`, and `spec:make` including the `x-controller` insertion prompt and the read-back check that makes it safe.
+> [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features): everything
+> model-shaped, meaning `x-model`, the CRUD defaults, `HasModel` and its trait, the marker interfaces, the DTO factory
+> calls, the pagination seams and the mass-assignment check, because a generated CRUD body has nothing to return until
+> the DTOs exist. Items marked `Open` are undecided.
 
 ## One controller per operation, one method named `routeAction`
 

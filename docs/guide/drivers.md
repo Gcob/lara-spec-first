@@ -23,7 +23,9 @@ convention would be wrong for most readers; a package that tried to detect all o
 [rule 2](./openapi-support.md#the-four-rules) does not allow. What is needed is neither: it is a way for a project to
 say what it does, without that answer having to be written into this package.
 
-> **Not implemented yet, and not yet slotted into a phase.** Items marked `Open` are undecided.
+> **Not implemented yet.** [Phase 2](../project/roadmap.md#the-driver-features), landing with the two features that need
+> it rather than ahead of them: an extension point designed with no second implementation in front of it is a guess.
+> Items marked `Open` are undecided.
 
 ## A driver is structure; the mapping is names
 

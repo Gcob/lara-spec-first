@@ -38,8 +38,12 @@ final readonly class ParsableSpecDocument
      *                                     external file has been read;
      *                                     **not normalized**, so the 3.0 and 3.1 spellings of one
      *                                     idea are both still here — `$strategy` is attached but has
-     *                                     not interpreted anything yet, and producing the normalized
-     *                                     form is the strategy's job from here on.
+     *                                     not interpreted anything yet. Normalizing happens after
+     *                                     this class, and where has two answers: today
+     *                                     `OperationExtractor` does it alone, while by design the
+     *                                     version-specific part of it belongs to `$strategy`, which
+     *                                     so far is only asked to reject a root shape its version
+     *                                     forbids. A sequencing gap, not a disagreement.
      *
      * @see docs/guide/openapi-support.md — "Handling 3.0 and 3.1: the version strategy"
      */
