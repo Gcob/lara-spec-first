@@ -22,8 +22,11 @@ turns the specification into PHP, and the result is safe to regenerate at any ti
 > file marks the difference per section rather than per file, so the banner does not become a little more wrong with
 > every release. Items marked `Open` are undecided.
 >
-> **Shipped:** only the path normalization that [identity](#identity-is-the-path-and-the-method-not-the-name) rests on.
-> No build command exists, no code is generated, and nothing detects a rename.
+> **Shipped:** the path normalization that [identity](#identity-is-the-path-and-the-method-not-the-name) rests on, and
+> the loading half of routing — the provider
+> [registers the generated routes at boot](#the-routes-are-one-file-and-the-only-one-the-runtime-opens) and reads no
+> specification to do it. Nothing writes that file yet: no build command exists, no code is generated, and nothing
+> detects a rename.
 
 What the build reads, and what it refuses to read, is a different subject and lives in
 [`openapi-support.md`](./openapi-support.md).
@@ -336,6 +339,44 @@ Two details that will otherwise be discovered the hard way:
   mismatch there produces class-not-found errors far from their cause.
 
 The config key names and the default are public API surface under [rule 4](./openapi-support.md#the-four-rules).
+
+### The routes are one file, and the only one the runtime opens
+
+**Shipped.** `Routing\GeneratedRoutesLocator` locates it; the service provider loads it at boot.
+
+**Decision: route registrations go in a single `routes.php` at the root of the generated tree**, beside the
+sub-namespaces rather than inside one. It is the only generated file the runtime ever opens, and it is a script rather
+than a class: PSR-4 has nothing to say about it, and the provider reaches it through Laravel's own `loadRoutesFrom()`,
+which is what skips the file when the application's routes are already cached.
+
+**A fixed name inside the configured root rather than a setting of its own.** The build owns every file under that root,
+so a second key could only ever let the writer and the reader disagree about one filename.
+
+**And the file is loaded through `Route::` calls rather than read as data.** A manifest the package walked at boot would
+mean the runtime deciding something the build already decided, and it is the shape this document rejects everywhere
+else. What the emitter writes is the registration itself, with the controller named as a
+`[Controller::class, 'routeAction']` pair of plain strings, in the specification's own
+[order](./openapi-support.md#route-order-the-spec-files-order-is-the-route-order).
+
+**Decision: a missing file is silence, not an exception.** The reasoning is structural rather than lenient:
+
+- **`spec:build` is a command of this package.** A provider that refused to boot without a generated tree would make the
+  application unbootable exactly when the command that writes one needs to run. A fresh clone could never produce its
+  own routes, which is a deadlock rather than a strict default.
+- **It is a legitimate state,** because [`.gitignore` decides](#which-generated-code-is-committed) what a project
+  commits, and the [two layers](#two-layers) already accept that a fresh clone does not run until the build has.
+- **Reporting it is [the doctor](./doctor.md#what-it-checks)'s job**, where it is caught before a deploy rather than
+  during one. This is the same division of labour as everywhere else here: refusing to load and reporting a fault are
+  different jobs.
+
+**A missing file and an unusable setting are not the same thing, and only the first one is silent.** An empty
+`generated.path` throws at boot, naming the key: nothing can be looked for without a path, so carrying on would mean
+registering no route on an application that asked for some. The distinction is worth stating because the two failures
+look alike from the outside and have opposite correct answers.
+
+An absolute value for the configured path is taken as written rather than joined under the application root. A generated
+tree outside that root is a real monorepo layout, and joining an absolute path anyway produces a path that is silently
+wrong rather than one that fails.
 
 ## Scaffolding is `spec:make`, not a build step
 

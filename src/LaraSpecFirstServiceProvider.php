@@ -6,9 +6,11 @@ namespace Gcob\LaraSpecFirst;
 
 use Gcob\LaraSpecFirst\Configuration\ConfigurationMerger;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
+use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
+use RuntimeException;
 
 /**
  * Entry point of the package into a Laravel application.
@@ -63,14 +65,54 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
 
     /**
      * Boot the package once every provider has been registered.
-     *
-     * Contract-driven route registration will happen here, loading generated
-     * PHP rather than reading a specification.
      */
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
             $this->publishes([self::CONFIG_FILE => $this->app->configPath('lara-spec-first.php')], 'lara-spec-first-config');
         }
+
+        $this->loadGeneratedRoutes();
+    }
+
+    /**
+     * Register the contract's routes by loading the PHP the build emitted.
+     *
+     * No specification is read here, at boot or ever: this method requires one
+     * generated file and knows nothing about how it was produced. That is the
+     * whole of the runtime's involvement with routing.
+     *
+     * **A missing file is silence, not an exception**, and the reason is
+     * structural rather than lenient. `spec:build` is an Artisan command of this
+     * package, so a provider that threw when the generated tree was absent
+     * would make the application unbootable exactly when the command that
+     * creates it needs to run — a fresh clone could never produce its own
+     * routes. It is also a legitimate state on that fresh clone, since
+     * .gitignore decides what a project commits. Reporting it belongs to
+     * `spec:doctor`, which is where drift is caught before a deploy rather than
+     * during one.
+     *
+     * `loadRoutesFrom()` rather than a plain require, because it is what skips
+     * the file when the application's routes are already cached.
+     *
+     * @see docs/guide/code-generation.md — "The runtime never sees the spec"
+     * @see docs/guide/code-generation.md — "Which generated code is committed"
+     */
+    private function loadGeneratedRoutes(): void
+    {
+        /** @var string $configured */
+        $configured = $this->app->make(Repository::class)->get('lara-spec-first.generated.path');
+
+        if (! $configured) {
+            throw new RuntimeException('The configuration key lara-spec-first.generated.path is missing or empty. Please check your configuration.');
+        }
+
+        $locator = new GeneratedRoutesLocator($this->app->basePath(), $configured);
+
+        if (! $locator->exists()) {
+            return;
+        }
+
+        $this->loadRoutesFrom($locator->path());
     }
 }

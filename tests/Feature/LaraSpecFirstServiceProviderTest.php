@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Gcob\LaraSpecFirst\Exceptions\NotImplementedYetException;
 use Gcob\LaraSpecFirst\LaraSpecFirstServiceProvider;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
+use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Routing\Route;
 
 it('is loaded into the application', function () {
@@ -12,17 +13,42 @@ it('is loaded into the application', function () {
         ->toHaveKey(LaraSpecFirstServiceProvider::class);
 });
 
-it('registers no routes of its own yet', function () {
-    // Contract-driven routing lands in a later change; until then the provider
-    // must stay inert.
-    //
-    // Asserting that the router is globally empty would test the framework
-    // rather than this package: Testbench registers routes of its own, and how
-    // many depends on the Laravel version. Filter to routes this package owns.
-    $ours = collect(app('router')->getRoutes()->getRoutes())
-        ->filter(fn (Route $route) => str_contains($route->getActionName(), 'Gcob\\LaraSpecFirst'));
+// The fresh-clone state, and the one that must not throw: .gitignore decides
+// what a project commits, and `spec:build` is a command of this package — a
+// provider that refused to boot without a generated tree would make the
+// application unbootable exactly when the command that writes one needs to run.
+//
+// Asserting that the router is globally empty would test the framework rather
+// than this package: Testbench registers routes of its own, and how many
+// depends on the Laravel version. Filter to routes a generated tree would own.
+it('boots without complaint when nothing has been generated', function () {
+    $generated = collect(app('router')->getRoutes()->getRoutes())
+        ->filter(fn (Route $route) => str_contains($route->getActionName(), 'Generated'));
 
-    expect($ours)->toBeEmpty();
+    expect($generated)->toBeEmpty();
+});
+
+// The default is relative to the application root, so what the provider looks
+// for on a stock installation is one predictable file.
+it('looks for its routes in the generated tree the configuration names', function (): void {
+    $locator = new GeneratedRoutesLocator(base_path(), config()->string('lara-spec-first.generated.path'));
+
+    expect($locator->path())->toBe(base_path('app/Http/Generated/routes.php'))
+        ->and($locator->exists())->toBeFalse();
+});
+
+// A missing *file* is silence, an unusable *setting* is not, and the two are
+// easy to conflate. Nothing can be looked for without a path, so continuing
+// would mean silently registering no route on an application that asked for
+// some — which is the failure this package exists to prevent.
+//
+// `boot()` is called directly because it has already run by the time a test
+// body does, and it is the provider's own documented entry point.
+it('refuses to boot when the generated path is configured empty', function (): void {
+    config()->set('lara-spec-first.generated.path', '');
+
+    expect(fn () => (new LaraSpecFirstServiceProvider(app()))->boot())
+        ->toThrow(RuntimeException::class, 'lara-spec-first.generated.path');
 });
 
 it('publishes a configuration whose default allows no host', function (): void {

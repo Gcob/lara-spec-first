@@ -175,7 +175,7 @@ the parser:
 | `Contract\`   | Our own types — what a strategy produces and everything else consumes. | Started |
 | `Generation\` | Emitting PHP.                                                          | Not yet |
 | `Console\`    | The commands.                                                          | Not yet |
-| `Routing\`    | What the service provider loads at boot.                               | Not yet |
+| `Routing\`    | What the service provider loads at boot.                               | Yes     |
 
 Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document — the reference cycle detector and the
 remote reference guard. It is expected to stay small by design: this doctrine sends almost every check to
@@ -404,10 +404,12 @@ are decided:
   it is what names the generated controller and method. Public API surface. The naming and rename questions are now
   answered in [`code-generation.md`](./code-generation.md#naming-and-the-rename-problem); what remains here is how a
   missing or unusable `operationId` is reported.
-- `php artisan route:cache`: mostly answered by
-  [generating the routes](./code-generation.md#the-runtime-never-sees-the-spec) rather than deriving them at boot. What
-  remains is the concrete requirement that generated routes be serializable — controller strings, no closures — and
-  confirming it against a real `route:cache` run.
+- ~~`php artisan route:cache`~~ **Settled.** Generating the routes rather than deriving them at boot answered most of
+  it, and the rest is now verified rather than intended: the registration is a
+  [`[Controller::class, 'routeAction']` pair of plain strings](./code-generation.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
+  a test puts a generated collection through the exact steps `route:cache` performs and requires the exported file back,
+  and a real `route:cache` run against the workbench application caches the generated routes and reports success. The
+  provider loads the file through `loadRoutesFrom()`, so a cached application skips it as it should.
 - `webhooks` (3.1) and `callbacks`: not routes on this server.
 - `HEAD` and `OPTIONS`: Laravel handles HEAD for GET automatically, so an explicit `head` operation conflicts.
 - Phase 2 territory: `style` and `explode`, `deepObject`, `multipart/form-data` with `encoding`, multi-media-type

@@ -40,6 +40,20 @@ arch('the OpenAPI parser stays inside Parsing')
 //
 // The namespaces below that do not exist yet cost nothing to name now, and mean
 // the rule is already in place the day they do.
+// The runtime never sees a specification. Routing\ is what the service provider
+// loads at boot, so it is the one namespace where that promise can be broken by
+// a single import — of the reader, of a guard, or of the YAML decoder underneath
+// them. The parser is already forbidden here by the rule above; these are the
+// rest of the door.
+//
+// See docs/guide/code-generation.md — "The runtime never sees the spec"
+arch('routing at boot cannot reach a specification')
+    ->expect('Gcob\LaraSpecFirst\Routing')
+    ->not->toUse([
+        'Gcob\LaraSpecFirst\Parsing',
+        'Symfony\Component\Yaml',
+    ]);
+
 arch('the contract knows nothing about how it was produced')
     ->expect('Gcob\LaraSpecFirst\Contract')
     ->not->toUse([

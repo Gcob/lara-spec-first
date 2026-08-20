@@ -17,9 +17,10 @@ would make the code authoritative over the spec, it is going the wrong way.
 
 The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/project/roadmap.md)). It reads a specification
 file, refuses what it cannot serve, resolves its references through the OpenAPI parser and hands out its own `Contract\`
-types. It generates no PHP and registers no route: `Generation\`, `Console\` and `Routing\` do not exist yet. The
-roadmap's [state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list, checked boxes
-meaning behavior with tests behind it.
+types. It also loads generated routes at boot, without reading a specification to do it. It generates no PHP, so there
+is nothing for that loader to find: `Generation\` and `Console\` do not exist yet. The roadmap's
+[state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list, checked boxes meaning
+behavior with tests behind it.
 
 Verify your work with `just check` (or `composer check`) — Pint, Larastan, then Pest.
 
