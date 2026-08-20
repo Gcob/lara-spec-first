@@ -287,8 +287,8 @@ every decision is already unchangeable.
       belongs in the same release as the feature behind it, so the Phase 2 blocks come out and come back with their
       features. Removing them before publication costs nothing; adding keys later is widening, which is
       [minor](./stack.md#changing-anything-here).
-- [ ] **A command reference document.** [The doctor](../guide/doctor.md) already defers its usage details to one, and
-      Phase 1 ships three more commands.
+- [ ] **A command reference document.** [The doctor](../guide/doctor.md) already defers its usage details to one, and it
+      is one of the three commands Phase 1 ships, beside `spec:build` and `spec:make`.
 - [ ] **Publish to Packagist** as `gcob/lara-spec-first` and cut `0.1.0`. The `Planned` distribution row in
       [`stack.md`](./stack.md).
 

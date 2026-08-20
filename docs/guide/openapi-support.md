@@ -305,10 +305,18 @@ The check is deliberately narrow, and each limit below is stated in a test rathe
 
 **What comes out is narrow on purpose.** The result says the document _may be parsed_ — not that it is correct. It has
 not been validated against the OpenAPI schema, no `$ref` has been resolved, and the 3.0 and 3.1 spellings of the same
-idea are both still present exactly as written. Normalizing them for the package's own use is the
-[version strategy](#handling-30-and-31-the-version-strategy)'s job, and reporting what is wrong with the contents is
-[the doctor](./doctor.md)'s. Refusing to load and reporting a fault are different jobs, and only the first one happens
-here.
+idea are both still present exactly as written. Normalizing them for the package's own use happens after this step, and
+reporting what is wrong with the contents is [the doctor](./doctor.md)'s job. Refusing to load and reporting a fault are
+different jobs, and only the first one happens here.
+
+**Where that normalizing lives has two answers, one per tense, and the difference is worth marking rather than leaving a
+reader to reconcile.** Today `OperationExtractor` produces the normalized `Contract\` types on its own, and a
+[strategy](#handling-30-and-31-the-version-strategy) is consulted only to reject a root shape its version forbids. By
+design, every version-specific part of that interpretation belongs to the strategy, which is what
+[the seam table](#what-is-shared-and-what-is-version-specific) states. Those are a sequencing gap rather than a
+disagreement: there is nothing version-specific to delegate until schema normalization exists, and that is
+[Phase 2](../project/roadmap.md#the-pipeline). Nothing downstream can tell which of the two is answering, which is the
+property the seam exists to protect in the first place.
 
 ## Laravel constraints we do not fight
 
