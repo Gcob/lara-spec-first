@@ -2,9 +2,9 @@
 title: Project Roadmap
 audience: Users and contributors
 covers: >
-    The vision and how the work is sequenced: what the package actually does today, the three delivery phases, and the
-    two bodies of work deliberately left outside a phase (breaking-change enforcement, and what has to be settled before
-    the first tag).
+    The vision and how the work is sequenced: what the package actually does today, the three delivery phases, the two
+    release gates and which phase each one follows, and breaking-change enforcement, which is deliberately left outside
+    a phase.
 read_before: >
     Proposing or starting new work, to check which phase it belongs to and what it depends on.
 tags: [planning, migration, scope, openapi, testing, decisions]
@@ -22,6 +22,13 @@ Two rules keep it usable:
   which is the only reason a roadmap in a repository this early is worth reading at all.
 - **A feature document names its phase, and this file is where the phase comes from.** A guide whose banner says a
   feature has no phase is a gap in _this_ document, not in that one.
+
+**The order, end to end:** Phase 1, then the [`0.x` tag](#the-first-tag-0x-once-phase-1-runs), then Phase 2, then
+[`1.0`](#before-10-freeze-what-a-major-would-cost). [Breaking-change enforcement](#breaking-change-enforcement) and
+[Phase 3](#phase-3-legacy-bridge--ecosystem) both come after `1.0`, and their order relative to each other is open.
+Saying that out loud is the point of the two gates having their own section: the phases alone cannot express when
+something ships, and "when does this become a compatibility promise" is the most consequential question this document
+has to answer.
 
 ## Where the code is today
 
@@ -59,9 +66,10 @@ route.
 
 ### What does not exist yet
 
-Three empty namespaces name the gap precisely: `Generation\`, `Console\` and `Routing\`. There is no Artisan command, no
-generated PHP, and no registered route. Five of the six blocks in `config/lara-spec-first.php` are marked `TODO` in the
-file itself and are inert, which the file says out loud rather than leaving to be discovered.
+Three namespaces name the gap precisely, and they do not exist: `Generation\`, `Console\` and `Routing\` have neither a
+directory nor a file. There is no Artisan command, no generated PHP, and no registered route. Five of the six blocks in
+`config/lara-spec-first.php` are marked `TODO` in the file itself and are inert, which the file says out loud rather
+than leaving to be discovered, and which [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
 
@@ -149,10 +157,12 @@ the code, and a gap in it is loud.
 - [ ] **`security` is reported, not enforced, and the report says so in those words.** Enforcement is
       [Phase 2](#authorization-the-contract-can-express), and a phase that registers routes without it must not let a
       consumer mistake a documented promise for a kept one. So Phase 1 owes an operation whose contract declares
-      `security` a finding stating that the package does not yet apply it, and that finding is
-      [not collapsible and not acknowledgeable away](../guide/doctor.md#acknowledging-changes-behavior-not-just-noise):
-      an endpoint the contract describes as protected being unprotected is the one place where being annoying is the
-      correct behavior.
+      `security` a finding stating that the package does not yet apply it, and that finding takes the treatment
+      [doctor.md already reserves for security](../guide/doctor.md#acknowledging-changes-behavior-not-just-noise): every
+      affected operation listed individually, on every run, never folded into a count. That is the existing rule
+      applied, not a new category. Whether a finding can also be made impossible to acknowledge is a question about the
+      acknowledgement mechanism, so it belongs in `doctor.md` if it is ever wanted, and this document does not assume
+      it.
 
 ## Phase 2: The generated pipeline, mocks and the driver features
 
@@ -248,11 +258,61 @@ remove redundancy: nothing breaks without them.
       schema describes shapes, not domain truth. Referential integrity, business invariants and database constraints are
       not in it. Spec-driven data can replace a factory for HTTP-level and mock-server tests; it cannot replace one for
       tests that persist to a database.
-- [ ] **Versioning directories (`v1/`, `v2/`).** Carried over from the first roadmap and **listed here as an intention
-      rather than a decision**: no document owns it, which under
+
+## Release gates
+
+_Goal: publish nothing we would have to break, and do not wait for perfection to publish anything at all._
+
+**Two gates, and each one follows a phase.** Neither is a phase itself: nothing here is a feature. What they hold is the
+work that only matters because somebody else can now depend on it.
+
+Inside each gate the items are independent of one another, with one exception that is the same both times: **the tag is
+not a parallel item, it is the door the others hold shut.** Cutting it is what makes everything above it expensive,
+which is the entire reason the gate exists.
+
+### The first tag: `0.x`, once Phase 1 runs
+
+A `0.x` is a deliberate choice rather than a placeholder. It gets the package into hands while
+[rule 4](../guide/openapi-support.md#the-four-rules)'s promises are still explicitly not being made, which is the only
+window in which a name can be corrected for free. Waiting for Phase 2 would mean the first outside reader arrives after
+every decision is already unchangeable.
+
+- [ ] **The CI test matrix.** PHP 8.3 / 8.4 / 8.5 against Laravel 12 / 13, six valid combinations with no `exclude`
+      block, plus the lowest-dependency run. The docs workflow already exists; this does not. It is the `Planned` CI row
+      in [`stack.md`](./stack.md).
+- [ ] **Ship only the config keys that do something.** Five of the six blocks in `config/lara-spec-first.php` are inert,
+      and the file admits it in a comment: _a `TODO` block is inert, changing it has no effect, and nothing will tell
+      you so._ That is precisely the behavior the package refuses elsewhere, where
+      [a setting that is not backed yet throws](../guide/remote-references.md#the-setting) rather than lying. A key
+      belongs in the same release as the feature behind it, so the Phase 2 blocks come out and come back with their
+      features. Removing them before publication costs nothing; adding keys later is widening, which is
+      [minor](./stack.md#changing-anything-here).
+- [ ] **A command reference document.** [The doctor](../guide/doctor.md) already defers its usage details to one, and
+      Phase 1 ships three more commands.
+- [ ] **Publish to Packagist** as `gcob/lara-spec-first` and cut `0.1.0`. The `Planned` distribution row in
+      [`stack.md`](./stack.md).
+
+### Before `1.0`: freeze what a major would cost
+
+Everything a consumer writes code against stops being ours to change here.
+
+- [ ] **Freeze the public names.** Under [rule 4](../guide/openapi-support.md#the-four-rules) every one of these becomes
+      a compatibility contract, and each is currently marked open in the document that owns it: the config keys
+      (generated path and namespace, the override scan, the publish block, `pagination` and `rate_limiting` and every
+      key inside their mappings), the Artisan command signatures and their flags, the controller interface, trait and
+      method names, the exception class names, the vendored directory and the refetch flag, and the driver registration
+      API. Settling them here costs nothing; after `1.0`, each one costs a major.
+- [ ] **Close the support-matrix rows a stable release cannot leave `Open`.** Chiefly: whether a document containing
+      `trace` fails to load or only the operation is refused, whether a non-conforming path parameter name is rejected
+      absolutely or has an escape hatch for specs the consumer does not own, and what happens to `options` and `head`.
+      Each is behavior a consumer writes code against.
+- [ ] **Decide the versioning directories (`v1/`, `v2/`), or drop them.** Carried over from the first roadmap and still
+      **an intention rather than a decision**: no document owns it, which under
       [one topic, one file](../contributing/documentation.md#one-topic-one-file) means there is nothing to implement
-      against yet. It either earns a design and a home, or it is dropped from the roadmap. Deciding which is itself the
-      task.
+      against. It sits in this gate rather than among the Phase 2 features because a versioned generation tree changes
+      the paths and namespaces the build emits, which puts it under rule 4 exactly like the config keys above. It either
+      earns a design and a home before the names are frozen, or it leaves the roadmap.
+- [ ] **Cut `1.0`,** which is the release that starts costing a major to get wrong.
 
 ## Breaking-change enforcement
 
@@ -261,6 +321,11 @@ _Goal: a stable operation cannot break without someone deciding to break it._
 Deliberately not slotted into a phase: a rule that fails somebody's build has to be right before it ships, and the
 breaking-change table is large enough to deserve its own body of work rather than being smuggled into a release. See
 [lifecycle](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us).
+
+**Which means the consequence has to be stated rather than left to be noticed:** until this lands, `x-lifecycle: stable`
+is a declaration the doctor reports on, not a rule that fails a build. That is already the position
+[`lifecycle.md`](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us) takes, and it is why the doctor's
+protection report exists from Phase 1: protection that is off must never look like protection that passed.
 
 - [ ] Diff the specification against its previously committed version, read from git rather than from a separate file
       the build writes, normalizing 3.0/3.1 differences in memory before comparing. The doctor's
@@ -273,31 +338,6 @@ breaking-change table is large enough to deserve its own body of work rather tha
       `internal`, and the exclusion from the published copy that demotion causes, which is the most breaking change
       there is for whoever was already calling it. Whether either merely reports or requires the same `info.version`
       bump is open.
-
-## Before the first tag
-
-_Goal: publish nothing we would have to break._
-
-Also outside the phases, because these are not features and none of them blocks the others. What they share is that
-every one of them gets more expensive the moment the package is on Packagist.
-
-- [ ] **The CI test matrix.** PHP 8.3 / 8.4 / 8.5 against Laravel 12 / 13, six valid combinations with no `exclude`
-      block, plus the lowest-dependency run. The docs workflow already exists; this does not. It is the `Planned` CI row
-      in [`stack.md`](./stack.md).
-- [ ] **Freeze the public names.** Under [rule 4](../guide/openapi-support.md#the-four-rules) every one of these becomes
-      a compatibility contract on publication, and each is currently marked open in the document that owns it: the
-      config keys (generated path and namespace, the override scan, the publish block, `pagination` and `rate_limiting`
-      and every key inside their mappings), the Artisan command signatures and their flags, the controller interface,
-      trait and method names, the exception class names, the vendored directory and the refetch flag, and the driver
-      registration API. Settling them before the first release costs nothing; after it, each one costs a major.
-- [ ] **Close the support-matrix rows a first release cannot leave `Open`.** Chiefly: whether a document containing
-      `trace` fails to load or only the operation is refused, whether a non-conforming path parameter name is rejected
-      absolutely or has an escape hatch for specs the consumer does not own, and what happens to `options` and `head`.
-      Each is behavior a consumer writes code against.
-- [ ] **A command reference document.** [The doctor](../guide/doctor.md) already defers its usage details to one, and
-      three more commands arrive before the first tag.
-- [ ] **Publish to Packagist** as `gcob/lara-spec-first`, and cut the first tag. The `Planned` distribution row in
-      [`stack.md`](./stack.md).
 
 ## Phase 3: Legacy Bridge & Ecosystem
 

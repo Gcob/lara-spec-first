@@ -28,10 +28,12 @@ claimed to read it — the whole promise is that the spec is the source of truth
 > applies to its own Status column.
 >
 > **Shipped:** [reading a document](#reading-a-document), [where the parser sits](#where-the-parser-sits-decided), and
-> extracting its operations into `Contract\` types — `Operation`, `HttpMethod`, `PathTemplate`, `Audience`, `Lifecycle`
-> and `SecurityRequirement` all exist, and the 3.0/3.1 [version strategy](#handling-30-and-31-the-version-strategy)
-> already normalizes them identically. Not yet built: registering a route from any of it, `spec:build`, and
-> `spec:doctor`.
+> extracting its operations into `Contract\` types: `Operation`, `HttpMethod`, `PathTemplate`, `Audience`, `Lifecycle`
+> and `SecurityRequirement` all exist. The [version strategy](#handling-30-and-31-the-version-strategy) is the seam and
+> is dispatched to, but so far it only rejects a root shape its version forbids: normalization happens in
+> `OperationExtractor`, and what pins the 3.0/3.1 equivalence is a conformance class requiring both spellings of one
+> contract to come out identical. Not yet built: registering a route from any of it, `spec:build`, and `spec:doctor`.
+> The full state is in the [roadmap](../project/roadmap.md#where-the-code-is-today).
 
 Seven subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below still govern all of
 them:
