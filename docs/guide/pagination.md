@@ -4,8 +4,9 @@ audience: Users
 covers: >
     Why OpenAPI has no vocabulary for pagination and the conventions specifications use instead, the adapter interface
     that normalizes both the request parameters and the response envelope, the one built-in driver with its mapping
-    keys, and why pagination support is off until a project configures it. The driver mechanism itself is owned by
-    drivers.md.
+    keys, why pagination support is off until a project configures it, the envelope DTO the build emits per paginated
+    operation, the two seams that let an operation paginate with no Eloquent model at all, and why pagination parameters
+    must be declared in the specification. The driver mechanism itself is owned by drivers.md.
 read_before: >
     Implementing anything that reads a paginated request or shapes a paginated response, or touching the pagination
     configuration.
@@ -53,11 +54,14 @@ question:
 | Where the collection sits in the envelope      | `getCollectionKey()`                       |
 | Where the totals sit                           | `getTotalKey()`, `getLastPageKey()`        |
 
-**Open:** whether one interface covers page-based, offset-based and cursor-based pagination, or whether those are three
-interfaces behind a common parent. They answer genuinely different questions — a cursor has no page number and an offset
-has no last page — and flattening all three into one interface would mean methods that return `null` for whichever style
-is not in use, which is the shape that eventually gets a `match` statement per caller. This needs settling against a
-real specification of each kind before it is decided.
+**The three styles need three shapes, and Laravel already has them.** A cursor has no page number and an offset has no
+last page, so flattening all three into one interface would mean methods returning `null` for whichever style is not in
+use — the shape that eventually grows a `match` statement per caller. Rather than invent that hierarchy, the adapter
+hands back [one of Laravel's own pagination contracts](#laravel-already-owns-the-source-agnostic-contract), which are
+already three interfaces for exactly these three answers.
+
+**Open:** whether the adapter needs all five accessors above once the paginator contract carries most of that state, or
+whether it narrows to the parts the specification alone knows — the parameter names and the envelope keys.
 
 ## Pagination is off until a project configures it
 
@@ -104,19 +108,130 @@ shape is not a claim that it is the standard; it is the one whose behavior we ca
 JSON:API, HAL, and cursor conventions are each coherent enough to be worth a driver and too numerous for this package to
 ship — one built-in is a starting point for the ecosystem, not a claim that the others do not matter.
 
-## Open: the envelope and the generated DTO
+## One envelope DTO per paginated operation
 
-The unresolved problem, and it is specific to pagination rather than inherited from rate limiting: a paginated
-response's schema describes the **envelope**, not the item. So the [generated DTO](./code-generation.md#response-dtos)
-for such an operation is a page object whose collection property holds items of another DTO's type — and PHP has no
-generics to express _a page of `UserDto`_ in a signature that static analysis can check at
-[level 8](../project/stack.md).
+A paginated response's schema describes the **envelope**, not the item, so a paginated operation needs more than one
+generated type. PHP has no generics, so _a page of `UserDto`_ cannot be expressed in a signature static analysis can
+check at [level 8](../project/stack.md).
 
-Three shapes are plausible, none chosen: one generated DTO per paginated operation, envelope and all, which is honest
-and repetitive; one shared page DTO holding an `array` of items, which loses the item type exactly where the developer
-wants it; or a shared page DTO plus a generated `@template`-style annotation that Larastan can read even though PHP
-cannot enforce it. **This needs deciding before pagination is built**, because it decides what the build emits, and it
-is the same class of question as [the two layers](./code-generation.md#two-layers) rather than a detail beneath it.
+**Decision: the build emits one envelope DTO per paginated operation, alongside the item DTO and a metadata DTO.**
+
+```php
+final readonly class UserPageDto
+{
+    /** @param list<UserDto> $data */
+    public function __construct(
+        public array $data,
+        public UserPageMetaDto $meta,
+    ) {}
+}
+```
+
+Two alternatives were weighed and lost. **One shared page DTO holding an `array`** loses the item type exactly where a
+developer wants it, which defeats the point of generating types at all. **A shared page DTO with a `@template`
+annotation** keeps the type for Larastan while PHP enforces nothing, which is a real option but buys generality nobody
+asked for at the cost of a type PHP cannot check.
+
+The chosen shape is honest and repetitive, and the repetition is the price of the property that matters: the return type
+of `routeAction` names exactly what comes back, per operation, and a schema change moves it.
+
+## How a page is produced
+
+**Decision: two seams, and only one of them depends on `x-model`.**
+
+| Seam                                | Question it answers              | Generated body                                                    |
+| ----------------------------------- | -------------------------------- | ----------------------------------------------------------------- |
+| `getPaginator(): Paginator`         | Where does the page come from?   | From `getQuery()` when `x-model` is declared; otherwise it throws |
+| `respondWithCollection(): …PageDto` | How does it become the envelope? | **Always**, because the specification always knows the envelope   |
+
+That split is what makes **pagination possible without `x-model` at all.** The mapping between a paginator's state and
+the envelope's properties comes from the response schema and the config mapping, and neither of those depends on
+Eloquent. So the package keeps doing that half of the work regardless, and a project supplies only the half it alone
+knows.
+
+### Laravel already owns the source-agnostic contract
+
+**Decision: `getPaginator()` returns one of Laravel's own pagination contracts**, not a type this package invents.
+`Illuminate\Contracts\Pagination\Paginator`, `LengthAwarePaginator` and `CursorPaginator` are interfaces, and
+`LengthAwarePaginator` can be constructed from anything:
+
+```php
+new LengthAwarePaginator($items, $total, $perPage, $page);
+```
+
+It costs no new concept, which is the same argument that put middleware on
+[Laravel's `HasMiddleware`](./controllers.md#middleware-is-a-method-not-a-separate-mechanism) rather than on an
+interface of ours. And it partly closes a question this document left open: those three contracts line up with the three
+pagination styles — page, length-aware, and cursor — so the styles do not each need an invention of their own.
+
+### The case that proves the split: an operation with no model at all
+
+An operation proxying an upstream paginated service wants no Eloquent, no query and no `x-model`, which is entirely
+legitimate. It still gets `UserPageDto`, `UserDto` and `UserPageMetaDto` from its response schema, and it overrides one
+method:
+
+```php
+// In the custom controller. The only thing the package could not know.
+protected function getPaginator(): Paginator
+{
+    $upstream = Http::get('https://…/users', request()->query())->json();
+
+    return new LengthAwarePaginator(
+        $upstream['results'], $upstream['count'], 25, request()->integer('page', 1),
+    );
+}
+```
+
+`respondWithCollection()` stays generated and maps that paginator into the envelope. The developer writes where the data
+comes from; the package writes the shape it goes into.
+
+**And the `501` chain still holds.** `getPaginator()` is concrete but throws when nothing can supply a page, so the
+generated class stays instantiable and answers `501`. Since a class with no
+[`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) is `final`, a paginated operation with
+neither `x-model` nor `x-controller` answers `501` permanently — which is correct, because nothing has said where its
+data would come from.
+
+### What the generated body looks like
+
+The mapping is resolved at build time, so the generated code contains the **resolved names** rather than a lookup:
+
+```php
+protected function respondWithCollection(): UserPageDto
+{
+    $paginator = $this->getPaginator();
+
+    return new UserPageDto(
+        data: UserDtoFactory::collection($paginator->items()),
+        meta: new UserPageMetaDto(total: $paginator->total(), lastPage: $paginator->lastPage()),
+    );
+}
+```
+
+Nothing here reads configuration at request time, and nothing composes an object graph to hide what is happening. That
+is the property [the docblock norm](./code-generation.md#every-generated-file-explains-itself) exists to serve: open the
+file, read what it does.
+
+Two details the generated code must take from the specification rather than invent:
+
+- **The page size default comes from the parameter's declared `default`**, never a hardcoded `15`. A default the
+  specification did not state would be code contradicting the contract, which is the one failure this package exists to
+  prevent.
+- **The parameter names come from [the mapping](#one-built-in-driver)**, so a project calling its size parameter
+  `pageSize` gets `pageSize` in the generated code.
+
+### Pagination parameters must be declared in the specification
+
+**Decision: the package never accepts a query parameter the contract does not declare.** A tempting shortcut is for the
+build to inject `page` and `size` validation into the [generated `FormRequest`](../project/roadmap.md) whenever an
+operation is paginated. **It is rejected**, and the reason is the direction of truth rather than effort: parameters the
+specification does not mention would be invisible to anyone reading it, and the code would have become authoritative
+over what the API accepts.
+
+The consequence runs the other way. **A paginated response whose operation declares no pagination parameters is a
+[doctor](./doctor.md) finding**: the contract promises a page but gives a consumer no documented way to ask for one. The
+mapping says what the parameters are called, the specification says they exist, and the doctor checks the two agree —
+the same shape as
+[the security scheme naming contract](./security.md#scheme-names-are-a-naming-contract-with-your-guards).
 
 ## Open questions
 
@@ -127,6 +242,11 @@ is the same class of question as [the two layers](./code-generation.md#two-layer
 - Whether [the doctor](./doctor.md) reports an operation that looks paginated while no driver is configured. It has no
   reliable way to know a response is a page, which is the whole premise of this document — so any such check is a
   heuristic, and a heuristic that fires on the wrong endpoint is worse than silence under
-  [rule 2](./openapi-support.md#the-four-rules).
+  [rule 2](./openapi-support.md#the-four-rules). This is a different question from
+  [the declared-parameters finding](#pagination-parameters-must-be-declared-in-the-specification), which fires only once
+  a driver has already established that the response is a page.
+- The seam name for a collection that is **not** paginated. It has the same need as `getPaginator()` and a different
+  shape — items rather than a page — so it is probably a second method, generated in its place, and that is one more
+  public name to settle.
 - How this interacts with [the mock server and Faker responses](../project/roadmap.md): a mocked paginated endpoint has
   to produce a coherent envelope, not a random one, or the mock contradicts the contract it was generated from.

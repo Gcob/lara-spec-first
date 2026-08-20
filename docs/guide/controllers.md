@@ -489,9 +489,22 @@ around the wrong audience rather than trusting the one this package is for.
 
 ## Where pagination attaches
 
-Nowhere new: it is part of what `respondWithCollection()` does when the operation's response declares a page, and the
-generated body says so in plain code rather than through a composed object. An operation whose response is not
-[paginated](./pagination.md) gets a `respondWithCollection()` that simply does not paginate.
+Nowhere new, and it splits along the same line everything else here does. `respondWithCollection()` maps a page into the
+envelope, and a second seam says where the page comes from:
+
+| Seam                        | Depends on `x-model`                             |
+| --------------------------- | ------------------------------------------------ |
+| `getPaginator(): Paginator` | Yes for its default body; otherwise it throws    |
+| `respondWithCollection()`   | No — the envelope comes from the response schema |
+
+**Which means an operation can paginate with no model at all.** A proxy in front of an upstream paginated service
+overrides `getPaginator()`, returns one of
+[Laravel's own pagination contracts](./pagination.md#laravel-already-owns-the-source-agnostic-contract), and keeps the
+generated envelope mapping. [`pagination.md`](./pagination.md#how-a-page-is-produced) owns the detail.
+
+`getPaginator()` is parameterless, so it belongs to
+[the interface family that can carry a real contract](#the-model-contract-is-an-interface-a-trait-supplies-what-it-can)
+rather than to the empty markers — the same rule, applied again.
 
 That is the practical payoff of dropping the context objects. The earlier design had to answer "how does a capability
 attach to a context" as a design question; now the build writes the calls it decided on, and the generated file's own
