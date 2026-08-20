@@ -407,9 +407,8 @@ are decided:
 - ~~`php artisan route:cache`~~ **Settled.** Generating the routes rather than deriving them at boot answered most of
   it, and the rest is now verified rather than intended: the registration is a
   [`[Controller::class, 'routeAction']` pair of plain strings](./code-generation.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
-  a test puts a generated collection through the exact steps `route:cache` performs and requires the exported file back,
-  and a real `route:cache` run against the workbench application caches the generated routes and reports success. The
-  provider loads the file through `loadRoutesFrom()`, so a cached application skips it as it should.
+  and a test runs the real command over a generated tree, then requires the cache file it wrote and checks the routes
+  come back. The provider loads the file through `loadRoutesFrom()`, so a cached application skips it as it should.
 - `webhooks` (3.1) and `callbacks`: not routes on this server.
 - `HEAD` and `OPTIONS`: Laravel handles HEAD for GET automatically, so an explicit `head` operation conflicts.
 - Phase 2 territory: `style` and `explode`, `deepObject`, `multipart/form-data` with `encoding`, multi-media-type

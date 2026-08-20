@@ -93,11 +93,10 @@ the code, and a gap in it is loud.
       the YAML decoder. One
       [`routes.php` at the root of the generated tree](../guide/code-generation.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
       loaded through Laravel's own `loadRoutesFrom()`, and a missing one is silence rather than an exception because
-      `spec:build` is a command of this same package. Serializability is verified rather than hoped for: a test puts a
-      generated collection through the exact steps `route:cache` performs and requires the exported file back, and a
-      real `php artisan route:cache` run against the workbench application caches the generated routes and reports
-      success. **The writing half belongs to `spec:build` below** — nothing emits that file yet, so what is proven here
-      is the loading, against a fixture standing in for generated output.
+      `spec:build` is a command of this same package. Serializability is verified rather than hoped for, by the real
+      command: a test runs `route:cache` over a generated tree, then requires the cache file it wrote and checks the
+      routes come back working. **The writing half belongs to `spec:build` below** — nothing emits that file yet, so
+      what is proven here is the loading, against a fixture standing in for generated output.
 - [ ] **`spec:build`, in its Phase 1 form:** resolve the specification and emit the routes and the generated
       controllers. Idempotent, ordered, and it never writes outside its own directories. That last property is the
       [invariant](../guide/code-generation.md#the-invariant-a-build-never-destroys-human-work) stated without a clause
@@ -310,8 +309,10 @@ Everything a consumer writes code against stops being ours to change here.
       a compatibility contract, and each is currently marked open in the document that owns it: the config keys
       (generated path and namespace, the override scan, the publish block, `pagination` and `rate_limiting` and every
       key inside their mappings), the Artisan command signatures and their flags, the controller interface, trait and
-      method names, the exception class names, the vendored directory and the refetch flag, and the driver registration
-      API. Settling them here costs nothing; after `1.0`, each one costs a major.
+      method names, the exception class names, the vendored directory and the refetch flag, the driver registration API,
+      and **the generated tree's own layout** — the `routes.php` filename and its position at the root of that tree,
+      which the build's writer and the runtime's reader both have to agree on. Settling them here costs nothing; after
+      `1.0`, each one costs a major.
 - [ ] **Close the support-matrix rows a stable release cannot leave `Open`.** Chiefly: whether a document containing
       `trace` fails to load or only the operation is refused, whether a non-conforming path parameter name is rejected
       absolutely or has an escape hatch for specs the consumer does not own, and what happens to `options` and `head`.

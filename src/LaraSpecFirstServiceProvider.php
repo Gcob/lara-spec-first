@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst;
 
 use Gcob\LaraSpecFirst\Configuration\ConfigurationMerger;
+use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
-use RuntimeException;
 
 /**
  * Entry point of the package into a Laravel application.
@@ -92,6 +92,15 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
      * `spec:doctor`, which is where drift is caught before a deploy rather than
      * during one.
      *
+     * **An unusable setting is a different matter and does throw**, because
+     * nothing can be looked for without a path. But not in the console, and that
+     * exemption is the same reasoning as the paragraph above rather than a
+     * softening of it: throwing everywhere would take `config:clear`,
+     * `spec:build` and `spec:doctor` down with the application, leaving a cached
+     * broken configuration with no way out but deleting a cache file by hand. A
+     * request fails loudly; the commands that repair the installation stay
+     * reachable.
+     *
      * `loadRoutesFrom()` rather than a plain require, because it is what skips
      * the file when the application's routes are already cached.
      *
@@ -100,14 +109,17 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
      */
     private function loadGeneratedRoutes(): void
     {
-        /** @var string $configured */
-        $configured = $this->app->make(Repository::class)->get('lara-spec-first.generated.path');
+        $configured = $this->app->make(Repository::class)->get(GeneratedRoutesLocator::SETTING);
 
-        if (! $configured) {
-            throw new RuntimeException('The configuration key lara-spec-first.generated.path is missing or empty. Please check your configuration.');
+        try {
+            $locator = GeneratedRoutesLocator::fromConfiguration($this->app->basePath(), $configured);
+        } catch (UnusableSettingException $refusal) {
+            if ($this->app->runningInConsole()) {
+                return;
+            }
+
+            throw $refusal;
         }
-
-        $locator = new GeneratedRoutesLocator($this->app->basePath(), $configured);
 
         if (! $locator->exists()) {
             return;

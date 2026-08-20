@@ -369,10 +369,16 @@ else. What the emitter writes is the registration itself, with the controller na
   during one. This is the same division of labour as everywhere else here: refusing to load and reporting a fault are
   different jobs.
 
-**A missing file and an unusable setting are not the same thing, and only the first one is silent.** An empty
-`generated.path` throws at boot, naming the key: nothing can be looked for without a path, so carrying on would mean
-registering no route on an application that asked for some. The distinction is worth stating because the two failures
-look alike from the outside and have opposite correct answers.
+**A missing file and an unusable setting are not the same thing, and only the first one is silent.** A `generated.path`
+that is empty, or is not a string at all, throws and names the key: nothing can be looked for without a path, so
+carrying on would mean registering no route on an application that asked for some. The distinction is worth stating
+because the two failures look alike from the outside and have opposite correct answers.
+
+**But not in the console, and that exemption comes from the same reasoning rather than softening it.** Throwing
+everywhere would take `config:clear`, `spec:build` and `spec:doctor` down with the application, so a project that has
+cached a broken configuration would have no way out but deleting a cache file by hand. A request fails loudly; the
+commands that repair the installation stay reachable. It is the deadlock argument above, applied to a setting instead of
+to a file.
 
 An absolute value for the configured path is taken as written rather than joined under the application root. A generated
 tree outside that root is a real monorepo layout, and joining an absolute path anyway produces a path that is silently

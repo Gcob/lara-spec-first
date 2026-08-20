@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Routing;
 
+use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
+
 /**
  * Resolves where the generated route registrations are, and says whether they
  * are there yet. It never opens the file and never holds a route.
@@ -32,10 +34,44 @@ final readonly class GeneratedRoutesLocator
      */
     public const string FILE = 'routes.php';
 
+    /**
+     * The configuration key naming the tree this looks in.
+     *
+     * Held here so that the diagnostic and the lookup cannot name two different
+     * settings.
+     */
+    public const string SETTING = 'lara-spec-first.generated.path';
+
     public function __construct(
         private string $basePath,
         private string $configuredPath,
     ) {}
+
+    /**
+     * Build one from whatever the application put in configuration.
+     *
+     * The validation lives here rather than in the caller because this is the
+     * only class that knows what it needs, and because a `mixed` from a config
+     * repository is exactly the shape a type annotation would have lied about:
+     * a key set to null, to a list, or to an integer all reach this point, and
+     * all three would become a `TypeError` from the constructor rather than a
+     * message naming the setting.
+     *
+     * @param  mixed  $configuredPath  as the configuration repository returned it
+     *
+     * @throws UnusableSettingException
+     */
+    public static function fromConfiguration(string $basePath, mixed $configuredPath): self
+    {
+        if (! is_string($configuredPath) || trim($configuredPath) === '') {
+            throw UnusableSettingException::setting(
+                self::SETTING,
+                'a non-empty path to the directory the build generates into',
+            );
+        }
+
+        return new self($basePath, $configuredPath);
+    }
 
     /**
      * The generated routes file, whether it has been written.

@@ -6,10 +6,10 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Controllers\ShowCurrentUserController;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Controllers\ShowUserController;
 use Gcob\LaraSpecFirst\Tests\TestCase;
-use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
-use Illuminate\Routing\RouteCollection;
 
 /*
  * The routes fixture is placed at the *default* configured location rather than
@@ -34,6 +34,11 @@ function generatedTree(): string
 }
 
 beforeAll(function (): void {
+    // Removed before as well as after. An `afterAll` does not run on a fatal
+    // error or a Ctrl-C, and a leaked fixture at the default location is state
+    // another test file would read as a generated tree.
+    @unlink(generatedTree().'/'.GeneratedRoutesLocator::FILE);
+
     if (! is_dir(generatedTree())) {
         mkdir(generatedTree(), 0o777, true);
     }
@@ -86,7 +91,7 @@ it('preserves the order the generated file declares', function (): void {
 // helper, because the assertion is about which controller answered and the
 // exact body says that where `assertSee` only says the body contains it.
 it('lets the first matching route win', function (string $uri, string $answer): void {
-    $response = app(Kernel::class)->handle(Request::create($uri));
+    $response = app(HttpKernel::class)->handle(Request::create($uri));
 
     expect($response->getStatusCode())->toBe(200)
         ->and($response->getContent())->toBe($answer);
@@ -109,43 +114,34 @@ it('points every route at a controller by name rather than at a closure', functi
     }
 });
 
-// `route:cache` cannot be invoked as a command from here: it boots a fresh
-// application from the skeleton's bootstrap/app.php, which does not carry this
-// package's provider, so it would cache a collection the fixture is not in and
-// report success without having looked at our routes. A green command proving
-// nothing would be worse than no test, so the test performs the command's own
-// steps against the application that does hold them.
+// The real command, not a reconstruction of its steps. It works from here for a
+// reason worth writing down, because the opposite was assumed first: `route:cache`
+// boots a fresh application from the skeleton's bootstrap/app.php, and that file
+// reads testbench.yaml, which registers this package. So the collection the
+// command caches is the one holding the generated routes.
 //
-// The end-to-end confirmation belongs to the workbench application, where
-// testbench.yaml registers the provider.
-it('survives everything route:cache does to it', function (): void {
-    // Our routes in a collection of their own rather than the application's,
-    // which narrows the claim to the ones the build owns: a green assertion
-    // over Testbench's routes as well would be partly about somebody else's.
-    $routes = new RouteCollection;
-
-    foreach (generatedRoutes() as $route) {
-        $routes->add($route);
-    }
-
-    $routes->refreshNameLookups();
-    $routes->refreshActionLookups();
-
-    foreach ($routes->getRoutes() as $route) {
-        $route->prepareForSerialization();
-    }
-
-    $compiled = $routes->compile();
-
-    // var_export renders an object as `\Foo::__set_state(...)`, which is not
-    // loadable PHP for most classes — so requiring the file back is what proves
-    // the collection held nothing but arrays and scalars.
-    $file = tempnam(sys_get_temp_dir(), 'lsf-routes-').'.php';
-    file_put_contents($file, '<?php return '.var_export($compiled, true).';');
+// Requiring the file it wrote is what makes the assertion strong. The cache is
+// PHP the application loads at boot, built with var_export, which renders an
+// object as `\Foo::__set_state(...)` and is not loadable for most classes. A
+// cache that requires cleanly and hands back working routes could not have held
+// a closure or an object where a string belongs.
+it('survives a real route:cache run', function (): void {
+    $cached = app()->getCachedRoutesPath();
+    @unlink($cached);
 
     try {
-        expect(require $file)->toEqual($compiled);
+        expect(app(Kernel::class)->call('route:cache'))->toBe(0);
+
+        require $cached;
+
+        $uris = array_map(
+            static fn (Route $route): string => $route->uri(),
+            app('router')->getRoutes()->getRoutes(),
+        );
+
+        expect($uris)->toContain('users/me')
+            ->and($uris)->toContain('users/{id}');
     } finally {
-        @unlink($file);
+        @unlink($cached);
     }
 });

@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Exceptions\NotImplementedYetException;
+use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\LaraSpecFirstServiceProvider;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
-use Illuminate\Routing\Route;
 
 it('is loaded into the application', function () {
     expect(app()->getLoadedProviders())
@@ -18,37 +18,38 @@ it('is loaded into the application', function () {
 // provider that refused to boot without a generated tree would make the
 // application unbootable exactly when the command that writes one needs to run.
 //
-// Asserting that the router is globally empty would test the framework rather
-// than this package: Testbench registers routes of its own, and how many
-// depends on the Laravel version. Filter to routes a generated tree would own.
-it('boots without complaint when nothing has been generated', function () {
-    $generated = collect(app('router')->getRoutes()->getRoutes())
-        ->filter(fn (Route $route) => str_contains($route->getActionName(), 'Generated'));
+// Pointed at a directory that cannot exist rather than reading whatever happens
+// to be at the default location, so the assertion depends on nothing another
+// test file may have written there.
+it('registers nothing when no generated routes file exists', function (): void {
+    config()->set(GeneratedRoutesLocator::SETTING, 'does/not/exist');
 
-    expect($generated)->toBeEmpty();
+    $before = count(app('router')->getRoutes()->getRoutes());
+
+    (new LaraSpecFirstServiceProvider(app()))->boot();
+
+    expect(app('router')->getRoutes()->getRoutes())->toHaveCount($before);
 });
 
 // The default is relative to the application root, so what the provider looks
-// for on a stock installation is one predictable file.
+// for on a stock installation is one predictable file. Path resolution only:
+// whether anything is at that path is another test's subject, and asserting it
+// here would couple this file to what the routing tests write.
 it('looks for its routes in the generated tree the configuration names', function (): void {
-    $locator = new GeneratedRoutesLocator(base_path(), config()->string('lara-spec-first.generated.path'));
+    $locator = new GeneratedRoutesLocator(base_path(), config()->string(GeneratedRoutesLocator::SETTING));
 
-    expect($locator->path())->toBe(base_path('app/Http/Generated/routes.php'))
-        ->and($locator->exists())->toBeFalse();
+    expect($locator->path())->toBe(base_path('app/Http/Generated/routes.php'));
 });
 
-// A missing *file* is silence, an unusable *setting* is not, and the two are
-// easy to conflate. Nothing can be looked for without a path, so continuing
-// would mean silently registering no route on an application that asked for
-// some — which is the failure this package exists to prevent.
-//
-// `boot()` is called directly because it has already run by the time a test
-// body does, and it is the provider's own documented entry point.
-it('refuses to boot when the generated path is configured empty', function (): void {
-    config()->set('lara-spec-first.generated.path', '');
+// The console is the way out of a broken configuration, so the one place the
+// refusal must not fire is the one place it could strip you of `config:clear`,
+// `spec:build` and `spec:doctor` at once. The refusal itself is a unit test,
+// where the branch is reachable without a booted application.
+it('lets the console through a setting it would refuse a request on', function (): void {
+    config()->set(GeneratedRoutesLocator::SETTING, '');
 
     expect(fn () => (new LaraSpecFirstServiceProvider(app()))->boot())
-        ->toThrow(RuntimeException::class, 'lara-spec-first.generated.path');
+        ->not->toThrow(UnusableSettingException::class);
 });
 
 it('publishes a configuration whose default allows no host', function (): void {

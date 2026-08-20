@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Exceptions\SpecException;
+use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 
 it('resolves a relative configured path against the application root', function (): void {
@@ -65,4 +67,44 @@ it('does not mistake a directory for the routes file', function (): void {
         rmdir($base.'/Generated');
         rmdir($base);
     }
+});
+
+// Everything a configuration repository can hand back, not only the empty
+// string. A `@var string` annotation on that call would have claimed these were
+// impossible, and each one would have surfaced as a TypeError from the
+// constructor instead of a message naming the setting.
+it('refuses a configured path it cannot look in', function (mixed $configured): void {
+    expect(fn () => GeneratedRoutesLocator::fromConfiguration('/srv/app', $configured))
+        ->toThrow(UnusableSettingException::class, GeneratedRoutesLocator::SETTING);
+})->with([
+    'empty' => '',
+    'whitespace' => "  \t ",
+    'missing' => null,
+    'a list' => [['app/Http/Generated']],
+    'a number' => 42,
+    'a boolean' => false,
+]);
+
+// The marker interface is the package's promise that one `catch` covers
+// everything it throws, and this is the exception that fires at boot — the worst
+// one to leave outside it.
+// A real catch clause rather than `toThrow(SpecException::class)`, which treats
+// an interface name as a message to match against. Written this way the test is
+// the claim: the marker interface alone is enough to hold this.
+it('throws a refusal a single catch can hold', function (): void {
+    $caught = null;
+
+    try {
+        GeneratedRoutesLocator::fromConfiguration('/srv/app', '');
+    } catch (SpecException $refusal) {
+        $caught = $refusal;
+    }
+
+    expect($caught)->toBeInstanceOf(UnusableSettingException::class);
+});
+
+it('accepts a usable configured path', function (): void {
+    $locator = GeneratedRoutesLocator::fromConfiguration('/srv/app', 'app/Http/Generated');
+
+    expect($locator->path())->toBe('/srv/app/app/Http/Generated/routes.php');
 });
