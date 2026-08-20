@@ -193,10 +193,14 @@ arch('the OpenAPI parser stays inside Parsing')
 That is stricter than forbidding the parser to the request path, and simpler: there is one boundary to state rather than
 a list of namespaces to keep current as the package grows.
 
-**Honest about what it proves today.** No file in `src/` imports the parser yet, so the assertion is true by vacuity —
-it guards the door of a room that is still empty. It becomes binding with the first `use cebe\openapi\…` anyone writes,
-which is exactly when it is needed, and writing it now costs nothing where retrofitting it after the imports exist would
-cost an audit.
+**And it is binding now rather than in principle.** `OperationExtractor` imports the parser, so the assertion has
+something to constrain: it was written while the room was still empty, which cost nothing, and it started doing work the
+day the first `use cebe\openapi\…` was added. Retrofitting it after the imports existed would have cost an audit.
+
+**Honest about what it proves.** The assertion reads imports, not data. Importing a `cebe\openapi\` class outside
+`Parsing\` fails it; handing the same content across the boundary as a plain array does not. The boundary is only as
+real as the types crossing it, which is why `Parsing\` returns `Contract\` objects and why a second assertion forbids
+`Contract\` from knowing anything about the layer that produced it.
 
 ## Parser caveats
 

@@ -15,9 +15,11 @@ Guidance for AI coding agents working on `lara-spec-first`.
 This package is **Spec-First**: the OpenAPI contract is the source of truth, and PHP follows from it. When a change
 would make the code authoritative over the spec, it is going the wrong way.
 
-The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/project/roadmap.md)). The package structure, the
-toolchain and the test suite are in place. It now reads a specification file — decoding it, detecting its version and
-refusing what it cannot serve — but it does not yet hand anything to the OpenAPI parser, and it registers no routes.
+The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/project/roadmap.md)). It reads a specification
+file, refuses what it cannot serve, resolves its references through the OpenAPI parser and hands out its own `Contract\`
+types. It generates no PHP and registers no route: `Generation\`, `Console\` and `Routing\` do not exist yet. The
+roadmap's [state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list, checked boxes
+meaning behavior with tests behind it.
 
 Verify your work with `just check` (or `composer check`) — Pint, Larastan, then Pest.
 

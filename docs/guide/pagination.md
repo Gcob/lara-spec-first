@@ -35,7 +35,8 @@ and the honest answer is to make the project state which convention it uses rath
 wrong for most readers. Both features are therefore [driver-based](./drivers.md), and that shared mechanism — structure
 in code, names in config, a project free to write its own — is what makes stating it cheap.
 
-> **Not implemented yet, and not yet slotted into a phase.** Items marked `Open` are undecided.
+> **Not implemented yet.** [Phase 2](../project/roadmap.md#the-driver-features), alongside the response DTOs it needs:
+> the envelope is a generated type like any other. Items marked `Open` are undecided.
 
 ## Decision: an adapter behind one interface
 

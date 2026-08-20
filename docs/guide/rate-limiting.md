@@ -26,7 +26,10 @@ Neither convention is something this package can discover — there is no `opera
 thing everywhere, and guessing wrong here is worse than declaring nothing, per
 [rule 2](./openapi-support.md#the-four-rules).
 
-> **Not implemented yet, and not yet slotted into a phase.** Items marked `Open` are undecided.
+> **Not implemented yet.** [Phase 2](../project/roadmap.md#the-driver-features). One thing has to be settled before the
+> adapter is more than an interface, and the roadmap says so too: whether what reads it is
+> [build-time enforcement or a runtime relay](#open-what-the-adapters-answer-actually-powers). Items marked `Open` are
+> undecided.
 
 ## Decision: an adapter behind one interface
 

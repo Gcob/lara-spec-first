@@ -57,8 +57,8 @@ What follows from it:
 - **The parser is a build-time dependency in practice.** `cebe\openapi\` classes must never be reachable from the
   routing or request path. This is not a convention to remember: the architecture test contains the parser to
   [one namespace](./openapi-support.md#where-the-parser-sits-decided), which forbids it to the request path and to
-  everything else at once. The assertion is written and passes today without constraining anything, since no file
-  imports the parser yet; it starts doing work with the first import.
+  everything else at once. The assertion was written before anything imported the parser and is binding now that
+  `OperationExtractor` does.
 - **Boot cost is loading PHP**, which is what `route:cache` and the opcode cache already optimize. No work to memoize,
   no cache of our own to invent.
 - **The boundary is the production request path, not the process.** Serving a real application's traffic never involves
