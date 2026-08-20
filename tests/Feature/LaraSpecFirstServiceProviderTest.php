@@ -54,13 +54,26 @@ it('scans nothing for overrides until a project names a directory', function ():
     expect(config('lara-spec-first.overrides.scan'))->toBe([]);
 });
 
-// Null disk, so no sanitized copy is written anywhere by default. The keep list
-// is the inverse of a strip list on purpose: an extension nobody named is
-// dropped rather than published by omission.
+// The disk is the switch, so a null disk publishes nothing no matter what the
+// path says. The keep list is the inverse of a strip list on purpose: an
+// extension nobody named is dropped rather than published by omission, and
+// `x-audience` is absent because internal operations are removed outright.
 it('publishes no sanitized specification by default', function (): void {
     expect(config('lara-spec-first.publish.disk'))->toBeNull()
         ->and(config('lara-spec-first.publish.keep_extensions'))
-        ->toBe(['x-audience', 'x-lifecycle', 'x-sunset']);
+        ->toBe(['x-lifecycle', 'x-sunset']);
+});
+
+// Five keys that are exactly as much public API surface as the rate limit
+// mapping beside them, and nothing else pins them.
+it('defaults the pagination mapping to Laravel\'s own envelope', function (): void {
+    expect(config('lara-spec-first.pagination.mapping'))->toBe([
+        'page' => 'page',
+        'size' => 'per_page',
+        'collection' => 'data',
+        'total' => 'meta.total',
+        'last_page' => 'meta.last_page',
+    ]);
 });
 
 // A null driver means the feature does nothing at all, which is the only honest

@@ -492,10 +492,10 @@ around the wrong audience rather than trusting the one this package is for.
 Nowhere new, and it splits along the same line everything else here does. `respondWithCollection()` maps a page into the
 envelope, and a second seam says where the page comes from:
 
-| Seam                        | Depends on `x-model`                             |
-| --------------------------- | ------------------------------------------------ |
-| `getPaginator(): Paginator` | Yes for its default body; otherwise it throws    |
-| `respondWithCollection()`   | No — the envelope comes from the response schema |
+| Seam                                         | Depends on `x-model`                             |
+| -------------------------------------------- | ------------------------------------------------ |
+| `getPaginator(): Paginator\|CursorPaginator` | Yes for its default body; otherwise it throws    |
+| `respondWithCollection()`                    | No — the envelope comes from the response schema |
 
 **Which means an operation can paginate with no model at all.** A proxy in front of an upstream paginated service
 overrides `getPaginator()`, returns one of

@@ -179,6 +179,13 @@ chooses to ignore stays that project's call: this is still
 developer and takes it; a trait leaves it free and composes, at the cost of not being able to declare abstract members
 quite as directly. It is a question best settled against real generated output.
 
+**And it no longer applies to DTOs, which is a reversal worth naming.** An earlier version of this document made
+response DTOs the canonical example of this split: a generated abstract declaring the shape, a human subclass overriding
+`from()`. [DTOs are now `final readonly`](#response-dtos) and their customization lives in a factory instead, because a
+value object mirroring the contract has no behavior of its own to extend. The two layers still describe the controller
+seam; they no longer describe DTOs. Said plainly so that a reader coming from the old version reads a changed position
+rather than a contradiction.
+
 ## The specification the build reads is private
 
 **Decision: the specification this package consumes is an internal document, and nothing assumes it is safe to
@@ -194,8 +201,8 @@ Neither means anything to a consumer of the API, and both help somebody map an a
 document written for the build is simply not the same document as one written for the public, and treating them as one
 file is how internal detail gets published by accident.
 
-**Decision: `spec:build` can emit a sanitized copy for publication, and does so only when a project configures a path
-for it.** Not by default, in the same spirit as the [remote-reference allowlist](./remote-references.md) and the factory
+**Decision: `spec:build` can emit a sanitized copy for publication, and does so only when a project names a disk to put
+it on.** Not by default, in the same spirit as the [remote-reference allowlist](./remote-references.md) and the factory
 scan: a feature nobody asked for should not start writing files.
 
 **The strip list denies by default rather than allowing by default.** Configuration says which extensions to _keep_, not
@@ -203,10 +210,14 @@ which to remove, and every other `x-` extension is dropped. The reverse would fa
 of its own and forgets to list it, which is exactly when the failure costs the most and is least likely to be noticed.
 This is the same posture the allowlist takes for hosts, applied to information disclosure.
 
-The default keep list is the extensions written _for_ consumers rather than for the build:
-[`x-audience`, `x-lifecycle` and `x-sunset`](./lifecycle.md) exist so that a client can plan around a promise and its
-removal date, so stripping them would remove the one part of this package's own vocabulary the public document should
-carry.
+The default keep list is the extensions that tell a consumer something they can act on:
+[`x-lifecycle` and `x-sunset`](./lifecycle.md) exist so a client can plan around how strong a promise is and when it
+ends, so stripping them would remove the one part of this package's own vocabulary the public document should carry.
+
+**`x-audience` is deliberately not on that list**, even though it is a consumer-facing extension elsewhere. Once
+[internal operations are removed outright](#internal-operations-are-excluded-not-merely-stripped), every operation left
+in the published copy is `public` — so the key would publish a constant, and a constant tells a reader nothing. It is
+the exclusion that carries the information, not the annotation that survived it.
 
 Two properties hold it together:
 
@@ -254,23 +265,23 @@ quietly.
 
 ### Where the public copy goes
 
-**Decision: configuration names a filesystem disk and a path within it, and an empty setting means nothing is
-published.** A disk rather than a bare path, because that is Laravel's own abstraction for "where files go" — the same
-setting then publishes to local storage, to S3, or to whatever a project already has configured, without this package
-knowing the difference.
+**Decision: configuration names a filesystem disk and a path within it. The disk is the switch: it is `null` out of the
+box, and nothing is published until a project sets it.** A disk rather than a bare path, because that is Laravel's own
+abstraction for "where files go" — the same setting then publishes to local storage, to S3, or to whatever a project
+already has configured, without this package knowing the difference. The path has a shipped value because a path with
+nothing to put it on is not a decision anybody has to make.
 
-**The default is `storage/`, and it is the right home here for exactly the reason it was the wrong one elsewhere.** A
-stock Laravel application ships a `storage/app/.gitignore` containing `*`. For a file that must be committed that is a
-trap, which is why the contract baseline is [read from git](./lifecycle.md#unstable-by-default-and-what-stable-costs-us)
-rather than kept there. The public copy is the opposite case: it is derived, the build reproduces it exactly, and
-committing it would mean reviewing a generated diff on every contract change. Being gitignored by default is the correct
-outcome, so the default that produces it is the correct default.
+**The disk to reach for is `public`, and it is not the one Laravel would pick for you.** Laravel's own default disk is
+`local`, rooted at `storage/app/private` and deliberately unreachable over HTTP — a file published there exists and
+answers 404. Serving the document means the `public` disk, rooted at `storage/app/public`, and it means
+`php artisan storage:link` has been run. Naming both the disk and its prerequisite is cheaper than letting somebody
+discover the 404.
 
-**One precision, because "the default disk" would not work.** Laravel's default disk is `local`, rooted at
-`storage/app/private` and deliberately not reachable over HTTP. Serving the document directly means the `public` disk —
-rooted at `storage/app/public`, with a URL — and it means `php artisan storage:link` has been run. Documenting the
-`public` disk as the default, and saying that a symlink is a prerequisite, is cheaper than letting a consumer discover
-that a file exists and answers 404.
+**Landing under `storage/` is right here for exactly the reason it was wrong elsewhere.** A stock Laravel application
+ships a `storage/app/.gitignore` containing `*`. For a file that must be committed that is a trap, which is why the
+contract baseline is [read from git](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) rather than kept
+there. The public copy is the opposite case: it is derived, the build reproduces it exactly, and committing it would
+mean reviewing a generated diff on every contract change. Being gitignored is the correct outcome for it.
 
 Two consequences to state rather than let anyone hit:
 

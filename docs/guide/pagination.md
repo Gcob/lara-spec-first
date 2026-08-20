@@ -56,9 +56,9 @@ question:
 
 **The three styles need three shapes, and Laravel already has them.** A cursor has no page number and an offset has no
 last page, so flattening all three into one interface would mean methods returning `null` for whichever style is not in
-use — the shape that eventually grows a `match` statement per caller. Rather than invent that hierarchy, the adapter
-hands back [one of Laravel's own pagination contracts](#laravel-already-owns-the-source-agnostic-contract), which are
-already three interfaces for exactly these three answers.
+use — the shape that eventually grows a `match` statement per caller. Rather than invent anything, the adapter hands
+back [one of Laravel's own pagination contracts](#laravel-already-owns-the-source-agnostic-contract). Note that those
+contracts are deliberately **not** one hierarchy, which is what the return type there has to account for.
 
 **Open:** whether the adapter needs all five accessors above once the paginator contract carries most of that state, or
 whether it narrows to the parts the specification alone knows — the parameter names and the envelope keys.
@@ -139,10 +139,10 @@ of `routeAction` names exactly what comes back, per operation, and a schema chan
 
 **Decision: two seams, and only one of them depends on `x-model`.**
 
-| Seam                                | Question it answers              | Generated body                                                    |
-| ----------------------------------- | -------------------------------- | ----------------------------------------------------------------- |
-| `getPaginator(): Paginator`         | Where does the page come from?   | From `getQuery()` when `x-model` is declared; otherwise it throws |
-| `respondWithCollection(): …PageDto` | How does it become the envelope? | **Always**, because the specification always knows the envelope   |
+| Seam                                         | Question it answers              | Generated body                                                    |
+| -------------------------------------------- | -------------------------------- | ----------------------------------------------------------------- |
+| `getPaginator(): Paginator\|CursorPaginator` | Where does the page come from?   | From `getQuery()` when `x-model` is declared; otherwise it throws |
+| `respondWithCollection(): …PageDto`          | How does it become the envelope? | **Always**, because the specification always knows the envelope   |
 
 That split is what makes **pagination possible without `x-model` at all.** The mapping between a paginator's state and
 the envelope's properties comes from the response schema and the config mapping, and neither of those depends on
@@ -151,18 +151,34 @@ knows.
 
 ### Laravel already owns the source-agnostic contract
 
-**Decision: `getPaginator()` returns one of Laravel's own pagination contracts**, not a type this package invents.
-`Illuminate\Contracts\Pagination\Paginator`, `LengthAwarePaginator` and `CursorPaginator` are interfaces, and
-`LengthAwarePaginator` can be constructed from anything:
+**Decision: `getPaginator()` returns one of Laravel's own pagination contracts**, not a type this package invents. It
+costs no new concept, which is the same argument that put middleware on
+[Laravel's `HasMiddleware`](./controllers.md#middleware-is-a-method-not-a-separate-mechanism) rather than on an
+interface of ours. And a page can be built from anything, so an operation with no Eloquent behind it is not shut out:
 
 ```php
-new LengthAwarePaginator($items, $total, $perPage, $page);
+new \Illuminate\Pagination\LengthAwarePaginator($items, $total, $perPage, $page);
 ```
 
-It costs no new concept, which is the same argument that put middleware on
-[Laravel's `HasMiddleware`](./controllers.md#middleware-is-a-method-not-a-separate-mechanism) rather than on an
-interface of ours. And it partly closes a question this document left open: those three contracts line up with the three
-pagination styles — page, length-aware, and cursor — so the styles do not each need an invention of their own.
+**Those contracts do not form one hierarchy, and the return type has to say so.** This is worth writing out because the
+short names hide it:
+
+| Contract                                               | Extends     |
+| ------------------------------------------------------ | ----------- |
+| `Illuminate\Contracts\Pagination\Paginator`            | nothing     |
+| `Illuminate\Contracts\Pagination\LengthAwarePaginator` | `Paginator` |
+| `Illuminate\Contracts\Pagination\CursorPaginator`      | **nothing** |
+
+So `getPaginator(): Paginator` would mechanically exclude cursor pagination — the third of the three styles this
+document set out to cover. **Decision: the return type is the union `Paginator|CursorPaginator`**, which is what PHP
+gives us for two unrelated interfaces and which stays honest about the fact that they are unrelated. An umbrella
+interface of our own would be the alternative, and it loses: it would mean every third-party paginator has to implement
+ours before this package will accept it, for no gain over naming both types.
+
+**And the interface differs from the concrete class it is usually built from.**
+`Illuminate\Contracts\Pagination\LengthAwarePaginator` is the interface a method returns;
+`Illuminate\Pagination\LengthAwarePaginator` is the class the example above instantiates. Same short name, two
+namespaces, and a document meant to be implemented as written should not leave that to inference.
 
 ### The case that proves the split: an operation with no model at all
 
@@ -172,7 +188,7 @@ method:
 
 ```php
 // In the custom controller. The only thing the package could not know.
-protected function getPaginator(): Paginator
+protected function getPaginator(): Paginator|CursorPaginator
 {
     $upstream = Http::get('https://…/users', request()->query())->json();
 

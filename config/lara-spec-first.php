@@ -94,7 +94,8 @@ return [
     | your Eloquent class names and `x-controller` your namespace layout, and
     | neither means anything to a consumer of the API.
     |
-    | Null publishes nothing. Naming a disk emits a sanitized copy: every `x-`
+    | The disk is the switch. Null publishes nothing; naming one emits a
+    | sanitized copy: every `x-`
     | extension is dropped except the ones kept below, and operations marked
     | `x-audience: internal` are removed entirely, along with the components,
     | path items and tags left unreferenced behind them.
@@ -106,7 +107,10 @@ return [
     |
     | The keep list denies by default: it says what to keep, never what to
     | remove, so a project's own new extension is dropped rather than leaked by
-    | omission. The defaults are the extensions written for consumers.
+    | omission. The defaults are the extensions a consumer can act on.
+    | `x-audience` is absent on purpose: internal operations are removed
+    | entirely, so every one that survives is public and the key would publish
+    | a constant.
     |
     | See docs/guide/code-generation.md — "The specification the build reads is
     | private".
@@ -116,7 +120,7 @@ return [
     'publish' => [
         'disk' => null,
         'path' => 'openapi.yaml',
-        'keep_extensions' => ['x-audience', 'x-lifecycle', 'x-sunset'],
+        'keep_extensions' => ['x-lifecycle', 'x-sunset'],
     ],
 
     /*
@@ -132,6 +136,10 @@ return [
     | Null does nothing at all: paginated endpoints are treated as ordinary
     | ones until a project states its convention. One driver ships, `laravel`,
     | matching Laravel's own paginator envelope.
+    |
+    | Note that `driver` being a string presupposes resolution by name, while
+    | how a driver gets registered is still open. The key is settled; the
+    | mechanism it names is not.
     |
     | See docs/guide/pagination.md and docs/guide/drivers.md.
     |
@@ -169,6 +177,9 @@ return [
     |
     | Mixing the two levels in one mapping is an error rather than a guess: a
     | string is a field name, an array is a window.
+    |
+    | Same caveat as pagination: the key is settled, the registration mechanism
+    | behind it is not.
     |
     | See docs/guide/rate-limiting.md and docs/guide/drivers.md.
     |

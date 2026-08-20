@@ -39,8 +39,9 @@ indistinguishable, at the wire, from a scheme nobody checks.
 
 ## One middleware, one question: does the model have the scope
 
-An operation's own `security` is already [recorded](./code-generation.md#response-dtos) in `Contract\Operation` as a
-list of schemes and the scopes each one asks for. What was missing is what happens with it.
+An operation's own `security` is already read into `Contract\Operation` as a list of schemes and the scopes each one
+asks for — [`Partial` in the support matrix](./openapi-support.md#references-and-security), and pinned by a test that
+distinguishes an inherited requirement from an explicit opt-out. What was missing is what happens with it.
 
 **Decision: exactly one built-in middleware, `final`, and it asks exactly one question** — does the authenticated model
 have the scope or permission the matched scheme requires — **regardless of which guard authenticated it.** Sanctum,
