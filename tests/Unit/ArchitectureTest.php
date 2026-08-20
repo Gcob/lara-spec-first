@@ -33,6 +33,24 @@ arch('the OpenAPI parser stays inside Parsing')
     ->expect('cebe\openapi')
     ->toOnlyBeUsedIn('Gcob\LaraSpecFirst\Parsing');
 
+// The runtime never sees a specification. Routing\ is what the service provider
+// loads at boot, so it is the one namespace where that promise can be broken by
+// a single import — of the reader, of a guard, or of the YAML decoder underneath
+// them. The parser is already forbidden here by the rule above; these are the
+// rest of the door.
+//
+// Not a hypothetical: writing `{@see}` at a class in another namespace is enough
+// for the formatter to turn it into a real import, which is how the comment
+// below came to be written.
+//
+// See docs/guide/code-generation.md — "The runtime never sees the spec"
+arch('routing at boot cannot reach a specification')
+    ->expect('Gcob\LaraSpecFirst\Routing')
+    ->not->toUse([
+        'Gcob\LaraSpecFirst\Parsing',
+        'Symfony\Component\Yaml',
+    ]);
+
 // Contract\ is what every other layer consumes, so it must know nothing about
 // the layer that produces it. The inversion is easy to introduce by accident —
 // a `{@see}` in a docblock is enough to add the import — and impossible to see

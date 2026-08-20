@@ -3,26 +3,53 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Exceptions\NotImplementedYetException;
+use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\LaraSpecFirstServiceProvider;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
-use Illuminate\Routing\Route;
+use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 
 it('is loaded into the application', function () {
     expect(app()->getLoadedProviders())
         ->toHaveKey(LaraSpecFirstServiceProvider::class);
 });
 
-it('registers no routes of its own yet', function () {
-    // Contract-driven routing lands in a later change; until then the provider
-    // must stay inert.
-    //
-    // Asserting that the router is globally empty would test the framework
-    // rather than this package: Testbench registers routes of its own, and how
-    // many depends on the Laravel version. Filter to routes this package owns.
-    $ours = collect(app('router')->getRoutes()->getRoutes())
-        ->filter(fn (Route $route) => str_contains($route->getActionName(), 'Gcob\\LaraSpecFirst'));
+// The fresh-clone state, and the one that must not throw: .gitignore decides
+// what a project commits, and `spec:build` is a command of this package — a
+// provider that refused to boot without a generated tree would make the
+// application unbootable exactly when the command that writes one needs to run.
+//
+// Pointed at a directory that cannot exist rather than reading whatever happens
+// to be at the default location, so the assertion depends on nothing another
+// test file may have written there.
+it('registers nothing when no generated routes file exists', function (): void {
+    config()->set(GeneratedRoutesLocator::SETTING, 'does/not/exist');
 
-    expect($ours)->toBeEmpty();
+    $before = count(app('router')->getRoutes()->getRoutes());
+
+    (new LaraSpecFirstServiceProvider(app()))->boot();
+
+    expect(app('router')->getRoutes()->getRoutes())->toHaveCount($before);
+});
+
+// The default is relative to the application root, so what the provider looks
+// for on a stock installation is one predictable file. Path resolution only:
+// whether anything is at that path is another test's subject, and asserting it
+// here would couple this file to what the routing tests write.
+it('looks for its routes in the generated tree the configuration names', function (): void {
+    $locator = new GeneratedRoutesLocator(base_path(), config()->string(GeneratedRoutesLocator::SETTING));
+
+    expect($locator->path())->toBe(base_path('app/Http/Generated/routes.php'));
+});
+
+// The console is the way out of a broken configuration, so the one place the
+// refusal must not fire is the one place it could strip you of `config:clear`,
+// `spec:build` and `spec:doctor` at once. The refusal itself is a unit test,
+// where the branch is reachable without a booted application.
+it('lets the console through a setting it would refuse a request on', function (): void {
+    config()->set(GeneratedRoutesLocator::SETTING, '');
+
+    expect(fn () => (new LaraSpecFirstServiceProvider(app()))->boot())
+        ->not->toThrow(UnusableSettingException::class);
 });
 
 it('publishes a configuration whose default allows no host', function (): void {
@@ -39,10 +66,14 @@ it('builds the remote reference guard from the configuration', function (): void
 });
 
 // Every setting below belongs to a feature that is documented and decided but
-// not built. Nothing reads them yet, so what is worth pinning is the default —
-// it is public API surface the moment the package ships, and a default that
-// drifts silently is how a consumer's configuration stops meaning what it said.
+// not built, with one exception noted where it applies. Nothing reads them yet,
+// so what is worth pinning is the default — it is public API surface the moment
+// the package ships, and a default that drifts silently is how a consumer's
+// configuration stops meaning what it said.
 
+// The exception: `generated.path` is read at boot, so its default is behavior
+// rather than only a promise. `generated.namespace` is still only a promise,
+// because nothing emits a class into it yet.
 it('defaults the generated tree to a path and namespace that agree', function (): void {
     expect(config('lara-spec-first.generated.path'))->toBe('app/Http/Generated')
         ->and(config('lara-spec-first.generated.namespace'))->toBe('App\\Http\\Generated');

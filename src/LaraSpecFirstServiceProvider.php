@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst;
 
 use Gcob\LaraSpecFirst\Configuration\ConfigurationMerger;
+use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
+use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -63,14 +65,66 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
 
     /**
      * Boot the package once every provider has been registered.
-     *
-     * Contract-driven route registration will happen here, loading generated
-     * PHP rather than reading a specification.
      */
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
             $this->publishes([self::CONFIG_FILE => $this->app->configPath('lara-spec-first.php')], 'lara-spec-first-config');
         }
+
+        $this->loadGeneratedRoutes();
+    }
+
+    /**
+     * Register the contract's routes by loading the PHP the build emitted.
+     *
+     * No specification is read here, at boot or ever: this method requires one
+     * generated file and knows nothing about how it was produced. That is the
+     * whole of the runtime's involvement with routing.
+     *
+     * **A missing file is silence, not an exception**, and the reason is
+     * structural rather than lenient. `spec:build` is an Artisan command of this
+     * package, so a provider that threw when the generated tree was absent
+     * would make the application unbootable exactly when the command that
+     * creates it needs to run — a fresh clone could never produce its own
+     * routes. It is also a legitimate state on that fresh clone, since
+     * .gitignore decides what a project commits. Reporting it belongs to
+     * `spec:doctor`, which is where drift is caught before a deploy rather than
+     * during one.
+     *
+     * **An unusable setting is a different matter and does throw**, because
+     * nothing can be looked for without a path. But not in the console, and that
+     * exemption is the same reasoning as the paragraph above rather than a
+     * softening of it: throwing everywhere would take `config:clear`,
+     * `spec:build` and `spec:doctor` down with the application, leaving a cached
+     * broken configuration with no way out but deleting a cache file by hand. A
+     * request fails loudly; the commands that repair the installation stay
+     * reachable.
+     *
+     * `loadRoutesFrom()` rather than a plain require, because it is what skips
+     * the file when the application's routes are already cached.
+     *
+     * @see docs/guide/code-generation.md — "The runtime never sees the spec"
+     * @see docs/guide/code-generation.md — "Which generated code is committed"
+     */
+    private function loadGeneratedRoutes(): void
+    {
+        $configured = $this->app->make(Repository::class)->get(GeneratedRoutesLocator::SETTING);
+
+        try {
+            $locator = GeneratedRoutesLocator::fromConfiguration($this->app->basePath(), $configured);
+        } catch (UnusableSettingException $refusal) {
+            if ($this->app->runningInConsole()) {
+                return;
+            }
+
+            throw $refusal;
+        }
+
+        if (! $locator->exists()) {
+            return;
+        }
+
+        $this->loadRoutesFrom($locator->path());
     }
 }

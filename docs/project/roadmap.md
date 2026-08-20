@@ -32,8 +32,8 @@ has to answer.
 
 ## Where the code is today
 
-The package reads a specification, normalizes it, and hands out its own types. It generates nothing and registers no
-route.
+The package reads a specification, normalizes it, and hands out its own types. It knows how to register generated routes
+at boot without reading a specification to do it, and it generates nothing for that to find.
 
 ### What runs
 
@@ -61,15 +61,20 @@ route.
       [`remote_references.allowed_hosts`](../guide/remote-references.md#the-setting) is empty by default and every
       remote reference is refused before the parser can fetch it. Naming a host throws, because the fetching behind it
       is not built and a setting that is read and ignored tells whoever set it that it took effect.
-- [x] **The architecture assertions.** The parser is contained to `Parsing\`, and `Contract\` is forbidden from knowing
-      anything about the layer that produced it. Both are Pest `arch()` tests rather than conventions to remember.
+- [x] **Route registration at boot.** The provider loads one generated `routes.php` and nothing else, skips it when the
+      application's routes are cached, and stays silent when the build has not written one. The loading half only: what
+      the routes point at is not generated yet.
+- [x] **The architecture assertions.** The parser is contained to `Parsing\`, `Contract\` is forbidden from knowing
+      anything about the layer that produced it, and `Routing\` may reach neither `Parsing\` nor the YAML decoder. All
+      three are Pest `arch()` tests rather than conventions to remember.
 
 ### What does not exist yet
 
-Three namespaces name the gap precisely, and they do not exist: `Generation\`, `Console\` and `Routing\` have neither a
-directory nor a file. There is no Artisan command, no generated PHP, and no registered route. Five of the six blocks in
-`config/lara-spec-first.php` are marked `TODO` in the file itself and are inert, which the file says out loud rather
-than leaving to be discovered, and which [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
+Two namespaces name the gap precisely, and they do not exist: `Generation\` and `Console\` have neither a directory nor
+a file. There is no Artisan command and no generated PHP, so an application using this package registers no route in
+practice — what boots is a loader with nothing to load. Four of the six blocks in `config/lara-spec-first.php` are
+marked `TODO` in the file itself and are inert, which the file says out loud rather than leaving to be discovered, and
+which [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
 
@@ -83,11 +88,15 @@ the code, and a gap in it is loud.
 
 ### Generating and registering
 
-- [ ] **`Routing\`: the service provider registers the generated routes.** It **does not read the spec**, at boot or
-      ever. Explicit over dynamic: see
-      [the runtime never sees the spec](../guide/code-generation.md#the-runtime-never-sees-the-spec). The generated
-      registration has to be serializable, which is a concrete requirement rather than a hope, and confirming it against
-      a real `php artisan route:cache` run is part of this item.
+- [x] **`Routing\`: the service provider registers the generated routes.** It **does not read the spec**, at boot or
+      ever, and an architecture assertion says so rather than a convention: `Routing\` may reach neither `Parsing\` nor
+      the YAML decoder. One
+      [`routes.php` at the root of the generated tree](../guide/code-generation.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
+      loaded through Laravel's own `loadRoutesFrom()`, and a missing one is silence rather than an exception because
+      `spec:build` is a command of this same package. Serializability is verified rather than hoped for, by the real
+      command: a test runs `route:cache` over a generated tree, then requires the cache file it wrote and checks the
+      routes come back working. **The writing half belongs to `spec:build` below** — nothing emits that file yet, so
+      what is proven here is the loading, against a fixture standing in for generated output.
 - [ ] **`spec:build`, in its Phase 1 form:** resolve the specification and emit the routes and the generated
       controllers. Idempotent, ordered, and it never writes outside its own directories. That last property is the
       [invariant](../guide/code-generation.md#the-invariant-a-build-never-destroys-human-work) stated without a clause
@@ -280,7 +289,7 @@ every decision is already unchangeable.
 - [ ] **The CI test matrix.** PHP 8.3 / 8.4 / 8.5 against Laravel 12 / 13, six valid combinations with no `exclude`
       block, plus the lowest-dependency run. The docs workflow already exists; this does not. It is the `Planned` CI row
       in [`stack.md`](./stack.md).
-- [ ] **Ship only the config keys that do something.** Five of the six blocks in `config/lara-spec-first.php` are inert,
+- [ ] **Ship only the config keys that do something.** Four of the six blocks in `config/lara-spec-first.php` are inert,
       and the file admits it in a comment: _a `TODO` block is inert, changing it has no effect, and nothing will tell
       you so._ That is precisely the behavior the package refuses elsewhere, where
       [a setting that is not backed yet throws](../guide/remote-references.md#the-setting) rather than lying. A key
@@ -300,8 +309,10 @@ Everything a consumer writes code against stops being ours to change here.
       a compatibility contract, and each is currently marked open in the document that owns it: the config keys
       (generated path and namespace, the override scan, the publish block, `pagination` and `rate_limiting` and every
       key inside their mappings), the Artisan command signatures and their flags, the controller interface, trait and
-      method names, the exception class names, the vendored directory and the refetch flag, and the driver registration
-      API. Settling them here costs nothing; after `1.0`, each one costs a major.
+      method names, the exception class names, the vendored directory and the refetch flag, the driver registration API,
+      and **the generated tree's own layout** — the `routes.php` filename and its position at the root of that tree,
+      which the build's writer and the runtime's reader both have to agree on. Settling them here costs nothing; after
+      `1.0`, each one costs a major.
 - [ ] **Close the support-matrix rows a stable release cannot leave `Open`.** Chiefly: whether a document containing
       `trace` fails to load or only the operation is refused, whether a non-conforming path parameter name is rejected
       absolutely or has an escape hatch for specs the consumer does not own, and what happens to `options` and `head`.

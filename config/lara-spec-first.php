@@ -40,8 +40,13 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Where generated code lives — TODO
+    | Where generated code lives — STARTED
     |--------------------------------------------------------------------------
+    |
+    | `path` is live: it is where the service provider looks for the generated
+    | `routes.php` at boot, and setting it empty throws rather than quietly
+    | registering nothing. `namespace` is not read yet — the build that emits
+    | classes into it does not exist.
     |
     | Under `app/` because it is application code you will read, extend and
     | debug, not a build artefact hidden away. One configurable root, with
