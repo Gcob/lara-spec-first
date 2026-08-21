@@ -1,0 +1,311 @@
+<?php
+
+declare(strict_types=1);
+
+use Gcob\LaraSpecFirst\Contract\Audience;
+use Gcob\LaraSpecFirst\Contract\HttpMethod;
+use Gcob\LaraSpecFirst\Contract\Lifecycle;
+use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
+use Gcob\LaraSpecFirst\Generation\ControllerEmitter;
+use Gcob\LaraSpecFirst\Generation\ControllerName;
+use Gcob\LaraSpecFirst\Generation\GeneratedFile;
+use Gcob\LaraSpecFirst\Generation\PlannedController;
+
+/*
+ * The metadata a generated controller carries is output, so it is asserted the
+ * way any other output is. Three things are promised in writing — provenance,
+ * findings, navigation — and two more that are easy to lose without noticing: the
+ * JSON pointer's escaping, and the absence of anything that would make two runs
+ * differ.
+ *
+ * Emitter-level rather than through the command: what is under test is the text,
+ * and reaching it through a build would mean a filesystem, a document and a
+ * planner standing between the assertion and the string it is about.
+ *
+ * @see docs/guide/code-generation.md — "Every generated file explains itself"
+ */
+
+/**
+ * The PHP of one operation's controller.
+ *
+ * The spec path is passed as the build passes it — already relative to the
+ * project root — because that is the only form a generated file may carry.
+ */
+function emittedController(Operation $operation, string $specPath = 'openapi.yaml'): string
+{
+    $emitter = new ControllerEmitter('App\\Http\\Generated', $specPath);
+
+    return $emitter->emit(new PlannedController($operation, ControllerName::for($operation)))->contents;
+}
+
+/**
+ * One operation, with everything the docblock reads named rather than positional.
+ *
+ * @param  list<SecurityRequirement>|null  $security
+ */
+function operationFor(
+    string $method = 'get',
+    string $path = '/users/{id}',
+    ?string $operationId = 'showUser',
+    Audience $audience = Audience::Public,
+    ?Lifecycle $lifecycle = Lifecycle::Beta,
+    bool $deprecated = false,
+    ?string $sunset = null,
+    ?array $security = null,
+): Operation {
+    return new Operation(
+        0,
+        HttpMethod::from($method),
+        PathTemplate::fromString($path),
+        $operationId,
+        [],
+        $audience,
+        $lifecycle,
+        $deprecated,
+        $sunset,
+        $security,
+    );
+}
+
+/**
+ * The docblock alone, so an assertion about it cannot be satisfied by the code
+ * below it.
+ */
+function emittedDocblock(string $contents): string
+{
+    $start = strpos($contents, '/**');
+    $end = strpos($contents, '*/');
+
+    if ($start === false || $end === false) {
+        throw new RuntimeException('the emitted file carries no docblock');
+    }
+
+    return substr($contents, $start, $end - $start + 2);
+}
+
+describe('the docblock every generated controller carries', function (): void {
+    it('carries the marker, the provenance, the findings and the navigation', function (): void {
+        $docblock = emittedDocblock(emittedController(operationFor()));
+
+        expect($docblock)
+            ->toContain(GeneratedFile::MARKER)
+            ->toContain('DO NOT EDIT')
+            ->toContain('Provenance')
+            ->toContain('Findings')
+            ->toContain('Navigation');
+    });
+
+    // Unconditional, and this is the case that would let a condition hide: an
+    // operation with nothing remarkable about it. Emitting the norm only where
+    // there is something to say would make its absence unreadable.
+    it('carries all three parts for an operation with nothing remarkable about it', function (): void {
+        $docblock = emittedDocblock(emittedController(operationFor(
+            operationId: 'listUsers',
+            path: '/users',
+        )));
+
+        expect($docblock)
+            ->toContain('Provenance')
+            ->toContain('Findings')
+            ->toContain('Navigation');
+    });
+
+    it('names the specification as the build named it, never absolutely', function (): void {
+        $contents = emittedController(operationFor(), 'spec/openapi.yaml');
+
+        expect($contents)->toContain('spec/openapi.yaml')
+            ->and($contents)->not->toContain(dirname(__DIR__, 3));
+    });
+
+    // The navigation points at the file that reaches this class, which is the one
+    // thing a reader cannot work out from the class itself.
+    it('points at the routes file that reaches the class', function (): void {
+        expect(emittedController(operationFor()))->toContain('@see routes.php');
+    });
+
+    // `phpdoc_separation` ships in Pint's Laravel preset and inserts a blank line
+    // before an annotation. Emitting it means a consumer's formatter finds nothing
+    // to change; without it the formatter and the build rewrite each other on
+    // every run, and the idempotence this package promises would hold only for
+    // projects that format nothing.
+    it('separates the annotation the way a formatter would', function (): void {
+        expect(emittedController(operationFor()))->toContain(" *\n *   @see routes.php");
+    });
+
+    // Generated code is read far more than it is written. The width is the
+    // repository's own, and it is enforced here because a finding interpolates
+    // values taken from the document.
+    it('wraps every line of the docblock rather than running one to any length', function (): void {
+        $docblock = emittedDocblock(emittedController(operationFor(
+            operationId: 'showUser',
+            sunset: str_repeat('long-sunset-value ', 20),
+            deprecated: true,
+        )));
+
+        foreach (explode("\n", $docblock) as $line) {
+            expect(mb_strlen($line))->toBeLessThanOrEqual(100, 'a docblock line runs long: '.$line);
+        }
+    });
+});
+
+describe('the source map', function (): void {
+    it('carries the JSON pointer of the operation it came from', function (): void {
+        expect(emittedController(operationFor(method: 'get', path: '/users/{id}')))
+            ->toContain('#/paths/~1users~1{id}/get');
+    });
+
+    // A JSON pointer escapes `~` before `/`, or the escape of one eats the other:
+    // replacing `/` first would turn `~1` into `~01`, which points nowhere.
+    it('escapes a tilde and a slash the way a JSON pointer does', function (): void {
+        expect(emittedController(operationFor(path: '/a~b/{id}', operationId: 'showAB')))
+            ->toContain('#/paths/~1a~0b~1{id}/get');
+    });
+
+    // The method is a document key rather than an HTTP verb here, so it stays as
+    // the document writes it: `#/paths/~1users/GET` resolves to nothing.
+    it('names the method the way the document keys it', function (): void {
+        $contents = emittedController(operationFor(method: 'delete', path: '/users/{id}', operationId: 'removeUser'));
+
+        expect($contents)->toContain('/delete')
+            ->and($contents)->not->toContain('/DELETE');
+    });
+});
+
+describe('the findings', function (): void {
+    it('says whether the class name was declared or derived', function (
+        ?string $operationId,
+        string $expected,
+    ): void {
+        expect(emittedController(operationFor(operationId: $operationId)))->toContain($expected);
+    })->with([
+        'declared' => ['showUser', 'Class name taken from the operation\'s `operationId`.'],
+        'derived' => [null, 'Class name derived from the method and path'],
+    ]);
+
+    // Effective rather than as written: an absent extension is resolved before the
+    // operation reaches the emitter, so the docblock says what applies. Saying
+    // what was written would make a reader open the document to learn what it
+    // means.
+    it('states the effective audience and lifecycle', function (): void {
+        expect(emittedController(operationFor(audience: Audience::Internal, lifecycle: Lifecycle::Stable)))
+            ->toContain('Audience `internal`, lifecycle `stable`');
+    });
+
+    it('says an operation makes no lifecycle claim rather than inventing one', function (): void {
+        expect(emittedController(operationFor(lifecycle: null)))
+            ->toContain('Audience `public`, no lifecycle claim');
+    });
+
+    it('says the operation answers 501 and why the return type is mixed', function (): void {
+        expect(emittedController(operationFor()))
+            ->toContain('answers 501')
+            ->toContain('The return type is `mixed`');
+    });
+
+    it('reports a deprecation, with the removal date when the contract states one', function (
+        ?string $sunset,
+        string $expected,
+    ): void {
+        expect(emittedController(operationFor(deprecated: true, sunset: $sunset)))->toContain($expected);
+    })->with([
+        'no sunset' => [null, 'Marked `deprecated` with no `x-sunset`'],
+        'a sunset' => ['2027-01-01', 'Marked `deprecated`, to be removed on 2027-01-01.'],
+    ]);
+
+    it('says nothing about a deprecation the contract does not declare', function (): void {
+        expect(emittedController(operationFor()))->not->toContain('deprecated');
+    });
+
+    // Read and not enforced is the finding that matters most today: a reader who
+    // sees `security` in the contract would otherwise assume this endpoint is
+    // protected by something the package put there.
+    it('reports security requirements it reads and does not enforce', function (): void {
+        $contents = emittedController(operationFor(security: [
+            SecurityRequirement::fromSchemes(['bearer' => []]),
+            SecurityRequirement::fromSchemes(['oauth' => ['read']]),
+        ]));
+
+        expect($contents)
+            ->toContain('Declares 2 security requirement(s)')
+            ->toContain('not protected by anything this package put there');
+    });
+
+    // Two cases rather than one dataset, because the two nulls mean opposite
+    // things: an operation that says nothing inherits the document's
+    // requirements, and one that declares an empty list requires none.
+    it('reports nothing for an operation that inherits the document\'s requirements', function (): void {
+        expect(emittedController(operationFor(security: null)))->not->toContain('security requirement');
+    });
+
+    it('reports nothing for an operation that explicitly requires none', function (): void {
+        expect(emittedController(operationFor(security: [])))->not->toContain('security requirement');
+    });
+});
+
+describe('what the metadata deliberately does not carry', function (): void {
+    // A clock in the file means different bytes on every run: every file
+    // rewritten every time, and — for a project that tracks its generated tree —
+    // a diff in every file on every build.
+    it('records nothing about when it was generated', function (): void {
+        $contents = emittedController(operationFor());
+
+        expect($contents)->not->toMatch('/\d{4}-\d{2}-\d{2}/')
+            ->and($contents)->not->toContain('generated at')
+            ->and($contents)->not->toContain('created_at')
+            ->and($contents)->not->toContain('updated_at');
+    });
+
+    it('emits the same bytes twice for the same operation', function (): void {
+        $operation = operationFor();
+
+        expect(emittedController($operation))->toBe(emittedController($operation));
+    });
+
+    // A specification is data and a generated file is code, so every value the
+    // docblock takes from the document is neutralized on the way in. A `*/` that
+    // reaches the file ends the comment early and turns whatever follows into a
+    // statement — in a file the application autoloads.
+    it('cannot have its comment closed by a value taken from the document', function (): void {
+        $contents = emittedController(operationFor(
+            deprecated: true,
+            sunset: '*/ echo "owned";',
+        ));
+
+        expect(substr_count($contents, '*/'))->toBe(1)
+            ->and($contents)->toContain('*\/')
+            ->and($contents)->not->toContain('*/ echo');
+    });
+});
+
+describe('the two-class seam', function (): void {
+    // `final` for as long as nothing may extend a generated controller: the name
+    // of a controller with no `x-controller` is derived and disposable, so an
+    // import of it would be a dependency on a name nobody chose.
+    it('emits a final class over the shipped base', function (): void {
+        expect(emittedController(operationFor()))
+            ->toContain('final class ShowUserController extends SpecController')
+            ->toContain('use Gcob\\LaraSpecFirst\\Http\\Controllers\\SpecController;');
+    });
+
+    // One method, named the same in every generated controller, so the routes
+    // file can name it as a plain string and `route:cache` can serialize it.
+    it('carries exactly one method, and it is routeAction', function (): void {
+        $contents = emittedController(operationFor());
+
+        expect(substr_count($contents, 'public function '))->toBe(1)
+            ->and($contents)->toContain('public function routeAction(): mixed');
+    });
+
+    it('throws the exception Laravel renders as 501, naming the operation', function (): void {
+        expect(emittedController(operationFor(method: 'get', path: '/users/{id}')))
+            ->toContain("OperationNotImplementedException::operation('get /users/{id}')");
+    });
+
+    // The import has no leading separator, which is what `use` requires: a
+    // `use \Foo;` does not parse.
+    it('imports without a leading separator', function (): void {
+        expect(emittedController(operationFor()))->not->toContain('use \\');
+    });
+});

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
+use Gcob\LaraSpecFirst\Http\Controllers\SpecController;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
@@ -282,15 +283,46 @@ it('emits output a formatter finds nothing to change in', function (): void {
     expect($status)->toBe(0, "Pint would rewrite generated output:\n".implode("\n", $output));
 });
 
-it('carries provenance and findings into every file it writes', function (): void {
+// Every file, rather than a sample of one. The norm is emitted unconditionally,
+// so the assertion that matches it is one that fails the moment a new kind of
+// generated file arrives without it — which is exactly how a convention that
+// lives in prose erodes. What each part has to say is asserted at the emitters,
+// in tests/Unit/Generation/; what is proven here is that the real command puts it
+// in everything it writes.
+it('carries provenance, findings and navigation into every file it writes', function (): void {
     build();
 
-    $controller = file_get_contents(buildTree().'/Controllers/ShowUserController.php');
+    $files = treeContents(buildTree());
+    $missing = [];
 
-    expect($controller)->toContain(GeneratedFile::MARKER)
-        ->and($controller)->toContain('#/paths/~1users~1{id}/get')
-        ->and($controller)->toContain('Findings')
-        ->and($controller)->toContain('Navigation');
+    foreach ($files as $relative) {
+        $contents = (string) file_get_contents(buildTree().'/'.$relative);
+
+        foreach ([GeneratedFile::MARKER, 'Provenance', 'Findings', 'Navigation'] as $part) {
+            if (! str_contains($contents, $part)) {
+                $missing[] = $relative.' carries no '.$part;
+            }
+        }
+    }
+
+    expect($files)->not->toBeEmpty()
+        ->and($missing)->toBe([]);
+});
+
+// The pointer is what rename detection will compare, so every controller carries
+// one rather than most of them.
+it('carries the position it came from in every controller it writes', function (): void {
+    build();
+
+    $withoutPointer = array_values(array_filter(
+        treeContents(buildTree()),
+        static fn (string $relative): bool => str_starts_with($relative, 'Controllers/')
+            && ! str_contains((string) file_get_contents(buildTree().'/'.$relative), '#/paths/'),
+    ));
+
+    expect($withoutPointer)->toBe([])
+        ->and(file_get_contents(buildTree().'/Controllers/ShowUserController.php'))
+        ->toContain('#/paths/~1users~1{id}/get');
 });
 
 // Named from the project root, and asserted as the absence of the alternative.
@@ -301,10 +333,66 @@ it('carries provenance and findings into every file it writes', function (): voi
 it('names its source from the project root rather than absolutely', function (): void {
     build();
 
-    $controller = file_get_contents(buildTree().'/Controllers/ShowUserController.php');
+    $absolute = [];
 
-    expect($controller)->toContain('tests/Fixtures/operations.yaml')
-        ->and($controller)->not->toContain(dirname(__DIR__, 3));
+    foreach (treeContents(buildTree()) as $relative) {
+        $contents = (string) file_get_contents(buildTree().'/'.$relative);
+
+        if (! str_contains($contents, 'tests/Fixtures/operations.yaml')) {
+            $absolute[] = $relative.' does not name the specification';
+        }
+
+        if (str_contains($contents, dirname(__DIR__, 3))) {
+            $absolute[] = $relative.' names it absolutely';
+        }
+    }
+
+    expect($absolute)->toBe([]);
+});
+
+// The two-class seam, asserted on the classes rather than on the text that
+// produced them: `final` for as long as nothing may extend a generated
+// controller, one shipped base for every operation, and one declared method so
+// the routes file can name it as a plain string.
+it('generates a final controller over the shipped base, carrying one routeAction', function (): void {
+    build();
+
+    $controllers = array_values(array_filter(
+        treeContents(buildTree()),
+        static fn (string $relative): bool => str_starts_with($relative, 'Controllers/'),
+    ));
+
+    foreach ($controllers as $relative) {
+        require_once buildTree().'/'.$relative;
+    }
+
+    // Reached through what PHP has actually loaded rather than by naming a class
+    // from a filename: this is the same list, and it is a list of loaded classes
+    // rather than of strings that look like ones.
+    $expected = array_map(
+        static fn (string $relative): string => buildNamespace().'\\Controllers\\'.basename($relative, '.php'),
+        $controllers,
+    );
+    $loaded = array_values(array_intersect(get_declared_classes(), $expected));
+
+    expect($expected)->not->toBeEmpty()
+        ->and($loaded)->toHaveCount(count($expected));
+
+    foreach ($loaded as $class) {
+        $reflection = new ReflectionClass($class);
+        $parent = $reflection->getParentClass();
+        $declared = array_map(
+            static fn (ReflectionMethod $method): string => $method->getName(),
+            array_filter(
+                $reflection->getMethods(),
+                static fn (ReflectionMethod $method): bool => $method->getDeclaringClass()->getName() === $class,
+            ),
+        );
+
+        expect($reflection->isFinal())->toBeTrue($class.' is not final')
+            ->and($parent === false ? null : $parent->getName())->toBe(SpecController::class)
+            ->and(array_values($declared))->toBe(['routeAction']);
+    }
 });
 
 // The whole point of the build, end to end: a contract becomes a route that

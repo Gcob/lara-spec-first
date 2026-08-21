@@ -885,6 +885,9 @@ here, against the cost of putting a data format inside a comment.
 
 ### A reference to generated code says what to do when it goes missing
 
+**Shipped for the one file that has such references today**, the generated `routes.php`, which imports every generated
+controller. The `spec:make` half waits on that command.
+
 A class-not-found on generated code is the most likely error anyone meets with this package, and the least informative
 one PHP knows how to raise. **Decision: every reference to generated code carries a comment saying what to do about
 it**, grouped above the block rather than repeated over each line — four generated references in one file should not
@@ -916,6 +919,12 @@ That is the one reference `spec:make` created, so it is the one it annotates. An
 a DTO, a factory — they added knowingly, and a comment explaining their own import back to them is noise. In a generated
 file importing other generated files the same comment applies above the `use` block, minus the `x-controller` line,
 since a DTO's name follows its schema rather than that extension.
+
+**What the generated `routes.php` carries today is that comment, minus two names.** `x-controller` is left out for the
+reason above — a route points at a generated class — and `spec:watch` is left out because it does not exist yet, on the
+same grounds as [naming `spec:make`](#the-build-names-the-command-instead-of-running-it): printing a command nobody can
+run would be worse than saying nothing. Both lines are owed once the features behind them ship, and the emitter's tests
+assert their absence so that the debt is visible rather than forgotten.
 
 Three situations sit behind those three lines, which is why the first answer is a command rather than an explanation:
 

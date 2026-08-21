@@ -65,7 +65,9 @@ final readonly class RoutesEmitter
         $imports[] = 'Illuminate\\Support\\Facades\\Route';
         sort($imports);
 
-        $body = implode("\n", array_map(static fn (string $i): string => 'use '.$i.';', $imports))
+        $body = $this->missingReferenceNote()
+            ."\n"
+            .implode("\n", array_map(static fn (string $i): string => 'use '.$i.';', $imports))
             ."\n\n"
             .implode("\n", $registrations);
 
@@ -73,6 +75,42 @@ final readonly class RoutesEmitter
             GeneratedRoutesLocator::FILE,
             "<?php\n\ndeclare(strict_types=1);\n\n".$this->docblock(count($planned))."\n\n".$body."\n",
         );
+    }
+
+    /**
+     * What to do when PHP cannot find one of the classes imported below.
+     *
+     * A class-not-found on generated code is the most likely error anyone meets
+     * with this package, and the least informative one PHP knows how to raise —
+     * here in the one file the application loads at boot, so the whole
+     * application stops rather than one endpoint. Grouped above the block rather
+     * than repeated over each line: twenty operations should not mean twenty
+     * copies of one paragraph.
+     *
+     * Two of the three situations behind it are named, and the third is not: the
+     * build having never run here, which running it fixes, and the operation
+     * having left the contract, which only the document's history explains.
+     * `x-controller` is absent from the list because a route points at a
+     * generated class today, and `spec:watch` is absent because printing a
+     * command nobody can run yet would be worse than saying nothing.
+     *
+     * **Above one sorted block, framework import included, rather than above a
+     * controllers-only block.** Two blocks would read marginally better and would
+     * put the note one formatter away from being wrong: an import-ordering rule —
+     * `ordered_imports` is in Pint's own Laravel preset — sorts the whole
+     * namespace block, so a consumer running it could move a line across the note
+     * and the build would move it back on the next run. The wording is therefore
+     * true whatever order the imports end up in.
+     *
+     * @see docs/guide/code-generation.md — "A reference to generated code says what to do when it goes missing"
+     */
+    private function missingReferenceNote(): string
+    {
+        return implode("\n", [
+            '// Every controller imported below is generated. If PHP cannot find one, run',
+            '// `php artisan spec:build`. If it still fails, the specification no longer describes',
+            '// that operation, and the spec\'s git history will show what changed.',
+        ]);
     }
 
     private function registration(PlannedController $controller): string
