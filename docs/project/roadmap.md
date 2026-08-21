@@ -75,9 +75,9 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
 ### What does not exist yet
 
 What is missing is no longer a namespace but the second half of several features. There is no `spec:make`, so the class
-that extends a generated parent is one a developer writes by hand; no rename detection, no doctor, and no response DTO
-or generated validation. Four of the six blocks in `config/lara-spec-first.php` are marked `TODO` in the file itself and
-are inert, which the file says out loud rather than leaving to be discovered, and which
+that extends a generated parent is one a developer writes by hand; no doctor, and no response DTO or generated
+validation. Four of the six blocks in `config/lara-spec-first.php` are marked `TODO` in the file itself and are inert,
+which the file says out loud rather than leaving to be discovered, and which
 [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
@@ -118,14 +118,11 @@ the code, and a gap in it is loud.
       into `Contract\Operation` and refused there when it is not a name PHP could carry, naming the generated parent and
       dropping its `final`, with the route pointing at the child once that class has a file the autoloader can find and
       at the parent until then. Two values reducing to one generated parent is a build error naming both, and so is one
-      naming a class inside the generated tree, which would extend itself.
-
-      The seam also settled a signature. `routeAction` declares
-                  [one parameter per path parameter](../guide/controllers.md#the-signature-is-the-contract-with-the-child), named as
-                  the document names them, because PHP forbids an override from adding a required parameter — a parameterless parent
-                  would have made `x-controller` useless on every templated path. Found in the Workbench, where a child answers
-                  `GET /users/{id}` for real while the operations around it still answer 501.
-
+      naming a class inside the generated tree, which would extend itself. It also settled a signature: `routeAction`
+      declares [one parameter per path parameter](../guide/controllers.md#the-signature-is-the-contract-with-the-child),
+      named as the document names them, because PHP forbids an override from adding a required parameter — a
+      parameterless parent would have made `x-controller` useless on every templated path. Found in the Workbench, where
+      a child answers `GET /users/{id}` for real while the operations around it still answer 501.
 - [x] **Every generated file explains itself.** The [source map](../guide/code-generation.md#the-source-map) (the JSON
       pointer the file came from) and the
       [docblock norm](../guide/code-generation.md#every-generated-file-explains-itself) (provenance, findings,
@@ -139,10 +136,19 @@ the code, and a gap in it is loud.
       every file it writes rather than a sample of one: that the norm is there at all. The
       [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
       landed with them, in `routes.php`, the only generated file that references other generated code today.
-- [ ] **Rename and orphan detection.** Comparing the pointers in the existing generated tree against the ones the new
-      build would emit is what turns a class-not-found into an instruction naming the old name, the new one, and
-      [the files that reference it](../guide/code-generation.md#how-it-says-it). It depends on the source map above and
-      on nothing else, which is why it belongs in the same phase.
+- **Rename and orphan detection: dropped, not pending.** It was designed, built against the source map above, and
+  removed before it shipped — so this is a decision recorded rather than work waiting. The premise expired when
+  [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) became the only source of an
+  extendable name: every other generated class is `final`, so the only broken import the comparison could have predicted
+  follows an edit its own author just made. What it would still have caught — a custom controller left extending nothing
+  after its operation left the contract — is that author's call to make, and reading the previous build's output could
+  never have been a CI guarantee anyway, since whether that output exists is
+  [a `.gitignore` choice](../guide/code-generation.md#which-generated-code-is-committed). The full reasoning is in
+  [code-generation](../guide/code-generation.md#rename-and-orphan-detection-decided-against); the
+  [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing) a
+  generated file carries is what does the cheap half of that job today, and
+  [the doctor](../guide/controllers.md#the-doctor-counts-two-things-not-three) is where the orphan question lands if it
+  is ever wanted.
 - [ ] **`spec:make`: the only command that creates a file the developer will own.** It scaffolds a named operation, or a
       whole `--tag`, or `--all`, never as a side effect of a build. `spec:build` itself never scaffolds; it
       [names the commands to run](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it). This

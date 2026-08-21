@@ -580,8 +580,9 @@ Two checks specific to this document, both of which the specification cannot see
 - **An `x-controller` naming a class that does not exist.** The specification promised a custom controller and nothing
   provides it. The fix is `spec:make`, and the report says so.
 - **A custom child whose `x-controller` value has changed**, leaving it extending a parent the build no longer emits.
-  Reported as an orphan, by name, with the file and line — the same
-  [rename reporting](./code-generation.md#how-it-says-it) already decided.
+  This is the doctor's to report and not the build's: the build
+  [does not compare its own output between runs](./code-generation.md#rename-and-orphan-detection-decided-against),
+  while the doctor is already reading the tree in order to judge it and pays nothing extra for the question.
 
 ## Open questions
 

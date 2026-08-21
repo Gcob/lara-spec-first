@@ -33,7 +33,8 @@ turns the specification into PHP, and the result is safe to regenerate at any ti
 > [loads what it emitted](#the-routes-are-one-file-and-the-only-one-the-runtime-opens) and reads no specification to do
 > it. The [`x-controller` seam](./controllers.md#the-specification-decides-what-is-customizable) is shipped, so an
 > operation that declares one gets a parent it may extend and a route pointing at the child. Not built yet: response
-> DTOs and request validation; rename detection; and `spec:make`.
+> DTOs and request validation, and `spec:make`. Rename detection was designed here and
+> [decided against](#rename-and-orphan-detection-decided-against).
 
 What the build reads, and what it refuses to read, is a different subject and lives in
 [`openapi-support.md`](./openapi-support.md).
@@ -599,7 +600,7 @@ Same risk, same answer. It is also why watch cannot scaffold either: watch must 
 
 What the shortcut was really asking for is ergonomics, and those can be had without touching the invariant. **When the
 build finds operations with no implementation, it names the command rather than running it** — the same pattern as the
-[rename report naming the files to fix](#how-it-says-it).
+[reference comment naming the command to run](#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing).
 
 **The atomic form names one operation, and every other form is sugar over it:** `spec:make showUser` scaffolds
 [one controller](./controllers.md#one-controller-per-operation-one-method-named-routeaction), carrying whichever
@@ -644,55 +645,58 @@ wants _per operation_ rather than something the build already produces for the w
 
 ## Naming, and the rename problem
 
-The generated class and method names come from `operationId`. That makes an `operationId` far more than a label: **it is
-the name of the class a developer extends**, so renaming one in the spec renames a class in their application.
+**This section's original premise is gone, and saying so is the point of keeping it.** It used to read: the generated
+class name comes from `operationId`, which makes an `operationId` far more than a label, because **it is the name of the
+class a developer extends** — so renaming one in the spec renames a class in their application. That was true, and the
+[`x-controller` seam](./controllers.md#the-specification-decides-what-is-customizable) is what made it false. An
+extendable class is named by `x-controller` and by nothing else; every other generated controller is `final`, so no
+import may depend on its name. **A name a project can depend on can now only change when the project's own author edits
+`x-controller`.**
 
-The position on this is the project's position on API design generally: **designing an API is a skill, and changing an
-identifier is a versioning decision.** The package is not going to hide that, and versioning is the right answer. But
-there is a difference between refusing to hide a consequence and leaving a beginner to discover it from a fatal error,
-and the difference costs us very little.
+The position that produced the section still holds: **designing an API is a skill, and changing an identifier is a
+versioning decision.** What changed is who is exposed to it, and the answer is now "whoever typed the new name".
 
 ### Identity is the path and the method, not the name
 
-The distinction that makes help possible: an operation's **identity** is its path plus its HTTP method, which is what
-actually addresses it. Its **name** is `operationId`, which is what we generate from. Renaming an operation therefore
-changes the name while the identity holds still — and a build that knows both can tell the difference between a rename
-and a deletion.
+An operation's **identity** is its path plus its HTTP method, which is what actually addresses it. Its **name** is what
+the build generates from. The distinction earns its keep in two places that have nothing to do with each other:
+[refusing two operations that address one endpoint](./openapi-support.md#reading-a-document), and keeping a rename of a
+path _parameter_ out of everything that compares operations.
 
-Identity has to be normalized to be useful: **the names of path parameters are not part of it.** Renaming `/users/{id}`
-to `/users/{userId}` changes nothing a client can observe — the URL on the wire is identical, and the template variable
-is documentation. Identity is therefore the method plus the path with its parameters reduced to positions, so that
-rename produces no diff at all. It also means `/users/{id}` and `/users/{slug}` share an identity and collide — which is
-correct, because those two routes already collide in the router, and surfacing it is a service rather than a limitation.
+Identity is therefore normalized: **the names of path parameters are not part of it.** Renaming `/users/{id}` to
+`/users/{userId}` changes nothing a client can observe — the URL on the wire is identical, and the template variable is
+documentation. So identity is the method plus the path with its parameters reduced to positions. It also means
+`/users/{id}` and `/users/{slug}` share an identity and collide — which is correct, because those two routes already
+collide in the router, and surfacing it is a service rather than a limitation.
 
-That requires no new state file. The build reads the generated tree before overwriting it, and every generated file
-already carries [the pointer it came from](#the-source-map). Comparing the two gives:
+### Rename and orphan detection: decided against
 
-- **Renames, reported as renames.** _This operation was `listUsers`, it is now `indexUsers`; the class you extended has
-  been replaced._ Naming the old and the new turns a fatal error into an instruction.
-- **Orphans, reported by name.** A human class extending a generated parent that no longer exists is detectable, and is
-  exactly what a rename leaves behind. The [invariant](#the-invariant-a-build-never-destroys-human-work) means their
-  work is still there — it is just no longer connected to anything, and nobody should have to find that out at runtime.
+**Decision: the build does not compare the previous build's output against the new one, and does not report renames or
+orphans.** It was designed here, built, and removed before it shipped. The reasoning for removing it is worth more than
+the feature was:
 
-The honest limit: when the path itself moves, identity and name change together and a rename becomes indistinguishable
-from a delete plus an add. The build should say that it cannot tell, rather than guess.
+- **The premise expired.** Comparing pointers earns its complexity only when a name a project depends on can change
+  without that project's author renaming anything. That was the world where an extendable class was named from
+  `operationId`. Today an extendable name comes from `x-controller` alone, and every other generated class is `final` —
+  so the only class-not-found this could have predicted is the one that follows an edit the developer just made
+  themselves.
+- **What it would still have caught belongs to the developer.** Remove an operation from the contract and the custom
+  controller that extended its parent extends nothing. That is a consequence of deleting the operation, and deciding
+  what happens to their own class is the developer's call, not a report's — the same position this document takes on
+  [a specification you do not control](./controllers.md#spec-make-is-the-only-way-in) and on
+  [identifier changes being versioning decisions](#naming-and-the-rename-problem).
+- **It could never have been a guarantee.** The mechanism reads the previous build's own output, and whether that output
+  exists is [the consumer's `.gitignore` choice](#which-generated-code-is-committed). On a fresh clone there is nothing
+  to compare against, so the report is silent exactly where a CI check would have wanted it — a feature that works in
+  the loop where you already know what you just changed, and not where you do not.
 
-### How it says it
+**The honest limit that remains, stated because it is what a reader would otherwise go looking for:** when a path moves,
+identity and name change together, and no comparison could have told a moved operation from a deleted one anyway.
 
-A rename is only useful as a message if it names the code that has to change. The build knows the old fully-qualified
-class name it is about to replace, so it can find the references itself: scan the application for that symbol and
-**report the files that mention it, with line numbers**, alongside the old and new names.
-
-That turns the output from _something was renamed_ into _these four files reference a class that no longer exists_,
-which is the difference between a notice and a fix. It is a token scan over PHP the consumer already has — no AST work,
-no runtime reflection, nothing to keep in sync.
-
-In [watch](#watching-specwatch) the same report arrives while the developer is still holding the context in their head,
-which is when a rename costs almost nothing to absorb. That is the strongest argument for watch mode existing at all.
-
-**Open:** how prominent this is — a heading in the build output, a doctor finding, or a non-zero exit until the
-references are updated. Failing the build is defensible under [rule 2](./openapi-support.md#the-four-rules) and might be
-intolerable in watch. Probably different answers for the two commands.
+What does survive from that design is
+[the reference comment](#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing) a generated file carries,
+which is the cheap half of the same job: it puts the instruction where the error will be read, without the build having
+to predict anything.
 
 ### When `operationId` is absent, derive from method and path
 
@@ -799,13 +803,15 @@ It costs nothing at runtime in PHP, so it is emitted **unconditionally**, in eve
 [watch and build output identical](#borrowing-from-bundlers-and-where-to-stop), and it is why this is not a
 development-only nicety.
 
-Two other decisions depend on it, which is the real reason it stands alone:
+**It is for readers, not for tooling, and that is a narrowing worth recording.** An earlier version of this document
+justified the annotation partly by what a build could do with it —
+[comparing pointers between builds](#rename-and-orphan-detection-decided-against) to report renames — and that feature
+is decided against. The pointer stays, because answering _where did this come from_ was always the larger half: a
+developer debugging, a reviewer judging a diff, and an agent working in the repository are all one annotation away from
+the contract instead of grepping for it.
 
-- [Rename detection](#identity-is-the-path-and-the-method-not-the-name) compares the pointers in the existing generated
-  tree against the ones the new build would emit. Without the annotation there is no comparison to make and no rename to
-  report.
-- Breaking-change detection is keyed by the same identity, so a finding in that comparison and a header in a generated
-  file name the same thing.
+One future decision still leans on the same identity: breaking-change detection is keyed by it, so a finding in that
+comparison and a header in a generated file will name the same thing.
 
 ## Every generated file explains itself
 
@@ -946,9 +952,10 @@ Three situations sit behind those three lines, which is why the first answer is 
   generated tree — the `composer install` bargain, stated in [two layers](#two-layers). Running it is the whole fix.
 - **The name changed in the specification.** A controller's generated name follows
   [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) and a DTO's follows its schema name,
-  so the class moved because somebody edited one of those. The build
-  [reports that as a rename](#identity-is-the-path-and-the-method-not-the-name), naming the old and the new, so running
-  it does not merely fix the tree — it tells you what to change the import to.
+  so the class moved because somebody edited one of those. Running the build writes the class under its new name, and
+  the new name is the one that edit chose — the build
+  [does not report the change](#rename-and-orphan-detection-decided-against), because the person reading this comment is
+  the person who made it.
 - **It was removed outright.** Only here does the build have nothing to offer, because there is no new name to report,
   and the specification's own history is what says what happened.
 
@@ -1017,9 +1024,9 @@ mode.
 
 **Open:** the config key's name, and whether it recurses into subdirectories by default; the exact mechanism for finding
 the `extends` relationship — reflection over the classes the configured directories autoload is the leading answer,
-rather than [the token scan rename detection already uses](#how-it-says-it), since an `extends` clause needs the
-language's own resolution of `use` imports and aliases to be trustworthy, not a match on spelling; and the name of the
-exception thrown when two classes claim one factory.
+rather than a token scan over spellings, since an `extends` clause needs the language's own resolution of `use` imports
+and aliases to be trustworthy, not a match on spelling; and the name of the exception thrown when two classes claim one
+factory.
 
 ### What a factory's docblock carries
 
