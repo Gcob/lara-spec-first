@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
-use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
+use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnverifiedInsertionException;
 use Gcob\LaraSpecFirst\Scaffolding\ExtensionInsertion;
@@ -73,11 +73,21 @@ function insertionFixture(): string
 }
 
 /**
+ * Every fixture in this file is hand-authored to read cleanly, so a fault here
+ * would mean a fixture regressed — asserted rather than silently tolerated, so
+ * that regression fails where it happens instead of surfacing as a confusing
+ * "undefined array key" once `insertInto()` indexes into a shorter-than-expected
+ * list.
+ *
  * @return list<Operation>
  */
 function operationsIn(string $path): array
 {
-    return (new OperationExtractor)->extract((new SpecDocumentReader)->read($path));
+    $outcome = ReadOutcome::read(new SpecDocumentReader, $path);
+
+    expect($outcome->faults)->toBe([]);
+
+    return $outcome->operations;
 }
 
 function insertInto(string $path, int $index, ?OperationLocation $location = null): void

@@ -6,7 +6,7 @@ namespace Gcob\LaraSpecFirst\Scaffolding;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
-use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
+use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnverifiedInsertionException;
@@ -176,15 +176,30 @@ final readonly class ExtensionInsertion
     {
         try {
             $reader = new SpecDocumentReader(new VersionStrategyFactory, remote: $this->remote);
-
-            return (new OperationExtractor)->extract($reader->read($path));
+            $outcome = ReadOutcome::read($reader, $path);
         } catch (Throwable $failure) {
-            // Including the refusals this package raises itself. A document the
-            // pipeline will not read after the edit is a failed insertion, not a
-            // failed build — reported as the former, with the reader's own message
-            // carried along because it says what it found.
+            // The reading pipeline itself no longer throws for a document fault
+            // — see {@see ReadOutcome} — so reaching this `catch` at all would
+            // now mean something this package did not anticipate. Kept as the
+            // outer boundary regardless, the same way every command's own
+            // `catch (SpecException)` stays in place: this is defence for a
+            // failure mode outside the reading pipeline's own contract, not the
+            // mechanism for the ordinary one below.
             throw UnverifiedInsertionException::unreadableAfterEditing($failure->getMessage());
         }
+
+        if ($outcome->faults !== []) {
+            // A document the pipeline will not fully read after the edit is a
+            // failed insertion, not a failed build — reported as the former,
+            // with the first fault's own message carried along because it says
+            // what it found. This verification wants the same zero-tolerance
+            // reading `spec:build` and `spec:make` want, not the doctor's
+            // report-everything one: one fault here is already reason enough
+            // to fall back to printing the row for a human to place.
+            throw UnverifiedInsertionException::unreadableAfterEditing($outcome->faults[0]->getMessage());
+        }
+
+        return $outcome->operations;
     }
 
     private function withController(Operation $operation, string $value): Operation

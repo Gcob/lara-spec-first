@@ -79,7 +79,11 @@ final class BuildCommand extends Command
 
         $namespace = $this->requiredString($config, 'lara-spec-first.generated.namespace');
 
-        $operations = $this->contractOperations($specPath, $remote, (bool) $this->option('update-refs'));
+        $operations = $this->operationsOrFail($specPath, $remote, (bool) $this->option('update-refs'));
+
+        if ($operations === null) {
+            return self::FAILURE;
+        }
 
         // Named from the project root rather than absolutely: a generated file
         // may end up committed, and a machine's path in a repository is a diff

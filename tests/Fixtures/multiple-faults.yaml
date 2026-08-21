@@ -1,0 +1,34 @@
+# Several faults in one document, none of them fatal to the others: each is
+# collected and the operation it belongs to is skipped, while every operation
+# around it still extracts. Used to pin that the extractor collects instead of
+# stopping at the first one.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users/me:
+    get:
+      operationId: showCurrentUser
+      responses:
+        '200': { description: The caller }
+  /debug:
+    trace:
+      responses:
+        '200': { description: Echoed }
+  /posts:
+    get:
+      operationId: listPosts
+      x-lifecycle: stabel
+      responses:
+        '200': { description: Posts }
+  /users/{id}:
+    get:
+      operationId: showById
+      responses:
+        '200': { description: A user }
+  /users/{slug}:
+    get:
+      operationId: showBySlug
+      responses:
+        '200': { description: A user }

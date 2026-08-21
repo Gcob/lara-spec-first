@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing;
 
-use Gcob\LaraSpecFirst\Parsing\Exceptions\UnreadableDocumentException;
+use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Parsing\Guards\ReferenceCycleDetector;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 
 /**
- * Turns a specification file into a ParsableSpecDocument — a document that has
- * cleared every check which must happen before the OpenAPI parser sees it.
+ * Turns a specification file into a DocumentReadResult — everything that could
+ * be resolved before the OpenAPI parser is handed anything, and every fault
+ * that kept the rest of it from being resolved.
  *
  * The order of the checks is the design, not an implementation detail:
  *
@@ -25,11 +26,25 @@ use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
  *                      rewritten to its local committed copy here, so the
  *                      parser only ever resolves a path on disk, never a URL
  *
- * Only after all five does anything reach the OpenAPI parser. The guard has to
- * sit here rather than inside a parser wrapper: once cebe has the document, a
- * cyclic one takes the process down and there is no exception left to catch.
+ * **Steps 1-3 stop the read outright; steps 4-5 collect and continue.** The
+ * first three answer "what is this document at all" — without bytes, a
+ * version and a legal root shape there is nothing left to check, so the first
+ * fault among them is the whole result. The last two run over a document
+ * that is already known to exist and to have a legal shape, and a fault in
+ * one reference or one cycle says nothing about any other, so every one of
+ * them is collected rather than only the first. See {@see DocumentReadResult}.
  *
- * @see docs/guide/openapi-support.md — "Parser caveats"
+ * Nothing here throws for a document fault any more — every command that
+ * reads a contract decides for itself what a fault means, from the result
+ * this returns, rather than the pipeline deciding by raising. `spec:build`
+ * and `spec:make` still refuse the moment `$faults` is not empty;
+ * `spec:doctor` reports every one of them instead. Neither reads this class
+ * directly — {@see Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract} is
+ * the only place that assembles a {@see ReadOutcome} from this and from
+ * {@see OperationExtractor}, which is what keeps the two from ever
+ * disagreeing about which construct this package refuses.
+ *
+ * @see docs/guide/openapi-support.md — "Reading a document"
  */
 final readonly class SpecDocumentReader
 {
@@ -44,27 +59,23 @@ final readonly class SpecDocumentReader
      *                            is missing or already vendored — the one flag that
      *                            lets this method reach the network. See
      *                            docs/guide/remote-references.md.
-     *
-     * @throws UnreadableDocumentException the file is missing, unreadable or not a mapping
-     * @throws Exceptions\UnsupportedVersionException the document declares a version we do not implement
-     * @throws Exceptions\InvalidDocumentException the document lacks what its version requires
-     * @throws Exceptions\CyclicReferenceException a reference chain never reaches content
-     * @throws Exceptions\RemoteReferenceException a `$ref` names a host not on the allowlist
-     * @throws Exceptions\MissingVendoredReferenceException an allowed reference has no vendored
-     *                                                      copy and `$updateRefs` is false
-     * @throws Exceptions\RemoteReferenceFetchException fetching or decoding a reference failed
-     * @throws Exceptions\CircularRemoteReferenceException a chain of vendored references closes
-     *                                                     back on a URL already being fetched
      */
-    public function read(string $path, bool $updateRefs = false): ParsableSpecDocument
+    public function read(string $path, bool $updateRefs = false): DocumentReadResult
     {
-        $data = DocumentDecoder::decode($path);
-        $strategy = $this->strategies->forDocument($data);
+        try {
+            $data = DocumentDecoder::decode($path);
+            $strategy = $this->strategies->forDocument($data);
+            $strategy->assertDocumentShape($data);
+        } catch (SpecException $fault) {
+            return new DocumentReadResult(null, [$fault]);
+        }
 
-        $strategy->assertDocumentShape($data);
-        $this->cycles->assertNoCycles($data);
-        $data = $this->remote->resolve($data, dirname($path), $updateRefs);
+        $cycles = $this->cycles->findCycles($data);
+        $remote = $this->remote->resolve($data, dirname($path), $updateRefs);
 
-        return new ParsableSpecDocument($path, $strategy->version(), $strategy, $data);
+        return new DocumentReadResult(
+            new ParsableSpecDocument($path, $strategy->version(), $strategy, $remote->document),
+            [...$cycles, ...$remote->faults],
+        );
     }
 }

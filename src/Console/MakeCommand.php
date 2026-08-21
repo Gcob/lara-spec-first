@@ -89,6 +89,10 @@ final class MakeCommand extends Command
         $namespace = rtrim($this->requiredString($config, 'lara-spec-first.generated.namespace'), '\\');
         $selected = $this->select($form, $specPath, $remote);
 
+        if ($selected === null) {
+            return self::FAILURE;
+        }
+
         // The one operation the singular form named may have no `x-controller` yet,
         // and offering to add it is the whole point of this command being the way
         // in. Once the document carries it, everything below runs as though it
@@ -100,6 +104,10 @@ final class MakeCommand extends Command
             }
 
             $selected = $this->select($form, $specPath, $remote);
+
+            if ($selected === null) {
+                return self::FAILURE;
+            }
         }
 
         // Shared with the planner and the writer both, so the two ask the
@@ -130,14 +138,23 @@ final class MakeCommand extends Command
     }
 
     /**
-     * The operations the form named, read from the document as it is now.
+     * The operations the form named, read from the document as it is now — or
+     * null, having already reported the reading pipeline's first fault, if
+     * there is one.
      *
-     * @return list<Operation> never empty: every form refuses rather than selecting
-     *                         nothing, so a caller reading `[0]` is safe
+     * @return list<Operation>|null never empty when it is not null: every form
+     *                              refuses rather than selecting nothing, so a
+     *                              caller reading `[0]` is safe
      */
-    private function select(string $form, string $specPath, RemoteReferenceGuard $remote): array
+    private function select(string $form, string $specPath, RemoteReferenceGuard $remote): ?array
     {
-        $selector = new OperationSelector($this->contractOperations($specPath, $remote));
+        $operations = $this->operationsOrFail($specPath, $remote);
+
+        if ($operations === null) {
+            return null;
+        }
+
+        $selector = new OperationSelector($operations);
 
         return match ($form) {
             'operation' => $selector->named((string) $this->argument('operation')),

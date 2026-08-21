@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing\Guards;
 
+use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Generation\ProjectRelativePath;
 use Gcob\LaraSpecFirst\Parsing\DocumentDecoder;
@@ -21,12 +22,25 @@ use Throwable;
 /**
  * Resolves a `$ref` that would otherwise reach over the network.
  *
- * A disallowed host is refused exactly as before. An allowed one is vendored: a
- * committed copy under `vendor_path`, fetched only when `--update-refs` asks for
- * it, and the reference rewritten to point at that local copy — which is why
- * `cebe\openapi\` never dials out. See
+ * A disallowed host, a missing vendored copy, a fetch that failed, or a
+ * circular chain of vendored references are collected as faults rather than
+ * thrown — see {@see SpecDocumentReader} for why the whole pipeline reads this
+ * way now. An allowed, already-vendored reference is still resolved exactly as
+ * before: a committed copy under `vendor_path`, fetched only when
+ * `--update-refs` asks for it, and the reference rewritten to point at that
+ * local copy — which is why `cebe\openapi\` never dials out. See
  * [remote-references.md](../../../docs/guide/remote-references.md#how-a-vendored-copy-stays-invisible-to-the-parser)
  * for the mechanism that makes the rewrite invisible to the parser.
+ *
+ * **A faulted reference is neutralized, never left as a network scheme
+ * string.** Collecting a fault instead of throwing means the walk keeps going
+ * — and if a disallowed `$ref: https://…` were left in place, `cebe\openapi\`
+ * would try to resolve it itself the next time anything opens this document,
+ * which is exactly the network access the allowlist exists to prevent. So the
+ * whole Reference Object a faulted `$ref` sits in — `{"$ref": …}`, plus any
+ * `summary`/`description` beside it, which carry no meaning worth keeping once
+ * the reference itself is refused — is replaced with an empty object instead.
+ * See {@see self::walk()}.
  *
  * Runs on the raw document, before the parser sees anything — the same
  * position this class always occupied — and now also on every document it
@@ -65,17 +79,8 @@ final readonly class RemoteReferenceGuard
 
     /**
      * @param  array<array-key, mixed>  $node
-     * @return array<array-key, mixed> the same document, every allowed remote
-     *                                 `$ref` rewritten to point at its vendored copy
-     *
-     * @throws RemoteReferenceException a host is not allowed
-     * @throws MissingVendoredReferenceException an allowed reference has no vendored
-     *                                           copy and `$updateRefs` is false
-     * @throws RemoteReferenceFetchException fetching or decoding a reference failed
-     * @throws CircularRemoteReferenceException a chain of vendored references closes
-     *                                          back on a URL already being fetched
      */
-    public function resolve(array $node, string $baseDir, bool $updateRefs = false): array
+    public function resolve(array $node, string $baseDir, bool $updateRefs = false): RemoteResolution
     {
         // One URL => already-vendored marker, for the life of this call only:
         // a specification naming the same reference from a dozen positions
@@ -83,27 +88,41 @@ final readonly class RemoteReferenceGuard
         // transitive graph where two vendored documents both reference a
         // third does not multiply the work either.
         $vendored = [];
+        $faults = [];
 
-        return $this->walk($node, $baseDir, $updateRefs, [], $vendored);
+        $resolved = $this->walk($node, $baseDir, $updateRefs, [], $vendored, $faults);
+
+        return new RemoteResolution($resolved, $faults);
     }
 
     /**
      * @param  array<array-key, mixed>  $node
      * @param  list<string>  $chain  URLs currently being resolved, root to here
      * @param  array<string, true>  $vendored
+     * @param  list<SpecException>  $faults
      * @return array<array-key, mixed>
      */
-    private function walk(array $node, string $baseDir, bool $updateRefs, array $chain, array &$vendored): array
+    private function walk(array $node, string $baseDir, bool $updateRefs, array $chain, array &$vendored, array &$faults): array
     {
         foreach ($node as $key => $value) {
             if ($key === '$ref' && is_string($value) && self::reachesOverTheNetwork($value)) {
-                $node[$key] = $this->vendor($value, $baseDir, $updateRefs, $chain, $vendored);
+                $rewritten = $this->vendor($value, $baseDir, $updateRefs, $chain, $vendored, $faults);
+
+                // Neutralized rather than patched in place: the whole Reference
+                // Object this `$ref` belongs to is replaced, not just this one
+                // key, so nothing of it survives for `cebe\openapi\` to trip
+                // over — see the class docblock.
+                if ($rewritten === null) {
+                    return [];
+                }
+
+                $node[$key] = $rewritten;
 
                 continue;
             }
 
             if (is_array($value)) {
-                $node[$key] = $this->walk($value, $baseDir, $updateRefs, $chain, $vendored);
+                $node[$key] = $this->walk($value, $baseDir, $updateRefs, $chain, $vendored, $faults);
             }
         }
 
@@ -113,17 +132,14 @@ final readonly class RemoteReferenceGuard
     /**
      * Vendor one remote reference and return what should replace it: a path to
      * the local copy, relative to the document that named it, with the
-     * original fragment reattached.
+     * original fragment reattached — or null, meaning the caller neutralizes
+     * the reference instead, with the fault already recorded here.
      *
      * @param  list<string>  $chain
      * @param  array<string, true>  $vendored
-     *
-     * @throws RemoteReferenceException
-     * @throws MissingVendoredReferenceException
-     * @throws RemoteReferenceFetchException
-     * @throws CircularRemoteReferenceException
+     * @param  list<SpecException>  $faults
      */
-    private function vendor(string $reference, string $baseDir, bool $updateRefs, array $chain, array &$vendored): string
+    private function vendor(string $reference, string $baseDir, bool $updateRefs, array $chain, array &$vendored, array &$faults): ?string
     {
         [$url, $fragment] = self::splitFragment($reference);
 
@@ -135,13 +151,22 @@ final readonly class RemoteReferenceGuard
         $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
 
         if (! in_array($host, $this->allowedHosts, true)) {
-            throw RemoteReferenceException::notAllowed($reference);
+            $faults[] = RemoteReferenceException::notAllowed($reference);
+
+            return null;
         }
 
         if (in_array($url, $chain, true)) {
-            throw CircularRemoteReferenceException::chain([...$chain, $url]);
+            $faults[] = CircularRemoteReferenceException::chain([...$chain, $url]);
+
+            return null;
         }
 
+        // A misconfigured vendor path is not a fault in the document — it is
+        // this guard being asked to do something it cannot, regardless of
+        // which reference triggered the question. That is closer to
+        // `requiredString()` throwing elsewhere in this package than to a
+        // document fault the doctor would ever list, so it still throws.
         if ($this->vendorRoot === null) {
             throw UnusableSettingException::setting(
                 'lara-spec-first.remote_references.vendor_path',
@@ -172,18 +197,33 @@ final readonly class RemoteReferenceGuard
         // new" is exactly the question a lockfile would exist to answer, which
         // `docs/guide/remote-references.md` already declines to keep one for.
         if ($updateRefs) {
-            $this->fetchAndStore($url, $vendoredPath);
+            try {
+                $this->fetchAndStore($url, $vendoredPath);
+            } catch (RemoteReferenceFetchException $fault) {
+                $faults[] = $fault;
+
+                return null;
+            }
         } elseif (! is_file($vendoredPath)) {
             // Named relative to the project root rather than to `$baseDir`:
             // this is a message a person reads, and "the path a person reads"
             // and "the path a rewritten `$ref` needs" are different questions
             // that happen to share a value everywhere else in this class.
-            throw MissingVendoredReferenceException::notVendored($reference, ProjectRelativePath::from($vendoredPath));
+            $faults[] = MissingVendoredReferenceException::notVendored($reference, ProjectRelativePath::from($vendoredPath));
+
+            return null;
         }
 
-        $decoded = DocumentDecoder::decode($vendoredPath);
+        try {
+            $decoded = DocumentDecoder::decode($vendoredPath);
+        } catch (SpecException $fault) {
+            $faults[] = $fault;
+
+            return null;
+        }
+
         $nextChain = [...$chain, $url];
-        $resolved = $this->walk($decoded, dirname($vendoredPath), $updateRefs, $nextChain, $vendored);
+        $resolved = $this->walk($decoded, dirname($vendoredPath), $updateRefs, $nextChain, $vendored, $faults);
 
         // DECISION: the root specification is rewritten in memory only, but a
         // vendored document that itself named a reference is rewritten on
@@ -200,7 +240,13 @@ final readonly class RemoteReferenceGuard
         // left exactly as fetched, so the diff a reviewer sees stays
         // upstream's, not ours.
         if ($resolved !== $decoded) {
-            $this->persist($vendoredPath, $resolved);
+            try {
+                $this->persist($vendoredPath, $resolved);
+            } catch (RemoteReferenceFetchException $fault) {
+                $faults[] = $fault;
+
+                return null;
+            }
         }
 
         $vendored[$url] = true;

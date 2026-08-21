@@ -7,7 +7,7 @@ namespace Gcob\LaraSpecFirst\Console\Concerns;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
-use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
+use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 use Gcob\LaraSpecFirst\Support\Path;
@@ -29,21 +29,45 @@ use Illuminate\Contracts\Config\Repository;
 trait ReadsTheContract
 {
     /**
-     * The operations the contract describes, in document order.
+     * The contract, read end to end — see {@see ReadOutcome}.
      *
      * @param  bool  $updateRefs  fetch and vendor an allowed remote reference —
      *                            `spec:build --update-refs`'s one entry point into
      *                            the reading pipeline. Every other caller leaves it
      *                            false and stays frozen, exactly as today.
-     * @return list<Operation>
      */
-    protected function contractOperations(string $specPath, RemoteReferenceGuard $remote, bool $updateRefs = false): array
+    protected function readContract(string $specPath, RemoteReferenceGuard $remote, bool $updateRefs = false): ReadOutcome
     {
         // The guard is resolved by the caller from the container so that the
         // configured allowlist applies here exactly as it does anywhere else.
         $reader = new SpecDocumentReader(new VersionStrategyFactory, remote: $remote);
 
-        return (new OperationExtractor)->extract($reader->read($specPath, $updateRefs));
+        return ReadOutcome::read($reader, $specPath, $updateRefs);
+    }
+
+    /**
+     * The operations the contract describes, in document order — or null,
+     * having already reported the first fault, the moment there is one.
+     *
+     * **This is where `spec:build` and `spec:make` keep today's behaviour**:
+     * the reading pipeline itself no longer refuses, so its callers are the
+     * ones that decide a single fault is enough to stop — the same message a
+     * caught `SpecException` used to carry, from the same exception object,
+     * just read off {@see ReadOutcome::$faults} instead of caught off a throw.
+     *
+     * @return list<Operation>|null
+     */
+    protected function operationsOrFail(string $specPath, RemoteReferenceGuard $remote, bool $updateRefs = false): ?array
+    {
+        $outcome = $this->readContract($specPath, $remote, $updateRefs);
+
+        if ($outcome->faults !== []) {
+            $this->components->error($outcome->faults[0]->getMessage());
+
+            return null;
+        }
+
+        return $outcome->operations;
     }
 
     /**

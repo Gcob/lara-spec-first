@@ -17,16 +17,22 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 // The earliest a document can fail: `DocumentDecoder::decode()` rejects a
 // root-level list before a version is even looked for, let alone dispatched on.
+// A hard stop rather than a collected fault — see docs/guide/openapi-support.md
+// — so `document` is null and there is exactly one fault to check.
 it('rejects a document that does not decode to a mapping', function (): void {
-    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('root-list.yaml')))
-        ->toThrow(UnreadableDocumentException::class);
+    $result = (new SpecDocumentReader)->read(specFixturePath('root-list.yaml'));
+
+    expect($result->document)->toBeNull()
+        ->and($result->faults[0])->toBeInstanceOf(UnreadableDocumentException::class);
 });
 
 // One step later: the document decodes to a mapping, but there is nothing in
 // it to detect a version from — not even a version this package rejects.
 it('rejects a document with nothing in it', function (): void {
-    expect(fn () => (new SpecDocumentReader)->read(specFixturePath('empty-mapping.json')))
-        ->toThrow(UnsupportedVersionException::class);
+    $result = (new SpecDocumentReader)->read(specFixturePath('empty-mapping.json'));
+
+    expect($result->document)->toBeNull()
+        ->and($result->faults[0])->toBeInstanceOf(UnsupportedVersionException::class);
 });
 
 // A version is known, but the root carries none of what that version requires.
