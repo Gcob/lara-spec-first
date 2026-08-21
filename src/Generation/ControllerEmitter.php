@@ -55,12 +55,24 @@ final readonly class ControllerEmitter
             {
                 public function routeAction(): mixed
                 {
-                    throw OperationNotImplementedException::operation('{$operation->label()}');
+                    throw OperationNotImplementedException::operation({$this->literal($operation->label())});
                 }
             }
 
             PHP,
         );
+    }
+
+    /**
+     * A value as a PHP string literal, whatever it contains.
+     *
+     * `var_export` rather than wrapping in quotes: a path may legally carry an
+     * apostrophe or end in a backslash, and either turns a hand-quoted literal
+     * into PHP that does not parse.
+     */
+    private function literal(string $value): string
+    {
+        return var_export($value, true);
     }
 
     /**
@@ -83,14 +95,14 @@ final readonly class ControllerEmitter
             ' * protect.',
             ' *',
             ' * Provenance',
-            ' *   '.$this->specPath,
-            ' *   '.$this->pointer($planned->operation),
+            ' *   '.CommentText::safe($this->specPath),
+            ' *   '.CommentText::safe($this->pointer($planned->operation)),
             ' *',
             ' * Findings',
         ];
 
         foreach ($this->findings($planned) as $finding) {
-            foreach ($this->wrap($finding) as $position => $line) {
+            foreach ($this->wrap(CommentText::safe($finding)) as $position => $line) {
                 $lines[] = $position === 0 ? ' *   - '.$line : ' *     '.$line;
             }
         }
@@ -119,6 +131,10 @@ final readonly class ControllerEmitter
      * ours to assume and the build has to be [idempotent](GeneratedTree) — output
      * that another tool then reformats would produce a diff on every run.
      *
+     * Measured in characters rather than bytes, because a finding interpolates
+     * values that come from the document: a non-ASCII `x-sunset` or summary would
+     * otherwise wrap early for a width nobody asked for.
+     *
      * @return non-empty-list<string>
      */
     private function wrap(string $finding, int $width = 92): array
@@ -133,7 +149,7 @@ final readonly class ControllerEmitter
                 continue;
             }
 
-            if (strlen($current) + 1 + strlen($word) > $width) {
+            if (mb_strlen($current) + 1 + mb_strlen($word) > $width) {
                 $lines[] = $current;
                 $current = $word;
 

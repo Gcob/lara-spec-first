@@ -6,6 +6,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Generation\Exceptions\EscapedTreeException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnwritableTreeException;
+use Gcob\LaraSpecFirst\Support\Path;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
@@ -29,6 +30,13 @@ use SplFileInfo;
  * contract rather than accumulating what it used to say. Only files carrying
  * {@see GeneratedFile::MARKER} are ever deleted, so a file somebody wrote inside
  * the generated tree survives a build even though it should not be there.
+ *
+ * **Empty directories are the one exception, and it is stated rather than left to
+ * be discovered.** A directory carries no marker, so there is no way to tell one
+ * the build created from one a person did — and leaving `Controllers/` behind
+ * after its last controller was pruned reads as a bug. So an empty directory
+ * inside the tree is removed whoever made it. Nothing that holds a file is
+ * touched, which is the part that matters.
  *
  * @see docs/guide/code-generation.md — "The invariant: a build never destroys human work"
  */
@@ -109,7 +117,7 @@ final readonly class GeneratedTree
             $segments[] = $segment;
         }
 
-        if ($segments === [] || str_starts_with($relative, '/') || preg_match('/^[A-Za-z]:/', $relative) === 1) {
+        if ($segments === [] || Path::isAbsolute($relative)) {
             throw EscapedTreeException::relativePath($relative);
         }
 

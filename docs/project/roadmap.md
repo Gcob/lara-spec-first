@@ -326,9 +326,11 @@ Everything a consumer writes code against stops being ours to change here.
       (generated path and namespace, the override scan, the publish block, `pagination` and `rate_limiting` and every
       key inside their mappings), the Artisan command signatures and their flags, the controller interface, trait and
       method names, the exception class names, the vendored directory and the refetch flag, the driver registration API,
-      and **the generated tree's own layout** — the `routes.php` filename and its position at the root of that tree,
-      which the build's writer and the runtime's reader both have to agree on. Settling them here costs nothing; after
-      `1.0`, each one costs a major.
+      and **the generated tree's own layout**: the `routes.php` filename and its position at the root of that tree,
+      which the build's writer and the runtime's reader both have to agree on, and **the marker every generated file
+      carries**, which is not decoration — it is what decides whether the build may delete a file, so changing its value
+      orphans every tree an earlier version wrote and nothing will ever prune them again. Settling them here costs
+      nothing; after `1.0`, each one costs a major.
 - [ ] **Close the support-matrix rows a stable release cannot leave `Open`.** Chiefly: whether a document containing
       `trace` fails to load or only the operation is refused, whether a non-conforming path parameter name is rejected
       absolutely or has an escape hatch for specs the consumer does not own, and what happens to `options` and `head`.

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Console;
 
+use Gcob\LaraSpecFirst\Exceptions\SpecException;
+use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
 use Gcob\LaraSpecFirst\Generation\GeneratedTree;
 use Gcob\LaraSpecFirst\Generation\ProjectRelativePath;
@@ -12,6 +14,7 @@ use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
+use Gcob\LaraSpecFirst\Support\Path;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
 
@@ -40,6 +43,24 @@ final class BuildCommand extends Command
 
     public function handle(Repository $config, RemoteReferenceGuard $remote): int
     {
+        // Every refusal this package raises implements `SpecException`, and that
+        // marker exists so a consumer can catch the lot with one clause. This is
+        // the first place that promise pays for itself: the messages are written
+        // to be read — they name the construct, the position and the fix — and
+        // rendering them as an uncaught exception with a source excerpt would
+        // throw all of that away in the command that is meant to be the contract's
+        // `nginx -t`.
+        try {
+            return $this->build($config, $remote);
+        } catch (SpecException $refusal) {
+            $this->components->error($refusal->getMessage());
+
+            return self::FAILURE;
+        }
+    }
+
+    private function build(Repository $config, RemoteReferenceGuard $remote): int
+    {
         $specPath = $this->specPath($config);
 
         if (! is_file($specPath)) {
@@ -52,8 +73,7 @@ final class BuildCommand extends Command
             return self::FAILURE;
         }
 
-        /** @var string $namespace */
-        $namespace = $config->get('lara-spec-first.generated.namespace');
+        $namespace = $this->requiredString($config, 'lara-spec-first.generated.namespace');
 
         // The guard is resolved from the container so that the configured
         // allowlist applies here exactly as it does anywhere else.
@@ -96,6 +116,27 @@ final class BuildCommand extends Command
     }
 
     /**
+     * A configured value this command cannot proceed without.
+     *
+     * Read as `mixed` and checked, rather than annotated as a string: a config
+     * repository promises nothing about a key's type, and the values an
+     * annotation would have declared impossible are exactly the ones worth a
+     * message — a key set to null, to a list, or emptied by hand.
+     *
+     * @throws UnusableSettingException
+     */
+    private function requiredString(Repository $config, string $key): string
+    {
+        $value = $config->get($key);
+
+        if (! is_string($value) || trim($value) === '') {
+            throw UnusableSettingException::setting($key, 'a non-empty string');
+        }
+
+        return $value;
+    }
+
+    /**
      * The flag wins over configuration, and both are resolved against the
      * application root unless they are already absolute.
      */
@@ -103,12 +144,14 @@ final class BuildCommand extends Command
     {
         $option = $this->option('spec');
 
-        /** @var string $path */
         $path = is_string($option) && $option !== ''
             ? $option
-            : $config->get('lara-spec-first.spec.path');
+            : $this->requiredString($config, 'lara-spec-first.spec.path');
 
-        return str_starts_with($path, DIRECTORY_SEPARATOR)
+        // `Path::isAbsolute` rather than a leading-separator check: this used to
+        // ask only about `/`, which treats `C:\specs\api.yaml` as relative and
+        // joins it under the application root.
+        return Path::isAbsolute($path)
             ? $path
             : $this->laravel->basePath($path);
     }

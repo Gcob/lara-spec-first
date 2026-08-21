@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Routing;
 
 use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
+use Gcob\LaraSpecFirst\Support\Path;
 
 /**
  * Resolves where the generated route registrations are, and says whether they
@@ -109,17 +110,10 @@ final readonly class GeneratedRoutesLocator
     {
         $path = rtrim($this->configuredPath, '/\\');
 
-        if ($this->isAbsolute($path)) {
+        if (Path::isAbsolute($path)) {
             return $path;
         }
 
         return rtrim($this->basePath, '/\\').DIRECTORY_SEPARATOR.$path;
-    }
-
-    private function isAbsolute(string $path): bool
-    {
-        return str_starts_with($path, '/')
-            || str_starts_with($path, '\\')
-            || (bool) preg_match('/^[A-Za-z]:[\/\\\\]/', $path);
     }
 }

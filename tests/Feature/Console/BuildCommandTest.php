@@ -126,6 +126,65 @@ it('names a controller from the operationId, or from the method and path', funct
         ->and(is_file(buildTree().'/Controllers/DeleteUsersIdController.php'))->toBeTrue();
 });
 
+/*
+ * The adversarial half. `hostile-paths.yaml` is entirely valid OpenAPI and
+ * entirely hostile to a generator that builds PHP by concatenating strings: a
+ * document is data, a generated file is code, and the boundary between them is
+ * where injection lives.
+ *
+ * The guard for this already existed — `emits PHP that parses` runs `php -l` over
+ * everything emitted. What was missing was a fixture that attacks it. That is the
+ * general lesson: a test only covers the inputs somebody thought to write down.
+ */
+
+function buildHostile(): int
+{
+    config()->set('lara-spec-first.spec.path', specFixturePath('hostile-paths.yaml'));
+
+    return build();
+}
+
+it('emits PHP that parses from a contract written to break it', function (): void {
+    expect(buildHostile())->toBe(0);
+
+    foreach (treeContents(buildTree()) as $relative) {
+        exec('php -l '.escapeshellarg(buildTree().'/'.$relative), $output, $status);
+
+        expect($status)->toBe(0, $relative.' does not parse: '.implode("\n", $output));
+    }
+});
+
+// Worse than a parse error, and the reason this fixture exists. A value closing a
+// block comment ends the docblock early, turns what follows into a statement, and
+// lets the docblock's own closing delimiter reopen and close a comment around the
+// rest — so the file parses, loads, and runs whatever the document put there.
+// Verified by side effect rather than by reading the output, because that is what
+// an attacker would use.
+it('executes nothing a contract smuggled into a docblock', function (): void {
+    $witness = sys_get_temp_dir().'/lsf-injected';
+    @unlink($witness);
+
+    buildHostile();
+
+    foreach (treeContents(buildTree()) as $relative) {
+        if (str_ends_with($relative, '.php') && str_contains($relative, 'Controllers/')) {
+            require buildTree().'/'.$relative;
+        }
+    }
+
+    expect(is_file($witness))->toBeFalse('a generated file executed code from the specification');
+});
+
+it('routes a path a naive literal would have broken', function (): void {
+    buildHostile();
+
+    require buildTree().'/'.GeneratedRoutesLocator::FILE;
+
+    $response = app(HttpKernel::class)->handle(Request::create("/users/o'brien"));
+
+    expect($response->getStatusCode())->toBe(501);
+});
+
 it('emits PHP that parses', function (): void {
     build();
 
@@ -287,6 +346,32 @@ it('registers the routes in the order the document writes them', function (): vo
 
     expect($uris)->toBe(['users/me', 'users/{id}', 'users/{id}', 'posts']);
 });
+
+/*
+ * A refusal is a diagnostic, not a stack trace. Every exception this package
+ * raises implements `SpecException`, and the messages are written to be read —
+ * they name the construct, the position and the fix. Rendering one as an uncaught
+ * exception with a source excerpt throws that away, in the command that is meant
+ * to be the contract's `nginx -t`.
+ */
+it('reports a document it refuses instead of throwing at the reader', function (
+    string $fixture,
+    string $expected,
+): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath($fixture));
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(1)
+        ->and($output->fetch())->toContain($expected)
+        ->and(treeContents(buildTree()))->toBe([]);
+})->with([
+    'no paths at 3.0' => ['openapi-3.0-no-paths.yaml', 'must declare "paths"'],
+    'not valid YAML' => ['malformed.yaml', 'not valid YAML or JSON'],
+    'not a mapping' => ['not-a-mapping.yaml', 'not-a-mapping.yaml'],
+    'a version we do not implement' => ['swagger-2.0.yaml', '2.0'],
+    'a reference cycle' => ['cycle-pointer.yaml', 'closes a cycle'],
+]);
 
 it('fails without writing anything when there is no specification', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('does-not-exist.yaml'));

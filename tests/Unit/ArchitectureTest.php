@@ -67,8 +67,9 @@ arch('routing at boot cannot reach a specification')
 // a `{@see}` in a docblock is enough to add the import — and impossible to see
 // in a diff once it is there.
 //
-// The namespaces below that do not exist yet cost nothing to name now, and mean
-// the rule is already in place the day they do.
+// Written when three of the four namespaces below did not exist, which cost
+// nothing and meant the rule was in place the day they arrived. All four exist
+// now, and `Generation\` and `Console\` arrived under it.
 arch('the contract knows nothing about how it was produced')
     ->expect('Gcob\LaraSpecFirst\Contract')
     ->not->toUse([

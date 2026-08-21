@@ -8,9 +8,10 @@ covers: >
     comment that sits above a reference to generated code and what to do when that class goes missing, why the
     specification the build reads is private and how a sanitized copy is produced for publication, why a formatter has
     to be told to leave the generated tree alone and why the build emits the canonical form anyway, why the build
-    touches the filesystem directly rather than through a Storage disk and what that means for permissions, why
-    generated output records no time and where the repository already answers that, and how a contract change surfaces
-    as a static analysis error rather than a runtime surprise.
+    touches the filesystem directly rather than through a Storage disk and what that means for permissions, how a value
+    from the document is escaped on its way into a literal or a comment, why generated output records no time and where
+    the repository already answers that, and how a contract change surfaces as a static analysis error rather than a
+    runtime surprise.
 read_before: >
     Writing anything that emits PHP from a specification, or changing what the build command does.
 tags: [code-generation, openapi, scope, decisions, laravel]
@@ -173,6 +174,38 @@ that names paths has to leave it out itself.
 **And there is nothing lost by excluding it.** These files are
 [rewritten from scratch on every build](#three-kinds-of-file-and-only-two-are-the-builds), so formatting them is work
 with no product: the result is discarded the next time the specification changes.
+
+### A specification is data, and generated code is code
+
+**Shipped, and it was found by a review rather than by design.**
+
+**Every value the build takes from the document crosses a boundary**, and that boundary is where injection lives. A path
+template, an `operationId`, an `x-sunset`: all of them are free text as far as OpenAPI is concerned, and all of them end
+up inside PHP the application loads. Two rules, because there are two kinds of destination:
+
+- **Into a string literal, always through `var_export()`.** OpenAPI puts almost no constraint on a literal path segment,
+  so `/users/o'brien` is a valid contract — and a hand-quoted literal built from it is PHP that does not parse. A
+  trailing backslash breaks it a character later, by escaping the closing quote.
+- **Into a comment, always neutralized first.** A value that closes a block comment does not merely break the file, and
+  this is the part worth reading twice: the docblock ends early, whatever follows becomes a statement, and the
+  docblock's own closing delimiter reopens and closes a comment around the rest. The file **parses, loads and
+  executes**. Verified rather than argued: an `x-sunset` carrying that sequence produced a controller that ran code when
+  autoloaded.
+
+**The severity comes from where the output lands.** `routes.php` is loaded at boot, so a broken one takes down every
+request _and_ every Artisan command, including the `spec:build` that would repair it — the only way out is deleting the
+tree by hand. And a specification is exactly the document [nobody reviews like code](./remote-references.md): it can
+arrive from another team, a vendor, or a generator.
+
+**It contradicted this document's own invariant, which is the part to learn from.** The build promises that a contract
+it cannot serve leaves the tree untouched rather than half generated. Here the contract was not refused: it was
+accepted, and the output lied. **Escaping rather than refusing is nonetheless the right answer**, because an apostrophe
+in a path is something this package _can_ honor, and [`Rejected`](./openapi-support.md#support-levels) is reserved for
+what it cannot.
+
+**And the guard already existed.** A test runs `php -l` over everything emitted; what was missing was a contract written
+to attack it. That is the general lesson rather than a detail of this bug: a test covers the inputs somebody thought to
+write down, so the fixture is now adversarial by design and every new emitted construct earns a hostile case in it.
 
 ### Native filesystem calls, not a Storage disk
 

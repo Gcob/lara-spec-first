@@ -81,9 +81,16 @@ final readonly class RoutesEmitter
         $verb = $operation->method->value;
         $target = '['.$controller->name->shortName.'::class, \'routeAction\']';
 
+        // `var_export` rather than quoting by hand. A path segment may legally
+        // contain an apostrophe or end in a backslash, and either one turns a
+        // hand-quoted literal into PHP that does not parse — in a file the
+        // service provider loads at boot, so the application and the very command
+        // that would repair it both stop working.
+        $path = var_export($operation->path->template, true);
+
         return isset(self::VERB_METHODS[$verb])
-            ? sprintf("Route::%s('%s', %s);", self::VERB_METHODS[$verb], $operation->path->template, $target)
-            : sprintf("Route::match(['%s'], '%s', %s);", $verb, $operation->path->template, $target);
+            ? sprintf('Route::%s(%s, %s);', self::VERB_METHODS[$verb], $path, $target)
+            : sprintf('Route::match([%s], %s, %s);', var_export($verb, true), $path, $target);
     }
 
     private function docblock(int $count): string
@@ -97,7 +104,7 @@ final readonly class RoutesEmitter
             ' * specification to do it.',
             ' *',
             ' * Provenance',
-            ' *   '.$this->specPath,
+            ' *   '.CommentText::safe($this->specPath),
             ' *   #/paths',
             ' *',
             ' * Findings',
