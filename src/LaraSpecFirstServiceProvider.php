@@ -49,8 +49,22 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
             /** @var list<string> $hosts */
             $hosts = $config['allowed_hosts'] ?? [];
 
-            /** @var string $vendorPath */
             $vendorPath = $config['vendor_path'] ?? 'openapi-external-refs';
+
+            // `?? 'openapi-external-refs'` only catches a missing or null key —
+            // `'vendor_path' => ''` would otherwise fall through to
+            // `$app->basePath('')`, which returns the application root itself,
+            // and every vendored copy would land there uncontained. Checked
+            // the way `generated.path` already is rather than left for
+            // `RemoteReferenceGuard` to catch: that guard only ever sees a
+            // `null` root, a state this binding can no longer produce once
+            // this check is here.
+            if (! is_string($vendorPath) || trim($vendorPath) === '') {
+                throw UnusableSettingException::setting(
+                    'lara-spec-first.remote_references.vendor_path',
+                    'a non-empty string'
+                );
+            }
 
             $vendorRoot = Path::isAbsolute($vendorPath) ? $vendorPath : $app->basePath($vendorPath);
 

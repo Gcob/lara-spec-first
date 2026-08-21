@@ -65,9 +65,22 @@ it('refuses a path that tries to climb out of the vendor root', function (string
     'https://schemas.example.com/../../../outside.yaml',
     'https://schemas.example.com/a/../../outside.yaml',
     'https://schemas.example.com/./common.yaml',
+    // Backslash-separated: on POSIX this segment is just an odd filename, but
+    // `implode(DIRECTORY_SEPARATOR, …)` makes `\` a real separator on Windows,
+    // so a check that only splits on `/` would let this one through.
+    'https://schemas.example.com/..\\..\\outside.yaml',
+    'https://schemas.example.com/a\\..\\..\\outside.yaml',
 ]);
 
 it('does not mistake a name merely containing dots for a traversal segment', function (): void {
     expect(VendoredReferencePath::forUrl('/vendor', 'https://schemas.example.com/v1.2/common.yaml'))
         ->toBe('/vendor/schemas.example.com/v1.2/common.yaml');
+});
+
+// DNS is case-insensitive; this directory name must be too, or the same host
+// spelled two ways vendors to two directories — the exact collision this
+// layout exists to prevent.
+it('lowercases the host so two spellings of it vendor to one directory', function (): void {
+    expect(VendoredReferencePath::forUrl('/vendor', 'https://Schemas.Example.COM/common.yaml'))
+        ->toBe(VendoredReferencePath::forUrl('/vendor', 'https://schemas.example.com/common.yaml'));
 });

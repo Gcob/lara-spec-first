@@ -76,9 +76,15 @@ Rules:
 - **A missing vendored copy is an error naming the flag, never an implicit fetch.** `MissingVendoredReferenceException`
   names the reference, the vendored path it expected, and `php artisan spec:build --update-refs`. "Unresolvable
   reference" is a support ticket; that triple is a fix.
-- **Matching is on the host, exactly.** No wildcard subdomains, no partial matches — `evil-example.com` must never
-  satisfy an entry for `example.com`. Checked again at every hop a vendored document itself references — see
+- **Matching is on the host, exactly, case-insensitively.** No wildcard subdomains, no partial matches —
+  `evil-example.com` must never satisfy an entry for `example.com`. Case is not part of the scope this rule protects —
+  DNS does not see one — so `Schemas.Example.COM` and `schemas.example.com` are one host, matched and vendored to one
+  directory either way. Checked again at every hop a vendored document itself references — see
   [transitive fetching](#a-vendored-document-can-itself-name-a-reference) below.
+- **A redirect is refused, never followed.** The allowlist checks the host written in the document; a client that
+  follows a `3xx` response fetches whatever it names instead, which is the one thing this feature cannot let happen
+  silently. `spec:build --update-refs` disables redirects entirely and reports one naming the `Location` it pointed at —
+  a reference that moved is a reference to rewrite in the document, not one to follow through automatically.
 
 **Status: shipped.** `remote_references.allowed_hosts` and `remote_references.vendor_path` are both live, and
 `spec:build --update-refs` is the one command that reaches the network.

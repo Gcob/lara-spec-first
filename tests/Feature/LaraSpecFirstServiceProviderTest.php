@@ -74,6 +74,18 @@ it('builds the remote reference guard from the configured allowlist and vendor r
     ))->toThrow(MissingVendoredReferenceException::class, 'openapi-external-refs/schemas.example.com/common.yaml');
 });
 
+// `?? 'openapi-external-refs'` only catches a missing or null key: an
+// application that publishes an empty string would otherwise fall through to
+// `$app->basePath('')`, the application root itself, and every vendored copy
+// would land there uncontained instead of raising the way an unusable setting
+// always does elsewhere.
+it('refuses an empty vendor path rather than silently vendoring into the project root', function (): void {
+    config()->set('lara-spec-first.remote_references.vendor_path', '');
+
+    expect(fn () => app(RemoteReferenceGuard::class))
+        ->toThrow(UnusableSettingException::class, 'lara-spec-first.remote_references.vendor_path');
+});
+
 // The one config key the build actually reads today, so its default is behavior
 // rather than only a promise. One root document rather than a list: multi-file
 // contracts are written as local `$ref`s from it, and widening this to a list

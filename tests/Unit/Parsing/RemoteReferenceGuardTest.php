@@ -253,6 +253,29 @@ it('vendors a reference found inside a document it just vendored', function (): 
         ->and($committed['allOf'][0]['$ref'])->toContain('inner.yaml');
 });
 
+// A document fetched as JSON must be committed as JSON: the diff a reviewer
+// reads should be upstream's content with only its own `$ref` rewritten, not
+// the whole file reformatted into a different notation because it happened to
+// name a further reference.
+it('re-persists a vendored JSON document as JSON rather than YAML', function (): void {
+    $guard = guardWith(['schemas.example.com'], [
+        'https://schemas.example.com/outer.json' => json_encode([
+            'allOf' => [['$ref' => 'https://schemas.example.com/inner.json']],
+        ]),
+        'https://schemas.example.com/inner.json' => json_encode(['type' => 'object']),
+    ]);
+
+    $guard->resolve(['$ref' => 'https://schemas.example.com/outer.json'], specDir(), updateRefs: true);
+
+    $committedRaw = (string) file_get_contents(vendorRoot().'/schemas.example.com/outer.json');
+
+    expect(ltrim($committedRaw))->toStartWith('{');
+
+    $committed = json_decode($committedRaw, true);
+    expect($committed['allOf'][0]['$ref'])->not->toContain('https://')
+        ->and($committed['allOf'][0]['$ref'])->toContain('inner.json');
+});
+
 it('refuses a transitively-vendored reference whose host is not allowed', function (): void {
     $guard = guardWith(['schemas.example.com'], [
         'https://schemas.example.com/outer.yaml' => ['allOf' => [['$ref' => 'https://evil.example.com/inner.yaml']]],
@@ -260,6 +283,33 @@ it('refuses a transitively-vendored reference whose host is not allowed', functi
 
     expect(fn () => $guard->resolve(['$ref' => 'https://schemas.example.com/outer.yaml'], specDir(), updateRefs: true))
         ->toThrow(RemoteReferenceException::class, 'will not fetch');
+});
+
+// `$chain` alone only guards against a cycle along one branch — it says
+// nothing about a URL named from a dozen unrelated positions, or reached twice
+// through two different vendored documents. Without a memory of what this
+// `resolve()` call already vendored, that document would be fetched and
+// written once per occurrence rather than once.
+it('fetches a URL named from more than one position only once', function (): void {
+    $factory = new Factory;
+    $factory->preventStrayRequests();
+    $factory->fake([
+        'https://schemas.example.com/common.yaml' => Yaml::dump(['type' => 'object']),
+    ]);
+
+    $guard = new RemoteReferenceGuard(
+        ['schemas.example.com'],
+        vendorRoot(),
+        new RemoteReferenceFetcher($factory),
+    );
+
+    $guard->resolve([
+        'a' => ['$ref' => 'https://schemas.example.com/common.yaml'],
+        'b' => ['$ref' => 'https://schemas.example.com/common.yaml'],
+        'c' => ['nested' => ['$ref' => 'https://schemas.example.com/common.yaml']],
+    ], specDir(), updateRefs: true);
+
+    $factory->assertSentCount(1);
 });
 
 it('raises a clear error instead of looping on a remote reference cycle', function (): void {

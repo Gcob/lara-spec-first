@@ -43,7 +43,13 @@ final readonly class VendoredReferencePath
         // matched against `^[a-zA-Z][a-zA-Z0-9+.-]*://`, so a host is usually
         // present — this is not a second validation of the URL's shape, only a
         // fallback for the case just above.
-        $host = (string) ($parts['host'] ?? 'unknown-host');
+        //
+        // Lowercased because DNS is case-insensitive and this directory name
+        // is not: `Schemas.Example.COM` and `schemas.example.com` name one
+        // host, and vendoring them to two directories would be the exact
+        // collision this layout exists to prevent, on a case-sensitive
+        // filesystem and a silent one on a case-insensitive one.
+        $host = strtolower((string) ($parts['host'] ?? 'unknown-host'));
 
         // `parse_url()` splits a port into its own field rather than leaving it
         // on `host`, so it has to be folded back in by hand — otherwise
@@ -56,8 +62,13 @@ final readonly class VendoredReferencePath
         $path = $parts['path'] ?? '/';
         $query = $parts['query'] ?? null;
 
+        // Normalized before splitting: a `.` or `..` segment separated by `\`
+        // rather than `/` would otherwise pass the check below unrecognized —
+        // one segment, `..\..\outside.yaml`, containing neither string on its
+        // own — and `implode(DIRECTORY_SEPARATOR, …)` below would then resolve
+        // it outside `$vendorRoot` on Windows, where `\` is a real separator.
         $segments = array_values(array_filter(
-            explode('/', $path),
+            explode('/', str_replace('\\', '/', $path)),
             static fn (string $segment): bool => $segment !== '',
         ));
 
