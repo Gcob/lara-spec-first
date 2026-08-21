@@ -54,4 +54,21 @@ final readonly class Operation
     {
         return $this->method->value.' '.$this->path->normalized;
     }
+
+    /**
+     * How to name this operation to a person.
+     *
+     * Separate from {@see self::identity()} on purpose, and the difference is not
+     * cosmetic. Identity exists to be *compared*, so it normalizes parameter
+     * names away; a diagnostic exists to be *read*, and `get /users/{}` sends a
+     * reader looking for a path their document does not contain.
+     *
+     * Every message this package puts in front of a human uses this. Every
+     * comparison uses identity. Mixing them is how a good error message becomes
+     * a confusing one.
+     */
+    public function label(): string
+    {
+        return $this->method->value.' '.$this->path->template;
+    }
 }

@@ -19,6 +19,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | The specification — DONE
+    |--------------------------------------------------------------------------
+    |
+    | One root document. Multi-file contracts are written as local `$ref`s from
+    | it, which the reader already resolves, so a list of roots would answer a
+    | question nobody has asked yet and would raise several nothing settles:
+    | which document's order wins, and whether each gets its own generated tree.
+    | Widening this to a list later is non-breaking; narrowing it would not be.
+    |
+    | Read only by the build-time commands. Nothing at runtime opens it.
+    |
+    | See docs/guide/code-generation.md — "The runtime never sees the spec".
+    |
+    */
+
+    'spec' => [
+        'path' => 'openapi.yaml',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Remote references — STARTED
     |--------------------------------------------------------------------------
     |

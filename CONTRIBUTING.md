@@ -94,6 +94,44 @@ Then open <http://localhost:13100>. Set `SERVE_PORT` if that port is taken.
 
 The Pest suite stays the fast feedback loop; Workbench is for the things a test cannot show you.
 
+### The contract it serves
+
+`workbench/openapi.yaml` is the specification this application runs on, and it is written to be read: every operation in
+it exists to make one behaviour visible in the generated output rather than only in an assertion. Document order, a
+derived class name, a deprecation with a sunset date, a declared security requirement the build does not enforce yet.
+
+```bash
+composer serve                    # builds the tree, then serves
+vendor/bin/testbench spec:build   # or rebuild on its own, after editing the contract
+```
+
+Then try `GET /users/me`, `GET /users/42` or `POST /posts`. Every one answers `501`, naming the operation: nothing
+implements them yet, and that is the honest answer while the contract describes an endpoint and no code does.
+
+**`workbench/app/Http/Generated` is gitignored**, for the same reason any project ignores its build output, and because
+this application exists to model a real consumer one — so it is configured the way one would be. The contract is
+committed; what the contract produces is not.
+[`.gitignore` decides](./docs/guide/code-generation.md#which-generated-code-is-committed), and the cost of ignoring it
+is the `composer install` bargain the [two layers](./docs/guide/code-generation.md#two-layers) section already accepts:
+a fresh clone serves nothing until the build has run once.
+
+Which is why the build is a step of `composer build` rather than something to remember — see `workbench.build` in
+`testbench.yaml`. That is also the workflow a consumer has: `spec:build` belongs in whatever bootstraps their
+application.
+
+`pint.json` still excludes that tree even though git ignores it, because Pint reads the filesystem rather than the
+index. It has to: Pint and the build both want to own the formatting of a generated file, so without the exclusion they
+rewrite each other. The package emits Pint-canonical output and a test keeps it that way; excluding it is the belt to
+that braces, and the same advice the README gives consumers. Note that `exclude` only applies to a default scan —
+`pint path/to/tree` still formats it, which is how the test that checks the emitted format keeps working.
+
+Two things about this application that will otherwise surprise you:
+
+- **`base_path()` is the Testbench skeleton under `vendor/`, not `workbench/`.** That is what
+  `workbench/app/Providers/WorkbenchServiceProvider.php` corrects, and why the paths it sets are absolute.
+- **Generated classes live under `Workbench\App\Http\Generated`,** because that is the namespace this package's
+  `autoload-dev` maps into `workbench/app/`. Anywhere else and they would not autoload at request time.
+
 ### Your code must run on Laravel 12 _and_ 13
 
 This package supports both. That applies to `src/`, to `tests/`, and to `workbench/` alike.

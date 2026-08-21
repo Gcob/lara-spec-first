@@ -32,8 +32,8 @@ has to answer.
 
 ## Where the code is today
 
-The package reads a specification, normalizes it, and hands out its own types. It knows how to register generated routes
-at boot without reading a specification to do it, and it generates nothing for that to find.
+The package reads a specification and generates the PHP that serves it: an operation in a contract becomes a route that
+answers, honestly, with `501` until something implements it. Nothing at runtime opens a specification.
 
 ### What runs
 
@@ -64,17 +64,20 @@ at boot without reading a specification to do it, and it generates nothing for t
 - [x] **Route registration at boot.** The provider loads one generated `routes.php` and nothing else, skips it when the
       application's routes are cached, and stays silent when the build has not written one. The loading half only: what
       the routes point at is not generated yet.
+- [x] **`spec:build`.** Reads the configured specification, plans every file in memory, then writes: the routes and one
+      `final` controller per operation, each explaining its own provenance and answering 501. Idempotent, confined to
+      the generated tree, and it prunes what the contract no longer describes.
 - [x] **The architecture assertions.** The parser is contained to `Parsing\`, `Contract\` is forbidden from knowing
       anything about the layer that produced it, and `Routing\` may reach neither `Parsing\` nor the YAML decoder. All
       three are Pest `arch()` tests rather than conventions to remember.
 
 ### What does not exist yet
 
-Two namespaces name the gap precisely, and they do not exist: `Generation\` and `Console\` have neither a directory nor
-a file. There is no Artisan command and no generated PHP, so an application using this package registers no route in
-practice — what boots is a loader with nothing to load. Four of the six blocks in `config/lara-spec-first.php` are
-marked `TODO` in the file itself and are inert, which the file says out loud rather than leaving to be discovered, and
-which [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
+What is missing is no longer a namespace but the second half of several features. `x-controller` is not read, so every
+generated controller is `final` and nothing can be extended; there is no `spec:make`, no rename detection, no doctor,
+and no response DTO or generated validation. Four of the six blocks in `config/lara-spec-first.php` are marked `TODO` in
+the file itself and are inert, which the file says out loud rather than leaving to be discovered, and which
+[the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
 
@@ -97,20 +100,29 @@ the code, and a gap in it is loud.
       command: a test runs `route:cache` over a generated tree, then requires the cache file it wrote and checks the
       routes come back working. **The writing half belongs to `spec:build` below** — nothing emits that file yet, so
       what is proven here is the loading, against a fixture standing in for generated output.
-- [ ] **`spec:build`, in its Phase 1 form:** resolve the specification and emit the routes and the generated
-      controllers. Idempotent, ordered, and it never writes outside its own directories. That last property is the
+- [x] **`spec:build`, in its Phase 1 form:** resolves the specification and emits the routes and the generated
+      controllers. Idempotent (a second run against an unchanged document does not touch a file, not even its
+      modification time), ordered (every file is planned in memory before any is written, so a refused document leaves
+      the working tree untouched), and it never writes outside its own directories — the
       [invariant](../guide/code-generation.md#the-invariant-a-build-never-destroys-human-work) stated without a clause
-      precisely so that it can be tested as one.
-- [ ] **The two-class seam.** One controller per operation carrying one `routeAction`, generated `final` unless the
-      operation declares [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable), plus
-      the thin `SpecController` base and its `middleware()` method. This is what "abstract controllers" means in this
-      phase: the seam a developer's own class attaches to, with no persistence behind it.
-- [ ] **Every generated file explains itself.** The [source map](../guide/code-generation.md#the-source-map) (the JSON
+      precisely so that it can be tested as one, which it is. It also refuses what it cannot serve rather than emitting
+      it: a path parameter Laravel's router would never match, one past the compiler's 32-character ceiling, an
+      `operationId` PHP cannot carry, and two operations claiming one class name. `lara-spec-first.spec.path` names the
+      document, and stale generated files are pruned by the marker they carry, so nothing a human wrote inside the tree
+      is ever removed.
+- [ ] **The two-class seam**, half of which is shipped. One controller per operation carrying one `routeAction`, over
+      the `SpecController` base with its `middleware()` method: done. What remains is
+      [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself — reading it into
+      `Contract\Operation`, emitting a non-`final` parent when it is present, pointing the route at the child when that
+      child exists, and refusing two values that reduce to one generated parent. **Every generated controller is `final`
+      until then**, so nothing can be extended yet.
+- [x] **Every generated file explains itself.** The [source map](../guide/code-generation.md#the-source-map) (the JSON
       pointer the file came from) and the
       [docblock norm](../guide/code-generation.md#every-generated-file-explains-itself) (provenance, findings,
-      navigation), both emitted unconditionally and both asserted by the generator's own tests. It ships with the first
+      navigation), emitted unconditionally and asserted by the generator's own tests. It shipped with the first
       generated file rather than after it: retrofitting a convention across a generated tree is an audit, writing it
-      into the first emitter is a paragraph.
+      into the first emitter is a paragraph. What a finding can say will grow with what the build knows; the norm itself
+      is in place.
 - [ ] **Rename and orphan detection.** Comparing the pointers in the existing generated tree against the ones the new
       build would emit is what turns a class-not-found into an instruction naming the old name, the new one, and
       [the files that reference it](../guide/code-generation.md#how-it-says-it). It depends on the source map above and
@@ -121,9 +133,12 @@ the code, and a gap in it is loud.
       item includes the `x-controller` insertion prompt and the verification that makes it safe: the edit happens on a
       copy, the copy is read back through the normal pipeline, and nothing is written unless the resulting operations
       are identical but for the extension just added.
-- [ ] **An unimplemented operation answers `501`,** from a package-provided handler that names the `spec:make` command
-      to run. See [501](../guide/code-generation.md#an-unimplemented-operation-answers-501). It is also the seam the
-      Phase 2 mock plugs into, so getting its position right now costs nothing later.
+- [x] **An unimplemented operation answers `501`.** The generated controller's `routeAction` throws an exception that
+      Laravel renders as `501`, which is what reconciles the two things this documentation set said: the generated
+      controller _is_ the handler position, so one controller per operation stays true. See
+      [501](../guide/code-generation.md#an-unimplemented-operation-answers-501). It is the seam the Phase 2 mock plugs
+      into, so its position is settled now rather than later. Naming the `spec:make` command in the body is owed once
+      that command exists — printing a command nobody can run would be worse than saying nothing.
 
 ### Reading, reporting, refusing
 

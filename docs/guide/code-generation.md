@@ -6,8 +6,11 @@ covers: >
     the rule that generated code is never edited by hand, why scaffolding a class you will own is a separate command,
     the docblock every generated file carries so that a human or an AI agent can navigate it without guessing, the
     comment that sits above a reference to generated code and what to do when that class goes missing, why the
-    specification the build reads is private and how a sanitized copy is produced for publication, and how a contract
-    change surfaces as a static analysis error rather than a runtime surprise.
+    specification the build reads is private and how a sanitized copy is produced for publication, why a formatter has
+    to be told to leave the generated tree alone and why the build emits the canonical form anyway, why the build
+    touches the filesystem directly rather than through a Storage disk and what that means for permissions, why
+    generated output records no time and where the repository already answers that, and how a contract change surfaces
+    as a static analysis error rather than a runtime surprise.
 read_before: >
     Writing anything that emits PHP from a specification, or changing what the build command does.
 tags: [code-generation, openapi, scope, decisions, laravel]
@@ -22,11 +25,13 @@ turns the specification into PHP, and the result is safe to regenerate at any ti
 > file marks the difference per section rather than per file, so the banner does not become a little more wrong with
 > every release. Items marked `Open` are undecided.
 >
-> **Shipped:** the path normalization that [identity](#identity-is-the-path-and-the-method-not-the-name) rests on, and
-> the loading half of routing — the provider
-> [registers the generated routes at boot](#the-routes-are-one-file-and-the-only-one-the-runtime-opens) and reads no
-> specification to do it. Nothing writes that file yet: no build command exists, no code is generated, and nothing
-> detects a rename.
+> **Shipped:** `spec:build` in its Phase 1 form, which resolves the specification and emits the routes and one
+> controller per operation, each carrying [its own docblock](#every-generated-file-explains-itself) and answering
+> [501](#an-unimplemented-operation-answers-501). It is idempotent, it plans before it writes, and it
+> [never writes outside its own tree](#the-invariant-a-build-never-destroys-human-work). The provider
+> [loads what it emitted](#the-routes-are-one-file-and-the-only-one-the-runtime-opens) and reads no specification to do
+> it. Not built yet: the `x-controller` seam, so every generated controller is `final` today; response DTOs and request
+> validation; rename detection; and `spec:make`.
 
 What the build reads, and what it refuses to read, is a different subject and lives in
 [`openapi-support.md`](./openapi-support.md).
@@ -107,10 +112,21 @@ change shape without asking permission. It can only be free if nobody has hand-e
 One command, run after any change to the specification, producing every derived output: the routes, the abstract
 controllers, the response DTOs and the validation. Everything it writes, it owns.
 
+**Shipped, in the form Phase 1 asked for.** It reads the document named by `lara-spec-first.spec.path`, extracts the
+contract's operations, plans every file in memory, and writes. Which specification it reads is one root document rather
+than a list: multi-file contracts are written as local `$ref`s from it, and a list of roots would raise questions
+nothing has settled — whose order wins, and whether each gets its own generated tree. Widening it later is non-breaking.
+
+**The two steps are the design rather than structure for its own sake.** A build that emitted as it went would leave a
+half-generated tree behind the first operation it could not handle, and half-generated output from a broken contract is
+worse than no output: it analyses, it autocompletes, and it lies. Planning first means a refusal costs nothing, and the
+working tree is exactly as it was.
+
 Its properties:
 
 - **Idempotent.** Running it twice in a row changes nothing the second time. If a build produces a diff on an unchanged
-  spec, that is a defect.
+  spec, that is a defect. A formatter counts as part of that promise, which is why
+  [it gets its own section](#your-formatter-and-the-build-both-want-to-own-these-files).
 - **Ordered, and it stops.** Check the vendored references are present, parse, normalize in memory, **compare against
   the specification's previously committed version, read from git**, then generate. A spec that fails
   [the doctor's](./doctor.md) hard checks does not reach the generator — half-generated output from a broken contract is
@@ -120,6 +136,86 @@ Its properties:
 - **It never writes outside its own directories.** No exceptions, no conditions. This is the
   [invariant](#the-invariant-a-build-never-destroys-human-work) in one sentence, and it is testable — which is the point
   of stating it without a clause.
+
+### Your formatter and the build both want to own these files
+
+**Shipped, and learned the hard way rather than designed.**
+
+Idempotence is a property of the _pair_, not of the build alone. Almost every Laravel project formats its code, and a
+formatter rewriting a generated file is a formatter the next build undoes — so the two rewrite each other forever, a
+`git status` is never clean, and the promise above quietly stops being true. It is not hypothetical: this package's own
+Workbench application caught exactly this, because Pint's Laravel preset inserts a blank line before an annotation
+(`phpdoc_separation`) and the generated docblock did not have one. No test saw it, because the tests wrote to a
+temporary directory where no formatter was looking.
+
+There are two halves to the answer, and only one of them is ours.
+
+**Ours: the build emits the canonical form.** What it writes is what Pint's `laravel` preset would have produced, and
+[the test suite runs Pint over the generated output](https://github.com/Gcob/lara-spec-first/blob/main/tests/Feature/Console/BuildCommandTest.php)
+to keep it that way. A project on the default preset needs to do nothing at all.
+
+**Yours: exclude the generated tree from your formatter anyway.** We can be canonical under one rule set, not under
+every rule set — a project on `psr12`, on `symfony`, or with rules of its own will disagree with us somewhere, and it
+should win in its own codebase without a fight. In `pint.json`:
+
+```json
+{
+    "preset": "laravel",
+    "exclude": ["app/Http/Generated"]
+}
+```
+
+`exclude` takes directories; `notPath` takes single files, and `notName` takes filename patterns. `php-cs-fixer` has the
+same shape through its own `Finder`. One detail worth knowing, because a pipeline can lose it: **`exclude` applies to
+the default scan, not to a path passed explicitly** — `pint app/Http/Generated` still formats the tree, so a CI step
+that names paths has to leave it out itself.
+
+**And there is nothing lost by excluding it.** These files are
+[rewritten from scratch on every build](#three-kinds-of-file-and-only-two-are-the-builds), so formatting them is work
+with no product: the result is discarded the next time the specification changes.
+
+### Native filesystem calls, not a Storage disk
+
+**Shipped.** It looks wrong in a Laravel package, so it is worth stating why it is not.
+
+**There are two filesystems in Laravel and conflating them is the whole trap.** `Storage`, backed by Flysystem, is for
+application data whose location is a deployment concern — an upload, an export, something that may live on S3 tomorrow.
+`Illuminate\Filesystem\Filesystem` is a thin wrapper over the native functions, and it is what every `make:` command in
+the framework uses to write a class. "Disks are the norm" is true of the first and not of the second.
+
+**The rule that decides it: is _where_ this file goes a deployment concern, or a language one?** Generated PHP has to be
+on the local filesystem at a path PSR-4 maps to a namespace, or nothing can load it. A disk would let a project point it
+at S3 and produce files that autoload from nowhere — a setting whose only outcome is a broken application.
+
+**And this package answers the same question the other way where the other way is right**, which is the best evidence
+the rule is doing work rather than rationalizing: the [sanitized public specification](#where-the-public-copy-goes) is
+configured as a **disk**, because that document is served, and whether it is served from local storage, S3 or a CDN is
+exactly the kind of thing a deployment decides. One rule, two answers, no inconsistency.
+
+Native calls rather than `Illuminate\Filesystem\Filesystem` is then a smaller choice, and deliberate on two grounds:
+`GeneratedTree` stays a plain object a unit test can build with no container, the pattern this package already follows
+for its guards; and the wrapper would fix nothing, since its `put()` also reports failure by returning `false`.
+
+#### Permissions, and the mode that looks alarming
+
+`mkdir` is called with `0777`, and **the umask decides, not that number**: the process umask is subtracted from it, so a
+normal `022` yields `0755` and a shared-group `002` yields `0775`. Passing the permissive value defers the policy to the
+operator instead of overriding it, and it is exactly what the framework's own generators pass —
+`GeneratorCommand::makeDirectory()` calls `makeDirectory($path, 0777, true, true)` for every `make:` command. **Nothing
+is ever `chmod`-ed afterwards**, for the same reason: forcing a mode would override the policy this defers to.
+
+**What actually needed fixing was not the mode but the silence.** The scenario a container makes ordinary is that the
+build runs as one user and the tree belongs to another — root inside Docker, or a deploy step. PHP reports that by
+returning `false` and emitting a warning, so a build that ignored the return value counted a file as written that was
+never on disk, reported success and exited zero. Every write is now checked, and an unwritable tree stops the build with
+a message naming the path. **A refusal leaves the tree exactly as it was**, which is the same promise
+[the planner](#the-build-command-specbuild) makes one step earlier.
+
+The friction worth naming rather than solving: if a build has run as another user, the developer on the host cannot
+overwrite the result. That is a property of any generator in a container, and the answer is the one this repository
+already uses for itself — map the host UID and GID into the container, as `compose.yaml` does. It is not something a
+package can fix from the inside, and inventing a permission strategy here would only add a second policy to disagree
+with the operator's.
 
 ### Remote references during a build: frozen by default
 
@@ -342,7 +438,8 @@ The config key names and the default are public API surface under [rule 4](./ope
 
 ### The routes are one file, and the only one the runtime opens
 
-**Shipped.** `Routing\GeneratedRoutesLocator` locates it; the service provider loads it at boot.
+**Shipped.** `spec:build` writes it, `Routing\GeneratedRoutesLocator` locates it, and the service provider loads it at
+boot.
 
 **Decision: route registrations go in a single `routes.php` at the root of the generated tree**, beside the
 sub-namespaces rather than inside one. It is the only generated file the runtime ever opens, and it is a script rather
@@ -553,9 +650,17 @@ intolerable in watch. Probably different answers for the two commands.
 
 ### When `operationId` is absent, derive from method and path
 
-**Decision: the fallback is the operation's [identity](#identity-is-the-path-and-the-method-not-the-name) — its HTTP
-method and its normalized path.** There is nothing else that both exists on every operation and means something to a
-reader.
+**Decision: the fallback is the operation's HTTP method and its path.** There is nothing else that both exists on every
+operation and means something to a reader. `GET /users/{id}` becomes `GetUsersIdController`.
+
+**Revised, and the revision is worth naming rather than hiding.** This rule used to say the _normalized_ path, so that
+parameter names were excluded and renaming `{id}` to `{userId}` could not rename a class. What removed that cost was a
+later decision: a class with no `x-controller`
+[is `final`](./controllers.md#the-specification-decides-what-is-customizable), so nothing may extend it and no import
+can depend on it. Nobody can be hurt by a name nobody may reference, and what is left is that `GetUsersIdController`
+tells a reader which endpoint it serves where `GetUsersParamController` does not. **Identity stays normalized
+regardless** — that is a different question, asked for rename detection rather than for naming, and the two must not be
+conflated.
 
 The objection to raise and dismiss: deriving from the path means that reorganizing URLs renames classes. True — and
 **proportionate**, because changing a path _is_ a change to the contract. Consumers have to update their calls; you
@@ -631,6 +736,14 @@ every mode rather than only in development — which is why it has its own secti
 **Decision: every generated file carries the JSON pointer it came from** — the operation, the schema, the exact position
 in the specification.
 
+**And the file it points into is named from the project root, never absolutely.** Whether a project commits its
+generated tree is [its own choice](#which-generated-code-is-committed), so an absolute path is a defect waiting for the
+first project that does: it differs between every developer and every CI runner, which is a diff nobody made, and it
+publishes one machine's directory layout — a username included — into a repository. The root is the nearest ancestor
+holding a `composer.json`, which for an ordinary application is the same directory as `base_path()` and stays correct
+where the two differ. A specification genuinely outside any project keeps its absolute path, because there is no shorter
+honest name for it.
+
 It is the same idea a bundler's source map serves, and the same need: generated code is read by people who did not write
 it, and the first question any of them has is _where did this come from?_ A developer debugging, a reviewer judging a
 diff, an AI agent working in the repository — all three are one annotation away from the contract instead of grepping
@@ -694,6 +807,38 @@ docblock either names the command that creates it or `@see`s the code that alrea
 
 That second case is what makes the norm worth the effort. A generated default and the class that replaced it are the
 single most common way to misread this kind of codebase, and one annotation removes the mistake entirely.
+
+### What a generated file deliberately does not carry: the time
+
+**Decision: nothing in generated output records when it was generated.** No timestamp, no `created_at`, no `updated_at`.
+Written down as a decision rather than left as an absence, because it is the first thing anybody proposes adding and it
+looks harmless.
+
+**A timestamp breaks idempotence outright.** The build compares contents to decide whether to write, so a clock in the
+file means different bytes every run: every file rewritten every time, `changedNothing()` never true, and — for a
+project that tracks its generated tree — a diff in every file on every build. It is the same defect as
+[an absolute path](#the-source-map) with a worse blast radius, since a path only diverges between machines while a clock
+diverges between two runs on one machine. It would also foreclose a genuinely useful gate: `spec:build` followed by
+`git diff --exit-code` is how a pipeline checks the tree is current until [the doctor](./doctor.md) can, and a timestamp
+makes that check fail always, which is the same as it saying nothing.
+
+**`created_at` is worse, for a different reason.** Preserving it would mean the build reading its own previous output to
+recover a date, so what it emits would depend on what was already there rather than only on the contract. Two things go
+with that: the same specification would produce different files on a fresh clone than on an existing checkout, which is
+reproducibility gone; and the file would carry a fact the specification cannot express, held only in a tree
+[a project is free to delete](#which-generated-code-is-committed). A small database in the one place this document calls
+disposable.
+
+**Both fields already exist, and more accurately than a comment could state them.** `updated_at` is the file's
+modification time, and it means something _because_ the build leaves unchanged files alone: it says when the content
+last actually changed, not when a command last ran. `created_at` is git, with the author and the diff attached. This is
+the same reasoning that makes [git the lock file](./remote-references.md#no-lock-file-git-is-the-lock) for vendored
+references and [git the source of the contract baseline](./lifecycle.md#unstable-by-default-and-what-stable-costs-us):
+the repository already records time, and reimplementing that inside a generated comment would be a worse copy of it.
+
+**And if the worry behind the question is staleness, a date does not answer it.** A file written yesterday can be
+perfectly current, and one written a minute ago can be stale if the specification moved since. What answers it is
+comparing against the contract, which is [the drift check](./doctor.md#what-it-checks).
 
 **It is testable, and it should be tested.** The docblock is output, so the generator's own test suite asserts it is
 there and carries all three parts — the same way
@@ -878,5 +1023,17 @@ regions ever read or written, and a hard failure rather than a guess when the re
 - The [factory override scan](#overriding-a-factory-extend-it-in-a-directory-the-project-declares): the config key's
   name, whether it recurses by default, the exact mechanism for finding the `extends` relationship, and the name of the
   exception thrown when two classes claim one factory.
+- **Whether a generated file records the package version that emitted it.** Distinct from
+  [the time, which is refused](#what-a-generated-file-deliberately-does-not-carry-the-time), and it is the difference
+  that makes it worth considering: a version changes only when the emitter might genuinely produce something else, so
+  stamping it costs a rewrite exactly when a rewrite is warranted rather than on every run. What it would buy is a
+  reader — or a support conversation — being able to tell that a file came from an older emitter than the one installed.
+
+    Not before the first tag, because there is no version to record until the package is published, and the shape is
+    worth settling near the [name freeze](../project/roadmap.md#before-10-freeze-what-a-major-would-cost): once a header
+    line is there, tooling reads it, and its format is then as much public API as a config key. The costs to weigh when
+    it is decided: every upgrade rewrites the whole tree, which is loud for a consumer who tracks it, and a
+    `git diff --exit-code` gate would fail across an upgrade for a reason that is correct but needs explaining.
+
 - **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated validation are
   Phase 2 — the same build command doing more, not a new one. See the [Roadmap](../project/roadmap.md).
