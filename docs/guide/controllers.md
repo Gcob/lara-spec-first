@@ -193,17 +193,42 @@ work a generator should have done.
 replaces it, and replacing it is exactly what implementing the operation means:
 
 ```php
+// The parent below is generated. If PHP cannot find it, run `php artisan spec:build`.
+// If it still fails, the specification no longer has an `x-controller` pointing here.
 class UserController extends \App\Http\Generated\Controllers\UserController
 {
     public function routeAction(string $id): mixed
     {
-        // Replace this line with your answer to `get /users/{id}`. Until you do, the operation
-        // keeps answering the generated 501 — an empty body would answer an empty 200 instead,
-        // which the contract never described.
+        // Replace this line with your answer to `get /users/{id}`.
         return parent::routeAction($id);
     }
 }
 ```
+
+**Decision: the scaffold is not a publishable stub, and what a stub would have to leave alone is the reason.** Every
+Laravel generator worth copying lets a project publish its stubs, so the absence is a choice rather than an omission.
+
+Almost every line here is derived. The class declaration carries the parent's fully-qualified name, which
+[the build's naming rule](./code-generation.md#naming-and-the-rename-problem) produced; `routeAction`'s parameter list
+is the path's own, and [PHP forbids a child from widening it](#the-signature-is-the-contract-with-the-child). A stub can
+hold placeholders for those, but a stub whose placeholders are all mandatory is a template with one editable region —
+the comment.
+
+**And its failure mode is quiet.** Drop `extends` from a published stub, by accident or because a placeholder was
+renamed, and `spec:make` writes a class that compiles, that the route still points at, and that answers nothing the
+contract described. This is the one file in the package where nothing is guessed; a template is a way to reintroduce
+guessing.
+
+**The cost also arrives at the wrong moment.** Published stubs are public API surface under
+[rule 4](./openapi-support.md#the-four-rules), and the body is exactly what
+[Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features) changes: `x-model`, the
+CRUD defaults and the DTO factory calls all land inside `routeAction`. Publishing a stub contract now means choosing
+between breaking every published stub then, or freezing a shape this document already calls provisional.
+
+**Revisit when that body settles.** If it earns a stub then, the shape to prefer is a stub for the frame with the
+load-bearing lines inserted rather than templated — the parent, the signature, and the call that keeps the `501` — so
+that a published stub cannot silently unhook a class from its own operation. Until then the answer to wanting a
+different file is that the file is yours: `spec:make` writes it once and never touches it again.
 
 **And the command builds when it is done.** A developer adds `x-controller` and runs `spec:make`: the class it names has
 no generated parent yet, because that parent's name comes from the extension the build has not read. The file would not
@@ -622,10 +647,11 @@ Two checks specific to this document, both of which the specification cannot see
 
 ## Open questions
 
-- Whether `spec:make` needs a non-interactive form for CI, given that
-  [the insertion prompt](#specmake-is-the-only-way-in) assumes somebody is at the keyboard. A `--no-interaction` run
-  presumably prints the block and exits without writing, which is the safe default but worth stating rather than
-  inferring.
+- Whether `spec:make` needs a way to say yes without a keyboard. Settled for the bulk forms: a `--no-interaction` run
+  creates nothing, because Artisan answers a prompt with its default and the default here is no. What is still open is
+  whether a flag should exist to mean yes — for the bulk confirmation and for
+  [the insertion prompt](#specmake-is-the-only-way-in) both, since neither has one and a script therefore cannot use
+  either.
 - The [interface, trait and method names](#the-detected-crud-semantic-is-a-marker-interface-deliberately-empty), all of
   which are public API surface under [rule 4](./openapi-support.md#the-four-rules) from the first release on.
 - Whether a generated DTO could be a Laravel API Resource instead. The `routeAction` return type is the only contract

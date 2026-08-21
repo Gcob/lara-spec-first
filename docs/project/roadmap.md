@@ -154,7 +154,9 @@ the code, and a gap in it is loud.
       forms listing what they would create and asking first, defaulting to no so a non-interactive run creates nothing.
       It never overwrites a file, refuses a class in a namespace the project does not map, prints the row to add for an
       operation that declares no `x-controller`, and runs the build when it is done — without which the `extends` it
-      just wrote has no parent to reach, since that parent's name comes from the extension the build had not read.
+      just wrote has no parent to reach, since that parent's name comes from the extension the build had not read. What
+      it writes is deliberately not a [publishable stub](../guide/controllers.md#specmake-is-the-only-way-in): nearly
+      every line is derived, and a template is a way to reintroduce guessing into the one file where nothing is guessed.
       `spec:build` never scaffolds and now
       [names the commands to run](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it)
       instead, summarised by tag, with the atomic form named for the operations no tag reaches — and the generated 501

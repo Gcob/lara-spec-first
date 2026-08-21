@@ -128,11 +128,13 @@ describe('the file it writes', function (): void {
      * job is to help. Replacing the line is what implementing the operation means.
      */
 
+    // Asserted as the call rather than as the sentence around it: the comment's
+    // wording is the emitted file's prose and may be reworded, while the parent call
+    // is the behaviour — a genuinely empty body would answer an empty 200 instead.
     it('keeps the operation answering 501 until the line is replaced', function (): void {
         expect(scaffoldOf(plannedScaffold()))
             ->toContain('return parent::routeAction($id);')
-            ->toContain('Replace this line with your answer')
-            ->toContain('an empty body would answer an empty 200');
+            ->toContain('Replace this line');
     });
 
     it('hands the parent every parameter it declared', function (): void {
