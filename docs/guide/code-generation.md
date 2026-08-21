@@ -488,6 +488,14 @@ else. What the emitter writes is the registration itself, with the controller na
 `[Controller::class, 'routeAction']` pair of plain strings, in the specification's own
 [order](./openapi-support.md#route-order-the-spec-files-order-is-the-route-order).
 
+**A contract with nothing to route still gets the file, and the file says so.** Zero operations is a supported outcome
+rather than an error — a 3.1 document may legally carry only `webhooks`, or only `components` — and skipping the write
+would leave the previous build's routes registered, which is drift the runtime would go on serving. So the file is
+written with no registration in it, its findings say why rather than reporting a count of zero, and it carries no
+[reference comment](#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing), because it imports no
+generated class to explain. That last part is not a detail: a note about generated controllers, sitting above imports
+holding none, is the file telling a reader something untrue.
+
 **Decision: a missing file is silence, not an exception.** The reasoning is structural rather than lenient:
 
 - **`spec:build` is a command of this package.** A provider that refused to boot without a generated tree would make the

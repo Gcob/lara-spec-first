@@ -31,11 +31,13 @@ function emittedRoutes(array $rows, string $specPath = 'openapi.yaml'): string
     $planned = [];
 
     foreach ($rows as $index => $row) {
+        // Named rather than positional, because `Operation` takes ten parameters
+        // and a reordering there would bind the wrong values here silently.
         $operation = new Operation(
-            $index,
-            HttpMethod::from($row[0]),
-            PathTemplate::fromString($row[1]),
-            $row[2] ?? null,
+            index: $index,
+            method: HttpMethod::from($row[0]),
+            path: PathTemplate::fromString($row[1]),
+            operationId: $row[2] ?? null,
         );
 
         $planned[] = new PlannedController($operation, ControllerName::for($operation));
@@ -99,8 +101,26 @@ describe('the metadata the routes file carries', function (): void {
         expect(emittedRoutes($rows))->toBe(emittedRoutes($rows));
     });
 
+    // The same width the controller docblock is held to. Nothing interpolates a
+    // document value into these lines today except the specification's path, which
+    // is exactly why the guard belongs here rather than nowhere.
+    it('keeps every comment line within the width the repository writes', function (): void {
+        $contents = emittedRoutes([['get', '/users', 'listUsers']], 'spec/openapi.yaml');
+
+        foreach (explode("\n", $contents) as $line) {
+            if (str_starts_with(ltrim($line), '*') || str_starts_with($line, '//')) {
+                expect(mb_strlen($line))->toBeLessThanOrEqual(100, 'a comment line runs long: '.$line);
+            }
+        }
+    });
+
     it('writes to the path the runtime looks for', function (): void {
-        $operation = new Operation(0, HttpMethod::Get, PathTemplate::fromString('/users'), 'listUsers');
+        $operation = new Operation(
+            index: 0,
+            method: HttpMethod::Get,
+            path: PathTemplate::fromString('/users'),
+            operationId: 'listUsers',
+        );
         $planned = new PlannedController($operation, ControllerName::for($operation));
 
         expect((new RoutesEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit([$planned])->relativePath)
@@ -122,10 +142,20 @@ describe('the note above the generated imports', function (): void {
             ->toContain('git history');
     });
 
+    // The note sits above one sorted block, so it covers a line it is not about:
+    // a class-not-found on `Route` is a broken installation rather than a build
+    // the specification can repair. Naming the exception is cheaper than a second
+    // import block, which an import-ordering formatter could reorder across.
+    it('names the framework import as the exception', function (): void {
+        expect(emittedRoutes([['get', '/users', 'listUsers']]))
+            ->toContain('the framework import beside them is')
+            ->toContain('If PHP cannot find a controller');
+    });
+
     it('sits immediately above the imports it is about', function (): void {
         $contents = emittedRoutes([['get', '/users', 'listUsers']]);
 
-        expect($contents)->toMatch('/\/\/ Every controller imported below is generated\.[\s\S]*?\nuse /');
+        expect($contents)->toMatch('/\/\/ Every controller imported below is generated;[\s\S]*?\nuse /');
     });
 
     // Grouped above the block rather than repeated over each line: twenty
@@ -145,11 +175,49 @@ describe('the note above the generated imports', function (): void {
     // yet, and every route points at a generated class; `spec:watch` does not
     // exist, and printing a command nobody can run would be worse than saying
     // nothing.
+    // DECISION: this assertion is a debt tripwire, and it is meant to go red the
+    // day `x-controller` or `spec:watch` ships. When it does, add the line to the
+    // note and update this test — do not relax the assertion, which is the only
+    // thing standing between a shipped feature and a note that never mentions it.
     it('names no command and no extension that does not exist yet', function (): void {
         $contents = emittedRoutes([['get', '/users', 'listUsers']]);
 
         expect($contents)->not->toContain('x-controller')
             ->and($contents)->not->toContain('spec:watch');
+    });
+});
+
+describe('a contract with nothing to route', function (): void {
+    /*
+     * A supported outcome rather than an error: a 3.1 document may carry only
+     * `webhooks` or only `components`. The file is still written, because it is
+     * what replaces the routes a previous build registered — and what it carries
+     * has to survive the same formatter every other generated file does.
+     */
+
+    it('writes the file, and says why it registers nothing', function (): void {
+        expect(emittedRoutes([]))
+            ->toContain(GeneratedFile::MARKER)
+            ->toContain('No operation, so this file registers none')
+            ->toContain('use Illuminate\\Support\\Facades\\Route;');
+    });
+
+    it('does not claim a generated import it has none of', function (): void {
+        expect(emittedRoutes([]))->not->toContain('Every controller imported below');
+    });
+
+    // What `single_line_after_imports` and `single_blank_line_at_eof` would
+    // otherwise rewrite, putting the build and a consumer's formatter in a loop
+    // over a file neither of them is wrong about.
+    it('leaves no empty registration block behind the imports', function (): void {
+        $contents = emittedRoutes([]);
+
+        expect($contents)->toEndWith("Route;\n")
+            ->and($contents)->not->toContain("\n\n\n");
+    });
+
+    it('reports zero operations rather than counting them', function (): void {
+        expect(emittedRoutes([]))->not->toContain('0 operation(s)');
     });
 });
 

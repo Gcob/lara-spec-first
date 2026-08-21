@@ -124,16 +124,13 @@ the code, and a gap in it is loud.
       navigation), emitted unconditionally and asserted by the generator's own tests. It shipped with the first
       generated file rather than after it: retrofitting a convention across a generated tree is an audit, writing it
       into the first emitter is a paragraph. What a finding can say will grow with what the build knows; the norm itself
-      is in place.
-
-    Both emitters now have a test class of their own, which is where the parts of the norm are asserted one by one:
-    every finding the build can report, the pointer's `~0`/`~1` escaping, the blank line a formatter would otherwise
-    insert, a value from the document that would close the comment early, and the absence of anything — a clock above
-    all — that would make two runs differ. The command's own test asserts the complementary property, over every file it
-    writes rather than a sample of one: that the norm is there at all. The
-    [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
-    landed with them, in `routes.php`, which is the only generated file that references other generated code today.
-
+      is in place. Both emitters have a test class of their own, where the parts are asserted one by one — every
+      finding, the pointer's `~0`/`~1` escaping, the blank line a formatter would otherwise insert, a value from the
+      document that would close the comment early, a token too long for a line, and the absence of anything (a clock
+      above all) that would make two runs differ — while the command's own test asserts the complementary property over
+      every file it writes rather than a sample of one: that the norm is there at all. The
+      [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
+      landed with them, in `routes.php`, the only generated file that references other generated code today.
 - [ ] **Rename and orphan detection.** Comparing the pointers in the existing generated tree against the ones the new
       build would emit is what turns a class-not-found into an instruction naming the old name, the new one, and
       [the files that reference it](../guide/code-generation.md#how-it-says-it). It depends on the source map above and

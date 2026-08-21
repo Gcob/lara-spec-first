@@ -55,17 +55,20 @@ function operationFor(
     ?string $sunset = null,
     ?array $security = null,
 ): Operation {
+    // Named rather than positional: `Operation` takes ten parameters, six of them
+    // with defaults, so a reordering there would bind the wrong values here and
+    // nothing would say so.
     return new Operation(
-        0,
-        HttpMethod::from($method),
-        PathTemplate::fromString($path),
-        $operationId,
-        [],
-        $audience,
-        $lifecycle,
-        $deprecated,
-        $sunset,
-        $security,
+        index: 0,
+        method: HttpMethod::from($method),
+        path: PathTemplate::fromString($path),
+        operationId: $operationId,
+        tags: [],
+        audience: $audience,
+        lifecycle: $lifecycle,
+        deprecated: $deprecated,
+        sunset: $sunset,
+        security: $security,
     );
 }
 
@@ -97,13 +100,15 @@ describe('the docblock every generated controller carries', function (): void {
             ->toContain('Navigation');
     });
 
-    // Unconditional, and this is the case that would let a condition hide: an
-    // operation with nothing remarkable about it. Emitting the norm only where
-    // there is something to say would make its absence unreadable.
-    it('carries all three parts for an operation with nothing remarkable about it', function (): void {
+    // Unconditional, and this is the case where a condition could hide: the
+    // barest operation the contract can express — no `operationId`, no lifecycle
+    // claim, no deprecation, no security. Emitting the norm only where there is
+    // something to say would make its absence unreadable.
+    it('carries all three parts for the barest operation a contract can express', function (): void {
         $docblock = emittedDocblock(emittedController(operationFor(
-            operationId: 'listUsers',
             path: '/users',
+            operationId: null,
+            lifecycle: null,
         )));
 
         expect($docblock)
@@ -137,16 +142,39 @@ describe('the docblock every generated controller carries', function (): void {
     // Generated code is read far more than it is written. The width is the
     // repository's own, and it is enforced here because a finding interpolates
     // values taken from the document.
-    it('wraps every line of the docblock rather than running one to any length', function (): void {
+    //
+    // The second case is the one wrapping on spaces cannot serve: `x-sunset` is
+    // deliberately unparsed, so a URL or a hand-typed value carrying no space at
+    // all reaches the docblock as one token. It has to be cut rather than left to
+    // run — a 208-character line is what this asserted away.
+    it('wraps every line of the docblock rather than running one to any length', function (
+        string $sunset,
+    ): void {
         $docblock = emittedDocblock(emittedController(operationFor(
-            operationId: 'showUser',
-            sunset: str_repeat('long-sunset-value ', 20),
             deprecated: true,
+            sunset: $sunset,
         )));
 
         foreach (explode("\n", $docblock) as $line) {
             expect(mb_strlen($line))->toBeLessThanOrEqual(100, 'a docblock line runs long: '.$line);
         }
+    })->with([
+        'a value with spaces' => [str_repeat('long-sunset-value ', 20)],
+        'one token with none' => [str_repeat('a', 200)],
+        'a URL' => ['https://example.test/'.str_repeat('sunset-policy/', 20)],
+    ]);
+
+    // Cut, not truncated: the value is what a reader came here for, and dropping
+    // its tail would make the finding lie by omission.
+    it('keeps the whole of a value it had to cut across lines', function (): void {
+        $docblock = emittedDocblock(emittedController(operationFor(
+            deprecated: true,
+            sunset: str_repeat('a', 200),
+        )));
+
+        $joined = str_replace(["\n", ' ', '*'], '', $docblock);
+
+        expect($joined)->toContain(str_repeat('a', 200));
     });
 });
 
@@ -214,8 +242,13 @@ describe('the findings', function (): void {
         'a sunset' => ['2027-01-01', 'Marked `deprecated`, to be removed on 2027-01-01.'],
     ]);
 
+    // Asserted against the finding's own sentence rather than the word anywhere in
+    // the file: the day a boilerplate line mentions deprecation for an unrelated
+    // reason, a whole-file assertion fails for a reason that has nothing to do
+    // with what this test is about.
     it('says nothing about a deprecation the contract does not declare', function (): void {
-        expect(emittedController(operationFor()))->not->toContain('deprecated');
+        expect(emittedDocblock(emittedController(operationFor())))
+            ->not->toContain('Marked `deprecated`');
     });
 
     // Read and not enforced is the finding that matters most today: a reader who

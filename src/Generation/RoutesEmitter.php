@@ -65,11 +65,20 @@ final readonly class RoutesEmitter
         $imports[] = 'Illuminate\\Support\\Facades\\Route';
         sort($imports);
 
-        $body = $this->missingReferenceNote()
-            ."\n"
-            .implode("\n", array_map(static fn (string $i): string => 'use '.$i.';', $imports))
-            ."\n\n"
-            .implode("\n", $registrations);
+        // A contract with nothing to route is a supported outcome rather than an
+        // error — a 3.1 document may carry only `webhooks`, or only `components` —
+        // and the file is still written, because it is what replaces the routes a
+        // previous build registered. What it must not carry is either half of the
+        // shape below: a note about generated controllers, above imports holding
+        // none, and an empty registration block whose blank lines a formatter
+        // would remove on sight, putting the build and that formatter in a loop.
+        $body = $registrations === []
+            ? implode("\n", array_map(static fn (string $i): string => 'use '.$i.';', $imports))
+            : $this->missingReferenceNote()
+                ."\n"
+                .implode("\n", array_map(static fn (string $i): string => 'use '.$i.';', $imports))
+                ."\n\n"
+                .implode("\n", $registrations);
 
         return new GeneratedFile(
             GeneratedRoutesLocator::FILE,
@@ -100,16 +109,19 @@ final readonly class RoutesEmitter
      * `ordered_imports` is in Pint's own Laravel preset — sorts the whole
      * namespace block, so a consumer running it could move a line across the note
      * and the build would move it back on the next run. The wording is therefore
-     * true whatever order the imports end up in.
+     * true whatever order the imports end up in, and it names the framework import
+     * as the exception rather than leaving a reader to infer that a
+     * class-not-found on `Route` is not a build the specification can repair.
      *
      * @see docs/guide/code-generation.md — "A reference to generated code says what to do when it goes missing"
      */
     private function missingReferenceNote(): string
     {
         return implode("\n", [
-            '// Every controller imported below is generated. If PHP cannot find one, run',
-            '// `php artisan spec:build`. If it still fails, the specification no longer describes',
-            '// that operation, and the spec\'s git history will show what changed.',
+            '// Every controller imported below is generated; the framework import beside them is',
+            '// not. If PHP cannot find a controller, run `php artisan spec:build`. If it still',
+            '// fails, the specification no longer describes that operation — the spec\'s git history',
+            '// will show what changed.',
         ]);
     }
 
@@ -146,14 +158,41 @@ final readonly class RoutesEmitter
             ' *   #/paths',
             ' *',
             ' * Findings',
-            ' *   - '.$count.' operation(s), registered in the order the document writes them, because',
-            ' *     that order is what decides which of two matching routes answers.',
-            ' *   - Every action is a pair of plain strings, which is what `route:cache` requires.',
+            ...$this->findings($count),
             ' *',
             ' * Navigation',
             ' *   @see Controllers/ — one class per operation, each naming its own position in the',
             ' *        specification',
             ' */',
         ]);
+    }
+
+    /**
+     * What the build worked out while writing this file.
+     *
+     * The empty case gets its own finding rather than reading `0 operation(s)`,
+     * because a reader holding an application with no routes is asking a question
+     * the count does not answer. It also says what the file is still doing there:
+     * a build that skipped writing it would leave the previous build's routes
+     * registered, which is drift the runtime would serve.
+     *
+     * @return non-empty-list<string>
+     */
+    private function findings(int $count): array
+    {
+        if ($count === 0) {
+            return [
+                ' *   - No operation, so this file registers none. The contract describes nothing this',
+                ' *     package can route — a 3.1 document may legally carry only `webhooks` or only',
+                ' *     `components` — and the file is written anyway, because it is what replaces the',
+                ' *     routes a previous build registered.',
+            ];
+        }
+
+        return [
+            ' *   - '.$count.' operation(s), registered in the order the document writes them, because',
+            ' *     that order is what decides which of two matching routes answers.',
+            ' *   - Every action is a pair of plain strings, which is what `route:cache` requires.',
+        ];
     }
 }
