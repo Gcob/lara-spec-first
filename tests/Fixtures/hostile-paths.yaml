@@ -1,0 +1,49 @@
+# A contract that is entirely valid OpenAPI and entirely hostile to a generator
+# that builds PHP by concatenating strings.
+#
+# Every operation here is legal: OpenAPI puts almost no constraint on a literal
+# path segment, and an extension value is free text. What each one attacks is the
+# boundary between a document, which is data, and a generated file, which is code.
+#
+# Kept as a fixture rather than as an inline string so that `spec:build` can be
+# run against it by hand while looking at what came out.
+openapi: 3.1.0
+info:
+    title: Hostile API
+    version: 1.0.0
+
+paths:
+    # An apostrophe ends a hand-quoted PHP literal. Emitted naively this produces
+    # a routes.php that does not parse — in the one file the service provider
+    # loads at boot, so the application and `spec:build` itself both stop.
+    /users/o'brien:
+        get:
+            operationId: showApostrophe
+            responses: { '200': { description: ok } }
+
+    # A trailing backslash escapes the closing quote instead of standing for
+    # itself, which breaks the literal a character later than an apostrophe does.
+    '/files/trailing\':
+        get:
+            operationId: showTrailingBackslash
+            responses: { '200': { description: ok } }
+
+    # A double quote, in case anything ever switches which quote it emits.
+    '/say/"hello"':
+        get:
+            operationId: showDoubleQuote
+            responses: { '200': { description: ok } }
+
+    /reports/{id}:
+        # The comment vector, and the worst of the set: a sequence closing a block
+        # comment does not merely break the file. The docblock ends early, what
+        # follows becomes a statement, and the docblock's own closing delimiter
+        # reopens and closes a comment around the rest — so the file parses, loads
+        # and executes whatever the document put there.
+        get:
+            operationId: closesTheDocblock
+            deprecated: true
+            x-sunset: "2027-01-01 */ file_put_contents('/tmp/lsf-injected', 'x'); /*"
+            parameters:
+                - { name: id, in: path, required: true, schema: { type: string } }
+            responses: { '200': { description: ok } }

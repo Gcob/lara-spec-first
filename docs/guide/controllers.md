@@ -19,13 +19,15 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 An operation needs something to answer it. This document owns what that something is: how many files it takes, what it
 assumes about your application, and where a developer's own code attaches to it.
 
-> **Not implemented yet, and this document spans two phases.** [Phase 1](../project/roadmap.md#phase-1-the-foundation):
-> the two-class seam, `x-controller`, `routeAction`, the thin `SpecController` base with its `middleware()` method, the
-> `501`, and `spec:make` including the `x-controller` insertion prompt and the read-back check that makes it safe.
-> [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features): everything
-> model-shaped, meaning `x-model`, the CRUD defaults, `HasModel` and its trait, the marker interfaces, the DTO factory
-> calls, the pagination seams and the mass-assignment check, because a generated CRUD body has nothing to return until
-> the DTOs exist. Items marked `Open` are undecided.
+> **Partly shipped, and this document spans two phases.** `spec:build` emits one controller per operation, each carrying
+> one `routeAction` over the shipped `SpecController` base with its `middleware()` method, and answering
+> [501](./code-generation.md#an-unimplemented-operation-answers-501). **Every one of them is `final` today**, because
+> `x-controller` is not read yet: the two-class seam, its build error on two values reducing to one parent, and
+> `spec:make` are the rest of [Phase 1](../project/roadmap.md#phase-1-the-foundation).
+> [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features) carries everything
+> model-shaped: `x-model`, the CRUD defaults, `HasModel` and its trait, the marker interfaces, the DTO factory calls,
+> the pagination seams and the mass-assignment check, because a generated CRUD body has nothing to return until the DTOs
+> exist. Items marked `Open` are undecided.
 
 ## One controller per operation, one method named `routeAction`
 
@@ -73,10 +75,10 @@ x-controller: App\Http\Controllers\UserController
 A full name rather than one relative to a configured root, because an FQN needs no second setting to resolve and cannot
 be read two ways. There is nothing to concatenate, so there is nothing to get wrong.
 
-| The operation declares | Generated class name                                                           | Extendable  |
-| ---------------------- | ------------------------------------------------------------------------------ | ----------- |
-| `x-controller`         | Derived from `x-controller`                                                    | Yes         |
-| Nothing                | Derived from `operationId`, or from the normalized method and path when absent | No, `final` |
+| The operation declares | Generated class name                                                | Extendable  |
+| ---------------------- | ------------------------------------------------------------------- | ----------- |
+| `x-controller`         | Derived from `x-controller`                                         | Yes         |
+| Nothing                | Derived from `operationId`, or from the method and path when absent | No, `final` |
 
 **That table is the whole design, and the reason is one property: the extendable class's name comes from a value that
 exists only to name it.** `x-controller` has no other meaning in the contract, so nothing else can move it. An

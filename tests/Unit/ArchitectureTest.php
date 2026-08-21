@@ -33,6 +33,17 @@ arch('the OpenAPI parser stays inside Parsing')
     ->expect('cebe\openapi')
     ->toOnlyBeUsedIn('Gcob\LaraSpecFirst\Parsing');
 
+// Middleware is a method rather than a second mechanism, and Laravel's own
+// interface is what makes it one: a project overrides `middleware()` in its own
+// subclass with no `implements` clause to remember. Asserted structurally
+// because that is what it is — and because writing it as a runtime expectation
+// produced a tautology rather than a guard.
+//
+// See docs/guide/controllers.md — "Middleware is a method, not a separate mechanism"
+arch('the generated controllers\' base carries Laravel\'s middleware contract')
+    ->expect('Gcob\LaraSpecFirst\Http\Controllers\SpecController')
+    ->toImplement('Illuminate\Routing\Controllers\HasMiddleware');
+
 // The runtime never sees a specification. Routing\ is what the service provider
 // loads at boot, so it is the one namespace where that promise can be broken by
 // a single import — of the reader, of a guard, or of the YAML decoder underneath
@@ -56,8 +67,9 @@ arch('routing at boot cannot reach a specification')
 // a `{@see}` in a docblock is enough to add the import — and impossible to see
 // in a diff once it is there.
 //
-// The namespaces below that do not exist yet cost nothing to name now, and mean
-// the rule is already in place the day they do.
+// Written when three of the four namespaces below did not exist, which cost
+// nothing and meant the rule was in place the day they arrived. All four exist
+// now, and `Generation\` and `Console\` arrived under it.
 arch('the contract knows nothing about how it was produced')
     ->expect('Gcob\LaraSpecFirst\Contract')
     ->not->toUse([

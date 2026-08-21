@@ -65,6 +65,14 @@ it('builds the remote reference guard from the configuration', function (): void
         ->toThrow(NotImplementedYetException::class);
 });
 
+// The one config key the build actually reads today, so its default is behavior
+// rather than only a promise. One root document rather than a list: multi-file
+// contracts are written as local `$ref`s from it, and widening this to a list
+// later is non-breaking where narrowing it would not be.
+it('reads one root specification, named by default at the project root', function (): void {
+    expect(config('lara-spec-first.spec.path'))->toBe('openapi.yaml');
+});
+
 // Every setting below belongs to a feature that is documented and decided but
 // not built, with one exception noted where it applies. Nothing reads them yet,
 // so what is worth pinning is the default — it is public API surface the moment

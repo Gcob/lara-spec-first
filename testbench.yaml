@@ -6,7 +6,9 @@ providers:
   # and must be registered here by hand — without this line the Workbench
   # application boots without it, silently.
   - Gcob\LaraSpecFirst\LaraSpecFirstServiceProvider
-  # - Workbench\App\Providers\WorkbenchServiceProvider
+  # Points the package at workbench/openapi.yaml and workbench/app/Http/Generated,
+  # because '@testbench' puts base_path() in vendor/ where nothing is committed.
+  - Workbench\App\Providers\WorkbenchServiceProvider
 
 migrations:
   - workbench/database/migrations
@@ -30,6 +32,11 @@ workbench:
     - create-sqlite-db
     - db-wipe
     - migrate-fresh
+    # The generated tree is gitignored, like the build output of any real
+    # project, so `composer build` is what puts it there. Which is also the
+    # workflow a consumer has: `spec:build` belongs in whatever bootstraps your
+    # application, not in a step somebody has to remember.
+    - spec-build
   assets:
     - laravel-assets
   sync:

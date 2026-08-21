@@ -10,6 +10,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Routing\RouteCollection;
 
 /*
  * The routes fixture is placed at the *default* configured location rather than
@@ -114,34 +115,68 @@ it('points every route at a controller by name rather than at a closure', functi
     }
 });
 
-// The real command, not a reconstruction of its steps. It works from here for a
-// reason worth writing down, because the opposite was assumed first: `route:cache`
-// boots a fresh application from the skeleton's bootstrap/app.php, and that file
-// reads testbench.yaml, which registers this package. So the collection the
-// command caches is the one holding the generated routes.
-//
-// Requiring the file it wrote is what makes the assertion strong. The cache is
-// PHP the application loads at boot, built with var_export, which renders an
-// object as `\Foo::__set_state(...)` and is not loadable for most classes. A
-// cache that requires cleanly and hands back working routes could not have held
-// a closure or an object where a string belongs.
+/*
+ * `route:cache` splits into two claims, and keeping them apart is what stopped
+ * this file from passing for the wrong reason.
+ *
+ * The command boots a *fresh* application from the skeleton's bootstrap/app.php,
+ * which reads testbench.yaml — not this test's configuration. So which routes it
+ * caches is testbench.yaml's business, and an earlier version of this test
+ * asserted `users/me` came back from the cache while the URI it was actually
+ * seeing came from the Workbench's own contract, which happens to declare the same
+ * path. It went green either way and measured nothing.
+ *
+ * Split, both halves are true: the command works end to end, and *our* routes are
+ * the ones proven serializable.
+ */
+
+// Half one: the real command, end to end. What it caches is not ours to decide,
+// but that it succeeds and writes PHP the application can load back is.
 it('survives a real route:cache run', function (): void {
     $cached = app()->getCachedRoutesPath();
     @unlink($cached);
 
     try {
-        expect(app(Kernel::class)->call('route:cache'))->toBe(0);
+        expect(app(Kernel::class)->call('route:cache'))->toBe(0)
+            ->and(is_file($cached))->toBeTrue();
 
+        // The cache is PHP built with var_export, which renders an object as
+        // `\Foo::__set_state(...)` and is not loadable for most classes. Requiring
+        // it back is what proves the file is usable rather than merely written.
         require $cached;
 
-        $uris = array_map(
-            static fn (Route $route): string => $route->uri(),
-            app('router')->getRoutes()->getRoutes(),
-        );
-
-        expect($uris)->toContain('users/me')
-            ->and($uris)->toContain('users/{id}');
+        expect(app('router')->getRoutes()->getRoutes())->not->toBeEmpty();
     } finally {
         @unlink($cached);
+    }
+});
+
+// Half two, and the one about this package: the generated routes specifically go
+// through every step the command performs, on the collection that actually holds
+// them. Scoped to our own routes so a green result cannot be about somebody
+// else's.
+it('puts the generated routes through every step route:cache performs', function (): void {
+    $routes = new RouteCollection;
+
+    foreach (generatedRoutes() as $route) {
+        $routes->add($route);
+    }
+
+    $routes->refreshNameLookups();
+    $routes->refreshActionLookups();
+
+    foreach ($routes->getRoutes() as $route) {
+        $route->prepareForSerialization();
+    }
+
+    $compiled = $routes->compile();
+
+    $file = tempnam(sys_get_temp_dir(), 'lsf-routes-').'.php';
+    file_put_contents($file, '<?php return '.var_export($compiled, true).';');
+
+    try {
+        expect(require $file)->toEqual($compiled);
+    } finally {
+        @unlink($file);
     }
 });

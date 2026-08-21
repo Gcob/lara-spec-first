@@ -2,8 +2,8 @@
 title: Agent Guidance
 audience: AI coding agents
 covers: >
-    The three-places rule (code, docs, tests), day-to-day working rules for agents, the automated testing requirement,
-    and code review priorities.
+    The three-places rule (code, docs, tests) and the Workbench demonstration that follows it, day-to-day working rules
+    for agents, the automated testing requirement, and code review priorities.
 read_before: Making any change to this repository.
 tags: [agents, workflow, testing, code-review, conventions, onboarding]
 ---
@@ -16,9 +16,10 @@ This package is **Spec-First**: the OpenAPI contract is the source of truth, and
 would make the code authoritative over the spec, it is going the wrong way.
 
 The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/project/roadmap.md)). It reads a specification
-file, refuses what it cannot serve, resolves its references through the OpenAPI parser and hands out its own `Contract\`
-types. It also loads generated routes at boot, without reading a specification to do it. It generates no PHP, so there
-is nothing for that loader to find: `Generation\` and `Console\` do not exist yet. The roadmap's
+file, refuses what it cannot serve, and generates the PHP that serves it: `spec:build` emits the routes and one
+controller per operation, and the provider loads them at boot without opening a specification. Every generated
+controller is `final` for now, because `x-controller` is not read yet, so nothing can be extended. There is no
+`spec:doctor`, no `spec:make`, and no response DTO. The roadmap's
 [state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list, checked boxes meaning
 behavior with tests behind it.
 
@@ -30,7 +31,8 @@ config.** It holds every technology choice, its status, and the reasoning behind
 ## Every change lands in three places
 
 Code, documentation, and tests move together. A change is not finished when the code works — it is finished when all
-three are updated, in the same commit.
+three are updated, in the same commit. **And when a change can be shown working in the Workbench, that is a fourth
+place** — see [below](#and-the-workbench-when-there-is-something-to-show).
 
 | Place             | What it answers                       | Rule                                                                                                                                   |
 | ----------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -56,6 +58,41 @@ Two rules keep this from eroding:
   change is an unfinished change, not a fast one.
 - **If a change genuinely needs no doc or test update, say so and say why.** A pure rename with no behavioral effect is
   a fair exemption. Silence is not — an unexplained gap reads as an oversight.
+
+### And the Workbench, when there is something to show
+
+`workbench/` is a real Laravel application with this package installed, served by `composer serve`. **When a change can
+be demonstrated there, demonstrating it is part of finishing the change** — not a nice-to-have, and not something to
+leave for later.
+
+The reason is that it is the closest thing this repository has to end-to-end. A unit test proves a class behaves; a
+feature test proves the package behaves inside a booted framework; the Workbench is the only place where a contract
+becomes a route that a browser actually reaches, through the same Composer autoloader, the same service provider
+discovery and the same request lifecycle a consumer will have. **Several defects in this package have only ever been
+visible there** — a docblock a consumer's formatter would rewrite, a generated tree landing where nothing is committed,
+a path that resolves differently than it reads.
+
+Concretely, for a change that adds or alters behavior a consumer can observe:
+
+- **Put whatever the feature needs into `workbench/`.** Its _inputs_ are committed and its _outputs_ are not, the same
+  split any project makes: `workbench/app/Http/Generated` is gitignored and `composer build` regenerates it. The
+  contract lives in
+  [`workbench/openapi.yaml`](https://github.com/Gcob/lara-spec-first/blob/main/workbench/openapi.yaml), and it is
+  written to be read: every operation in it exists to make one behaviour visible in the generated output rather than
+  only in an assertion.
+- **Run it, and look at what came out.** Not "the tests pass" — open the generated files and read them, hit the routes
+  and read the responses. A test asserts what you thought to assert; the output shows what you did not.
+- **Say what you ran and what you saw.** A claim that something works end to end is only worth the command behind it.
+
+Two traps worth knowing before you go in:
+
+- **`base_path()` is not `workbench/`.** With `laravel: '@testbench'`, the application root is the Testbench skeleton
+  under `vendor/`, so a default relative path resolves somewhere nothing is committed and `composer clear` wipes it.
+  [`WorkbenchServiceProvider`](https://github.com/Gcob/lara-spec-first/blob/main/workbench/app/Providers/WorkbenchServiceProvider.php)
+  is where that is corrected, and it deliberately overrides as little as possible: it is also loaded by the fresh
+  application `php artisan route:cache` boots, so anything it changes changes what the package's own tests measure.
+- **The Workbench is not a substitute for a test.** What you learn there earns a test; it does not replace one. A
+  behavior only the Workbench covers is a behavior nothing will catch when it regresses.
 
 ## Working notes for agents
 
@@ -107,10 +144,11 @@ Review in this order. The list is a priority ranking, not a checklist to run in 
 worth reviewing for style.
 
 1. **The three places — this is the first thing you check, before reading a line of logic.** Did the change land in
-   code, documentation, _and_ tests? A behavior change missing its docs or its tests is an **incomplete change**, and
-   you report it as such. Do not treat it as a minor follow-up, do not offer to "add them later", and do not approve the
-   change on the grounds that the code itself is correct. This is the highest-severity category of finding in this
-   repository.
+   code, documentation, _and_ tests? And where the change is something a consumer could observe, was it
+   [shown working in the Workbench](#and-the-workbench-when-there-is-something-to-show)? A behavior change missing its
+   docs or its tests is an **incomplete change**, and you report it as such. Do not treat it as a minor follow-up, do
+   not offer to "add them later", and do not approve the change on the grounds that the code itself is correct. This is
+   the highest-severity category of finding in this repository.
 2. **Direction of truth.** Does the change keep the OpenAPI spec authoritative over the code? Anything that makes PHP
    the source of truth is a design defect, however well written.
 3. **Correctness.** Logic, edge cases, failure paths, `$ref` resolution, behavior across OpenAPI 3.0 and 3.1.

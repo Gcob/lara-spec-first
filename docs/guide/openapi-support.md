@@ -27,13 +27,15 @@ claimed to read it — the whole promise is that the spec is the source of truth
 > are genuinely undecided and must not be presented as settled — the same discipline [`stack.md`](../project/stack.md)
 > applies to its own Status column.
 >
-> **Shipped:** [reading a document](#reading-a-document), [where the parser sits](#where-the-parser-sits-decided), and
-> extracting its operations into `Contract\` types: `Operation`, `HttpMethod`, `PathTemplate`, `Audience`, `Lifecycle`
-> and `SecurityRequirement` all exist. The [version strategy](#handling-30-and-31-the-version-strategy) is the seam and
-> is dispatched to, but so far it only rejects a root shape its version forbids: normalization happens in
-> `OperationExtractor`, and what pins the 3.0/3.1 equivalence is a conformance class requiring both spellings of one
-> contract to come out identical. Not yet built: registering a route from any of it, `spec:build`, and `spec:doctor`.
-> The full state is in the [roadmap](../project/roadmap.md#where-the-code-is-today).
+> **Shipped:** [reading a document](#reading-a-document), [where the parser sits](#where-the-parser-sits-decided),
+> extracting its operations into `Contract\` types, and generating the routes and controllers from them. Also settled by
+> that build: `trace` is refused, and so is a path parameter Laravel's router could not match. Specifically:
+> `Operation`, `HttpMethod`, `PathTemplate`, `Audience`, `Lifecycle` and `SecurityRequirement` all exist. The
+> [version strategy](#handling-30-and-31-the-version-strategy) is the seam and is dispatched to, but so far it only
+> rejects a root shape its version forbids: normalization happens in `OperationExtractor`, and what pins the 3.0/3.1
+> equivalence is a conformance class requiring both spellings of one contract to come out identical. Not yet built:
+> `spec:doctor`, and the `x-controller` seam that would make a generated controller extendable. The full state is in the
+> [roadmap](../project/roadmap.md#where-the-code-is-today).
 
 Seven subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below still govern all of
 them:
@@ -173,8 +175,8 @@ the parser:
 | ------------- | ---------------------------------------------------------------------- | ------- |
 | `Parsing\`    | Reading a document, and the only place `cebe\openapi\` may appear.     | Yes     |
 | `Contract\`   | Our own types — what a strategy produces and everything else consumes. | Started |
-| `Generation\` | Emitting PHP.                                                          | Not yet |
-| `Console\`    | The commands.                                                          | Not yet |
+| `Generation\` | Emitting PHP.                                                          | Yes     |
+| `Console\`    | The commands.                                                          | Started |
 | `Routing\`    | What the service provider loads at boot.                               | Yes     |
 
 Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document — the reference cycle detector and the
@@ -347,9 +349,12 @@ Laravel cannot register.
 
 Per the rule above, we do not work around the router. The operation is `Rejected`.
 
-**Open:** whether an entire document containing `trace` fails to load, or the operation alone is refused while the rest
-of the document still loads. The second is friendlier; the first is more honest. Either way [the doctor](./doctor.md)
-names the operation and its position. Undecided.
+**Shipped as the whole document failing**, which is the honest half of the choice below and the one that needed no new
+mechanism: `Contract\HttpMethod` has no `trace` case, so the reader refuses the document and names the path.
+
+**Open:** whether that stays absolute, or the operation alone is refused while the rest of the document still loads. The
+second is friendlier, and it needs somewhere for the refusal to be reported rather than thrown — which is
+[the doctor](./doctor.md), and the reason this is still open rather than decided by what shipped.
 
 ### Parameter names are a naming contract, not a mapping problem
 

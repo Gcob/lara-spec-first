@@ -1,0 +1,110 @@
+
+# The contract the Workbench application serves.
+#
+# This file exists to be played with. It is the closest thing this repository has
+# to end-to-end: a real Laravel application, booted through `composer serve`,
+# whose routes come from nothing but this document and `php artisan spec:build`.
+#
+# Every operation below is here to make one Phase 1 behaviour visible in the
+# generated output rather than only in a test. Edit it, rebuild, and read what
+# changed.
+openapi: 3.1.0
+info:
+    title: Workbench API
+    version: 1.0.0
+    description: >
+        A contract with no application behind it yet. Every operation answers 501
+        until something implements it, which is the honest answer while the
+        specification describes an endpoint and no code does.
+
+paths:
+    # Document order decides. This literal path is written above the templated
+    # one below, so `GET /users/me` reaches this operation rather than being
+    # swallowed by `/users/{id}`. Swap the two blocks, rebuild, and the behaviour
+    # swaps with them — that is a documented property of this package, not a bug.
+    /users/me:
+        get:
+            operationId: showCurrentUser
+            summary: The authenticated user
+            tags: [Users]
+            responses:
+                '200': { description: The caller }
+
+    /users/{id}:
+        get:
+            operationId: showUser
+            summary: One user by id
+            tags: [Users]
+            parameters:
+                - { name: id, in: path, required: true, schema: { type: string } }
+            responses:
+                '200': { description: A user }
+                '404': { description: No such user }
+
+        # No `operationId`, on purpose: the generated class name is derived from
+        # the method and the path instead, and the file says so in its findings.
+        # It becomes `DeleteUsersIdController`.
+        delete:
+            summary: Remove a user
+            tags: [Users]
+            parameters:
+                - { name: id, in: path, required: true, schema: { type: string } }
+            responses:
+                '204': { description: Gone }
+
+    /posts:
+        get:
+            operationId: listPosts
+            summary: Every post
+            tags: [Posts]
+            # Read into the contract and *not enforced* by this build. The
+            # generated controller's findings say so out loud, because an endpoint
+            # the contract describes as protected and that nothing protects is the
+            # one thing this package must never leave quiet.
+            security:
+                - bearerAuth: [posts:read]
+            responses:
+                '200': { description: A list of posts }
+
+        post:
+            operationId: createPost
+            summary: Publish a post
+            tags: [Posts]
+            security:
+                - bearerAuth: [posts:write]
+            responses:
+                '201': { description: Created }
+
+    /posts/{postId}/legacy-comments:
+        # Deprecated with a sunset date. Both reach the generated file's findings,
+        # and both are what the doctor will enforce once it exists: a deprecation
+        # with no end date is a wish.
+        get:
+            operationId: listLegacyComments
+            summary: Comments, the old way
+            tags: [Posts]
+            deprecated: true
+            x-sunset: '2027-01-01'
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            responses:
+                '200': { description: Comments }
+
+    /internal/cache-warm:
+        # `x-audience: internal` changes the effective lifecycle default: a public
+        # operation with no claim is `beta`, an internal one makes no claim at
+        # all. The generated findings report the effective values rather than what
+        # was written, so this file is where you can see the difference.
+        post:
+            operationId: warmCache
+            summary: Not for outside consumers
+            tags: [Operations]
+            x-audience: internal
+            responses:
+                '202': { description: Accepted }
+
+components:
+    securitySchemes:
+        bearerAuth:
+            type: http
+            scheme: bearer

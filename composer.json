@@ -56,7 +56,7 @@
         "format:check": "pint --test",
         "format:md": "scripts/format-markdown.sh",
         "format:md:check": "scripts/format-markdown.sh --check",
-        "analyse": "phpstan analyse",
+        "analyse": "phpstan analyse --memory-limit=512M",
         "check": [
             "@format:check",
             "@analyse",
