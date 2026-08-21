@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use Gcob\LaraSpecFirst\Exceptions\NotImplementedYetException;
 use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\LaraSpecFirstServiceProvider;
+use Gcob\LaraSpecFirst\Parsing\Exceptions\MissingVendoredReferenceException;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 
@@ -56,13 +56,22 @@ it('publishes a configuration whose default allows no host', function (): void {
     expect(config('lara-spec-first.remote_references.allowed_hosts'))->toBe([]);
 });
 
+it('defaults the vendor path to a directory at the project root', function (): void {
+    expect(config('lara-spec-first.remote_references.vendor_path'))->toBe('openapi-external-refs');
+});
+
 // The guard is resolved with whatever the application configured, which is the
-// only reason the setting is worth having at all.
-it('builds the remote reference guard from the configuration', function (): void {
+// only reason either setting is worth having at all. An allowed host with no
+// vendored copy refuses rather than fetching: the container binding never
+// passes `--update-refs`, since fetching has exactly one entry point —
+// `spec:build`'s own flag — and the container is not it.
+it('builds the remote reference guard from the configured allowlist and vendor root', function (): void {
     config()->set('lara-spec-first.remote_references.allowed_hosts', ['schemas.example.com']);
 
-    expect(fn () => app(RemoteReferenceGuard::class)->assertNoRemoteReferences([]))
-        ->toThrow(NotImplementedYetException::class);
+    expect(fn () => app(RemoteReferenceGuard::class)->resolve(
+        ['$ref' => 'https://schemas.example.com/common.yaml'],
+        base_path(),
+    ))->toThrow(MissingVendoredReferenceException::class, 'openapi-external-refs/schemas.example.com/common.yaml');
 });
 
 // The one config key the build actually reads today, so its default is behavior

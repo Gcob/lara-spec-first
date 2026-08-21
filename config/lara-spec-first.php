@@ -40,16 +40,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Remote references — STARTED
+    | Remote references — DONE
     |--------------------------------------------------------------------------
     |
     | A `$ref` pointing at a URL turns a specification file into a network
     | client running with this application's credentials and network position,
     | so nothing is fetched unless the host is named here.
     |
-    | Empty is the safe default and, for now, the only value that works: naming
-    | a host throws rather than silently doing nothing, because the fetching and
-    | vendoring behind this setting is not built yet.
+    | Empty is the safe default: no host means no remote reference at all. Once
+    | a host is named, `spec:build --update-refs` fetches it once and commits
+    | the copy under `vendor_path`; every build after that resolves the
+    | reference against the committed copy, never the network.
     |
     | See docs/guide/remote-references.md.
     |
@@ -57,6 +58,7 @@ return [
 
     'remote_references' => [
         'allowed_hosts' => [],
+        'vendor_path' => 'openapi-external-refs',
     ],
 
     /*

@@ -57,10 +57,11 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
       [`ConfigurationMerger`](https://github.com/Gcob/lara-spec-first/blob/main/src/Configuration/ConfigurationMerger.php)
       merging the package defaults deeply beneath whatever an application published, so a nested key added in a later
       release does not arrive missing.
-- [x] **The remote-reference allowlist, in its strict half.**
+- [x] **The remote-reference allowlist, fetching and vendoring included.**
       [`remote_references.allowed_hosts`](../guide/remote-references.md#the-setting) is empty by default and every
-      remote reference is refused before the parser can fetch it. Naming a host throws, because the fetching behind it
-      is not built and a setting that is read and ignored tells whoever set it that it took effect.
+      remote reference is refused before the parser can fetch it. Naming a host lets `spec:build --update-refs` fetch it
+      once and commit the copy under `vendor_path`; every build after that resolves the reference against the committed
+      copy, never the network.
 - [x] **Route registration at boot.** The provider loads one generated `routes.php` and nothing else, skips it when the
       application's routes are cached, and stays silent when the build has not written one. The loading half only: what
       the routes point at is not generated yet.
@@ -180,11 +181,12 @@ the code, and a gap in it is loud.
 
 ### Reading, reporting, refusing
 
-- [ ] **Remote reference vendoring.** The allowlist already refuses; what this needs is the fetch itself, the vendored
-      copy committed beside the specification, and the resolution of the reference against that copy rather than the
-      network. [Frozen by default](../guide/code-generation.md#remote-references-during-a-build-frozen-by-default): the
-      build reaches the network only when a flag says so, and a missing vendored copy is an error naming that flag. See
-      [remote references](../guide/remote-references.md).
+- [x] **Remote reference vendoring.** `spec:build --update-refs` fetches an allowed reference once, commits the copy
+      under `remote_references.vendor_path`, and rewrites the `$ref` to point at it — followed transitively, so a
+      vendored document naming a reference of its own is vendored too, the allowlist checked again at every hop.
+      [Frozen by default](../guide/code-generation.md#remote-references-during-a-build-frozen-by-default): every other
+      build reaches the network only when that flag says so, and a missing vendored copy is an error naming it instead.
+      See [remote references](../guide/remote-references.md).
 - [ ] **A conformance suite over the reading engine, organized by equivalence class.** **Not routine coverage, but a
       deliberate answer to a risk already observed.** Two defects with no symptom have been found in the OpenAPI parser
       within days of first use, on a surface no wider than paths and references: a pure `$ref` cycle exhausts memory

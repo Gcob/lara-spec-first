@@ -270,11 +270,10 @@ Under a frozen default:
 - There is no environment-dependent behavior to reason about. The build does the same thing on a laptop and in CI, which
   is the property that makes a build trustworthy.
 
-Fetching therefore has one entry point in `build`: an explicit flag, whether the document is missing or already
-vendored. Working name `--update-refs`, matching the install/update vocabulary the
-[dependency framing](./remote-references.md#borrowing-the-dependency-manager-shape) already borrows. Whether missing and
-stale documents need _separate_ flags is open — one flag is simpler, two let you add a reference without silently
-refreshing the others.
+Fetching therefore has one entry point in `build`: `--update-refs`, matching the install/update vocabulary the
+[dependency framing](./remote-references.md#borrowing-the-dependency-manager-shape) already borrows. One flag for both
+cases — adding a reference that is missing, and refreshing one already vendored — rather than two: simpler, and the
+consequence either way is the same command to run again.
 
 None of which should make designing an API tedious. That is what [watch mode](#watching-specwatch) is for, and it is a
 different command precisely so that `build` can stay this strict.
