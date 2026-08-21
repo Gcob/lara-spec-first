@@ -1,0 +1,26 @@
+# Accepted: an ordinary local `$ref`, in the same document, resolving straight
+# to a schema. Deliberately not recursive and not cyclic — those are their own
+# cells of the reference-form partition — so this fixture pins the plain case
+# they are each a variation on.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users/{id}:
+    get:
+      operationId: showUser
+      responses:
+        '200':
+          description: A user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        name:
+          type: string

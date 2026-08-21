@@ -187,26 +187,34 @@ the code, and a gap in it is loud.
       [Frozen by default](../guide/code-generation.md#remote-references-during-a-build-frozen-by-default): every other
       build reaches the network only when that flag says so, and a missing vendored copy is an error naming it instead.
       See [remote references](../guide/remote-references.md).
-- [ ] **A conformance suite over the reading engine, organized by equivalence class.** **Not routine coverage, but a
-      deliberate answer to a risk already observed.** Two defects with no symptom have been found in the OpenAPI parser
-      within days of first use, on a surface no wider than paths and references: a pure `$ref` cycle exhausts memory
-      instead of raising, and `components.pathItems` loses an endpoint without reporting anything. Both are recorded in
-      [parser caveats](../guide/openapi-support.md#parser-caveats), and neither would have been prevented by putting an
+- [x] **A conformance suite over the reading engine, organized by equivalence class.** **Not routine coverage, but a
+      deliberate answer to a risk already observed.** Three defects with no symptom have now been found in the OpenAPI
+      parser, on a surface no wider than paths and references: two shapes of a pure `$ref` cycle exhaust memory instead
+      of raising, and `components.pathItems` loses an endpoint without reporting anything. All three are recorded in
+      [parser caveats](../guide/openapi-support.md#parser-caveats), and none would have been prevented by putting an
       interface in front of the parser: an adapter guards against _swapping_ a dependency, where what has actually gone
       wrong is the dependency _being wrong_. Behavior is therefore what gets pinned.
 
     The suite partitions the input space rather than accumulating examples, so that coverage can be argued instead of
     hoped for: by version, with the same contract written as 3.0 and as 3.1 and required to normalize identically (the
-    version strategy's entire promise, and the one class that already exists in `tests/Conformance/`); by reference form
-    (local, cross-file, blocked, cyclic, recursive schema, and each form a Path Item reference can take); by the
-    positions where OpenAPI mixes data with specification; by document shape (empty, no paths, webhooks-only,
-    components-only); and by failure class, keeping document faults, package limits and parser defects distinct in the
-    assertions the way [the doctor](../guide/doctor.md#two-kinds-of-finding-never-mixed) keeps them distinct in its
-    report.
+    version strategy's entire promise — `VersionEquivalenceTest.php`); by reference form (local, cross-file, blocked,
+    cyclic, recursive schema, and each form a Path Item reference can take — `ReferenceFormTest.php`); by the positions
+    where OpenAPI mixes data with specification (`DataSpecificationBoundaryTest.php`); by document shape (empty, no
+    paths, webhooks-only, components-only — `DocumentShapeTest.php`); and by failure class, keeping document faults,
+    package limits and parser defects distinct in the assertions the way
+    [the doctor](../guide/doctor.md#two-kinds-of-finding-never-mixed) keeps them distinct in its report
+    (`FailureClassTest.php`).
 
-    Every defect found in the parser earns a permanent case, so the list of what we know about it can only grow. And the
-    suite ends up being what an adapter was wanted for: **the acceptance criteria a replacement parser would have to
-    meet.** An interface would only prove a substitute compiles; this proves one behaves.
+    Every defect found in the parser earns a permanent case in `KnownParserBugsTest.php`, so the list of what we know
+    about it can only grow — and it already has: writing `DataSpecificationBoundaryTest.php` against the full reading
+    engine, rather than against the cycle guard alone, is what surfaced the third defect above. A `$ref` whose JSON
+    pointer lands inside data the guard correctly treats as opaque (an `example`, an Example Object's `value`) reaches
+    the same unrecoverable failure as an ordinary cycle, on a shape the guard cannot see by its own design. It is not
+    yet guarded against; it is flagged in both documents above and left unasserted in the suite itself, because there is
+    no way to assert an unrecoverable fatal error without taking the test run down with it. Closing that gap is
+    follow-up work, not part of this item. The suite ends up being what an adapter was wanted for regardless: **the
+    acceptance criteria a replacement parser would have to meet.** An interface would only prove a substitute compiles;
+    this proves one behaves.
 
 - [ ] **`spec:doctor`**, which is `nginx -t` for your contract: what the package will honor, what it will not, and the
       routing table that results. It belongs in this phase rather than with the Phase 2 developer experience, because it
