@@ -104,6 +104,36 @@ paths:
             responses:
                 '200': { description: Comments }
 
+    /pets/{id}:
+        # Remote reference vendoring, made visible. `schema` below is a `$ref`
+        # naming a URL — the Swagger Petstore demo, the most widely recognized
+        # example document in the OpenAPI ecosystem and a stable one to point a
+        # demo at. Building this contract with nothing vendored yet fails,
+        # naming the flag to run:
+        #
+        #     php artisan spec:build --update-refs
+        #
+        # That fetches the document once, commits it under
+        # `openapi-external-refs/petstore3.swagger.io/...` (see
+        # `workbench/config/lara-spec-first.php`), and rewrites the `$ref`
+        # above to point at the committed copy. Every ordinary `spec:build`
+        # after that — no flag — resolves it from disk; delete the vendored
+        # file and rebuild to see the frozen-by-default refusal again.
+        get:
+            x-controller: Workbench\App\Http\Controllers\Externals\Pets\ShowPetController
+            operationId: showPet
+            summary: One pet, described by a schema this contract does not own
+            tags: [Pets]
+            parameters:
+                - { name: id, in: path, required: true, schema: { type: string } }
+            responses:
+                '200':
+                    description: A pet
+                    content:
+                        application/json:
+                            schema:
+                                $ref: 'https://petstore3.swagger.io/api/v3/openapi.json#/components/schemas/Pet'
+
     /internal/cache-warm:
         # `x-audience: internal` changes the effective lifecycle default: a public
         # operation with no claim is `beta`, an internal one makes no claim at
