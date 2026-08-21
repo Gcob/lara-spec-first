@@ -149,10 +149,10 @@ the code, and a gap in it is loud.
   generated file carries is what does the cheap half of that job today, and
   [the doctor](../guide/controllers.md#the-doctor-counts-two-things-not-three) is where the orphan question lands if it
   is ever wanted.
-- [ ] **`spec:make`: the only command that creates a file the developer will own.** Shipped in its three forms — a named
+- [x] **`spec:make`: the only command that creates a file the developer will own.** Shipped in its three forms — a named
       operation (by `operationId`, or by method and path when it has none), a whole `--tag`, or `--all`, with the bulk
       forms listing what they would create and asking first, defaulting to no so a non-interactive run creates nothing.
-      It never overwrites a file, refuses a class in a namespace the project does not map, prints the row to add for an
+      It never overwrites a file, refuses a class in a namespace the project does not map, offers the row to add for an
       operation that declares no `x-controller`, and runs the build when it is done — without which the `extends` it
       just wrote has no parent to reach, since that parent's name comes from the extension the build had not read. What
       it writes is deliberately not a [publishable stub](../guide/controllers.md#specmake-is-the-only-way-in): nearly
@@ -160,9 +160,13 @@ the code, and a gap in it is loud.
       `spec:build` never scaffolds and now
       [names the commands to run](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it)
       instead, summarised by tag, with the atomic form named for the operations no tag reaches — and the generated 501
-      names it too. What remains of this item is the insertion prompt and the verification that makes it safe: the edit
-      happens on a copy, the copy is read back through the normal pipeline, and nothing is written unless the resulting
-      operations are identical but for the extension just added.
+      names it too. The [insertion prompt](../guide/controllers.md#specmake-is-the-only-way-in) closes the item: the
+      value is derived from the configured controller namespace and prefilled so it can be edited, the exact line is
+      named, and `--yes` takes the proposal for a developer who does not want to be asked. The edit happens on a copy
+      beside the original — so that every `$ref` resolves as it did — the copy is read back through the normal pipeline,
+      and the operations that come out must be identical to the originals but for the extension just added. Anything
+      else leaves the document untouched and prints the row instead, which is also what happens for an operation the
+      command cannot place: a flow-style mapping, a JSON file, or a Path Item that lives in another file.
 - [x] **An unimplemented operation answers `501`.** The generated controller's `routeAction` throws an exception that
       Laravel renders as `501`, which is what reconciles the two things this documentation set said: the generated
       controller _is_ the handler position, so one controller per operation stays true. See

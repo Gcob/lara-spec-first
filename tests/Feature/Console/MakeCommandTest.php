@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Composer\Autoload\ClassLoader;
 use Illuminate\Contracts\Console\Kernel;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 /*
@@ -55,6 +56,7 @@ beforeEach(function (): void {
     mkdir(scaffoldRoot(), 0o777, true);
 
     config()->set('lara-spec-first.generated.namespace', 'LsfMake\\Generated');
+    config()->set('lara-spec-first.make.controllers', 'LsfMake\\Http\\Controllers');
     config()->set('lara-spec-first.generated.path', scaffoldGeneratedTree());
     config()->set('lara-spec-first.spec.path', specFixturePath('scaffolding.yaml'));
 });
@@ -127,16 +129,38 @@ describe('the singular form', function (): void {
             ->toBe('<?php // mine');
     });
 
-    // Nothing to extend, so nothing to scaffold. What the command owes instead is
-    // the row to add, because wanting a custom controller and having to go read the
-    // documentation to learn the key's name is friction with no purpose.
-    it('prints the row to add when the operation declares no x-controller', function (): void {
-        $output = make(['operation' => 'listPosts'], 1);
+    /*
+     * Nothing to extend, so nothing to scaffold — and the command offers to add the
+     * row rather than leaving a developer to learn the key's name from the
+     * documentation. The value is derived: the configured controller namespace plus
+     * the name the build would have generated anyway.
+     *
+     * Non-interactive here, which is how these tests decline: Artisan answers a
+     * prompt with its default, and the default is no.
+     */
+    it('offers the row to add when the operation declares no x-controller', function (): void {
+        $output = make(['operation' => 'listPosts', '--no-interaction' => true], 1);
 
         expect($output)
             ->toContain('declares no `x-controller`')
-            ->toContain('x-controller: App\\Http\\Controllers\\ListPostsController')
+            ->toContain('x-controller: LsfMake\\Http\\Controllers\\ListPostsController')
+            ->toContain('Nothing was written')
             ->and(scaffoldedFiles())->toBe([]);
+    });
+
+    it('names the line the row would go on', function (): void {
+        expect(make(['operation' => 'listPosts', '--no-interaction' => true], 1))
+            ->toContain('scaffolding.yaml, line 25');
+    });
+
+    // Declining leaves the document exactly as it was, which is the property that
+    // makes the offer safe to make at all.
+    it('writes nothing to the specification when the offer is declined', function (): void {
+        $before = file_get_contents(specFixturePath('scaffolding.yaml'));
+
+        make(['operation' => 'listPosts', '--no-interaction' => true], 1);
+
+        expect(file_get_contents(specFixturePath('scaffolding.yaml')))->toBe($before);
     });
 
     it('refuses a name the contract does not carry, and writes nothing', function (): void {
@@ -271,4 +295,165 @@ it('builds even when every class was already there', function (): void {
     make(['operation' => 'showUser'], 0);
 
     expect(is_file(scaffoldGeneratedTree().'/routes.php'))->toBeTrue();
+});
+
+/*
+ * And the other half of the offer: answering yes.
+ *
+ * Driven through the console kernel with an input stream holding the answer, rather
+ * than through `$this->artisan()`. The helper reads better, and it is typed as a
+ * pending test call rather than as the test case — so static analysis cannot see the
+ * method, and this file would need an exemption to use it. An `ArrayInput` with a
+ * stream is what Symfony's question helper reads from anyway.
+ *
+ * The specification is a copy under the temporary root: a test that edited the
+ * fixture would be a test that only passes once.
+ */
+
+/**
+ * Run the command with somebody at the keyboard, typing what they are told to.
+ *
+ * The prompt is a value rather than a yes or no, so what is piped here is the class
+ * name a developer would have submitted.
+ *
+ * @param  array<string, mixed>  $arguments
+ */
+function makeAnswering(array $arguments, string $answer, int $expected): string
+{
+    $stream = fopen('php://memory', 'r+');
+
+    if ($stream === false) {
+        throw new RuntimeException('cannot open an input stream for the confirmation');
+    }
+
+    fwrite($stream, $answer."\n");
+    rewind($stream);
+
+    $input = new ArrayInput(['command' => 'spec:make'] + $arguments);
+    $input->setInteractive(true);
+    $input->setStream($stream);
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->handle($input, $output))->toBe($expected);
+
+    return $output->fetch();
+}
+
+function editableSpecification(): string
+{
+    $path = scaffoldRoot().'/openapi.yaml';
+
+    copy(specFixturePath('scaffolding.yaml'), $path);
+    config()->set('lara-spec-first.spec.path', $path);
+
+    return $path;
+}
+
+it('writes the row into the specification when a name is submitted', function (): void {
+    $path = editableSpecification();
+
+    makeAnswering(['operation' => 'listPosts'], 'LsfMake\\Http\\Controllers\\ListPostsController', 0);
+
+    expect(file_get_contents($path))
+        ->toContain("        get:\n            x-controller: LsfMake\\Http\\Controllers\\ListPostsController\n");
+});
+
+// The whole point of the prompt existing: one command takes a developer from an
+// operation the contract says nothing about to a class the route reaches.
+it('scaffolds and builds once the extension is in', function (): void {
+    editableSpecification();
+
+    makeAnswering(['operation' => 'listPosts'], 'LsfMake\\Http\\Controllers\\ListPostsController', 0);
+
+    expect(is_file(scaffoldRoot().'/Http/Controllers/ListPostsController.php'))->toBeTrue()
+        ->and(file_get_contents(scaffoldGeneratedTree().'/routes.php'))
+        ->toContain('use LsfMake\\Http\\Controllers\\ListPostsController;');
+});
+
+// The document keeps its comments, because nothing round-trips it through a dumper.
+it('leaves the document it edited otherwise untouched', function (): void {
+    $path = editableSpecification();
+    $before = (string) file_get_contents($path);
+
+    makeAnswering(['operation' => 'listPosts'], 'LsfMake\\Http\\Controllers\\ListPostsController', 0);
+
+    $after = (string) file_get_contents($path);
+
+    expect($after)->toContain('# The contract `spec:make` is exercised against')
+        ->and(substr_count($after, "\n"))->toBe(substr_count($before, "\n") + 1);
+});
+
+// The name a developer types is the one that lands, which is the whole reason the
+// prompt is a value rather than a question about somebody else's choice.
+it('uses the name that was typed rather than the one proposed', function (): void {
+    $path = editableSpecification();
+
+    makeAnswering(['operation' => 'listPosts'], 'LsfMake\\Http\\Controllers\\Posts\\FeedController', 0);
+
+    expect(file_get_contents($path))
+        ->toContain('x-controller: LsfMake\\Http\\Controllers\\Posts\\FeedController')
+        ->and(is_file(scaffoldRoot().'/Http/Controllers/Posts/FeedController.php'))->toBeTrue();
+});
+
+// A document whose operation the locator cannot place is still a document this
+// package builds from, so the command prints the row and says why it did not offer.
+it('prints the row without offering when it cannot place the line', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('openapi-3.1.json'));
+
+    $output = make(['operation' => 'listUsers', '--no-interaction' => true], 1);
+
+    expect($output)
+        ->toContain('could not work out where that line goes')
+        ->toContain('x-controller: LsfMake\\Http\\Controllers\\ListUsersController');
+});
+
+/*
+ * `--yes`, for a developer who knows what they want and does not want to be asked.
+ *
+ * It answers every question with the answer the command proposed, and changes no
+ * other guard: the insertion still verifies itself, a file that exists is still left
+ * alone, and a name this project could not place is still refused.
+ */
+
+it('takes the proposed name without asking', function (): void {
+    $path = editableSpecification();
+
+    make(['operation' => 'listPosts', '--yes' => true, '--no-interaction' => true], 0);
+
+    expect(file_get_contents($path))
+        ->toContain('x-controller: LsfMake\\Http\\Controllers\\ListPostsController')
+        ->and(is_file(scaffoldRoot().'/Http/Controllers/ListPostsController.php'))->toBeTrue();
+});
+
+it('creates a whole tag without asking', function (): void {
+    make(['--tag' => 'Users', '--yes' => true, '--no-interaction' => true], 0);
+
+    expect(scaffoldedFiles())->toBe(['LegacyController.php', 'UserController.php']);
+});
+
+// A flag that says yes is not a flag that says do it anyway: an unusable proposal is
+// refused, and the specification is left as it was.
+it('refuses a proposal this project could not place, and writes nothing', function (): void {
+    $path = editableSpecification();
+    $before = file_get_contents($path);
+
+    config()->set('lara-spec-first.make.controllers', 'Acme\\Nowhere');
+
+    $output = make(['operation' => 'listPosts', '--yes' => true, '--no-interaction' => true], 1);
+
+    expect($output)->toContain('cannot be written')
+        ->and(file_get_contents($path))->toBe($before)
+        ->and(scaffoldedFiles())->toBe([]);
+});
+
+// And it still never overwrites: the file exists, so the command says so and moves on
+// to the build rather than replacing what the developer wrote.
+it('leaves an existing file alone even when told yes', function (): void {
+    make(['operation' => 'showUser']);
+    file_put_contents(scaffoldRoot().'/Http/Controllers/UserController.php', '<?php // mine');
+
+    make(['operation' => 'showUser', '--yes' => true, '--no-interaction' => true], 0);
+
+    expect(file_get_contents(scaffoldRoot().'/Http/Controllers/UserController.php'))->toBe('<?php // mine');
 });

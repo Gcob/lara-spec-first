@@ -543,16 +543,19 @@ Three refusals are worth naming, because each of them protects something this do
   prevents it runs immediately before the write rather than only at planning time — a confirmation prompt is long enough
   for somebody to have created the file in another window.
 - **An operation with no `x-controller` cannot be scaffolded**, because its generated controller is `final` and nothing
-  may extend it. The command prints the row to add rather than shrugging: wanting a custom controller and having to go
-  and read this document to learn the key's name is friction with no purpose.
+  may extend it. The command [offers a name to write](./controllers.md#specmake-is-the-only-way-in) — derived from the
+  configured controller namespace, prefilled so it can be edited, with the exact line named — rather than sending a
+  developer to read this document to learn the key's name.
 - **A class in a namespace the project does not map** is refused, naming it. A path invented from the namespace by
   convention would produce a file that compiles, that the autoloader never finds, and whose route answers with a
   class-not-found for a reason nothing in the project states.
 
-**And a non-interactive bulk run creates nothing.** Artisan answers a prompt with its default when nobody is at the
-keyboard, and the default here is no — so a script gets "created nothing" rather than a contract's worth of empty
-classes. That is the safe half of the open question [controllers.md raises](./controllers.md#open-questions) about
-`--no-interaction`; the other half, whether a flag should exist to mean yes, is still open and deliberately unanswered.
+**And a non-interactive run writes nothing it would have asked about.** Artisan answers a prompt with its default when
+nobody is at the keyboard, so a script gets "created nothing" rather than a contract's worth of empty classes and a
+specification nobody agreed to edit. **`--yes` is how a script says yes**, taking the proposal for every question the
+command would have asked — and changing nothing else: the insertion still verifies itself, an existing file is still
+left alone, and a name the project cannot place is still refused. It is not `--force`, because
+[that word already means overwrite](./controllers.md#specmake-is-the-only-way-in) and this command never does.
 
 Laravel already has this shape and every Laravel developer already has the reflex: a `make` creates one file, when you
 ask, once. Reusing the word costs no new concept — and it removes the only exception the

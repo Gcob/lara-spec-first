@@ -6,9 +6,6 @@ providers:
   # and must be registered here by hand — without this line the Workbench
   # application boots without it, silently.
   - Gcob\LaraSpecFirst\LaraSpecFirstServiceProvider
-  # Points the package at workbench/openapi.yaml and workbench/app/Http/Generated,
-  # because '@testbench' puts base_path() in vendor/ where nothing is committed.
-  - Workbench\App\Providers\WorkbenchServiceProvider
 
 migrations:
   - workbench/database/migrations
@@ -21,6 +18,11 @@ workbench:
   install: true
   health: false
   discovers:
+    # Loads workbench/config/*.php the way a real application loads its own
+    # config directory. Without this the file is there and inert, and the package
+    # would read its own defaults — a specification at base_path('openapi.yaml'),
+    # which under '@testbench' is inside vendor/.
+    config: true
     web: true
     api: true
     commands: true

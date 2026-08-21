@@ -7,14 +7,18 @@ namespace Gcob\LaraSpecFirst\Console;
 use Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
-use Gcob\LaraSpecFirst\Generation\ControllerName;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
+use Gcob\LaraSpecFirst\Scaffolding\CustomControllerName;
 use Gcob\LaraSpecFirst\Scaffolding\CustomControllerScaffold;
+use Gcob\LaraSpecFirst\Scaffolding\ExtensionInsertion;
+use Gcob\LaraSpecFirst\Scaffolding\OperationLocator;
 use Gcob\LaraSpecFirst\Scaffolding\OperationSelector;
 use Gcob\LaraSpecFirst\Scaffolding\PlannedScaffold;
 use Gcob\LaraSpecFirst\Scaffolding\ScaffoldPlanner;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
+
+use function Laravel\Prompts\text;
 
 /**
  * Creates the one kind of file this package does not own.
@@ -43,6 +47,7 @@ final class MakeCommand extends Command
         {operation? : The operationId, or the method and path — "get /users/{id}"}
         {--tag= : Every operation the document tags with this name}
         {--all : Every operation the document describes}
+        {--yes : Take the proposed x-controller and skip every confirmation}
         {--spec= : Read this specification instead of the configured one}';
 
     /** @var string */
@@ -80,21 +85,195 @@ final class MakeCommand extends Command
         }
 
         $namespace = rtrim($this->requiredString($config, 'lara-spec-first.generated.namespace'), '\\');
-        $selector = new OperationSelector($this->contractOperations($specPath, $remote));
+        $selected = $this->select($form, $specPath, $remote);
 
-        $selected = match ($form) {
-            'operation' => $selector->named((string) $this->argument('operation')),
-            'tag' => $selector->tagged((string) $this->option('tag')),
-            default => $selector->all(),
-        };
+        // The one operation the singular form named may have no `x-controller` yet,
+        // and offering to add it is the whole point of this command being the way
+        // in. Once the document carries it, everything below runs as though it
+        // always had — read again, because the contract is what decides, and it
+        // just changed.
+        if ($form === 'operation' && ($selected[0] ?? null) !== null && $selected[0]->controller === null) {
+            if (! $this->offerTheExtension($config, $remote, $specPath, $selected[0])) {
+                return self::FAILURE;
+            }
+
+            $selected = $this->select($form, $specPath, $remote);
+        }
 
         $planner = new ScaffoldPlanner($namespace);
         $planned = $planner->plan($selected);
         $undeclarable = $planner->undeclarable($selected);
 
         return $form === 'operation'
-            ? $this->makeOne($planned, $undeclarable)
+            ? $this->makeOne($planned)
             : $this->makeMany($planned, $undeclarable);
+    }
+
+    /**
+     * The operations the form named, read from the document as it is now.
+     *
+     * @return list<Operation> never empty: every form refuses rather than selecting
+     *                         nothing, so a caller reading `[0]` is safe
+     */
+    private function select(string $form, string $specPath, RemoteReferenceGuard $remote): array
+    {
+        $selector = new OperationSelector($this->contractOperations($specPath, $remote));
+
+        return match ($form) {
+            'operation' => $selector->named((string) $this->argument('operation')),
+            'tag' => $selector->tagged((string) $this->option('tag')),
+            default => $selector->all(),
+        };
+    }
+
+    /**
+     * Why the flag is `--yes` rather than `--force`.
+     *
+     * Laravel's own generators use `--force` to mean *overwrite what is there*, and
+     * this command never overwrites a file a developer owns. Borrowing the word
+     * would promise the one thing it refuses. `--yes` says what it does: every
+     * question this command would have asked is answered with the answer it
+     * proposed.
+     *
+     * It changes no guard except the asking. The insertion still verifies itself on
+     * a copy, a file that exists is still left alone, and a name the project could
+     * not place is still refused — loudly, because a flag that says yes is not a
+     * flag that says do it anyway.
+     */
+    private function saysYes(): bool
+    {
+        return (bool) $this->option('yes');
+    }
+
+    /**
+     * Say the extension is missing, propose a name, and let the developer edit it.
+     *
+     * **A value rather than a yes-or-no**, and that is a revision worth naming. The
+     * question used to be "insert this? [y/N]", which asked a developer to approve a
+     * class name they had no way to change — so the only way to use their own was to
+     * answer no, open the document and type it. The prompt is prefilled with the
+     * proposal instead: submitting it accepts, editing it uses theirs, and an empty
+     * submission leaves the document alone.
+     *
+     * **Nothing is written without a person there.** A non-interactive run prints
+     * the row and stops, because Artisan would otherwise answer the prompt with its
+     * own default and a script would edit a specification nobody agreed to edit.
+     *
+     * **The proposal is derived rather than asked for.** It is the configured
+     * controller namespace plus the name the build would have generated anyway, so
+     * the common case is a keystroke. What ends up in the document is what was
+     * submitted; from then on the document decides, and the configured namespace
+     * never renames it.
+     *
+     * @return bool whether the document now carries the extension
+     */
+    private function offerTheExtension(
+        Repository $config,
+        RemoteReferenceGuard $remote,
+        string $specPath,
+        Operation $operation,
+    ): bool {
+        $name = new CustomControllerName(
+            $this->requiredString($config, 'lara-spec-first.make.controllers'),
+            $this->requiredString($config, 'lara-spec-first.generated.namespace'),
+        );
+
+        $value = $name->propose($operation);
+
+        // Stated as the missing input it is, rather than as a warning about the
+        // consequence. A developer who typed this command wants a controller; that
+        // the generated one is `final` until the contract says otherwise is the
+        // reason, and the reason belongs in the documentation and in the generated
+        // file's own findings, not in the way of the thing they asked for.
+        $this->components->info(sprintf(
+            '%s declares no `x-controller`, which is what makes an operation customizable.',
+            $operation->label(),
+        ));
+
+        $location = (new OperationLocator)->locate((string) @file_get_contents($specPath), $operation);
+        $row = 'x-controller: '.$value;
+
+        if ($location === null) {
+            // Every shape the locator cannot read with certainty lands here: a
+            // flow-style mapping, a JSON document, an operation reached through a
+            // reference into another file. Each is a document this package still
+            // builds from, and none is one it may edit blind.
+            $this->newLine();
+            $this->line('  Add this to the operation in '.$this->readable($specPath).':');
+            $this->newLine();
+            $this->line('      '.$row);
+            $this->newLine();
+            $this->line('  This command could not work out where that line goes in your document, so');
+            $this->line('  it has not offered to write it. Add it by hand and run this again.');
+
+            return false;
+        }
+
+        $this->newLine();
+        $this->line(sprintf(
+            '  It goes in %s, line %d.',
+            $this->readable($specPath),
+            $location->line + 1,
+        ));
+
+        if ($this->saysYes()) {
+            $refusal = $name->reasonToRefuse($value);
+
+            if ($refusal !== null) {
+                $this->components->error(sprintf(
+                    'The proposed `%s` cannot be written: %s',
+                    $value,
+                    $refusal,
+                ));
+
+                return false;
+            }
+
+            (new ExtensionInsertion($remote))->insert($specPath, $operation, $location, $value);
+
+            $this->components->info(sprintf(
+                'Added `x-controller: %s` to %s.',
+                $value,
+                $this->readable($specPath),
+            ));
+
+            return true;
+        }
+
+        if (! $this->input->isInteractive()) {
+            $this->newLine();
+            $this->line('      '.$location->indentation.$row);
+            $this->newLine();
+            $this->line('  Nothing was written, because nobody is here to name the class. Add the row');
+            $this->line('  above and run this command again.');
+
+            return false;
+        }
+
+        $this->newLine();
+
+        $chosen = trim((string) text(
+            label: 'x-controller',
+            default: $value,
+            hint: 'Edit it, or submit it empty to leave the specification alone.',
+            validate: $name->reasonToRefuse(...),
+        ));
+
+        if ($chosen === '') {
+            $this->line('  Nothing was written. Add the row yourself and run this command again.');
+
+            return false;
+        }
+
+        (new ExtensionInsertion($remote))->insert($specPath, $operation, $location, $chosen);
+
+        $this->components->info(sprintf(
+            'Added `x-controller: %s` to %s.',
+            $chosen,
+            $this->readable($specPath),
+        ));
+
+        return true;
     }
 
     /**
@@ -132,16 +311,9 @@ final class MakeCommand extends Command
      * forms ask for would be noise here.
      *
      * @param  list<PlannedScaffold>  $planned
-     * @param  list<Operation>  $undeclarable
      */
-    private function makeOne(array $planned, array $undeclarable): int
+    private function makeOne(array $planned): int
     {
-        if ($planned === []) {
-            $this->reportUndeclarable($undeclarable[0]);
-
-            return self::FAILURE;
-        }
-
         $scaffold = $planned[0];
 
         if ($scaffold->exists) {
@@ -200,7 +372,7 @@ final class MakeCommand extends Command
         // convenient: Artisan answers a prompt with its default when nobody is at
         // the keyboard, and the answer a script gets is therefore "create
         // nothing" instead of "create everything".
-        if (! $this->confirm('Create them?', false)) {
+        if (! $this->saysYes() && ! $this->confirm('Create them?', false)) {
             // A refusal is respected whole: no files, and no build either. The
             // build would write nothing a developer owns, but running it after
             // somebody said no is still doing work they declined.
@@ -228,8 +400,8 @@ final class MakeCommand extends Command
      * no generated parent yet, because the parent's name comes from that very
      * extension and the build has not read it. So the file this command just wrote
      * would not load, in the one moment the developer is looking at it. Running
-     * the build is what makes it load — and what points the route at it, since
-     * [the route's target is resolved at build time](../../docs/guide/controllers.md#two-classes-found-by-name-rather-than-by-a-scan).
+     * the build is what makes it load — and what points the route at it, since the
+     * route's target is resolved at build time.
      *
      * **This is not the invariant in reverse.** The rule is that the *build* never
      * creates a class a developer will own; nothing says a command that creates one
@@ -279,41 +451,6 @@ final class MakeCommand extends Command
                 count($undeclarable),
             ));
         }
-    }
-
-    /**
-     * The singular form met an operation that cannot have a custom controller.
-     *
-     * The block to add is printed rather than inserted. Wanting a custom
-     * controller and having to hand-edit YAML first is friction with no purpose,
-     * so an insertion prompt is owed here — and until it exists, printing the
-     * exact rows a developer can copy is the honest half of it.
-     */
-    private function reportUndeclarable(Operation $operation): void
-    {
-        $this->components->warn(sprintf(
-            '%s declares no `x-controller`, so its generated controller is `final` and cannot be extended.',
-            $operation->label(),
-        ));
-
-        $this->newLine();
-        $this->line('  Add to the operation in your specification:');
-        $this->newLine();
-        $this->line('      x-controller: App\\Http\\Controllers\\'.$this->suggestedName($operation));
-        $this->newLine();
-        $this->line('  Then run this command again.');
-    }
-
-    /**
-     * A class name to suggest, taken from what the document already says.
-     *
-     * The `operationId` when there is one, because that is a name its author
-     * chose; the method and path otherwise, which is the same fallback the build
-     * uses for a generated name.
-     */
-    private function suggestedName(Operation $operation): string
-    {
-        return ControllerName::for($operation)->shortName;
     }
 
     /**

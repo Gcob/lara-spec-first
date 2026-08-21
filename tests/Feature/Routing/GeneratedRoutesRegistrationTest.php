@@ -35,6 +35,13 @@ function generatedTree(): string
 }
 
 beforeAll(function (): void {
+    // The provider skips the generated routes entirely when the application's
+    // routes are cached, which is its documented behaviour and this file's blind
+    // spot: a developer who ran `testbench route:cache` by hand leaves a cache in
+    // the skeleton, and every test here then asserts against routes nothing
+    // loaded. Cleared rather than detected, because the fix is the same either way.
+    @unlink(TestCase::applicationBasePath().'/bootstrap/cache/routes-v7.php');
+
     // Removed before as well as after. An `afterAll` does not run on a fatal
     // error or a Ctrl-C, and a leaked fixture at the default location is state
     // another test file would read as a generated tree.

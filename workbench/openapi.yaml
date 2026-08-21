@@ -24,6 +24,7 @@ paths:
     # swaps with them — that is a documented property of this package, not a bug.
     /users/me:
         get:
+            x-controller: Workbench\App\Http\Controllers\ShowCurrentUserController2
             operationId: showCurrentUser
             summary: The authenticated user
             tags: [Users]
@@ -60,9 +61,11 @@ paths:
                 '204': { description: Gone }
 
     /posts:
-        # A second `x-controller`, on an operation nobody has written the class
-        # for yet: `php artisan spec:make listPosts` creates it, and until then the
-        # route reaches the generated parent and answers 501.
+        # A second `x-controller`, whose class exists and has not been implemented:
+        # `workbench/app/Http/Controllers/Posts/ListPostsController.php` is what
+        # `spec:make listPosts` wrote, untouched. It still answers 501, because the
+        # one line in it calls the parent — which is what keeps a scaffold honest
+        # until somebody replaces that line.
         get:
             operationId: listPosts
             x-controller: Workbench\App\Http\Controllers\Posts\ListPostsController

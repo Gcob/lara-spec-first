@@ -90,6 +90,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | What `spec:make` scaffolds — DONE
+    |--------------------------------------------------------------------------
+    |
+    | The namespace `spec:make` proposes when it offers to write `x-controller`
+    | into your specification. Only the namespace: the directory follows from your
+    | own PSR-4 map, so asking for both would be two places that can disagree.
+    |
+    | It is a proposal rather than a rule. The value that ends up in the document
+    | is the one you accepted, and from then on that document decides the class
+    | name — this key never renames anything it already wrote.
+    |
+    | See docs/guide/controllers.md — "spec:make is the only way in".
+    |
+    */
+
+    'make' => [
+        'controllers' => 'App\Http\Controllers',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Where your own overrides are looked for — TODO
     |--------------------------------------------------------------------------
     |

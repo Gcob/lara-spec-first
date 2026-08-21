@@ -128,9 +128,13 @@ would implement it. Nothing implements them yet, and that is the honest answer w
 and no code does.
 
 `GET /users/42` answers `200`, because it is the one operation with a custom controller behind it —
-`workbench/app/Http/Controllers/UserController.php`, extending the parent the build generated for it. Delete that file
-and rebuild, and the route falls back to the generated parent and the `501` comes back. `GET /posts` is the same seam
-with the class not written yet: `composer artisan -- spec:make listPosts` creates it.
+`workbench/app/Http/Controllers/Users/ShowUserController.php`, extending the parent the build generated for it. Delete
+that file and rebuild, and the route falls back to the generated parent and the `501` comes back.
+
+`GET /posts` is the same seam one step earlier: `workbench/app/Http/Controllers/Posts/ListPostsController.php` is what
+`spec:make listPosts` wrote, untouched. It answers `501` because the one line in it calls the parent, so the pair is
+visible side by side — the difference between an operation that answers and one that does not is a line in a file you
+own.
 
 **`workbench/app/Http/Generated` is gitignored**, for the same reason any project ignores its build output, and because
 this application exists to model a real consumer one — so it is configured the way one would be. The contract is
@@ -152,7 +156,10 @@ that braces, and the same advice the README gives consumers. Note that `exclude`
 Two things about this application that will otherwise surprise you:
 
 - **`base_path()` is the Testbench skeleton under `vendor/`, not `workbench/`.** That is what
-  `workbench/app/Providers/WorkbenchServiceProvider.php` corrects, and why the paths it sets are absolute.
+  `workbench/config/lara-spec-first.php` corrects, and why the paths in it are absolute. It is the package's published
+  config file with three keys edited, loaded the way a real application loads its own `config/` directory — enabled by
+  `workbench.discovers.config` in `testbench.yaml`. Edit it as you would in a project: the package merges its own
+  defaults beneath whatever it finds there, so you only name what differs.
 - **Generated classes live under `Workbench\App\Http\Generated`,** because that is the namespace this package's
   `autoload-dev` maps into `workbench/app/`. Anywhere else and they would not autoload at request time.
 

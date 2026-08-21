@@ -24,8 +24,8 @@ assumes about your application, and where a developer's own code attaches to it.
 > [501](./code-generation.md#an-unimplemented-operation-answers-501). **The two-class seam is shipped whole:**
 > `x-controller` is read, a declared controller names the generated parent and drops its `final`, the route points at
 > the child once that class exists, and two values reducing to one parent is a build error naming both. **`spec:make`
-> ships too**, in its three forms, minus the insertion prompt below — it prints the row to add rather than offering to
-> write it, which is the rest of [Phase 1](../project/roadmap.md#phase-1-the-foundation) here.
+> ships whole**: its three forms, the insertion prompt below with the edit verified on a copy, and the build it runs
+> afterwards. Nothing in [Phase 1](../project/roadmap.md#phase-1-the-foundation) is left in this document.
 > [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features) carries everything
 > model-shaped: `x-model`, the CRUD defaults, `HasModel` and its trait, the marker interfaces, the DTO factory calls,
 > the pagination seams and the mass-assignment check, because a generated CRUD body has nothing to return until the DTOs
@@ -239,26 +239,41 @@ reverse:** the rule is that the build never creates a class you will own, and no
 ask the build to catch up. It is skipped after a declined bulk confirmation, because a refusal is respected whole.
 
 **Decision: `spec:make` prints the extension to add, names the exact line, and offers to insert it — defaulting to no.**
-_Half shipped: the block is printed, the line number and the offer are not._ Wanting a custom controller and having to
-hand-edit YAML first is friction with no purpose, but the specification is the source of truth and nothing writes to it
-without being asked:
+**Shipped.** Wanting a custom controller and having to hand-edit YAML first is friction with no purpose, but the
+specification is the source of truth and nothing writes to it without being asked:
 
 ```
-getUser has no x-controller, so its generated controller is final and cannot be extended.
+get /users/me declares no `x-controller`, so its generated controller is `final` and cannot be extended.
 
-Add to openapi.yaml, line 395:
+  Add to openapi.yaml, line 26:
 
-    x-controller: App\Http\Controllers\UserController
-    x-model: App\Models\User
+      x-controller: App\Http\Controllers\ShowCurrentUserController
 
-Insert it there now? [y/N]
+Insert it there now? (yes/no) [no]
 ```
 
-> Note that a flag to force insert the row will be considered.
+**The value is derived, not asked for.** It is `make.controllers` from the configuration — `App\Http\Controllers` by
+default — plus the short name
+[the build would have generated anyway](./code-generation.md#naming-and-the-rename-problem): the `operationId`
+studly-cased and suffixed, or the method and path for an operation with no `operationId`. So a developer types
+`spec:make showUser` and never a fully-qualified class name.
+
+**Only the namespace is configured, because the directory follows from PSR-4.** Asking for both would be two places that
+can disagree about one file, and the project's own `composer.json` already answers the second — which is the same map
+`spec:make` uses to decide where to write the class.
+
+**And the configured namespace never renames anything.** What ends up in the document is the value the developer
+accepted, and from that moment the document decides the class name: changing `make.controllers` later changes what the
+next insertion proposes and nothing that was already inserted. That is the whole reason
+[`x-controller` is the only source of an extendable name](#the-specification-decides-what-is-customizable), stated from
+the other direction.
 
 Answering no leaves a copyable block and the exact line, which is
 [the pattern this package already uses](./code-generation.md#the-build-names-the-command-instead-of-running-it) when a
-human decision is required. Answering yes runs the insertion below.
+human decision is required. Answering yes runs the insertion below, and then scaffolds the class and builds — one
+command from an operation the contract says nothing about to a class the route reaches.
+
+> Note that a flag to force insert the row will be considered.
 
 **The insertion never round-trips the document through a YAML dumper.** Parsing and re-emitting destroys comments, key
 order and anchors, and this is the one file read in every pull request. YAML's indentation is predictable enough that
@@ -274,6 +289,12 @@ Only then does the temporary copy replace the original.
 something it did not intend, and falls back to printing the block for a human to place. That path should never run,
 which is exactly why it must exist: an automatic edit to the source of truth is worth a check that cannot be argued
 with.
+
+**It refuses to offer at all on a document it cannot place a line in.** A flow-style mapping, a JSON specification, an
+operation whose Path Item is a `$ref` into another file: each of those is a document this package still builds from, and
+none is one it may edit blind. The command prints the row, says it could not work out where the line goes, and stops.
+That is a refusal to guess rather than a limitation of YAML editing — the alternative is a line written at a depth
+nobody chose.
 
 **And it refuses outright on a document the project does not own.** An operation reached through a
 [vendored remote reference](./remote-references.md) lives in a file the next fetch overwrites, so an insertion there
@@ -647,11 +668,10 @@ Two checks specific to this document, both of which the specification cannot see
 
 ## Open questions
 
-- Whether `spec:make` needs a way to say yes without a keyboard. Settled for the bulk forms: a `--no-interaction` run
-  creates nothing, because Artisan answers a prompt with its default and the default here is no. What is still open is
-  whether a flag should exist to mean yes — for the bulk confirmation and for
-  [the insertion prompt](#specmake-is-the-only-way-in) both, since neither has one and a script therefore cannot use
-  either.
+- Whether `spec:make` needs a way to say yes without a keyboard: settled. `--yes` answers both the bulk confirmation and
+  [the insertion prompt](#specmake-is-the-only-way-in) with what the command proposed, and a `--no-interaction` run
+  without it writes nothing. Kept here rather than deleted because the reasoning for the flag's name is in that section:
+  `--force` means overwrite in every Laravel generator, and this command never overwrites.
 - The [interface, trait and method names](#the-detected-crud-semantic-is-a-marker-interface-deliberately-empty), all of
   which are public API surface under [rule 4](./openapi-support.md#the-four-rules) from the first release on.
 - Whether a generated DTO could be a Laravel API Resource instead. The `routeAction` return type is the only contract
