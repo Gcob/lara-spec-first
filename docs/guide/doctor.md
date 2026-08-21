@@ -16,7 +16,13 @@ tags: [openapi, compatibility, decisions, workflow, code-review]
 What is honored in the first place lives in [`openapi-support.md`](./openapi-support.md); this document owns how any of
 it is reported.
 
-> **Not implemented yet.** Phase 1 of the [Roadmap](../project/roadmap.md). Items marked `Open` are undecided.
+> **Shipped, in its Phase 1 form.** `spec:doctor` reads the eight sections whose inputs already existed:
+> [configuration](#what-it-checks), document validity, version, references, [support findings](#what-it-checks)
+> (`Rejected` constructs the reading pipeline already collects, `operationId` required on a `public` + `stable`
+> operation, and one summary line per `Deferred` construct actually present), [routing outcome](#what-it-checks)
+> (shadowing included), [drift](#what-it-checks), and [installation](#what-it-checks). `--json` ships alongside the text
+> report. **Not yet built:** the [lifecycle rules](./lifecycle.md#the-doctor-rules-that-follow) and the `security`
+> finding — see the [Roadmap](../project/roadmap.md) for both. Items marked `Open` below are undecided.
 
 Rule 2 has an obvious failure mode. A package that reports every unhonored construct at boot is a package that shouts on
 every request, and a tool that shouts constantly gets its output filtered out — at which point the diagnostic exists and
@@ -62,16 +68,16 @@ first thing that reads a spec** — see the [Roadmap](../project/roadmap.md).
   this command can print. Most runs will be clean, and a command that prints nothing on success teaches the developer
   nothing about what the spec actually did.
 
-## Planned flags
+## Flags
 
-Centralizing every check in one command means that command needs a way to narrow what it runs. The intended surface, all
-provisional:
+Centralizing every check in one command means that command needs a way to narrow what it runs.
 
-| Flag              | Purpose                                                                                |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| `--json`          | Machine-readable findings, for CI annotation and for tooling that consumes the report. |
-| `--check=syntax`  | Document validity only: is this valid OpenAPI.                                         |
-| `--check=honored` | Support findings only: what this package will and will not honor.                      |
+| Flag              | Status  | Purpose                                                                                |
+| ----------------- | ------- | -------------------------------------------------------------------------------------- |
+| `--spec`          | Shipped | Read this specification instead of the configured one.                                 |
+| `--json`          | Shipped | Machine-readable findings, for CI annotation and for tooling that consumes the report. |
+| `--check=syntax`  | Planned | Document validity only: is this valid OpenAPI.                                         |
+| `--check=honored` | Planned | Support findings only: what this package will and will not honor.                      |
 
 Those two values do not partition the [sections below](#what-it-checks) — drift, installation and the baseline check
 fall under neither, and inventing a value per section would turn a filter into a second command. **Open:** whether
@@ -102,10 +108,13 @@ urgency** — and a developer who cannot tell them apart at a glance will treat 
 | **Document fault** | The document is not valid OpenAPI, or is internally inconsistent: schema violations, an unresolvable `$ref`, a path parameter declared nowhere. | The spec author.                                                       | Fix the document. There is no other option, and the package will not guess.                                                |
 | **Package limit**  | The document is correct. This package does not honor the construct.                                                                             | Us, eventually — it is a roadmap item, not a defect in their contract. | The consumer changes the spec, waits for support, or [acknowledges the limit](#acknowledged-limits-the-consumers-opt-out). |
 
-The distinction has to survive into the output, not just the prose here: separate sections, distinct labels, and —
-proposed — **distinct exit codes**, so a CI pipeline can gate hard on document faults while treating package limits as a
-softer signal. `0` clean, one code for faults, another for limits. The exact numbers are open; the fact that they differ
-should not be.
+The distinction has to survive into the output, not just the prose here: separate sections, distinct labels, and
+**distinct exit codes**, so a CI pipeline can gate hard on document faults while treating package limits as a softer
+signal. `0` clean, `1` at least one document fault, `2` no document fault but at least one package limit. A document
+fault always wins when both are present, so the harder failure is never buried under the softer one's count. One level
+is deliberately excluded from both: `Deferred` — see [openapi-support.md](./openapi-support.md#support-levels) — never
+gates the exit code, however many of them a document carries, because recognizing a construct the roadmap has not built
+yet is a fact about our schedule, not a defect worth failing a pipeline over.
 
 The rule that follows from this: **a package limit is never reported as if the consumer made a mistake.** They wrote a
 valid contract. We are the ones who cannot serve all of it yet, and the message says so.
@@ -131,7 +140,6 @@ Provisional, and expected to grow one section per honored construct:
 
 ## Open questions on the doctor
 
-- **The exit codes.** That document faults and package limits exit differently is settled. The numbers are not.
 - **What still happens at boot.** `Rejected` fails at boot unless
   [acknowledged](#acknowledged-limits-the-consumers-opt-out), in which case the construct is skipped — the doctor is a
   check, not a substitute for refusing to load a spec the package cannot serve. Whether anything _below_ `Rejected`
