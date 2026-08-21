@@ -149,18 +149,24 @@ the code, and a gap in it is loud.
   generated file carries is what does the cheap half of that job today, and
   [the doctor](../guide/controllers.md#the-doctor-counts-two-things-not-three) is where the orphan question lands if it
   is ever wanted.
-- [ ] **`spec:make`: the only command that creates a file the developer will own.** It scaffolds a named operation, or a
-      whole `--tag`, or `--all`, never as a side effect of a build. `spec:build` itself never scaffolds; it
-      [names the commands to run](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it). This
-      item includes the `x-controller` insertion prompt and the verification that makes it safe: the edit happens on a
-      copy, the copy is read back through the normal pipeline, and nothing is written unless the resulting operations
-      are identical but for the extension just added.
+- [ ] **`spec:make`: the only command that creates a file the developer will own.** Shipped in its three forms — a named
+      operation (by `operationId`, or by method and path when it has none), a whole `--tag`, or `--all`, with the bulk
+      forms listing what they would create and asking first, defaulting to no so a non-interactive run creates nothing.
+      It never overwrites a file, refuses a class in a namespace the project does not map, prints the row to add for an
+      operation that declares no `x-controller`, and runs the build when it is done — without which the `extends` it
+      just wrote has no parent to reach, since that parent's name comes from the extension the build had not read.
+      `spec:build` never scaffolds and now
+      [names the commands to run](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it)
+      instead, summarised by tag, with the atomic form named for the operations no tag reaches — and the generated 501
+      names it too. What remains of this item is the insertion prompt and the verification that makes it safe: the edit
+      happens on a copy, the copy is read back through the normal pipeline, and nothing is written unless the resulting
+      operations are identical but for the extension just added.
 - [x] **An unimplemented operation answers `501`.** The generated controller's `routeAction` throws an exception that
       Laravel renders as `501`, which is what reconciles the two things this documentation set said: the generated
       controller _is_ the handler position, so one controller per operation stays true. See
       [501](../guide/code-generation.md#an-unimplemented-operation-answers-501). It is the seam the Phase 2 mock plugs
-      into, so its position is settled now rather than later. Naming the `spec:make` command in the body is owed once
-      that command exists — printing a command nobody can run would be worse than saying nothing.
+      into, so its position is settled now rather than later. The body names the `spec:make` invocation that creates the
+      class, which was owed once that command existed and is paid.
 
 ### Reading, reporting, refusing
 

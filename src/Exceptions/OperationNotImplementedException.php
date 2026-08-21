@@ -34,14 +34,18 @@ final class OperationNotImplementedException extends HttpException implements Sp
      * @param  string  $identity  the operation's method and path, which is what
      *                            addresses it and therefore what a reader needs
      *                            to find it in the specification
+     * @param  string|null  $name  how `spec:make` would be told which operation this
+     *                             is: its `operationId`, or null when it has none
      */
-    public static function operation(string $identity): self
+    public static function operation(string $identity, ?string $name = null): self
     {
         return new self(501, sprintf(
             'The operation "%s" is described by the specification and has no implementation. '.
             'This response comes from the generated controller, which is doing the only honest '.
-            'thing it can until something answers the operation.',
-            $identity
+            'thing it can until something answers the operation. Run `php artisan spec:make %s` '.
+            'to create the class that will.',
+            $identity,
+            $name ?? '"'.$identity.'"'
         ));
     }
 }

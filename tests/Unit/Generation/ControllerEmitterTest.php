@@ -448,7 +448,16 @@ describe('the two-class seam', function (): void {
 
     it('throws the exception Laravel renders as 501, naming the operation', function (): void {
         expect(emittedController(operationFor(method: 'get', path: '/users/{id}')))
-            ->toContain("OperationNotImplementedException::operation('get /users/{id}')");
+            ->toContain("OperationNotImplementedException::operation('get /users/{id}', 'showUser')");
+    });
+
+    // The second argument is what the 501 body turns into `php artisan spec:make
+    // <name>`, so an operation with no `operationId` has to pass `null` rather
+    // than an empty string — a printed invocation with nothing after it would be
+    // worse than the method and path the exception falls back to.
+    it('passes null rather than an empty name for an operation with no operationId', function (): void {
+        expect(emittedController(operationFor(operationId: null, path: '/users')))
+            ->toContain("OperationNotImplementedException::operation('get /users', null)");
     });
 
     // The import has no leading separator, which is what `use` requires: a

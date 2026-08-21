@@ -55,7 +55,7 @@ final readonly class ControllerEmitter
             {
                 public function routeAction({$this->signature($operation)}): mixed
                 {
-                    throw OperationNotImplementedException::operation({$this->literal($operation->label())});
+                    throw OperationNotImplementedException::operation({$this->literal($operation->label())}, {$this->name($operation)});
                 }
             }
 
@@ -108,6 +108,18 @@ final readonly class ControllerEmitter
     }
 
     /**
+     * How `spec:make` would be told which operation this is, as PHP.
+     *
+     * `null` rather than an empty string when the operation has no `operationId`:
+     * the 501 body names the command to run, and it has to fall back to the
+     * method and path rather than print an invocation with nothing after it.
+     */
+    private function name(Operation $operation): string
+    {
+        return $operation->operationId === null ? 'null' : $this->literal($operation->operationId);
+    }
+
+    /**
      * A value as a PHP string literal, whatever it contains.
      *
      * `var_export` rather than wrapping in quotes: a path may legally carry an
@@ -146,7 +158,7 @@ final readonly class ControllerEmitter
         ];
 
         foreach ($this->findings($planned) as $finding) {
-            foreach ($this->wrap(CommentText::safe($finding)) as $position => $line) {
+            foreach (CommentText::wrap(CommentText::safe($finding)) as $position => $line) {
                 $lines[] = $position === 0 ? ' *   - '.$line : ' *     '.$line;
             }
         }
@@ -196,81 +208,6 @@ final readonly class ControllerEmitter
     }
 
     /**
-     * Break a finding across lines the way the rest of this repository writes.
-     *
-     * Generated code is read far more than it is written, and a docblock whose
-     * lines run to three hundred characters is one nobody reads twice. Wrapped
-     * here rather than left to a formatter, because a consumer's formatter is not
-     * ours to assume and the build has to be [idempotent](GeneratedTree) — output
-     * that another tool then reformats would produce a diff on every run.
-     *
-     * Measured in characters rather than bytes, because a finding interpolates
-     * values that come from the document: a non-ASCII `x-sunset` or summary would
-     * otherwise wrap early for a width nobody asked for.
-     *
-     * **A token longer than the line is cut rather than left to run**, and that
-     * case is reachable rather than theoretical: a finding interpolates document
-     * values, `x-sunset` is [deliberately unparsed](../Contract/Operation.php), and
-     * a URL or a hand-typed value carrying no space at all would otherwise produce
-     * a single line hundreds of characters long. Cut rather than truncated, because
-     * the value is what a reader came here for and dropping its tail would make
-     * the finding lie by omission.
-     *
-     * @param  positive-int  $width
-     * @return non-empty-list<string>
-     */
-    private function wrap(string $finding, int $width = 92): array
-    {
-        $lines = [];
-        $current = '';
-
-        foreach ($this->words($finding, $width) as $word) {
-            if ($current === '') {
-                $current = $word;
-
-                continue;
-            }
-
-            if (mb_strlen($current) + 1 + mb_strlen($word) > $width) {
-                $lines[] = $current;
-                $current = $word;
-
-                continue;
-            }
-
-            $current .= ' '.$word;
-        }
-
-        $lines[] = $current;
-
-        return $lines;
-    }
-
-    /**
-     * The finding's words, with any word too long for a line cut into pieces that
-     * fit.
-     *
-     * @param  positive-int  $width
-     * @return list<string>
-     */
-    private function words(string $finding, int $width): array
-    {
-        $words = [];
-
-        foreach (explode(' ', $finding) as $word) {
-            if ($word === '') {
-                continue;
-            }
-
-            foreach (mb_str_split($word, $width) as $piece) {
-                $words[] = $piece;
-            }
-        }
-
-        return $words;
-    }
-
-    /**
      * The JSON pointer into the document, so a reader lands on the exact position
      * rather than grepping for the path.
      */
@@ -308,13 +245,22 @@ final readonly class ControllerEmitter
             ];
         }
 
-        return [
-            'The contract names `'.CommentText::safe($custom).'` as this operation\'s',
-            'controller, and no file for it exists yet. Until one does, the route reaches this',
-            'class and answers 501.',
-            '',
-            '@see '.GeneratedRoutesLocator::FILE.' — the route that reaches this class',
-        ];
+        // The command is named rather than the extension point merely described.
+        // Discovering that a class can be extended should not require reading this
+        // package's documentation first — and `spec:make` creates exactly this
+        // file, so printing the invocation is the shortest true thing to say.
+        $lines = CommentText::wrap(sprintf(
+            'The contract names `%s` as this operation\'s controller, and no file for it exists '
+                .'yet. Create it with `php artisan spec:make %s`. Until it exists, the route reaches '
+                .'this class and answers 501.',
+            CommentText::safe($custom),
+            $planned->operation->operationId ?? '"'.CommentText::safe($planned->operation->label()).'"',
+        ));
+
+        $lines[] = '';
+        $lines[] = '@see '.GeneratedRoutesLocator::FILE.' — the route that reaches this class';
+
+        return $lines;
     }
 
     /**

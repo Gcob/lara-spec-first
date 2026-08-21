@@ -94,6 +94,24 @@ Then open <http://localhost:13100>. Set `SERVE_PORT` if that port is taken.
 
 The Pest suite stays the fast feedback loop; Workbench is for the things a test cannot show you.
 
+### Artisan, inside it
+
+A package has no `artisan` binary of its own. Testbench provides one, and it boots this same Workbench application with
+the package loaded — so it is where `spec:build`, `spec:make`, `route:list` and `config:show` all run:
+
+```bash
+just artisan route:list        # in the container
+just artisan spec:build
+just artisan                   # every available command
+just tinker                    # interactive PHP, inside the booted application
+# or, natively
+composer artisan -- route:list
+```
+
+Two more recipes hand you the container itself rather than a project command, which is why they wrap no Composer script:
+`just php -v` runs the container's interpreter, and `just shell` opens a shell in it. Working natively you already have
+both.
+
 ### The contract it serves
 
 `workbench/openapi.yaml` is the specification this application runs on, and it is written to be read: every operation in
@@ -101,12 +119,18 @@ it exists to make one behaviour visible in the generated output rather than only
 derived class name, a deprecation with a sunset date, a declared security requirement the build does not enforce yet.
 
 ```bash
-composer serve                    # builds the tree, then serves
-vendor/bin/testbench spec:build   # or rebuild on its own, after editing the contract
+composer serve                 # builds the tree, then serves
+composer artisan -- spec:build # or rebuild on its own, after editing the contract
 ```
 
-Then try `GET /users/me`, `GET /users/42` or `POST /posts`. Every one answers `501`, naming the operation: nothing
-implements them yet, and that is the honest answer while the contract describes an endpoint and no code does.
+Then try `GET /users/me` or `POST /posts`: both answer `501`, naming the operation and the `spec:make` command that
+would implement it. Nothing implements them yet, and that is the honest answer while the contract describes an endpoint
+and no code does.
+
+`GET /users/42` answers `200`, because it is the one operation with a custom controller behind it —
+`workbench/app/Http/Controllers/UserController.php`, extending the parent the build generated for it. Delete that file
+and rebuild, and the route falls back to the generated parent and the `501` comes back. `GET /posts` is the same seam
+with the class not written yet: `composer artisan -- spec:make listPosts` creates it.
 
 **`workbench/app/Http/Generated` is gitignored**, for the same reason any project ignores its build output, and because
 this application exists to model a real consumer one — so it is configured the way one would be. The contract is

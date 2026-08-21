@@ -1,0 +1,36 @@
+# Tags of different sizes plus one untagged operation, which is what the build's
+# summary has to group: the largest tag first, and the atomic invocation for the
+# operation no `--tag` would reach.
+openapi: 3.0.3
+info:
+    title: Fixture API
+    version: 1.0.0
+paths:
+    /users/{id}:
+        get:
+            operationId: showUser
+            tags: [Users]
+            responses:
+                '200': { description: A user }
+        delete:
+            operationId: removeUser
+            tags: [Users]
+            responses:
+                '204': { description: Gone }
+    /users:
+        get:
+            operationId: listUsers
+            tags: [Users]
+            responses:
+                '200': { description: Users }
+    /posts:
+        get:
+            operationId: listPosts
+            tags: [Posts]
+            responses:
+                '200': { description: Posts }
+    /orphans:
+        get:
+            operationId: listOrphans
+            responses:
+                '200': { description: Nothing groups this one }

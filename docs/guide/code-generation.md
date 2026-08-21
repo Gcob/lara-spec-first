@@ -32,8 +32,9 @@ turns the specification into PHP, and the result is safe to regenerate at any ti
 > [never writes outside its own tree](#the-invariant-a-build-never-destroys-human-work). The provider
 > [loads what it emitted](#the-routes-are-one-file-and-the-only-one-the-runtime-opens) and reads no specification to do
 > it. The [`x-controller` seam](./controllers.md#the-specification-decides-what-is-customizable) is shipped, so an
-> operation that declares one gets a parent it may extend and a route pointing at the child. Not built yet: response
-> DTOs and request validation, and `spec:make`. Rename detection was designed here and
+> operation that declares one gets a parent it may extend and a route pointing at the child, and
+> [`spec:make`](#scaffolding-is-specmake-not-a-build-step) scaffolds that child. Not built yet: response DTOs and
+> request validation. Rename detection was designed here and
 > [decided against](#rename-and-orphan-detection-decided-against).
 
 What the build reads, and what it refuses to read, is a different subject and lives in
@@ -528,6 +529,31 @@ wrong rather than one that fails.
 
 **Decision: the build never creates a class you will own. `spec:make` does, on request.**
 
+**Shipped, in three forms.** `spec:make showUser` scaffolds one operation's custom controller — named by its
+`operationId`, or by its method and path for an operation that has none: `spec:make "delete /legacy"`. `--tag=Users` and
+`--all` are loops over that, and both list the files they would create and ask before creating any. What it writes is
+the class [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) names, extending that
+operation's generated parent, in [the file PSR-4 says it belongs in](#where-your-classes-go) — and then it runs the
+build, because [the `extends` has nothing to reach until it does](./controllers.md#specmake-is-the-only-way-in).
+
+Three refusals are worth naming, because each of them protects something this document promised elsewhere:
+
+- **A file that already exists is left exactly as it is**, and the command says so and succeeds. A developer asked for
+  the class to exist and it does; overwriting it is the one thing this command must never do, and the check that
+  prevents it runs immediately before the write rather than only at planning time — a confirmation prompt is long enough
+  for somebody to have created the file in another window.
+- **An operation with no `x-controller` cannot be scaffolded**, because its generated controller is `final` and nothing
+  may extend it. The command prints the row to add rather than shrugging: wanting a custom controller and having to go
+  and read this document to learn the key's name is friction with no purpose.
+- **A class in a namespace the project does not map** is refused, naming it. A path invented from the namespace by
+  convention would produce a file that compiles, that the autoloader never finds, and whose route answers with a
+  class-not-found for a reason nothing in the project states.
+
+**And a non-interactive bulk run creates nothing.** Artisan answers a prompt with its default when nobody is at the
+keyboard, and the default here is no — so a script gets "created nothing" rather than a contract's worth of empty
+classes. That is the safe half of the open question [controllers.md raises](./controllers.md#open-questions) about
+`--no-interaction`; the other half, whether a flag should exist to mean yes, is still open and deliberately unanswered.
+
 Laravel already has this shape and every Laravel developer already has the reflex: a `make` creates one file, when you
 ask, once. Reusing the word costs no new concept — and it removes the only exception the
 [invariant](#the-invariant-a-build-never-destroys-human-work) ever had.
@@ -598,8 +624,9 @@ Same risk, same answer. It is also why watch cannot scaffold either: watch must 
 
 ### The build names the command instead of running it
 
-What the shortcut was really asking for is ergonomics, and those can be had without touching the invariant. **When the
-build finds operations with no implementation, it names the command rather than running it** — the same pattern as the
+**Shipped.** What the shortcut was really asking for is ergonomics, and those can be had without touching the invariant.
+**When the build finds operations with no implementation, it names the command rather than running it** — the same
+pattern as the
 [reference comment naming the command to run](#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing).
 
 **The atomic form names one operation, and every other form is sugar over it:** `spec:make showUser` scaffolds
@@ -619,11 +646,19 @@ each of which stays
 [one controller for one operation](./controllers.md#one-controller-per-operation-one-method-named-routeaction):
 
 ```
-47 operations have no implementation:
-  Users (12)   php artisan spec:make --tag=Users
-  Orders (8)   php artisan spec:make --tag=Orders
-  … 5 more tags. Full list: php artisan spec:doctor
+47 of 52 operation(s) have no implementation and answer 501.
+  Users (12)      php artisan spec:make --tag=Users
+  Orders (8)      php artisan spec:make --tag=Orders
+  ... and 5 more tag(s).
+  untagged (3)    php artisan spec:make showLegacyReport
 ```
+
+Three details of that output are decisions rather than formatting. **An operation whose custom controller exists is not
+counted**, because it is answered — warning about it would tell a developer their own class does not count. **An
+untagged operation gets the atomic form named for it**, with one operation's own name, because no `--tag` would ever
+reach it and a grouping it is not in is not a grouping. And **the full list is the [doctor](./doctor.md)'s**, which is
+why nothing here grows past five tags; until that command exists, the count of what is not shown is the honest
+substitute for it.
 
 Which settles the bulk question that was open here, and revises the earlier reasoning: the objection was never to bulk
 itself, it was to `build` doing it as a side effect. **`spec:make --tag=` and `--all` are legitimate**, because a human
@@ -904,8 +939,9 @@ here, against the cost of putting a data format inside a comment.
 
 ### A reference to generated code says what to do when it goes missing
 
-**Shipped for the one file that has such references today**, the generated `routes.php`, which imports every generated
-controller. The `spec:make` half waits on that command.
+**Shipped, both halves.** The build writes it into the generated `routes.php`, which imports every generated controller,
+and `spec:make` writes it above the class it scaffolds — the one reference that command creates, and therefore the one
+it annotates.
 
 A class-not-found on generated code is the most likely error anyone meets with this package, and the least informative
 one PHP knows how to raise. **Decision: every reference to generated code carries a comment saying what to do about

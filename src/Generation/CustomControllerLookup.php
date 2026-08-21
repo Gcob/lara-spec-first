@@ -57,6 +57,20 @@ final readonly class CustomControllerLookup
     }
 
     /**
+     * **Asked as a file on disk rather than through `findFile`, and that is not the
+     * same question twice.** Composer's loader memoizes what it failed to find: a
+     * class asked about before its file existed is recorded as missing and answers
+     * missing for the rest of the process. That used to be harmless, and stopped
+     * being so the moment `spec:make` started
+     * [running a build after scaffolding](../Console/MakeCommand.php) — two answers
+     * about the same class in one process, with a file created between them.
+     *
+     * So the prefixes are read from the loader, which is not cached, and the
+     * filesystem answers whether the file is there. `findFile` is still asked when
+     * no PSR-4 prefix matches, because a classmapped class has no prefix to
+     * compute a path from — and for that case a stale negative would mean a class
+     * this build did not write, which is not a case this command creates.
+     *
      * **Composer's loaders and nothing else, with no fallback to `class_exists`.**
      * An earlier version fell back to loading the class when no Composer loader
      * was registered, and treated a throw during that load as "it exists" —
@@ -76,6 +90,12 @@ final readonly class CustomControllerLookup
      */
     public function exists(string $class): bool
     {
+        foreach ($this->candidates($class) as $candidate) {
+            if (is_file($candidate)) {
+                return true;
+            }
+        }
+
         foreach ($this->loaders as $loader) {
             if ($loader->findFile($class) !== false) {
                 return true;
@@ -83,5 +103,84 @@ final readonly class CustomControllerLookup
         }
 
         return false;
+    }
+
+    /**
+     * Where a class of this name would have to live for the autoloader to find it.
+     *
+     * **The inverse of the question above, and it exists for `spec:make`**: a
+     * class the specification names and nobody has written has no file to be
+     * found, so scaffolding one means working out where PSR-4 says it belongs.
+     * Asked of the same loaders rather than of a convention, because a project's
+     * own `composer.json` is the only thing that actually decides — and a
+     * scaffold written where the autoloader does not look is a file that compiles
+     * and never runs.
+     *
+     * **The longest matching prefix wins**, which is Composer's own rule: with
+     * both `App\` and `App\Http\` mapped, a class under the second belongs in
+     * its directory rather than in the first one's subtree. The first directory a
+     * prefix lists is the one written to, again following Composer, which lists
+     * them in the order it searches.
+     *
+     * Null when no prefix matches at all: the class belongs to a namespace this
+     * project does not map, and guessing a path would put a file where nothing
+     * will ever look for it.
+     */
+    public function pathFor(string $class): ?string
+    {
+        return $this->candidates($class)[0] ?? null;
+    }
+
+    /**
+     * Every path PSR-4 would accept for this class, the likeliest first.
+     *
+     * **Ordered by prefix length, which is Composer's own rule:** with both `App\`
+     * and `App\Http\` mapped, a class under the second belongs in its directory
+     * rather than in the first one's subtree. Within one prefix the directories keep
+     * the order the project listed them, again following Composer, which searches
+     * them in that order.
+     *
+     * All of them rather than only the first, because {@see self::exists()} asks
+     * whether the class is written *anywhere* the autoloader would look, while
+     * {@see self::pathFor()} needs the single place to write one — two questions
+     * with one answer each, from one list.
+     *
+     * @return list<string>
+     */
+    private function candidates(string $class): array
+    {
+        $byPrefix = [];
+
+        foreach ($this->loaders as $loader) {
+            /** @var array<string, list<string>> $prefixes */
+            $prefixes = $loader->getPrefixesPsr4();
+
+            foreach ($prefixes as $prefix => $directories) {
+                if (! str_starts_with($class, $prefix)) {
+                    continue;
+                }
+
+                $relative = str_replace('\\', DIRECTORY_SEPARATOR, substr($class, strlen($prefix)));
+
+                foreach ($directories as $directory) {
+                    // Resolved rather than concatenated. Composer records PSR-4
+                    // directories relative to `vendor/composer/`, so the raw value
+                    // produces a working but unreadable
+                    // `vendor/composer/../../app/Http/Controllers/UserController.php`
+                    // — a path this command prints to a human and compares against
+                    // the project root.
+                    $resolved = realpath($directory);
+
+                    $byPrefix[$prefix][] = rtrim(
+                        $resolved !== false ? $resolved : $directory,
+                        '/'.DIRECTORY_SEPARATOR
+                    ).DIRECTORY_SEPARATOR.$relative.'.php';
+                }
+            }
+        }
+
+        uksort($byPrefix, static fn (string $first, string $second): int => strlen($second) <=> strlen($first));
+
+        return array_merge(...array_values($byPrefix)) ?: [];
     }
 }

@@ -41,7 +41,7 @@ paths:
             operationId: showUser
             summary: One user by id
             tags: [Users]
-            x-controller: Workbench\App\Http\Controllers\UserController
+            x-controller: Workbench\App\Http\Controllers\Users\ShowUserController
             parameters:
                 - { name: id, in: path, required: true, schema: { type: string } }
             responses:
@@ -60,8 +60,12 @@ paths:
                 '204': { description: Gone }
 
     /posts:
+        # A second `x-controller`, on an operation nobody has written the class
+        # for yet: `php artisan spec:make listPosts` creates it, and until then the
+        # route reaches the generated parent and answers 501.
         get:
             operationId: listPosts
+            x-controller: Workbench\App\Http\Controllers\Posts\ListPostsController
             summary: Every post
             tags: [Posts]
             # Read into the contract and *not enforced* by this build. The

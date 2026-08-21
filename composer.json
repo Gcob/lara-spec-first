@@ -52,6 +52,10 @@
     "scripts": {
         "test": "pest",
         "test:coverage": "pest --coverage",
+        "artisan": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php vendor/bin/testbench"
+        ],
         "format": "pint",
         "format:check": "pint --test",
         "format:md": "scripts/format-markdown.sh",
@@ -82,6 +86,7 @@
     "scripts-descriptions": {
         "test": "Run the Pest test suite.",
         "test:coverage": "Run the test suite with a coverage report.",
+        "artisan": "Run an Artisan command inside the Workbench application: `composer artisan -- route:list`. A package has no artisan binary of its own; Testbench provides one.",
         "format": "Apply Laravel Pint formatting.",
         "format:check": "Report formatting issues without changing files.",
         "format:md": "Reflow Markdown prose to the .editorconfig column limit and align tables. Runs Prettier outside the PHP container, since the image carries no Node.",

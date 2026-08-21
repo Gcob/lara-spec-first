@@ -1,0 +1,28 @@
+# The contract `spec:make` is exercised against: one operation whose custom
+# controller a test will create, one with no `operationId` so the method-and-path
+# form has something to find, and one declaring no `x-controller` at all — which is
+# the case that cannot be scaffolded and has to be reported rather than skipped.
+openapi: 3.0.3
+info:
+    title: Fixture API
+    version: 1.0.0
+paths:
+    /users/{id}:
+        get:
+            operationId: showUser
+            tags: [Users]
+            x-controller: LsfMake\Http\Controllers\UserController
+            responses:
+                '200': { description: A user }
+    /legacy:
+        delete:
+            tags: [Users]
+            x-controller: LsfMake\Http\Controllers\LegacyController
+            responses:
+                '204': { description: Gone }
+    /posts:
+        get:
+            operationId: listPosts
+            tags: [Posts]
+            responses:
+                '200': { description: Posts }

@@ -656,3 +656,81 @@ it('refuses a path parameter the generated method could not declare', function (
         ->and($output->fetch())->toContain('cannot be a PHP variable')
         ->and(treeContents(buildTree()))->toBe([]);
 });
+
+/*
+ * The build names the command rather than running it, which is the ergonomics half
+ * of the invariant: nothing is scaffolded as a side effect, and what a developer
+ * gets instead is the exact invocation.
+ *
+ * @see docs/guide/code-generation.md — "The build names the command instead of running it"
+ */
+
+function buildTagged(): string
+{
+    config()->set('lara-spec-first.spec.path', specFixturePath('tagged-operations.yaml'));
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(0);
+
+    return $output->fetch();
+}
+
+it('names the spec:make invocation for each tag, largest first', function (): void {
+    $output = buildTagged();
+
+    // Ordered by size, so the tag with the most work to do is the one a reader's
+    // eye lands on. Compared as positions in a list rather than with `strpos`,
+    // which answers `false` for "not found" and would make a missing line read as
+    // position zero.
+    $lines = array_values(array_filter(
+        explode("\n", $output),
+        static fn (string $line): bool => str_contains($line, 'spec:make --tag='),
+    ));
+
+    expect($lines)->toHaveCount(2)
+        ->and($lines[0])->toContain('--tag=Users')
+        ->and($lines[1])->toContain('--tag=Posts');
+});
+
+// One line per operation is the trap: a specification with two hundred
+// unimplemented operations would answer with two hundred commands, which is a wall
+// rather than a list.
+it('summarises by tag rather than naming every operation', function (): void {
+    $output = buildTagged();
+
+    expect(substr_count($output, 'php artisan spec:make'))->toBeLessThan(5)
+        ->and($output)->not->toContain('spec:make showUser');
+});
+
+// An untagged operation is reachable by neither `--tag` nor a grouping, so the
+// atomic form is named for it — with a name a reader can act on.
+it('names the atomic form for the operations no tag would reach', function (): void {
+    expect(buildTagged())->toContain('untagged (1)   php artisan spec:make listOrphans');
+});
+
+// An operation answered by its own custom controller is not waiting for
+// `spec:make`, so it must not be counted into the summary either.
+it('leaves an operation its custom controller answers out of the summary', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('custom-controllers.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+    $printed = $output->fetch();
+
+    expect($printed)->toContain('2 of 3 operation(s) have no implementation')
+        ->and($printed)->not->toContain('spec:make showUser');
+});
+
+// Named in the response body as well, because a developer who meets the 501 before
+// they meet the documentation should still learn what creates the class.
+it('names the command in the 501 the generated controller answers with', function (): void {
+    build();
+
+    require buildTree().'/'.GeneratedRoutesLocator::FILE;
+
+    $response = app(HttpKernel::class)->handle(Request::create('/users/42'));
+
+    expect($response->getStatusCode())->toBe(501)
+        ->and((string) $response->getContent())->toContain('spec:make showUser');
+});

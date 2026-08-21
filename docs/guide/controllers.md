@@ -23,8 +23,9 @@ assumes about your application, and where a developer's own code attaches to it.
 > one `routeAction` over the shipped `SpecController` base with its `middleware()` method, and answering
 > [501](./code-generation.md#an-unimplemented-operation-answers-501). **The two-class seam is shipped whole:**
 > `x-controller` is read, a declared controller names the generated parent and drops its `final`, the route points at
-> the child once that class exists, and two values reducing to one parent is a build error naming both. What remains of
-> [Phase 1](../project/roadmap.md#phase-1-the-foundation) here is `spec:make`.
+> the child once that class exists, and two values reducing to one parent is a build error naming both. **`spec:make`
+> ships too**, in its three forms, minus the insertion prompt below — it prints the row to add rather than offering to
+> write it, which is the rest of [Phase 1](../project/roadmap.md#phase-1-the-foundation) here.
 > [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features) carries everything
 > model-shaped: `x-model`, the CRUD defaults, `HasModel` and its trait, the marker interfaces, the DTO factory calls,
 > the pagination seams and the mass-assignment check, because a generated CRUD body has nothing to return until the DTOs
@@ -178,9 +179,44 @@ make the build's output depend on whether a previous build had run.
 [the invariant](./code-generation.md#the-invariant-a-build-never-destroys-human-work) rather than a new rule. It
 scaffolds one file for one operation, extending that operation's generated parent.
 
+**Shipped, except the insertion.** The command creates the class, refuses to overwrite one, and
+[names what it cannot scaffold](./code-generation.md#scaffolding-is-specmake-not-a-build-step). What it writes is
+deliberately almost nothing: the `extends`, the comment about that one line, and the signature to override.
+
+**It writes `routeAction` with the signature the parent declares, and one line in it.** Writing the method is what a
+`make` is for: the signature is the fiddly part, PHP will not let a child widen it, and copying it out of a comment is
+work a generator should have done.
+
+**That one line is a call to the parent, and it is not decoration.** A method with a genuinely empty body returns
+`null`, which Laravel renders as an **empty `200`** — so an empty scaffold would quietly turn the operation's honest
+`501` into a lie, in the one command whose whole job is to help. The parent call keeps the `501` until the developer
+replaces it, and replacing it is exactly what implementing the operation means:
+
+```php
+class UserController extends \App\Http\Generated\Controllers\UserController
+{
+    public function routeAction(string $id): mixed
+    {
+        // Replace this line with your answer to `get /users/{id}`. Until you do, the operation
+        // keeps answering the generated 501 — an empty body would answer an empty 200 instead,
+        // which the contract never described.
+        return parent::routeAction($id);
+    }
+}
+```
+
+**And the command builds when it is done.** A developer adds `x-controller` and runs `spec:make`: the class it names has
+no generated parent yet, because that parent's name comes from the extension the build has not read. The file would not
+load, in the very moment they are looking at it. So `spec:make` calls `spec:build` after writing — which also
+[points the route at the child](#two-classes-found-by-name-rather-than-by-a-scan), since that target is resolved at
+build time. **This is not [the invariant](./code-generation.md#the-invariant-a-build-never-destroys-human-work) in
+reverse:** the rule is that the build never creates a class you will own, and nothing says the command that does may not
+ask the build to catch up. It is skipped after a declined bulk confirmation, because a refusal is respected whole.
+
 **Decision: `spec:make` prints the extension to add, names the exact line, and offers to insert it — defaulting to no.**
-Wanting a custom controller and having to hand-edit YAML first is friction with no purpose, but the specification is the
-source of truth and nothing writes to it without being asked:
+_Half shipped: the block is printed, the line number and the offer are not._ Wanting a custom controller and having to
+hand-edit YAML first is friction with no purpose, but the specification is the source of truth and nothing writes to it
+without being asked:
 
 ```
 getUser has no x-controller, so its generated controller is final and cannot be extended.
