@@ -104,3 +104,19 @@ arch('the build cannot scaffold a file a developer will own')
 arch('routing at boot cannot scaffold either')
     ->expect('Gcob\LaraSpecFirst\Routing')
     ->not->toUse('Gcob\LaraSpecFirst\Scaffolding');
+
+// `spec:build` is the command the invariant above is really about — the one place
+// where a flag or a convenience could quietly turn "the build never scaffolds" into
+// "the build scaffolds when nobody's looking." `Console\` as a whole cannot carry
+// this rule: `spec:make` is `Console\MakeCommand`, and scaffolding is its entire job.
+// So the assertion is written against `BuildCommand` by name rather than against the
+// namespace — precise about the one class the invariant cannot survive an import
+// into, without forbidding the command that is supposed to import it.
+//
+// This only holds because `OperationSelector` (which `spec:build` legitimately uses,
+// to print operations by tag) lives in `Generation\` rather than in `Scaffolding\` —
+// it selects operations and writes nothing, so it was never the kind of class this
+// rule is about.
+arch('the build command cannot scaffold a file a developer will own')
+    ->expect('Gcob\LaraSpecFirst\Console\BuildCommand')
+    ->not->toUse('Gcob\LaraSpecFirst\Scaffolding');

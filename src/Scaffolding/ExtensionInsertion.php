@@ -70,6 +70,16 @@ final readonly class ExtensionInsertion
             throw UnverifiedInsertionException::unwritable($copy);
         }
 
+        // The rename below replaces the specification with this copy, so the copy
+        // has to carry the original's mode before that happens — otherwise the
+        // file a team reads in every pull request would silently inherit whatever
+        // mode a temp file gets instead of the one its owner set.
+        $mode = @fileperms($specPath);
+
+        if ($mode !== false) {
+            @chmod($copy, $mode & 0o777);
+        }
+
         try {
             $this->assertOnlyTheExtensionChanged($specPath, $copy, $operation, $value);
 
@@ -93,14 +103,23 @@ final readonly class ExtensionInsertion
      * No dumper, no reflow, no reordering: the text is split at a line and the new
      * line is pushed in. Comments, key order and anchors survive because nothing
      * ever looked at them.
+     *
+     * **Split on `\r?\n` and rejoined with whichever ending the document actually
+     * uses.** A bare `explode("\n", ...)` on a CRLF document leaves every line
+     * carrying a trailing `\r`, so the inserted line — pushed in with none — is
+     * the one line in the file with the wrong ending. The comparison in
+     * {@see self::assertOnlyTheExtensionChanged()} would not catch it: the parsed
+     * operations are identical either way, which is exactly the class of change
+     * this method exists to avoid making unnoticed.
      */
     private function withExtension(string $document, OperationLocation $location, string $value): string
     {
-        $lines = explode("\n", $document);
+        $ending = str_contains($document, "\r\n") ? "\r\n" : "\n";
+        $lines = preg_split('/\r\n|\n/', $document) ?: [];
 
         array_splice($lines, $location->line, 0, [$location->indentation.'x-controller: '.$value]);
 
-        return implode("\n", $lines);
+        return implode($ending, $lines);
     }
 
     /**

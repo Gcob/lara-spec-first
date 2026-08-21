@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Gcob\LaraSpecFirst\Scaffolding;
+namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
-use Gcob\LaraSpecFirst\Scaffolding\Exceptions\NoSuchOperationException;
+use Gcob\LaraSpecFirst\Generation\Exceptions\NoSuchOperationException;
 
 /**
  * Turns what a developer typed into the operations they meant.

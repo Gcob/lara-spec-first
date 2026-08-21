@@ -7,12 +7,14 @@ namespace Gcob\LaraSpecFirst\Console;
 use Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
+use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
+use Gcob\LaraSpecFirst\Generation\OperationSelector;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Scaffolding\CustomControllerName;
 use Gcob\LaraSpecFirst\Scaffolding\CustomControllerScaffold;
+use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnplaceableClassException;
 use Gcob\LaraSpecFirst\Scaffolding\ExtensionInsertion;
 use Gcob\LaraSpecFirst\Scaffolding\OperationLocator;
-use Gcob\LaraSpecFirst\Scaffolding\OperationSelector;
 use Gcob\LaraSpecFirst\Scaffolding\PlannedScaffold;
 use Gcob\LaraSpecFirst\Scaffolding\ScaffoldPlanner;
 use Illuminate\Console\Command;
@@ -100,13 +102,31 @@ final class MakeCommand extends Command
             $selected = $this->select($form, $specPath, $remote);
         }
 
-        $planner = new ScaffoldPlanner($namespace);
+        // Shared with the planner and the writer both, so the two ask the
+        // autoloader the same question at the same moment: existence, once
+        // Composer's negative-lookup cache has been read, does not change again
+        // during this command's own run.
+        $lookup = CustomControllerLookup::fromAutoloader();
+        $planner = new ScaffoldPlanner($namespace, $lookup);
         $planned = $planner->plan($selected);
         $undeclarable = $planner->undeclarable($selected);
+        $unplaceable = $planner->unplaceable($selected);
 
-        return $form === 'operation'
-            ? $this->makeOne($planned)
-            : $this->makeMany($planned, $undeclarable);
+        if ($form === 'operation') {
+            // The singular form named one operation, so an unplaceable
+            // `x-controller` is refused outright rather than collected: there is
+            // nothing else in the selection to report it beside.
+            if ($unplaceable !== []) {
+                throw UnplaceableClassException::forClass(
+                    $selected[0]->label(),
+                    (string) $selected[0]->controller,
+                );
+            }
+
+            return $this->makeOne($planned, $lookup);
+        }
+
+        return $this->makeMany($planned, $undeclarable, $unplaceable, $lookup);
     }
 
     /**
@@ -139,6 +159,12 @@ final class MakeCommand extends Command
      * a copy, a file that exists is still left alone, and a name the project could
      * not place is still refused — loudly, because a flag that says yes is not a
      * flag that says do it anyway.
+     *
+     * **The one guard it does deliberately answer for is "nobody is here to name
+     * the class".** `--yes` is itself that name, given on the command line rather
+     * than at a prompt, so it edits the specification even under
+     * `--no-interaction` — where the same run without it would print the row and
+     * stop. That is the point of the flag existing at all.
      */
     private function saysYes(): bool
     {
@@ -155,9 +181,13 @@ final class MakeCommand extends Command
      * proposal instead: submitting it accepts, editing it uses theirs, and an empty
      * submission leaves the document alone.
      *
-     * **Nothing is written without a person there.** A non-interactive run prints
-     * the row and stops, because Artisan would otherwise answer the prompt with its
-     * own default and a script would edit a specification nobody agreed to edit.
+     * **Nothing is written without a person there, or `--yes` standing in for
+     * one.** A non-interactive run with no `--yes` prints the row and stops,
+     * because Artisan would otherwise answer the prompt with its own default and
+     * a script would edit a specification nobody agreed to edit. `--yes` is that
+     * agreement, given up front on the command line, so it edits even under
+     * `--no-interaction` — {@see self::saysYes()} for why that is not a
+     * contradiction.
      *
      * **The proposal is derived rather than asked for.** It is the configured
      * controller namespace plus the name the build would have generated anyway, so
@@ -252,12 +282,16 @@ final class MakeCommand extends Command
 
         $this->newLine();
 
-        $chosen = trim((string) text(
+        // A leading `\` is accepted and dropped rather than refused — the
+        // extractor does the same on read — so it is normalized here, once,
+        // rather than left for `ExtensionInsertion` to compare a raw submission
+        // against an extractor that already stripped it.
+        $chosen = ltrim(trim((string) text(
             label: 'x-controller',
             default: $value,
             hint: 'Edit it, or submit it empty to leave the specification alone.',
             validate: $name->reasonToRefuse(...),
-        ));
+        )), '\\');
 
         if ($chosen === '') {
             $this->line('  Nothing was written. Add the row yourself and run this command again.');
@@ -312,7 +346,7 @@ final class MakeCommand extends Command
      *
      * @param  list<PlannedScaffold>  $planned
      */
-    private function makeOne(array $planned): int
+    private function makeOne(array $planned, CustomControllerLookup $lookup): int
     {
         $scaffold = $planned[0];
 
@@ -325,7 +359,7 @@ final class MakeCommand extends Command
             return $this->rebuild();
         }
 
-        (new CustomControllerScaffold)->write($scaffold);
+        (new CustomControllerScaffold($lookup))->write($scaffold);
 
         $this->components->info(sprintf('Created %s', $this->readable($scaffold->path)));
         $this->line(sprintf(
@@ -346,15 +380,20 @@ final class MakeCommand extends Command
      *
      * @param  list<PlannedScaffold>  $planned
      * @param  list<Operation>  $undeclarable
+     * @param  list<Operation>  $unplaceable
      */
-    private function makeMany(array $planned, array $undeclarable): int
-    {
+    private function makeMany(
+        array $planned,
+        array $undeclarable,
+        array $unplaceable,
+        CustomControllerLookup $lookup,
+    ): int {
         $missing = array_values(array_filter(
             $planned,
             static fn (PlannedScaffold $scaffold): bool => ! $scaffold->exists,
         ));
 
-        $this->reportSkipped($planned, $undeclarable);
+        $this->reportSkipped($planned, $undeclarable, $unplaceable);
 
         if ($missing === []) {
             $this->components->info('Nothing to create.');
@@ -381,7 +420,7 @@ final class MakeCommand extends Command
             return self::SUCCESS;
         }
 
-        $writer = new CustomControllerScaffold;
+        $writer = new CustomControllerScaffold($lookup);
 
         foreach ($missing as $scaffold) {
             $writer->write($scaffold);
@@ -432,8 +471,9 @@ final class MakeCommand extends Command
      *
      * @param  list<PlannedScaffold>  $planned
      * @param  list<Operation>  $undeclarable
+     * @param  list<Operation>  $unplaceable
      */
-    private function reportSkipped(array $planned, array $undeclarable): void
+    private function reportSkipped(array $planned, array $undeclarable, array $unplaceable): void
     {
         $existing = count(array_filter(
             $planned,
@@ -449,6 +489,14 @@ final class MakeCommand extends Command
                 '%d operation(s) declare no `x-controller`, so their generated controller is `final` '.
                 'and nothing may extend it. Name one to see what to add.',
                 count($undeclarable),
+            ));
+        }
+
+        if ($unplaceable !== []) {
+            $this->components->warn(sprintf(
+                '%d operation(s) declare an `x-controller` in a namespace no PSR-4 prefix in this '.
+                'project maps, so nothing was scaffolded for them. Name one to see which.',
+                count($unplaceable),
             ));
         }
     }

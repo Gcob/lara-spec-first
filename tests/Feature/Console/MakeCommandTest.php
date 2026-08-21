@@ -150,7 +150,7 @@ describe('the singular form', function (): void {
 
     it('names the line the row would go on', function (): void {
         expect(make(['operation' => 'listPosts', '--no-interaction' => true], 1))
-            ->toContain('scaffolding.yaml, line 25');
+            ->toContain('scaffolding.yaml, line 27');
     });
 
     // Declining leaves the document exactly as it was, which is the property that
@@ -167,6 +167,16 @@ describe('the singular form', function (): void {
         $output = make(['operation' => 'noSuchOperation'], 1);
 
         expect($output)->toContain('No operation in the specification is named')
+            ->and(scaffoldedFiles())->toBe([]);
+    });
+
+    // The singular form named exactly one operation, so an `x-controller` nothing
+    // maps is refused outright rather than collected — there is nothing else in the
+    // selection to report it beside.
+    it('refuses an x-controller no PSR-4 prefix maps', function (): void {
+        $output = make(['operation' => 'brokenOperation'], 1);
+
+        expect($output)->toContain('no PSR-4 prefix in this project maps')
             ->and(scaffoldedFiles())->toBe([]);
     });
 });
@@ -222,6 +232,18 @@ describe('the bulk forms', function (): void {
     it('refuses a tag the contract does not carry', function (): void {
         expect(make(['--tag' => 'Nope', '--no-interaction' => true], 1))
             ->toContain('carries the tag "Nope"');
+    });
+
+    // Before this was collected the way `undeclarable` collects its own case, one
+    // operation naming a namespace nothing maps aborted planning before the bulk
+    // form had listed or asked about anything, and `--all` on a two-hundred
+    // operation contract with one typo'd namespace created nothing at all.
+    it('scaffolds what it can and reports an unplaceable x-controller beside it', function (): void {
+        $output = make(['--all' => true, '--yes' => true, '--no-interaction' => true], 0);
+
+        expect($output)
+            ->toContain('no PSR-4 prefix in this project maps')
+            ->and(scaffoldedFiles())->toContain('UserController.php', 'LegacyController.php');
     });
 });
 
@@ -394,6 +416,21 @@ it('uses the name that was typed rather than the one proposed', function (): voi
     expect(file_get_contents($path))
         ->toContain('x-controller: LsfMake\\Http\\Controllers\\Posts\\FeedController')
         ->and(is_file(scaffoldRoot().'/Http/Controllers/Posts/FeedController.php'))->toBeTrue();
+});
+
+// A leading `\` is a spelling the extractor accepts and drops on read — it is
+// "accepted and dropped rather than refused" in the extractor's own words — so
+// typing one at the prompt must not read back as a change the insertion did not
+// intend. Before this was normalized at the prompt's edge, this submission threw
+// `changedMoreThanTheExtension` and told the developer to report a bug.
+it('accepts a leading separator typed at the prompt', function (): void {
+    $path = editableSpecification();
+
+    makeAnswering(['operation' => 'listPosts'], '\\LsfMake\\Http\\Controllers\\ListPostsController', 0);
+
+    expect(file_get_contents($path))
+        ->toContain('x-controller: LsfMake\\Http\\Controllers\\ListPostsController')
+        ->and(is_file(scaffoldRoot().'/Http/Controllers/ListPostsController.php'))->toBeTrue();
 });
 
 // A document whose operation the locator cannot place is still a document this

@@ -147,6 +147,44 @@ it('changes nothing else about the operations the contract describes', function 
         ->and($after[0]->tags)->toBe($before[0]->tags);
 });
 
+// Split on `\n` alone leaves every line of a CRLF document carrying a trailing
+// `\r`, and pushing in a bare line with none would make the inserted row the one
+// line in the file with the wrong ending — invisible to the copy-and-compare
+// verification, because the parsed operations are identical either way.
+it('keeps a CRLF document entirely CRLF, including the inserted row', function (): void {
+    $path = documentWith(implode("\r\n", [
+        'openapi: 3.0.3',
+        'info: { title: Fixture, version: 1.0.0 }',
+        'paths:',
+        '    /users/{id}:',
+        '        get:',
+        '            operationId: showUser',
+        '            responses:',
+        "                '200': { description: A user }",
+        '',
+    ]));
+
+    insertInto($path, 0);
+
+    $after = (string) file_get_contents($path);
+
+    expect(substr_count($after, "\r\n"))->toBe(substr_count($after, "\n"))
+        ->and($after)->toContain("x-controller: App\\Http\\Controllers\\ShowUserController\r\n");
+});
+
+// The rename that lands the copy over the original would otherwise hand the file
+// whatever mode a freshly created temp file gets, rather than the mode its owner
+// set — silent on a spec at `0600`, or one owned by someone else in a shared
+// checkout.
+it('keeps the mode the specification had before the edit', function (): void {
+    $path = insertionFixture();
+    chmod($path, 0o640);
+
+    insertInto($path, 0);
+
+    expect(fileperms($path) & 0o777)->toBe(0o640);
+});
+
 describe('when the edit cannot be proven', function (): void {
     // The check that cannot be argued with, exercised by pointing the insertion at
     // the wrong line: the row lands inside another operation, so the contract that

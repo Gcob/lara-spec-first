@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Composer\Autoload\ClassLoader;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
@@ -25,6 +26,19 @@ function scaffoldTree(): string
 
     return $tree ??= sys_get_temp_dir().'/lsf-scaffold-'.bin2hex(random_bytes(6));
 }
+
+// Registered on Composer's own loader so `CustomControllerLookup::exists()` — which
+// reads PSR-4 prefixes rather than trusting a literal path — can answer about a class
+// under this tree the same way it would for a real project's own namespace.
+beforeAll(function (): void {
+    foreach (spl_autoload_functions() ?: [] as $autoloader) {
+        if (is_array($autoloader) && $autoloader[0] instanceof ClassLoader) {
+            $autoloader[0]->setPsr4('LsfScaffoldWrite\\', [scaffoldTree()]);
+
+            break;
+        }
+    }
+});
 
 beforeEach(function (): void {
     exec('rm -rf '.escapeshellarg(scaffoldTree()));
@@ -185,8 +199,15 @@ describe('writing it', function (): void {
     // before a confirmation prompt, so a human has had time to create the file in
     // another window — and the check that prevents an overwrite has to be the one
     // immediately before the write, not the one in the plan.
+    //
+    // The class has to be one a real PSR-4 prefix maps: the re-check asks the
+    // lookup whether the class exists, not `is_file()` on the plan's own path, so a
+    // class nothing maps would always answer "no" regardless of what is on disk.
     it('refuses to overwrite a file that appeared after planning', function (): void {
-        $scaffold = plannedScaffold();
+        $scaffold = plannedScaffold(
+            class: 'LsfScaffoldWrite\\AppearedAfterPlanningController',
+            path: '/AppearedAfterPlanningController.php',
+        );
         $writer = new CustomControllerScaffold;
 
         $writer->write($scaffold);

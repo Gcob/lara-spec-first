@@ -6,6 +6,7 @@ namespace Gcob\LaraSpecFirst\Scaffolding;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Generation\CommentText;
+use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
 use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnwritableScaffoldException;
 
 /**
@@ -34,6 +35,13 @@ use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnwritableScaffoldException;
  */
 final readonly class CustomControllerScaffold
 {
+    private CustomControllerLookup $lookup;
+
+    public function __construct(?CustomControllerLookup $lookup = null)
+    {
+        $this->lookup = $lookup ?? CustomControllerLookup::fromAutoloader();
+    }
+
     /**
      * Create the file, and never overwrite one.
      *
@@ -45,7 +53,13 @@ final readonly class CustomControllerScaffold
         // before a confirmation prompt, so a human has had time to create the
         // file in another window — and overwriting a file its owner just wrote is
         // the one failure this command cannot be allowed to have.
-        if (is_file($scaffold->path)) {
+        //
+        // Asked of the lookup rather than of `$scaffold->path` with `is_file()`:
+        // that path is the single longest-prefix-first candidate, while a PSR-4
+        // prefix that maps two directories can have the class already written in
+        // the second one. `is_file()` on the one path would miss it and this
+        // write would shadow the developer's own class with a fresh stub.
+        if ($this->lookup->exists($scaffold->class)) {
             throw UnwritableScaffoldException::alreadyThere($scaffold->path);
         }
 

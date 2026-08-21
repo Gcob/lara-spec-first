@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
-use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnplaceableClassException;
 use Gcob\LaraSpecFirst\Scaffolding\PlannedScaffold;
 use Gcob\LaraSpecFirst\Scaffolding\ScaffoldPlanner;
 
@@ -85,12 +84,26 @@ it('names the generated parent the scaffold will extend', function (): void {
     expect($planned[0]->parent)->toBe('App\\Http\\Generated\\Controllers\\WrittenController');
 });
 
-// A refusal rather than a guess. A path invented from the namespace by convention
+// Skipped rather than guessed at. A path invented from the namespace by convention
 // would produce a file that compiles, that the autoloader never finds, and whose
 // route answers with a class-not-found for a reason nothing in the project states.
-it('refuses a class in a namespace nothing maps', function (): void {
-    expect(fn () => scaffoldPlan([['get', '/users/{id}', 'Acme\\Nowhere\\UserController']]))
-        ->toThrow(UnplaceableClassException::class, 'no PSR-4 prefix in this project maps');
+// Collected instead of thrown, so a bulk run can scaffold the rest of a contract and
+// report this one beside the listing rather than stopping before either happens.
+it('separates a class in a namespace nothing maps from what it can plan', function (): void {
+    $operations = [
+        new Operation(
+            index: 0,
+            method: HttpMethod::Get,
+            path: PathTemplate::fromString('/users/{id}'),
+            operationId: 'showUser',
+            controller: 'Acme\\Nowhere\\UserController',
+        ),
+    ];
+
+    $planner = new ScaffoldPlanner('App\\Http\\Generated');
+
+    expect($planner->plan($operations))->toBe([])
+        ->and($planner->unplaceable($operations))->toHaveCount(1);
 });
 
 // Returned rather than refused, because in bulk this is ordinary: a contract of two
@@ -109,5 +122,6 @@ it('separates the operations no scaffold can be planned for', function (): void 
     $planner = new ScaffoldPlanner('App\\Http\\Generated');
 
     expect($planner->plan($operations))->toBe([])
-        ->and($planner->undeclarable($operations))->toHaveCount(1);
+        ->and($planner->undeclarable($operations))->toHaveCount(1)
+        ->and($planner->unplaceable($operations))->toBe([]);
 });

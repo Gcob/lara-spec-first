@@ -1,7 +1,9 @@
 # The contract `spec:make` is exercised against: one operation whose custom
 # controller a test will create, one with no `operationId` so the method-and-path
-# form has something to find, and one declaring no `x-controller` at all — which is
-# the case that cannot be scaffolded and has to be reported rather than skipped.
+# form has something to find, one declaring no `x-controller` at all — which is the
+# case that cannot be scaffolded and has to be reported rather than skipped — and one
+# whose `x-controller` names a namespace nothing maps, the other case that has to be
+# reported beside a bulk listing rather than aborting it before anything runs.
 openapi: 3.0.3
 info:
     title: Fixture API
@@ -26,3 +28,10 @@ paths:
             tags: [Posts]
             responses:
                 '200': { description: Posts }
+    /broken:
+        get:
+            operationId: brokenOperation
+            tags: [Broken]
+            x-controller: Acme\Nowhere\BrokenController
+            responses:
+                '200': { description: Broken }

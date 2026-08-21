@@ -7,7 +7,6 @@ namespace Gcob\LaraSpecFirst\Scaffolding;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Generation\ControllerName;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
-use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnplaceableClassException;
 
 /**
  * Works out which files `spec:make` would create for a set of operations.
@@ -40,8 +39,6 @@ final readonly class ScaffoldPlanner
     /**
      * @param  list<Operation>  $operations
      * @return list<PlannedScaffold>
-     *
-     * @throws UnplaceableClassException the contract names a namespace nothing maps
      */
     public function plan(array $operations): array
     {
@@ -52,19 +49,25 @@ final readonly class ScaffoldPlanner
                 continue;
             }
 
-            $name = ControllerName::for($operation);
             $path = $this->lookup->pathFor($operation->controller);
 
             if ($path === null) {
-                throw UnplaceableClassException::forClass($operation->label(), $operation->controller);
+                continue;
             }
+
+            $name = ControllerName::for($operation);
 
             $planned[] = new PlannedScaffold(
                 $operation,
                 $operation->controller,
                 $path,
                 $this->namespace.'\\Controllers\\'.$name->shortName,
-                is_file($path),
+                // The same question `pathFor()` above answers from a single
+                // candidate is asked here of every candidate PSR-4 would accept —
+                // because a class already written under the second directory of a
+                // prefix that maps two is a class this scaffold would otherwise
+                // shadow with a fresh stub in the first.
+                $this->lookup->exists($operation->controller),
             );
         }
 
@@ -87,6 +90,26 @@ final readonly class ScaffoldPlanner
         return array_values(array_filter(
             $operations,
             static fn (Operation $operation): bool => $operation->controller === null,
+        ));
+    }
+
+    /**
+     * The operations that declare a controller no PSR-4 prefix in this project maps.
+     *
+     * Collected rather than thrown, for the same reason `undeclarable()` is: a
+     * contract of two hundred operations where one `x-controller` has a typo'd
+     * namespace should scaffold the rest and say what it did about that one — not
+     * stop before listing or asking about any of them.
+     *
+     * @param  list<Operation>  $operations
+     * @return list<Operation>
+     */
+    public function unplaceable(array $operations): array
+    {
+        return array_values(array_filter(
+            $operations,
+            fn (Operation $operation): bool => $operation->controller !== null
+                && $this->lookup->pathFor($operation->controller) === null,
         ));
     }
 }

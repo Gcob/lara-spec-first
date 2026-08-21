@@ -10,11 +10,11 @@ use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
 use Gcob\LaraSpecFirst\Generation\GeneratedTree;
+use Gcob\LaraSpecFirst\Generation\OperationSelector;
 use Gcob\LaraSpecFirst\Generation\PlannedController;
 use Gcob\LaraSpecFirst\Generation\ProjectRelativePath;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
-use Gcob\LaraSpecFirst\Scaffolding\OperationSelector;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
 

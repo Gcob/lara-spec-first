@@ -63,7 +63,8 @@ final readonly class OperationLocator
         // The line after the operation's own, 1-indexed: `$method` is a zero-based
         // array key, so `+ 1` is the operation's line number and the insertion goes
         // directly under it. Positive by construction, since a `paths` key had to be
-        // found above it.
+        // found above it — the `> 0` below is PHPStan's `positive-int` narrowing
+        // rather than a reachable false branch.
         $line = $method + 1;
 
         return $line > 0 ? new OperationLocation($line, $indentation) : null;

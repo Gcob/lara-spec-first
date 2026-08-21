@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Gcob\LaraSpecFirst\Scaffolding\Exceptions;
+namespace Gcob\LaraSpecFirst\Generation\Exceptions;
 
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use InvalidArgumentException;

@@ -5,8 +5,8 @@ declare(strict_types=1);
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
-use Gcob\LaraSpecFirst\Scaffolding\Exceptions\NoSuchOperationException;
-use Gcob\LaraSpecFirst\Scaffolding\OperationSelector;
+use Gcob\LaraSpecFirst\Generation\Exceptions\NoSuchOperationException;
+use Gcob\LaraSpecFirst\Generation\OperationSelector;
 
 /*
  * What a developer typed, turned into the operations they meant. The singular form
