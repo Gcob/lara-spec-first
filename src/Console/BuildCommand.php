@@ -72,13 +72,15 @@ final class BuildCommand extends Command
 
         $report = (new GeneratedTree(dirname($locator->path())))->write($files);
 
-        $this->components->info(sprintf(
-            '%d operation(s) built. %d file(s) written, %d unchanged, %d pruned.',
-            count($operations),
-            $report->written,
-            $report->unchanged,
-            $report->pruned,
-        ));
+        $this->components->info($report->changedNothing()
+            ? sprintf('%d operation(s) built. Already up to date.', count($operations))
+            : sprintf(
+                '%d operation(s) built. %d file(s) written, %d unchanged, %d pruned.',
+                count($operations),
+                $report->written,
+                $report->unchanged,
+                $report->pruned,
+            ));
 
         // Every operation answers 501 in this form of the build, and saying so is
         // the point rather than a caveat: a contract that describes endpoints

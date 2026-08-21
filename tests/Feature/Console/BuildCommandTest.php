@@ -8,6 +8,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 /*
  * The generated tree goes to a temporary directory, and its namespace is
@@ -161,6 +162,30 @@ it('changes nothing on a second run against an unchanged specification', functio
     }
 
     expect($after)->toBe($before);
+});
+
+// The flag is part of the command's signature, which is public API surface the
+// moment the package ships — and it is the only way to point the build at a
+// document other than the configured one.
+it('reads the specification a flag names instead of the configured one', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('does-not-exist.yaml'));
+
+    $exit = app(Kernel::class)->call('spec:build', ['--spec' => specFixturePath('operations.yaml')]);
+
+    expect($exit)->toBe(0)
+        ->and(treeContents(buildTree()))->toContain('Controllers/ShowUserController.php');
+});
+
+// `changedNothing()` is what makes idempotence legible from the outside, so the
+// command says it in words rather than leaving a reader to notice that every
+// count came back zero.
+it('says it changed nothing when a second run changes nothing', function (): void {
+    build();
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+
+    expect($output->fetch())->toContain('Already up to date.');
 });
 
 // The invariant, checked where a consumer would feel it: the build owns its own

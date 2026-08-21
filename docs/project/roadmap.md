@@ -98,8 +98,9 @@ the code, and a gap in it is loud.
       loaded through Laravel's own `loadRoutesFrom()`, and a missing one is silence rather than an exception because
       `spec:build` is a command of this same package. Serializability is verified rather than hoped for, by the real
       command: a test runs `route:cache` over a generated tree, then requires the cache file it wrote and checks the
-      routes come back working. **The writing half belongs to `spec:build` below** — nothing emits that file yet, so
-      what is proven here is the loading, against a fixture standing in for generated output.
+      routes come back working. **The writing half is now `spec:build`'s**, which emits that same file, so what is
+      proven here is the loading — originally against a fixture standing in for generated output, and since then against
+      the real thing in the Workbench.
 - [x] **`spec:build`, in its Phase 1 form:** resolves the specification and emits the routes and the generated
       controllers. Idempotent (a second run against an unchanged document does not touch a file, not even its
       modification time), ordered (every file is planned in memory before any is written, so a refused document leaves
