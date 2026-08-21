@@ -65,18 +65,23 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
       application's routes are cached, and stays silent when the build has not written one. The loading half only: what
       the routes point at is not generated yet.
 - [x] **`spec:build`.** Reads the configured specification, plans every file in memory, then writes: the routes and one
-      `final` controller per operation, each explaining its own provenance and answering 501. Idempotent, confined to
-      the generated tree, and it prunes what the contract no longer describes.
+      controller per operation, each explaining its own provenance and answering 501 — `final` unless `x-controller`
+      names a class of the project's own, in which case the route reaches that class instead once it exists. Idempotent,
+      confined to the generated tree, and it prunes what the contract no longer describes.
+- [x] **`spec:make`.** The only command that creates a file a project will own: one operation, a whole `--tag`, or
+      `--all`, with the bulk forms listing what they would create and asking first. It offers to write `x-controller`
+      into the specification when an operation declares none — the value prefilled and editable, the edit verified on a
+      copy — never overwrites a file, and runs the build afterwards so the class it wrote has a parent to extend.
+      `--yes` takes every proposal for a developer who would rather not be asked.
 - [x] **The architecture assertions.** The parser is contained to `Parsing\`, `Contract\` is forbidden from knowing
       anything about the layer that produced it, and `Routing\` may reach neither `Parsing\` nor the YAML decoder. All
       three are Pest `arch()` tests rather than conventions to remember.
 
 ### What does not exist yet
 
-What is missing is no longer a namespace but the second half of several features. `x-controller` is not read, so every
-generated controller is `final` and nothing can be extended; there is no `spec:make`, no rename detection, no doctor,
-and no response DTO or generated validation. Four of the six blocks in `config/lara-spec-first.php` are marked `TODO` in
-the file itself and are inert, which the file says out loud rather than leaving to be discovered, and which
+What is missing is no longer a namespace but the second half of several features: there is no doctor, and no response
+DTO or generated validation. Four of the eight blocks in `config/lara-spec-first.php` are marked `TODO` in the file
+itself and are inert, which the file says out loud rather than leaving to be discovered, and which
 [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
@@ -111,13 +116,17 @@ the code, and a gap in it is loud.
       `operationId` PHP cannot carry, and two operations claiming one class name. `lara-spec-first.spec.path` names the
       document, and stale generated files are pruned by the marker they carry, so nothing a human wrote inside the tree
       is ever removed.
-- [ ] **The two-class seam**, half of which is shipped and now pinned. One controller per operation carrying one
-      `routeAction`, over the `SpecController` base with its `middleware()` method: done, and asserted on the classes a
-      real build produces rather than on the text that emitted them — `final`, one shipped parent, one declared method.
-      What remains is [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself —
-      reading it into `Contract\Operation`, emitting a non-`final` parent when it is present, pointing the route at the
-      child when that child exists, and refusing two values that reduce to one generated parent. **Every generated
-      controller is `final` until then**, so nothing can be extended yet.
+- [x] **The two-class seam.** One controller per operation carrying one `routeAction`, over the `SpecController` base
+      with its `middleware()` method, asserted on the classes a real build produces rather than on the text that emitted
+      them. And [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself: read
+      into `Contract\Operation` and refused there when it is not a name PHP could carry, naming the generated parent and
+      dropping its `final`, with the route pointing at the child once that class has a file the autoloader can find and
+      at the parent until then. Two values reducing to one generated parent is a build error naming both, and so is one
+      naming a class inside the generated tree, which would extend itself. It also settled a signature: `routeAction`
+      declares [one parameter per path parameter](../guide/controllers.md#the-signature-is-the-contract-with-the-child),
+      named as the document names them, because PHP forbids an override from adding a required parameter — a
+      parameterless parent would have made `x-controller` useless on every templated path. Found in the Workbench, where
+      a child answers `GET /users/{id}` for real while the operations around it still answer 501.
 - [x] **Every generated file explains itself.** The [source map](../guide/code-generation.md#the-source-map) (the JSON
       pointer the file came from) and the
       [docblock norm](../guide/code-generation.md#every-generated-file-explains-itself) (provenance, findings,
@@ -131,22 +140,43 @@ the code, and a gap in it is loud.
       every file it writes rather than a sample of one: that the norm is there at all. The
       [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
       landed with them, in `routes.php`, the only generated file that references other generated code today.
-- [ ] **Rename and orphan detection.** Comparing the pointers in the existing generated tree against the ones the new
-      build would emit is what turns a class-not-found into an instruction naming the old name, the new one, and
-      [the files that reference it](../guide/code-generation.md#how-it-says-it). It depends on the source map above and
-      on nothing else, which is why it belongs in the same phase.
-- [ ] **`spec:make`: the only command that creates a file the developer will own.** It scaffolds a named operation, or a
-      whole `--tag`, or `--all`, never as a side effect of a build. `spec:build` itself never scaffolds; it
-      [names the commands to run](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it). This
-      item includes the `x-controller` insertion prompt and the verification that makes it safe: the edit happens on a
-      copy, the copy is read back through the normal pipeline, and nothing is written unless the resulting operations
-      are identical but for the extension just added.
+- **Rename and orphan detection: dropped, not pending.** It was designed, built against the source map above, and
+  removed before it shipped — so this is a decision recorded rather than work waiting. The premise expired when
+  [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) became the only source of an
+  extendable name: every other generated class is `final`, so the only broken import the comparison could have predicted
+  follows an edit its own author just made. What it would still have caught — a custom controller left extending nothing
+  after its operation left the contract — is that author's call to make, and reading the previous build's output could
+  never have been a CI guarantee anyway, since whether that output exists is
+  [a `.gitignore` choice](../guide/code-generation.md#which-generated-code-is-committed). The full reasoning is in
+  [code-generation](../guide/code-generation.md#rename-and-orphan-detection-decided-against); the
+  [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing) a
+  generated file carries is what does the cheap half of that job today, and
+  [the doctor](../guide/controllers.md#the-doctor-counts-two-things-not-three) is where the orphan question lands if it
+  is ever wanted.
+- [x] **`spec:make`: the only command that creates a file the developer will own.** Shipped in its three forms — a named
+      operation (by `operationId`, or by method and path when it has none), a whole `--tag`, or `--all`, with the bulk
+      forms listing what they would create and asking first, defaulting to no so a non-interactive run creates nothing.
+      It never overwrites a file, refuses a class in a namespace the project does not map, offers the row to add for an
+      operation that declares no `x-controller`, and runs the build when it is done — without which the `extends` it
+      just wrote has no parent to reach, since that parent's name comes from the extension the build had not read. What
+      it writes is deliberately not a [publishable stub](../guide/controllers.md#specmake-is-the-only-way-in): nearly
+      every line is derived, and a template is a way to reintroduce guessing into the one file where nothing is guessed.
+      `spec:build` never scaffolds and now
+      [names the commands to run](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it)
+      instead, summarised by tag, with the atomic form named for the operations no tag reaches — and the generated 501
+      names it too. The [insertion prompt](../guide/controllers.md#specmake-is-the-only-way-in) closes the item: the
+      value is derived from the configured controller namespace and prefilled so it can be edited, the exact line is
+      named, and `--yes` takes the proposal for a developer who does not want to be asked. The edit happens on a copy
+      beside the original — so that every `$ref` resolves as it did — the copy is read back through the normal pipeline,
+      and the operations that come out must be identical to the originals but for the extension just added. Anything
+      else leaves the document untouched and prints the row instead, which is also what happens for an operation the
+      command cannot place: a flow-style mapping, a JSON file, or a Path Item that lives in another file.
 - [x] **An unimplemented operation answers `501`.** The generated controller's `routeAction` throws an exception that
       Laravel renders as `501`, which is what reconciles the two things this documentation set said: the generated
       controller _is_ the handler position, so one controller per operation stays true. See
       [501](../guide/code-generation.md#an-unimplemented-operation-answers-501). It is the seam the Phase 2 mock plugs
-      into, so its position is settled now rather than later. Naming the `spec:make` command in the body is owed once
-      that command exists — printing a command nobody can run would be worse than saying nothing.
+      into, so its position is settled now rather than later. The body names the `spec:make` invocation that creates the
+      class, which was owed once that command existed and is paid.
 
 ### Reading, reporting, refusing
 

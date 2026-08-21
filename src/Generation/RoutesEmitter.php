@@ -57,8 +57,15 @@ final readonly class RoutesEmitter
         $imports = [];
         $registrations = [];
 
+        $custom = false;
+
         foreach ($planned as $controller) {
-            $imports[] = $controller->fullyQualifiedName($this->namespace);
+            // The target rather than the generated parent: an operation whose
+            // custom controller exists is served by that class, and the route has
+            // to name what actually answers. Both classes share a short name, so
+            // the registration below reads the same either way.
+            $imports[] = $controller->routeTarget($this->namespace);
+            $custom = $custom || $controller->routesToCustomController();
             $registrations[] = $this->registration($controller);
         }
 
@@ -74,7 +81,7 @@ final readonly class RoutesEmitter
         // would remove on sight, putting the build and that formatter in a loop.
         $body = $registrations === []
             ? implode("\n", array_map(static fn (string $i): string => 'use '.$i.';', $imports))
-            : $this->missingReferenceNote()
+            : $this->missingReferenceNote($custom)
                 ."\n"
                 .implode("\n", array_map(static fn (string $i): string => 'use '.$i.';', $imports))
                 ."\n\n"
@@ -115,13 +122,29 @@ final readonly class RoutesEmitter
      *
      * @see docs/guide/code-generation.md — "A reference to generated code says what to do when it goes missing"
      */
-    private function missingReferenceNote(): string
+    private function missingReferenceNote(bool $custom): string
     {
+        if (! $custom) {
+            return implode("\n", [
+                '// Every controller imported below is generated; the framework import beside them is',
+                '// not. If PHP cannot find a controller, run `php artisan spec:build`. If it still',
+                '// fails, the specification no longer describes that operation — the spec\'s git history',
+                '// will show what changed.',
+            ]);
+        }
+
+        // Worded for what is actually in the block once a custom controller
+        // answers a route: some of these classes are the project's own, and
+        // running a build would not create one. A note that told a developer to
+        // rebuild in order to restore a class they wrote themselves would send
+        // them the wrong way at the worst moment.
         return implode("\n", [
-            '// Every controller imported below is generated; the framework import beside them is',
-            '// not. If PHP cannot find a controller, run `php artisan spec:build`. If it still',
-            '// fails, the specification no longer describes that operation — the spec\'s git history',
-            '// will show what changed.',
+            '// The controllers imported below are of two kinds, and the framework import beside them',
+            '// is neither. A generated one missing means the build has not run here: run',
+            '// `php artisan spec:build`, and if it still fails the specification no longer describes',
+            '// that operation. A custom one missing means the class `x-controller` names does not',
+            '// exist — create it, or point `x-controller` somewhere that does. Either way the spec\'s',
+            '// git history will show what changed.',
         ]);
     }
 

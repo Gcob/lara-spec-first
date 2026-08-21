@@ -138,6 +138,34 @@ serve:
 build-workbench:
     {{php}} composer build
 
+# A package has no `artisan` binary of its own — Testbench provides one, booting
+# the Workbench application with this package loaded. So this is the Workbench's
+# artisan, and `spec:build`, `spec:make`, `route:list`, `config:show` and the rest
+# all work through it. Runs via `composer artisan`, so the native path is the same
+# command.
+#
+# `just artisan` with nothing after it lists every available command.
+
+# Run an Artisan command in the Workbench: `just artisan route:list`
+artisan *args:
+    {{php}} composer artisan -- {{args}}
+
+# Interactive PHP inside the booted Workbench application, which is what makes it
+# different from `just php`: the container's interpreter with no framework around
+# it cannot resolve a container binding or read a config key.
+
+# Open Tinker in the Workbench application.
+tinker:
+    {{php}} composer artisan -- tinker
+
+# The two recipes below are the exception to this file's own rule: they wrap no
+# Composer script, because they are not project commands. They hand you the
+# interpreter and the shell, which a contributor working natively already has.
+
+# Run the container's PHP directly: `just php -v`
+php *args:
+    {{php}} php {{args}}
+
 # Open a shell inside the development container.
 shell:
     {{php}} sh

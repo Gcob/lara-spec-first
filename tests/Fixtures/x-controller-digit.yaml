@@ -1,0 +1,13 @@
+# One unusable `x-controller` value, isolated so the refusal cannot be credited
+# to something else in the document.
+openapi: 3.0.3
+info:
+    title: Fixture API
+    version: 1.0.0
+paths:
+    /users:
+        get:
+            operationId: listUsers
+            x-controller: 'App\Http\Controllers\2FaController'
+            responses:
+                '200': { description: Users }

@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Console;
 
+use Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract;
+use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
-use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
+use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
 use Gcob\LaraSpecFirst\Generation\GeneratedTree;
+use Gcob\LaraSpecFirst\Generation\OperationSelector;
+use Gcob\LaraSpecFirst\Generation\PlannedController;
 use Gcob\LaraSpecFirst\Generation\ProjectRelativePath;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
-use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
-use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
-use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
-use Gcob\LaraSpecFirst\Support\Path;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
 
@@ -34,12 +34,19 @@ use Illuminate\Contracts\Config\Repository;
  */
 final class BuildCommand extends Command
 {
+    use ReadsTheContract;
+
     /** @var string */
     protected $signature = 'spec:build
         {--spec= : Read this specification instead of the configured one}';
 
     /** @var string */
     protected $description = 'Generate the routes and controllers your OpenAPI contract describes';
+
+    /**
+     * How many tags the unimplemented summary names before it counts the rest.
+     */
+    private const int TAGS_SHOWN = 5;
 
     public function handle(Repository $config, RemoteReferenceGuard $remote): int
     {
@@ -64,33 +71,25 @@ final class BuildCommand extends Command
         $specPath = $this->specPath($config);
 
         if (! is_file($specPath)) {
-            $this->components->error(sprintf(
-                'No specification at %s. Set `%s` in config/lara-spec-first.php, or pass --spec.',
-                $specPath,
-                'lara-spec-first.spec.path',
-            ));
+            $this->reportMissingSpecification($specPath);
 
             return self::FAILURE;
         }
 
         $namespace = $this->requiredString($config, 'lara-spec-first.generated.namespace');
 
-        // The guard is resolved from the container so that the configured
-        // allowlist applies here exactly as it does anywhere else.
-        $reader = new SpecDocumentReader(new VersionStrategyFactory, remote: $remote);
-
-        $operations = (new OperationExtractor)->extract($reader->read($specPath));
+        $operations = $this->contractOperations($specPath, $remote);
 
         // Named from the project root rather than absolutely: a generated file
         // may end up committed, and a machine's path in a repository is a diff
         // nobody made.
-        $files = (new BuildPlanner(rtrim($namespace, '\\'), ProjectRelativePath::from($specPath)))
+        $plan = (new BuildPlanner(rtrim($namespace, '\\'), ProjectRelativePath::from($specPath)))
             ->plan($operations);
 
         $configured = $config->get(GeneratedRoutesLocator::SETTING);
         $locator = GeneratedRoutesLocator::fromConfiguration($this->laravel->basePath(), $configured);
 
-        $report = (new GeneratedTree(dirname($locator->path())))->write($files);
+        $report = (new GeneratedTree(dirname($locator->path())))->write($plan->files);
 
         $this->components->info($report->changedNothing()
             ? sprintf('%d operation(s) built. Already up to date.', count($operations))
@@ -102,57 +101,112 @@ final class BuildCommand extends Command
                 $report->pruned,
             ));
 
-        // Every operation answers 501 in this form of the build, and saying so is
-        // the point rather than a caveat: a contract that describes endpoints
-        // nothing implements should not read as a finished application.
-        if ($operations !== []) {
+        // An operation nothing implements answers 501, and saying so is the point
+        // rather than a caveat: a contract that describes endpoints nothing
+        // implements should not read as a finished application. Counted from the
+        // plan rather than from the operations, because an operation whose
+        // `x-controller` class exists is answered by that class — and warning
+        // about it would tell a developer their own controller does not count.
+        // True while a generated parent answers 501 and nothing else. When a
+        // generated controller can answer an operation from a CRUD default, this
+        // is the line to revisit — {@see BuildPlan::routedToGeneratedParent()}
+        // counts routes rather than making the claim itself.
+        $unimplemented = $plan->routedToGeneratedParent();
+
+        if ($unimplemented > 0) {
             $this->components->warn(sprintf(
-                '%d operation(s) have no implementation and answer 501.',
+                '%d of %d operation(s) have no implementation and answer 501.',
+                $unimplemented,
                 count($operations),
             ));
+
+            $this->nameTheCommand($plan);
         }
 
         return self::SUCCESS;
     }
 
     /**
-     * A configured value this command cannot proceed without.
+     * Name the command that implements an operation, rather than running it.
      *
-     * Read as `mixed` and checked, rather than annotated as a string: a config
-     * repository promises nothing about a key's type, and the values an
-     * annotation would have declared impossible are exactly the ones worth a
-     * message — a key set to null, to a list, or emptied by hand.
+     * **The build never scaffolds**, so what it owes instead is ergonomics: the
+     * exact invocation, ready to copy. Printing one line per operation is the trap
+     * — a specification with two hundred unimplemented operations would answer
+     * with two hundred commands, which is not a list but a wall, arriving on the
+     * day somebody adopts this package.
      *
-     * @throws UnusableSettingException
+     * **So it summarises by `tags`**, because the specification already carries
+     * the author's own grouping and inventing a second one would be worse than
+     * using theirs. This groups the printed list only; every file `spec:make`
+     * creates is still one controller for one operation.
+     *
+     * @see docs/guide/code-generation.md — "The build names the command instead of running it"
      */
-    private function requiredString(Repository $config, string $key): string
+    private function nameTheCommand(BuildPlan $plan): void
     {
-        $value = $config->get($key);
+        $waiting = array_values(array_map(
+            static fn (PlannedController $controller): Operation => $controller->operation,
+            array_filter(
+                $plan->controllers,
+                static fn (PlannedController $controller): bool => ! $controller->routesToCustomController(),
+            ),
+        ));
 
-        if (! is_string($value) || trim($value) === '') {
-            throw UnusableSettingException::setting($key, 'a non-empty string');
+        $selector = new OperationSelector($waiting);
+        $counts = $selector->countsByTag();
+        $shown = array_slice($counts, 0, self::TAGS_SHOWN, true);
+
+        // Padded to one width so the commands line up in a column: the point of
+        // the summary is that a reader's eye finds the invocation, and a ragged
+        // left edge is what makes a list of commands read as prose.
+        $labels = [];
+
+        foreach ($shown as $tag => $count) {
+            $labels[$tag] = sprintf('%s (%d)', $tag, $count);
         }
 
-        return $value;
+        $untagged = $selector->untagged();
+
+        if ($untagged !== []) {
+            $labels[''] = sprintf('untagged (%d)', count($untagged));
+        }
+
+        $column = max(array_map(mb_strlen(...), $labels === [] ? [''] : $labels));
+
+        foreach ($shown as $tag => $count) {
+            $this->line(sprintf(
+                '  %s   php artisan spec:make --tag=%s',
+                str_pad($labels[$tag], $column),
+                $tag,
+            ));
+        }
+
+        $remaining = count($counts) - count($shown);
+
+        if ($remaining > 0) {
+            $this->line(sprintf('  ... and %d more tag(s).', $remaining));
+        }
+
+        // An untagged operation is reachable by neither `--tag` nor a grouping, so
+        // the atomic form is named for it — with one operation's own name, which is
+        // what a reader can act on without going to look for one.
+        if ($untagged !== []) {
+            $this->line(sprintf(
+                '  %s   php artisan spec:make %s',
+                str_pad($labels[''], $column),
+                $this->nameOf($untagged[0]),
+            ));
+        }
     }
 
     /**
-     * The flag wins over configuration, and both are resolved against the
-     * application root unless they are already absolute.
+     * How a developer would name this operation to `spec:make`.
+     *
+     * The `operationId` when it has one, and its method and path otherwise —
+     * quoted, because a path carries characters a shell would otherwise read.
      */
-    private function specPath(Repository $config): string
+    private function nameOf(Operation $operation): string
     {
-        $option = $this->option('spec');
-
-        $path = is_string($option) && $option !== ''
-            ? $option
-            : $this->requiredString($config, 'lara-spec-first.spec.path');
-
-        // `Path::isAbsolute` rather than a leading-separator check: this used to
-        // ask only about `/`, which treats `C:\specs\api.yaml` as relative and
-        // joins it under the application root.
-        return Path::isAbsolute($path)
-            ? $path
-            : $this->laravel->basePath($path);
+        return $operation->operationId ?? '"'.$operation->label().'"';
     }
 }

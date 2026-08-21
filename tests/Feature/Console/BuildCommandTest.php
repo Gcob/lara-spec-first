@@ -434,6 +434,9 @@ it('names its source from the project root rather than absolutely', function ():
 // never wrote, and a `use` this file resolves differently would change the parent
 // without changing a byte of the emitter's output. Do not delete either copy as a
 // duplicate.
+// The fixture this file builds from declares no `x-controller`, which is what makes
+// `final` the expected answer for every class in it. The other branch is asserted
+// above, from a fixture that declares one.
 it('generates a final controller over the shipped base, carrying one routeAction', function (): void {
     build();
 
@@ -477,6 +480,93 @@ it('generates a final controller over the shipped base, carrying one routeAction
             ->and($parent === false ? null : $parent->getName())->toBe(SpecController::class)
             ->and(array_values($declared))->toBe(['routeAction']);
     }
+});
+
+/*
+ * The two-class seam, through the real command. What a unit test cannot say here is
+ * that the pieces agree: the class the emitter writes, the target the routes file
+ * registers, and the answer the autoloader gave about the child are three
+ * decisions taken in three classes from one fact.
+ *
+ * The fixture's first operation names a class this repository really autoloads and
+ * its second names one nothing has written, so both branches come out of one run.
+ */
+
+function buildCustomControllers(): int
+{
+    config()->set('lara-spec-first.spec.path', specFixturePath('custom-controllers.yaml'));
+
+    return build();
+}
+
+it('generates a parent nothing forbids extending when the contract names a controller', function (): void {
+    expect(buildCustomControllers())->toBe(0);
+
+    $parent = (string) file_get_contents(buildTree().'/Controllers/WrittenController.php');
+
+    expect($parent)->toContain('class WrittenController extends SpecController')
+        ->and($parent)->not->toContain('final class');
+});
+
+// And the operation that declares nothing is still `final` in the same run, which
+// is the half a single-operation fixture could not show.
+it('keeps a controller final in the same run when nothing declares it', function (): void {
+    buildCustomControllers();
+
+    expect(file_get_contents(buildTree().'/Controllers/HealthController.php'))
+        ->toContain('final class HealthController extends SpecController');
+});
+
+it('routes to the custom controller when it exists, and to the parent when it does not', function (): void {
+    buildCustomControllers();
+
+    $routes = (string) file_get_contents(buildTree().'/'.GeneratedRoutesLocator::FILE);
+
+    expect($routes)
+        ->toContain('use Gcob\\LaraSpecFirst\\Tests\\Fixtures\\CustomControllers\\WrittenController;')
+        ->toContain('use '.buildNamespace().'\\Controllers\\NotWrittenYetController;')
+        ->toContain("Route::get('/users/{id}', [WrittenController::class, 'routeAction']);")
+        ->toContain("Route::get('/posts', [NotWrittenYetController::class, 'routeAction']);");
+});
+
+// The note above the imports has to stay true of what is actually in the block:
+// running a build would not create a class the developer owns, so telling them to
+// rebuild in order to restore one would send them the wrong way.
+it('tells a reader which imports a build could restore and which it could not', function (): void {
+    buildCustomControllers();
+
+    $routes = (string) file_get_contents(buildTree().'/'.GeneratedRoutesLocator::FILE);
+
+    expect($routes)
+        ->toContain('of two kinds')
+        ->toContain('A custom one missing means the class `x-controller` names does not')
+        ->and($routes)->not->toContain('Every controller imported below is generated');
+});
+
+// The count the command reports has to exclude what the project's own controller
+// answers. Warning about it would tell a developer their controller does not count.
+it('counts an operation its custom controller answers as implemented', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('custom-controllers.yaml'));
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(0);
+
+    expect($output->fetch())->toContain('2 of 3 operation(s) have no implementation');
+});
+
+it('still emits PHP that parses for both halves of the seam', function (): void {
+    buildCustomControllers();
+
+    foreach (treeContents(buildTree()) as $relative) {
+        exec('php -l '.escapeshellarg(buildTree().'/'.$relative), $output, $status);
+
+        expect($status)->toBe(0, $relative.' does not parse: '.implode("\n", $output));
+    }
+
+    exec('vendor/bin/pint --test '.escapeshellarg(buildTree()).' 2>&1', $pint, $pintStatus);
+
+    expect($pintStatus)->toBe(0, "Pint would rewrite generated output:\n".implode("\n", $pint));
 });
 
 // The whole point of the build, end to end: a contract becomes a route that
@@ -550,4 +640,96 @@ it('fails without writing anything when there is no specification', function ():
 
     expect(build())->toBe(1)
         ->and(treeContents(buildTree()))->toBe([]);
+});
+
+// Through the real command, because the refusal has to arrive as a diagnostic
+// rather than as a file that will not parse. `{2fa}` is a legal route parameter
+// and `$2fa` is not a variable, so the generated `routeAction` could not declare
+// it — and the whole tree stays untouched, which is the property planning before
+// writing exists for.
+it('refuses a path parameter the generated method could not declare', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('unusable-path-parameter.yaml'));
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(1)
+        ->and($output->fetch())->toContain('cannot be a PHP variable')
+        ->and(treeContents(buildTree()))->toBe([]);
+});
+
+/*
+ * The build names the command rather than running it, which is the ergonomics half
+ * of the invariant: nothing is scaffolded as a side effect, and what a developer
+ * gets instead is the exact invocation.
+ *
+ * @see docs/guide/code-generation.md — "The build names the command instead of running it"
+ */
+
+function buildTagged(): string
+{
+    config()->set('lara-spec-first.spec.path', specFixturePath('tagged-operations.yaml'));
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(0);
+
+    return $output->fetch();
+}
+
+it('names the spec:make invocation for each tag, largest first', function (): void {
+    $output = buildTagged();
+
+    // Ordered by size, so the tag with the most work to do is the one a reader's
+    // eye lands on. Compared as positions in a list rather than with `strpos`,
+    // which answers `false` for "not found" and would make a missing line read as
+    // position zero.
+    $lines = array_values(array_filter(
+        explode("\n", $output),
+        static fn (string $line): bool => str_contains($line, 'spec:make --tag='),
+    ));
+
+    expect($lines)->toHaveCount(2)
+        ->and($lines[0])->toContain('--tag=Users')
+        ->and($lines[1])->toContain('--tag=Posts');
+});
+
+// One line per operation is the trap: a specification with two hundred
+// unimplemented operations would answer with two hundred commands, which is a wall
+// rather than a list.
+it('summarises by tag rather than naming every operation', function (): void {
+    $output = buildTagged();
+
+    expect(substr_count($output, 'php artisan spec:make'))->toBeLessThan(5)
+        ->and($output)->not->toContain('spec:make showUser');
+});
+
+// An untagged operation is reachable by neither `--tag` nor a grouping, so the
+// atomic form is named for it — with a name a reader can act on.
+it('names the atomic form for the operations no tag would reach', function (): void {
+    expect(buildTagged())->toContain('untagged (1)   php artisan spec:make listOrphans');
+});
+
+// An operation answered by its own custom controller is not waiting for
+// `spec:make`, so it must not be counted into the summary either.
+it('leaves an operation its custom controller answers out of the summary', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('custom-controllers.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+    $printed = $output->fetch();
+
+    expect($printed)->toContain('2 of 3 operation(s) have no implementation')
+        ->and($printed)->not->toContain('spec:make showUser');
+});
+
+// The generated controller passes the operation's name to the exception, which is
+// what puts `spec:make showUser` in the 501. Asserted on what the build emitted
+// rather than on a rendered response: how a message reaches a body is Laravel's
+// error rendering, which differs between supported versions and with `APP_DEBUG` —
+// the message itself is asserted in tests/Unit/Exceptions/, where it is owned.
+it('hands the 501 the name spec:make would be given', function (): void {
+    build();
+
+    expect(file_get_contents(buildTree().'/Controllers/ShowUserController.php'))
+        ->toContain("OperationNotImplementedException::operation('get /users/{id}', 'showUser')");
 });

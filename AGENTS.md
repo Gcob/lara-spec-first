@@ -17,9 +17,11 @@ would make the code authoritative over the spec, it is going the wrong way.
 
 The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/project/roadmap.md)). It reads a specification
 file, refuses what it cannot serve, and generates the PHP that serves it: `spec:build` emits the routes and one
-controller per operation, and the provider loads them at boot without opening a specification. Every generated
-controller is `final` for now, because `x-controller` is not read yet, so nothing can be extended. There is no
-`spec:doctor`, no `spec:make`, and no response DTO. The roadmap's
+controller per operation, and the provider loads them at boot without opening a specification. `x-controller` is read,
+so an operation that declares one gets a parent it may extend and a route that points at the child once that class
+exists; an operation that declares none stays `final`. `spec:make` scaffolds that child on request — one operation, a
+`--tag` or `--all` — offers to write `x-controller` into the specification when it is missing, and builds afterwards;
+the build itself never scaffolds, it names the invocation. There is no `spec:doctor` and no response DTO. The roadmap's
 [state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list, checked boxes meaning
 behavior with tests behind it.
 
@@ -88,9 +90,11 @@ Two traps worth knowing before you go in:
 
 - **`base_path()` is not `workbench/`.** With `laravel: '@testbench'`, the application root is the Testbench skeleton
   under `vendor/`, so a default relative path resolves somewhere nothing is committed and `composer clear` wipes it.
-  [`WorkbenchServiceProvider`](https://github.com/Gcob/lara-spec-first/blob/main/workbench/app/Providers/WorkbenchServiceProvider.php)
-  is where that is corrected, and it deliberately overrides as little as possible: it is also loaded by the fresh
-  application `php artisan route:cache` boots, so anything it changes changes what the package's own tests measure.
+  [`workbench/config/lara-spec-first.php`](https://github.com/Gcob/lara-spec-first/blob/main/workbench/config/lara-spec-first.php)
+  is where that is corrected — an ordinary config file, computing its paths from `__DIR__`, loaded because
+  `workbench.discovers.config` says so in `testbench.yaml`. It names only the keys the Workbench has to differ on: it is
+  also read by the fresh application `php artisan route:cache` boots, so anything it changes changes what the package's
+  own tests measure.
 - **The Workbench is not a substitute for a test.** What you learn there earns a test; it does not replace one. A
   behavior only the Workbench covers is a behavior nothing will catch when it regresses.
 

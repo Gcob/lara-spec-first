@@ -31,6 +31,50 @@ namespace Gcob\LaraSpecFirst\Generation;
  */
 final readonly class CommentText
 {
+    /**
+     * Break a line of comment text the way this repository writes.
+     *
+     * **Wrapped here rather than left to a formatter**, because a consumer's
+     * formatter is not ours to assume and both callers have to be idempotent:
+     * output another tool then reformats produces a diff on every run. It is
+     * shared because two emitters need it — the generated controller's docblock
+     * and the scaffolded controller's body — and a second copy would be a second
+     * width to keep in step.
+     *
+     * Measured in characters rather than bytes, because the text interpolates
+     * values that come from the document: a non-ASCII summary would otherwise
+     * wrap early for a width nobody asked for.
+     *
+     * @param  positive-int  $width
+     * @return non-empty-list<string>
+     */
+    public static function wrap(string $text, int $width = 92): array
+    {
+        $lines = [];
+        $current = '';
+
+        foreach (self::words($text, $width) as $word) {
+            if ($current === '') {
+                $current = $word;
+
+                continue;
+            }
+
+            if (mb_strlen($current) + 1 + mb_strlen($word) > $width) {
+                $lines[] = $current;
+                $current = $word;
+
+                continue;
+            }
+
+            $current .= ' '.$word;
+        }
+
+        $lines[] = $current;
+
+        return $lines;
+    }
+
     public static function safe(string $value): string
     {
         // `*\/` rather than dropping the characters: it stays readable as what it
@@ -39,5 +83,37 @@ final readonly class CommentText
         $neutralized = str_replace('*/', '*\/', $value);
 
         return trim((string) preg_replace('/\s+/', ' ', $neutralized));
+    }
+
+    /**
+     * The text's words, with any word too long for a line cut into pieces that
+     * fit.
+     *
+     * **A token longer than the line is cut rather than left to run**, and that
+     * case is reachable rather than theoretical: the text interpolates document
+     * values, `x-sunset` is deliberately unparsed, and a URL or a hand-typed
+     * value carrying no space at all would otherwise produce a single line
+     * hundreds of characters long. Cut rather than truncated, because the value is
+     * what a reader came here for and dropping its tail would make the comment lie
+     * by omission.
+     *
+     * @param  positive-int  $width
+     * @return list<string>
+     */
+    private static function words(string $text, int $width): array
+    {
+        $words = [];
+
+        foreach (explode(' ', $text) as $word) {
+            if ($word === '') {
+                continue;
+            }
+
+            foreach (mb_str_split($word, $width) as $piece) {
+                $words[] = $piece;
+            }
+        }
+
+        return $words;
     }
 }

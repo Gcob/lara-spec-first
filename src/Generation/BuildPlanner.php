@@ -25,19 +25,32 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
  */
 final readonly class BuildPlanner
 {
+    private CustomControllerLookup $lookup;
+
+    /**
+     * @param  CustomControllerLookup|null  $lookup  how the plan learns whether a
+     *                                               custom controller has been
+     *                                               written yet; the running
+     *                                               application's autoloader by
+     *                                               default, and injectable so a
+     *                                               test can state the answer
+     *                                               instead of arranging a file
+     */
     public function __construct(
         private string $namespace,
         private string $specPath,
-    ) {}
+        ?CustomControllerLookup $lookup = null,
+    ) {
+        $this->lookup = $lookup ?? CustomControllerLookup::fromAutoloader();
+    }
 
     /**
      * @param  list<Operation>  $operations  in the order the document writes them
-     * @return list<GeneratedFile>
      *
      * @throws UnusableNameException a name PHP cannot carry, or two operations claiming one
      * @throws UnroutablePathException a path parameter Laravel's router cannot match
      */
-    public function plan(array $operations): array
+    public function plan(array $operations): BuildPlan
     {
         $planned = [];
         $claimed = [];
@@ -48,16 +61,32 @@ final readonly class BuildPlanner
             $name = ControllerName::for($operation);
             $label = $operation->label();
 
+            $this->assertOutsideGeneratedTree($name, $label);
+
             if (isset($claimed[$name->shortName])) {
-                throw UnusableNameException::claimedTwice(
-                    $name->shortName,
-                    $claimed[$name->shortName],
-                    $label,
-                );
+                [$firstLabel, $firstCustom] = $claimed[$name->shortName];
+
+                // Two declared controllers reducing to one generated parent get
+                // their own message, because the fix is a different one: distinct
+                // fully-qualified names can share a short name — `…\Admin\UserController`
+                // and `…\Api\UserController` — and the advice to change an
+                // `operationId` would send a reader looking for a key neither
+                // operation has.
+                throw $firstCustom !== null && $name->customController !== null
+                    ? UnusableNameException::parentClaimedTwice(
+                        $name->shortName,
+                        $firstCustom,
+                        $name->customController,
+                    )
+                    : UnusableNameException::claimedTwice($name->shortName, $firstLabel, $label);
             }
 
-            $claimed[$name->shortName] = $label;
-            $planned[] = new PlannedController($operation, $name);
+            $claimed[$name->shortName] = [$label, $name->customController];
+            $planned[] = new PlannedController(
+                $operation,
+                $name,
+                $name->customController !== null && $this->lookup->exists($name->customController),
+            );
         }
 
         $controllers = new ControllerEmitter($this->namespace, $this->specPath);
@@ -68,7 +97,30 @@ final readonly class BuildPlanner
 
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
-        return $files;
+        return new BuildPlan($planned, $files);
+    }
+
+    /**
+     * Refuse a custom controller that would live inside the generated tree.
+     *
+     * Two things go wrong at once, and either would be enough. The generated
+     * parent takes the same short name inside the generated namespace, so a child
+     * declared there *is* its own parent — a class extending itself, which PHP
+     * refuses at load. And a project's own classes belong outside a directory
+     * whose entire contract is that a build rewrites it and a `.gitignore` may
+     * discard it: putting work there is how a consumer loses their work.
+     *
+     * @throws UnusableNameException
+     *
+     * @see docs/guide/code-generation.md — "Where your classes go"
+     */
+    private function assertOutsideGeneratedTree(ControllerName $name, string $label): void
+    {
+        $custom = $name->customController;
+
+        if ($custom !== null && str_starts_with($custom.'\\', $this->namespace.'\\')) {
+            throw UnusableNameException::customControllerInsideGeneratedTree($label, $custom, $this->namespace);
+        }
     }
 
     /**
@@ -91,6 +143,17 @@ final readonly class BuildPlanner
 
             if (strlen($parameter) > UnroutablePathException::PARAMETER_NAME_LIMIT) {
                 throw UnroutablePathException::nameTooLong($operation->label(), $parameter);
+            }
+
+            // Routable and still unusable, which is why this is a second check
+            // rather than a stricter first one. `\w` accepts a leading digit and
+            // Symfony's compiler matches `{2fa}` happily; `$2fa` is not a
+            // variable, and the generated `routeAction` has to declare one
+            // parameter per path parameter for a custom controller to be able to
+            // override it. `$this` is the same problem with a different cause:
+            // legal in a route, fatal as a parameter name.
+            if (preg_match('/^[A-Za-z_]\w*$/', $parameter) !== 1 || $parameter === 'this') {
+                throw UnusableNameException::parameterNotAVariable($operation->label(), $parameter);
             }
         }
     }

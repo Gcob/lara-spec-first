@@ -1,0 +1,13 @@
+# A path Laravel routes and PHP cannot express. `{2fa}` matches Symfony's
+# placeholder pattern, so nothing upstream refuses it; the generated
+# `routeAction` would have to declare `$2fa`, which is not a variable.
+openapi: 3.0.3
+info:
+    title: Fixture API
+    version: 1.0.0
+paths:
+    /users/{2fa}:
+        get:
+            operationId: showFactor
+            responses:
+                '200': { description: A factor }

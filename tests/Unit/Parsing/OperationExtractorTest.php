@@ -178,3 +178,51 @@ it('keeps the scopes a requirement asks for', function (): void {
     expect(schemesOf(extractFrom('security-states.yaml')[3]))
         ->toBe([['oauth2' => ['read', 'write']]]);
 });
+
+/*
+ * `x-controller`, which is the one extension whose value is a PHP class name
+ * rather than a word this package defines. That makes its checks different in
+ * kind: there is no allowed list to compare against, only whether PHP could carry
+ * the name at all.
+ *
+ * @see docs/guide/controllers.md — "The specification decides what is customizable"
+ */
+
+it('carries the custom controller the contract names', function (): void {
+    $operations = extractFrom('custom-controllers.yaml');
+
+    expect($operations[0]->controller)
+        ->toBe('Gcob\\LaraSpecFirst\\Tests\\Fixtures\\CustomControllers\\WrittenController');
+});
+
+// `\App\…` and `App\…` name one class, and carrying both spellings forward would
+// mean two values that collide without looking alike.
+it('reads a leading separator as the absolute name PHP writes', function (): void {
+    $operations = extractFrom('custom-controllers.yaml');
+
+    expect($operations[1]->controller)
+        ->toBe('Gcob\\LaraSpecFirst\\Tests\\Fixtures\\CustomControllers\\NotWrittenYetController');
+});
+
+it('leaves an operation that declares no custom controller without one', function (): void {
+    $operations = extractFrom('custom-controllers.yaml');
+
+    expect($operations[2]->controller)->toBeNull();
+});
+
+// Refused where the document is read rather than where the class would be
+// generated: the value is the name itself, so nothing this package could do to it
+// later would make it into an identifier.
+it('refuses an x-controller PHP could never carry', function (string $fixture): void {
+    expect(fn () => extractFrom($fixture))
+        ->toThrow(InvalidDocumentException::class, 'not a class name PHP could carry');
+})->with([
+    'a hyphen' => 'x-controller-hyphen.yaml',
+    'a trailing separator' => 'x-controller-trailing.yaml',
+    'a leading digit' => 'x-controller-digit.yaml',
+]);
+
+it('refuses an x-controller that is not text at all', function (): void {
+    expect(fn () => extractFrom('x-controller-not-a-string.yaml'))
+        ->toThrow(InvalidDocumentException::class, 'reads it as text');
+});

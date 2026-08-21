@@ -1,0 +1,33 @@
+# The `x-controller` cases, in one document because they have to coexist: an
+# operation whose custom controller exists, one whose contract names a class
+# nobody has written, and one that declares nothing at all and therefore stays
+# `final`.
+#
+# The first points at a class this repository really autoloads — a fixture
+# controller, not a plausible-looking name — because what the build asks about it
+# is whether the autoloader can find a file for it.
+openapi: 3.0.3
+info:
+    title: Fixture API
+    version: 1.0.0
+paths:
+    /users/{id}:
+        get:
+            operationId: showUser
+            x-controller: Gcob\LaraSpecFirst\Tests\Fixtures\CustomControllers\WrittenController
+            responses:
+                '200': { description: A user }
+    /posts:
+        get:
+            operationId: listPosts
+            # Written the way PHP writes an absolute name. It means the same class
+            # as the same value without the separator, and the build must not read
+            # it as a second one.
+            x-controller: \Gcob\LaraSpecFirst\Tests\Fixtures\CustomControllers\NotWrittenYetController
+            responses:
+                '200': { description: Posts }
+    /health:
+        get:
+            operationId: health
+            responses:
+                '200': { description: Fine }

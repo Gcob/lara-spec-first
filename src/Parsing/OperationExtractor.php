@@ -76,6 +76,7 @@ final readonly class OperationExtractor
                     $operation->deprecated,
                     $this->sunset($operation, $endpoint),
                     $this->security($operation),
+                    $this->controller($operation, $endpoint),
                 );
 
                 $identity = $extracted->identity();
@@ -167,6 +168,44 @@ final readonly class OperationExtractor
         $id = $operation->operationId;
 
         return $id === '' ? null : $id;
+    }
+
+    /**
+     * The custom controller `x-controller` names, as written.
+     *
+     * **Checked here rather than where the class is generated, because the value
+     * is a class name rather than something turned into one.** An `operationId`
+     * becomes a class name by a rule this package owns, so a value that cannot
+     * survive that rule is a generation refusal; `x-controller` is the name
+     * itself, and one that PHP could never carry is a fault in the document —
+     * detectable before anything is generated, and reported as what it is.
+     *
+     * Not resolved, only read: whether a class of that name exists is a question
+     * for the build, and the contract says the same thing either way.
+     *
+     * @throws InvalidDocumentException
+     *
+     * @see docs/guide/controllers.md — "The specification decides what is customizable"
+     */
+    private function controller(ParsedOperation $operation, string $endpoint): ?string
+    {
+        $written = $this->stringExtension($operation, 'x-controller', $endpoint);
+
+        if ($written === null) {
+            return null;
+        }
+
+        // A leading separator is how PHP itself writes an absolute name, so it is
+        // accepted and dropped rather than refused: `\App\…` and `App\…` name one
+        // class, and carrying both spellings forward would mean two values that
+        // collide without looking alike.
+        $normalized = ltrim($written, '\\');
+
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $normalized) !== 1) {
+            throw InvalidDocumentException::extensionNotAClassName('x-controller', $written, $endpoint);
+        }
+
+        return $normalized;
     }
 
     /**

@@ -24,6 +24,7 @@ paths:
     # swaps with them — that is a documented property of this package, not a bug.
     /users/me:
         get:
+            x-controller: Workbench\App\Http\Controllers\ShowCurrentUserController2
             operationId: showCurrentUser
             summary: The authenticated user
             tags: [Users]
@@ -31,10 +32,17 @@ paths:
                 '200': { description: The caller }
 
     /users/{id}:
+        # `x-controller` is the whole customization model in one line. It names
+        # this operation's controller, so the generated parent takes that short
+        # name, drops `final`, and the route points at the child below it —
+        # `workbench/app/Http/Controllers/UserController.php`, which answers for
+        # real rather than with a 501. Delete the class and rebuild: the route
+        # falls back to the generated parent and the 501 comes back.
         get:
             operationId: showUser
             summary: One user by id
             tags: [Users]
+            x-controller: Workbench\App\Http\Controllers\Users\ShowUserController
             parameters:
                 - { name: id, in: path, required: true, schema: { type: string } }
             responses:
@@ -53,8 +61,14 @@ paths:
                 '204': { description: Gone }
 
     /posts:
+        # A second `x-controller`, whose class exists and has not been implemented:
+        # `workbench/app/Http/Controllers/Posts/ListPostsController.php` is what
+        # `spec:make listPosts` wrote, untouched. It still answers 501, because the
+        # one line in it calls the parent — which is what keeps a scaffold honest
+        # until somebody replaces that line.
         get:
             operationId: listPosts
+            x-controller: Workbench\App\Http\Controllers\Posts\ListPostsController
             summary: Every post
             tags: [Posts]
             # Read into the contract and *not enforced* by this build. The
