@@ -34,6 +34,18 @@ return [
         'path' => $workbench.'/openapi.yaml',
     ],
 
+    'remote_references' => [
+        // The Swagger Petstore demo, named by the `$ref` in `openapi.yaml`'s
+        // `/pets/{id}` operation — see the comment there.
+        'allowed_hosts' => ['petstore3.swagger.io'],
+
+        // Absolute for the same reason `generated.path` is: under `laravel:
+        // '@testbench'` the application root is the disposable Testbench
+        // skeleton, and a vendored copy has to survive `composer clear` the
+        // same way the specification itself does.
+        'vendor_path' => $workbench.'/openapi-external-refs',
+    ],
+
     'generated' => [
         // Under `workbench/app/` so the generated classes autoload: this
         // package's composer.json maps `Workbench\App\` to that directory, which

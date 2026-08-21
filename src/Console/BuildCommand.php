@@ -38,7 +38,8 @@ final class BuildCommand extends Command
 
     /** @var string */
     protected $signature = 'spec:build
-        {--spec= : Read this specification instead of the configured one}';
+        {--spec= : Read this specification instead of the configured one}
+        {--update-refs : Fetch and vendor any remote reference the specification names}';
 
     /** @var string */
     protected $description = 'Generate the routes and controllers your OpenAPI contract describes';
@@ -78,7 +79,7 @@ final class BuildCommand extends Command
 
         $namespace = $this->requiredString($config, 'lara-spec-first.generated.namespace');
 
-        $operations = $this->contractOperations($specPath, $remote);
+        $operations = $this->contractOperations($specPath, $remote, (bool) $this->option('update-refs'));
 
         // Named from the project root rather than absolutely: a generated file
         // may end up committed, and a machine's path in a repository is a diff

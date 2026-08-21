@@ -8,8 +8,6 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\UnreadableDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Guards\ReferenceCycleDetector;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
-use Symfony\Component\Yaml\Exception\ParseException;
-use Symfony\Component\Yaml\Yaml;
 
 /**
  * Turns a specification file into a ParsableSpecDocument — a document that has
@@ -23,8 +21,9 @@ use Symfony\Component\Yaml\Yaml;
  *   3. shape         — what the version requires at the document root
  *   4. cycles        — before the parser is handed anything, because a pure
  *                      reference cycle exhausts its memory rather than raising
- *   5. remote refs   — also before, because the parser resolves a URL by
- *                      fetching it, and by then the request has been made
+ *   5. remote refs   — also before: an allowed reference is vendored and
+ *                      rewritten to its local committed copy here, so the
+ *                      parser only ever resolves a path on disk, never a URL
  *
  * Only after all five does anything reach the OpenAPI parser. The guard has to
  * sit here rather than inside a parser wrapper: once cebe has the document, a
@@ -41,63 +40,31 @@ final readonly class SpecDocumentReader
     ) {}
 
     /**
+     * @param  bool  $updateRefs  fetch and vendor an allowed remote reference that
+     *                            is missing or already vendored — the one flag that
+     *                            lets this method reach the network. See
+     *                            docs/guide/remote-references.md.
+     *
      * @throws UnreadableDocumentException the file is missing, unreadable or not a mapping
      * @throws Exceptions\UnsupportedVersionException the document declares a version we do not implement
      * @throws Exceptions\InvalidDocumentException the document lacks what its version requires
      * @throws Exceptions\CyclicReferenceException a reference chain never reaches content
+     * @throws Exceptions\RemoteReferenceException a `$ref` names a host not on the allowlist
+     * @throws Exceptions\MissingVendoredReferenceException an allowed reference has no vendored
+     *                                                      copy and `$updateRefs` is false
+     * @throws Exceptions\RemoteReferenceFetchException fetching or decoding a reference failed
+     * @throws Exceptions\CircularRemoteReferenceException a chain of vendored references closes
+     *                                                     back on a URL already being fetched
      */
-    public function read(string $path): ParsableSpecDocument
+    public function read(string $path, bool $updateRefs = false): ParsableSpecDocument
     {
-        $data = $this->decode($path);
+        $data = DocumentDecoder::decode($path);
         $strategy = $this->strategies->forDocument($data);
 
         $strategy->assertDocumentShape($data);
         $this->cycles->assertNoCycles($data);
-        $this->remote->assertNoRemoteReferences($data);
+        $data = $this->remote->resolve($data, dirname($path), $updateRefs);
 
         return new ParsableSpecDocument($path, $strategy->version(), $strategy, $data);
-    }
-
-    /**
-     * Decode YAML or JSON.
-     *
-     * One path for both, because YAML 1.2 is a superset of JSON and the parser
-     * accepts either — a branch on the file extension would only add a way for
-     * a correctly written document to be rejected for having the wrong suffix.
-     *
-     * @return array<string, mixed>
-     *
-     * @throws UnreadableDocumentException
-     */
-    private function decode(string $path): array
-    {
-        if (! is_file($path)) {
-            throw UnreadableDocumentException::missing($path);
-        }
-
-        if (! is_readable($path)) {
-            throw UnreadableDocumentException::unreadable($path);
-        }
-
-        try {
-            $decoded = Yaml::parseFile($path);
-        } catch (ParseException $e) {
-            throw UnreadableDocumentException::malformed($path, $e->getMessage());
-        }
-
-        // `array_is_list([])` is true, so an empty mapping — `{}` — would other-
-        // wise be reported as "not a mapping", sending its author to look for a
-        // syntax fault that is not there. An empty document is a mapping; what
-        // it lacks is an `openapi` field, and the next step says so precisely.
-        if (! is_array($decoded)) {
-            throw UnreadableDocumentException::notAMapping($path, get_debug_type($decoded));
-        }
-
-        if ($decoded !== [] && array_is_list($decoded)) {
-            throw UnreadableDocumentException::notAMapping($path, 'a list');
-        }
-
-        /** @var array<string, mixed> $decoded */
-        return $decoded;
     }
 }

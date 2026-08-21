@@ -29,4 +29,20 @@ final class RemoteReferenceException extends RuntimeException implements SpecExc
             $reference
         ));
     }
+
+    /**
+     * A `.` or `..` segment in the URL's path — refused rather than resolved,
+     * because it would otherwise let an allowed host decide where on this
+     * filesystem its own vendored copy gets written, up to and including
+     * outside the vendor directory entirely.
+     */
+    public static function unsafePath(string $reference): self
+    {
+        return new self(sprintf(
+            'The document refers to "%s", whose path this package will not vendor: a "." or ".." segment '.
+            'could write outside the directory vendored references are kept in. An allowed host names a '.
+            'document to fetch, not a location to write it — rewrite the reference without one.',
+            $reference
+        ));
+    }
 }

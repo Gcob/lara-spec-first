@@ -31,15 +31,19 @@ trait ReadsTheContract
     /**
      * The operations the contract describes, in document order.
      *
+     * @param  bool  $updateRefs  fetch and vendor an allowed remote reference —
+     *                            `spec:build --update-refs`'s one entry point into
+     *                            the reading pipeline. Every other caller leaves it
+     *                            false and stays frozen, exactly as today.
      * @return list<Operation>
      */
-    protected function contractOperations(string $specPath, RemoteReferenceGuard $remote): array
+    protected function contractOperations(string $specPath, RemoteReferenceGuard $remote, bool $updateRefs = false): array
     {
         // The guard is resolved by the caller from the container so that the
         // configured allowlist applies here exactly as it does anywhere else.
         $reader = new SpecDocumentReader(new VersionStrategyFactory, remote: $remote);
 
-        return (new OperationExtractor)->extract($reader->read($specPath));
+        return (new OperationExtractor)->extract($reader->read($specPath, $updateRefs));
     }
 
     /**

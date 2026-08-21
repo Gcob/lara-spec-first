@@ -17,10 +17,13 @@ the package does about that difference.
 
 > **Mostly intent, marked per section.** Items marked `Open` are undecided.
 >
-> **Shipped:** the setting, and the strict half of what it means. `lara-spec-first.remote_references.allowed_hosts`
-> exists and defaults to empty; every remote reference is refused before the parser can fetch it, which is exactly what
-> an empty allowlist means. Naming a host **throws** rather than quietly doing nothing, because the fetching and
-> vendoring behind it is not built — a setting that is read and ignored tells whoever set it that it took effect.
+> **Shipped:** the setting and everything it means. `lara-spec-first.remote_references.allowed_hosts` defaults to empty,
+> and every remote reference is refused before the parser can fetch it — an empty allowlist still means no remote
+> references at all. Naming a host now does what the setting always promised: `spec:build --update-refs` fetches it
+> once, commits the copy under `remote_references.vendor_path`, and every build after that — with or without the flag —
+> resolves the reference against that committed copy. A missing copy is a build error naming the flag to run, never an
+> implicit fetch. See [the mechanism](#how-a-vendored-copy-stays-invisible-to-the-parser) for how this holds without
+> touching `cebe\openapi\` at all.
 
 **Decision: remote `$ref` targets are resolved only from an explicitly allowlisted set of domains, configured by the
 consuming application.**
@@ -48,6 +51,13 @@ shared contract repository — and closed everywhere else. Rules:
 | Key     | `remote_references.allowed_hosts`                                           |
 | Default | `[]` — no host, therefore no remote reference                               |
 
+A second key sits beside it:
+
+|         |                                                                                        |
+| ------- | -------------------------------------------------------------------------------------- |
+| Key     | `remote_references.vendor_path`                                                        |
+| Default | `openapi-external-refs` — a directory at the project root, committed, never gitignored |
+
 **The package's defaults are merged _deeply_ underneath whatever an application published**, by
 [`ConfigurationMerger`](https://github.com/Gcob/lara-spec-first/blob/main/src/Configuration/ConfigurationMerger.php)
 rather than by Laravel's helper. Laravel's own `mergeConfigFrom()` merges one level, which is right for a flat file and
@@ -61,19 +71,23 @@ feature happened to need the first one.
 
 Rules:
 
-- **A setting that is not backed yet refuses instead of lying.** Naming a host today throws
-  `NotImplementedYetException`, which names the setting, what it will do, and the roadmap item that removes the
-  exception. An empty allowlist and an unimplemented one would otherwise be indistinguishable, and the developer who
-  configured it would conclude the package is broken.
-- **A blocked reference is an error, never a skip.** A silently unresolved `$ref` is an unhonored contract, which rule 2
-  forbids.
-- **The exception names the offending reference, the document position, and the config key to change.** "Unresolvable
-  reference" is a support ticket; the full triple is a fix.
-- **Matching is on the host, exactly.** No wildcard subdomains, no partial matches — `evil-example.com` must never
-  satisfy an entry for `example.com`.
+- **A disallowed reference is an error, never a skip.** A silently unresolved `$ref` is an unhonored contract, which
+  rule 2 forbids. `RemoteReferenceException` names the offending reference and says vendoring it is the way in.
+- **A missing vendored copy is an error naming the flag, never an implicit fetch.** `MissingVendoredReferenceException`
+  names the reference, the vendored path it expected, and `php artisan spec:build --update-refs`. "Unresolvable
+  reference" is a support ticket; that triple is a fix.
+- **Matching is on the host, exactly, case-insensitively.** No wildcard subdomains, no partial matches —
+  `evil-example.com` must never satisfy an entry for `example.com`. Case is not part of the scope this rule protects —
+  DNS does not see one — so `Schemas.Example.COM` and `schemas.example.com` are one host, matched and vendored to one
+  directory either way. Checked again at every hop a vendored document itself references — see
+  [transitive fetching](#a-vendored-document-can-itself-name-a-reference) below.
+- **A redirect is refused, never followed.** The allowlist checks the host written in the document; a client that
+  follows a `3xx` response fetches whatever it names instead, which is the one thing this feature cannot let happen
+  silently. `spec:build --update-refs` disables redirects entirely and reports one naming the `Location` it pointed at —
+  a reference that moved is a reference to rewrite in the document, not one to follow through automatically.
 
-**Status: decided in principle, unimplemented.** The config key name and the exception class are public API surface and
-are not yet chosen.
+**Status: shipped.** `remote_references.allowed_hosts` and `remote_references.vendor_path` are both live, and
+`spec:build --update-refs` is the one command that reaches the network.
 
 ## A remote reference is a dependency, not a cache entry
 
@@ -121,8 +135,9 @@ of the repository, not something to reimplement.
   code review rather than by the tool. That is an honest trade, not an oversight: the edit does show up in a diff, and
   re-fetching is what the update path does anyway.
 
-**Open.** URLs with query strings, very long paths, and case-insensitive filesystems all complicate a path-mirroring
-layout. Solvable, unsolved.
+A query string is folded into the filename via a short stable hash rather than supported literally — a narrow answer,
+not a general one. **Still open:** very long paths and case-insensitive filesystems both complicate a path-mirroring
+layout further than this iteration solves.
 
 ### Borrowing the dependency-manager shape
 
@@ -151,10 +166,46 @@ We are not building a dependency manager, and the borrowed vocabulary must not d
   `https://example.com/schemas/user.yaml` — it can change or vanish tomorrow. Committing the copies is what makes an old
   release still deployable, and it is why no lock file is needed.
 
-**Open.** The names of the vendored directory and of the refetch flag are public API surface under
-[rule 4](./openapi-support.md#the-four-rules) and are not chosen. Also open: whether a fetched document that itself
-contains remote references is followed — transitive fetching, with the allowlist applying at every hop — or refused at
-depth one.
+**Decided:** the vendored directory is named by `remote_references.vendor_path`, and the refetch flag is
+`spec:build --update-refs` — one flag for both adding a missing reference and refreshing one already vendored, rather
+than two. Both are public API surface under [rule 4](./openapi-support.md#the-four-rules).
+
+### A vendored document can itself name a reference
+
+**Decided: followed, not refused at depth one.** A document `spec:build --update-refs` just fetched is walked the same
+way the root specification is — every `$ref` it names is checked against the allowlist and vendored in turn, so a schema
+registry that splits its documents across several files works exactly as it would if none of them were remote.
+
+The allowlist applies again at every hop: a vendored document naming a host nobody allowed refuses exactly like the root
+document would, and a chain of references that closes back on a URL already being fetched raises rather than recursing
+forever. Nothing about depth is special-cased — the same check, run again, is what "at every hop" means.
+
+One consequence worth naming: the committed copy of a document that itself named a remote reference is not byte-for-byte
+what the server returned. Its own `$ref` values are rewritten to point at their local vendored siblings before it is
+written to disk, for the same reason the top-level reference is rewritten — see below. What a reviewer reads in that
+diff is still upstream's content; only a URL that would otherwise reach the network again on every rebuild becomes a
+path that already has.
+
+### How a vendored copy stays invisible to the parser
+
+Nothing above would work if `cebe\openapi\` — the OpenAPI parser this package wraps — ever saw a `$ref` naming a URL,
+because it resolves one by calling `file_get_contents()` on it directly. Two properties of how the parser is already
+used are what make rewriting the reference enough, with no change to the parser or to how it is called:
+
+- **The parser is handed the array this package already decoded, never asked to re-read the file.**
+  `OperationExtractor::parse()` builds its object model from `$document->raw` — the same array `SpecDocumentReader`'s
+  five-step pipeline produced — rather than reopening the specification from disk. So a `$ref` rewritten during step 5
+  is exactly what the parser receives; there is no second read of the original bytes for a rewrite to lose a race
+  against.
+- **A relative reference is resolved against the document that names it, recursively.** `ReferenceContext` resolves each
+  `$ref` relative to the file its containing document was read from, and when the parser follows a reference into
+  another file, it resolves that file's own references the same way, relative to _that_ file. This is not new behaviour
+  added for vendoring — it is what already lets a specification split across several local files work today.
+
+Put together: once every `$ref` naming a URL has been rewritten to a path relative to the document that names it — the
+root specification, or a vendored file that named another vendored file — the result is indistinguishable from an
+ordinary local, multi-file specification. The parser was never taught about vendoring; it simply never encounters
+anything to fetch.
 
 ### Vendoring is one part of the build
 

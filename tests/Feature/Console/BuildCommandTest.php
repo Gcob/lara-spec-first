@@ -9,6 +9,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\Http;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 /*
@@ -105,6 +106,7 @@ beforeEach(function (): void {
 
 afterAll(function (): void {
     exec('rm -rf '.escapeshellarg(buildTree()));
+    exec('rm -rf '.escapeshellarg(vendorTree()));
 });
 
 function build(): int
@@ -732,4 +734,88 @@ it('hands the 501 the name spec:make would be given', function (): void {
 
     expect(file_get_contents(buildTree().'/Controllers/ShowUserController.php'))
         ->toContain("OperationNotImplementedException::operation('get /users/{id}', 'showUser')");
+});
+
+// --- --update-refs: the build's one entry point to the network ---
+
+/**
+ * A fresh vendor tree for this block, torn down after it — separate from
+ * `buildTree()` because a vendored reference is never gitignored the way the
+ * generated tree can be, and asserting on it means it cannot be confused with
+ * generated PHP.
+ */
+function vendorTree(): string
+{
+    static $tree = null;
+
+    return $tree ??= sys_get_temp_dir().'/lsf-vendor-'.bin2hex(random_bytes(6));
+}
+
+/**
+ * Point the build at the fixture with a remote `$ref` and allow the one host it
+ * names — called from inside each test rather than a second file-wide
+ * `beforeEach`, since Pest runs every `beforeEach` in a file for every test in
+ * it regardless of where it is declared, and the existing one above already
+ * points every other test in this file at `operations.yaml`.
+ */
+function useRemoteReferenceFixture(): void
+{
+    exec('rm -rf '.escapeshellarg(vendorTree()));
+
+    config()->set('lara-spec-first.spec.path', specFixturePath('remote-reference.yaml'));
+    config()->set('lara-spec-first.remote_references.allowed_hosts', ['example.com']);
+    config()->set('lara-spec-first.remote_references.vendor_path', vendorTree());
+}
+
+it('fetches and commits a remote reference on --update-refs', function (): void {
+    useRemoteReferenceFixture();
+
+    Http::fake([
+        'https://example.com/schemas.yaml' => Http::response(
+            "components:\n  schemas:\n    User:\n      type: object\n",
+        ),
+    ]);
+
+    $exit = app(Kernel::class)->call('spec:build', ['--update-refs' => true]);
+
+    expect($exit)->toBe(0)
+        ->and(is_file(vendorTree().'/example.com/schemas.yaml'))->toBeTrue()
+        ->and(treeContents(buildTree()))->toContain('Controllers/ListUsersController.php');
+});
+
+// The property `docs/guide/remote-references.md` calls "frozen by default": once
+// a reference is committed, a build that never asked to update it must never
+// reach the network again — proven here by making any request the fake receives
+// fail the test, rather than by merely not asserting on one.
+it('reads the committed copy with no network access once it is vendored', function (): void {
+    useRemoteReferenceFixture();
+
+    Http::fake([
+        'https://example.com/schemas.yaml' => Http::response(
+            "components:\n  schemas:\n    User:\n      type: object\n",
+        ),
+    ]);
+
+    app(Kernel::class)->call('spec:build', ['--update-refs' => true]);
+
+    Http::fake(function (): never {
+        throw new RuntimeException('spec:build reached the network without --update-refs.');
+    });
+
+    $exit = app(Kernel::class)->call('spec:build');
+
+    expect($exit)->toBe(0)
+        ->and(treeContents(buildTree()))->toContain('Controllers/ListUsersController.php');
+});
+
+it('fails naming the flag when an allowed reference was never vendored', function (): void {
+    useRemoteReferenceFixture();
+
+    $output = new BufferedOutput;
+    $exit = app(Kernel::class)->call('spec:build', [], $output);
+
+    expect($exit)->toBe(1)
+        ->and($output->fetch())
+        ->toContain('https://example.com/schemas.yaml')
+        ->toContain('php artisan spec:build --update-refs');
 });
