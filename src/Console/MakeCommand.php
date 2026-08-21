@@ -208,7 +208,16 @@ final class MakeCommand extends Command
             $this->requiredString($config, 'lara-spec-first.generated.namespace'),
         );
 
-        $value = $name->propose($operation);
+        // Normalized here rather than only where it happens to matter: `propose()`
+        // joins the configured `make.controllers` namespace to a derived short
+        // name, and a leading `\` on that configuration reaches here unstripped —
+        // `CustomControllerName::propose()` only `rtrim`s the namespace it was
+        // given. Left raw, the `--yes` branch below would hand
+        // `ExtensionInsertion::insert()` a spelling the extractor reads back
+        // without the `\`, which is the mismatch its own verification exists to
+        // catch — reproducible with `make.controllers => '\Workbench\App\...'`
+        // and `--yes`.
+        $value = ltrim($name->propose($operation), '\\');
 
         // Stated as the missing input it is, rather than as a warning about the
         // consequence. A developer who typed this command wants a controller; that
@@ -283,9 +292,11 @@ final class MakeCommand extends Command
         $this->newLine();
 
         // A leading `\` is accepted and dropped rather than refused — the
-        // extractor does the same on read — so it is normalized here, once,
-        // rather than left for `ExtensionInsertion` to compare a raw submission
-        // against an extractor that already stripped it.
+        // extractor does the same on read. Normalized here too, on the value a
+        // person actually typed, even though `ExtensionInsertion::insert()`
+        // normalizes its own `$value` argument now — this is display as much as
+        // input: the confirmation below echoes `$chosen`, and it should say what
+        // the document ends up carrying.
         $chosen = ltrim(trim((string) text(
             label: 'x-controller',
             default: $value,

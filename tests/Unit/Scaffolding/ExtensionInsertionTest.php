@@ -97,6 +97,33 @@ function insertInto(string $path, int $index, ?OperationLocation $location = nul
     );
 }
 
+// Normalized inside `insert()` itself rather than trusted from the caller, so that
+// every caller — the interactive prompt, the `--yes` path, or one this package does
+// not have yet — gets the same answer without having to remember to ask. A caller
+// that passed the raw, backslash-led value used to fail its own verification: the
+// extractor drops the leading `\` on read, so the copy-and-compare saw a change
+// that was not the extension and refused the whole insertion.
+it('normalizes a leading separator on the value itself, regardless of the caller', function (): void {
+    $path = insertionFixture();
+    $operation = operationsIn($path)[0];
+    $location = (new OperationLocator)->locate((string) file_get_contents($path), $operation);
+
+    if ($location === null) {
+        throw new RuntimeException('the fixture operation could not be located');
+    }
+
+    (new ExtensionInsertion(new RemoteReferenceGuard))->insert(
+        $path,
+        $operation,
+        $location,
+        '\\App\\Http\\Controllers\\ShowUserController',
+    );
+
+    expect(file_get_contents($path))
+        ->toContain('x-controller: App\\Http\\Controllers\\ShowUserController')
+        ->and(operationsIn($path)[0]->controller)->toBe('App\\Http\\Controllers\\ShowUserController');
+});
+
 it('adds the row under the operation, at its own indentation', function (): void {
     $path = insertionFixture();
 

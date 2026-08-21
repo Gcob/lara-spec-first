@@ -453,6 +453,23 @@ it('prints the row without offering when it cannot place the line', function ():
  * alone, and a name this project could not place is still refused.
  */
 
+// The proposal is `make.controllers` plus a derived short name, and a leading `\`
+// on that configuration value reached `ExtensionInsertion::insert()` unstripped —
+// `CustomControllerName::propose()` only `rtrim`s the namespace it is given. That
+// mismatch made the verification refuse its own proposal: the extractor reads the
+// inserted row back with the `\` dropped, so the copy-and-compare saw a change that
+// was not the extension.
+it('accepts a leading separator on the configured namespace under --yes', function (): void {
+    $path = editableSpecification();
+    config()->set('lara-spec-first.make.controllers', '\\LsfMake\\Http\\Controllers');
+
+    make(['operation' => 'listPosts', '--yes' => true, '--no-interaction' => true], 0);
+
+    expect(file_get_contents($path))
+        ->toContain('x-controller: LsfMake\\Http\\Controllers\\ListPostsController')
+        ->and(is_file(scaffoldRoot().'/Http/Controllers/ListPostsController.php'))->toBeTrue();
+});
+
 it('takes the proposed name without asking', function (): void {
     $path = editableSpecification();
 

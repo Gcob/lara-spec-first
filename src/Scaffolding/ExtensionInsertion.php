@@ -49,6 +49,18 @@ final readonly class ExtensionInsertion
     /**
      * Add `x-controller` to one operation, or write nothing at all.
      *
+     * **`$value` is normalized here, once, for every caller.** A leading `\` is a
+     * spelling {@see OperationExtractor} accepts and drops on read —
+     * `ltrim($written, '\\')` — rather than refuses. Normalizing anywhere
+     * upstream of this method (a proposal built from a configured
+     * namespace, a value typed at a prompt) would still leave every other caller,
+     * present or future, free to hand this method a value the extractor would
+     * read back differently — which is exactly the mismatch
+     * {@see self::assertOnlyTheExtensionChanged()} exists to catch, thrown as
+     * "changed something else" for a spelling the document accepts. Normalizing
+     * the one value every caller funnels through closes that for all of them at
+     * once.
+     *
      * @throws UnverifiedInsertionException
      */
     public function insert(
@@ -57,6 +69,8 @@ final readonly class ExtensionInsertion
         OperationLocation $location,
         string $value,
     ): void {
+        $value = ltrim($value, '\\');
+
         $original = @file_get_contents($specPath);
 
         if ($original === false) {
