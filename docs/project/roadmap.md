@@ -65,18 +65,19 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
       application's routes are cached, and stays silent when the build has not written one. The loading half only: what
       the routes point at is not generated yet.
 - [x] **`spec:build`.** Reads the configured specification, plans every file in memory, then writes: the routes and one
-      `final` controller per operation, each explaining its own provenance and answering 501. Idempotent, confined to
-      the generated tree, and it prunes what the contract no longer describes.
+      controller per operation, each explaining its own provenance and answering 501 — `final` unless `x-controller`
+      names a class of the project's own, in which case the route reaches that class instead once it exists. Idempotent,
+      confined to the generated tree, and it prunes what the contract no longer describes.
 - [x] **The architecture assertions.** The parser is contained to `Parsing\`, `Contract\` is forbidden from knowing
       anything about the layer that produced it, and `Routing\` may reach neither `Parsing\` nor the YAML decoder. All
       three are Pest `arch()` tests rather than conventions to remember.
 
 ### What does not exist yet
 
-What is missing is no longer a namespace but the second half of several features. `x-controller` is not read, so every
-generated controller is `final` and nothing can be extended; there is no `spec:make`, no rename detection, no doctor,
-and no response DTO or generated validation. Four of the six blocks in `config/lara-spec-first.php` are marked `TODO` in
-the file itself and are inert, which the file says out loud rather than leaving to be discovered, and which
+What is missing is no longer a namespace but the second half of several features. There is no `spec:make`, so the class
+that extends a generated parent is one a developer writes by hand; no rename detection, no doctor, and no response DTO
+or generated validation. Four of the six blocks in `config/lara-spec-first.php` are marked `TODO` in the file itself and
+are inert, which the file says out loud rather than leaving to be discovered, and which
 [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
@@ -111,13 +112,20 @@ the code, and a gap in it is loud.
       `operationId` PHP cannot carry, and two operations claiming one class name. `lara-spec-first.spec.path` names the
       document, and stale generated files are pruned by the marker they carry, so nothing a human wrote inside the tree
       is ever removed.
-- [ ] **The two-class seam**, half of which is shipped and now pinned. One controller per operation carrying one
-      `routeAction`, over the `SpecController` base with its `middleware()` method: done, and asserted on the classes a
-      real build produces rather than on the text that emitted them — `final`, one shipped parent, one declared method.
-      What remains is [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself —
-      reading it into `Contract\Operation`, emitting a non-`final` parent when it is present, pointing the route at the
-      child when that child exists, and refusing two values that reduce to one generated parent. **Every generated
-      controller is `final` until then**, so nothing can be extended yet.
+- [x] **The two-class seam.** One controller per operation carrying one `routeAction`, over the `SpecController` base
+      with its `middleware()` method, asserted on the classes a real build produces rather than on the text that emitted
+      them. And [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself: read
+      into `Contract\Operation` and refused there when it is not a name PHP could carry, naming the generated parent and
+      dropping its `final`, with the route pointing at the child once that class has a file the autoloader can find and
+      at the parent until then. Two values reducing to one generated parent is a build error naming both, and so is one
+      naming a class inside the generated tree, which would extend itself.
+
+      The seam also settled a signature. `routeAction` declares
+                  [one parameter per path parameter](../guide/controllers.md#the-signature-is-the-contract-with-the-child), named as
+                  the document names them, because PHP forbids an override from adding a required parameter — a parameterless parent
+                  would have made `x-controller` useless on every templated path. Found in the Workbench, where a child answers
+                  `GET /users/{id}` for real while the operations around it still answer 501.
+
 - [x] **Every generated file explains itself.** The [source map](../guide/code-generation.md#the-source-map) (the JSON
       pointer the file came from) and the
       [docblock norm](../guide/code-generation.md#every-generated-file-explains-itself) (provenance, findings,

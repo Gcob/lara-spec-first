@@ -33,11 +33,19 @@ use Gcob\LaraSpecFirst\Generation\PlannedController;
  * The spec path is passed as the build passes it — already relative to the
  * project root — because that is the only form a generated file may carry.
  */
-function emittedController(Operation $operation, string $specPath = 'openapi.yaml'): string
-{
+function emittedController(
+    Operation $operation,
+    string $specPath = 'openapi.yaml',
+    bool $customControllerExists = false,
+): string {
     $emitter = new ControllerEmitter('App\\Http\\Generated', $specPath);
+    $planned = new PlannedController(
+        $operation,
+        ControllerName::for($operation),
+        $customControllerExists,
+    );
 
-    return $emitter->emit(new PlannedController($operation, ControllerName::for($operation)))->contents;
+    return $emitter->emit($planned)->contents;
 }
 
 /**
@@ -54,6 +62,7 @@ function operationFor(
     bool $deprecated = false,
     ?string $sunset = null,
     ?array $security = null,
+    ?string $controller = null,
 ): Operation {
     // Named rather than positional: `Operation` takes ten parameters, six of them
     // with defaults, so a reordering there would bind the wrong values here and
@@ -69,6 +78,7 @@ function operationFor(
         deprecated: $deprecated,
         sunset: $sunset,
         security: $security,
+        controller: $controller,
     );
 }
 
@@ -312,6 +322,77 @@ describe('what the metadata deliberately does not carry', function (): void {
     });
 });
 
+describe('the two-class seam, when the contract declares a custom controller', function (): void {
+    /*
+     * The other half of the table in controllers.md: a name that exists in order
+     * to name this class is a name that can be depended on, so the parent drops
+     * `final` and the child may extend it.
+     */
+
+    it('emits a class nothing forbids extending', function (): void {
+        $contents = emittedController(operationFor(controller: 'App\\Http\\Controllers\\UserController'));
+
+        expect($contents)->toContain('class UserController extends SpecController')
+            ->and($contents)->not->toContain('final class');
+    });
+
+    it('takes its name from the class the contract named', function (): void {
+        expect(emittedController(operationFor(
+            operationId: 'showUserAccountDetails',
+            controller: 'App\\Http\\Controllers\\UserController',
+        )))->toContain('class UserController extends SpecController');
+    });
+
+    it('says where the name came from, and what it buys', function (): void {
+        expect(emittedController(operationFor(controller: 'App\\Http\\Controllers\\UserController')))
+            ->toContain('Class name taken from `x-controller`')
+            ->toContain('why it is not `final`');
+    });
+
+    // Point at what actually runs. A reader landing on a generated default that
+    // has been overridden is the most common way to misread a codebase like this.
+    it('points at the child when the child exists', function (): void {
+        $contents = emittedController(
+            operationFor(controller: 'App\\Http\\Controllers\\UserController'),
+            customControllerExists: true,
+        );
+
+        expect($contents)
+            ->toContain('@see \\App\\Http\\Controllers\\UserController')
+            ->toContain('what the route actually reaches')
+            ->toContain('The route reaches the custom controller rather than this class');
+    });
+
+    // And says so plainly when it does not, because the honest answer then is that
+    // this class is what answers, with a 501.
+    it('says the child is missing rather than pointing at nothing', function (): void {
+        $contents = emittedController(operationFor(controller: 'App\\Http\\Controllers\\UserController'));
+
+        expect($contents)
+            ->toContain('no file for it exists yet')
+            ->toContain('answers 501')
+            ->and($contents)->not->toContain('@see \\App\\Http\\Controllers\\UserController');
+    });
+
+    // A blank line inside a docblock is ` *`, never ` *   `: trailing whitespace is
+    // something a formatter strips, and a formatter with something to strip is one
+    // fighting the next build.
+    it('leaves no trailing whitespace in the docblock it writes', function (): void {
+        $contents = emittedController(operationFor(controller: 'App\\Http\\Controllers\\UserController'));
+
+        foreach (explode("\n", $contents) as $line) {
+            expect($line)->toBe(rtrim($line), 'a line carries trailing whitespace: '.$line);
+        }
+    });
+
+    // Kept to a phrase short enough to survive wrapping: findings are wrapped at
+    // the repository's width, so an assertion on a long sentence would fail the
+    // day a word ahead of it changes length.
+    it('advertises the extension point on a class nothing may extend', function (): void {
+        expect(emittedController(operationFor()))->toContain('Declare `x-controller`');
+    });
+});
+
 describe('the two-class seam', function (): void {
     // `final` for as long as nothing may extend a generated controller: the name
     // of a controller with no `x-controller` is derived and disposable, so an
@@ -325,10 +406,44 @@ describe('the two-class seam', function (): void {
     // One method, named the same in every generated controller, so the routes
     // file can name it as a plain string and `route:cache` can serialize it.
     it('carries exactly one method, and it is routeAction', function (): void {
-        $contents = emittedController(operationFor());
+        $contents = emittedController(operationFor(path: '/users'));
 
         expect(substr_count($contents, 'public function '))->toBe(1)
             ->and($contents)->toContain('public function routeAction(): mixed');
+    });
+
+    /*
+     * The signature is the contract with the child, and PHP is what makes it one:
+     * an override may not add a required parameter, so a parameterless parent
+     * would forbid a custom controller from ever declaring `{id}`. Found in the
+     * Workbench rather than by reasoning — a child declaring `routeAction(string
+     * $id)` over a parameterless parent is a fatal error at load.
+     */
+
+    it('declares one parameter per path parameter, named as the document names it', function (
+        string $path,
+        string $expected,
+    ): void {
+        expect(emittedController(operationFor(path: $path, operationId: 'op')))
+            ->toContain('public function routeAction('.$expected.'): mixed');
+    })->with([
+        'none' => ['/users', ''],
+        'one' => ['/users/{id}', 'string $id'],
+        'two, in path order' => ['/users/{userId}/posts/{postId}', 'string $userId, string $postId'],
+        'a name the document chose' => ['/users/{user_id}', 'string $user_id'],
+    ]);
+
+    // The emitter interpolates the name it is handed, and what keeps that safe is
+    // the planner refusing a name PHP could not carry before anything is emitted —
+    // asserted in tests/Unit/Generation/BuildPlannerTest.php, where the refusal
+    // lives. What is asserted here is the other half of that division: nothing
+    // reaches this class that it would have to sanitize, so a parameter name
+    // arrives in the signature exactly as the document wrote it.
+    it('writes the document\'s own spelling, because Laravel matches by name', function (): void {
+        expect(emittedController(operationFor(path: '/users/{userId}', operationId: 'op')))
+            ->toContain('string $userId')
+            ->and(emittedController(operationFor(path: '/users/{userId}', operationId: 'op')))
+            ->not->toContain('string $user_id');
     });
 
     it('throws the exception Laravel renders as 501, naming the operation', function (): void {

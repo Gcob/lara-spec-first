@@ -31,8 +31,9 @@ turns the specification into PHP, and the result is safe to regenerate at any ti
 > [501](#an-unimplemented-operation-answers-501). It is idempotent, it plans before it writes, and it
 > [never writes outside its own tree](#the-invariant-a-build-never-destroys-human-work). The provider
 > [loads what it emitted](#the-routes-are-one-file-and-the-only-one-the-runtime-opens) and reads no specification to do
-> it. Not built yet: the `x-controller` seam, so every generated controller is `final` today; response DTOs and request
-> validation; rename detection; and `spec:make`.
+> it. The [`x-controller` seam](./controllers.md#the-specification-decides-what-is-customizable) is shipped, so an
+> operation that declares one gets a parent it may extend and a route pointing at the child. Not built yet: response
+> DTOs and request validation; rename detection; and `spec:make`.
 
 What the build reads, and what it refuses to read, is a different subject and lives in
 [`openapi-support.md`](./openapi-support.md).
@@ -566,7 +567,11 @@ matter of taste:
   rules the option out.
 - **It is an ordinary Laravel controller.** Once the file exists it has nothing to do with this package except that it
   extends a generated class. Your conventions, your IDE, your tests and your `make:` habits all already point at that
-  directory. The generated abstract is the unusual object here; the concrete class is not.
+  directory. The generated parent is the unusual object here; the concrete class is not.
+
+**A class inside the generated tree is refused rather than merely discouraged.** An `x-controller` naming one is a build
+error, because the generated parent takes that same short name there — so the class would extend itself — and because a
+build rewrites everything under that namespace.
 
 **The consequence to state plainly:** the generated route refers to your class by its fully-qualified name, so the name
 and namespace are load-bearing. Moving the file is fine; moving it somewhere it no longer autoloads under the expected
@@ -665,8 +670,8 @@ already carries [the pointer it came from](#the-source-map). Comparing the two g
 
 - **Renames, reported as renames.** _This operation was `listUsers`, it is now `indexUsers`; the class you extended has
   been replaced._ Naming the old and the new turns a fatal error into an instruction.
-- **Orphans, reported by name.** A human class extending a generated abstract that no longer exists is detectable, and
-  is exactly what a rename leaves behind. The [invariant](#the-invariant-a-build-never-destroys-human-work) means their
+- **Orphans, reported by name.** A human class extending a generated parent that no longer exists is detectable, and is
+  exactly what a rename leaves behind. The [invariant](#the-invariant-a-build-never-destroys-human-work) means their
   work is still there — it is just no longer connected to anything, and nobody should have to find that out at runtime.
 
 The honest limit: when the path itself moves, identity and name change together and a rename becomes indistinguishable

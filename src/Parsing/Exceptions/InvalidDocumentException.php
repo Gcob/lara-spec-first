@@ -83,6 +83,28 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     }
 
     /**
+     * An extension that names a PHP class carries something that could never be
+     * one.
+     *
+     * Refused where the document is read rather than where the class would be
+     * generated, because the value is the name itself: nothing this package does
+     * to it could make `App\Http\Controllers\User-Controller` into an identifier,
+     * so there is nothing later to find out.
+     *
+     * @see docs/guide/controllers.md — "The specification decides what is customizable"
+     */
+    public static function extensionNotAClassName(string $extension, string $written, string $endpoint): self
+    {
+        return new self(sprintf(
+            '`%s` on `%s` is "%s", which is not a class name PHP could carry. It reads a '.
+            'fully-qualified name, written the way PHP writes one: `App\\Http\\Controllers\\UserController`.',
+            $extension,
+            $endpoint,
+            $written
+        ));
+    }
+
+    /**
      * @param  non-empty-list<string>  $keys
      */
     private static function orList(array $keys): string

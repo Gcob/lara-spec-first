@@ -31,6 +31,12 @@ final readonly class Operation
      *                                                    nothing and inherits the
      *                                                    document's, empty when it
      *                                                    explicitly requires nothing
+     * @param  string|null  $controller  the fully-qualified name `x-controller` gives
+     *                                   this operation's custom controller, or null
+     *                                   when the document names none. Read rather
+     *                                   than resolved: whether a class of that name
+     *                                   exists is a question for the build, and the
+     *                                   contract's answer does not depend on it
      */
     public function __construct(
         public int $index,
@@ -43,6 +49,7 @@ final readonly class Operation
         public bool $deprecated = false,
         public ?string $sunset = null,
         public ?array $security = null,
+        public ?string $controller = null,
     ) {}
 
     /**

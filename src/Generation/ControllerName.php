@@ -11,9 +11,17 @@ use Illuminate\Support\Str;
 /**
  * The class name a generated controller takes, and where it came from.
  *
- * Two sources, and which one applied is a finding worth reporting rather than an
- * implementation detail: an `operationId` is a name somebody chose, while a
- * derived one is a name nobody did.
+ * Three sources, and which one applied is a finding worth reporting rather than
+ * an implementation detail: `x-controller` is a name chosen in order to name this
+ * class, an `operationId` is a name chosen for something else, and a derived one
+ * is a name nobody chose. Only the first is extendable, and {@see NameSource}
+ * owns that reasoning.
+ *
+ * **A declared custom controller decides the generated parent's short name.** The
+ * two classes share it — the parent inside the generated namespace, the child
+ * wherever the document says — so a reader seeing `UserController extends
+ * \App\Http\Generated\Controllers\UserController` needs no convention
+ * explained to them.
  *
  * **A derived name includes the path's parameter names.** That is a departure
  * from an earlier rule which excluded them so that renaming `{id}` to `{userId}`
@@ -33,7 +41,12 @@ final readonly class ControllerName
 {
     private function __construct(
         public string $shortName,
-        public bool $wasDeclared,
+        public NameSource $source,
+        /**
+         * The fully-qualified name of the class that extends the generated
+         * parent, or null when the contract names none.
+         */
+        public ?string $customController,
     ) {}
 
     /**
@@ -41,10 +54,26 @@ final readonly class ControllerName
      */
     public static function for(Operation $operation): self
     {
+        $custom = $operation->controller;
+
+        // Taken as the name it is, rather than run through the studly rule that
+        // turns an `operationId` into one: the document wrote a class name, and
+        // rewriting it would mean the class a developer typed in their contract
+        // and the class the build generates disagreeing about their own name.
+        if ($custom !== null) {
+            $short = self::shortNameOf($custom);
+
+            return new self(self::assertUsable($short, $operation), NameSource::CustomController, $custom);
+        }
+
         $declared = $operation->operationId;
 
         if ($declared === null) {
-            return new self(self::assertUsable(self::derive($operation), $operation), false);
+            return new self(
+                self::assertUsable(self::derive($operation), $operation),
+                NameSource::Derived,
+                null,
+            );
         }
 
         $studly = Str::studly($declared);
@@ -58,7 +87,29 @@ final readonly class ControllerName
             throw UnusableNameException::emptyOperationId($operation->label(), $declared);
         }
 
-        return new self(self::assertUsable($studly.'Controller', $operation), true);
+        return new self(
+            self::assertUsable($studly.'Controller', $operation),
+            NameSource::OperationId,
+            null,
+        );
+    }
+
+    /**
+     * Whether anything may extend the class this name belongs to.
+     */
+    public function isExtendable(): bool
+    {
+        return $this->source->isExtendable();
+    }
+
+    /**
+     * The last segment of a fully-qualified name.
+     */
+    private static function shortNameOf(string $class): string
+    {
+        $separator = strrpos($class, '\\');
+
+        return $separator === false ? $class : substr($class, $separator + 1);
     }
 
     /**

@@ -21,9 +21,10 @@ assumes about your application, and where a developer's own code attaches to it.
 
 > **Partly shipped, and this document spans two phases.** `spec:build` emits one controller per operation, each carrying
 > one `routeAction` over the shipped `SpecController` base with its `middleware()` method, and answering
-> [501](./code-generation.md#an-unimplemented-operation-answers-501). **Every one of them is `final` today**, because
-> `x-controller` is not read yet: the two-class seam, its build error on two values reducing to one parent, and
-> `spec:make` are the rest of [Phase 1](../project/roadmap.md#phase-1-the-foundation).
+> [501](./code-generation.md#an-unimplemented-operation-answers-501). **The two-class seam is shipped whole:**
+> `x-controller` is read, a declared controller names the generated parent and drops its `final`, the route points at
+> the child once that class exists, and two values reducing to one parent is a build error naming both. What remains of
+> [Phase 1](../project/roadmap.md#phase-1-the-foundation) here is `spec:make`.
 > [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features) carries everything
 > model-shaped: `x-model`, the CRUD defaults, `HasModel` and its trait, the marker interfaces, the DTO factory calls,
 > the pagination seams and the mass-assignment check, because a generated CRUD body has nothing to return until the DTOs
@@ -51,6 +52,32 @@ Two alternatives were considered and dropped:
   in a grep for every spec-driven action at once. `__invoke` appears in none of them: it is a magic method whose name
   says nothing about what it does, and the route registration degrades from an explicit
   `[Controller::class, 'routeAction']` pair to a bare class string.
+
+### The signature is the contract with the child
+
+**Decision: `routeAction` declares one parameter per path parameter, `string`, named the way the specification names
+it.** `GET /users/{id}` generates `routeAction(string $id): mixed`.
+
+**PHP is what makes this a decision rather than a detail.** An override may not add a required parameter, so a parent
+declaring none would forbid every custom controller from ever seeing `{id}` — a developer could only reach it through
+the request object, which is the opposite of what a generated seam is for. It was found in the Workbench rather than by
+reasoning: a child declaring `routeAction(string $id)` over a parameterless parent is a fatal error at load.
+
+**Named, because Laravel matches route parameters to method parameters by name** rather than by position. That makes the
+specification's spelling load-bearing here in a way it is not elsewhere — renaming `{id}` to `{userId}` changes this
+signature, and a child overriding it has to follow. Identity is
+[still normalized](./code-generation.md#identity-is-the-path-and-the-method-not-the-name), because that question is
+asked for rename detection rather than for signatures, and the two must not be conflated.
+
+**`string` until something says otherwise.** A route parameter is text on the wire; `x-model` is what will turn one into
+a bound model, and the parent will declare that type when it does. A child may narrow the return type — `array` where
+the parent says `mixed` — but not the parameters, which is ordinary PHP variance rather than a rule of this package.
+
+**And a path parameter that cannot be a PHP variable is refused, naming it.** `{2fa}` is a legal route parameter and
+`$2fa` is not a variable, so the build says so rather than emitting a file that will not parse; `{this}` is the same
+problem from a different direction. This is a second check rather than a stricter first one, because the neighbouring
+refusals belong to other rules: a character the router would never match is refused for being unroutable, and one path
+naming the same parameter twice is refused where the path is read, before anything asks what could be generated from it.
 
 ## The specification decides what is customizable
 
@@ -130,7 +157,20 @@ the name where it is used costs one line and reads as exactly what it is: this c
 
 **Two `x-controller` values that reduce to the same generated parent are a build error, naming both.** Distinct FQNs can
 still share a short name — `…\Admin\UserController` and `…\Api\UserController` — and silently letting one generated
-parent serve two operations is the kind of guess this package refuses everywhere else.
+parent serve two operations is the kind of guess this package refuses everywhere else. Its message is its own rather
+than the collision message an `operationId` gets, because the fix is a different one: neither of these operations is
+being named from an `operationId`, so advice about that key would send a reader looking for something they do not have.
+
+**And an `x-controller` inside the generated namespace is refused too.** The generated parent takes the same short name
+there, so the child would extend itself — and a build rewrites everything under that namespace, so
+[the work would not survive one](./code-generation.md#where-your-classes-go).
+
+**The child is looked for by file, not by loading it.** Asking PHP whether the class exists would load it, and a child
+extending a parent this build has not written yet is exactly what a first build meets — so the question would raise on
+the missing parent while planning the file that would have fixed it. The autoloader is asked for the file instead, with
+the same PSR-4 rules it applies at runtime and without executing a line. A child that exists and cannot load yet is
+still the class the route belongs to: it works the moment the build writes its parent, and answering otherwise would
+make the build's output depend on whether a previous build had run.
 
 ### `spec:make` is the only way in
 

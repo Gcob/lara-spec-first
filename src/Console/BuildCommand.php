@@ -84,13 +84,13 @@ final class BuildCommand extends Command
         // Named from the project root rather than absolutely: a generated file
         // may end up committed, and a machine's path in a repository is a diff
         // nobody made.
-        $files = (new BuildPlanner(rtrim($namespace, '\\'), ProjectRelativePath::from($specPath)))
+        $plan = (new BuildPlanner(rtrim($namespace, '\\'), ProjectRelativePath::from($specPath)))
             ->plan($operations);
 
         $configured = $config->get(GeneratedRoutesLocator::SETTING);
         $locator = GeneratedRoutesLocator::fromConfiguration($this->laravel->basePath(), $configured);
 
-        $report = (new GeneratedTree(dirname($locator->path())))->write($files);
+        $report = (new GeneratedTree(dirname($locator->path())))->write($plan->files);
 
         $this->components->info($report->changedNothing()
             ? sprintf('%d operation(s) built. Already up to date.', count($operations))
@@ -102,12 +102,22 @@ final class BuildCommand extends Command
                 $report->pruned,
             ));
 
-        // Every operation answers 501 in this form of the build, and saying so is
-        // the point rather than a caveat: a contract that describes endpoints
-        // nothing implements should not read as a finished application.
-        if ($operations !== []) {
+        // An operation nothing implements answers 501, and saying so is the point
+        // rather than a caveat: a contract that describes endpoints nothing
+        // implements should not read as a finished application. Counted from the
+        // plan rather than from the operations, because an operation whose
+        // `x-controller` class exists is answered by that class — and warning
+        // about it would tell a developer their own controller does not count.
+        // True while a generated parent answers 501 and nothing else. When a
+        // generated controller can answer an operation from a CRUD default, this
+        // is the line to revisit — {@see BuildPlan::routedToGeneratedParent()}
+        // counts routes rather than making the claim itself.
+        $unimplemented = $plan->routedToGeneratedParent();
+
+        if ($unimplemented > 0) {
             $this->components->warn(sprintf(
-                '%d operation(s) have no implementation and answer 501.',
+                '%d of %d operation(s) have no implementation and answer 501.',
+                $unimplemented,
                 count($operations),
             ));
         }

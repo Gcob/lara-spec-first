@@ -7,14 +7,20 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Generation\ControllerName;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
+use Gcob\LaraSpecFirst\Generation\NameSource;
 
-function operation(string $method, string $path, ?string $operationId = null): Operation
-{
+function operation(
+    string $method,
+    string $path,
+    ?string $operationId = null,
+    ?string $controller = null,
+): Operation {
     return new Operation(
-        0,
-        HttpMethod::from($method),
-        PathTemplate::fromString($path),
-        $operationId,
+        index: 0,
+        method: HttpMethod::from($method),
+        path: PathTemplate::fromString($path),
+        operationId: $operationId,
+        controller: $controller,
     );
 }
 
@@ -22,8 +28,72 @@ it('takes the name a developer chose when the operation declares one', function 
     $name = ControllerName::for(operation('get', '/users/{id}', 'showUser'));
 
     expect($name->shortName)->toBe('ShowUserController')
-        ->and($name->wasDeclared)->toBeTrue();
+        ->and($name->source)->toBe(NameSource::OperationId);
 });
+
+/*
+ * `x-controller` outranks both, and the reason is the whole customization design:
+ * it is the only value in a contract whose job is to name this class, so it is the
+ * only one that can be depended on by an `extends`.
+ */
+
+it('takes the short name of the custom controller the contract names', function (): void {
+    $name = ControllerName::for(operation(
+        'get',
+        '/users/{id}',
+        'showUser',
+        'App\\Http\\Controllers\\UserController',
+    ));
+
+    expect($name->shortName)->toBe('UserController')
+        ->and($name->source)->toBe(NameSource::CustomController)
+        ->and($name->customController)->toBe('App\\Http\\Controllers\\UserController');
+});
+
+// The generated parent and the child share a short name, which is what lets the
+// child read `extends \App\Http\Generated\Controllers\UserController` with no
+// alias and no suffix convention to explain.
+it('wins over an operationId that would have named the class otherwise', function (): void {
+    $name = ControllerName::for(operation(
+        'get',
+        '/users/{id}',
+        'showUserAccountDetails',
+        'App\\Http\\Controllers\\UserController',
+    ));
+
+    expect($name->shortName)->toBe('UserController');
+});
+
+// Taken as the name it is rather than run through the studly rule: the document
+// wrote a class name, and rewriting it would mean the class a developer typed in
+// their contract and the class the build generates disagreeing about their name.
+it('does not restyle a declared class name', function (): void {
+    $name = ControllerName::for(operation('get', '/users', null, 'App\\Http\\my_controller'));
+
+    expect($name->shortName)->toBe('my_controller');
+});
+
+it('accepts a class in the global namespace', function (): void {
+    $name = ControllerName::for(operation('get', '/users', null, 'UserController'));
+
+    expect($name->shortName)->toBe('UserController')
+        ->and($name->customController)->toBe('UserController');
+});
+
+// The property the whole table rests on: extendable only when a developer named
+// the class, `final` in both other cases.
+it('is extendable only when the contract named the class', function (
+    ?string $operationId,
+    ?string $controller,
+    bool $extendable,
+): void {
+    expect(ControllerName::for(operation('get', '/users', $operationId, $controller))->isExtendable())
+        ->toBe($extendable);
+})->with([
+    'x-controller' => ['showUser', 'App\\Http\\Controllers\\UserController', true],
+    'operationId only' => ['showUser', null, false],
+    'neither' => [null, null, false],
+]);
 
 // Studly-casing is what makes the ecosystem's usual spellings land on one class
 // name, so a contract written in kebab or snake case needs no special handling.
@@ -44,7 +114,7 @@ it('derives a name from the method and path when no operationId exists', functio
     $name = ControllerName::for(operation($method, $path));
 
     expect($name->shortName)->toBe($expected)
-        ->and($name->wasDeclared)->toBeFalse();
+        ->and($name->source)->toBe(NameSource::Derived);
 })->with([
     ['get', '/users', 'GetUsersController'],
     ['post', '/users', 'PostUsersController'],

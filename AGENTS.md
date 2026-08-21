@@ -17,11 +17,11 @@ would make the code authoritative over the spec, it is going the wrong way.
 
 The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/project/roadmap.md)). It reads a specification
 file, refuses what it cannot serve, and generates the PHP that serves it: `spec:build` emits the routes and one
-controller per operation, and the provider loads them at boot without opening a specification. Every generated
-controller is `final` for now, because `x-controller` is not read yet, so nothing can be extended. There is no
-`spec:doctor`, no `spec:make`, and no response DTO. The roadmap's
-[state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list, checked boxes meaning
-behavior with tests behind it.
+controller per operation, and the provider loads them at boot without opening a specification. `x-controller` is read,
+so an operation that declares one gets a parent it may extend and a route that points at the child once that class
+exists; an operation that declares none stays `final`. There is no `spec:doctor`, no `spec:make`, and no response DTO.
+The roadmap's [state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list, checked
+boxes meaning behavior with tests behind it.
 
 Verify your work with `just check` (or `composer check`) — Pint, Larastan, then Pest.
 

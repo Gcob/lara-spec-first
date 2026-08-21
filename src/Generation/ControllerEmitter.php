@@ -51,9 +51,9 @@ final readonly class ControllerEmitter
             use {$this->import(SpecController::class)};
 
             {$this->docblock($planned)}
-            final class {$planned->name->shortName} extends SpecController
+            {$this->modifier($planned)}class {$planned->name->shortName} extends SpecController
             {
-                public function routeAction(): mixed
+                public function routeAction({$this->signature($operation)}): mixed
                 {
                     throw OperationNotImplementedException::operation({$this->literal($operation->label())});
                 }
@@ -61,6 +61,50 @@ final readonly class ControllerEmitter
 
             PHP,
         );
+    }
+
+    /**
+     * The parameters `routeAction` declares: the path's own, named as the
+     * specification names them.
+     *
+     * **This is the signature a child has to match, which is why it cannot be
+     * empty.** PHP forbids an override from adding a required parameter, so a
+     * parent declaring none would make `x-controller` useless on every templated
+     * path — a developer could only reach `{id}` through the request object,
+     * which is the opposite of what a generated seam is for. Verified rather than
+     * reasoned about: a Workbench child declaring `routeAction(string $id)` over a
+     * parameterless parent is a fatal error at load.
+     *
+     * **Named, because Laravel matches route parameters to method parameters by
+     * name** rather than by position. The specification's spelling is therefore
+     * load-bearing here in a way it is not anywhere else, and renaming `{id}` to
+     * `{userId}` changes this signature — which a child overriding it must follow.
+     *
+     * `string` because that is what a route parameter is until something says
+     * otherwise. `x-model` is what will turn one into a bound model, and the
+     * parent will declare that type when it does.
+     */
+    private function signature(Operation $operation): string
+    {
+        return implode(', ', array_map(
+            static fn (string $parameter): string => 'string $'.$parameter,
+            $operation->path->parameterNames,
+        ));
+    }
+
+    /**
+     * `final `, or nothing at all.
+     *
+     * **The one place the extendability rule turns into syntax.** A class whose
+     * name nobody chose is disposable, and `final` is what stops an `extends`
+     * being built on top of something disposable — so the modifier follows
+     * {@see NameSource} rather than a second rule that could disagree with it.
+     *
+     * @see docs/guide/controllers.md — "The specification decides what is customizable"
+     */
+    private function modifier(PlannedController $planned): string
+    {
+        return $planned->name->isExtendable() ? '' : 'final ';
     }
 
     /**
@@ -116,10 +160,39 @@ final readonly class ControllerEmitter
         // idempotence this package promises would hold only for projects that format
         // nothing.
         $lines[] = ' *';
-        $lines[] = ' *   @see '.GeneratedRoutesLocator::FILE.' — the route that reaches this class';
+
+        foreach ($this->navigation($planned) as $line) {
+            // A blank line inside the block is ` *` and never ` *   `: trailing
+            // whitespace in a comment is something `no_trailing_whitespace_in_comment`
+            // strips, and a formatter that has something to strip is a formatter
+            // fighting the next build.
+            $lines[] = $line === '' ? ' *' : ' *   '.$line;
+        }
+
         $lines[] = ' */';
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Where the class name came from, and what that costs or buys.
+     *
+     * Reported rather than left implicit, because it is what decides whether
+     * anything may extend this class — a fact a reader cannot recover from the
+     * name itself.
+     */
+    private function nameFinding(PlannedController $planned): string
+    {
+        return match ($planned->name->source) {
+            NameSource::CustomController => 'Class name taken from `x-controller`, the one value in the '
+                .'contract whose only job is to name this class. Nothing else in the document can move '
+                .'it, which is what makes this class safe to extend — and why it is not `final`.',
+            NameSource::OperationId => 'Class name taken from the operation\'s `operationId`. Declare '
+                .'`x-controller` to name a class of your own and make this one extendable.',
+            NameSource::Derived => 'Class name derived from the method and path, because the operation '
+                .'declares no `operationId`. A derived name is disposable, which is why this class is '
+                .'`final`.',
+        };
     }
 
     /**
@@ -209,6 +282,42 @@ final readonly class ControllerEmitter
     }
 
     /**
+     * Where to go from here.
+     *
+     * **The rule is to point at what actually runs**, which for an operation with
+     * a custom controller is not this file. A reader — human or agent — who lands
+     * on a generated default that has been overridden is the single most common
+     * way to misread a codebase like this one, and one annotation removes the
+     * mistake entirely.
+     *
+     * @return non-empty-list<string>
+     */
+    private function navigation(PlannedController $planned): array
+    {
+        $custom = $planned->name->customController;
+
+        if ($custom === null) {
+            return ['@see '.GeneratedRoutesLocator::FILE.' — the route that reaches this class'];
+        }
+
+        if ($planned->customControllerExists) {
+            return [
+                '@see \\'.CommentText::safe($custom).' — the class that extends this one, and',
+                '     what the route actually reaches',
+                '@see '.GeneratedRoutesLocator::FILE.' — that route',
+            ];
+        }
+
+        return [
+            'The contract names `'.CommentText::safe($custom).'` as this operation\'s',
+            'controller, and no file for it exists yet. Until one does, the route reaches this',
+            'class and answers 501.',
+            '',
+            '@see '.GeneratedRoutesLocator::FILE.' — the route that reaches this class',
+        ];
+    }
+
+    /**
      * What the build knew and the reader cannot see.
      *
      * Findings are the part that has to stay honest. A summary that says nothing
@@ -223,10 +332,7 @@ final readonly class ControllerEmitter
         $operation = $planned->operation;
 
         $findings = [
-            $planned->name->wasDeclared
-                ? 'Class name taken from the operation\'s `operationId`.'
-                : 'Class name derived from the method and path, because the operation declares no '
-                    .'`operationId`. A derived name is disposable, which is why this class is `final`.',
+            $this->nameFinding($planned),
             sprintf(
                 'Audience `%s`%s. Effective values: an absent extension is already resolved to its '
                     .'default here, so this says what applies rather than what was written.',
@@ -235,8 +341,12 @@ final readonly class ControllerEmitter
                     ? ', no lifecycle claim'
                     : ', lifecycle `'.$operation->lifecycle->value.'`',
             ),
-            'Nothing implements this operation, so it answers 501. That is the honest answer while '
-                .'the contract describes an endpoint and no code does.',
+            $planned->routesToCustomController()
+                ? 'The route reaches the custom controller rather than this class, so what answers '
+                    .'this operation is that class. This one is the generated half, and it is '
+                    .'rewritten on every build.'
+                : 'Nothing implements this operation, so it answers 501. That is the honest answer '
+                    .'while the contract describes an endpoint and no code does.',
             'The return type is `mixed` because no response schema is read yet. It is deliberately '
                 .'not `never`, which would be accurate today and would forbid every future override.',
         ];

@@ -1,0 +1,15 @@
+# `x-controller` carrying a list rather than a name. A different message from an
+# unusable name: listing what a class name looks like would answer a question this
+# author did not ask.
+openapi: 3.0.3
+info:
+    title: Fixture API
+    version: 1.0.0
+paths:
+    /users:
+        get:
+            operationId: listUsers
+            x-controller:
+                - App\Http\Controllers\UserController
+            responses:
+                '200': { description: Users }
