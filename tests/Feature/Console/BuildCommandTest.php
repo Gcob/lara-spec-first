@@ -722,15 +722,14 @@ it('leaves an operation its custom controller answers out of the summary', funct
         ->and($printed)->not->toContain('spec:make showUser');
 });
 
-// Named in the response body as well, because a developer who meets the 501 before
-// they meet the documentation should still learn what creates the class.
-it('names the command in the 501 the generated controller answers with', function (): void {
+// The generated controller passes the operation's name to the exception, which is
+// what puts `spec:make showUser` in the 501. Asserted on what the build emitted
+// rather than on a rendered response: how a message reaches a body is Laravel's
+// error rendering, which differs between supported versions and with `APP_DEBUG` —
+// the message itself is asserted in tests/Unit/Exceptions/, where it is owned.
+it('hands the 501 the name spec:make would be given', function (): void {
     build();
 
-    require buildTree().'/'.GeneratedRoutesLocator::FILE;
-
-    $response = app(HttpKernel::class)->handle(Request::create('/users/42'));
-
-    expect($response->getStatusCode())->toBe(501)
-        ->and((string) $response->getContent())->toContain('spec:make showUser');
+    expect(file_get_contents(buildTree().'/Controllers/ShowUserController.php'))
+        ->toContain("OperationNotImplementedException::operation('get /users/{id}', 'showUser')");
 });

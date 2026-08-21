@@ -68,16 +68,20 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
       controller per operation, each explaining its own provenance and answering 501 — `final` unless `x-controller`
       names a class of the project's own, in which case the route reaches that class instead once it exists. Idempotent,
       confined to the generated tree, and it prunes what the contract no longer describes.
+- [x] **`spec:make`.** The only command that creates a file a project will own: one operation, a whole `--tag`, or
+      `--all`, with the bulk forms listing what they would create and asking first. It offers to write `x-controller`
+      into the specification when an operation declares none — the value prefilled and editable, the edit verified on a
+      copy — never overwrites a file, and runs the build afterwards so the class it wrote has a parent to extend.
+      `--yes` takes every proposal for a developer who would rather not be asked.
 - [x] **The architecture assertions.** The parser is contained to `Parsing\`, `Contract\` is forbidden from knowing
       anything about the layer that produced it, and `Routing\` may reach neither `Parsing\` nor the YAML decoder. All
       three are Pest `arch()` tests rather than conventions to remember.
 
 ### What does not exist yet
 
-What is missing is no longer a namespace but the second half of several features. There is no `spec:make`, so the class
-that extends a generated parent is one a developer writes by hand; no doctor, and no response DTO or generated
-validation. Four of the six blocks in `config/lara-spec-first.php` are marked `TODO` in the file itself and are inert,
-which the file says out loud rather than leaving to be discovered, and which
+What is missing is no longer a namespace but the second half of several features: there is no doctor, and no response
+DTO or generated validation. Four of the eight blocks in `config/lara-spec-first.php` are marked `TODO` in the file
+itself and are inert, which the file says out loud rather than leaving to be discovered, and which
 [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
