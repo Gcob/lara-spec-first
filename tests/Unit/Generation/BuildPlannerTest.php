@@ -11,6 +11,17 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 
+/*
+ * Planning, and only planning: which files a document produces, which names they
+ * take, what is refused, and that a refusal produces nothing at all.
+ *
+ * What each emitted file *contains* belongs to the class that decides it, and is
+ * asserted there — tests/Unit/Generation/RoutesEmitterTest.php for the
+ * registrations and the routes metadata, ControllerEmitterTest.php for the
+ * controller's. Asserting it here too would mean one change breaking two files
+ * for one reason.
+ */
+
 /**
  * @param  list<array{0: string, 1: string, 2?: string|null}>  $rows
  * @return list<Operation>
@@ -21,10 +32,10 @@ function operations(array $rows): array
 
     foreach ($rows as $index => [$method, $path]) {
         $operations[] = new Operation(
-            $index,
-            HttpMethod::from($method),
-            PathTemplate::fromString($path),
-            $rows[$index][2] ?? null,
+            index: $index,
+            method: HttpMethod::from($method),
+            path: PathTemplate::fromString($path),
+            operationId: $rows[$index][2] ?? null,
         );
     }
 
@@ -36,38 +47,6 @@ function planner(): BuildPlanner
     return new BuildPlanner('App\\Http\\Generated', 'openapi.yaml');
 }
 
-/**
- * The routes file out of a plan, by name rather than by position.
- *
- * `end()` would hand back `GeneratedFile|false`, which is a type the tests would
- * then have to talk their way out of. Finding it by the name the runtime looks
- * for also means these tests break if the two ever stop agreeing.
- *
- * @param  list<GeneratedFile>  $files
- */
-function routesFile(array $files): GeneratedFile
-{
-    foreach ($files as $file) {
-        if ($file->relativePath === GeneratedRoutesLocator::FILE) {
-            return $file;
-        }
-    }
-
-    throw new RuntimeException('the plan produced no routes file');
-}
-
-/**
- * Every URI the plan registers, in the order it registers them.
- *
- * @return list<string>
- */
-function registeredUris(GeneratedFile $routes): array
-{
-    preg_match_all("/Route::\\w+\\((?:\\['\\w+'\\], )?'([^']+)'/", $routes->contents, $matches);
-
-    return $matches[1];
-}
-
 it('plans one controller per operation, plus the routes file', function (): void {
     $files = planner()->plan(operations([
         ['get', '/users'],
@@ -77,37 +56,8 @@ it('plans one controller per operation, plus the routes file', function (): void
     expect(array_map(fn (GeneratedFile $f): string => $f->relativePath, $files))->toBe([
         'Controllers/GetUsersController.php',
         'Controllers/GetUsersIdController.php',
-        'routes.php',
+        GeneratedRoutesLocator::FILE,
     ]);
-});
-
-// The document's order settles which of two matching routes answers, so it has
-// to survive planning untouched. Sorting anything here would be a heuristic a
-// consumer cannot predict from reading their own contract.
-it('registers routes in the order the document writes them', function (): void {
-    $routes = routesFile(planner()->plan(operations([
-        ['get', '/users/me'],
-        ['get', '/users/{id}'],
-        ['post', '/users'],
-    ])));
-
-    expect(registeredUris($routes))->toBe(['/users/me', '/users/{id}', '/users']);
-});
-
-it('emits every action as a pair of plain strings', function (): void {
-    $routes = routesFile(planner()->plan(operations([['get', '/users']])));
-
-    expect($routes->contents)
-        ->toContain("Route::get('/users', [GetUsersController::class, 'routeAction']);");
-});
-
-// `Route::head()` does not exist, because Laravel derives HEAD from GET. A
-// contract that declares `head` explicitly still has to be routed rather than
-// dropped, so it goes through `match()`.
-it('routes a verb Laravel has no method for through match', function (): void {
-    $routes = routesFile(planner()->plan(operations([['head', '/users']])));
-
-    expect($routes->contents)->toContain("Route::match(['head'], '/users'");
 });
 
 // Distinct operations reducing to one class name would mean the second silently
@@ -151,12 +101,4 @@ it('produces nothing at all when one operation is refused', function (): void {
     }
 
     expect($planned)->toBeNull();
-});
-
-it('carries the marker on every file it plans', function (): void {
-    $files = planner()->plan(operations([['get', '/users']]));
-
-    foreach ($files as $file) {
-        expect($file->contents)->toContain(GeneratedFile::MARKER);
-    }
 });

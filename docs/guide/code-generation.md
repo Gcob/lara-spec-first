@@ -488,6 +488,14 @@ else. What the emitter writes is the registration itself, with the controller na
 `[Controller::class, 'routeAction']` pair of plain strings, in the specification's own
 [order](./openapi-support.md#route-order-the-spec-files-order-is-the-route-order).
 
+**A contract with nothing to route still gets the file, and the file says so.** Zero operations is a supported outcome
+rather than an error — a 3.1 document may legally carry only `webhooks`, or only `components` — and skipping the write
+would leave the previous build's routes registered, which is drift the runtime would go on serving. So the file is
+written with no registration in it, its findings say why rather than reporting a count of zero, and it carries no
+[reference comment](#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing), because it imports no
+generated class to explain. That last part is not a detail: a note about generated controllers, sitting above imports
+holding none, is the file telling a reader something untrue.
+
 **Decision: a missing file is silence, not an exception.** The reasoning is structural rather than lenient:
 
 - **`spec:build` is a command of this package.** A provider that refused to boot without a generated tree would make the
@@ -885,6 +893,9 @@ here, against the cost of putting a data format inside a comment.
 
 ### A reference to generated code says what to do when it goes missing
 
+**Shipped for the one file that has such references today**, the generated `routes.php`, which imports every generated
+controller. The `spec:make` half waits on that command.
+
 A class-not-found on generated code is the most likely error anyone meets with this package, and the least informative
 one PHP knows how to raise. **Decision: every reference to generated code carries a comment saying what to do about
 it**, grouped above the block rather than repeated over each line — four generated references in one file should not
@@ -916,6 +927,12 @@ That is the one reference `spec:make` created, so it is the one it annotates. An
 a DTO, a factory — they added knowingly, and a comment explaining their own import back to them is noise. In a generated
 file importing other generated files the same comment applies above the `use` block, minus the `x-controller` line,
 since a DTO's name follows its schema rather than that extension.
+
+**What the generated `routes.php` carries today is that comment, minus two names.** `x-controller` is left out for the
+reason above — a route points at a generated class — and `spec:watch` is left out because it does not exist yet, on the
+same grounds as [naming `spec:make`](#the-build-names-the-command-instead-of-running-it): printing a command nobody can
+run would be worse than saying nothing. Both lines are owed once the features behind them ship, and the emitter's tests
+assert their absence so that the debt is visible rather than forgotten.
 
 Three situations sit behind those three lines, which is why the first answer is a command rather than an explanation:
 

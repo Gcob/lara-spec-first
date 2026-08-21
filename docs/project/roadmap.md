@@ -111,19 +111,26 @@ the code, and a gap in it is loud.
       `operationId` PHP cannot carry, and two operations claiming one class name. `lara-spec-first.spec.path` names the
       document, and stale generated files are pruned by the marker they carry, so nothing a human wrote inside the tree
       is ever removed.
-- [ ] **The two-class seam**, half of which is shipped. One controller per operation carrying one `routeAction`, over
-      the `SpecController` base with its `middleware()` method: done. What remains is
-      [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself — reading it into
-      `Contract\Operation`, emitting a non-`final` parent when it is present, pointing the route at the child when that
-      child exists, and refusing two values that reduce to one generated parent. **Every generated controller is `final`
-      until then**, so nothing can be extended yet.
+- [ ] **The two-class seam**, half of which is shipped and now pinned. One controller per operation carrying one
+      `routeAction`, over the `SpecController` base with its `middleware()` method: done, and asserted on the classes a
+      real build produces rather than on the text that emitted them — `final`, one shipped parent, one declared method.
+      What remains is [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself —
+      reading it into `Contract\Operation`, emitting a non-`final` parent when it is present, pointing the route at the
+      child when that child exists, and refusing two values that reduce to one generated parent. **Every generated
+      controller is `final` until then**, so nothing can be extended yet.
 - [x] **Every generated file explains itself.** The [source map](../guide/code-generation.md#the-source-map) (the JSON
       pointer the file came from) and the
       [docblock norm](../guide/code-generation.md#every-generated-file-explains-itself) (provenance, findings,
       navigation), emitted unconditionally and asserted by the generator's own tests. It shipped with the first
       generated file rather than after it: retrofitting a convention across a generated tree is an audit, writing it
       into the first emitter is a paragraph. What a finding can say will grow with what the build knows; the norm itself
-      is in place.
+      is in place. Both emitters have a test class of their own, where the parts are asserted one by one — every
+      finding, the pointer's `~0`/`~1` escaping, the blank line a formatter would otherwise insert, a value from the
+      document that would close the comment early, a token too long for a line, and the absence of anything (a clock
+      above all) that would make two runs differ — while the command's own test asserts the complementary property over
+      every file it writes rather than a sample of one: that the norm is there at all. The
+      [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
+      landed with them, in `routes.php`, the only generated file that references other generated code today.
 - [ ] **Rename and orphan detection.** Comparing the pointers in the existing generated tree against the ones the new
       build would emit is what turns a class-not-found into an instruction naming the old name, the new one, and
       [the files that reference it](../guide/code-generation.md#how-it-says-it). It depends on the source map above and

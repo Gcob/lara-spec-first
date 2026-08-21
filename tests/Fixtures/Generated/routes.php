@@ -3,8 +3,14 @@
 declare(strict_types=1);
 
 /*
- * Stands in for the file `spec:build` will emit, so that loading it can be
- * tested before anything writes it.
+ * Stands in for the *loading* surface of the file `spec:build` emits — not for its
+ * bytes. `spec:build` writes that file for real now, and what it puts in it is
+ * asserted against the emitter in tests/Unit/Generation/RoutesEmitterTest.php:
+ * the docblock norm, and the note above the generated imports. Copying either
+ * here would be a second place to keep in step, for a test that reads neither.
+ *
+ * The controllers it points at say the same thing about themselves: they return
+ * strings, because what these tests need to observe is which route answered.
  *
  * Two properties are what the tests read from here, and both are decisions
  * documented elsewhere rather than conveniences of the fixture:

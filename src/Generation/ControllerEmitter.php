@@ -135,6 +135,15 @@ final readonly class ControllerEmitter
      * values that come from the document: a non-ASCII `x-sunset` or summary would
      * otherwise wrap early for a width nobody asked for.
      *
+     * **A token longer than the line is cut rather than left to run**, and that
+     * case is reachable rather than theoretical: a finding interpolates document
+     * values, `x-sunset` is [deliberately unparsed](../Contract/Operation.php), and
+     * a URL or a hand-typed value carrying no space at all would otherwise produce
+     * a single line hundreds of characters long. Cut rather than truncated, because
+     * the value is what a reader came here for and dropping its tail would make
+     * the finding lie by omission.
+     *
+     * @param  positive-int  $width
      * @return non-empty-list<string>
      */
     private function wrap(string $finding, int $width = 92): array
@@ -142,7 +151,7 @@ final readonly class ControllerEmitter
         $lines = [];
         $current = '';
 
-        foreach (explode(' ', $finding) as $word) {
+        foreach ($this->words($finding, $width) as $word) {
             if ($current === '') {
                 $current = $word;
 
@@ -162,6 +171,30 @@ final readonly class ControllerEmitter
         $lines[] = $current;
 
         return $lines;
+    }
+
+    /**
+     * The finding's words, with any word too long for a line cut into pieces that
+     * fit.
+     *
+     * @param  positive-int  $width
+     * @return list<string>
+     */
+    private function words(string $finding, int $width): array
+    {
+        $words = [];
+
+        foreach (explode(' ', $finding) as $word) {
+            if ($word === '') {
+                continue;
+            }
+
+            foreach (mb_str_split($word, $width) as $piece) {
+                $words[] = $piece;
+            }
+        }
+
+        return $words;
     }
 
     /**
