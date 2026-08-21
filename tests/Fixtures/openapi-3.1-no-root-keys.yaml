@@ -1,0 +1,7 @@
+# Rejected at 3.1, unlike its neighbours: a version is known, `info` is there,
+# but the document names none of `paths`, `webhooks` or `components` — the one
+# empty-3.1 shape that is not a legitimate zero-route contract.
+openapi: "3.1.0"
+info:
+  title: Fixture API
+  version: 1.0.0

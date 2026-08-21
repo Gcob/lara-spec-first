@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
+use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Tests\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
@@ -36,4 +39,16 @@ function specFixture(string $name): array
 function specFixturePath(string $name): string
 {
     return __DIR__.'/Fixtures/'.$name;
+}
+
+/**
+ * Read a specification fixture through the whole reading engine — the pair
+ * beside it above stop at the decoded array; this one goes all the way to the
+ * operations a real build would see, references resolved included.
+ *
+ * @return list<Operation>
+ */
+function extractFixture(string $name): array
+{
+    return (new OperationExtractor)->extract((new SpecDocumentReader)->read(specFixturePath($name)));
 }
