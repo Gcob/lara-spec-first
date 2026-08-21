@@ -210,11 +210,20 @@ the code, and a gap in it is loud.
     engine, rather than against the cycle guard alone, is what surfaced the third defect above. A `$ref` whose JSON
     pointer lands inside data the guard correctly treats as opaque (an `example`, an Example Object's `value`) reaches
     the same unrecoverable failure as an ordinary cycle, on a shape the guard cannot see by its own design. It is not
-    yet guarded against; it is flagged in both documents above and left unasserted in the suite itself, because there is
-    no way to assert an unrecoverable fatal error without taking the test run down with it. Closing that gap is
-    follow-up work, not part of this item. The suite ends up being what an adapter was wanted for regardless: **the
-    acceptance criteria a replacement parser would have to meet.** An interface would only prove a substitute compiles;
-    this proves one behaves.
+    yet guarded against, but it is pinned: an unrecoverable fatal cannot be asserted in the same process as the test
+    runner without taking the run down with it, so `KnownParserBugsTest.php` runs it in a child process instead and
+    asserts the exit code and stderr — `tests/Support/extract.php`, and the "Subprocess assertions" row in
+    [`stack.md`](./stack.md). Closing the gap it pins is follow-up work, tracked below rather than folded into this
+    item. The suite ends up being what an adapter was wanted for regardless: **the acceptance criteria a replacement
+    parser would have to meet.** An interface would only prove a substitute compiles; this proves one behaves.
+
+- [ ] **Guard against the third parser defect `KnownParserBugsTest.php` pins but does not yet prevent.** A `$ref` whose
+      JSON pointer resolves into a key `ReferenceCycleDetector` treats as opaque — an `example`, an Example Object's
+      `value` — still exhausts the parser's memory instead of raising, the same failure the cycle guard exists to
+      prevent, on a shape it cannot see by design. Decide whether the guard should follow a pointer's target into opaque
+      data before deciding it is safe to skip, or whether `ReferenceCycleDetector` gains a depth or step ceiling as a
+      second line of defense independent of the shape. Either closes the gap; the conformance suite's subprocess case is
+      what turns green once it does. See [parser caveats](../guide/openapi-support.md#parser-caveats).
 
 - [ ] **`spec:doctor`**, which is `nginx -t` for your contract: what the package will honor, what it will not, and the
       routing table that results. It belongs in this phase rather than with the Phase 2 developer experience, because it

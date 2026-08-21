@@ -1,10 +1,25 @@
 # Accepted: the JSON Schema `examples` keyword is a list of literal values, so a
 # `$ref` written inside one is data, not a reference.
+#
+# Schema A is also used by a real operation, rather than left dangling in
+# `components` — the conformance suite's copy of this fixture reads that
+# operation back to prove the boundary holds when the schema it protects is
+# actually resolved, not merely declared.
 openapi: "3.1.0"
 info:
   title: Fixture API
   version: 1.0.0
-paths: {}
+paths:
+  /items:
+    get:
+      operationId: listItems
+      responses:
+        '200':
+          description: Items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A'
 components:
   schemas:
     A:

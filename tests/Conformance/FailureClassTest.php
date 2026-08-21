@@ -2,12 +2,9 @@
 
 declare(strict_types=1);
 
-use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
-use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
-use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 // The fifth and last equivalence class of the conformance suite: why a document
 // did not load. The doctor already keeps two kinds of finding apart — see
@@ -28,24 +25,16 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 // fixture, instead. See docs/project/roadmap.md and
 // docs/guide/openapi-support.md#parser-caveats.
 
-/**
- * @return list<Operation>
- */
-function extractFailureClassFixture(string $name): array
-{
-    return (new OperationExtractor)->extract((new SpecDocumentReader)->read(specFixturePath($name)));
-}
-
 describe('document fault: the spec author has something to fix', function (): void {
     it('refuses two operations that address one endpoint', function (): void {
-        expect(fn () => extractFailureClassFixture('duplicate-endpoint.yaml'))
+        expect(fn () => extractFixture('duplicate-endpoint.yaml'))
             ->toThrow(InvalidDocumentException::class);
     });
 });
 
 describe('package limit: the document is correct, we choose not to serve it', function (): void {
     it('refuses a trace operation, which Laravel\'s router has no verb for', function (): void {
-        expect(fn () => extractFailureClassFixture('trace-operation.yaml'))
+        expect(fn () => extractFixture('trace-operation.yaml'))
             ->toThrow(RejectedConstructException::class, 'Laravel has no TRACE verb');
     });
 });
@@ -57,12 +46,12 @@ describe('package limit: the document is correct, we choose not to serve it', fu
 // type as a package limit above.
 describe('parser defect: the dependency cannot be trusted with this shape', function (): void {
     it('refuses a pure reference cycle, which exhausts the parser\'s memory instead of raising', function (): void {
-        expect(fn () => extractFailureClassFixture('cycle-pointer.yaml'))
+        expect(fn () => extractFixture('cycle-pointer.yaml'))
             ->toThrow(CyclicReferenceException::class);
     });
 
     it('refuses a Path Item reference the parser would drop in silence', function (): void {
-        expect(fn () => extractFailureClassFixture('path-item-ref-component.yaml'))
+        expect(fn () => extractFixture('path-item-ref-component.yaml'))
             ->toThrow(RejectedConstructException::class, 'does not model `components.pathItems`');
     });
 });

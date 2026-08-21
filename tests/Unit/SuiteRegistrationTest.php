@@ -10,11 +10,16 @@ declare(strict_types=1);
 it('runs every test directory it has', function (): void {
     $root = dirname(__DIR__);
 
+    // Fixtures and Support hold data and helper scripts a test reaches for, not
+    // tests of their own — registering them as suites would ask PHPUnit to run
+    // a directory that reports nothing by design, the same silent-directory
+    // failure this test exists to catch, just aimed at the wrong entries.
     $directories = array_values(array_filter(
         scandir($root) ?: [],
         static fn (string $entry): bool => $entry !== '.'
             && $entry !== '..'
             && $entry !== 'Fixtures'
+            && $entry !== 'Support'
             && is_dir($root.'/'.$entry)
     ));
 
