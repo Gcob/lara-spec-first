@@ -55,6 +55,21 @@ final readonly class Operation
     /**
      * What addresses this operation, independently of what anything is named.
      *
+     * **DECISION: this still normalizes a path parameter's name away, even though
+     * the comparison it was built for — reporting a renamed parameter as a rename
+     * rather than as a deletion and an addition — is gone now that `x-controller`
+     * is the only name a contract diff has to track.** It survives because two
+     * unrelated consumers still need "same method and path, regardless of what a
+     * parameter is called": `Parsing\OperationExtractor` uses it to catch two
+     * operations that would collide at the router — `/users/{id}` and
+     * `/users/{slug}` are one route no matter what either specification author
+     * called the placeholder — and `Scaffolding\ExtensionInsertion` uses it to
+     * find, in a freshly re-read copy, the one operation an edit was made to.
+     * Neither is rename detection; both would break if a future reader
+     * "simplified" this by comparing `$path->template` instead. (Named rather
+     * than linked with `@see`, on purpose: `Contract\` is not allowed to import
+     * either namespace, and a docblock reference is exactly what would add one.)
+     *
      * @see docs/guide/code-generation.md — "Identity is the path and the method, not the name"
      */
     public function identity(): string

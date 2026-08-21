@@ -55,10 +55,20 @@ final readonly class CustomControllerName
     }
 
     /**
-     * Why this name cannot go into the contract, or null when it can.
+     * Why this name cannot go into the contract, or null when it can — with one
+     * deliberate exception.
      *
      * Written as sentences rather than codes because they are read at a prompt, in
      * the moment somebody is deciding what to type next.
+     *
+     * **Blank answers null too, and that is not "no reason" — it is a second
+     * question this method answers on the side.** This is also the prompt's own
+     * live `validate` callback, submitted on every keystroke including the one
+     * that clears the field, and blank is how a developer says "leave the
+     * specification alone" rather than "here is my class name." Refusing it here
+     * would block that submission; the command still checks for it by name — see
+     * where `reasonToRefuse()` is called — precisely because this method only
+     * answers whether a *name* can go into the contract, and blank is not one.
      */
     public function reasonToRefuse(string $candidate): ?string
     {

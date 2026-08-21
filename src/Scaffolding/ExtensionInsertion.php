@@ -197,9 +197,18 @@ final readonly class ExtensionInsertion
      * of this command in one directory, and about a copy left behind by a process
      * that died — a fixed name would make the second run read the first one's
      * leftovers as a specification.
+     *
+     * **Leading-dotted, on top of that.** *Beside* the original is not tidiness —
+     * {@see self::insert()}'s own reasoning is that a `$ref` resolves relative to
+     * the file that carries it, so a copy anywhere else would resolve references
+     * differently. But *beside* also means a `spec/*.yaml` glob in an editor
+     * watcher, a linter, or CI sees this file for however long the read-back
+     * takes — a dotfile keeps it out of most such globs without moving it
+     * anywhere.
      */
     private function copyPath(string $specPath): string
     {
-        return $specPath.'.lsf-insert-'.bin2hex(random_bytes(4)).'.tmp.yaml';
+        return dirname($specPath).DIRECTORY_SEPARATOR.'.'.basename($specPath)
+            .'.lsf-insert-'.bin2hex(random_bytes(4)).'.tmp.yaml';
     }
 }

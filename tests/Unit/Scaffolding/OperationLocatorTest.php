@@ -90,6 +90,20 @@ it('does not find a method under a different path', function (): void {
     expect($location?->line)->toBe(6);
 });
 
+// A comment on the operation's own key is not a value — `get: # the list endpoint`
+// is a block mapping exactly as much as `get:` alone is — and common enough that
+// refusing it would turn an ordinary annotation into an unexplained refusal.
+it('finds the operation when its own key carries a trailing comment', function (): void {
+    $location = locate(<<<'YAML'
+        paths:
+            /users/{id}:
+                get: # the show endpoint
+                    operationId: showUser
+        YAML);
+
+    expect($location?->line)->toBe(3);
+});
+
 it('finds the right method when a path declares several', function (): void {
     $document = <<<'YAML'
         paths:

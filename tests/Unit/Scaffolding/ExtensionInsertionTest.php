@@ -214,7 +214,9 @@ describe('when the edit cannot be proven', function (): void {
     });
 
     // And no copy is left behind either way, which matters because a copy beside the
-    // specification is a file that looks like one.
+    // specification is a file that looks like one. Checked with both patterns
+    // because the copy is now leading-dotted, and a plain `*.tmp.yaml` glob would
+    // not see it whether it was cleaned up or not.
     it('leaves no copy beside the specification', function (): void {
         $path = insertionFixture();
 
@@ -224,6 +226,20 @@ describe('when the edit cannot be proven', function (): void {
             // The point is what is not on disk afterwards.
         }
 
-        expect(glob(insertionDirectory().'/*.tmp.yaml') ?: [])->toBe([]);
+        expect(array_merge(
+            glob(insertionDirectory().'/*.tmp.yaml') ?: [],
+            glob(insertionDirectory().'/.*.tmp.yaml') ?: [],
+        ))->toBe([]);
     });
+});
+
+// A successful insertion leaves the tree with the specification and nothing else:
+// the copy is renamed over it, so a directory listing after a normal run is the
+// same proof that the temporary file — dotfile or not — never lingers.
+it('leaves nothing beside the specification after a successful insertion', function (): void {
+    $path = insertionFixture();
+
+    insertInto($path, 0);
+
+    expect(glob(insertionDirectory().'/*') ?: [])->toBe([$path]);
 });

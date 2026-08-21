@@ -121,15 +121,23 @@ final readonly class OperationLocator
     }
 
     /**
-     * The key a line declares with nothing after its colon, or null.
+     * The key a line declares with nothing after its colon but blank space and,
+     * optionally, a comment, or null.
      *
      * Quoting is stripped because a path key is routinely written `'/users/{id}':`
      * — YAML needs the quotes for a value starting with a character it reserves,
      * and the key is the same key either way.
+     *
+     * **A trailing comment is allowed, deliberately**, even though this class
+     * otherwise refuses far more readily than it guesses. `get: # the list
+     * endpoint` is a block mapping exactly as much as `get:` alone is — the
+     * comment is not a value — and common enough on the very keys this locator
+     * matches that refusing it would turn an ordinary annotation into a document
+     * this package cannot edit for a reason the docblock does not warn about.
      */
     private function declaredKey(string $line): ?string
     {
-        if (preg_match('/^\s*(?|"([^"]*)"|\'([^\']*)\'|([^:#]+?))\s*:\s*$/', $line, $found) !== 1) {
+        if (preg_match('/^\s*(?|"([^"]*)"|\'([^\']*)\'|([^:#]+?))\s*:\s*(?:#.*)?$/', $line, $found) !== 1) {
             return null;
         }
 

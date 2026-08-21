@@ -273,7 +273,18 @@ Answering no leaves a copyable block and the exact line, which is
 human decision is required. Answering yes runs the insertion below, and then scaffolds the class and builds — one
 command from an operation the contract says nothing about to a class the route reaches.
 
-> Note that a flag to force insert the row will be considered.
+**Decision: a developer who does not want to be asked types `--yes`, never `--force`.** `--tag=` and `--all` are the
+same primitive run several times — one file per operation, nothing this package creates is a grouped file — and both
+list what they would create and ask before creating anything, defaulting a non-interactive run to no. `--yes` answers
+that confirmation and the extension prompt above with the answer the command already proposed, including under
+`--no-interaction` — that is the whole reason the flag exists: an explicit `--yes` on the command line _is_ somebody
+naming the class, given in advance instead of at a prompt.
+
+**The name is `--yes` and not `--force` because the two words already mean different things in every Laravel
+generator.** `--force` means _overwrite what is there_, and this command never overwrites a file a developer owns — that
+guard does not move for `--yes` either: a file that exists is still left alone, the insertion still verifies itself on a
+copy, and a name this project could not place is still refused, loudly. Borrowing `--force` would promise the one thing
+this command refuses to do.
 
 **The insertion never round-trips the document through a YAML dumper.** Parsing and re-emitting destroys comments, key
 order and anchors, and this is the one file read in every pull request. YAML's indentation is predictable enough that

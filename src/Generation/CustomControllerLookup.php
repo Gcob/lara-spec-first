@@ -87,6 +87,17 @@ final readonly class CustomControllerLookup
      * stated rather than hidden: on such a project every route points at its
      * generated parent, which is the same answer as a custom controller nobody
      * has written yet, and the safe direction of the two.
+     *
+     * **The invariant this method creates: existence is asked here, and only
+     * here.** `spec:make`'s planner and its writer both call this method rather
+     * than `is_file()` on the one path {@see self::pathFor()} would have handed
+     * them, and that is not a style preference — `pathFor()` answers the single
+     * longest-prefix-first candidate, while this method checks every candidate a
+     * PSR-4 prefix that maps two directories would accept. A class already
+     * written under the second directory is a class `is_file()` on the first
+     * would miss, and a scaffold written there would shadow it. Existence is
+     * `exists()`; placement is `pathFor()`; never `is_file()` on a single
+     * candidate in between.
      */
     public function exists(string $class): bool
     {
