@@ -20,15 +20,17 @@ namespace Gcob\LaraSpecFirst\Doctor;
  * developer nothing about what the spec actually did — the same reasoning
  * doctor.md gives for reporting the outcome, not only the problems.
  *
- * **Every section prints, including the four this release does not check.**
- * A section absent from the report is one a green exit silently claims to
- * have covered — and the four that are absent today are not minor ones:
- * doctor.md calls Security "the one finding that can turn a
- * documented-as-protected endpoint into a public one". So each prints its
- * note instead of `clean`, from {@see DiagnosticReport::noteFor()}, which is
- * also where a section skipped on *this* run says so. That is doctor.md's own
- * rule about the exit code: the report says which checks were skipped, on
- * every run, so a green exit is never mistaken for a full pass.
+ * **Every section prints, including the two this release does not check.**
+ * A section absent from the report is one a green exit silently claims to have
+ * covered. Security and Lifecycle were on that list one release ago and came
+ * off it in the change that built them, which is the only way an entry there
+ * is meant to be removed; Baseline and Drivers are what is left. Each prints
+ * its note instead of `clean`, from {@see DiagnosticReport::noteFor()}, which
+ * is also where a section skipped on *this* run says so — including Security
+ * and Lifecycle, which have no standing note any more and so need a
+ * run-specific one the moment there is no document to read. That is
+ * doctor.md's own rule about the exit code: the report says which checks were
+ * skipped, on every run, so a green exit is never mistaken for a full pass.
  */
 final readonly class ReportFormatter
 {
@@ -211,6 +213,11 @@ final readonly class ReportFormatter
      * One line, never a list of the operations under it: the package does not
      * read the root block, so it cannot say what any of them inherits from it.
      *
+     * Printed only when some operation actually inherits one: that is what
+     * `$report->inheritsUnreadRootRequirements` answers, both halves of it,
+     * and a document overriding the block on every operation gets no line at
+     * all rather than a caveat about a risk it does not carry.
+     *
      * @return list<string>
      */
     private static function rootRequirements(DiagnosticReport $report): array
@@ -225,10 +232,20 @@ final readonly class ReportFormatter
     }
 
     /**
-     * The protection report on every run, then the unstable surface and the
-     * removal dates coming up. Printed even when all three are empty, because
-     * "0 of 47 public operations are stable" is precisely the run where
-     * nothing is wrong and everything is unprotected.
+     * The protection report, then the unstable surface and the removal dates
+     * coming up — each standing on its own, because each answers a different
+     * question about a different set of operations.
+     *
+     * **The protection report is printed exactly when there is a public
+     * surface to report on.** It used to be gated on all three being empty at
+     * once, which meant an internal-only service — every operation
+     * `x-audience: internal`, one of them `beta` — printed "0 of 0 public
+     * operation(s) are stable" beside its beta listing: the sentence about an
+     * empty document that this guard exists to avoid, on a document that is
+     * not empty at all. An internal-only API is not an exotic shape, and the
+     * protection report is a statement about a public surface, so with no
+     * public surface there is nothing for it to say. The beta and sunset lines
+     * are unaffected: they were never about the public surface.
      *
      * @return list<string>
      */
@@ -236,24 +253,25 @@ final readonly class ReportFormatter
     {
         $outcome = $report->lifecycle;
 
-        // Nothing read, or nothing promised to anyone: "0 of 0 public
-        // operations are stable" is a sentence about an empty document
-        // rather than about a contract, and the section says "clean"
-        // instead. The case this line exists for — public operations with
-        // no promise on them — still prints, because $publicOperations is
-        // what makes it non-empty.
-        if ($outcome === null || ($outcome->publicOperations === 0 && $outcome->beta === [] && $outcome->approachingSunsets === [])) {
+        // Null rather than a zeroed outcome is how `DoctorCommand` says there
+        // was no document at all — see its own reasoning there — and the
+        // section's `[not checked]` note says so in words.
+        if ($outcome === null) {
             return [];
         }
 
-        $lines = [sprintf(
-            '  %d of %d public operation(s) are stable.%s',
-            $outcome->stablePublicOperations,
-            $outcome->publicOperations,
-            $outcome->publicOperations > 0 && $outcome->stablePublicOperations === 0
-                ? ' Nothing in this contract is promised, so nothing in it can be broken by accident.'
-                : '',
-        )];
+        $lines = [];
+
+        if ($outcome->publicOperations > 0) {
+            $lines[] = sprintf(
+                '  %d of %d public operation(s) are stable.%s',
+                $outcome->stablePublicOperations,
+                $outcome->publicOperations,
+                $outcome->stablePublicOperations === 0
+                    ? ' Nothing in this contract is promised, so nothing in it can be broken by accident.'
+                    : '',
+            );
+        }
 
         foreach ($outcome->beta as $operation) {
             $lines[] = '  beta: '.$operation;

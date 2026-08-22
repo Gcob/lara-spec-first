@@ -89,20 +89,33 @@ it('reads an operation-level security block off a real document', function (): v
 });
 
 // The root block is Open in the support matrix and is read into nothing, so
-// the only honest thing to report is that it exists.
+// the only honest thing to report is that it exists — and only where some
+// operation actually inherits it. The fixture's `/inherits` is that operation.
 it('reports a root security block as one line rather than as a finding per inheriting operation', function (): void {
     $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath('secured-operations.yaml'));
 
-    expect(SecurityCheck::inheritsUnreadRootRequirements($outcome->document))->toBeTrue();
+    expect(SecurityCheck::inheritsUnreadRootRequirements($outcome->document, $outcome->operations))->toBeTrue();
+});
+
+// The line asserts two things — the block exists, and an operation inherits it
+// — so both are checked. A document that declares a root block and overrides it
+// on every single operation has no operation the second half is true of, and the
+// block changes nothing this package does, so the honest answer is silence
+// rather than a caveat about a risk that does not exist.
+it('says nothing about a root block every operation overrides', function (): void {
+    $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath('root-security-overridden.yaml'));
+
+    expect($outcome->faults)->toBe([])
+        ->and(SecurityCheck::inheritsUnreadRootRequirements($outcome->document, $outcome->operations))->toBeFalse();
 });
 
 it('reports no root block on a document that carries none', function (): void {
     $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath('operations.yaml'));
 
-    expect(SecurityCheck::inheritsUnreadRootRequirements($outcome->document))->toBeFalse()
+    expect(SecurityCheck::inheritsUnreadRootRequirements($outcome->document, $outcome->operations))->toBeFalse()
         ->and(SecurityCheck::check($outcome->operations))->toBe([]);
 });
 
 it('has nothing to say about a document that could not be read at all', function (): void {
-    expect(SecurityCheck::inheritsUnreadRootRequirements(null))->toBeFalse();
+    expect(SecurityCheck::inheritsUnreadRootRequirements(null, []))->toBeFalse();
 });

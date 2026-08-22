@@ -8,7 +8,10 @@ use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Doctor\Checks\LifecycleCheck;
+use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
+use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
+use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 /**
  * Every date in this file is compared against a fixed "now" rather than the
@@ -87,14 +90,63 @@ it('treats a date that only parses by rolling into the next month as unreadable'
         ->and($findings[0]->message)->toContain('not a date this package can read');
 });
 
-it('reads a moment as well as a calendar date, in either spelling of UTC', function (): void {
+/**
+ * The messages of a set of findings, so an assertion about *which* operations
+ * were reported does not also assert the order they came back in.
+ *
+ * `check()` does return document order, and that order matters in the report —
+ * but it is not what a test about date spellings is pinning, and indexing into
+ * the list makes such a test fail on a change that is only ever a reordering.
+ *
+ * @param  list<Finding>  $findings
+ */
+function lifecycleMessages(array $findings): string
+{
+    return implode("\n", array_map(static fn ($finding): string => $finding->message, $findings));
+}
+
+// The two spellings the extractor emits — `Y-m-d` when the moment lands on
+// midnight UTC, ATOM otherwise — read as the moments they state.
+it('reads both spellings the extractor emits', function (): void {
     $findings = LifecycleCheck::check([
-        lifecycleOperation('/atom', sunset: '2026-05-31T23:00:00+00:00'),
-        lifecycleOperation('/zulu', sunset: '2026-06-30T12:00:00Z'),
+        lifecycleOperation('/moment', sunset: '2026-05-31T23:00:00+00:00'),
+        lifecycleOperation('/day', sunset: '2026-05-31'),
+        lifecycleOperation('/ahead', sunset: '2099-01-01'),
     ], lifecycleNow());
 
-    expect($findings)->toHaveCount(1)
-        ->and($findings[0]->message)->toContain('/atom');
+    $messages = lifecycleMessages($findings);
+
+    expect($findings)->toHaveCount(2)
+        ->and($messages)->toContain('/moment')
+        ->and($messages)->toContain('/day')
+        ->and($messages)->not->toContain('/ahead')
+        ->and($messages)->not->toContain('not a date this package can read');
+});
+
+// Why there is no third format for `…Z`, pinned where the guarantee actually
+// lives rather than on PHP's own leniency.
+//
+// `moment()` used to carry `!Y-m-d\TH:i:s\Z` beside the two above, justified as
+// "the spelling a document author is most likely to type by hand". An author who
+// types it never reaches this section: `OperationExtractor` normalizes every
+// readable moment first, and this is that normalization observed through the
+// real pipeline rather than asserted about it.
+//
+// PHP's `P` specifier does also accept `Z` when parsing, on every version this
+// package supports — verified on 8.3, 8.4 and 8.5 — so the removed format was
+// redundant twice over. That half is deliberately *not* what this test rests
+// on: it is a fact about PHP, and a test that pinned it would fail on a future
+// PHP tightening `P` for reasons having nothing to do with this package.
+it('never sees a Z-suffixed sunset, because the pipeline normalizes it away first', function (): void {
+    $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath('lifecycle.yaml'));
+
+    $sunsets = array_map(static fn (Operation $operation): ?string => $operation->sunset, $outcome->operations);
+
+    expect($outcome->faults)->toBe([])
+        // The fixture writes `x-sunset: '2026-06-01T00:00:00Z'` on
+        // `/promised-with-a-time`; it arrives here as a calendar date.
+        ->and($sunsets)->toContain('2026-06-01')
+        ->and(implode(',', array_filter($sunsets)))->not->toContain('Z');
 });
 
 it('reports both rules against one operation that breaks both', function (): void {

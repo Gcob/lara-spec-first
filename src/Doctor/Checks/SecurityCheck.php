@@ -83,7 +83,8 @@ final readonly class SecurityCheck
     }
 
     /**
-     * Whether the document carries a root `security` block.
+     * Whether some operation actually inherits a root `security` block this
+     * package does not read.
      *
      * Reported as one informational line rather than as a finding per
      * inheriting operation, because the package does not read the block:
@@ -93,12 +94,38 @@ final readonly class SecurityCheck
      * all. Naming the block is what this check can say honestly; listing the
      * operations under it would mean claiming to know a requirement nothing
      * here resolved.
+     *
+     * **Both halves are checked, because the line asserts both.** It used to
+     * ask only whether the block existed, and then print that "an operation
+     * that states no security of its own inherits requirements nothing here
+     * resolved" — a sentence with no referent on a document that declares a
+     * root block and overrides it on every single operation, which is a
+     * perfectly ordinary way to write one. The consequence is the half a
+     * reader would act on, so it is only stated when there is an operation it
+     * is true of. Where every operation states its own requirements the block
+     * changes nothing this package does, and silence is the honest answer
+     * rather than a caveat about a risk that does not exist.
+     *
+     * @param  list<Operation>  $operations
      */
-    public static function inheritsUnreadRootRequirements(?ParsableSpecDocument $document): bool
+    public static function inheritsUnreadRootRequirements(?ParsableSpecDocument $document, array $operations): bool
     {
         $root = $document?->raw['security'] ?? null;
 
-        return is_array($root) && $root !== [];
+        if (! is_array($root) || $root === []) {
+            return false;
+        }
+
+        foreach ($operations as $operation) {
+            // Null, not `[]`: an operation stating an empty list requires
+            // nothing *explicitly* and inherits nothing — the middle of the
+            // three states {@see self::check()} reasons about.
+            if ($operation->security === null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

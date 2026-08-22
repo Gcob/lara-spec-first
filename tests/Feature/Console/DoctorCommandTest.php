@@ -323,11 +323,42 @@ it('carries the same answer in --json, with checked telling the two kinds apart'
         ->and($decoded['notes']['Drift']['checked'])->toBeFalse()
         ->and($decoded['notes']['Routing outcome']['checked'])->toBeTrue()
         ->and($decoded['notes']['Drift']['note'])->toBeString()
-        // Security and Lifecycle are checked now, so neither carries a note at
-        // all — the assertion that would have caught this section being built
-        // without its note being retired.
+        // Security and Lifecycle read the same partial operation list Routing
+        // outcome does, so they carry the same kind of note: they ran, on less
+        // than their names promise.
+        ->and($decoded['notes']['Security']['checked'])->toBeTrue()
+        ->and($decoded['notes']['Lifecycle']['checked'])->toBeTrue();
+});
+
+// And nothing at all on a clean run, which is what says the two sections came
+// off the standing "not built yet" list rather than trading one silence for
+// another: only a run that could not give them the whole document makes them
+// speak up.
+it('leaves Security and Lifecycle without a note at all on a clean contract', function (): void {
+    $output = new BufferedOutput;
+    $exit = app(Kernel::class)->call('spec:doctor', ['--json' => true], $output);
+    $decoded = json_decode($output->fetch(), true);
+
+    expect($exit)->toBe(0)
         ->and($decoded['notes'])->not->toHaveKey('Security')
         ->and($decoded['notes'])->not->toHaveKey('Lifecycle');
+});
+
+// The regression this pair guards: both sections read `ReadOutcome::$operations`
+// and nothing else, so with no document they found nothing and printed `clean` —
+// a section asserting it ran and found nothing, on a file that was never opened.
+// It matters most for Security, which doctor.md calls the one finding that can
+// turn a documented-as-protected endpoint into a public one.
+it('never claims Security or Lifecycle are clean on a run with no document', function (): void {
+    config()->set('lara-spec-first.spec.path', '/does/not/exist.yaml');
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(1)
+        ->and($text)->not->toContain("Security\n  clean")
+        ->and($text)->not->toContain("Lifecycle\n  clean")
+        ->and($text)->toContain('there was no document to read operations from')
+        ->and($text)->toContain('No operation was examined');
 });
 
 // The `Partial` level used to survive only in `--json`, so the one document

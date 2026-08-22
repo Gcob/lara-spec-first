@@ -175,12 +175,14 @@ final readonly class LifecycleCheck
      * document wrote something no date can be read out of.
      *
      * `Parsing\OperationExtractor` has already done the reading: a value it
-     * could make sense of arrives in one of exactly two spellings, and a value
-     * it could not arrives verbatim, precisely so this section can report it
-     * rather than the pipeline refusing the whole contract over a date. So
-     * this accepts those two spellings and nothing else — it is not a second,
-     * looser parser sitting beside the first, which is what accepting whatever
-     * `new DateTimeImmutable()` swallows would make it.
+     * could make sense of arrives in one of exactly two spellings — `Y-m-d`
+     * when the moment lands on midnight UTC, `DateTimeInterface::ATOM`
+     * otherwise — and a value it could not arrives verbatim, precisely so this
+     * section can report it rather than the pipeline refusing the whole
+     * contract over a date. So this accepts those two spellings and nothing
+     * else — it is not a second, looser parser sitting beside the first, which
+     * is what accepting whatever `new DateTimeImmutable()` swallows would make
+     * it.
      */
     private static function moment(?string $sunset): ?DateTimeImmutable
     {
@@ -190,11 +192,16 @@ final readonly class LifecycleCheck
 
         $utc = new DateTimeZone('UTC');
 
-        // The third format is the same moment as the second with its offset
-        // written `Z`, which `P` does not read back — the spelling a document
-        // author is most likely to type by hand, and one this section has no
-        // reason to call unreadable.
-        foreach (['!Y-m-d', DateTimeInterface::ATOM, '!Y-m-d\TH:i:s\Z'] as $format) {
+        // Two formats, matching the two spellings named above. There used to
+        // be a third for `…T00:00:00Z`, and it was unreachable twice over: the
+        // extractor never emits `Z` — it normalizes to `Y-m-d` on midnight UTC
+        // and to ATOM otherwise, and ATOM writes a UTC offset as `+00:00` — and
+        // PHP's `P` specifier reads `Z` back anyway when parsing, so ATOM
+        // covers that spelling on its own. A third format was a claim about a
+        // path through the pipeline that does not exist, guarding a case the
+        // second format already handled, which is exactly the second looser
+        // parser this method refuses to be. Both halves are pinned by a test.
+        foreach (['!Y-m-d', DateTimeInterface::ATOM] as $format) {
             $moment = DateTimeImmutable::createFromFormat($format, $sunset, $utc);
             $errors = DateTimeImmutable::getLastErrors();
 

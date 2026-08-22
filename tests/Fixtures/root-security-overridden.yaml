@@ -1,0 +1,37 @@
+# A root `security` block that no operation inherits: every operation states
+# its own requirements, one of them explicitly requiring none. A perfectly
+# ordinary way to write a document, and the case where saying "an operation
+# that states no security of its own inherits requirements nothing here
+# resolved" would name a risk that does not exist — there is no such operation.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+security:
+  - bearerAuth: []
+paths:
+  /orders:
+    get:
+      operationId: listOrders
+      security:
+        - oauth2: [read:orders]
+      responses:
+        '200': { description: The orders }
+  /health:
+    get:
+      operationId: showHealth
+      security: []
+      responses:
+        '200': { description: OK }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://example.test/oauth/token
+          scopes:
+            read:orders: Read orders

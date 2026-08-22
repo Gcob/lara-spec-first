@@ -306,6 +306,40 @@ it('says nothing under Lifecycle when there is no contract to say it about', fun
     expect((new ReportFormatter)->toText($report))->toContain("Lifecycle\n  clean");
 });
 
+// An internal-only service: every operation `x-audience: internal`, one of them
+// `beta`. The guard used to be an AND across all three fields, so a non-empty
+// beta listing dragged "0 of 0 public operation(s) are stable" along with it —
+// the exact sentence the guard exists to avoid, on a document that is not empty
+// at all. The protection report is a statement about a public surface; with no
+// public surface it has nothing to say, and the beta line stands on its own.
+it('lists beta operations without claiming 0 of 0 when nothing is public', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], [], [], new LifecycleOutcome(
+        ['get /internal'],
+        [],
+        0,
+        0,
+    ));
+    $text = (new ReportFormatter)->toText($report);
+
+    expect($text)->toContain('beta: get /internal')
+        ->and($text)->not->toContain('0 of 0 public operation(s)')
+        ->and($text)->not->toContain('public operation(s) are stable');
+});
+
+// Same shape for an approaching sunset on an internal-only document.
+it('lists an approaching sunset without claiming 0 of 0 when nothing is public', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], [], [], new LifecycleOutcome(
+        [],
+        [new ApproachingSunset('get /internal', '2026-07-01', 30)],
+        0,
+        0,
+    ));
+    $text = (new ReportFormatter)->toText($report);
+
+    expect($text)->toContain('sunset in 30 day(s): get /internal on 2026-07-01')
+        ->and($text)->not->toContain('public operation(s) are stable');
+});
+
 // A contract that promises nothing still prints, on every run: that is the
 // case the protection report exists for.
 it('prints the protection report for a contract whose public operations promise nothing', function (): void {
