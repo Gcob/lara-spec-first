@@ -19,9 +19,9 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\UnsupportedVersionException;
 
 /**
  * Every class `ReadOutcome::$faults` can actually carry — the ten exceptions
- * the reading pipeline collects instead of throwing. `sectionOf()` has no
- * `default` arm on purpose, so a class missing from this list would fail this
- * test with `LogicException` rather than an unrecognized finding silently
+ * the reading pipeline collects instead of throwing. `sectionOf()`'s `default`
+ * arm throws on purpose, so a class missing from this list would fail this test
+ * with `LogicException` rather than an unrecognized finding silently
  * disappearing from a real report — see FaultClassification's own docblock.
  *
  * @return list<SpecException>

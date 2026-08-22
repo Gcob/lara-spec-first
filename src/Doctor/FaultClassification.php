@@ -30,11 +30,15 @@ use LogicException;
  * three separate lists could otherwise drift out of sync on the day a
  * tenth — well, eleventh — exception is added.
  *
- * **`sectionOf()` has no `default` arm on purpose.** An exception this method
- * does not recognize throws `UnhandledMatchError` rather than silently
- * landing in the wrong section, or in none at all — a loud failure in a test
- * that pins every case beats a finding that quietly never appears anywhere in
- * a report, which is exactly the outcome rule 2 exists to forbid.
+ * **Both `match`es end in a `default` arm that throws, on purpose.** An
+ * exception neither method recognizes raises `LogicException` naming the class
+ * and the method rather than silently landing in the wrong section, or in none
+ * at all — a loud failure in a test that pins every case beats a finding that
+ * quietly never appears anywhere in a report, which is exactly the outcome rule
+ * 2 exists to forbid. A `default` naming what it did not know beats
+ * `UnhandledMatchError` for the same reason the messages in
+ * `Parsing\Exceptions\` are written the way they are: the failure is read by a
+ * person.
  *
  * The rule behind every `classOf()` branch: a document fault is one only its
  * author can fix — the document itself is broken, whatever this package

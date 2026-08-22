@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Generation;
 
+use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\OperationNotImplementedException;
 use Gcob\LaraSpecFirst\Http\Controllers\SpecController;
@@ -213,9 +214,7 @@ final readonly class ControllerEmitter
      */
     private function pointer(Operation $operation): string
     {
-        $escaped = str_replace(['~', '/'], ['~0', '~1'], $operation->path->template);
-
-        return '#/paths/'.$escaped.'/'.$operation->method->value;
+        return DocumentPointer::forOperation($operation);
     }
 
     /**

@@ -58,13 +58,69 @@ it('does not flag a literal path registered before the template that would have 
     expect($result->findings)->toBe([]);
 });
 
-it('does not flag two templated paths against each other', function (): void {
+// A later template with more segments than the earlier one can match is not
+// shadowed by it — the check answers what the compiler answers, not "both of
+// these are templated".
+it('does not flag a longer templated path the earlier one could never match', function (): void {
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
         doctorOperation(1, HttpMethod::Get, '/users/{id}/posts', 'listUserPosts'),
     ], 'App\\Http\\Generated', '/app/openapi.yaml');
 
     expect($result->findings)->toBe([]);
+});
+
+// The template-over-template case, and the worse half of shadowing: a
+// GitHub-style catch-all matches every two-segment GET, so everything written
+// after it at that depth is a whole resource that will never be reached — not
+// one endpoint. This used to be reported as clean, because the check skipped
+// any later operation whose own path was templated.
+it('flags an earlier catch-all template that shadows a later templated path', function (): void {
+    $result = RoutingOutcomeCheck::check([
+        doctorOperation(0, HttpMethod::Get, '/{owner}/{repo}', 'showRepository'),
+        doctorOperation(1, HttpMethod::Get, '/users/{id}', 'showUser'),
+    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+
+    expect($result->findings)->toHaveCount(1)
+        ->and($result->findings[0]->class)->toBe(FindingClass::DocumentFault)
+        ->and($result->findings[0]->message)->toContain('GET /{owner}/{repo}')
+        ->and($result->findings[0]->message)->toContain('GET /users/{id}')
+        ->and($result->findings[0]->message)->toContain('never be reached');
+});
+
+// A partial overlap is not shadowing, and saying so would be false: an earlier
+// `/users/{id}` swallows `/{a}/{b}` only for requests whose first segment is
+// `users`, and the second route answers every other value fine.
+it('does not flag a later template the earlier one only partly overlaps', function (): void {
+    $result = RoutingOutcomeCheck::check([
+        doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
+        doctorOperation(1, HttpMethod::Get, '/{owner}/{repo}', 'showRepository'),
+    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+
+    expect($result->findings)->toBe([]);
+});
+
+// The finding names the operation that loses, because that is the one a reader
+// has to move. Built through `DocumentPointer`, so this pointer and the one the
+// generated file's own source map carries are the same string.
+it('points at the operation that will never be reached', function (): void {
+    $result = RoutingOutcomeCheck::check([
+        doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
+        doctorOperation(1, HttpMethod::Get, '/users/me', 'showCurrentUser'),
+    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+
+    expect($result->findings[0]->pointer)->toBe('#/paths/~1users~1me/get');
+});
+
+// The trailing backslash a `generated.namespace` may be written with is trimmed
+// once, for the route target this section prints as much as for the planner.
+it('prints a route target with no doubled separator when the namespace is written with a trailing backslash', function (): void {
+    $result = RoutingOutcomeCheck::check([
+        doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
+    ], 'App\\Http\\Generated\\', '/app/openapi.yaml');
+
+    expect($result->routes[0]->target)->toBe('App\\Http\\Generated\\Controllers\\ShowUserController')
+        ->and($result->routes[0]->target)->not->toContain('\\\\');
 });
 
 it('does not flag a template and a literal that share no method', function (): void {

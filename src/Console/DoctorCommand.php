@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Console;
 
 use Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract;
-use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Doctor\Checks\DocumentValidityCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\DriftCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\InstallationCheck;
@@ -17,8 +16,10 @@ use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\ReportFormatter;
 use Gcob\LaraSpecFirst\Doctor\RouteOutcome;
+use Gcob\LaraSpecFirst\Doctor\SectionNote;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
+use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
@@ -89,7 +90,7 @@ final class DoctorCommand extends Command
             ...SupportMatrixCheck::deferred($outcome->document),
         ];
 
-        $routing = $this->routingOutcome($config, $outcome->operations, $specPath);
+        $routing = $this->routingOutcome($config, $outcome, $specPath);
         $findings = [...$findings, ...$routing['findings']];
 
         $findings = [...$findings, ...$this->installation($config)];
@@ -102,6 +103,7 @@ final class DoctorCommand extends Command
             $outcome->document?->version,
             $routing['routes'],
             $findings,
+            $routing['notes'],
         );
     }
 
@@ -112,10 +114,25 @@ final class DoctorCommand extends Command
      * generated tree's own location cannot be resolved at all: there is
      * nothing left for either section to compare against.
      *
-     * @param  list<Operation>  $operations
-     * @return array{routes: list<RouteOutcome>, findings: list<Finding>}
+     * **Drift needs one precondition more than Routing outcome does, and it is
+     * this method's to check.** A document the pipeline could not read in full
+     * yields fewer operations than it describes — none at all, when the parser
+     * refused it outright — so the plan built from it is legitimately short,
+     * and every generated file the plan no longer accounts for reads as
+     * something a build would prune. It would not: `spec:build` refuses the
+     * same document before writing anything. So one real fault became one real
+     * fault plus one false line per generated file, each of them stating an
+     * action that will not happen, with the line that matters scrolled off the
+     * top. Drift is the gap between a specification and a build that already
+     * happened; a specification that cannot be read is not one end of that gap.
+     *
+     * Said rather than silently dropped, per {@see DiagnosticReport::$notes}:
+     * a section that prints `clean` because it never ran is the same defect in
+     * the other direction.
+     *
+     * @return array{routes: list<RouteOutcome>, findings: list<Finding>, notes: array<string, SectionNote>}
      */
-    private function routingOutcome(Repository $config, array $operations, string $specPath): array
+    private function routingOutcome(Repository $config, ReadOutcome $read, string $specPath): array
     {
         try {
             $namespace = $this->requiredString($config, 'lara-spec-first.generated.namespace');
@@ -125,15 +142,41 @@ final class DoctorCommand extends Command
             return [
                 'routes' => [],
                 'findings' => [new Finding(FindingClass::PackageLimit, 'Routing outcome', null, '', $refusal->getMessage())],
+                'notes' => [
+                    'Drift' => SectionNote::notChecked(
+                        'the generated tree\'s own location could not be resolved, so there is nothing to '.
+                        'compare a build against. See Routing outcome.'
+                    ),
+                ],
             ];
         }
 
-        $outcome = RoutingOutcomeCheck::check($operations, $namespace, $specPath);
+        $outcome = RoutingOutcomeCheck::check($read->operations, $namespace, $specPath);
+
+        if (! $read->isClean()) {
+            return [
+                'routes' => $outcome->routes,
+                'findings' => $outcome->findings,
+                'notes' => [
+                    'Routing outcome' => SectionNote::narrowed(
+                        'only the operations that could be extracted are listed — the document carries at least '.
+                        'one fault, so this table may describe less than the specification does.'
+                    ),
+                    'Drift' => SectionNote::notChecked(
+                        'the document could not be read in full, and `spec:build` would refuse it before '.
+                        'writing anything, so nothing here would be written or pruned. Fix the faults above '.
+                        'and run the doctor again.'
+                    ),
+                ],
+            ];
+        }
+
         $driftFindings = DriftCheck::check($outcome->plan, dirname($locator->path()));
 
         return [
             'routes' => $outcome->routes,
             'findings' => [...$outcome->findings, ...$driftFindings],
+            'notes' => [],
         ];
     }
 

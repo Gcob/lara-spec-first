@@ -21,8 +21,11 @@ it is reported.
 > (`Rejected` constructs the reading pipeline already collects, `operationId` required on a `public` + `stable`
 > operation, and one summary line per `Deferred` construct actually present), [routing outcome](#what-it-checks)
 > (shadowing included), [drift](#what-it-checks), and [installation](#what-it-checks). `--json` ships alongside the text
-> report. **Not yet built:** the [lifecycle rules](./lifecycle.md#the-doctor-rules-that-follow) and the `security`
-> finding — see the [Roadmap](../project/roadmap.md) for both. Items marked `Open` below are undecided.
+> report. **Not yet built:** [security](#what-it-checks), the
+> [lifecycle rules](./lifecycle.md#the-doctor-rules-that-follow), [baseline](#what-it-checks) and
+> [drivers](#what-it-checks) — see the [Roadmap](../project/roadmap.md) for all four. Each of the four still prints,
+> with a `[not checked]` line saying what it does not diagnose, so a green exit is never read as covering them. Items
+> marked `Open` below are undecided.
 
 Rule 2 has an obvious failure mode. A package that reports every unhonored construct at boot is a package that shouts on
 every request, and a tool that shouts constantly gets its output filtered out — at which point the diagnostic exists and
@@ -63,6 +66,20 @@ first thing that reads a spec** — see the [Roadmap](../project/roadmap.md).
   adoption becomes a whack-a-mole loop.
 - **Every finding names the document position.** File, JSON pointer, and the
   [support level](./openapi-support.md#support-levels) that applies. A finding you cannot locate is a rumor.
+
+    **What Phase 1 actually carries, stated rather than promised.** The support level prints on every finding that has
+    one, in the text report and in `--json` both. The JSON pointer is filled by the sections that compute a finding here
+    and know the position exactly — the `operationId` rule, and shadowing, which points at the operation that will never
+    be reached. It is **empty** in two cases, and each is a property of the finding rather than a gap to fill later:
+
+    - **A finding translated out of a reading-pipeline fault.** Those exceptions carry their position in prose inside
+      the message, not as structured data — closing that means widening `Parsing\Exceptions\`, which is a change to what
+      the build refuses rather than to what the doctor reports.
+    - **A `Deferred` count.** One line stands for every occurrence of the construct, so naming one position would point
+      a reader at an arbitrary one and imply the rest are elsewhere.
+
+    A consumer parsing `--json` should read `pointer` as "empty or a pointer", never as "always present".
+
 - **It reports the outcome, not only the problems.** The resolved routing table — which routes will exist, in which
   order, mapped to which controller and method, and whether that controller exists — is the single most useful thing
   this command can print. Most runs will be clean, and a command that prints nothing on success teaches the developer
@@ -82,6 +99,18 @@ Centralizing every check in one command means that command needs a way to narrow
 Those two values do not partition the [sections below](#what-it-checks) — drift, installation and the baseline check
 fall under neither, and inventing a value per section would turn a filter into a second command. **Open:** whether
 `--check` names sections directly rather than naming two categories.
+
+**`--json` has two shapes, and a consumer needs both.** A run that produced a report emits the full object — `spec`,
+`specFileFound`, `version`, `configuration`, `routes`, `findings`, `notes`, `summary`. A refusal the command could not
+proceed past at all — an unset `spec.path`, an unusable setting — emits `{"error": "…"}` and nothing else, with exit
+code `1`. The two are deliberately not merged: a report with every section empty would claim the document was read and
+found clean, which is the opposite of what happened. Branch on the presence of `summary`, not on the exit code.
+
+**`notes` says what a run did not cover**, keyed by section, each entry carrying `checked` and `note`. `checked: false`
+is a section that did not run — its inputs were missing, or this release does not implement it — and the text report
+prints those as `[not checked]` and names them again under the summary. `checked: true` is a section that ran on less
+than it needed, and its findings stand. **This is the key to read before trusting a zero exit code**: zero means nothing
+in what ran is being dropped without a decision behind it, and `notes` is how you know what ran.
 
 The doctor takes no flag that lets it reach the network. It has no reason to: every remote reference is already
 [vendored locally](./remote-references.md#a-remote-reference-is-a-dependency-not-a-cache-entry), so a blocked or missing
@@ -103,10 +132,10 @@ A single command answering both questions only works if the report never blurs t
 "this package cannot honor your document" are different problems, with different owners, different fixes, and different
 urgency** — and a developer who cannot tell them apart at a glance will treat the whole report as noise.
 
-| Class              | Means                                                                                                                                           | Who fixes it                                                           | How                                                                                                                        |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **Document fault** | The document is not valid OpenAPI, or is internally inconsistent: schema violations, an unresolvable `$ref`, a path parameter declared nowhere. | The spec author.                                                       | Fix the document. There is no other option, and the package will not guess.                                                |
-| **Package limit**  | The document is correct. This package does not honor the construct.                                                                             | Us, eventually — it is a roadmap item, not a defect in their contract. | The consumer changes the spec, waits for support, or [acknowledges the limit](#acknowledged-limits-the-consumers-opt-out). |
+| Class              | Means                                                                                                                                                                                                                                                                                                             | Who fixes it                                                           | How                                                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Document fault** | The document is not valid OpenAPI, is internally inconsistent, or breaks a rule this package requires of a promise the document itself made: schema violations, an unresolvable `$ref`, a path parameter declared nowhere, an `operationId` missing from an operation that declared itself `public` and `stable`. | The spec author, or whoever owns the project's own configuration.      | Fix the document, the configuration, or run the build. There is no other option, and the package will not guess.           |
+| **Package limit**  | The document is correct. This package does not honor the construct.                                                                                                                                                                                                                                               | Us, eventually — it is a roadmap item, not a defect in their contract. | The consumer changes the spec, waits for support, or [acknowledges the limit](#acknowledged-limits-the-consumers-opt-out). |
 
 The distinction has to survive into the output, not just the prose here: separate sections, distinct labels, and
 **distinct exit codes**, so a CI pipeline can gate hard on document faults while treating package limits as a softer
@@ -119,24 +148,81 @@ yet is a fact about our schedule, not a defect worth failing a pipeline over.
 The rule that follows from this: **a package limit is never reported as if the consumer made a mistake.** They wrote a
 valid contract. We are the ones who cannot serve all of it yet, and the message says so.
 
+### The class is decided by who can fix it, not by whether the document parses
+
+The two-class model above was first written about the document alone, and three findings do not fit that reading: drift,
+installation, and `operationId` missing on a `public` + `stable` operation. None of the three is the document failing to
+parse, and none is this package refusing a construct it does not support either — so each was, for a while, filed as a
+document fault with an in-code comment apologizing for it. Three findings needing the same exemption is the model
+missing a case, not three sites each owing an argument.
+
+**Decided: the dividing line is who can fix it, and a document fault is anything only the project can.** That covers all
+three:
+
+- **`operationId` on `public` + `stable`.** The key is optional in OpenAPI, so the document is valid — but the document
+  made the promise, and this package publishes the rule that the promise requires an identity that survives a rename.
+  Only the author can add it. The finding still carries its `Partial`
+  [support level](./openapi-support.md#support-levels), which is what says the construct is honored when present.
+- **Drift.** The specification and the generated tree disagree. `spec:build` is the fix, and only the project can run
+  it.
+- **Installation.** The project's `generated.path`, `generated.namespace` and `composer.json` disagree with each other,
+  or its `.gitignore` excludes a directory its build depends on. Nothing in this package can settle any of that.
+
+A package limit stays what it always was: **the document is correct and we do not honor the construct.** That is the
+class whose message must never read as the consumer's mistake, and the narrowing above is what keeps the three findings
+that are the project's own problem out of it — where their softer exit code would have understated them.
+
 ## What it checks
 
-Provisional, and expected to grow one section per honored construct:
+Provisional, and expected to grow one section per honored construct.
 
-| Section           | Answers                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Configuration     | Are the spec files found and readable? Which allowlist and options are in effect?                                                                                                                                                                                                                                                                                                                                          |
-| Document validity | Is this valid OpenAPI? The parser does not answer this in its library API — see [parser caveats](./openapi-support.md#parser-caveats) — so the doctor owns it.                                                                                                                                                                                                                                                             |
-| Version           | Which version was detected, and which [strategy](./openapi-support.md#handling-30-and-31-the-version-strategy) will handle it.                                                                                                                                                                                                                                                                                             |
-| References        | Unresolved `$ref`, references blocked by the [allowlist](./remote-references.md), and **`$ref` cycles — checked before the document reaches the parser**, which exhausts memory on them rather than raising. See the [parser caveats](./openapi-support.md#parser-caveats).                                                                                                                                                |
-| Support findings  | Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position.                                                                                                                                                                                                                                                                                                                                    |
-| Routing outcome   | The routes that will be registered, in order, with their targets — plus shadowing, where an earlier templated path swallows a later literal one.                                                                                                                                                                                                                                                                           |
-| Security          | A `securitySchemes` name with no guard of the same name, a scheme type the [built-in middleware](./security.md#one-middleware-one-question-does-the-model-have-the-scope) cannot enforce at all, and an authenticated model missing the interface the middleware calls. Its own section rather than a line among others, because it is the one finding that can turn a documented-as-protected endpoint into a public one. |
-| Drift             | Whether the generated code still matches the specification. The runtime [cannot notice](./code-generation.md#the-runtime-never-sees-the-spec) that someone edited the spec and forgot to build, so this check is the only thing standing between that mistake and production.                                                                                                                                              |
-| Lifecycle         | The [`x-sunset` and `x-lifecycle` rules](./lifecycle.md#the-doctor-rules-that-follow), plus the coverage report: how many public operations are actually `stable`, and therefore how much of the API is protected at all.                                                                                                                                                                                                  |
-| Installation      | That the vendored directory is not gitignored, and that the generated path and namespace agree with what `composer` autoloads. Both are silent misconfigurations whose symptoms appear far from their cause.                                                                                                                                                                                                               |
-| Baseline          | Whether the specification's previously committed version can actually be read from git — reachable history, not a shallow clone, and the file itself tracked rather than gitignored. Without this, [breaking-change detection](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) silently compares against nothing and reports a clean run for the wrong reason.                                                |
-| Drivers           | For each [driver-based feature](./drivers.md): an unrecognized driver name, and a mapping missing a key its driver needs. Plus each feature's own structural rules, which the feature owns — for rate limiting, [429 declarations that disagree between operations](./rate-limiting.md#the-429-response-use-a-ref-and-the-reason-is-not-only-dry), since one mapping cannot serve two spellings of a header.               |
+**Every section in this table prints on every run, including the four this release does not check.** Security,
+Lifecycle, Baseline and Drivers have no inputs yet, so each prints a `[not checked]` line naming what it does not
+diagnose, and the summary names them again. A section absent from the report is one a green exit silently claims to have
+covered — and Security is the section this document itself calls "the one finding that can turn a
+documented-as-protected endpoint into a public one", so its absence is the least affordable of the four. The same
+mechanism carries a section skipped on _this_ run: drift is not checked when the document could not be read, because
+`spec:build` would refuse that document before writing anything, so nothing would be written or pruned.
+
+| Section           | Answers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Configuration     | Are the spec files found and readable? Which allowlist and options are in effect?                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Document validity | Is this valid OpenAPI? The parser does not answer this in its library API — see [parser caveats](./openapi-support.md#parser-caveats) — so the doctor owns it.                                                                                                                                                                                                                                                                                                                                                                        |
+| Version           | Which version was detected, and which [strategy](./openapi-support.md#handling-30-and-31-the-version-strategy) will handle it.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| References        | Unresolved `$ref`, references blocked by the [allowlist](./remote-references.md), and **`$ref` cycles — checked before the document reaches the parser**, which exhausts memory on them rather than raising. See the [parser caveats](./openapi-support.md#parser-caveats).                                                                                                                                                                                                                                                           |
+| Support findings  | Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position where the section computes the finding itself — see [the contract](#the-contract) for the two cases that carry no pointer, and why neither is a gap. `Deferred` constructs get one summary line each, naming a count rather than a position, because the level's own definition forbids one finding per occurrence.                                                                                                                            |
+| Routing outcome   | The routes that will be registered, in order, with their targets — plus shadowing, where an earlier templated path swallows a later one, literal or templated. **A stated limit: only a path swallowed _entirely_ is reported.** An earlier `/users/{id}` shadows a later `/{owner}/{repo}` for requests whose first segment is `users` and no others, and calling a route that answers every other value "never reached" would be false. Being unreachable for _some_ inputs is a different finding, and not one this section makes. |
+| Security          | A `securitySchemes` name with no guard of the same name, a scheme type the [built-in middleware](./security.md#one-middleware-one-question-does-the-model-have-the-scope) cannot enforce at all, and an authenticated model missing the interface the middleware calls. Its own section rather than a line among others, because it is the one finding that can turn a documented-as-protected endpoint into a public one.                                                                                                            |
+| Drift             | Whether the generated code still matches the specification. The runtime [cannot notice](./code-generation.md#the-runtime-never-sees-the-spec) that someone edited the spec and forgot to build, so this check is the only thing standing between that mistake and production.                                                                                                                                                                                                                                                         |
+| Lifecycle         | The [`x-sunset` and `x-lifecycle` rules](./lifecycle.md#the-doctor-rules-that-follow), plus the coverage report: how many public operations are actually `stable`, and therefore how much of the API is protected at all.                                                                                                                                                                                                                                                                                                             |
+| Installation      | That the vendored directory is not gitignored, and that the generated path and namespace agree with what `composer` autoloads. Both are silent misconfigurations whose symptoms appear far from their cause.                                                                                                                                                                                                                                                                                                                          |
+| Baseline          | Whether the specification's previously committed version can actually be read from git — reachable history, not a shallow clone, and the file itself tracked rather than gitignored. Without this, [breaking-change detection](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) silently compares against nothing and reports a clean run for the wrong reason.                                                                                                                                                           |
+| Drivers           | For each [driver-based feature](./drivers.md): an unrecognized driver name, and a mapping missing a key its driver needs. Plus each feature's own structural rules, which the feature owns — for rate limiting, [429 declarations that disagree between operations](./rate-limiting.md#the-429-response-use-a-ref-and-the-reason-is-not-only-dry), since one mapping cannot serve two spellings of a header.                                                                                                                          |
+
+## Running it in CI
+
+Two things a pipeline needs told, and neither is obvious from the exit code alone.
+
+**`git` has to be on the `PATH` for the installation check to run.** The vendored-directory check asks
+`git check-ignore` rather than reimplementing `.gitignore` resolution — see [stack.md](../project/stack.md) — and
+without a `git` executable it reports "cannot be determined", which is silence rather than a pass. A slim CI image that
+installs PHP and not git gets a report one check short. The report says so: the Installation section prints what it
+could not determine, and `--json`'s `notes` carries the same answer.
+
+**Exit code `2` is not a failure in the usual sense, and `spec:doctor || exit 1` treats it as one.** `2` means the
+document is correct and this package does not honor part of it — a roadmap item, not a defect in the contract. Whether
+that should stop a pipeline is a policy choice, and it has to be made deliberately:
+
+```sh
+# Gate on document faults only; report package limits without failing.
+php artisan spec:doctor; code=$?
+[ "$code" -eq 1 ] && exit 1
+[ "$code" -eq 2 ] && echo "::warning::spec:doctor reported package limits"
+exit 0
+```
+
+A team that wants both to fail writes `spec:doctor` on its own and lets any non-zero code through. What no team should
+write is a recipe that fails on `2` without having decided to — which is the reason the two codes are distinct at all.
 
 ## Open questions on the doctor
 

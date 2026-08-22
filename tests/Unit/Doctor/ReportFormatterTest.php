@@ -7,19 +7,84 @@ use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\ReportFormatter;
 use Gcob\LaraSpecFirst\Doctor\RouteOutcome;
+use Gcob\LaraSpecFirst\Doctor\SectionNote;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
 use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 
-it('names every section even when there is nothing to say in it', function (): void {
+// Every section in doctor.md's own table, in its order — including the four
+// this release does not check. A section absent from the report is one a green
+// exit silently claims to have covered.
+it('names every section even when there is nothing to say in it', function (string $section): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], []);
+
+    expect((new ReportFormatter)->toText($report))->toContain($section);
+})->with([
+    'Configuration',
+    'Document validity',
+    'Version',
+    'References',
+    'Support findings',
+    'Routing outcome',
+    'Security',
+    'Drift',
+    'Lifecycle',
+    'Installation',
+    'Baseline',
+    'Drivers',
+]);
+
+it('prints clean and a clean summary when every built section had nothing to say', function (): void {
     $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], []);
     $text = (new ReportFormatter)->toText($report);
 
-    expect($text)->toContain('Document validity')
-        ->and($text)->toContain('References')
-        ->and($text)->toContain('Routing outcome')
-        ->and($text)->toContain('Drift')
-        ->and($text)->toContain('clean')
+    expect($text)->toContain('clean')
         ->and($text)->toContain('Clean.');
+});
+
+// `clean` is a claim, so a section carrying a note never makes it: printing
+// both would say two different things about the same section.
+it('prints a note instead of clean, and never both', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], [], [
+        'Drift' => SectionNote::notChecked('the document could not be read'),
+    ]);
+    $text = (new ReportFormatter)->toText($report);
+
+    expect($text)->toContain('[not checked] the document could not be read')
+        ->and($text)->not->toContain("Drift\n  clean");
+});
+
+// A section that ran on less than it needed is badged differently and left out
+// of the summary's uncovered list: its findings stand.
+it('badges a narrowed section as a note rather than as unchecked', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], [], [
+        'Routing outcome' => SectionNote::narrowed('only what could be extracted is listed'),
+    ]);
+    $text = (new ReportFormatter)->toText($report);
+
+    expect($text)->toContain('[note] only what could be extracted is listed')
+        ->and($text)->not->toContain('[not checked] only what could be extracted')
+        ->and($text)->not->toContain('Not covered by this run: Routing outcome');
+});
+
+// doctor.md's own rule about the exit code: a green exit is never mistaken for
+// a full pass, so the summary line — the one a person skims and a CI log tails
+// — names what did not run.
+it('names the sections that did not run under the summary, on a clean report too', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], []);
+
+    expect((new ReportFormatter)->toText($report))
+        ->toContain('Not covered by this run: Security, Lifecycle, Baseline, Drivers');
+});
+
+// The level used to be dropped here and survive only in `--json`, so the one
+// document fault that carries a level printed without the level that motivates
+// it, while doctor.md promises the level on every finding.
+it('prints the support level on a document fault that carries one', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', null, [], [
+        new Finding(FindingClass::DocumentFault, 'Support findings', SupportLevel::Partial, '', 'no operationId'),
+    ]);
+
+    expect((new ReportFormatter)->toText($report))->toContain('[document fault: partial] no operationId');
 });
 
 it('shows the resolved configuration', function (): void {
@@ -131,4 +196,26 @@ it('encodes the resolved routing table', function (): void {
         'target' => 'App\\Http\\Controllers\\ShowUserController',
         'routesToCustomController' => true,
     ]]);
+});
+
+it('encodes every note, with checked telling a skipped section from a narrowed one', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], [], [
+        'Routing outcome' => SectionNote::narrowed('partial table'),
+        'Drift' => SectionNote::notChecked('nothing to compare'),
+    ]);
+    $decoded = json_decode((new ReportFormatter)->toJson($report), true);
+
+    expect($decoded['notes']['Routing outcome'])->toBe(['checked' => true, 'note' => 'partial table'])
+        ->and($decoded['notes']['Drift'])->toBe(['checked' => false, 'note' => 'nothing to compare'])
+        // The four this release never checks are in there too, so a consumer
+        // reading `notes` learns the exit code's whole scope from one key.
+        ->and($decoded['notes']['Security']['checked'])->toBeFalse()
+        ->and(array_keys($decoded['notes']))->toBe([
+            'Routing outcome',
+            'Security',
+            'Drift',
+            'Lifecycle',
+            'Baseline',
+            'Drivers',
+        ]);
 });

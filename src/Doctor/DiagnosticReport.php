@@ -19,6 +19,15 @@ final readonly class DiagnosticReport
      * @param  list<string>  $allowedHosts  the effective `remote_references.allowed_hosts`
      * @param  list<RouteOutcome>  $routes  every route the build would register, in document order
      * @param  list<Finding>  $findings  every finding from every section, in the order sections run
+     * @param  array<string, SectionNote>  $notes  section => what this run could not check
+     *                                             there, or what narrows what it did. A
+     *                                             section whose inputs were missing on
+     *                                             *this* run — the document could not be
+     *                                             read, so drift has nothing to compare —
+     *                                             is named here; a section this release
+     *                                             never checks is named in
+     *                                             {@see self::notBuilt()} instead, since
+     *                                             that answer does not depend on the run.
      */
     public function __construct(
         public string $specPath,
@@ -28,7 +37,84 @@ final readonly class DiagnosticReport
         public ?SpecVersion $version,
         public array $routes,
         public array $findings,
+        public array $notes = [],
     ) {}
+
+    /**
+     * Sections this release does not check at all, and why — the four
+     * docs/guide/doctor.md lists that have no inputs yet.
+     *
+     * **Held here rather than in the formatter, because `--json` owes a
+     * consumer the same answer the text report gives.** A section absent from
+     * both is a section a green exit silently claims to have covered, which is
+     * the one property the exit code rests on: doctor.md's own rule is that
+     * "the report says which checks were skipped, on every run, so a green
+     * exit is never mistaken for a full pass".
+     *
+     * A method rather than a constant because a class constant cannot hold an
+     * object.
+     *
+     * @return array<string, SectionNote>
+     *
+     * @see docs/guide/doctor.md — "What it checks"
+     */
+    private static function notBuilt(): array
+    {
+        return [
+            'Security' => SectionNote::notChecked(
+                'not built yet — a `securitySchemes` name with no guard behind it, or a scheme type the '.
+                'middleware cannot enforce, is not diagnosed by this release. See docs/guide/security.md and '.
+                'docs/project/roadmap.md.'
+            ),
+            'Lifecycle' => SectionNote::notChecked(
+                'not built yet — the `x-sunset` and `x-lifecycle` rules are not diagnosed by this release. See '.
+                'docs/guide/lifecycle.md and docs/project/roadmap.md.'
+            ),
+            'Baseline' => SectionNote::notChecked(
+                'not built yet — whether the previously committed specification can be read from git is not '.
+                'diagnosed by this release. See docs/project/roadmap.md.'
+            ),
+            'Drivers' => SectionNote::notChecked(
+                'not built yet — driver names and their mappings are not diagnosed by this release. See '.
+                'docs/guide/drivers.md and docs/project/roadmap.md.'
+            ),
+        ];
+    }
+
+    /**
+     * What this report has to say about a section beyond its findings, or null
+     * when there is nothing to add.
+     *
+     * A run-specific note wins over the standing "not built yet" one: if a
+     * section is both unbuilt and could not have run anyway, the reason
+     * belonging to *this* run is the more useful of the two.
+     */
+    public function noteFor(string $section): ?SectionNote
+    {
+        return $this->notes[$section] ?? self::notBuilt()[$section] ?? null;
+    }
+
+    /**
+     * Every section this report has a note for, in the order the sections
+     * themselves run.
+     *
+     * @param  list<string>  $sectionOrder
+     * @return array<string, SectionNote>
+     */
+    public function notesInOrder(array $sectionOrder): array
+    {
+        $notes = [];
+
+        foreach ($sectionOrder as $section) {
+            $note = $this->noteFor($section);
+
+            if ($note !== null) {
+                $notes[$section] = $note;
+            }
+        }
+
+        return $notes;
+    }
 
     /**
      * Clean means the exit code is zero — see {@see self::exitCode()} for

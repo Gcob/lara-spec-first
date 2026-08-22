@@ -14,11 +14,21 @@ namespace Gcob\LaraSpecFirst\Doctor;
  *
  * **Section order is fixed**, matching the table in
  * docs/guide/doctor.md#what-it-checks: Configuration, Document validity,
- * Version, References, Support findings, Routing outcome, Drift,
- * Installation. A section with nothing to say still prints, because a
- * command that prints nothing on success teaches a developer nothing about
- * what the spec actually did — the same reasoning doctor.md gives for
- * reporting the outcome, not only the problems.
+ * Version, References, Support findings, Routing outcome, Security, Drift,
+ * Lifecycle, Installation, Baseline, Drivers. A section with nothing to say
+ * still prints, because a command that prints nothing on success teaches a
+ * developer nothing about what the spec actually did — the same reasoning
+ * doctor.md gives for reporting the outcome, not only the problems.
+ *
+ * **Every section prints, including the four this release does not check.**
+ * A section absent from the report is one a green exit silently claims to
+ * have covered — and the four that are absent today are not minor ones:
+ * doctor.md calls Security "the one finding that can turn a
+ * documented-as-protected endpoint into a public one". So each prints its
+ * note instead of `clean`, from {@see DiagnosticReport::noteFor()}, which is
+ * also where a section skipped on *this* run says so. That is doctor.md's own
+ * rule about the exit code: the report says which checks were skipped, on
+ * every run, so a green exit is never mistaken for a full pass.
  */
 final readonly class ReportFormatter
 {
@@ -31,8 +41,12 @@ final readonly class ReportFormatter
         'References',
         'Support findings',
         'Routing outcome',
+        'Security',
         'Drift',
+        'Lifecycle',
         'Installation',
+        'Baseline',
+        'Drivers',
     ];
 
     /**
@@ -63,6 +77,16 @@ final readonly class ReportFormatter
                 'pointer' => $finding->pointer,
                 'message' => $finding->message,
             ], $report->findings),
+            // Named `notes` rather than `skipped` because it carries both: a
+            // section this release never checks, and a section whose inputs
+            // this run did not have. A consumer gating on the exit code needs
+            // to be able to tell what that code covered, and a key that is
+            // present only sometimes is a key nobody discovers until it is —
+            // so it is always emitted, empty object included.
+            'notes' => array_map(static fn (SectionNote $note): array => [
+                'checked' => $note->checked,
+                'note' => $note->note,
+            ], $report->notesInOrder(self::SECTION_ORDER)),
             'summary' => [
                 'exitCode' => $report->exitCode(),
                 'clean' => $report->isClean(),
@@ -83,11 +107,18 @@ final readonly class ReportFormatter
         $lines[] = '';
 
         $lines[] = 'Version';
-        $lines[] = '  '.($report->version->value ?? '(unknown — see Document validity)');
+        // Written as an explicit null check rather than `->value ?? …`: both
+        // properties this report reads that way are declared nullable, and
+        // `??`'s isset semantics quietly answer the question instead of asking
+        // it. `?->` on the left of `??` is redundant enough that PHPStan
+        // refuses it, so the comparison is the one spelling that states the
+        // nullability and passes level 8.
+        $lines[] = '  '.($report->version === null ? '(unknown — see Document validity)' : $report->version->value);
         $lines[] = '';
 
         foreach (self::SECTION_ORDER as $section) {
             $findings = self::findingsIn($report, $section);
+            $note = $report->noteFor($section);
 
             $lines[] = $section;
 
@@ -98,14 +129,20 @@ final readonly class ReportFormatter
                 array_push($lines, ...self::routes($report));
             }
 
-            if ($findings === []) {
-                if ($section !== 'Routing outcome' || $report->routes === []) {
-                    $lines[] = '  clean';
-                }
-            } else {
-                foreach ($findings as $finding) {
-                    $lines[] = '  '.self::badge($finding).' '.$finding->message;
-                }
+            foreach ($findings as $finding) {
+                $lines[] = '  '.self::badge($finding).' '.$finding->message;
+            }
+
+            if ($note !== null) {
+                $lines[] = '  '.($note->checked ? '[note]' : '[not checked]').' '.$note->note;
+            }
+
+            // `clean` is a claim, so it is only made when the section actually
+            // ran and found nothing. A section carrying a note either did not
+            // run or ran on less than it needed, and printing both would say
+            // two different things about the same section.
+            if ($findings === [] && $note === null && ($section !== 'Routing outcome' || $report->routes === [])) {
+                $lines[] = '  clean';
             }
 
             $lines[] = '';
@@ -158,9 +195,19 @@ final readonly class ReportFormatter
             return '[deferred]';
         }
 
+        // The level prints on a document fault too when there is one. It used
+        // to be dropped here and survive only in `--json`, which made the
+        // `operationId` finding — the one document fault that carries a level —
+        // print without the `Partial` that motivates it, while doctor.md
+        // promises the level on every finding.
         return match ($finding->class) {
-            FindingClass::DocumentFault => '[document fault]',
-            FindingClass::PackageLimit => sprintf('[package limit: %s]', $finding->level->value ?? 'n/a'),
+            FindingClass::DocumentFault => $finding->level === null
+                ? '[document fault]'
+                : sprintf('[document fault: %s]', $finding->level->value),
+            FindingClass::PackageLimit => sprintf(
+                '[package limit: %s]',
+                $finding->level === null ? 'n/a' : $finding->level->value,
+            ),
         };
     }
 
@@ -172,12 +219,12 @@ final readonly class ReportFormatter
         ));
 
         if ($report->isClean()) {
-            return $deferred === 0
+            return self::withUncheckedSections($report, $deferred === 0
                 ? 'Clean. Nothing here is being dropped without a decision behind it.'
                 : sprintf(
                     'Clean. %d deferred item(s) above are a fact about this package\'s roadmap, not a reason to fail.',
                     $deferred,
-                );
+                ));
         }
 
         // Deferred findings are excluded from both counts below, the same
@@ -190,10 +237,41 @@ final readonly class ReportFormatter
         ));
         $limits = count($report->findings) - $faults - $deferred;
 
-        return sprintf(
+        return self::withUncheckedSections($report, sprintf(
             '%d document fault(s), %d package limit(s).',
             $faults,
             $limits,
+        ));
+    }
+
+    /**
+     * The summary line, followed by the sections this run did not cover.
+     *
+     * **The exit code's scope, on the line a reader actually reads.** Every
+     * unchecked section already prints its own note above, but the summary is
+     * the line a person skims and a CI log tails — and `Clean.` on its own,
+     * from a run that never looked at Security, is the sentence doctor.md
+     * forbids: a green exit mistaken for a full pass.
+     */
+    private static function withUncheckedSections(DiagnosticReport $report, string $summary): string
+    {
+        // Only the sections that did not run at all. A section that ran on a
+        // partial document carries real findings, and naming it "not covered"
+        // beside them would understate what it did find — which is why
+        // {@see SectionNote} carries the distinction rather than one string
+        // having to imply it.
+        $sections = array_keys(array_filter(
+            $report->notesInOrder(self::SECTION_ORDER),
+            static fn (SectionNote $note): bool => ! $note->checked,
+        ));
+
+        if ($sections === []) {
+            return $summary;
+        }
+
+        return $summary."\n".sprintf(
+            'Not covered by this run: %s. See the [not checked] line in each.',
+            implode(', ', $sections),
         );
     }
 }

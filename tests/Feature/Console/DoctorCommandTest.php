@@ -192,3 +192,142 @@ it('emits a parseable JSON error, not prose, when --json is combined with a refu
         ->and($decoded)->toBeArray()
         ->and($decoded['error'])->toBeString();
 });
+
+// --- A document the pipeline could not read is not drift ---
+
+/**
+ * A generated tree that exists and holds files, unlike {@see doctorTree()} —
+ * Drift's own preconditions are what these tests are about, so "a build already
+ * happened" has to be a real state on disk rather than an assumption.
+ */
+function builtDoctorTree(): string
+{
+    static $tree = null;
+
+    return $tree ??= base_path('app/LsfDoctorBuilt'.bin2hex(random_bytes(6)));
+}
+
+function writeBuiltDoctorTree(): void
+{
+    @mkdir(builtDoctorTree().'/Controllers', 0o777, true);
+    file_put_contents(builtDoctorTree().'/routes.php', "<?php\n");
+    file_put_contents(builtDoctorTree().'/Controllers/StaleController.php', "<?php\n");
+
+    // Both, and matching each other: Installation compares the two, so a tree
+    // moved without its namespace would add an Installation finding these
+    // tests would then have to count around.
+    config()->set(GeneratedRoutesLocator::SETTING, builtDoctorTree());
+    config()->set('lara-spec-first.generated.namespace', 'App\\'.basename(builtDoctorTree()));
+}
+
+afterAll(function (): void {
+    exec('rm -rf '.escapeshellarg(builtDoctorTree()));
+});
+
+// One real fault used to become one real fault plus one false line per
+// generated file — each of them stating that a build would prune the file,
+// which is not true: `spec:build` refuses the same document before writing
+// anything. And the line that mattered scrolled off the top.
+it('does not report the generated tree as stale when the document could not be read', function (): void {
+    writeBuiltDoctorTree();
+    config()->set('lara-spec-first.spec.path', specFixturePath('cycle-pointer.yaml'));
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(1)
+        ->and($text)->toContain('closes a cycle')
+        ->and($text)->not->toContain('would prune it')
+        ->and($text)->not->toContain('has drifted')
+        // One fault in, one fault out.
+        ->and(substr_count($text, '[document fault'))->toBe(1);
+});
+
+// Silence would be the same defect in the other direction: a section that
+// prints `clean` because it never ran.
+it('says drift was not checked rather than printing clean, when the document could not be read', function (): void {
+    writeBuiltDoctorTree();
+    config()->set('lara-spec-first.spec.path', specFixturePath('cycle-pointer.yaml'));
+
+    [, $text] = doctor();
+
+    expect($text)->toContain('[not checked]')
+        ->and($text)->toContain('would refuse it before writing anything')
+        ->and($text)->toContain('Not covered by this run:')
+        ->and($text)->toContain('Drift');
+});
+
+// The routing table still prints — it is the outcome, and the operations it
+// lists are real — but it says what narrows it, since a partial table beside
+// the faults that narrowed it is the one way this report can mislead.
+it('says the routing table is partial when the document carries a fault', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('multiple-faults.yaml'));
+
+    [, $text] = doctor();
+
+    expect($text)->toContain('[note] only the operations that could be extracted are listed');
+});
+
+it('still checks drift on a clean document', function (): void {
+    writeBuiltDoctorTree();
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(1)
+        ->and($text)->toContain('has drifted')
+        ->and($text)->not->toContain('[not checked] the document could not be read');
+});
+
+// --- A raw document whose nodes have the wrong type ---
+
+// The one input class this command exists for. It used to die here with an
+// `ErrorException` and a stack trace, in a section reading the raw array after
+// the sections that had already reported everything they could.
+it('reports a document with wrong-typed nodes instead of dying on it', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('wrong-typed-nodes.yaml'));
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBeIn([0, 1, 2])
+        ->and($text)->toContain('Support findings')
+        ->and($text)->not->toContain('ErrorException')
+        ->and($text)->not->toContain('foreach()');
+});
+
+// --- What a green exit covers, said on every run ---
+
+it('names the sections it does not check, even on a clean contract', function (): void {
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(0)
+        ->and($text)->toContain('Security')
+        ->and($text)->toContain('Lifecycle')
+        ->and($text)->toContain('Baseline')
+        ->and($text)->toContain('Drivers')
+        ->and($text)->toContain('Not covered by this run: Security, Lifecycle, Baseline, Drivers');
+});
+
+it('carries the same answer in --json, with checked telling the two kinds apart', function (): void {
+    writeBuiltDoctorTree();
+    config()->set('lara-spec-first.spec.path', specFixturePath('multiple-faults.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:doctor', ['--json' => true], $output);
+    $decoded = json_decode($output->fetch(), true);
+
+    expect($decoded['notes'])->toBeArray()
+        ->and($decoded['notes']['Security']['checked'])->toBeFalse()
+        ->and($decoded['notes']['Drift']['checked'])->toBeFalse()
+        ->and($decoded['notes']['Routing outcome']['checked'])->toBeTrue()
+        ->and($decoded['notes']['Drift']['note'])->toBeString();
+});
+
+// The `Partial` level used to survive only in `--json`, so the one document
+// fault that carries a level printed without the level that motivates it.
+it('prints the support level on a document fault that has one', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('promised-without-an-id.yaml'));
+
+    [, $text] = doctor();
+
+    expect($text)->toContain('[document fault: partial]')
+        ->and($text)->toContain('declares no operationId');
+});

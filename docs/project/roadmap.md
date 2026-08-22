@@ -79,8 +79,10 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
       as well as the problems — the resolved routing table prints even on a clean run — and never mixes a document fault
       with a package limit in one exit code. See [the doctor](../guide/doctor.md) and its item below.
 - [x] **The architecture assertions.** The parser is contained to `Parsing\`, `Contract\` is forbidden from knowing
-      anything about the layer that produced it, and `Routing\` may reach neither `Parsing\` nor the YAML decoder. All
-      three are Pest `arch()` tests rather than conventions to remember.
+      anything about the layer that produced it, `Routing\` may reach neither `Parsing\` nor the YAML decoder, and
+      `Doctor\` may not write a file at all — the read-only guarantee the doctor's own docblock claims, asserted rather
+      than assumed, along with the direction of its dependencies. All of them are Pest `arch()` tests rather than
+      conventions to remember.
 
 ### What does not exist yet
 
@@ -243,14 +245,17 @@ the code, and a gap in it is loud.
       is what makes "the spec is the source of truth" verifiable rather than asserted. See
       [the doctor](../guide/doctor.md). Shipped in its Phase 1 form: configuration, document validity, version,
       references, support findings, routing outcome, drift and installation — the eight sections whose inputs already
-      existed. Routing outcome includes shadowing, where an earlier templated path would match every request a later
-      literal one was meant to answer; `GeneratedTree` gained a read-only `diff()` beside `write()` so Drift compares
-      against the exact same logic a build would apply rather than a second implementation of it. The two kinds of
-      finding stay distinct in the exit code — `0` clean, `1` a document fault, `2` a package limit with no document
-      fault alongside it — with `Deferred` excluded from both, however many of them a real document carries: a construct
-      the roadmap has not built yet must never fail a pipeline over it. `--json` ships alongside the text report in this
-      same release rather than after it. The lifecycle rules and the `security` finding are their own items below, not
-      this one.
+      existed. The four that do not — security, lifecycle, baseline and drivers — still print, each with a
+      `[not checked]` line naming what it does not diagnose, so a zero exit is never read as covering them. Routing
+      outcome includes shadowing, where an earlier templated path would match every request a later one was meant to
+      answer, literal or templated — a `GET /{owner}/{repo}` written first swallows every two-segment GET after it,
+      which is the shape real specifications make this mistake in; `GeneratedTree` gained a read-only `diff()` beside
+      `write()` so Drift compares against the exact same logic a build would apply rather than a second implementation
+      of it. The two kinds of finding stay distinct in the exit code — `0` clean, `1` a document fault, `2` a package
+      limit with no document fault alongside it — with `Deferred` excluded from both, however many of them a real
+      document carries: a construct the roadmap has not built yet must never fail a pipeline over it. `--json` ships
+      alongside the text report in this same release rather than after it. The lifecycle rules and the `security`
+      finding are their own items below, not this one.
 - [ ] **The lifecycle rules in the doctor.** `deprecated: true` requiring `x-sunset`, a sunset in the past or
       approaching, an unrecognized `x-lifecycle` value, the `beta` listing, and the protection report counting how many
       _public_ operations are actually `stable`. The data these rules read is [already extracted](#what-runs); what is

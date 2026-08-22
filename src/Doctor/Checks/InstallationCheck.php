@@ -15,13 +15,23 @@ use Gcob\LaraSpecFirst\Support\Path;
  * generated path or namespace that does not agree with what Composer
  * actually autoloads.
  *
- * Both findings are filed as document faults for the same reason drift is:
- * neither is really the document's fault or a stance this package takes on
- * it, but the two `FindingClass` cases exist to decide how hard the exit
- * code gates a pipeline, and an installation that silently drops files or
- * cannot autoload what it just generated wants the harder of the two.
+ * Both findings are filed as document faults, and docs/guide/doctor.md's own
+ * table is what makes that the right class rather than an exemption argued
+ * here: a document fault is a fault only the project can fix, which includes
+ * a rule this package requires of a promise the project itself made. Neither
+ * of these is the document being invalid OpenAPI, and neither is a stance this
+ * package takes on an otherwise-correct document — they are the project's own
+ * configuration disagreeing with itself, which nobody but the project can
+ * settle, and which wants the harder of the two exit codes.
+ *
+ * **Neither finding is ever raised on an inference this class cannot make.**
+ * That rule is the whole design of both methods below, and each names the
+ * cases it stays silent about — a false positive in this section sends a
+ * developer looking for a misconfiguration that is not there, in a report
+ * whose only value is that a reader trusts it.
  *
  * @see docs/guide/doctor.md — "What it checks"
+ * @see docs/guide/doctor.md — "Two kinds of finding, never mixed"
  */
 final readonly class InstallationCheck
 {
@@ -78,7 +88,15 @@ final readonly class InstallationCheck
             escapeshellarg($absoluteVendorPath),
         );
 
-        exec($command.' 2>/dev/null', result_code: $exitCode);
+        // `exec()`'s own output parameter rather than a `2>/dev/null` appended
+        // to the command string: that redirect is not `cmd.exe` syntax, so on
+        // Windows the call itself failed and its non-zero exit read as "cannot
+        // tell" — a check that silently never fires on a platform this
+        // codebase already takes care over elsewhere (see
+        // `ReadsTheContract::specPath()` and its `C:\specs\api.yaml` case).
+        // Captured into a variable nothing reads, because the point was only
+        // ever to keep git's own chatter off the report.
+        exec($command, $ignoredOutput, $exitCode);
 
         // 0 = ignored, 1 = not ignored, anything else (128: not a repository
         // after all; 127: no `git` on the PATH) is "cannot tell" rather than
@@ -108,9 +126,46 @@ final readonly class InstallationCheck
      * agree with what Composer's own PSR-4 map says — the same question
      * {@see CustomControllerLookup} answers
      * for a single class, asked here of the generated tree's root instead.
+     *
+     * **`autoload-dev` counts.** Composer merges both maps into one
+     * classloader, so a project whose generated tree lives under a dev-only
+     * root — this package's own Workbench is one, and so is any consumer that
+     * generates into a test or tooling namespace — autoloads perfectly well
+     * while `autoload.psr-4` alone maps nothing. Reading one map and claiming
+     * "nothing would autoload the generated tree at all" was wrong about a
+     * layout Composer supports, in the loudest class of finding this report
+     * has.
+     *
+     * **"Cannot be determined" is never a finding here either**, the same rule
+     * {@see self::gitignoreFinding()} follows and for the same reason. Two
+     * cases, and both are real layouts rather than mistakes:
+     *
+     * - **A `generated.path` that is absolute and outside the application
+     *   root.** `GeneratedRoutesLocator::directory()` supports that
+     *   deliberately — "a generated tree outside the application root is a
+     *   real layout in a monorepo" — and this method has no way to know which
+     *   `composer.json` governs a directory outside the one it is reading.
+     *   Comparing an out-of-tree absolute path against a relative PSR-4
+     *   directory can only ever mismatch, so it said "would not autoload"
+     *   about every monorepo that does exactly what the locator documents.
+     * - **No `composer.json` at `$basePath`, or one that parses to something
+     *   else.** Already handled below, and named here because it is the same
+     *   rule.
+     *
+     * The consequence is stated rather than hidden: on those layouts this
+     * check is silent, and silence is not a pass. That is what the section's
+     * `[note]` line is for once this method has a way to say it — see
+     * docs/guide/doctor.md.
      */
     private static function autoloadFinding(string $basePath, string $namespace, string $path): ?Finding
     {
+        // Asked before the map is even read, because the answer does not
+        // depend on it: nothing in this `composer.json` describes a directory
+        // that is not under it.
+        if (Path::isAbsolute($path) && ! self::isUnder($basePath, $path)) {
+            return null;
+        }
+
         $composerJsonPath = $basePath.'/composer.json';
 
         if (! is_file($composerJsonPath)) {
@@ -123,10 +178,9 @@ final readonly class InstallationCheck
             return null;
         }
 
-        /** @var mixed $psr4 */
-        $psr4 = $decoded['autoload']['psr-4'] ?? null;
+        $psr4 = self::psr4Map($decoded);
 
-        if (! is_array($psr4)) {
+        if ($psr4 === []) {
             return null;
         }
 
@@ -140,8 +194,8 @@ final readonly class InstallationCheck
                 null,
                 '',
                 sprintf(
-                    'generated.namespace is "%s", but no `autoload.psr-4` prefix in composer.json maps it — '.
-                    'nothing would autoload the generated tree at all.',
+                    'generated.namespace is "%s", but no `autoload.psr-4` or `autoload-dev.psr-4` prefix in '.
+                    'composer.json maps it — nothing would autoload the generated tree at all.',
                     $namespace,
                 ),
             );
@@ -173,6 +227,45 @@ final readonly class InstallationCheck
                 $expected,
             ),
         );
+    }
+
+    /**
+     * Both PSR-4 maps `composer.json` can carry, merged the way Composer
+     * merges them into one classloader.
+     *
+     * `autoload` wins on a prefix both declare — which is Composer's own
+     * order — though a project declaring the same prefix in both is already
+     * saying something odd.
+     *
+     * @param  array<array-key, mixed>  $composerJson
+     * @return array<array-key, mixed>
+     */
+    private static function psr4Map(array $composerJson): array
+    {
+        /** @var mixed $production */
+        $production = $composerJson['autoload']['psr-4'] ?? null;
+        /** @var mixed $development */
+        $development = $composerJson['autoload-dev']['psr-4'] ?? null;
+
+        return [
+            ...is_array($development) ? $development : [],
+            ...is_array($production) ? $production : [],
+        ];
+    }
+
+    /**
+     * Whether an absolute path sits inside `$basePath`.
+     *
+     * Compared as strings after normalizing separators, not through
+     * `realpath()`: the generated tree may not exist yet — a fresh clone that
+     * has never built is the common case — and `realpath()` answers false for
+     * a path that is merely not there, which would read as "outside".
+     */
+    private static function isUnder(string $basePath, string $path): bool
+    {
+        $base = rtrim(str_replace('\\', '/', $basePath), '/').'/';
+
+        return str_starts_with(str_replace('\\', '/', $path), $base);
     }
 
     /**

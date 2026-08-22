@@ -1,0 +1,15 @@
+# An operation that promises `public` and `stable` and declares no
+# `operationId`. Valid OpenAPI — the key is optional — but the promise is the
+# one case this package requires an identity for, so it is the single document
+# fault in the report that carries a support level of its own.
+openapi: 3.0.3
+info:
+    title: Promised without an id
+    version: 1.0.0
+paths:
+    /users:
+        get:
+            x-audience: public
+            x-lifecycle: stable
+            responses:
+                '200': { description: OK }
