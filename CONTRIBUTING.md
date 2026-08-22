@@ -225,6 +225,21 @@ the commands are in [`docs/contributing/documentation.md`](./docs/contributing/d
 [formatting](./docs/contributing/documentation.md#formatting) and
 [the documentation site](./docs/contributing/documentation.md#the-documentation-site).
 
+### What CI runs on your pull request
+
+`.github/workflows/tests.yml` runs those same three commands on GitHub, across PHP 8.3 / 8.4 / 8.5 x Laravel 12 / 13,
+plus the lowest-supported-dependency run that `composer check:lowest` performs locally. Every job reports on its own, so
+a failure names the cell it belongs to.
+
+They then feed one `All checks passed` job, which is the job **meant to be marked required** on `main`. Whether it
+actually blocks a merge is a repository setting rather than anything the workflow decides: until a maintainer requires
+it under Settings > Branches, a red run is a red run and merging is still allowed. Either way the suite runs, and it
+carries no `paths` filter, so it reports on every pull request including one that only touches Markdown. A required
+check that is filtered out never reports, and a pull request waiting on a check that never reports cannot be merged at
+all.
+
+Nothing about it replaces `composer check`. A local run costs seconds; a red matrix costs a round trip.
+
 A few expectations:
 
 - **New behavior needs a test.** Bug fixes should include a test that fails before your change.

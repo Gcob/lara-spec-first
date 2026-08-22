@@ -1,0 +1,184 @@
+name: Tests
+
+# Runs the check suite on every pull request, and on every push to the default
+# branch.
+#
+# This is the workflow branch protection makes required, which is why it carries
+# no `paths` filter: a required check that is filtered out never reports, and a
+# check that never reports blocks the pull request forever rather than passing it.
+# Every pull request runs it, including one that only touches Markdown.
+#
+# The suite runs WITHOUT Docker, across the matrix `stack.md` publishes. The
+# container is a contributor convenience; what CI verifies is the native path,
+# because that is the one a consumer's application uses.
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+# A pull request cancels its own previous run: the only result that matters is
+# the one for the head commit. Pushes to the default branch are not cancelled:
+# each one is a commit somebody will bisect to later.
+concurrency:
+    group: tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+    test:
+        name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}
+        runs-on: ubuntu-latest
+
+        strategy:
+            # Every cell reports. Stopping the matrix at the first red one hides
+            # whether the failure belongs to one PHP version or to all of them,
+            # which is the first question anyone asks.
+            fail-fast: false
+            matrix:
+                php: ["8.3", "8.4", "8.5"]
+                laravel: ["12", "13"]
+                # No `exclude` block: all six combinations are valid, which is what
+                # the PHP 8.3 floor buys. Testbench tracks Laravel minus two, so its
+                # major is a property of the Laravel cell rather than a third axis.
+                include:
+                    - laravel: "12"
+                      testbench: "^10.11"
+                    - laravel: "13"
+                      testbench: "^11.0"
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: ${{ matrix.php }}
+                  # The same 512M the Dockerfile and the Composer scripts set, for
+                  # the same reason: the Conformance suite reads a large stderr back
+                  # from a child process, and PHP's 128M default fatals on it.
+                  ini-values: memory_limit=512M
+                  coverage: none
+
+            # A plain `composer install` would resolve the newest supported Laravel
+            # in all six cells, and the matrix would verify one combination six
+            # times. Narrowing the constraint first is what makes a cell mean
+            # something. Testbench keeps `--dev`, or requiring it would move it into
+            # the runtime dependencies.
+            - name: Pin this cell's Laravel
+              run: >
+                  composer require --no-update --no-interaction
+                  "illuminate/routing:^${{ matrix.laravel }}.0"
+                  "illuminate/support:^${{ matrix.laravel }}.0"
+
+            - name: Pin this cell's Testbench
+              run: >
+                  composer require --dev --no-update --no-interaction
+                  "orchestra/testbench:${{ matrix.testbench }}"
+
+            - id: composer-cache
+              run: echo "dir=$(composer config --global cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+            # Keyed on the edited composer.json, so each cell keeps its own entry
+            # and a constraint change invalidates only what it affects. This caches
+            # downloaded archives, never the resolution: `composer update` still
+            # runs, so a cell always installs what its constraints allow today.
+            - uses: actions/cache@v4
+              with:
+                  path: ${{ steps.composer-cache.outputs.dir }}
+                  key: composer-php${{ matrix.php }}-laravel${{ matrix.laravel }}-${{ hashFiles('composer.json') }}
+                  restore-keys: composer-php${{ matrix.php }}-laravel${{ matrix.laravel }}-
+
+            # `update` rather than `install`: composer.lock is gitignored, so there
+            # is nothing to install from, and the constraints just written are what
+            # the resolution has to honor.
+            - run: composer update --prefer-dist --no-interaction --no-progress
+
+            - run: composer test
+
+    lowest:
+        name: Lowest supported dependencies
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: "8.3"
+                  ini-values: memory_limit=512M
+                  coverage: none
+
+            - id: composer-cache
+              run: echo "dir=$(composer config --global cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache@v4
+              with:
+                  path: ${{ steps.composer-cache.outputs.dir }}
+                  key: composer-lowest-${{ hashFiles('composer.json') }}
+                  restore-keys: composer-lowest-
+
+            # The same command a contributor runs before opening a pull request, so
+            # which packages get downgraded is decided in scripts/check-lowest.sh
+            # and nowhere else. Two consequences of reusing it verbatim: the job
+            # also runs Pint and PHPStan against the lower bound, and it spends its
+            # last minute restoring dependencies this runner is about to discard.
+            # Both are cheaper than a second copy of the package list drifting from
+            # the first.
+            - run: composer check:lowest
+
+    static:
+        name: Code style and static analysis
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: "8.3"
+                  ini-values: memory_limit=512M
+                  coverage: none
+
+            - id: composer-cache
+              run: echo "dir=$(composer config --global cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache@v4
+              with:
+                  path: ${{ steps.composer-cache.outputs.dir }}
+                  key: composer-static-${{ hashFiles('composer.json') }}
+                  restore-keys: composer-static-
+
+            # `update`, like every other job here: composer.lock is gitignored, as it
+            # is for any library, so there is no recorded resolution to install. This
+            # job runs against the newest versions the constraints allow, which is
+            # also what a contributor's `composer install` gives them.
+            - run: composer update --prefer-dist --no-interaction --no-progress
+
+            - run: composer format:check
+
+            - run: composer analyse
+
+    # The one check to mark required in branch protection.
+    #
+    # A matrix cell's name carries its PHP and Laravel versions, so requiring the
+    # cells directly would mean editing the repository settings every time the
+    # matrix changes, and a required check whose name no longer exists is a pull
+    # request nobody can merge. This job's name never changes, and it is red unless
+    # every job above it is green.
+    checks:
+        name: All checks passed
+        runs-on: ubuntu-latest
+        needs: [test, lowest, static]
+        # Without this the job is skipped when a dependency fails, and a skipped
+        # required check reads as neutral rather than as a failure.
+        if: always()
+
+        steps:
+            - name: Fail unless every job succeeded
+              if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+              run: |
+                  echo "A job this gate depends on did not succeed." >&2
+                  exit 1
