@@ -32,6 +32,20 @@ restore() {
     composer update --with-all-dependencies --no-interaction
 }
 
+# Composer refuses to update a partial set of packages when no lock file is
+# present, and a library does not commit one. A fresh checkout — CI, or a clone
+# nobody has installed yet — therefore reaches the downgrade below with nothing
+# to narrow, and the run dies before a single check has been executed. Resolving
+# the full set once first is what a contributor's `composer install` already did
+# for them.
+if [ ! -f composer.lock ]; then
+    if ! composer update --no-interaction; then
+        echo "" >&2
+        echo "Could not resolve dependencies — nothing was verified." >&2
+        exit 1
+    fi
+fi
+
 # shellcheck disable=SC2086
 if ! composer update --prefer-lowest --prefer-stable --with-all-dependencies \
     --no-interaction $RUNTIME_PACKAGES; then
