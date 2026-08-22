@@ -61,7 +61,7 @@ function extractFixture(string $name): array
 {
     $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath($name));
 
-    if ($outcome->faults !== []) {
+    if (! $outcome->isClean()) {
         throw $outcome->faults[0];
     }
 

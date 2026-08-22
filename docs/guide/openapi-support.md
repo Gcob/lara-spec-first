@@ -309,9 +309,29 @@ every fault in one pass needs the fault list to exist, not to be replaced by whi
 list says.** A cyclic document is still never extracted — `ReadOutcome::read()` skips calling `OperationExtractor`
 entirely the moment a `CyclicReferenceException` is among the collected faults, because detecting a cycle only ever
 _reports_ it, it does not remove it from the document, and the parser cannot survive one regardless of how the fault is
-reported. A disallowed or unvendored remote reference is different in kind: `RemoteReferenceGuard` neutralizes the whole
-Reference Object it was written in — replacing it with an empty object — the moment it cannot be resolved, so no network
-scheme string ever survives into what the parser sees, however many other faults the same document carries.
+reported. A disallowed or unvendored remote reference is different in kind: `RemoteReferenceGuard` removes the `$ref`
+key the moment it cannot be resolved, so no network scheme string ever survives into what the parser sees, however many
+other faults the same document carries.
+
+**The key, and only the key.** Blanking the whole Reference Object would be safe too, and it would rest on "the siblings
+of a `$ref` mean nothing", which is only true at 3.0. At 3.1 a Schema Object is JSON Schema 2020-12, so `$ref` sits
+_beside_ applicable keywords, and a Path Item may carry `parameters` next to its own `$ref`: local `properties`,
+`required` or `parameters` the author wrote would be deleted along with the reference, and deleted silently. Keeping
+them costs a position that becomes invalid in its own right — a Response Object left with no `description` — surfacing
+as a parser fault instead of vanishing, which is the better of the two.
+
+**Removal still means the document describes less of the API than the file does**, and that is what
+`ReadOutcome::$neutralized` says. `spec:build` and `spec:make` never meet it: they stop at the first fault and generate
+nothing. A caller that reports rather than refuses does, and owes its reader the distinction — a routing table printed
+from a rewritten document is not the routing table the specification describes, and printing it beside the faults that
+rewrote it without saying so is the one way the result can mislead.
+
+**Nothing is written when a document could not be fully resolved.** The rewrite is in memory for the root specification,
+and on disk for a vendored copy that itself named a reference — but only when the walk over that copy collected no fault
+of its own, and a vendored document that did fault is refused by its parent as well, so the reference pointing into it
+is removed rather than rewritten to a local path. Two properties depend on that pair: a read that fails leaves the
+repository untouched, and reading twice on unchanged inputs reports the same faults twice. See
+[remote references](./remote-references.md#a-vendored-document-can-itself-name-a-reference).
 
 The check is deliberately narrow, and each limit below is stated in a test rather than in a comment.
 

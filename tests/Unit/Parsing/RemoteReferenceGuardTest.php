@@ -164,24 +164,137 @@ it('is silent when no host is allowed, which is the default', function (): void 
 // try to resolve it itself the next time anything opened the document — the
 // exact hole the allowlist exists to close, reopened by the collector meant to
 // report it.
-it('replaces a faulted reference rather than leaving a network scheme string behind', function (): void {
+it('removes a faulted reference rather than leaving a network scheme string behind', function (): void {
     $result = (new RemoteReferenceGuard)->resolve(['$ref' => 'https://example.com/s.yaml'], specDir());
 
     expect($result->document)->toBe([])
         ->and($result->document)->not->toHaveKey('$ref');
 });
 
-// The Reference Object as a whole is neutralized, siblings included: 3.1 allows
-// `summary` and `description` beside `$ref`, and neither can hold meaning once
-// the reference itself is refused.
-it('drops the whole Reference Object, siblings included, not only the $ref key', function (): void {
+// The `$ref` key and only it: at 3.0 a Reference Object's siblings are just
+// `summary`/`description`, but the guard cannot tell which version it is
+// walking, and dropping the node wholesale is a decision made once here for
+// every version — see the 3.1 cases below for what that would have cost.
+it('removes the $ref key and keeps what was written beside it', function (): void {
     $result = (new RemoteReferenceGuard)->resolve([
         '$ref' => 'https://example.com/s.yaml',
         'summary' => 'A summary',
         'description' => 'A description',
     ], specDir());
 
-    expect($result->document)->toBe([]);
+    expect($result->document)->toBe([
+        'summary' => 'A summary',
+        'description' => 'A description',
+    ]);
+});
+
+// 3.1: a Schema Object is JSON Schema 2020-12, so `$ref` sits *beside*
+// applicable keywords rather than excluding them. Blanking the node would
+// delete `properties` and `required` the author wrote, silently — this is the
+// case that decided the behaviour above.
+it('keeps the local schema keywords a 3.1 Schema Object writes beside its $ref', function (): void {
+    $result = (new RemoteReferenceGuard)->resolve([
+        'schema' => [
+            '$ref' => 'https://example.com/s.yaml#/User',
+            'description' => 'A user',
+            'required' => ['id'],
+            'properties' => ['id' => ['type' => 'string']],
+        ],
+    ], specDir());
+
+    expect($result->document)->toBe([
+        'schema' => [
+            'description' => 'A user',
+            'required' => ['id'],
+            'properties' => ['id' => ['type' => 'string']],
+        ],
+    ]);
+});
+
+// Same at a 3.1 Path Item, where `$ref` coexists with `parameters`.
+it('keeps the parameters a 3.1 Path Item writes beside its $ref', function (): void {
+    $result = (new RemoteReferenceGuard)->resolve([
+        'paths' => ['/users' => [
+            '$ref' => 'https://example.com/paths.yaml#/users',
+            'parameters' => [['name' => 'page', 'in' => 'query']],
+        ]],
+    ], specDir());
+
+    expect($result->document)->toBe([
+        'paths' => ['/users' => [
+            'parameters' => [['name' => 'page', 'in' => 'query']],
+        ]],
+    ]);
+});
+
+// What is given up, stated rather than left to be inferred: the reference
+// itself, and therefore whatever it pointed at. Nothing local is lost, but the
+// document the parser sees describes less than the file does — which is what
+// `$neutralized` exists to tell a caller.
+it('says the document was rewritten when a reference was removed from it', function (): void {
+    $refused = (new RemoteReferenceGuard)->resolve(['$ref' => 'https://example.com/s.yaml'], specDir());
+    $untouched = (new RemoteReferenceGuard)->resolve(['$ref' => '#/components/schemas/User'], specDir());
+
+    expect($refused->neutralized)->toBeTrue()
+        ->and($refused->isClean())->toBeFalse()
+        ->and($untouched->neutralized)->toBeFalse()
+        ->and($untouched->isClean())->toBeTrue();
+});
+
+// `$seen` remembers a refusal, not only a success: one bad URL named from
+// several positions is one problem, and reporting it once per position turns a
+// report meant to be read into the same line repeated.
+it('reports a refused URL once however many positions name it', function (): void {
+    $result = (new RemoteReferenceGuard)->resolve([
+        'a' => ['$ref' => 'https://evil.example.com/s.yaml#/A'],
+        'b' => ['$ref' => 'https://evil.example.com/s.yaml#/B'],
+        'c' => ['nested' => ['$ref' => 'https://evil.example.com/s.yaml']],
+    ], specDir());
+
+    // Every position is still neutralized — reported once, refused everywhere.
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(RemoteReferenceException::class)
+        ->and($result->document)->toBe(['a' => [], 'b' => [], 'c' => ['nested' => []]]);
+});
+
+it('reports a missing vendored copy once however many positions name it', function (): void {
+    $guard = guardWith(['schemas.example.com']);
+
+    $result = $guard->resolve([
+        'a' => ['$ref' => 'https://schemas.example.com/common.yaml#/A'],
+        'b' => ['$ref' => 'https://schemas.example.com/common.yaml#/B'],
+    ], specDir());
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(MissingVendoredReferenceException::class);
+});
+
+// The same memory under `--update-refs`, where repeating the refusal would also
+// repeat the request: a host that already answered 500 once is not asked again
+// per position.
+it('attempts a failing fetch once however many positions name it', function (): void {
+    $factory = new Factory;
+    $factory->preventStrayRequests();
+    $factory->fake([
+        'https://schemas.example.com/common.yaml' => Factory::response('server error', 500),
+    ]);
+
+    $guard = new RemoteReferenceGuard(
+        ['schemas.example.com'],
+        vendorRoot(),
+        new RemoteReferenceFetcher($factory),
+    );
+
+    $result = $guard->resolve([
+        'a' => ['$ref' => 'https://schemas.example.com/common.yaml'],
+        'b' => ['$ref' => 'https://schemas.example.com/common.yaml'],
+        'c' => ['$ref' => 'https://schemas.example.com/common.yaml'],
+    ], specDir(), updateRefs: true);
+
+    $factory->assertSentCount(1);
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(RemoteReferenceFetchException::class);
 });
 
 // This is the security regression the neutralization tests above exist for,
@@ -349,12 +462,12 @@ it('re-persists a vendored JSON document as JSON rather than YAML', function ():
         ->and($committed['allOf'][0]['$ref'])->toContain('inner.json');
 });
 
-// The transitive case for neutralization: a vendored document naming a
-// disallowed reference of its own is rewritten so the committed copy carries
-// no network scheme string either — the fault is collected, but the file
-// `--update-refs` just fetched and committed is not left with a live hole in
-// it for the next read to trip over.
-it('neutralizes a disallowed reference inside a document it just vendored, in the committed copy too', function (): void {
+// The transitive case, and the property the whole persist gate exists for: a
+// vendored document that could not be fully resolved is left on disk exactly as
+// upstream wrote it. Writing the neutralized copy back would erase the evidence
+// of the fault from the file the next read starts from — and a read that fails
+// must not modify a committed file.
+it('leaves a vendored document untouched when the walk over it collected a fault', function (): void {
     $guard = guardWith(['schemas.example.com'], [
         'https://schemas.example.com/outer.yaml' => ['allOf' => [['$ref' => 'https://evil.example.com/inner.yaml']]],
     ]);
@@ -366,7 +479,86 @@ it('neutralizes a disallowed reference inside a document it just vendored, in th
 
     $committed = Yaml::parseFile(vendorRoot().'/schemas.example.com/outer.yaml');
 
-    expect($committed)->toBe(['allOf' => [[]]]);
+    expect($committed)->toBe(['allOf' => [['$ref' => 'https://evil.example.com/inner.yaml']]]);
+});
+
+// The other half of that gate, and the reason the first half is safe: the file
+// on disk still names a URL, so nothing the parser sees may lead into it. The
+// parser resolves a *local* `$ref` by opening the file itself, which would hand
+// it the very reference this walk refused, one hop later.
+it('neutralizes the reference into a vendored document it could not fully resolve', function (): void {
+    $guard = guardWith(['schemas.example.com'], [
+        'https://schemas.example.com/outer.yaml' => ['allOf' => [['$ref' => 'https://evil.example.com/inner.yaml']]],
+    ]);
+
+    $result = $guard->resolve([
+        'schema' => ['$ref' => 'https://schemas.example.com/outer.yaml#/User'],
+    ], specDir(), updateRefs: true);
+
+    expect($result->document)->toBe(['schema' => []])
+        ->and($result->neutralized)->toBeTrue();
+});
+
+// The read is idempotent: running it again on unchanged inputs reports the same
+// fault, because the first run changed none of its inputs. This is the
+// regression the persist gate closes — a second plain build finding nothing left
+// to complain about, exiting SUCCESS, and generating a contract quietly missing
+// the schema that reference pointed at.
+it('reports the same fault again on the next read, having changed nothing', function (): void {
+    $fetching = guardWith(['schemas.example.com'], [
+        'https://schemas.example.com/outer.yaml' => ['allOf' => [['$ref' => 'https://evil.example.com/inner.yaml']]],
+    ]);
+
+    $fetching->resolve(['$ref' => 'https://schemas.example.com/outer.yaml'], specDir(), updateRefs: true);
+
+    $before = (string) file_get_contents(vendorRoot().'/schemas.example.com/outer.yaml');
+
+    // Second run: no flag, and no fake named — any HTTP request fails the test.
+    $offline = guardWith(['schemas.example.com']);
+    $result = $offline->resolve(['$ref' => 'https://schemas.example.com/outer.yaml'], specDir());
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(RemoteReferenceException::class)
+        ->and($result->document)->toBe([])
+        ->and((string) file_get_contents(vendorRoot().'/schemas.example.com/outer.yaml'))->toBe($before);
+});
+
+// The realistic shape of the same defect, and the one a fresh clone actually
+// hits: the parent vendored copy is committed, the transitive one it names never
+// was. Nothing is refetched, the missing copy is reported, and the parent is not
+// rewritten into a document that no longer names it.
+it('leaves a committed parent untouched when the copy it names was never vendored', function (): void {
+    $vendoredDir = vendorRoot().'/schemas.example.com';
+    mkdir($vendoredDir, 0o777, true);
+    $parent = ['allOf' => [['$ref' => 'https://schemas.example.com/inner.yaml']]];
+    file_put_contents($vendoredDir.'/outer.yaml', Yaml::dump($parent));
+
+    $guard = guardWith(['schemas.example.com']);
+
+    $result = $guard->resolve(['$ref' => 'https://schemas.example.com/outer.yaml'], specDir());
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(MissingVendoredReferenceException::class)
+        ->and(Yaml::parseFile($vendoredDir.'/outer.yaml'))->toBe($parent);
+});
+
+// The JSON side of the same gate. `persist()` re-encodes a `.json` copy with
+// `json_encode()`, and a PHP `[]` — what a node emptied of its only key becomes
+// — encodes as an empty JSON *array* where a Schema Object belongs, which the
+// next read would refuse from a place having nothing to do with the original
+// reference. The gate is what keeps that shape off disk: a faulted document is
+// not re-encoded at all.
+it('leaves a vendored JSON document byte-for-byte when the walk over it faulted', function (): void {
+    $body = json_encode(['allOf' => [['$ref' => 'https://evil.example.com/inner.json']]]);
+
+    $guard = guardWith(['schemas.example.com'], [
+        'https://schemas.example.com/outer.json' => $body,
+    ]);
+
+    $result = $guard->resolve(['$ref' => 'https://schemas.example.com/outer.json'], specDir(), updateRefs: true);
+
+    expect($result->faults)->toHaveCount(1)
+        ->and((string) file_get_contents(vendorRoot().'/schemas.example.com/outer.json'))->toBe($body);
 });
 
 // `$chain` alone only guards against a cycle along one branch — it says

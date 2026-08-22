@@ -61,9 +61,11 @@ final class BuildCommand extends Command
         try {
             return $this->build($config, $remote);
         } catch (SpecException $refusal) {
-            $this->components->error($refusal->getMessage());
-
-            return self::FAILURE;
+            // Rendered through the same method `operationsOrFail()` uses, so a
+            // fault caught off a throw and a fault read off a `ReadOutcome`
+            // reach a developer identically — see
+            // {@see ReadsTheContract::reportFault()}.
+            return $this->reportFault($refusal);
         }
     }
 

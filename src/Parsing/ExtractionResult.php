@@ -16,7 +16,7 @@ use Gcob\LaraSpecFirst\Exceptions\SpecException;
  * skipped rather than aborting every operation after it: the fault it
  * produced is recorded here instead.
  */
-final readonly class ExtractionResult
+final readonly class ExtractionResult implements ReadResult
 {
     /**
      * @param  list<Operation>  $operations  in the order the document writes them
@@ -26,4 +26,9 @@ final readonly class ExtractionResult
         public array $operations,
         public array $faults,
     ) {}
+
+    public function isClean(): bool
+    {
+        return $this->faults === [];
+    }
 }

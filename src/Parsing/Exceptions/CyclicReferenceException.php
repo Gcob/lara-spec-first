@@ -4,20 +4,21 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing\Exceptions;
 
-use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use RuntimeException;
 
 /**
  * A `$ref` chain points only at other references and closes back on itself.
  *
- * This is the one document fault the parser cannot survive: it recurses past
- * its own cycle checks and exhausts memory, taking the process down instead of
- * raising. Detecting it is therefore ours, and it has to happen before the
- * document is handed over.
+ * This is the one document fault the parser cannot survive that this package
+ * can currently detect: it recurses past its own cycle checks and exhausts
+ * memory, taking the process down instead of raising. Detecting it is therefore
+ * ours, and it has to happen before the document is handed over — which is what
+ * {@see ParserUnsafeFault}, the marker this exception carries, tells its
+ * readers.
  *
  * @see docs/guide/openapi-support.md — "Parser caveats"
  */
-final class CyclicReferenceException extends RuntimeException implements SpecException
+final class CyclicReferenceException extends RuntimeException implements ParserUnsafeFault
 {
     /**
      * @param  non-empty-list<string>  $chain  the pointers followed, ending where it started

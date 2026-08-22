@@ -76,6 +76,7 @@ final readonly class SpecDocumentReader
         return new DocumentReadResult(
             new ParsableSpecDocument($path, $strategy->version(), $strategy, $remote->document),
             [...$cycles, ...$remote->faults],
+            $remote->neutralized,
         );
     }
 }

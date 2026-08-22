@@ -19,15 +19,27 @@ use Gcob\LaraSpecFirst\Exceptions\SpecException;
  * every remote reference this read could not resolve — none of them fatal to
  * the read itself, which is why more than one may appear.
  *
+ * `$neutralized` says the raw document was rewritten to remove a reference this
+ * read refused, so it describes less of the API than the file on disk does. See
+ * {@see Guards\RemoteReferenceGuard::walk()} for the rewrite itself, and
+ * {@see ReadOutcome} for what a caller owes a reader because of it.
+ *
  * @see docs/guide/openapi-support.md — "Reading a document"
  */
-final readonly class DocumentReadResult
+final readonly class DocumentReadResult implements ReadResult
 {
     /**
      * @param  list<SpecException>  $faults
+     * @param  bool  $neutralized  see {@see Guards\RemoteResolution::$neutralized}
      */
     public function __construct(
         public ?ParsableSpecDocument $document,
         public array $faults,
+        public bool $neutralized = false,
     ) {}
+
+    public function isClean(): bool
+    {
+        return $this->faults === [];
+    }
 }

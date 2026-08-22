@@ -186,6 +186,23 @@ written to disk, for the same reason the top-level reference is rewritten — se
 diff is still upstream's content; only a URL that would otherwise reach the network again on every rebuild becomes a
 path that already has.
 
+**And only when every reference in it could be resolved.** A vendored copy the walk refused something in is left on disk
+exactly as it was fetched, and the reference pointing into it is removed from the document that named it rather than
+rewritten to a local path. Both halves matter and neither works alone:
+
+- **Not rewritten**, because the walk has already removed the offending `$ref` from the in-memory copy, and writing that
+  back would erase the evidence of the fault from the file the next read starts from. The realistic case is a fresh
+  clone where a transitive vendored copy was never committed: the first build says to run `--update-refs`, and if the
+  parent file had been rewritten in the meantime, a second plain build would find no remote `$ref` left to complain
+  about, exit successfully, and generate a contract quietly missing the schema that reference pointed at. So: a build
+  that fails writes nothing, and building twice on unchanged inputs reports the same faults twice.
+- **Not linked to**, because keeping the original bytes means that file still names a URL — and the parser resolves a
+  _local_ `$ref` by opening the file itself, so a parent rewritten to point at it would hand `cebe\openapi\` the very
+  reference the walk refused, one hop later.
+
+A file `--update-refs` fetched on the way there does stay on disk. That is upstream's own bytes, exactly what the flag
+was asked to vendor, and the next build walks it again and reports the same fault from it.
+
 ### How a vendored copy stays invisible to the parser
 
 Nothing above would work if `cebe\openapi\` — the OpenAPI parser this package wraps — ever saw a `$ref` naming a URL,

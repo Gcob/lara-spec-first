@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Console\Concerns;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 use Gcob\LaraSpecFirst\Support\Path;
+use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
 
 /**
@@ -30,6 +32,15 @@ trait ReadsTheContract
 {
     /**
      * The contract, read end to end — see {@see ReadOutcome}.
+     *
+     * **The seam a command that reports rather than refuses reads through.**
+     * `operationsOrFail()` below is its only caller today, and every command in
+     * this package goes through that one instead, because every command in this
+     * package stops at the first fault. This method exists separately for the
+     * caller that does not: {@see ReadOutcome}
+     * carries the whole fault list and the flag saying whether the document was
+     * rewritten, and neither survives `operationsOrFail()`'s narrowing to a
+     * list of operations.
      *
      * @param  bool  $updateRefs  fetch and vendor an allowed remote reference —
      *                            `spec:build --update-refs`'s one entry point into
@@ -61,13 +72,50 @@ trait ReadsTheContract
     {
         $outcome = $this->readContract($specPath, $remote, $updateRefs);
 
-        if ($outcome->faults !== []) {
-            $this->components->error($outcome->faults[0]->getMessage());
+        if (! $outcome->isClean()) {
+            $this->reportFault($outcome->faults[0], count($outcome->faults) - 1);
 
             return null;
         }
 
         return $outcome->operations;
+    }
+
+    /**
+     * Render a refusal the way this package renders every one of them, in the
+     * one place that decides how.
+     *
+     * **Shared with each command's outer `catch (SpecException)` on purpose.**
+     * Printing the message and returning `FAILURE` is the same act whether the
+     * fault was read off a {@see ReadOutcome} or caught off a throw, and the
+     * two rendering it separately is exactly the divergence
+     * {@see ReadOutcome}'s own docblock argues against for the read itself.
+     *
+     * `$others` is the number of faults this read found beyond the one being
+     * printed. **Counted rather than swallowed**: refusing at the first fault is
+     * the behaviour `spec:build` and `spec:make` have always had and keep, but
+     * the pipeline now knows there are five where it used to know one, and
+     * saying nothing at all about the other four reads as a regression rather
+     * than as parity.
+     */
+    protected function reportFault(SpecException $fault, int $others = 0): int
+    {
+        $this->components->error($fault->getMessage());
+
+        if ($others > 0) {
+            // Deliberately not naming a command to run. `spec:doctor` — which
+            // reports every fault in one pass and is the whole reason the
+            // pipeline stopped throwing — is the next thing to land, and this
+            // is the line that will name it. Pointing a developer at a command
+            // that does not exist yet would be worse than counting.
+            $this->components->warn(sprintf(
+                '%d more fault%s in this specification; only the first is shown.',
+                $others,
+                $others === 1 ? '' : 's',
+            ));
+        }
+
+        return Command::FAILURE;
     }
 
     /**

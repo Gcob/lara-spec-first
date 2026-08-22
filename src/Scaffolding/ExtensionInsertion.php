@@ -188,7 +188,7 @@ final readonly class ExtensionInsertion
             throw UnverifiedInsertionException::unreadableAfterEditing($failure->getMessage());
         }
 
-        if ($outcome->faults !== []) {
+        if (! $outcome->isClean()) {
             // A document the pipeline will not fully read after the edit is a
             // failed insertion, not a failed build — reported as the former,
             // with the first fault's own message carried along because it says
