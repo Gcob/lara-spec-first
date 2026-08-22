@@ -189,3 +189,81 @@ it('writes nothing at all when one file cannot be written', function (): void {
             ->and(file_get_contents(treeRoot().'/routes.php'))->toBe('from a previous run');
     });
 });
+
+// --- diff(): the read-only sibling write() computes the same way it always has ---
+
+it('reports every file as new to write against an empty tree', function (): void {
+    $report = (new GeneratedTree(treeRoot()))->diff([
+        generated('routes.php'),
+        generated('Controllers/GetUsersController.php'),
+    ]);
+
+    expect($report->toWrite)->toBe(['routes.php', 'Controllers/GetUsersController.php'])
+        ->and($report->unchanged)->toBe([])
+        ->and($report->toPrune)->toBe([])
+        ->and($report->isClean())->toBeFalse();
+});
+
+it('never touches the disk', function (): void {
+    $tree = new GeneratedTree(treeRoot());
+
+    $tree->diff([generated('routes.php')]);
+
+    expect(is_dir(treeRoot()))->toBeTrue()
+        ->and(glob(treeRoot().'/*') ?: [])->toBe([]);
+});
+
+it('reports a clean diff exactly when write() would have changed nothing', function (): void {
+    $tree = new GeneratedTree(treeRoot());
+    $files = [generated('routes.php')];
+
+    $tree->write($files);
+    $report = $tree->diff($files);
+
+    expect($report->toWrite)->toBe([])
+        ->and($report->unchanged)->toBe(['routes.php'])
+        ->and($report->toPrune)->toBe([])
+        ->and($report->isClean())->toBeTrue();
+});
+
+it('reports a file whose contents no longer match as something to write, not as unchanged', function (): void {
+    $tree = new GeneratedTree(treeRoot());
+
+    $tree->write([generated('routes.php', 'before')]);
+    $report = $tree->diff([generated('routes.php', 'after')]);
+
+    expect($report->toWrite)->toBe(['routes.php'])
+        ->and($report->unchanged)->toBe([]);
+});
+
+it('reports a generated file the plan no longer contains as prunable, without removing it', function (): void {
+    $tree = new GeneratedTree(treeRoot());
+
+    $tree->write([generated('Controllers/Gone.php')]);
+    $report = $tree->diff([]);
+
+    expect($report->toPrune)->toBe(['Controllers/Gone.php'])
+        ->and($report->isClean())->toBeFalse()
+        ->and(is_file(treeRoot().'/Controllers/Gone.php'))->toBeTrue();
+});
+
+// The invariant `write()` already keeps, asked of `diff()` too: a file inside
+// the tree that does not carry the marker is not this build's to report on,
+// prunable or otherwise.
+it('never reports a file it did not write as prunable', function (): void {
+    file_put_contents(treeRoot().'/routes.php', 'a file nobody generated');
+
+    $report = (new GeneratedTree(treeRoot()))->diff([]);
+
+    expect($report->toPrune)->toBe([]);
+});
+
+// A root passed in with a trailing separator must not throw off the prefix
+// strip that turns an absolute path back into one relative to the root.
+it('reports the correct relative path even when the root carries a trailing separator', function (): void {
+    (new GeneratedTree(treeRoot()))->write([generated('Controllers/Gone.php')]);
+
+    $report = (new GeneratedTree(treeRoot().'/'))->diff([]);
+
+    expect($report->toPrune)->toBe(['Controllers/Gone.php']);
+});

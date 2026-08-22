@@ -54,8 +54,8 @@ They simply do not need a promise on every route to get one.
 to a `stable` operation fails the build, flipping its audience to `internal` makes the failure disappear. That may be
 entirely legitimate — an endpoint really can stop being public — but it is _revoking a promise_, and a promise cannot be
 revoked silently in a package built on contracts. The report names it, in the same spirit as labelling a
-[non-representative run](./doctor.md#planned-flags). Whether it merely reports or requires the same `info.version` bump
-a break would is **open**.
+[non-representative run](./doctor.md#flags). Whether it merely reports or requires the same `info.version` bump a break
+would is **open**.
 
 One consequence worth having: the doctor's protection report counts **public** operations only. A monolith with two
 hundred internal routes should not have its _0 of 47 public operations are stable_ finding drowned by endpoints that

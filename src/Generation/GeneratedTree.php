@@ -125,6 +125,38 @@ final readonly class GeneratedTree
     }
 
     /**
+     * Everything this plan would do to the working tree, without touching it —
+     * the read-only half of {@see self::write()}, computed the same way so the
+     * two can never disagree about what counts as changed or stale.
+     *
+     * **Empty directories are deliberately not reported.** `write()` removes
+     * one left behind by the last file pruned out of it, but that is cleanup
+     * with nothing to compare against — there is no "would this directory
+     * become empty" question worth a line in a diagnostic, only files.
+     *
+     * @param  list<GeneratedFile>  $files
+     */
+    public function diff(array $files): DriftReport
+    {
+        $toWrite = [];
+        $unchanged = [];
+        $keep = [];
+
+        foreach ($files as $file) {
+            $absolute = $this->resolve($file->relativePath);
+            $keep[$absolute] = true;
+
+            if (is_file($absolute) && file_get_contents($absolute) === $file->contents) {
+                $unchanged[] = $file->relativePath;
+            } else {
+                $toWrite[] = $file->relativePath;
+            }
+        }
+
+        return new DriftReport($toWrite, $unchanged, $this->findPrunable($keep));
+    }
+
+    /**
      * Remove the generated files the plan no longer contains.
      *
      * @param  array<string, true>  $keep  absolute paths the plan just wrote or left alone
@@ -136,7 +168,15 @@ final readonly class GeneratedTree
             return 0;
         }
 
-        $removed = 0;
+        $prunable = $this->findPrunable($keep);
+
+        foreach ($prunable as $relative) {
+            $absolute = $this->resolve($relative);
+
+            if (! unlink($absolute)) {
+                throw UnwritableTreeException::staleFile($absolute);
+            }
+        }
 
         /** @var iterable<SplFileInfo> $entries */
         $entries = new RecursiveIteratorIterator(
@@ -144,38 +184,68 @@ final readonly class GeneratedTree
             RecursiveIteratorIterator::CHILD_FIRST,
         );
 
+        // Children are visited first, so a directory the plan emptied above is
+        // empty by now. Checked rather than suppressed: `@rmdir` on a
+        // directory that still holds something is a warning we would be
+        // hiding, and hiding it here would hide the day it means something.
+        // A second walk rather than folded into `findPrunable()`'s: that one
+        // has to stay read-only for `diff()`, and this one exists to act.
+        foreach ($entries as $entry) {
+            if ($entry->isDir() && self::isEmpty($entry->getPathname())) {
+                rmdir($entry->getPathname());
+            }
+        }
+
+        return count($prunable);
+    }
+
+    /**
+     * Every generated file under this tree that the plan no longer wants,
+     * relative to the root — read-only, so both `prune()` and `diff()` can
+     * share it.
+     *
+     * @param  array<string, true>  $keep  absolute paths the plan just wrote or left alone
+     * @return list<string>
+     */
+    private function findPrunable(array $keep): array
+    {
+        if (! is_dir($this->root)) {
+            return [];
+        }
+
+        // Normalized the same way `resolve()` already normalizes it for
+        // building a path — a root passed in with a trailing separator would
+        // otherwise make the prefix strip below one character short, since it
+        // assumes exactly one separator between the root and what follows it.
+        $root = rtrim($this->root, '/\\');
+
+        $prunable = [];
+
+        /** @var iterable<SplFileInfo> $entries */
+        $entries = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($this->root, RecursiveDirectoryIterator::SKIP_DOTS),
+        );
+
         foreach ($entries as $entry) {
             $path = $entry->getPathname();
 
-            if ($entry->isDir()) {
-                // Children are visited first, so a directory the plan emptied is
-                // empty by now. Checked rather than suppressed: `@rmdir` on a
-                // directory that still holds something is a warning we would be
-                // hiding, and hiding it here would hide the day it means
-                // something.
-                if (self::isEmpty($path)) {
-                    rmdir($path);
-                }
-
-                continue;
-            }
-
-            if (isset($keep[$path]) || $entry->getExtension() !== 'php') {
+            if ($entry->isDir() || isset($keep[$path]) || $entry->getExtension() !== 'php') {
                 continue;
             }
 
             $contents = file_get_contents($path);
 
             if (is_string($contents) && str_contains($contents, GeneratedFile::MARKER)) {
-                if (! unlink($path)) {
-                    throw UnwritableTreeException::staleFile($path);
-                }
-
-                $removed++;
+                // `$path` is always `$root` plus a separator plus the rest,
+                // since it came from an iterator rooted there — a plain
+                // prefix strip rather than `str_replace()`, which would also
+                // rewrite an occurrence of the root's own text appearing
+                // again further down the path.
+                $prunable[] = str_replace(DIRECTORY_SEPARATOR, '/', substr($path, strlen($root) + 1));
             }
         }
 
-        return $removed;
+        return $prunable;
     }
 
     /**

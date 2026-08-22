@@ -51,8 +51,8 @@
         }
     },
     "scripts": {
-        "test": "pest",
-        "test:coverage": "pest --coverage",
+        "test": "@php -d memory_limit=512M vendor/bin/pest",
+        "test:coverage": "@php -d memory_limit=512M vendor/bin/pest --coverage",
         "artisan": [
             "Composer\\Config::disableProcessTimeout",
             "@php vendor/bin/testbench"
@@ -85,8 +85,8 @@
         ]
     },
     "scripts-descriptions": {
-        "test": "Run the Pest test suite.",
-        "test:coverage": "Run the test suite with a coverage report.",
+        "test": "Run the Pest test suite. Runs at 512M, like `analyse`: tests/Conformance/KnownParserBugsTest.php reads a large stderr back from a child process, and PHP's common 128M default fails it with a fatal that has nothing to do with the change under test.",
+        "test:coverage": "Run the test suite with a coverage report. Same 512M as `test`, for the same reason.",
         "artisan": "Run an Artisan command inside the Workbench application: `composer artisan -- route:list`. A package has no artisan binary of its own; Testbench provides one.",
         "format": "Apply Laravel Pint formatting.",
         "format:check": "Report formatting issues without changing files.",

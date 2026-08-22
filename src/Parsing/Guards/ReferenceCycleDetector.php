@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing\Guards;
 
+use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
@@ -250,6 +251,6 @@ final readonly class ReferenceCycleDetector
      */
     private static function escape(string $segment): string
     {
-        return str_replace(['~', '/'], ['~0', '~1'], $segment);
+        return DocumentPointer::escape($segment);
     }
 }
