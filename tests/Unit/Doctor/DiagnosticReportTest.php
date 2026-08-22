@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Doctor\ApproachingSunset;
 use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
 use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
+use Gcob\LaraSpecFirst\Doctor\LifecycleOutcome;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
 
 /**
@@ -54,4 +56,32 @@ it('a document fault wins the exit code over a package limit found alongside it'
     ]);
 
     expect($report->exitCode())->toBe(1);
+});
+
+// Decision, pinned rather than left to a reader's discretion: what the
+// Lifecycle section reports without a finding — an approaching removal date,
+// the beta listing, the protection report — never touches the exit code.
+// Otherwise a repository green on Monday goes red on Tuesday with no commit
+// in between, which is how a CI gate teaches a team to ignore it.
+it('stays clean when the lifecycle outcome has something to say and no finding says it', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', null, [], [], [], new LifecycleOutcome(
+        ['get /users'],
+        [new ApproachingSunset('get /legacy', '2026-07-01', 30)],
+        4,
+        0,
+    ));
+
+    expect($report->isClean())->toBeTrue()
+        ->and($report->exitCode())->toBe(0);
+});
+
+// The opposite decision, and the one that costs something: an operation
+// documented as protected and served unprotected gates, forever, until
+// enforcement lands.
+it('exits 2 on a security finding alone', function (): void {
+    $report = reportWith([
+        new Finding(FindingClass::PackageLimit, 'Security', SupportLevel::Partial, '', 'not applied yet'),
+    ]);
+
+    expect($report->exitCode())->toBe(2);
 });

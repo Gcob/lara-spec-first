@@ -28,6 +28,12 @@ final readonly class DiagnosticReport
      *                                             never checks is named in
      *                                             {@see self::notBuilt()} instead, since
      *                                             that answer does not depend on the run.
+     * @param  LifecycleOutcome|null  $lifecycle  the Lifecycle section's own outcome — its `beta`
+     *                                            listing, upcoming removal dates and protection
+     *                                            report — or null when there was no document to
+     *                                            read one from
+     * @param  bool  $inheritsUnreadRootRequirements  whether the document carries a root `security`
+     *                                                block, which this package does not read
      */
     public function __construct(
         public string $specPath,
@@ -38,11 +44,18 @@ final readonly class DiagnosticReport
         public array $routes,
         public array $findings,
         public array $notes = [],
+        public ?LifecycleOutcome $lifecycle = null,
+        public bool $inheritsUnreadRootRequirements = false,
     ) {}
 
     /**
-     * Sections this release does not check at all, and why — the four
+     * Sections this release does not check at all, and why — the two
      * docs/guide/doctor.md lists that have no inputs yet.
+     *
+     * **Security and Lifecycle came off this list in the change that built
+     * them**, which is the only way an entry here is ever meant to be removed:
+     * a section stops being named as unchecked at the moment it starts
+     * checking. Baseline and Drivers are what is left.
      *
      * **Held here rather than in the formatter, because `--json` owes a
      * consumer the same answer the text report gives.** A section absent from
@@ -61,15 +74,6 @@ final readonly class DiagnosticReport
     private static function notBuilt(): array
     {
         return [
-            'Security' => SectionNote::notChecked(
-                'not built yet — a `securitySchemes` name with no guard behind it, or a scheme type the '.
-                'middleware cannot enforce, is not diagnosed by this release. See docs/guide/security.md and '.
-                'docs/project/roadmap.md.'
-            ),
-            'Lifecycle' => SectionNote::notChecked(
-                'not built yet — the `x-sunset` and `x-lifecycle` rules are not diagnosed by this release. See '.
-                'docs/guide/lifecycle.md and docs/project/roadmap.md.'
-            ),
             'Baseline' => SectionNote::notChecked(
                 'not built yet — whether the previously committed specification can be read from git is not '.
                 'diagnosed by this release. See docs/project/roadmap.md.'

@@ -70,6 +70,21 @@ final readonly class ReportFormatter
                 'target' => $route->target,
                 'routesToCustomController' => $route->routesToCustomController,
             ], $report->routes),
+            // The same outcome the text report prints under Lifecycle, and
+            // for the same reason it is not a finding: a CI script that
+            // wants to act on an approaching removal date can, without the
+            // exit code having decided for it.
+            'lifecycle' => $report->lifecycle === null ? null : [
+                'beta' => $report->lifecycle->beta,
+                'approachingSunsets' => array_map(static fn (ApproachingSunset $sunset): array => [
+                    'operation' => $sunset->operation,
+                    'sunset' => $sunset->sunset,
+                    'daysRemaining' => $sunset->daysRemaining,
+                ], $report->lifecycle->approachingSunsets),
+                'publicOperations' => $report->lifecycle->publicOperations,
+                'stablePublicOperations' => $report->lifecycle->stablePublicOperations,
+            ],
+            'inheritsUnreadRootRequirements' => $report->inheritsUnreadRootRequirements,
             'findings' => array_map(static fn (Finding $finding): array => [
                 'class' => $finding->class->value,
                 'section' => $finding->section,
@@ -122,12 +137,13 @@ final readonly class ReportFormatter
 
             $lines[] = $section;
 
-            // The routing table is the outcome, not a problem — it prints
-            // whether or not the section also carries a finding, which is
-            // why it is not folded into the "clean" placeholder below.
-            if ($section === 'Routing outcome') {
-                array_push($lines, ...self::routes($report));
-            }
+            // What a section reports when nothing is wrong — the routing
+            // table, the lifecycle listings — is the outcome, not a problem.
+            // It prints whether or not the section also carries a finding,
+            // which is why it is not folded into the "clean" placeholder
+            // below and why "clean" gives way to it.
+            $outcome = self::outcomeOf($report, $section);
+            array_push($lines, ...$outcome);
 
             foreach ($findings as $finding) {
                 $lines[] = '  '.self::badge($finding).' '.$finding->message;
@@ -138,10 +154,12 @@ final readonly class ReportFormatter
             }
 
             // `clean` is a claim, so it is only made when the section actually
-            // ran and found nothing. A section carrying a note either did not
-            // run or ran on less than it needed, and printing both would say
-            // two different things about the same section.
-            if ($findings === [] && $note === null && ($section !== 'Routing outcome' || $report->routes === [])) {
+            // ran, found nothing, and had no outcome of its own to show. A
+            // section carrying a note either did not run or ran on less than it
+            // needed, and printing both would say two different things about
+            // the same section. `$outcome === []` covers the routing table and
+            // the lifecycle listings both, rather than naming one section.
+            if ($findings === [] && $note === null && $outcome === []) {
                 $lines[] = '  clean';
             }
 
@@ -151,6 +169,22 @@ final readonly class ReportFormatter
         $lines[] = self::summary($report);
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The lines a section prints that are not findings: what the run found to
+     * be true rather than what it found to be wrong.
+     *
+     * @return list<string>
+     */
+    private static function outcomeOf(DiagnosticReport $report, string $section): array
+    {
+        return match ($section) {
+            'Routing outcome' => self::routes($report),
+            'Security' => self::rootRequirements($report),
+            'Lifecycle' => self::lifecycle($report),
+            default => [],
+        };
     }
 
     /**
@@ -168,6 +202,65 @@ final readonly class ReportFormatter
                 $route->target,
                 $route->routesToCustomController ? '' : ' (501, unimplemented)',
             );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * One line, never a list of the operations under it: the package does not
+     * read the root block, so it cannot say what any of them inherits from it.
+     *
+     * @return list<string>
+     */
+    private static function rootRequirements(DiagnosticReport $report): array
+    {
+        if (! $report->inheritsUnreadRootRequirements) {
+            return [];
+        }
+
+        return ['  This document declares a root security block. It is not read: an operation that states no '.
+            'security of its own inherits requirements nothing here resolved, so no such operation is named in this '.
+            'section.'];
+    }
+
+    /**
+     * The protection report on every run, then the unstable surface and the
+     * removal dates coming up. Printed even when all three are empty, because
+     * "0 of 47 public operations are stable" is precisely the run where
+     * nothing is wrong and everything is unprotected.
+     *
+     * @return list<string>
+     */
+    private static function lifecycle(DiagnosticReport $report): array
+    {
+        $outcome = $report->lifecycle;
+
+        // Nothing read, or nothing promised to anyone: "0 of 0 public
+        // operations are stable" is a sentence about an empty document
+        // rather than about a contract, and the section says "clean"
+        // instead. The case this line exists for — public operations with
+        // no promise on them — still prints, because $publicOperations is
+        // what makes it non-empty.
+        if ($outcome === null || ($outcome->publicOperations === 0 && $outcome->beta === [] && $outcome->approachingSunsets === [])) {
+            return [];
+        }
+
+        $lines = [sprintf(
+            '  %d of %d public operation(s) are stable.%s',
+            $outcome->stablePublicOperations,
+            $outcome->publicOperations,
+            $outcome->publicOperations > 0 && $outcome->stablePublicOperations === 0
+                ? ' Nothing in this contract is promised, so nothing in it can be broken by accident.'
+                : '',
+        )];
+
+        foreach ($outcome->beta as $operation) {
+            $lines[] = '  beta: '.$operation;
+        }
+
+        foreach ($outcome->approachingSunsets as $sunset) {
+            $lines[] = sprintf('  sunset in %d day(s): %s on %s', $sunset->daysRemaining, $sunset->operation, $sunset->sunset);
         }
 
         return $lines;

@@ -16,7 +16,14 @@ OpenAPI can say an operation is deprecated. It cannot say how strong a promise t
 when it disappears — which is the only part a consumer can plan around. This document owns the extensions that close the
 gap, and the enforcement that gives them teeth.
 
-> **Not implemented yet.** Phase 1 of the [Roadmap](../project/roadmap.md). Items marked `Open` are undecided.
+> **Partly shipped.** The three extension keys are read with their defaults resolved, and
+> [the doctor rules over them](#the-doctor-rules-that-follow) run: a deprecation with no `x-sunset`, a date that has
+> passed, a date nothing can read, an unrecognized `x-lifecycle` value (refused at read time, so it is reported under
+> the doctor's Document validity section rather than its Lifecycle one), the `beta` listing, and the protection report.
+> **Not built yet:** [breaking-change enforcement](#unstable-by-default-and-what-stable-costs-us) — so
+> `x-lifecycle: stable` is a declaration the doctor reports on, not yet a rule that fails a build — and the
+> [RFC 8594 headers](#the-runtime-payoff) the generated code will emit. Both are in the
+> [Roadmap](../project/roadmap.md). Items marked `Open` are undecided.
 
 OpenAPI can say an operation is `deprecated`. It cannot say what comes before deprecation, and it cannot say _when the
 endpoint disappears_ — which is the only part a consumer can actually plan around. **Decision: the package defines three
@@ -77,14 +84,14 @@ an operation is promised at all.
 
 ## The doctor rules that follow
 
-| Rule                                                               | Why                                                                                                                                                                                          |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deprecated: true` requires `x-sunset`                             | Your idea, and the strongest rule here. A deprecation with no end date is a wish. Requiring the date turns "we should remove this someday" into a commitment with a review attached.         |
-| `x-sunset` in the past is a finding                                | You are serving an endpoint you promised to remove. Nothing else in the system will ever notice.                                                                                             |
-| `x-sunset` approaching is a warning                                | With a configurable horizon, so it lands in CI while there is still time to act.                                                                                                             |
-| An unrecognized `x-lifecycle` value is a finding                   | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain.                                                                                          |
-| `beta` operations are listed                                       | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                                 |
-| A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path). |
+| Rule                                                               | Why                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `deprecated: true` requires `x-sunset`                             | Your idea, and the strongest rule here. A deprecation with no end date is a wish. Requiring the date turns "we should remove this someday" into a commitment with a review attached.                                                                                                                                                                                           |
+| `x-sunset` in the past is a finding                                | You are serving an endpoint you promised to remove. Nothing else in the system will ever notice.                                                                                                                                                                                                                                                                               |
+| `x-sunset` approaching is a warning                                | With a configurable horizon — `lifecycle.sunset_horizon_days`, 90 days by default — so it lands in CI while there is still time to act. It decides what is _mentioned_, never what fails: an approaching date is reported beside the coverage report rather than as a finding, because a horizon nobody tuned must not turn a pipeline red on a day nobody committed anything. |
+| An unrecognized `x-lifecycle` value is a finding                   | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain. Refused where the document is read, so the doctor reports it under [Document validity](./doctor.md#what-it-checks) with every other refusal of that class rather than a second time here.                                                                                  |
+| `beta` operations are listed                                       | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                                                                                                                                                                                                                   |
+| A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path).                                                                                                                                                                                   |
 
 ## Unstable by default, and what `stable` costs us
 

@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Doctor\ApproachingSunset;
 use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
 use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
+use Gcob\LaraSpecFirst\Doctor\LifecycleOutcome;
 use Gcob\LaraSpecFirst\Doctor\ReportFormatter;
 use Gcob\LaraSpecFirst\Doctor\RouteOutcome;
 use Gcob\LaraSpecFirst\Doctor\SectionNote;
@@ -73,7 +75,7 @@ it('names the sections that did not run under the summary, on a clean report too
     $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], []);
 
     expect((new ReportFormatter)->toText($report))
-        ->toContain('Not covered by this run: Security, Lifecycle, Baseline, Drivers');
+        ->toContain('Not covered by this run: Baseline, Drivers');
 });
 
 // The level used to be dropped here and survive only in `--json`, so the one
@@ -207,15 +209,107 @@ it('encodes every note, with checked telling a skipped section from a narrowed o
 
     expect($decoded['notes']['Routing outcome'])->toBe(['checked' => true, 'note' => 'partial table'])
         ->and($decoded['notes']['Drift'])->toBe(['checked' => false, 'note' => 'nothing to compare'])
-        // The four this release never checks are in there too, so a consumer
-        // reading `notes` learns the exit code's whole scope from one key.
-        ->and($decoded['notes']['Security']['checked'])->toBeFalse()
+        // The two this release still never checks are in there too, so a
+        // consumer reading `notes` learns the exit code's whole scope from one
+        // key.
+        ->and($decoded['notes']['Baseline']['checked'])->toBeFalse()
         ->and(array_keys($decoded['notes']))->toBe([
             'Routing outcome',
-            'Security',
             'Drift',
-            'Lifecycle',
             'Baseline',
             'Drivers',
         ]);
+});
+
+// --- Lifecycle and Security: the two sections this PR adds ---
+
+it('names the two new sections in the order docs/guide/doctor.md gives them', function (): void {
+    $expected = [
+        'Configuration',
+        'Version',
+        'Document validity',
+        'References',
+        'Support findings',
+        'Routing outcome',
+        'Security',
+        'Drift',
+        'Lifecycle',
+        'Installation',
+    ];
+
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], []);
+    $headings = array_values(array_filter(
+        explode("\n", (new ReportFormatter)->toText($report)),
+        static fn (string $line): bool => in_array($line, $expected, true),
+    ));
+
+    expect($headings)->toBe($expected);
+});
+
+// The protection report is printed on every run, including the run where
+// nothing is wrong: protection that is off must never look like protection
+// that passed.
+it('prints the protection report even when the Lifecycle section carries no finding', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], [], [], new LifecycleOutcome(
+        ['get /users'],
+        [new ApproachingSunset('get /legacy', '2026-07-01', 30)],
+        47,
+        0,
+    ));
+    $text = (new ReportFormatter)->toText($report);
+
+    expect($text)->toContain('0 of 47 public operation(s) are stable.')
+        ->and($text)->toContain('nothing in it can be broken by accident')
+        ->and($text)->toContain('beta: get /users')
+        ->and($text)->toContain('sunset in 30 day(s): get /legacy on 2026-07-01')
+        ->and($text)->not->toContain("Lifecycle\n  clean")
+        // Still clean overall: none of the three lines above is a finding.
+        ->and($text)->toContain('Clean.');
+});
+
+it('names an unread root security block once, under Security', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], [], [], null, true);
+
+    expect((new ReportFormatter)->toText($report))->toContain('root security block');
+});
+
+it('encodes the lifecycle outcome as its own object, beside the findings', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], [], [], new LifecycleOutcome(
+        ['get /users'],
+        [new ApproachingSunset('get /legacy', '2026-07-01', 30)],
+        47,
+        3,
+    ), true);
+    $decoded = json_decode((new ReportFormatter)->toJson($report), true);
+
+    expect($decoded['lifecycle'])->toBe([
+        'beta' => ['get /users'],
+        'approachingSunsets' => [[
+            'operation' => 'get /legacy',
+            'sunset' => '2026-07-01',
+            'daysRemaining' => 30,
+        ]],
+        'publicOperations' => 47,
+        'stablePublicOperations' => 3,
+    ])
+        ->and($decoded['inheritsUnreadRootRequirements'])->toBeTrue()
+        ->and($decoded['summary']['exitCode'])->toBe(0);
+});
+
+// The opposite case, and the reason the line above is conditional: a
+// document nothing could be read from would otherwise print "0 of 0 public
+// operation(s) are stable", a sentence about an empty file rather than about
+// a contract.
+it('says nothing under Lifecycle when there is no contract to say it about', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', null, [], [], [], new LifecycleOutcome([], [], 0, 0));
+
+    expect((new ReportFormatter)->toText($report))->toContain("Lifecycle\n  clean");
+});
+
+// A contract that promises nothing still prints, on every run: that is the
+// case the protection report exists for.
+it('prints the protection report for a contract whose public operations promise nothing', function (): void {
+    $report = new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', null, [], [], [], new LifecycleOutcome([], [], 47, 0));
+
+    expect((new ReportFormatter)->toText($report))->toContain('0 of 47 public operation(s) are stable.');
 });

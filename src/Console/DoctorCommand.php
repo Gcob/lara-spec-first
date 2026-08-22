@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Console;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract;
 use Gcob\LaraSpecFirst\Doctor\Checks\DocumentValidityCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\DriftCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\InstallationCheck;
+use Gcob\LaraSpecFirst\Doctor\Checks\LifecycleCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\ReferencesCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\RoutingOutcomeCheck;
+use Gcob\LaraSpecFirst\Doctor\Checks\SecurityCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\SupportMatrixCheck;
 use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
 use Gcob\LaraSpecFirst\Doctor\Finding;
@@ -82,12 +86,22 @@ final class DoctorCommand extends Command
         $specPath = $this->specPath($config);
         $outcome = $this->readContract($specPath, $remote);
 
+        // Read once and passed down rather than taken again inside each rule
+        // that needs it: two lifecycle rules compare against "now", and a
+        // report where the two disagreed — over a midnight, over a slow
+        // read — would be a report about the clock rather than about the
+        // contract. It is also what makes the check testable without
+        // waiting for a date to arrive.
+        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+
         $findings = [
             ...DocumentValidityCheck::check($outcome),
             ...ReferencesCheck::check($outcome),
             ...SupportMatrixCheck::rejected($outcome),
             ...SupportMatrixCheck::missingOperationId($outcome->operations),
             ...SupportMatrixCheck::deferred($outcome->document),
+            ...SecurityCheck::check($outcome->operations),
+            ...LifecycleCheck::check($outcome->operations, $now),
         ];
 
         $routing = $this->routingOutcome($config, $outcome, $specPath);
@@ -104,6 +118,18 @@ final class DoctorCommand extends Command
             $routing['routes'],
             $findings,
             $routing['notes'],
+            // Null rather than an outcome full of zeroes when there was no
+            // document: "0 of 0 public operations are stable" read off a file
+            // that could not be opened is a statement about nothing, and a
+            // consumer of `--json` would have to know to disbelieve it.
+            $outcome->document === null
+                ? null
+                : LifecycleCheck::outcome(
+                    $outcome->operations,
+                    $now,
+                    LifecycleCheck::horizonDays($config->get('lara-spec-first.lifecycle.sunset_horizon_days')),
+                ),
+            SecurityCheck::inheritsUnreadRootRequirements($outcome->document),
         );
     }
 

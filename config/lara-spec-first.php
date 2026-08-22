@@ -113,6 +113,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Operation lifecycle — DONE
+    |--------------------------------------------------------------------------
+    |
+    | How far ahead `spec:doctor` mentions an `x-sunset` date, in days. It lands
+    | in CI while there is still time to act, which is the only reason a horizon
+    | is worth configuring at all: 90 days is a release cycle for most teams and
+    | a rounding error for some.
+    |
+    | It decides what is *mentioned*, never what fails. An approaching date is
+    | printed in the report's Lifecycle section beside the protection report,
+    | not as a finding, so a horizon nobody tuned can never turn a green
+    | pipeline red on a day nobody committed anything. The rules that do fail a
+    | run — a deprecation with no removal date, a date already passed, a date
+    | that cannot be read — do not read this key. Set it to 0 to print no
+    | upcoming date at all.
+    |
+    | A whole number of days, or a string of digits. Anything else — a float, a
+    | negative count — falls back to the default rather than being truncated
+    | into a horizon nobody wrote.
+    |
+    | See docs/guide/lifecycle.md — "The doctor rules that follow".
+    |
+    */
+
+    'lifecycle' => [
+        'sunset_horizon_days' => 90,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Where your own overrides are looked for — TODO
     |--------------------------------------------------------------------------
     |
