@@ -52,17 +52,38 @@ final readonly class ReferenceCycleDetector
     private const OPAQUE_KEYS = ['example', 'default', 'enum', 'const'];
 
     /**
-     * @param  array<string, mixed>  $document
+     * Every pure reference cycle in the document, each reported once.
      *
-     * @throws CyclicReferenceException
+     * **Does not throw.** A cyclic chain is a document fault like any other this
+     * package collects rather than stops at — see
+     * {@see Gcob\LaraSpecFirst\Parsing\SpecDocumentReader} for why. What stays
+     * non-negotiable is the *position* in the pipeline: this still has to run,
+     * and its result still has to be acted on, before the document reaches the
+     * parser, because a cyclic chain is the one document fault the parser
+     * cannot survive — it exhausts memory instead of raising.
+     *
+     * @param  array<string, mixed>  $document
+     * @return list<CyclicReferenceException>
      */
-    public function assertNoCycles(array $document): void
+    public function findCycles(array $document): array
     {
         $references = $this->collect($document, '');
+        $visited = [];
+        $faults = [];
 
         foreach (array_keys($references) as $start) {
-            $this->follow($start, $references);
+            if (isset($visited[$start])) {
+                continue;
+            }
+
+            $fault = $this->follow($start, $references, $visited);
+
+            if ($fault !== null) {
+                $faults[] = $fault;
+            }
         }
+
+        return $faults;
     }
 
     /**
@@ -166,28 +187,60 @@ final readonly class ReferenceCycleDetector
     }
 
     /**
-     * Follow one chain until it reaches content, or closes on itself.
+     * Follow one chain until it reaches content, closes on itself, or joins a
+     * chain another start already accounted for.
+     *
+     * **Chain construction is unchanged from before this class stopped
+     * throwing** — a chain reported here may still include a non-cyclic prefix
+     * leading into the cycle, exactly as a single-fault run always could,
+     * depending on which pointer `findCycles()` happened to start from first.
+     * That is a pre-existing, harmless imprecision (the claim — "this chain
+     * never reaches content" — still holds for the prefix too), not something
+     * introduced by collecting more than one fault, and correcting it is a
+     * separate concern from the one this method exists to solve here.
      *
      * @param  array<string, string>  $references
-     *
-     * @throws CyclicReferenceException
+     * @param  array<string, true>  $visited  every pointer a previous call already
+     *                                        resolved — as safe, or as part of a
+     *                                        cycle already reported. Extended with
+     *                                        every pointer this call resolves too,
+     *                                        so a later start sharing part of this
+     *                                        chain neither re-walks it nor reports
+     *                                        the same cycle twice.
      */
-    private function follow(string $start, array $references): void
+    private function follow(string $start, array $references, array &$visited): ?CyclicReferenceException
     {
         $chain = [$start];
         $seen = [$start => true];
         $current = $start;
 
-        while (isset($references[$current])) {
+        while (isset($references[$current]) && ! isset($visited[$current])) {
             $target = $references[$current];
             $chain[] = $target;
 
             if (isset($seen[$target])) {
-                throw CyclicReferenceException::chain($chain);
+                self::markVisited($chain, $visited);
+
+                return CyclicReferenceException::chain($chain);
             }
 
             $seen[$target] = true;
             $current = $target;
+        }
+
+        self::markVisited($chain, $visited);
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $chain
+     * @param  array<string, true>  $visited
+     */
+    private static function markVisited(array $chain, array &$visited): void
+    {
+        foreach ($chain as $pointer) {
+            $visited[$pointer] = true;
         }
     }
 

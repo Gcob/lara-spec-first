@@ -61,9 +61,11 @@ final class BuildCommand extends Command
         try {
             return $this->build($config, $remote);
         } catch (SpecException $refusal) {
-            $this->components->error($refusal->getMessage());
-
-            return self::FAILURE;
+            // Rendered through the same method `operationsOrFail()` uses, so a
+            // fault caught off a throw and a fault read off a `ReadOutcome`
+            // reach a developer identically — see
+            // {@see ReadsTheContract::reportFault()}.
+            return $this->reportFault($refusal);
         }
     }
 
@@ -79,7 +81,11 @@ final class BuildCommand extends Command
 
         $namespace = $this->requiredString($config, 'lara-spec-first.generated.namespace');
 
-        $operations = $this->contractOperations($specPath, $remote, (bool) $this->option('update-refs'));
+        $operations = $this->operationsOrFail($specPath, $remote, (bool) $this->option('update-refs'));
+
+        if ($operations === null) {
+            return self::FAILURE;
+        }
 
         // Named from the project root rather than absolutely: a generated file
         // may end up committed, and a machine's path in a repository is a diff

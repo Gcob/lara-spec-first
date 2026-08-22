@@ -68,10 +68,14 @@ it('defaults the vendor path to a directory at the project root', function (): v
 it('builds the remote reference guard from the configured allowlist and vendor root', function (): void {
     config()->set('lara-spec-first.remote_references.allowed_hosts', ['schemas.example.com']);
 
-    expect(fn () => app(RemoteReferenceGuard::class)->resolve(
+    $result = app(RemoteReferenceGuard::class)->resolve(
         ['$ref' => 'https://schemas.example.com/common.yaml'],
         base_path(),
-    ))->toThrow(MissingVendoredReferenceException::class, 'openapi-external-refs/schemas.example.com/common.yaml');
+    );
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(MissingVendoredReferenceException::class)
+        ->and($result->faults[0]->getMessage())->toContain('openapi-external-refs/schemas.example.com/common.yaml');
 });
 
 // `?? 'openapi-external-refs'` only catches a missing or null key: an

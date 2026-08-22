@@ -15,7 +15,7 @@ declare(strict_types=1);
 // @see tests/Conformance/KnownParserBugsTest.php
 require __DIR__.'/../../vendor/autoload.php';
 
-use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
+use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 $path = $argv[1] ?? null;
@@ -26,6 +26,6 @@ if (! is_string($path) || $path === '') {
     exit(2);
 }
 
-(new OperationExtractor)->extract((new SpecDocumentReader)->read($path));
+ReadOutcome::read(new SpecDocumentReader, $path);
 
 echo "ok\n";

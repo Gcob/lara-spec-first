@@ -274,14 +274,64 @@ after.
 | **Decode**      | YAML or JSON into an array.                                                    | Nothing can be decided about bytes. One code path serves both formats, because YAML 1.2 is a superset of JSON — branching on the file extension would only add a way to reject a correctly written document for carrying the wrong suffix. |
 | **Detect**      | Read `openapi`, pick the [strategy](#handling-30-and-31-the-version-strategy). | The version is a field _inside_ the file, so dispatch cannot happen any earlier than this.                                                                                                                                                 |
 | **Shape**       | Check the root keys the version requires.                                      | Needs the version to be known: `paths` is required at 3.0 and optional at 3.1, and that single difference is the whole reason this step is version-specific.                                                                               |
-| **Cycles**      | Reject a `$ref` chain that never reaches content.                              | Last, and necessarily before the parser. See below.                                                                                                                                                                                        |
-| **Remote refs** | Refuse a `$ref` that would be fetched over the network.                        | Also before the parser: it resolves a URL by calling `file_get_contents()` on it (`ReferenceContext.php:217`), so by the time it raises, the request has been made and the document has already chosen where the application connects.     |
+| **Cycles**      | Collect every `$ref` chain that never reaches content.                         | Last, and necessarily before the parser. See below.                                                                                                                                                                                        |
+| **Remote refs** | Collect every `$ref` that would be fetched over the network.                   | Also before the parser: it resolves a URL by calling `file_get_contents()` on it (`ReferenceContext.php:217`), so by the time it raises, the request has been made and the document has already chosen where the application connects.     |
 
 **Why the cycle check cannot move.** A pure reference cycle is the one document fault the parser does not survive: it
 recurses past its own guards and exhausts memory rather than raising ([parser caveats](#parser-caveats)). Once the
-parser holds the document there is no exception left to catch and no process left to report with — which makes it the
-only failure mode `spec:doctor` could never tell you about, because it never returns. So the check runs on the decoded
-array, before anything is handed over, and it cannot be folded into a wrapper around the parser.
+parser holds the document there is no exception left to catch and no process left to report with. So the check runs on
+the decoded array, before anything is handed over, and it cannot be folded into a wrapper around the parser — and
+whatever reads this pipeline's result must never hand a document carrying a cycle fault to the parser either, which is
+exactly what [the pipeline's result](#the-pipeline-does-not-throw-callers-decide) guarantees rather than merely hopes
+for.
+
+### The pipeline does not throw; callers decide
+
+**Decode, detect and shape stop the read outright — nothing can be known about the document at all without them, so the
+first fault among the three is the whole result.** Cycles and remote references are different: a fault in one reference
+or one cycle says nothing about any other, so every one of them is collected into a list rather than only the first.
+`SpecDocumentReader::read()` returns that list either way, in a `DocumentReadResult` — it never throws for a document
+fault.
+
+The same is true one layer up. `OperationExtractor::extract()` collects a fault per operation — an unroutable verb, a
+malformed extension, an identity already claimed by an earlier one — and skips only that operation rather than aborting
+every one after it, returning what it could build alongside what it could not. `Parsing\ReadOutcome::read()` is the one
+place that assembles both into a single result: every operation that could be extracted, and every fault this read
+encountered, whether or not it stopped anything.
+
+**Nothing here decides what a fault means — every caller does that for itself, from the same result.** `spec:build` and
+`spec:make` still refuse the moment there is a single fault, exactly as before; the difference is that they now read
+that decision off `ReadOutcome::$faults` instead of catching a thrown `SpecException`. [The doctor](./doctor.md) is a
+third caller reading the same result, which is the reason this pipeline stopped throwing in the first place: reporting
+every fault in one pass needs the fault list to exist, not to be replaced by whichever one happened to be thrown first.
+
+**One guarantee survives the change unconditionally: nothing unsafe is ever handed to the parser, whatever the fault
+list says.** A cyclic document is still never extracted — `ReadOutcome::read()` skips calling `OperationExtractor`
+entirely the moment a `CyclicReferenceException` is among the collected faults, because detecting a cycle only ever
+_reports_ it, it does not remove it from the document, and the parser cannot survive one regardless of how the fault is
+reported. A disallowed or unvendored remote reference is different in kind: `RemoteReferenceGuard` removes the `$ref`
+key the moment it cannot be resolved, so no network scheme string ever survives into what the parser sees, however many
+other faults the same document carries.
+
+**The key, and only the key.** Blanking the whole Reference Object would be safe too, and it would rest on "the siblings
+of a `$ref` mean nothing", which is only true at 3.0. At 3.1 a Schema Object is JSON Schema 2020-12, so `$ref` sits
+_beside_ applicable keywords, and a Path Item may carry `parameters` next to its own `$ref`: local `properties`,
+`required` or `parameters` the author wrote would be deleted along with the reference, and deleted silently. Keeping
+them costs a position that becomes invalid in its own right — a Response Object left with no `description` — surfacing
+as a parser fault instead of vanishing, which is the better of the two.
+
+**Removal still means the document describes less of the API than the file does**, and that is what
+`ReadOutcome::$neutralized` says. `spec:build` and `spec:make` never meet it: they stop at the first fault and generate
+nothing. A caller that reports rather than refuses does, and owes its reader the distinction — a routing table printed
+from a rewritten document is not the routing table the specification describes, and printing it beside the faults that
+rewrote it without saying so is the one way the result can mislead.
+
+**Nothing is written when a document could not be fully resolved.** The rewrite is in memory for the root specification,
+and on disk for a vendored copy that itself named a reference — but only when the walk over that copy collected no fault
+of its own, and a vendored document that did fault is refused by its parent as well, so the reference pointing into it
+is removed rather than rewritten to a local path. Two properties depend on that pair: a read that fails leaves the
+repository untouched, and reading twice on unchanged inputs reports the same faults twice. See
+[remote references](./remote-references.md#a-vendored-document-can-itself-name-a-reference).
 
 The check is deliberately narrow, and each limit below is stated in a test rather than in a comment.
 

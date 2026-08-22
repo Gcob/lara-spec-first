@@ -227,12 +227,12 @@ the code, and a gap in it is loud.
 
 - [ ] **The reading pipeline stops refusing at the first fault.** `SpecDocumentReader`, the guards under
       `Parsing\Guards\` and `OperationExtractor` return what they found instead of throwing: a `ReadOutcome` carrying
-      every operation that could be extracted and every fault encountered, blocking or not. `spec:build` and
-      `spec:make` keep today's behavior exactly — they inspect the outcome and refuse the moment it carries a fault —
-      but the decision moves from the pipeline to its callers, which is what lets `spec:doctor` become a third caller
-      reading the same contract rather than a second, divergent code path that has to be kept in sync by hand with
-      every future check. A prerequisite for the item below, landed on its own rather than folded into it, since it
-      changes nothing a consumer of `spec:build`/`spec:make` can observe and deserves its own tests proving that. See
+      every operation that could be extracted and every fault encountered, blocking or not. `spec:build` and `spec:make`
+      keep today's behavior exactly — they inspect the outcome and refuse the moment it carries a fault — but the
+      decision moves from the pipeline to its callers, which is what lets `spec:doctor` become a third caller reading
+      the same contract rather than a second, divergent code path that has to be kept in sync by hand with every future
+      check. A prerequisite for the item below, landed on its own rather than folded into it, since it changes nothing a
+      consumer of `spec:build`/`spec:make` can observe and deserves its own tests proving that. See
       [openapi-support.md](../guide/openapi-support.md#reading-a-document).
 - [ ] **`spec:doctor`**, which is `nginx -t` for your contract: what the package will honor, what it will not, and the
       routing table that results. It belongs in this phase rather than with the Phase 2 developer experience, because it

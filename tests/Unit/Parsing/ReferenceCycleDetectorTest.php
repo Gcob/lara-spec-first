@@ -9,27 +9,28 @@ use Gcob\LaraSpecFirst\Parsing\Guards\ReferenceCycleDetector;
 // refactor, it should be this pair.
 
 it('accepts a schema that refers back to itself through content', function (): void {
-    (new ReferenceCycleDetector)->assertNoCycles(specFixture('recursive-schema.yaml'));
-})->throwsNoExceptions();
+    expect((new ReferenceCycleDetector)->findCycles(specFixture('recursive-schema.yaml')))->toBe([]);
+});
 
 it('rejects a chain of references that never reaches content', function (): void {
-    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles(specFixture('cycle-pointer.yaml')))
-        ->toThrow(CyclicReferenceException::class);
+    $faults = (new ReferenceCycleDetector)->findCycles(specFixture('cycle-pointer.yaml'));
+
+    expect($faults)->toHaveCount(1)
+        ->and($faults[0])->toBeInstanceOf(CyclicReferenceException::class);
 });
 
 it('names the whole chain so the cycle can be found', function (): void {
-    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles(specFixture('cycle-pointer.yaml')))
-        ->toThrow(
-            CyclicReferenceException::class,
-            '#/components/schemas/A -> #/components/schemas/B -> #/components/schemas/A'
-        );
+    $faults = (new ReferenceCycleDetector)->findCycles(specFixture('cycle-pointer.yaml'));
+
+    expect($faults[0]->getMessage())->toContain(
+        '#/components/schemas/A -> #/components/schemas/B -> #/components/schemas/A'
+    );
 });
 
 it('rejects a reference to itself', function (): void {
     $document = ['components' => ['schemas' => ['A' => ['$ref' => '#/components/schemas/A']]]];
 
-    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles($document))
-        ->toThrow(CyclicReferenceException::class);
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
 });
 
 it('rejects a longer cycle', function (): void {
@@ -39,8 +40,7 @@ it('rejects a longer cycle', function (): void {
         'C' => ['$ref' => '#/components/schemas/A'],
     ]]];
 
-    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles($document))
-        ->toThrow(CyclicReferenceException::class);
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
 });
 
 it('accepts a chain of references that does reach content', function (): void {
@@ -50,45 +50,44 @@ it('accepts a chain of references that does reach content', function (): void {
         'C' => ['type' => 'string'],
     ]]];
 
-    (new ReferenceCycleDetector)->assertNoCycles($document);
-})->throwsNoExceptions();
+    expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);
+});
 
 // Anything needing the vendored copies is out of reach until they are loaded.
 // Stated as a test so the limit is visible rather than implied.
 it('ignores references it cannot resolve without the vendored copies', function (mixed $ref): void {
     $document = ['components' => ['schemas' => ['A' => ['$ref' => $ref]]]];
 
-    (new ReferenceCycleDetector)->assertNoCycles($document);
+    expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);
 })->with([
     'another file' => ['common.yaml#/components/schemas/A'],
     'a URL' => ['https://example.com/schemas.yaml#/A'],
     'not a string' => [42],
-])->throwsNoExceptions();
+]);
 
 it('walks path templates without mistaking them for pointer segments', function (): void {
     $document = ['paths' => ['/users/{id}' => ['get' => ['responses' => ['200' => [
         'content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/A']]],
     ]]]]], 'components' => ['schemas' => ['A' => ['$ref' => '#/paths/~1users~1{id}/get/responses/200/content/application~1json/schema']]]];
 
-    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles($document))
-        ->toThrow(CyclicReferenceException::class);
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
 });
 
 it('accepts the documents that carry no cycle', function (string $name): void {
-    (new ReferenceCycleDetector)->assertNoCycles(specFixture($name));
+    expect((new ReferenceCycleDetector)->findCycles(specFixture($name)))->toBe([]);
 })->with([
     'openapi-3.0.yaml',
     'openapi-3.1.yaml',
     'openapi-3.1-webhooks-only.yaml',
-])->throwsNoExceptions();
+]);
 
 // `$ref` is a legal key name inside a value. An API that itself handles JSON
 // Schema will carry one in an example, and refusing to load such a document
 // would be the worst failure this class can produce — a valid contract turned
 // away, where a false negative would merely leave the parser to complain.
 it('does not read a literal $ref inside a value as a reference', function (): void {
-    (new ReferenceCycleDetector)->assertNoCycles(specFixture('ref-inside-example.yaml'));
-})->throwsNoExceptions();
+    expect((new ReferenceCycleDetector)->findCycles(specFixture('ref-inside-example.yaml')))->toBe([]);
+});
 
 it('treats every data-carrying key as opaque', function (string $key): void {
     $document = ['components' => ['schemas' => [
@@ -96,19 +95,18 @@ it('treats every data-carrying key as opaque', function (string $key): void {
         'B' => ['$ref' => '#/components/schemas/A/'.$key],
     ]]];
 
-    (new ReferenceCycleDetector)->assertNoCycles($document);
-})->with(['example', 'default', 'enum', 'const'])->throwsNoExceptions();
+    expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);
+})->with(['example', 'default', 'enum', 'const']);
 
 // `examples` is two different things wearing one name, and only its shape tells
 // them apart. Both directions matter, so both are asserted: reading the OpenAPI
 // map as data would hide a cycle on exactly the shape the parser dies on.
 it('ignores a $ref inside the JSON Schema examples keyword, which is a list', function (): void {
-    (new ReferenceCycleDetector)->assertNoCycles(specFixture('schema-examples-list.yaml'));
-})->throwsNoExceptions();
+    expect((new ReferenceCycleDetector)->findCycles(specFixture('schema-examples-list.yaml')))->toBe([]);
+});
 
 it('still catches a cycle through OpenAPI Example Objects, which are a map', function (): void {
-    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles(specFixture('cycle-in-example-objects.yaml')))
-        ->toThrow(CyclicReferenceException::class);
+    expect((new ReferenceCycleDetector)->findCycles(specFixture('cycle-in-example-objects.yaml')))->toHaveCount(1);
 });
 
 // Stated so the gap is visible: `follow()` compares pointers for equality, not
@@ -118,16 +116,16 @@ it('still catches a cycle through OpenAPI Example Objects, which are a map', fun
 it('does not catch a reference aimed at its own ancestor', function (): void {
     $document = ['components' => ['schemas' => ['A' => ['$ref' => '#/components/schemas']]]];
 
-    (new ReferenceCycleDetector)->assertNoCycles($document);
-})->throwsNoExceptions();
+    expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);
+});
 
 // The map of Example Objects is followed, because any of them may be a
 // Reference Object — but each object's `value` is literal data. `value` cannot
 // join the opaque list, since `properties: {value: {...}}` is an ordinary
 // schema; only its position inside an Example Object makes it data.
 it('does not follow the value of an Example Object', function (): void {
-    (new ReferenceCycleDetector)->assertNoCycles(specFixture('example-object-value.yaml'));
-})->throwsNoExceptions();
+    expect((new ReferenceCycleDetector)->findCycles(specFixture('example-object-value.yaml')))->toBe([]);
+});
 
 it('still follows an Example Object that is itself a reference', function (): void {
     $document = ['components' => ['examples' => [
@@ -135,8 +133,7 @@ it('still follows an Example Object that is itself a reference', function (): vo
         'B' => ['$ref' => '#/components/examples/A'],
     ]]];
 
-    expect(fn () => (new ReferenceCycleDetector)->assertNoCycles($document))
-        ->toThrow(CyclicReferenceException::class);
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
 });
 
 // The opaque list reasons about key names, never about positions, so a schema
@@ -149,5 +146,55 @@ it('does not follow a schema property named like a data-carrying key', function 
         'B' => ['$ref' => '#/components/schemas/A/properties/'.$name],
     ]]];
 
-    (new ReferenceCycleDetector)->assertNoCycles($document);
-})->with(['default', 'example', 'enum', 'const'])->throwsNoExceptions();
+    expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);
+})->with(['default', 'example', 'enum', 'const']);
+
+// --- Collecting more than one fault in a single pass, the reason this class
+// stopped throwing at the first cycle it found. ---
+
+it('reports two independent cycles as two faults', function (): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['$ref' => '#/components/schemas/B'],
+        'B' => ['$ref' => '#/components/schemas/A'],
+        'X' => ['$ref' => '#/components/schemas/Y'],
+        'Y' => ['$ref' => '#/components/schemas/X'],
+    ]]];
+
+    $faults = (new ReferenceCycleDetector)->findCycles($document);
+
+    expect($faults)->toHaveCount(2);
+
+    $messages = implode('', array_map(
+        static fn (CyclicReferenceException $fault): string => $fault->getMessage(),
+        $faults,
+    ));
+
+    expect($messages)->toContain('#/components/schemas/A -> #/components/schemas/B -> #/components/schemas/A')
+        ->and($messages)->toContain('#/components/schemas/X -> #/components/schemas/Y -> #/components/schemas/X');
+});
+
+// Two starting points on the very same cycle must not be counted twice: the
+// document has one broken chain, not one per pointer that happens to sit on it.
+it('reports one cycle once, however many pointers sit on it', function (): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['$ref' => '#/components/schemas/B'],
+        'B' => ['$ref' => '#/components/schemas/C'],
+        'C' => ['$ref' => '#/components/schemas/A'],
+    ]]];
+
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
+});
+
+// A reference that leads into a cycle without being part of it must not be
+// reported as a second, distinct fault — it is the same broken chain, seen
+// from one step further back.
+it('does not report a second fault for a reference that only leads into an already-found cycle', function (): void {
+    $document = ['components' => ['schemas' => [
+        'D' => ['$ref' => '#/components/schemas/A'],
+        'A' => ['$ref' => '#/components/schemas/B'],
+        'B' => ['$ref' => '#/components/schemas/C'],
+        'C' => ['$ref' => '#/components/schemas/A'],
+    ]]];
+
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
+});

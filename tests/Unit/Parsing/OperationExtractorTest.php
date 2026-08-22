@@ -9,15 +9,31 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
+use Gcob\LaraSpecFirst\Parsing\ExtractionResult;
 use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
+
+/**
+ * The read is assumed clean here: every fixture this helper is used against
+ * has a readable document, so unwrapping straight to the extractor's own
+ * result is what keeps every existing assertion below reading exactly as it
+ * did before this class stopped throwing.
+ */
+function extractionFrom(string $fixture): ExtractionResult
+{
+    $document = (new SpecDocumentReader)->read(specFixturePath($fixture))->document;
+
+    assert($document !== null);
+
+    return (new OperationExtractor)->extract($document);
+}
 
 /**
  * @return list<Operation>
  */
 function extractFrom(string $fixture): array
 {
-    return (new OperationExtractor)->extract((new SpecDocumentReader)->read(specFixturePath($fixture)));
+    return extractionFrom($fixture)->operations;
 }
 
 /**
@@ -94,20 +110,35 @@ it('resolves a Path Item that lives in another file', function (): void {
 // produce, so the reference is refused with the reason and the two forms that do
 // work.
 it('refuses a Path Item reference the parser would drop in silence', function (): void {
-    expect(fn () => extractFrom('path-item-ref-component.yaml'))
-        ->toThrow(RejectedConstructException::class, 'does not model `components.pathItems`');
+    $result = extractionFrom('path-item-ref-component.yaml');
+
+    expect($result->operations)->toBe([])
+        ->and($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(RejectedConstructException::class)
+        ->and($result->faults[0]->getMessage())->toContain('does not model `components.pathItems`');
 });
 
 it('refuses a trace operation, and says whose limitation it is', function (): void {
-    expect(fn () => extractFrom('trace-operation.yaml'))
-        ->toThrow(RejectedConstructException::class, 'Laravel has no TRACE verb');
+    $result = extractionFrom('trace-operation.yaml');
+
+    expect($result->operations)->toBe([])
+        ->and($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(RejectedConstructException::class)
+        ->and($result->faults[0]->getMessage())->toContain('Laravel has no TRACE verb');
 });
 
 // Two paths differing only in a parameter name address one endpoint, which no
 // router can tell apart. Surfacing it is the payoff of normalizing identity.
-it('refuses two operations that address one endpoint', function (): void {
-    expect(fn () => extractFrom('duplicate-endpoint.yaml'))
-        ->toThrow(InvalidDocumentException::class, 'both resolve to `get /users/{}`');
+// The first of the two still extracts — only the second, which finds the
+// identity already claimed, is skipped.
+it('refuses the second of two operations that address one endpoint, keeping the first', function (): void {
+    $result = extractionFrom('duplicate-endpoint.yaml');
+
+    expect($result->operations)->toHaveCount(1)
+        ->and($result->operations[0]->operationId)->toBe('showById')
+        ->and($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(InvalidDocumentException::class)
+        ->and($result->faults[0]->getMessage())->toContain('both resolve to `get /users/{}`');
 });
 
 it('extracts nothing from a document with no paths', function (): void {
@@ -158,8 +189,11 @@ it('records a sunset it cannot read as a moment, without resolving it', function
 });
 
 it('refuses a value for an extension it defines but does not recognize', function (): void {
-    expect(fn () => extractFrom('unknown-lifecycle.yaml'))
-        ->toThrow(InvalidDocumentException::class, '`x-lifecycle` on `get /typo` is "stabel"');
+    $result = extractionFrom('unknown-lifecycle.yaml');
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(InvalidDocumentException::class)
+        ->and($result->faults[0]->getMessage())->toContain('`x-lifecycle` on `get /typo` is "stabel"');
 });
 
 it('tells an inherited security requirement from an explicit opt-out', function (): void {
@@ -214,8 +248,11 @@ it('leaves an operation that declares no custom controller without one', functio
 // generated: the value is the name itself, so nothing this package could do to it
 // later would make it into an identifier.
 it('refuses an x-controller PHP could never carry', function (string $fixture): void {
-    expect(fn () => extractFrom($fixture))
-        ->toThrow(InvalidDocumentException::class, 'not a class name PHP could carry');
+    $result = extractionFrom($fixture);
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(InvalidDocumentException::class)
+        ->and($result->faults[0]->getMessage())->toContain('not a class name PHP could carry');
 })->with([
     'a hyphen' => 'x-controller-hyphen.yaml',
     'a trailing separator' => 'x-controller-trailing.yaml',
@@ -223,6 +260,45 @@ it('refuses an x-controller PHP could never carry', function (string $fixture): 
 ]);
 
 it('refuses an x-controller that is not text at all', function (): void {
-    expect(fn () => extractFrom('x-controller-not-a-string.yaml'))
-        ->toThrow(InvalidDocumentException::class, 'reads it as text');
+    $result = extractionFrom('x-controller-not-a-string.yaml');
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(InvalidDocumentException::class)
+        ->and($result->faults[0]->getMessage())->toContain('reads it as text');
+});
+
+// --- Collecting more than one fault in a single pass, the reason this class
+// stopped throwing at the first one. ---
+
+it('skips only the faulty operation and keeps extracting the rest of the document', function (): void {
+    $result = extractionFrom('multiple-faults.yaml');
+
+    $identities = array_map(
+        static fn (Operation $operation): string => $operation->identity(),
+        $result->operations,
+    );
+
+    expect($identities)->toBe(['get /users/me', 'get /users/{}'])
+        ->and($result->faults)->toHaveCount(3);
+
+    $faultTypes = array_map(get_class(...), $result->faults);
+
+    expect($faultTypes)->toBe([
+        RejectedConstructException::class, // the trace operation
+        InvalidDocumentException::class,   // the unrecognized x-lifecycle value
+        InvalidDocumentException::class,   // the duplicate endpoint
+    ]);
+});
+
+// `index` settles which route wins when two match, so it has to describe the
+// order operations are actually registered in — contiguous among the survivors
+// — rather than the raw position they were attempted at in the document, which
+// three skipped operations would otherwise leave full of gaps.
+it('numbers surviving operations contiguously despite the ones skipped between them', function (): void {
+    $indexes = array_map(
+        static fn (Operation $operation): int => $operation->index,
+        extractionFrom('multiple-faults.yaml')->operations,
+    );
+
+    expect($indexes)->toBe([0, 1]);
 });

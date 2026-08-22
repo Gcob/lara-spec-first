@@ -637,6 +637,35 @@ it('reports a document it refuses instead of throwing at the reader', function (
     'a reference cycle' => ['cycle-pointer.yaml', 'closes a cycle'],
 ]);
 
+// Refusing at the first fault is the behaviour this command has always had and
+// keeps. What it no longer does is act as though the first fault were the only
+// one: the pipeline now collects every one of them, and printing one of three
+// with nothing said about the other two reads as a regression rather than as
+// parity — this is the line that will name `spec:doctor` once it exists.
+it('says how many faults it is not showing when it stops at the first', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('multiple-faults.yaml'));
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(1);
+
+    $printed = $output->fetch();
+
+    expect($printed)->toContain('2 more faults')
+        ->and(treeContents(buildTree()))->toBe([]);
+});
+
+// The other side of the same line: one fault says nothing about a count, because
+// there is nothing left unsaid.
+it('says nothing about a count when the first fault is the only one', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('cycle-pointer.yaml'));
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(1)
+        ->and($output->fetch())->not->toContain('more fault');
+});
+
 it('fails without writing anything when there is no specification', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('does-not-exist.yaml'));
 

@@ -18,6 +18,7 @@ use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
+use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\ParserFailedException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
@@ -30,67 +31,111 @@ use Throwable;
  * types; here, and only here, the OpenAPI parser is asked to resolve references
  * — and nothing it returns leaves this class. What comes out is `Contract\`.
  *
+ * **An operation whose own construct is refused is skipped, not fatal to the
+ * rest of the document.** A `trace` operation, a malformed extension, an
+ * identity already claimed by an earlier operation — each is collected as a
+ * fault and the loop moves on to the next operation, rather than the first one
+ * stopping every operation after it. Handing the OpenAPI parser the document
+ * at all is still all-or-nothing: if `cebe\openapi\` itself cannot build an
+ * object model of the document, there is no per-operation loop to run yet, so
+ * that failure is the whole result. See {@see ExtractionResult}.
+ *
  * @internal Not public API — reachable through the reading pipeline.
  *
  * @see SpecDocumentReader for the order of the read pipeline
  */
 final readonly class OperationExtractor
 {
-    /**
-     * @return list<Operation> in the order the document writes them
-     *
-     * @throws RejectedConstructException the document uses something we refuse to serve
-     * @throws InvalidDocumentException two operations address one endpoint, or an
-     *                                  extension this package defines carries a
-     *                                  value it does not
-     */
-    public function extract(ParsableSpecDocument $document): array
+    public function extract(ParsableSpecDocument $document): ExtractionResult
     {
-        $this->assertEveryPathItemIsFollowable($document);
+        $faults = $this->unfollowablePathItemFaults($document);
+
+        try {
+            $parsed = $this->parse($document);
+        } catch (SpecException $fault) {
+            // The parser could not build a model of the document at all — there
+            // is nothing left to loop over, so this is the whole result.
+            return new ExtractionResult([], [...$faults, $fault]);
+        }
 
         $operations = [];
         $seen = [];
         $index = 0;
 
-        foreach ($this->parse($document)->paths ?? [] as $path => $pathItem) {
+        foreach ($parsed->paths ?? [] as $path => $pathItem) {
             $template = PathTemplate::fromString((string) $path);
 
-            /** @var array<string, ParsedOperation> $parsed */
-            $parsed = $pathItem->getOperations();
+            /** @var array<string, ParsedOperation> $operationsAtPath */
+            $operationsAtPath = $pathItem->getOperations();
 
-            foreach ($parsed as $verb => $operation) {
-                $method = HttpMethod::tryFrom($verb)
-                    ?? throw RejectedConstructException::traceOperation((string) $path);
+            foreach ($operationsAtPath as $verb => $operation) {
+                $method = HttpMethod::tryFrom($verb);
+
+                if ($method === null) {
+                    $faults[] = RejectedConstructException::traceOperation((string) $path);
+
+                    continue;
+                }
 
                 $endpoint = $verb.' '.$path;
-                $audience = $this->audience($operation, $endpoint);
 
-                $extracted = new Operation(
-                    $index++,
-                    $method,
-                    $template,
-                    $this->operationId($operation),
-                    array_values(array_filter($operation->tags, is_string(...))),
-                    $audience,
-                    $this->lifecycle($operation, $audience, $endpoint),
-                    $operation->deprecated,
-                    $this->sunset($operation, $endpoint),
-                    $this->security($operation),
-                    $this->controller($operation, $endpoint),
-                );
+                try {
+                    $extracted = $this->buildOperation($operation, $method, $template, $endpoint, $index);
+                } catch (InvalidDocumentException $fault) {
+                    $faults[] = $fault;
+
+                    continue;
+                }
 
                 $identity = $extracted->identity();
 
                 if (isset($seen[$identity])) {
-                    throw InvalidDocumentException::duplicateEndpoint($identity, $seen[$identity], $endpoint);
+                    $faults[] = InvalidDocumentException::duplicateEndpoint($identity, $seen[$identity], $endpoint);
+
+                    continue;
                 }
 
+                // Only incremented for an operation that actually joins the
+                // result: `index` settles which route wins when two match, so
+                // it has to describe the order operations are *registered* in,
+                // not the order the document happened to attempt them in.
+                $index++;
                 $seen[$identity] = $endpoint;
                 $operations[] = $extracted;
             }
         }
 
-        return $operations;
+        return new ExtractionResult($operations, $faults);
+    }
+
+    /**
+     * Every field the document states for one operation, or the first fault
+     * that keeps it from being built at all.
+     *
+     * @throws InvalidDocumentException
+     */
+    private function buildOperation(
+        ParsedOperation $operation,
+        HttpMethod $method,
+        PathTemplate $template,
+        string $endpoint,
+        int $index,
+    ): Operation {
+        $audience = $this->audience($operation, $endpoint);
+
+        return new Operation(
+            $index,
+            $method,
+            $template,
+            $this->operationId($operation),
+            array_values(array_filter($operation->tags, is_string(...))),
+            $audience,
+            $this->lifecycle($operation, $audience, $endpoint),
+            $operation->deprecated,
+            $this->sunset($operation, $endpoint),
+            $this->security($operation),
+            $this->controller($operation, $endpoint),
+        );
     }
 
     /**
@@ -105,15 +150,19 @@ final readonly class OperationExtractor
      * The two other forms are fine and stay supported, which is why this is
      * targeted rather than a blanket refusal of Path Item references.
      *
-     * @throws RejectedConstructException
+     * @return list<RejectedConstructException> one per offending path, so a
+     *                                          document naming several is
+     *                                          reported in one pass
      */
-    private function assertEveryPathItemIsFollowable(ParsableSpecDocument $document): void
+    private function unfollowablePathItemFaults(ParsableSpecDocument $document): array
     {
         $paths = $document->raw['paths'] ?? [];
 
         if (! is_array($paths)) {
-            return;
+            return [];
         }
+
+        $faults = [];
 
         foreach ($paths as $path => $pathItem) {
             if (! is_array($pathItem) || ! isset($pathItem['$ref']) || ! is_string($pathItem['$ref'])) {
@@ -121,9 +170,11 @@ final readonly class OperationExtractor
             }
 
             if (str_starts_with($pathItem['$ref'], '#/components/pathItems/')) {
-                throw RejectedConstructException::componentPathItem((string) $path, $pathItem['$ref']);
+                $faults[] = RejectedConstructException::componentPathItem((string) $path, $pathItem['$ref']);
             }
         }
+
+        return $faults;
     }
 
     /**
@@ -136,6 +187,8 @@ final readonly class OperationExtractor
      *
      * The path still matters, because a reference relative to the file can only
      * be resolved against where that file sits.
+     *
+     * @throws ParserFailedException
      */
     private function parse(ParsableSpecDocument $document): OpenApi
     {

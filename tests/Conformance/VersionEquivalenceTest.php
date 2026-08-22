@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
-use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
+use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 
@@ -22,17 +22,15 @@ use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
  */
 function extractEquivalenceFixture(string $name): array
 {
-    return (new OperationExtractor)->extract(
-        (new SpecDocumentReader)->read(specFixturePath('equivalence/'.$name))
-    );
+    return ReadOutcome::read(new SpecDocumentReader, specFixturePath('equivalence/'.$name))->operations;
 }
 
 it('reads the pair as the two different versions they claim to be', function (): void {
     $reader = new SpecDocumentReader;
 
-    expect($reader->read(specFixturePath('equivalence/same-contract-3.0.yaml'))->version)
+    expect($reader->read(specFixturePath('equivalence/same-contract-3.0.yaml'))->document?->version)
         ->toBe(SpecVersion::V3_0)
-        ->and($reader->read(specFixturePath('equivalence/same-contract-3.1.yaml'))->version)
+        ->and($reader->read(specFixturePath('equivalence/same-contract-3.1.yaml'))->document?->version)
         ->toBe(SpecVersion::V3_1);
 });
 
