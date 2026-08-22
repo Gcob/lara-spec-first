@@ -20,15 +20,17 @@ namespace Gcob\LaraSpecFirst\Doctor;
  * developer nothing about what the spec actually did — the same reasoning
  * doctor.md gives for reporting the outcome, not only the problems.
  *
- * **Every section prints, including the four this release does not check.**
- * A section absent from the report is one a green exit silently claims to
- * have covered — and the four that are absent today are not minor ones:
- * doctor.md calls Security "the one finding that can turn a
- * documented-as-protected endpoint into a public one". So each prints its
- * note instead of `clean`, from {@see DiagnosticReport::noteFor()}, which is
- * also where a section skipped on *this* run says so. That is doctor.md's own
- * rule about the exit code: the report says which checks were skipped, on
- * every run, so a green exit is never mistaken for a full pass.
+ * **Every section prints, including the two this release does not check.**
+ * A section absent from the report is one a green exit silently claims to have
+ * covered. Security and Lifecycle were on that list one release ago and came
+ * off it in the change that built them, which is the only way an entry there
+ * is meant to be removed; Baseline and Drivers are what is left. Each prints
+ * its note instead of `clean`, from {@see DiagnosticReport::noteFor()}, which
+ * is also where a section skipped on *this* run says so — including Security
+ * and Lifecycle, which have no standing note any more and so need a
+ * run-specific one the moment there is no document to read. That is
+ * doctor.md's own rule about the exit code: the report says which checks were
+ * skipped, on every run, so a green exit is never mistaken for a full pass.
  */
 final readonly class ReportFormatter
 {
@@ -70,6 +72,21 @@ final readonly class ReportFormatter
                 'target' => $route->target,
                 'routesToCustomController' => $route->routesToCustomController,
             ], $report->routes),
+            // The same outcome the text report prints under Lifecycle, and
+            // for the same reason it is not a finding: a CI script that
+            // wants to act on an approaching removal date can, without the
+            // exit code having decided for it.
+            'lifecycle' => $report->lifecycle === null ? null : [
+                'beta' => $report->lifecycle->beta,
+                'approachingSunsets' => array_map(static fn (ApproachingSunset $sunset): array => [
+                    'operation' => $sunset->operation,
+                    'sunset' => $sunset->sunset,
+                    'daysRemaining' => $sunset->daysRemaining,
+                ], $report->lifecycle->approachingSunsets),
+                'publicOperations' => $report->lifecycle->publicOperations,
+                'stablePublicOperations' => $report->lifecycle->stablePublicOperations,
+            ],
+            'inheritsUnreadRootRequirements' => $report->inheritsUnreadRootRequirements,
             'findings' => array_map(static fn (Finding $finding): array => [
                 'class' => $finding->class->value,
                 'section' => $finding->section,
@@ -122,12 +139,13 @@ final readonly class ReportFormatter
 
             $lines[] = $section;
 
-            // The routing table is the outcome, not a problem — it prints
-            // whether or not the section also carries a finding, which is
-            // why it is not folded into the "clean" placeholder below.
-            if ($section === 'Routing outcome') {
-                array_push($lines, ...self::routes($report));
-            }
+            // What a section reports when nothing is wrong — the routing
+            // table, the lifecycle listings — is the outcome, not a problem.
+            // It prints whether or not the section also carries a finding,
+            // which is why it is not folded into the "clean" placeholder
+            // below and why "clean" gives way to it.
+            $outcome = self::outcomeOf($report, $section);
+            array_push($lines, ...$outcome);
 
             foreach ($findings as $finding) {
                 $lines[] = '  '.self::badge($finding).' '.$finding->message;
@@ -138,10 +156,12 @@ final readonly class ReportFormatter
             }
 
             // `clean` is a claim, so it is only made when the section actually
-            // ran and found nothing. A section carrying a note either did not
-            // run or ran on less than it needed, and printing both would say
-            // two different things about the same section.
-            if ($findings === [] && $note === null && ($section !== 'Routing outcome' || $report->routes === [])) {
+            // ran, found nothing, and had no outcome of its own to show. A
+            // section carrying a note either did not run or ran on less than it
+            // needed, and printing both would say two different things about
+            // the same section. `$outcome === []` covers the routing table and
+            // the lifecycle listings both, rather than naming one section.
+            if ($findings === [] && $note === null && $outcome === []) {
                 $lines[] = '  clean';
             }
 
@@ -151,6 +171,22 @@ final readonly class ReportFormatter
         $lines[] = self::summary($report);
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The lines a section prints that are not findings: what the run found to
+     * be true rather than what it found to be wrong.
+     *
+     * @return list<string>
+     */
+    private static function outcomeOf(DiagnosticReport $report, string $section): array
+    {
+        return match ($section) {
+            'Routing outcome' => self::routes($report),
+            'Security' => self::rootRequirements($report),
+            'Lifecycle' => self::lifecycle($report),
+            default => [],
+        };
     }
 
     /**
@@ -168,6 +204,81 @@ final readonly class ReportFormatter
                 $route->target,
                 $route->routesToCustomController ? '' : ' (501, unimplemented)',
             );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * One line, never a list of the operations under it: the package does not
+     * read the root block, so it cannot say what any of them inherits from it.
+     *
+     * Printed only when some operation actually inherits one: that is what
+     * `$report->inheritsUnreadRootRequirements` answers, both halves of it,
+     * and a document overriding the block on every operation gets no line at
+     * all rather than a caveat about a risk it does not carry.
+     *
+     * @return list<string>
+     */
+    private static function rootRequirements(DiagnosticReport $report): array
+    {
+        if (! $report->inheritsUnreadRootRequirements) {
+            return [];
+        }
+
+        return ['  This document declares a root security block. It is not read: an operation that states no '.
+            'security of its own inherits requirements nothing here resolved, so no such operation is named in this '.
+            'section.'];
+    }
+
+    /**
+     * The protection report, then the unstable surface and the removal dates
+     * coming up — each standing on its own, because each answers a different
+     * question about a different set of operations.
+     *
+     * **The protection report is printed exactly when there is a public
+     * surface to report on.** It used to be gated on all three being empty at
+     * once, which meant an internal-only service — every operation
+     * `x-audience: internal`, one of them `beta` — printed "0 of 0 public
+     * operation(s) are stable" beside its beta listing: the sentence about an
+     * empty document that this guard exists to avoid, on a document that is
+     * not empty at all. An internal-only API is not an exotic shape, and the
+     * protection report is a statement about a public surface, so with no
+     * public surface there is nothing for it to say. The beta and sunset lines
+     * are unaffected: they were never about the public surface.
+     *
+     * @return list<string>
+     */
+    private static function lifecycle(DiagnosticReport $report): array
+    {
+        $outcome = $report->lifecycle;
+
+        // Null rather than a zeroed outcome is how `DoctorCommand` says there
+        // was no document at all — see its own reasoning there — and the
+        // section's `[not checked]` note says so in words.
+        if ($outcome === null) {
+            return [];
+        }
+
+        $lines = [];
+
+        if ($outcome->publicOperations > 0) {
+            $lines[] = sprintf(
+                '  %d of %d public operation(s) are stable.%s',
+                $outcome->stablePublicOperations,
+                $outcome->publicOperations,
+                $outcome->stablePublicOperations === 0
+                    ? ' Nothing in this contract is promised, so nothing in it can be broken by accident.'
+                    : '',
+            );
+        }
+
+        foreach ($outcome->beta as $operation) {
+            $lines[] = '  beta: '.$operation;
+        }
+
+        foreach ($outcome->approachingSunsets as $sunset) {
+            $lines[] = sprintf('  sunset in %d day(s): %s on %s', $sunset->daysRemaining, $sunset->operation, $sunset->sunset);
         }
 
         return $lines;

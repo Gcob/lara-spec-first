@@ -1,0 +1,53 @@
+# The three states an operation's `security` can be in, plus the root block
+# this package deliberately does not read: two operations requiring a scheme,
+# one explicitly requiring none, and one saying nothing at all and therefore
+# inheriting whatever the root states.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+security:
+  - bearerAuth: []
+paths:
+  /orders:
+    get:
+      operationId: listOrders
+      security:
+        - oauth2: [read:orders]
+      responses:
+        '200': { description: The orders }
+    post:
+      operationId: createOrder
+      security:
+        - oauth2: [write:orders]
+        - apiKey: []
+      responses:
+        '201': { description: Created }
+  /health:
+    get:
+      operationId: showHealth
+      security: []
+      responses:
+        '200': { description: OK }
+  /inherits:
+    get:
+      operationId: inheritsRootSecurity
+      responses:
+        '200': { description: OK }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKey:
+      type: apiKey
+      name: X-Api-Key
+      in: header
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://example.test/oauth/token
+          scopes:
+            read:orders: Read orders
+            write:orders: Write orders

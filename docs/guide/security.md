@@ -17,10 +17,13 @@ written — whether the caller may touch _this_ record — because the specifica
 owns the line between the two: what the package enforces because the contract actually says it, and what it deliberately
 leaves to the application because the contract cannot.
 
-> **Not implemented yet.** Enforcement is [Phase 2](../project/roadmap.md#authorization-the-contract-can-express). What
-> [Phase 1](../project/roadmap.md#reading-reporting-refusing) owes an operation that declares `security` is a finding
-> saying in those words that the package does not apply it yet: a phase that registers routes must not let a documented
-> promise be mistaken for a kept one. Items marked `Open` are undecided.
+> **Not enforced yet, and reported in those words.** Enforcement is
+> [Phase 2](../project/roadmap.md#authorization-the-contract-can-express). What
+> [Phase 1](../project/roadmap.md#reading-reporting-refusing) owes an operation that declares `security` is shipped:
+> [`spec:doctor`](./doctor.md#what-it-checks) names every one of them, individually, on every run, saying that the
+> package does not apply the requirement yet — a phase that registers routes must not let a documented promise be
+> mistaken for a kept one. A contract that declares `security` therefore exits non-zero until enforcement lands. Items
+> marked `Open` are undecided.
 
 ## Scheme names are a naming contract with your guards
 

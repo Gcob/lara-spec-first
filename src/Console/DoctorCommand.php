@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Console;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract;
 use Gcob\LaraSpecFirst\Doctor\Checks\DocumentValidityCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\DriftCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\InstallationCheck;
+use Gcob\LaraSpecFirst\Doctor\Checks\LifecycleCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\ReferencesCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\RoutingOutcomeCheck;
+use Gcob\LaraSpecFirst\Doctor\Checks\SecurityCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\SupportMatrixCheck;
 use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
 use Gcob\LaraSpecFirst\Doctor\Finding;
@@ -82,18 +86,30 @@ final class DoctorCommand extends Command
         $specPath = $this->specPath($config);
         $outcome = $this->readContract($specPath, $remote);
 
+        // Read once and passed down rather than taken again inside each rule
+        // that needs it: two lifecycle rules compare against "now", and a
+        // report where the two disagreed — over a midnight, over a slow
+        // read — would be a report about the clock rather than about the
+        // contract. It is also what makes the check testable without
+        // waiting for a date to arrive.
+        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+
         $findings = [
             ...DocumentValidityCheck::check($outcome),
             ...ReferencesCheck::check($outcome),
             ...SupportMatrixCheck::rejected($outcome),
             ...SupportMatrixCheck::missingOperationId($outcome->operations),
             ...SupportMatrixCheck::deferred($outcome->document),
+            ...SecurityCheck::check($outcome->operations),
+            ...LifecycleCheck::check($outcome->operations, $now),
         ];
 
         $routing = $this->routingOutcome($config, $outcome, $specPath);
         $findings = [...$findings, ...$routing['findings']];
 
         $findings = [...$findings, ...$this->installation($config)];
+
+        $notes = [...$routing['notes'], ...self::operationSectionNotes($outcome)];
 
         return new DiagnosticReport(
             $specPath,
@@ -103,8 +119,84 @@ final class DoctorCommand extends Command
             $outcome->document?->version,
             $routing['routes'],
             $findings,
-            $routing['notes'],
+            $notes,
+            // Null rather than an outcome full of zeroes when there was no
+            // document: "0 of 0 public operations are stable" read off a file
+            // that could not be opened is a statement about nothing, and a
+            // consumer of `--json` would have to know to disbelieve it.
+            $outcome->document === null
+                ? null
+                : LifecycleCheck::outcome(
+                    $outcome->operations,
+                    $now,
+                    LifecycleCheck::horizonDays($config->get('lara-spec-first.lifecycle.sunset_horizon_days')),
+                ),
+            SecurityCheck::inheritsUnreadRootRequirements($outcome->document, $outcome->operations),
         );
+    }
+
+    /**
+     * What Security and Lifecycle owe a reader when the operations they read
+     * are not the operations the document describes.
+     *
+     * **`clean` is a claim, and these two sections had no way to avoid making
+     * it.** Both read `ReadOutcome::$operations` and nothing else, so on a run
+     * with no document at all they find nothing and fall through to the
+     * formatter's `clean` — a section asserting it ran and found nothing, on a
+     * file that was never opened. That is the same defect
+     * {@see self::routingOutcome()} already refuses for Drift, and the reason
+     * `DoctorCommand` hands {@see DiagnosticReport} a `null` lifecycle outcome
+     * rather than one full of zeroes: `0 of 0` at least invites disbelief,
+     * where `clean` does not.
+     *
+     * It matters most for Security, which docs/guide/doctor.md calls the one
+     * finding that can turn a documented-as-protected endpoint into a public
+     * one. A green-looking Security section is the last thing this report
+     * should print about a document it could not read.
+     *
+     * Two states, because they are not the same answer: with no document these
+     * sections checked nothing, and with a document the pipeline could only
+     * partly read they checked less than their names promise. Both are said out
+     * loud, and `--json`'s `notes` carries the same answer — the property
+     * {@see DiagnosticReport::$notes} exists for.
+     *
+     * **Scoped to these two on purpose.** References, Support findings and
+     * Installation have the same shape and predate the change that built
+     * Security and Lifecycle; widening the rule to them is its own change, with
+     * its own reasoning about what each of them can honestly say.
+     *
+     * @return array<string, SectionNote>
+     */
+    private static function operationSectionNotes(ReadOutcome $outcome): array
+    {
+        if ($outcome->document === null) {
+            return [
+                'Security' => SectionNote::notChecked(
+                    'there was no document to read operations from. No operation was examined, so nothing here says '.
+                    'whether any of them declares a `security` requirement this phase would not apply. See Document '.
+                    'validity.'
+                ),
+                'Lifecycle' => SectionNote::notChecked(
+                    'there was no document to read operations from. No removal date and no stability promise was '.
+                    'examined. See Document validity.'
+                ),
+            ];
+        }
+
+        if (! $outcome->isClean()) {
+            return [
+                'Security' => SectionNote::narrowed(
+                    'only the operations that could be extracted were examined — the document carries at least one '.
+                    'fault, so an operation this report does not name may still declare `security`.'
+                ),
+                'Lifecycle' => SectionNote::narrowed(
+                    'only the operations that could be extracted were examined, so the counts and listings below '.
+                    'describe less than the specification does.'
+                ),
+            ];
+        }
+
+        return [];
     }
 
     /**

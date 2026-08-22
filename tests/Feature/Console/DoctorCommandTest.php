@@ -295,6 +295,10 @@ it('reports a document with wrong-typed nodes instead of dying on it', function 
 
 // --- What a green exit covers, said on every run ---
 
+// Security and Lifecycle came off the unchecked list in the change that built
+// them, which is the only way an entry there is meant to be removed. Both still
+// print — every section does — but the summary no longer names them, because a
+// run that checked them is not a run that skipped them.
 it('names the sections it does not check, even on a clean contract', function (): void {
     [$exit, $text] = doctor();
 
@@ -303,7 +307,7 @@ it('names the sections it does not check, even on a clean contract', function ()
         ->and($text)->toContain('Lifecycle')
         ->and($text)->toContain('Baseline')
         ->and($text)->toContain('Drivers')
-        ->and($text)->toContain('Not covered by this run: Security, Lifecycle, Baseline, Drivers');
+        ->and($text)->toContain('Not covered by this run: Baseline, Drivers');
 });
 
 it('carries the same answer in --json, with checked telling the two kinds apart', function (): void {
@@ -315,10 +319,46 @@ it('carries the same answer in --json, with checked telling the two kinds apart'
     $decoded = json_decode($output->fetch(), true);
 
     expect($decoded['notes'])->toBeArray()
-        ->and($decoded['notes']['Security']['checked'])->toBeFalse()
+        ->and($decoded['notes']['Baseline']['checked'])->toBeFalse()
         ->and($decoded['notes']['Drift']['checked'])->toBeFalse()
         ->and($decoded['notes']['Routing outcome']['checked'])->toBeTrue()
-        ->and($decoded['notes']['Drift']['note'])->toBeString();
+        ->and($decoded['notes']['Drift']['note'])->toBeString()
+        // Security and Lifecycle read the same partial operation list Routing
+        // outcome does, so they carry the same kind of note: they ran, on less
+        // than their names promise.
+        ->and($decoded['notes']['Security']['checked'])->toBeTrue()
+        ->and($decoded['notes']['Lifecycle']['checked'])->toBeTrue();
+});
+
+// And nothing at all on a clean run, which is what says the two sections came
+// off the standing "not built yet" list rather than trading one silence for
+// another: only a run that could not give them the whole document makes them
+// speak up.
+it('leaves Security and Lifecycle without a note at all on a clean contract', function (): void {
+    $output = new BufferedOutput;
+    $exit = app(Kernel::class)->call('spec:doctor', ['--json' => true], $output);
+    $decoded = json_decode($output->fetch(), true);
+
+    expect($exit)->toBe(0)
+        ->and($decoded['notes'])->not->toHaveKey('Security')
+        ->and($decoded['notes'])->not->toHaveKey('Lifecycle');
+});
+
+// The regression this pair guards: both sections read `ReadOutcome::$operations`
+// and nothing else, so with no document they found nothing and printed `clean` —
+// a section asserting it ran and found nothing, on a file that was never opened.
+// It matters most for Security, which doctor.md calls the one finding that can
+// turn a documented-as-protected endpoint into a public one.
+it('never claims Security or Lifecycle are clean on a run with no document', function (): void {
+    config()->set('lara-spec-first.spec.path', '/does/not/exist.yaml');
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(1)
+        ->and($text)->not->toContain("Security\n  clean")
+        ->and($text)->not->toContain("Lifecycle\n  clean")
+        ->and($text)->toContain('there was no document to read operations from')
+        ->and($text)->toContain('No operation was examined');
 });
 
 // The `Partial` level used to survive only in `--json`, so the one document
@@ -330,4 +370,58 @@ it('prints the support level on a document fault that has one', function (): voi
 
     expect($text)->toContain('[document fault: partial]')
         ->and($text)->toContain('declares no operationId');
+});
+
+// --- Lifecycle and Security, end to end ---
+
+it('prints the protection report on a contract that promises nothing, without failing over it', function (): void {
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(0)
+        ->and($text)->toContain('Lifecycle')
+        ->and($text)->toContain('public operation(s) are stable.')
+        ->and($text)->toContain('beta: get /users/me');
+});
+
+// The fixture states 2026-06-01, a date that is now behind us and stays
+// behind us — a permanent "already passed" case rather than a test that
+// expires. It also carries an unreadable date, so both gating rules run.
+it('exits 1 on a removal date that has passed and on one nothing can read', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('lifecycle.yaml'));
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(1)
+        ->and($text)->toContain('[document fault]')
+        ->and($text)->toContain('has passed')
+        ->and($text)->toContain('next tuesday');
+});
+
+it('exits 2 and lists every operation whose declared security is not applied yet', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('secured-operations.yaml'));
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(2)
+        ->and($text)->toContain('[package limit: partial]')
+        ->and($text)->toContain('get /orders')
+        ->and($text)->toContain('post /orders')
+        ->and($text)->toContain('root security block')
+        // The operation that explicitly requires nothing is already served
+        // exactly as its contract states, so it is not one of the two.
+        ->and(substr_count($text, 'no authorization check behind it'))->toBe(2);
+});
+
+// A document nothing could be read from has no lifecycle outcome at all,
+// rather than one full of zeroes: "0 of 0 public operations are stable", read
+// off a file that could not be opened, is a statement about nothing, and a
+// consumer of --json would have to know to disbelieve it.
+it('reports no lifecycle outcome at all when there was no document to read one from', function (): void {
+    config()->set('lara-spec-first.spec.path', '/does/not/exist.yaml');
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:doctor', ['--json' => true], $output);
+    $decoded = json_decode($output->fetch(), true);
+
+    expect($decoded['lifecycle'])->toBeNull();
 });

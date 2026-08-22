@@ -86,10 +86,11 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
 
 ### What does not exist yet
 
-What is missing is no longer a namespace but the second half of several features: the doctor has no lifecycle rules and
-no `security` finding yet, and there is no response DTO or generated validation. Four of the eight blocks in
-`config/lara-spec-first.php` are marked `TODO` in the file itself and are inert, which the file says out loud rather
-than leaving to be discovered, and which [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
+What is missing is no longer a namespace but the second half of several features: `security` is reported and not
+enforced, breaking-change enforcement has no baseline to compare against, and there is no response DTO or generated
+validation. Four of the nine blocks in `config/lara-spec-first.php` are marked `TODO` in the file itself and are inert,
+which the file says out loud rather than leaving to be discovered, and which
+[the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
 
@@ -245,22 +246,27 @@ the code, and a gap in it is loud.
       is what makes "the spec is the source of truth" verifiable rather than asserted. See
       [the doctor](../guide/doctor.md). Shipped in its Phase 1 form: configuration, document validity, version,
       references, support findings, routing outcome, drift and installation — the eight sections whose inputs already
-      existed. The four that do not — security, lifecycle, baseline and drivers — still print, each with a
-      `[not checked]` line naming what it does not diagnose, so a zero exit is never read as covering them. Routing
-      outcome includes shadowing, where an earlier templated path would match every request a later one was meant to
-      answer, literal or templated — a `GET /{owner}/{repo}` written first swallows every two-segment GET after it,
-      which is the shape real specifications make this mistake in; `GeneratedTree` gained a read-only `diff()` beside
-      `write()` so Drift compares against the exact same logic a build would apply rather than a second implementation
-      of it. The two kinds of finding stay distinct in the exit code — `0` clean, `1` a document fault, `2` a package
-      limit with no document fault alongside it — with `Deferred` excluded from both, however many of them a real
-      document carries: a construct the roadmap has not built yet must never fail a pipeline over it. `--json` ships
-      alongside the text report in this same release rather than after it. The lifecycle rules and the `security`
-      finding are their own items below, not this one.
-- [ ] **The lifecycle rules in the doctor.** `deprecated: true` requiring `x-sunset`, a sunset in the past or
-      approaching, an unrecognized `x-lifecycle` value, the `beta` listing, and the protection report counting how many
-      _public_ operations are actually `stable`. The data these rules read is [already extracted](#what-runs); what is
-      missing is the reporting. See [the doctor rules](../guide/lifecycle.md#the-doctor-rules-that-follow).
-- [ ] **`security` is reported, not enforced, and the report says so in those words.** Enforcement is
+      existed. The two that do not — baseline and drivers — still print, each with a `[not checked]` line naming what it
+      does not diagnose, so a zero exit is never read as covering them; security and lifecycle came off that list in the
+      change that built them, which is the only way an entry there is meant to be removed. Routing outcome includes
+      shadowing, where an earlier templated path would match every request a later one was meant to answer, literal or
+      templated — a `GET /{owner}/{repo}` written first swallows every two-segment GET after it, which is the shape real
+      specifications make this mistake in; `GeneratedTree` gained a read-only `diff()` beside `write()` so Drift
+      compares against the exact same logic a build would apply rather than a second implementation of it. The two kinds
+      of finding stay distinct in the exit code — `0` clean, `1` a document fault, `2` a package limit with no document
+      fault alongside it — with `Deferred` excluded from both, however many of them a real document carries: a construct
+      the roadmap has not built yet must never fail a pipeline over it. `--json` ships alongside the text report in this
+      same release rather than after it. The lifecycle rules and the `security` finding are their own items below, not
+      this one.
+- [x] **The lifecycle rules in the doctor.** `deprecated: true` requiring `x-sunset`, a sunset in the past, a sunset
+      nothing can read, the `beta` listing, and the protection report counting how many _public_ operations are actually
+      `stable`. An unrecognized `x-lifecycle` value was already refused where the document is read, so it stays a
+      Document validity fault rather than being reported a second time here. A sunset merely _approaching_ is reported
+      beside the protection report rather than as a finding, with a configurable horizon
+      (`lifecycle.sunset_horizon_days`, 90 days by default): every finding that is not `Deferred` gates the exit code,
+      and a date crossing a horizon must never fail a pipeline on a day nobody committed anything. See
+      [the doctor rules](../guide/lifecycle.md#the-doctor-rules-that-follow).
+- [x] **`security` is reported, not enforced, and the report says so in those words.** Enforcement is
       [Phase 2](#authorization-the-contract-can-express), and a phase that registers routes without it must not let a
       consumer mistake a documented promise for a kept one. So Phase 1 owes an operation whose contract declares
       `security` a finding stating that the package does not yet apply it, and that finding takes the treatment
@@ -268,7 +274,10 @@ the code, and a gap in it is loud.
       affected operation listed individually, on every run, never folded into a count. That is the existing rule
       applied, not a new category. Whether a finding can also be made impossible to acknowledge is a question about the
       acknowledgement mechanism, so it belongs in `doctor.md` if it is ever wanted, and this document does not assume
-      it.
+      it. Shipped as its own section of the report, at `Partial` rather than `Deferred`, so it gates: a contract that
+      declares `security` exits `2` until enforcement lands, which is the point rather than a side effect. The root
+      `security` block stays [Open](../guide/openapi-support.md#the-support-matrix) and is named in one line rather than
+      claimed to be understood.
 
 ## Phase 2: The generated pipeline, mocks and the driver features
 
