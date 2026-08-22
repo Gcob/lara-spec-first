@@ -368,9 +368,12 @@ A `0.x` is a deliberate choice rather than a placeholder. It gets the package in
 window in which a name can be corrected for free. Waiting for Phase 2 would mean the first outside reader arrives after
 every decision is already unchangeable.
 
-- [ ] **The CI test matrix.** PHP 8.3 / 8.4 / 8.5 against Laravel 12 / 13, six valid combinations with no `exclude`
-      block, plus the lowest-dependency run. The docs workflow already exists; this does not. It is the `Planned` CI row
-      in [`stack.md`](./stack.md).
+- [x] **The CI test matrix.** PHP 8.3 / 8.4 / 8.5 against Laravel 12 / 13, six valid combinations with no `exclude`
+      block, plus the lowest-dependency run and a Pint plus PHPStan job. It is `.github/workflows/tests.yml`, and the CI
+      row in [`stack.md`](./stack.md). Every job feeds one `All checks passed` gate, which exists so that branch
+      protection can require a check whose name survives a change to the matrix. **Making it required is a repository
+      setting, not something the workflow can do for itself:** until somebody sets it under Settings > Branches, the
+      suite runs on every pull request and merging a red one is still allowed.
 - [ ] **Ship only the config keys that do something.** Four of the six blocks in `config/lara-spec-first.php` are inert,
       and the file admits it in a comment: _a `TODO` block is inert, changing it has no effect, and nothing will tell
       you so._ That is precisely the behavior the package refuses elsewhere, where
