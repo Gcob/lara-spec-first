@@ -6,6 +6,7 @@ namespace Gcob\LaraSpecFirst;
 
 use Gcob\LaraSpecFirst\Configuration\ConfigurationMerger;
 use Gcob\LaraSpecFirst\Console\BuildCommand;
+use Gcob\LaraSpecFirst\Console\DoctorCommand;
 use Gcob\LaraSpecFirst\Console\MakeCommand;
 use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
@@ -107,7 +108,7 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
             // Console only, which is where the build belongs: the commands are
             // the only part of this package that reads a specification, and a
             // request path that cannot reach them cannot accidentally do so.
-            $this->commands([BuildCommand::class, MakeCommand::class]);
+            $this->commands([BuildCommand::class, MakeCommand::class, DoctorCommand::class]);
         }
 
         $this->loadGeneratedRoutes();

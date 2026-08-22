@@ -120,3 +120,56 @@ arch('routing at boot cannot scaffold either')
 arch('the build command cannot scaffold a file a developer will own')
     ->expect('Gcob\LaraSpecFirst\Console\BuildCommand')
     ->not->toUse('Gcob\LaraSpecFirst\Scaffolding');
+
+// **The doctor reads, it never writes.** `DoctorCommand`'s own docblock claims
+// it in bold and doctor.md makes it a contract bullet — "read-only, always" —
+// which until now was a fact about what the code happened to call rather than a
+// rule. It is the one property that makes the command safe to point at
+// production's checkout, and the diff that broke it would be one convenience
+// away: a section that "fixes" drift, a cache written to speed a second run.
+//
+// Written as the writers themselves rather than as a namespace ban, because
+// `Doctor\` legitimately depends on `Generation\` — it plans exactly as the
+// build does, `GeneratedTree::diff()` included, and diffing is how it answers
+// drift at all. What it may never reach is the writing half.
+arch('the doctor never writes anything')
+    ->expect('Gcob\LaraSpecFirst\Doctor')
+    ->not->toUse([
+        'file_put_contents',
+        'unlink',
+        'rmdir',
+        'mkdir',
+        'rename',
+        'fopen',
+        'touch',
+        'copy',
+    ]);
+
+// And it never scaffolds either, for the same reason `Generation\` and
+// `Routing\` may not: `Scaffolding\` is where writing a file a developer will
+// own lives, so forbidding the import says structurally what "read-only" means.
+arch('the doctor cannot scaffold a file a developer will own')
+    ->expect('Gcob\LaraSpecFirst\Doctor')
+    ->not->toUse('Gcob\LaraSpecFirst\Scaffolding');
+
+// The dependency direction the planning document for the doctor specified:
+// `Doctor\` may depend on `Parsing\`, `Contract\`, `Generation\` and
+// `Routing\`, never the reverse. Written from the other side — none of those
+// four may import `Doctor\` — because that is the direction a `{@see}` in a
+// docblock introduces by accident, and the one impossible to spot in a diff
+// once it is there.
+arch('nothing the doctor reads knows the doctor exists')
+    ->expect('Gcob\LaraSpecFirst\Parsing')
+    ->not->toUse('Gcob\LaraSpecFirst\Doctor');
+
+arch('the contract knows nothing about the doctor either')
+    ->expect('Gcob\LaraSpecFirst\Contract')
+    ->not->toUse('Gcob\LaraSpecFirst\Doctor');
+
+arch('generation knows nothing about the doctor')
+    ->expect('Gcob\LaraSpecFirst\Generation')
+    ->not->toUse('Gcob\LaraSpecFirst\Doctor');
+
+arch('routing at boot knows nothing about the doctor')
+    ->expect('Gcob\LaraSpecFirst\Routing')
+    ->not->toUse('Gcob\LaraSpecFirst\Doctor');

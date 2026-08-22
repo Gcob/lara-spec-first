@@ -1,0 +1,21 @@
+# Nodes of the wrong type where the doctor's Support findings section reads
+# one. Nothing exotic: `parameters: oops` is what a person writes, and this
+# document is what made `spec:doctor` die with a stack trace in the section
+# after the one that had already reported what it could — under a booted
+# Laravel application `HandleExceptions` promotes a `foreach` warning to an
+# `ErrorException`, so the command did not degrade, it stopped.
+#
+# The OpenAPI parser itself accepts this document, which is why the crash
+# arrived with nothing else in the report to explain it.
+openapi: 3.0.3
+info:
+    title: Wrong-typed nodes
+    version: 1.0.0
+paths:
+    /users:
+        parameters: nope
+        get:
+            operationId: listUsers
+            parameters: oops
+            responses:
+                '200': { description: ok }
