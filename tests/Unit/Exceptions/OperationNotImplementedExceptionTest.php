@@ -13,7 +13,7 @@ use Gcob\LaraSpecFirst\Exceptions\SpecException;
  * versions this package supports and with `APP_DEBUG`, and neither is what this
  * package promises. What it promises is the status and the words.
  *
- * @see docs/guide/code-generation.md — "An unimplemented operation answers 501"
+ * @see docs/guide/code-generation/index.md — "An unimplemented operation answers 501"
  */
 
 it('answers 501, which is the status HTTP already has for this', function (): void {

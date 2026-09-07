@@ -13,7 +13,7 @@ namespace Gcob\LaraSpecFirst\Generation;
  * already answered — and a second answer is a second chance to contradict the
  * first.
  *
- * @see docs/guide/code-generation.md — "The build command: spec:build"
+ * @see docs/guide/code-generation/index.md — "The build command: spec:build"
  */
 final readonly class BuildPlan
 {

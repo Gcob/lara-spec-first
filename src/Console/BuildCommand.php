@@ -30,7 +30,7 @@ use Illuminate\Contracts\Config\Repository;
  * Response DTOs and request validation are the same command doing more later, not
  * a second command.
  *
- * @see docs/guide/code-generation.md — "The build command: spec:build"
+ * @see docs/guide/code-generation/index.md — "The build command: spec:build"
  */
 final class BuildCommand extends Command
 {
@@ -147,7 +147,7 @@ final class BuildCommand extends Command
      * using theirs. This groups the printed list only; every file `spec:make`
      * creates is still one controller for one operation.
      *
-     * @see docs/guide/code-generation.md — "The build names the command instead of running it"
+     * @see docs/guide/code-generation/index.md — "The build names the command instead of running it"
      */
     private function nameTheCommand(BuildPlan $plan): void
     {

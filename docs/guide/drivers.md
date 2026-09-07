@@ -56,9 +56,10 @@ Structure is what is worth writing code for, because structure is what several p
 ### The test for whether a feature needs a driver at all
 
 Customization elsewhere in this documentation is driven by nomenclature: an `operationId`
-[derives a class name](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path), a `securitySchemes`
-name [matches a guard](./security.md#scheme-names-are-a-naming-contract-with-your-guards), a factory override is
-[found by what it `extends`](./code-generation.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares).
+[derives a class name](./code-generation/index.md#when-operationid-is-absent-derive-from-method-and-path), a
+`securitySchemes` name [matches a guard](./security.md#scheme-names-are-a-naming-contract-with-your-guards), a factory
+override is
+[found by what it `extends`](./code-generation/index.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares).
 Those work because a name means the same thing everywhere it appears.
 
 So the test is one question: **is there a name that means the same thing across specifications?** Where there is, match
@@ -108,9 +109,9 @@ abstract class implements what every driver of that feature would otherwise rewr
 configured key, normalizing what comes back — so a custom driver only writes the part that is actually custom: where to
 look in the document.
 
-It is the [same split as the generated two layers](./code-generation.md#two-layers), for the same reason: the interface
-is what makes a substitution safe, and the abstract class is what makes writing one cheap. A driver author may ignore
-the abstract class and implement the interface directly; nothing depends on the base class being used.
+It is the [same split as the generated two layers](./code-generation/index.md#two-layers), for the same reason: the
+interface is what makes a substitution safe, and the abstract class is what makes writing one cheap. A driver author may
+ignore the abstract class and implement the interface directly; nothing depends on the base class being used.
 
 ## Drivers are meant to be shared
 
@@ -142,7 +143,7 @@ have in common.
 
 - **A driver resolves at build time, and what it resolved is baked into what the build emits.** Registering a driver in
   a service provider is how the class becomes _findable_; it is not a licence for the request path to read a
-  specification, which [it never does](./code-generation.md#the-runtime-never-sees-the-spec). The build runs as an
+  specification, which [it never does](./code-generation/index.md#the-runtime-never-sees-the-spec). The build runs as an
   Artisan command, so a provider-registered driver is available to it — the ordering works out without an exception to
   that rule. Where a feature genuinely needs the driver at request time, that is stated in the feature's own document
   and is a different claim from this one.

@@ -21,7 +21,7 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
  * filesystem, which is where the interesting parts are: names, collisions, and
  * the paths Laravel cannot route.
  *
- * @see docs/guide/code-generation.md — "The build command: spec:build"
+ * @see docs/guide/code-generation/index.md — "The build command: spec:build"
  */
 final readonly class BuildPlanner
 {
@@ -112,7 +112,7 @@ final readonly class BuildPlanner
      *
      * @throws UnusableNameException
      *
-     * @see docs/guide/code-generation.md — "Where your classes go"
+     * @see docs/guide/code-generation/index.md — "Where your classes go"
      */
     private function assertOutsideGeneratedTree(ControllerName $name, string $label): void
     {

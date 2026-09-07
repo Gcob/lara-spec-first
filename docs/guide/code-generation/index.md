@@ -35,7 +35,7 @@ tags: [code-generation, openapi, scope, decisions, laravel]
 Spec-First only pays off if the contract reaches the code. This document owns how it gets there: **one build command
 turns the specification into PHP, and the result is safe to regenerate at any time.**
 
-> **Almost all of this is intent rather than behaviour**, and like [`openapi-support.md`](./openapi-support.md) this
+> **Almost all of this is intent rather than behaviour**, and like [`openapi-support.md`](../openapi-support.md) this
 > file marks the difference per section rather than per file, so the banner does not become a little more wrong with
 > every release. Items marked `Open` are undecided.
 >
@@ -44,14 +44,14 @@ turns the specification into PHP, and the result is safe to regenerate at any ti
 > [501](#an-unimplemented-operation-answers-501). It is idempotent, it plans before it writes, and it
 > [never writes outside its own tree](#the-invariant-a-build-never-destroys-human-work). The provider
 > [loads what it emitted](#the-routes-are-one-file-and-the-only-one-the-runtime-opens) and reads no specification to do
-> it. The [`x-controller` seam](./controllers.md#the-specification-decides-what-is-customizable) is shipped, so an
+> it. The [`x-controller` seam](../controllers.md#the-specification-decides-what-is-customizable) is shipped, so an
 > operation that declares one gets a parent it may extend and a route pointing at the child, and
 > [`spec:make`](#scaffolding-is-specmake-not-a-build-step) scaffolds that child. Not built yet: response DTOs and
 > request validation. Rename detection was designed here and
 > [decided against](#rename-and-orphan-detection-decided-against).
 
 What the build reads, and what it refuses to read, is a different subject and lives in
-[`openapi-support.md`](./openapi-support.md).
+[`openapi-support.md`](../openapi-support.md).
 
 ## The invariant: a build never destroys human work
 
@@ -81,7 +81,7 @@ What follows from it:
 
 - **The parser is a build-time dependency in practice.** `cebe\openapi\` classes must never be reachable from the
   routing or request path. This is not a convention to remember: the architecture test contains the parser to
-  [one namespace](./openapi-support.md#where-the-parser-sits-decided), which forbids it to the request path and to
+  [one namespace](../openapi-support.md#where-the-parser-sits-decided), which forbids it to the request path and to
   everything else at once. The assertion was written before anything imported the parser and is binding now that
   `OperationExtractor` does.
 - **Boot cost is loading PHP**, which is what `route:cache` and the opcode cache already optimize. No work to memoize,
@@ -89,9 +89,9 @@ What follows from it:
 - **The boundary is the production request path, not the process.** Serving a real application's traffic never involves
   a specification. Other contexts plausibly do, and pretending otherwise now would only mean rewriting this section
   later: contract testing has to compare a live response against the contract, and a
-  [mock server](../project/roadmap.md) is a spec-driven server by definition. Those are separate execution contexts with
-  their own rules. **Deferred deliberately** — the contexts get enumerated when the first one is built, not guessed at
-  now. Nothing about containing the parser to `Parsing\` blocks them: a mock server reads a contract through the same
+  [mock server](../../project/roadmap.md) is a spec-driven server by definition. Those are separate execution contexts
+  with their own rules. **Deferred deliberately** — the contexts get enumerated when the first one is built, not guessed
+  at now. Nothing about containing the parser to `Parsing\` blocks them: a mock server reads a contract through the same
   door as everything else.
 - **It creates one new failure mode, and it must be named:** edit the spec, forget to build, and the application serves
   the previous contract without a word — because nothing at runtime knows a spec exists to compare against. **Detecting
@@ -100,11 +100,11 @@ What follows from it:
 
 ## Three kinds of file, and only two are the build's
 
-| Kind                | Lifecycle                                                                                                           | Who owns it                                                                                                     |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **Generated**       | Rewritten from scratch on every build.                                                                              | The package. Never edit — your edit is gone on the next run, by design.                                         |
-| **Vendored inputs** | Never fetched unless asked; [frozen by default](#remote-references-during-a-build-frozen-by-default).               | Upstream. See [remote references](./remote-references.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
-| **Your classes**    | Created once by [`spec:make`](#scaffolding-is-specmake-not-a-build-step), on request. The build never touches them. | You, entirely, from the moment the file exists.                                                                 |
+| Kind                | Lifecycle                                                                                                           | Who owns it                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Generated**       | Rewritten from scratch on every build.                                                                              | The package. Never edit — your edit is gone on the next run, by design.                                          |
+| **Vendored inputs** | Never fetched unless asked; [frozen by default](#remote-references-during-a-build-frozen-by-default).               | Upstream. See [remote references](../remote-references.md#a-remote-reference-is-a-dependency-not-a-cache-entry). |
+| **Your classes**    | Created once by [`spec:make`](#scaffolding-is-specmake-not-a-build-step), on request. The build never touches them. | You, entirely, from the moment the file exists.                                                                  |
 
 The generated kind should be unmistakable at a glance and at grep-time: its own directory, its own namespace, and a
 header on every file saying it is generated and will be overwritten. A developer should never have to wonder which side
@@ -118,7 +118,7 @@ human-written concrete classes.**
 
 Say an operation gains a required parameter. The build rewrites the generated abstract, whose method signature changes.
 Every concrete subclass a developer wrote now fails to satisfy its parent, and PHP — plus PHPStan at
-[level 8](../project/stack.md) — says so immediately, by name, before anything runs.
+[level 8](../../project/stack.md) — says so immediately, by name, before anything runs.
 
 That is the whole payoff of Spec-First expressed in one behavior: **a change to the contract becomes a compile-time
 error in the code that implements it, not a 500 in production.** It is also why the generated side must be free to
@@ -146,10 +146,10 @@ Its properties:
   [it gets its own section](#your-formatter-and-the-build-both-want-to-own-these-files).
 - **Ordered, and it stops.** Check the vendored references are present, parse, normalize in memory, **compare against
   the specification's previously committed version, read from git**, then generate. A spec that fails
-  [the doctor's](./doctor.md) hard checks does not reach the generator — half-generated output from a broken contract is
-  worse than no output. The comparison sits before generation for the same reason: nothing is written until it is known
-  to be allowed. See [the baseline](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) for what "previously
-  committed" means and why it depends on git history rather than a file the build writes.
+  [the doctor's](../doctor.md) hard checks does not reach the generator — half-generated output from a broken contract
+  is worse than no output. The comparison sits before generation for the same reason: nothing is written until it is
+  known to be allowed. See [the baseline](../lifecycle.md#unstable-by-default-and-what-stable-costs-us) for what
+  "previously committed" means and why it depends on git history rather than a file the build writes.
 - **It never writes outside its own directories.** No exceptions, no conditions. This is the
   [invariant](#the-invariant-a-build-never-destroys-human-work) in one sentence, and it is testable — which is the point
   of stating it without a clause.
@@ -210,13 +210,13 @@ up inside PHP the application loads. Two rules, because there are two kinds of d
 
 **The severity comes from where the output lands.** `routes.php` is loaded at boot, so a broken one takes down every
 request _and_ every Artisan command, including the `spec:build` that would repair it — the only way out is deleting the
-tree by hand. And a specification is exactly the document [nobody reviews like code](./remote-references.md): it can
+tree by hand. And a specification is exactly the document [nobody reviews like code](../remote-references.md): it can
 arrive from another team, a vendor, or a generator.
 
 **It contradicted this document's own invariant, which is the part to learn from.** The build promises that a contract
 it cannot serve leaves the tree untouched rather than half generated. Here the contract was not refused: it was
 accepted, and the output lied. **Escaping rather than refusing is nonetheless the right answer**, because an apostrophe
-in a path is something this package _can_ honor, and [`Rejected`](./openapi-support.md#support-levels) is reserved for
+in a path is something this package _can_ honor, and [`Rejected`](../openapi-support.md#support-levels) is reserved for
 what it cannot.
 
 **And the guard already existed.** A test runs `php -l` over everything emitted; what was missing was a contract written
@@ -284,7 +284,7 @@ Under a frozen default:
   is the property that makes a build trustworthy.
 
 Fetching therefore has one entry point in `build`: `--update-refs`, matching the install/update vocabulary the
-[dependency framing](./remote-references.md#borrowing-the-dependency-manager-shape) already borrows. One flag for both
+[dependency framing](../remote-references.md#borrowing-the-dependency-manager-shape) already borrows. One flag for both
 cases — adding a reference that is missing, and refreshing one already vendored — rather than two: simpler, and the
 consequence either way is the same command to run again.
 
@@ -300,8 +300,8 @@ this in my repository", it needs no config key, no documentation of its own, and
 option here would be inventing a second, worse `.gitignore`.
 
 **One exception, and it is not optional: the vendored references must be committed.** There is
-[no lock file](./remote-references.md#no-lock-file-git-is-the-lock) — the committed copies _are_ the lock. Ignoring that
-directory does not save you noise, it removes the only mechanism that makes a build reproducible and an old release
+[no lock file](../remote-references.md#no-lock-file-git-is-the-lock) — the committed copies _are_ the lock. Ignoring
+that directory does not save you noise, it removes the only mechanism that makes a build reproducible and an old release
 deployable. The doctor should detect it and report it as a finding rather than let it be discovered during an incident.
 
 #### Two layers
@@ -339,17 +339,17 @@ rather than a contradiction.
 publish.** That is not caution for its own sake: the extensions that make the build useful are precisely the ones that
 describe the inside of the application.
 
-| Extension                                                                         | What publishing it hands out                                                       |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`x-model`](./controllers.md#how-the-semantic-is-detected)                        | Your Eloquent class names, so the shape of your database and its relationships.    |
-| [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) | Your application's namespace layout, and which endpoints carry hand-written logic. |
+| Extension                                                                          | What publishing it hands out                                                       |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`x-model`](../controllers.md#how-the-semantic-is-detected)                        | Your Eloquent class names, so the shape of your database and its relationships.    |
+| [`x-controller`](../controllers.md#the-specification-decides-what-is-customizable) | Your application's namespace layout, and which endpoints carry hand-written logic. |
 
 Neither means anything to a consumer of the API, and both help somebody map an application they are attacking. A
 document written for the build is simply not the same document as one written for the public, and treating them as one
 file is how internal detail gets published by accident.
 
 **Decision: `spec:build` can emit a sanitized copy for publication, and does so only when a project names a disk to put
-it on.** Not by default, in the same spirit as the [remote-reference allowlist](./remote-references.md) and the factory
+it on.** Not by default, in the same spirit as the [remote-reference allowlist](../remote-references.md) and the factory
 scan: a feature nobody asked for should not start writing files.
 
 **The strip list denies by default rather than allowing by default.** Configuration says which extensions to _keep_, not
@@ -358,7 +358,7 @@ of its own and forgets to list it, which is exactly when the failure costs the m
 This is the same posture the allowlist takes for hosts, applied to information disclosure.
 
 The default keep list is the extensions that tell a consumer something they can act on:
-[`x-lifecycle` and `x-sunset`](./lifecycle.md) exist so a client can plan around how strong a promise is and when it
+[`x-lifecycle` and `x-sunset`](../lifecycle.md) exist so a client can plan around how strong a promise is and when it
 ends, so stripping them would remove the one part of this package's own vocabulary the public document should carry.
 
 **`x-audience` is deliberately not on that list**, even though it is a consumer-facing extension elsewhere. Once
@@ -383,10 +383,10 @@ Stripping a key and dropping an operation are different acts, and the weaker one
 extension existed to say there wasn't one.
 
 **Decision: the public copy carries `public` operations only. An operation marked
-[`x-audience: internal`](./lifecycle.md#two-keys-one-discriminator) is removed from it entirely.**
+[`x-audience: internal`](../lifecycle.md#two-keys-one-discriminator) is removed from it entirely.**
 
 `public` being the default means an operation that says nothing gets published, and that is deliberate rather than
-convenient: it is the direction [`lifecycle.md`](./lifecycle.md#two-keys-one-discriminator) already set for this key,
+convenient: it is the direction [`lifecycle.md`](../lifecycle.md#two-keys-one-discriminator) already set for this key,
 where declaring an endpoint internal is an act and being treated as public is what happens by omission. One key, one
 default, and two documents that agree about it.
 
@@ -403,9 +403,9 @@ operation leaves things behind that still describe the inside of the application
 
 **Two edges worth naming rather than discovering.** A document whose every operation is internal produces a public copy
 with no operations at all — valid at 3.1, invalid at 3.0 where `paths` is
-[required](./openapi-support.md#the-differences-the-strategy-must-absorb), and in either case far more likely a
+[required](../openapi-support.md#the-differences-the-strategy-must-absorb), and in either case far more likely a
 misconfiguration than an intent, so it is a finding rather than a file. And exclusion gives
-[breaking-change detection](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) a second reason to care about
+[breaking-change detection](../lifecycle.md#unstable-by-default-and-what-stable-costs-us) a second reason to care about
 this key: flipping an operation to `internal` removes it from the published document, which is the most breaking change
 there is for whoever was already calling it. `lifecycle.md` already says that flip must be reported rather than pass
 quietly.
@@ -426,7 +426,7 @@ discover the 404.
 
 **Landing under `storage/` is right here for exactly the reason it was wrong elsewhere.** A stock Laravel application
 ships a `storage/app/.gitignore` containing `*`. For a file that must be committed that is a trap, which is why the
-contract baseline is [read from git](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) rather than kept
+contract baseline is [read from git](../lifecycle.md#unstable-by-default-and-what-stable-costs-us) rather than kept
 there. The public copy is the opposite case: it is derived, the build reproduces it exactly, and committing it would
 mean reviewing a generated diff on every contract change. Being gitignored is the correct outcome for it.
 
@@ -439,7 +439,7 @@ Two consequences to state rather than let anyone hit:
   to its deploy step rather than to `spec:build`.
 - **A published copy can go stale.** Edit the specification, forget to build, and the document being served describes a
   contract the application no longer honors — publicly, which is worse than the internal version of the same mistake. It
-  is the same failure the [drift check](./doctor.md#what-it-checks) already exists for, and the published copy belongs
+  is the same failure the [drift check](../doctor.md#what-it-checks) already exists for, and the published copy belongs
   in its scope.
 
 **Open:** the config key names, whether the sanitized copy is emitted in the document's own format or normalized to
@@ -456,7 +456,7 @@ requests and responses in the browser runs [`openapi-typescript`](https://openap
 This is a Laravel package, and its output is PHP. Emitting TypeScript would put Node in the path of `spec:build`, which
 means a build failing on a deploy machine for a reason that has nothing to do with the contract — the development image
 is `php:8.3-cli-alpine` with no Node in it, which is already why
-[Markdown formatting is the documented exception](../contributing/documentation.md#formatting) that runs outside the
+[Markdown formatting is the documented exception](../../contributing/documentation.md#formatting) that runs outside the
 container. It would also mean a schema-to-type mapping to write and maintain for a language this project does not build
 in, next to a good tool that already has one.
 
@@ -488,9 +488,9 @@ one root buys is worth more:
   split tree means several entries, and a consumer who forgets one ends up with half a generated tree committed and half
   not.
 - **"Everything under here is generated" is only a rule while there is one _here_.**
-- **Widening later is a minor release, narrowing is a major one** — the same reasoning [`stack.md`](../project/stack.md)
-  applies to version support. If per-kind overrides turn out to be wanted, they can be added without breaking anyone;
-  starting with them and removing them cannot.
+- **Widening later is a minor release, narrowing is a major one** — the same reasoning
+  [`stack.md`](../../project/stack.md) applies to version support. If per-kind overrides turn out to be wanted, they can
+  be added without breaking anyone; starting with them and removing them cannot.
 
 Two details that will otherwise be discovered the hard way:
 
@@ -501,7 +501,7 @@ Two details that will otherwise be discovered the hard way:
   autoload map. Both are configured, and the doctor checks they agree with what `composer` actually autoloads — a
   mismatch there produces class-not-found errors far from their cause.
 
-The config key names and the default are public API surface under [rule 4](./openapi-support.md#the-four-rules).
+The config key names and the default are public API surface under [rule 4](../openapi-support.md#the-four-rules).
 
 ### The routes are one file, and the only one the runtime opens
 
@@ -520,7 +520,7 @@ so a second key could only ever let the writer and the reader disagree about one
 mean the runtime deciding something the build already decided, and it is the shape this document rejects everywhere
 else. What the emitter writes is the registration itself, with the controller named as a
 `[Controller::class, 'routeAction']` pair of plain strings, in the specification's own
-[order](./openapi-support.md#route-order-the-spec-files-order-is-the-route-order).
+[order](../openapi-support.md#route-order-the-spec-files-order-is-the-route-order).
 
 **A contract with nothing to route still gets the file, and the file says so.** Zero operations is a supported outcome
 rather than an error — a 3.1 document may legally carry only `webhooks`, or only `components` — and skipping the write
@@ -537,7 +537,7 @@ holding none, is the file telling a reader something untrue.
   own routes, which is a deadlock rather than a strict default.
 - **It is a legitimate state,** because [`.gitignore` decides](#which-generated-code-is-committed) what a project
   commits, and the [two layers](#two-layers) already accept that a fresh clone does not run until the build has.
-- **Reporting it is [the doctor](./doctor.md#what-it-checks)'s job**, where it is caught before a deploy rather than
+- **Reporting it is [the doctor](../doctor.md#what-it-checks)'s job**, where it is caught before a deploy rather than
   during one. This is the same division of labour as everywhere else here: refusing to load and reporting a fault are
   different jobs.
 
@@ -563,9 +563,9 @@ wrong rather than one that fails.
 **Shipped, in three forms.** `spec:make showUser` scaffolds one operation's custom controller — named by its
 `operationId`, or by its method and path for an operation that has none: `spec:make "delete /legacy"`. `--tag=Users` and
 `--all` are loops over that, and both list the files they would create and ask before creating any. What it writes is
-the class [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) names, extending that
+the class [`x-controller`](../controllers.md#the-specification-decides-what-is-customizable) names, extending that
 operation's generated parent, in [the file PSR-4 says it belongs in](#where-your-classes-go) — and then it runs the
-build, because [the `extends` has nothing to reach until it does](./controllers.md#specmake-is-the-only-way-in).
+build, because [the `extends` has nothing to reach until it does](../controllers.md#specmake-is-the-only-way-in).
 
 Three refusals are worth naming, because each of them protects something this document promised elsewhere:
 
@@ -574,7 +574,7 @@ Three refusals are worth naming, because each of them protects something this do
   prevents it runs immediately before the write rather than only at planning time — a confirmation prompt is long enough
   for somebody to have created the file in another window.
 - **An operation with no `x-controller` cannot be scaffolded**, because its generated controller is `final` and nothing
-  may extend it. The command [offers a name to write](./controllers.md#specmake-is-the-only-way-in) — derived from the
+  may extend it. The command [offers a name to write](../controllers.md#specmake-is-the-only-way-in) — derived from the
   configured controller namespace, prefilled so it can be edited, with the exact line named — rather than sending a
   developer to read this document to learn the key's name.
 - **A class in a namespace the project does not map** is refused, naming it. A path invented from the namespace by
@@ -586,7 +586,7 @@ nobody is at the keyboard, so a script gets "created nothing" rather than a cont
 specification nobody agreed to edit. **`--yes` is how a script says yes**, taking the proposal for every question the
 command would have asked — and changing nothing else: the insertion still verifies itself, an existing file is still
 left alone, and a name the project cannot place is still refused. It is not `--force`, because
-[that word already means overwrite](./controllers.md#specmake-is-the-only-way-in) and this command never does.
+[that word already means overwrite](../controllers.md#specmake-is-the-only-way-in) and this command never does.
 
 Laravel already has this shape and every Laravel developer already has the reflex: a `make` creates one file, when you
 ask, once. Reusing the word costs no new concept — and it removes the only exception the
@@ -603,20 +603,20 @@ provided the package says what happens to it.
 The two alternatives are worse, and for reasons this document has already committed to:
 
 - **Not registering the route** would mean the contract describes an endpoint that does not exist, and a client would
-  get a `404` indistinguishable from a typo. That is [rule 2](./openapi-support.md#the-four-rules) violated at the level
-  of the wire: the spec says the endpoint is there, and nothing anywhere says otherwise.
+  get a `404` indistinguishable from a typo. That is [rule 2](../openapi-support.md#the-four-rules) violated at the
+  level of the wire: the spec says the endpoint is there, and nothing anywhere says otherwise.
 - **Pointing at a class that does not exist** produces a class-not-found fatal at request time — an internal error
   blaming the consumer's application for a state the package created on purpose.
 
 `501` is the status code HTTP already has for exactly this: the server recognizes the request and has not implemented
-it. It is honest to the client, it is greppable in logs, and it is the seam the [Faker mock](../project/roadmap.md)
+it. It is honest to the client, it is greppable in logs, and it is the seam the [Faker mock](../../project/roadmap.md)
 plugs into in Phase 2 — same route, same handler position, a better answer in the body. Nothing about the Phase 1 shape
 has to change for the mock to arrive.
 
 This is what an operation gets when the build could
-[detect no CRUD semantic for it](./controllers.md#how-the-semantic-is-detected) — no `x-model`, or a shape the package
+[detect no CRUD semantic for it](../controllers.md#how-the-semantic-is-detected) — no `x-model`, or a shape the package
 refuses to guess at — and nobody has overridden it. An operation the build did understand answers from a generated
-default with no subclass at all; [`controllers.md`](./controllers.md) owns which is which.
+default with no subclass at all; [`controllers.md`](../controllers.md) owns which is which.
 
 ### Where your classes go
 
@@ -636,8 +636,8 @@ build rewrites everything under that namespace.
 
 **The consequence to state plainly:** the generated route refers to your class by its fully-qualified name, so the name
 and namespace are load-bearing. Moving the file is fine; moving it somewhere it no longer autoloads under the expected
-name breaks the route. The [doctor](./doctor.md) reports that as a missing implementation rather than letting it surface
-as a class-not-found at runtime.
+name breaks the route. The [doctor](../doctor.md) reports that as a missing implementation rather than letting it
+surface as a class-not-found at runtime.
 
 ### Not a flag on `spec:build`
 
@@ -664,20 +664,20 @@ pattern as the
 [reference comment naming the command to run](#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing).
 
 **The atomic form names one operation, and every other form is sugar over it:** `spec:make showUser` scaffolds
-[one controller](./controllers.md#one-controller-per-operation-one-method-named-routeaction), carrying whichever
-[CRUD default its own specification implies](./controllers.md#how-the-semantic-is-detected). Nothing else in this
+[one controller](../controllers.md#one-controller-per-operation-one-method-named-routeaction), carrying whichever
+[CRUD default its own specification implies](../controllers.md#how-the-semantic-is-detected). Nothing else in this
 package creates a grouped file, so there is nothing a bulk invocation could produce that is not simply this, run several
 times.
 
 The trap is printing one line per operation. A specification with two hundred operations, on the day somebody adopts
 this package, would answer with two hundred commands — which is not a list, it is a wall, arriving at the worst possible
-moment. So the build **summarises, and the [doctor](./doctor.md) holds the full list**, which is the division of labour
+moment. So the build **summarises, and the [doctor](../doctor.md) holds the full list**, which is the division of labour
 those two commands already have.
 
 It summarises **by `tags`**, because the specification already carries the author's own grouping and inventing a second
 one would be worse than using theirs — this is a grouping of the _printed list_, never of the files `spec:make` creates,
 each of which stays
-[one controller for one operation](./controllers.md#one-controller-per-operation-one-method-named-routeaction):
+[one controller for one operation](../controllers.md#one-controller-per-operation-one-method-named-routeaction):
 
 ```
 47 of 52 operation(s) have no implementation and answer 501.
@@ -690,7 +690,7 @@ each of which stays
 Three details of that output are decisions rather than formatting. **An operation whose custom controller exists is not
 counted**, because it is answered — warning about it would tell a developer their own class does not count. **An
 untagged operation gets the atomic form named for it**, with one operation's own name, because no `--tag` would ever
-reach it and a grouping it is not in is not a grouping. And **the full list is the [doctor](./doctor.md)'s**, which is
+reach it and a grouping it is not in is not a grouping. And **the full list is the [doctor](../doctor.md)'s**, which is
 why nothing here grows past five tags; until that command exists, the count of what is not shown is the honest
 substitute for it.
 
@@ -700,8 +700,8 @@ typed them and creating files is that command's entire job — a loop over the s
 mechanism. Two guards keep the hundred-empty-classes scenario away: bulk is never the default, and it lists what it is
 about to create and asks before doing it.
 
-Adopting tag by tag is also the shape [Phase 3](../project/roadmap.md) wants — a migration that proceeds route by route
-rather than in one leap.
+Adopting tag by tag is also the shape [Phase 3](../../project/roadmap.md) wants — a migration that proceeds route by
+route rather than in one leap.
 
 ### Per-type flags belong here
 
@@ -717,7 +717,7 @@ wants _per operation_ rather than something the build already produces for the w
 **This section's original premise is gone, and saying so is the point of keeping it.** It used to read: the generated
 class name comes from `operationId`, which makes an `operationId` far more than a label, because **it is the name of the
 class a developer extends** — so renaming one in the spec renames a class in their application. That was true, and the
-[`x-controller` seam](./controllers.md#the-specification-decides-what-is-customizable) is what made it false. An
+[`x-controller` seam](../controllers.md#the-specification-decides-what-is-customizable) is what made it false. An
 extendable class is named by `x-controller` and by nothing else; every other generated controller is `final`, so no
 import may depend on its name. **A name a project can depend on can now only change when the project's own author edits
 `x-controller`.**
@@ -729,7 +729,7 @@ versioning decision.** What changed is who is exposed to it, and the answer is n
 
 An operation's **identity** is its path plus its HTTP method, which is what actually addresses it. Its **name** is what
 the build generates from. The distinction earns its keep in two places that have nothing to do with each other:
-[refusing two operations that address one endpoint](./openapi-support.md#reading-a-document), and keeping a rename of a
+[refusing two operations that address one endpoint](../openapi-support.md#reading-a-document), and keeping a rename of a
 path _parameter_ out of everything that compares operations.
 
 Identity is therefore normalized: **the names of path parameters are not part of it.** Renaming `/users/{id}` to
@@ -752,7 +752,7 @@ the feature was:
 - **What it would still have caught belongs to the developer.** Remove an operation from the contract and the custom
   controller that extended its parent extends nothing. That is a consequence of deleting the operation, and deciding
   what happens to their own class is the developer's call, not a report's — the same position this document takes on
-  [a specification you do not control](./controllers.md#specmake-is-the-only-way-in) and on
+  [a specification you do not control](../controllers.md#specmake-is-the-only-way-in) and on
   [identifier changes being versioning decisions](#naming-and-the-rename-problem).
 - **It could never have been a guarantee.** The mechanism reads the previous build's own output, and whether that output
   exists is [the consumer's `.gitignore` choice](#which-generated-code-is-committed). On a fresh clone there is nothing
@@ -775,7 +775,7 @@ operation and means something to a reader. `GET /users/{id}` becomes `GetUsersId
 **Revised, and the revision is worth naming rather than hiding.** This rule used to say the _normalized_ path, so that
 parameter names were excluded and renaming `{id}` to `{userId}` could not rename a class. What removed that cost was a
 later decision: a class with no `x-controller`
-[is `final`](./controllers.md#the-specification-decides-what-is-customizable), so nothing may extend it and no import
+[is `final`](../controllers.md#the-specification-decides-what-is-customizable), so nothing may extend it and no import
 can depend on it. Nobody can be hurt by a name nobody may reference, and what is left is that `GetUsersIdController`
 tells a reader which endpoint it serves where `GetUsersParamController` does not. **Identity stays normalized
 regardless** — that is a different question, asked for rename detection rather than for naming, and the two must not be
@@ -784,7 +784,7 @@ conflated.
 The objection to raise and dismiss: deriving from the path means that reorganizing URLs renames classes. True — and
 **proportionate**, because changing a path _is_ a change to the contract. Consumers have to update their calls; you
 having to update a class name is the same event, visible in your own code. For a `stable` operation the build already
-refuses the change until [`info.version`](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) says so, and for
+refuses the change until [`info.version`](../lifecycle.md#unstable-by-default-and-what-stable-costs-us) says so, and for
 a `beta` one churn is what `beta` means. The case that would have been unfair — renaming a path _parameter_, which
 changes nothing on the wire — is already excluded by normalizing identity.
 
@@ -795,9 +795,9 @@ should make rather than the build enforce.
 **Decision: `operationId` is required on `public` + `stable` operations, and optional everywhere else.** A stable
 operation's generated class name is a promise made to your own codebase, so it deserves to be chosen rather than
 computed — while a `beta` or `internal` operation can be sketched without ceremony. The rule reuses the
-[lifecycle](./lifecycle.md#unstable-by-default-and-what-stable-costs-us) vocabulary instead of inventing one of its own,
-and it lands where it costs least: nobody meets it while exploring, and everybody meets it at the moment they promise an
-endpoint to someone.
+[lifecycle](../lifecycle.md#unstable-by-default-and-what-stable-costs-us) vocabulary instead of inventing one of its
+own, and it lands where it costs least: nobody meets it while exploring, and everybody meets it at the moment they
+promise an endpoint to someone.
 
 It also means promoting an operation to `stable` is the moment its name gets chosen deliberately — which is exactly when
 a derived name would otherwise harden into something nobody picked and nobody can now change without a major version.
@@ -940,8 +940,8 @@ file means different bytes every run: every file rewritten every time, `changedN
 project that tracks its generated tree — a diff in every file on every build. It is the same defect as
 [an absolute path](#the-source-map) with a worse blast radius, since a path only diverges between machines while a clock
 diverges between two runs on one machine. It would also foreclose a genuinely useful gate: `spec:build` followed by
-`git diff --exit-code` is how a pipeline checks the tree is current until [the doctor](./doctor.md) can, and a timestamp
-makes that check fail always, which is the same as it saying nothing.
+`git diff --exit-code` is how a pipeline checks the tree is current until [the doctor](../doctor.md) can, and a
+timestamp makes that check fail always, which is the same as it saying nothing.
 
 **`created_at` is worse, for a different reason.** Preserving it would mean the build reading its own previous output to
 recover a date, so what it emits would depend on what was already there rather than only on the contract. Two things go
@@ -953,22 +953,22 @@ disposable.
 **Both fields already exist, and more accurately than a comment could state them.** `updated_at` is the file's
 modification time, and it means something _because_ the build leaves unchanged files alone: it says when the content
 last actually changed, not when a command last ran. `created_at` is git, with the author and the diff attached. This is
-the same reasoning that makes [git the lock file](./remote-references.md#no-lock-file-git-is-the-lock) for vendored
-references and [git the source of the contract baseline](./lifecycle.md#unstable-by-default-and-what-stable-costs-us):
+the same reasoning that makes [git the lock file](../remote-references.md#no-lock-file-git-is-the-lock) for vendored
+references and [git the source of the contract baseline](../lifecycle.md#unstable-by-default-and-what-stable-costs-us):
 the repository already records time, and reimplementing that inside a generated comment would be a worse copy of it.
 
 **And if the worry behind the question is staleness, a date does not answer it.** A file written yesterday can be
 perfectly current, and one written a minute ago can be stale if the specification moved since. What answers it is
-comparing against the contract, which is [the drift check](./doctor.md#what-it-checks).
+comparing against the contract, which is [the drift check](../doctor.md#what-it-checks).
 
 **It is testable, and it should be tested.** The docblock is output, so the generator's own test suite asserts it is
 there and carries all three parts — the same way
-[any other behavior earns a test](../../AGENTS.md#automated-tests-are-required). A norm that only lives in prose erodes
-the first time someone adds a new kind of generated file in a hurry.
+[any other behavior earns a test](../../../AGENTS.md#automated-tests-are-required). A norm that only lives in prose
+erodes the first time someone adds a new kind of generated file in a hurry.
 
 **Open:** how much of this is a fixed template versus per-kind, and whether the findings section has a machine-readable
 form. The doctor already learned that lesson — its `--json` exists because
-[tooling and agents should not have to parse prose](./doctor.md#the-contract) — and the same argument plausibly applies
+[tooling and agents should not have to parse prose](../doctor.md#the-contract) — and the same argument plausibly applies
 here, against the cost of putting a data format inside a comment.
 
 ### A reference to generated code says what to do when it goes missing
@@ -990,7 +990,7 @@ exception for a helpful comment. From then on the comment belongs to the develop
 
 **The comment sits where the reference is, which for a scaffolded controller is not an import.** Because a custom
 controller
-[extends its generated parent by fully-qualified name](./controllers.md#two-classes-found-by-name-rather-than-by-a-scan),
+[extends its generated parent by fully-qualified name](../controllers.md#two-classes-found-by-name-rather-than-by-a-scan),
 there is no `use` statement to annotate — so the comment goes above the class:
 
 ```php
@@ -1021,15 +1021,15 @@ Three situations sit behind those three lines, which is why the first answer is 
   [`.gitignore` decides what is committed](#which-generated-code-is-committed) and a project may legitimately ignore the
   generated tree — the `composer install` bargain, stated in [two layers](#two-layers). Running it is the whole fix.
 - **The name changed in the specification.** A controller's generated name follows
-  [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable) and a DTO's follows its schema name,
-  so the class moved because somebody edited one of those. Running the build writes the class under its new name, and
-  the new name is the one that edit chose — the build
+  [`x-controller`](../controllers.md#the-specification-decides-what-is-customizable) and a DTO's follows its schema
+  name, so the class moved because somebody edited one of those. Running the build writes the class under its new name,
+  and the new name is the one that edit chose — the build
   [does not report the change](#rename-and-orphan-detection-decided-against), because the person reading this comment is
   the person who made it.
 - **It was removed outright.** Only here does the build have nothing to offer, because there is no new name to report,
   and the specification's own history is what says what happened.
 
-It is also, deliberately, the last line of defense rather than the first. [The doctor](./doctor.md) reports drift and
+It is also, deliberately, the last line of defense rather than the first. [The doctor](../doctor.md) reports drift and
 orphans before anyone reaches a stack trace; this comment is for the developer who met the error first and has not
 thought to run it yet.
 
@@ -1076,7 +1076,7 @@ whether or not a project has ever looked at it.
 
 The build finds the override itself, by scanning a **configured set of directories — not the whole project** — for a
 class extending each generated factory, and wiring whichever it finds in place of the generated default. The directories
-are named in configuration, the same shape as [`remote_references.allowed_hosts`](./remote-references.md): empty by
+are named in configuration, the same shape as [`remote_references.allowed_hosts`](../remote-references.md): empty by
 default, and nothing is scanned until a project says where to look. Scanning the whole application would mean touching
 every autoloaded class, vendored packages included, on every build, for a feature four DTOs out of a hundred will ever
 use — the cost has to be bounded by what the project actually declares, not by how large `vendor/` happens to be.
@@ -1089,8 +1089,8 @@ pick of whichever the classmap happened to load first.
 This is detection **at build time**, deliberately, not a runtime `class_exists()` check scattered across every place a
 DTO gets built — the same reasoning as [everywhere else in this document](#the-runtime-never-sees-the-spec): explicit
 over dynamic, and the cost paid once rather than on every request. The consequence to state plainly: an override added
-without rerunning the build has not taken effect yet — a case for [drift](./doctor.md#what-it-checks), not a new failure
-mode.
+without rerunning the build has not taken effect yet — a case for [drift](../doctor.md#what-it-checks), not a new
+failure mode.
 
 **Open:** the config key's name, and whether it recurses into subdirectories by default; the exact mechanism for finding
 the `extends` relationship — reflection over the classes the configured directories autoload is the leading answer,
@@ -1116,7 +1116,7 @@ annotation is the only thing distinguishing the default a reader is looking at f
 useful independently of who builds the object — but its own `from()`-override ergonomics are no longer the fit they once
 were: a `Data` object is not `final`, and this design deliberately does not lean on DTO-level inheritance for
 customization. **Whether we depend on it or only take the shape is undecided** and belongs in
-[`stack.md`](../project/stack.md) once settled — a dependency buys casting, validation and serialization for free, at
+[`stack.md`](../../project/stack.md) once settled — a dependency buys casting, validation and serialization for free, at
 the cost of binding generated code to another package's API and release cycle.
 
 ## Appending into human-owned files
@@ -1145,7 +1145,7 @@ regions ever read or written, and a hard failure rather than a guess when the re
 ## Open questions
 
 - The config key names for the [generated location](#where-generated-code-lives) — the location's _default_ is decided,
-  what the keys are called is not. Public API surface under [rule 4](./openapi-support.md#the-four-rules).
+  what the keys are called is not. Public API surface under [rule 4](../openapi-support.md#the-four-rules).
 - Which [per-type flags](#per-type-flags-belong-here) `spec:make` accepts.
 - Whether the second of the [two layers](#two-layers) is an abstract class or a trait.
 - Whether fetching a _missing_ reference and refreshing a _stale_ one share one flag or take two.
@@ -1162,10 +1162,10 @@ regions ever read or written, and a hard failure rather than a guess when the re
   reader — or a support conversation — being able to tell that a file came from an older emitter than the one installed.
 
     Not before the first tag, because there is no version to record until the package is published, and the shape is
-    worth settling near the [name freeze](../project/roadmap.md#before-10-freeze-what-a-major-would-cost): once a header
-    line is there, tooling reads it, and its format is then as much public API as a config key. The costs to weigh when
-    it is decided: every upgrade rewrites the whole tree, which is loud for a consumer who tracks it, and a
+    worth settling near the [name freeze](../../project/roadmap.md#before-10-freeze-what-a-major-would-cost): once a
+    header line is there, tooling reads it, and its format is then as much public API as a config key. The costs to
+    weigh when it is decided: every upgrade rewrites the whole tree, which is loud for a consumer who tracks it, and a
     `git diff --exit-code` gate would fail across an upgrade for a reason that is correct but needs explaining.
 
 - **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated validation are
-  Phase 2 — the same build command doing more, not a new one. See the [Roadmap](../project/roadmap.md).
+  Phase 2 — the same build command doing more, not a new one. See the [Roadmap](../../project/roadmap.md).

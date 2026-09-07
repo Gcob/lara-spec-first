@@ -343,8 +343,8 @@ the first thing to go quietly stale when a feature grows into what a document on
 
 This is already the strongest habit in the set, and the rule only makes it expected rather than occasional: the
 [support matrix](../guide/openapi-support.md) states what is parsed and not honored, and
-[`code-generation.md`](../guide/code-generation.md) carries both what the build deliberately does not emit and what was
-decided against. A guide with no such section is claiming it has no edges.
+[`code-generation/index.md`](../guide/code-generation/index.md) carries both what the build deliberately does not emit
+and what was decided against. A guide with no such section is claiming it has no edges.
 
 ### A diagram is built, not embedded
 
@@ -417,7 +417,7 @@ point at.
 ### The reasoning stays, the chronology goes
 
 The decision tunnel is the one smell that gets applied wrongly if the line is not drawn, because **this repository
-documents its reasoning on purpose** and that is not what the smell complains about. `code-generation.md` carries
+documents its reasoning on purpose** and that is not what the smell complains about. `code-generation/index.md` carries
 twenty-five `**Decision:**` blocks. They stay.
 
 What it names is narrative, not justification:
@@ -494,7 +494,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 `docs/guide/` — `Users`:
 
-- [`code-generation.md`](../guide/code-generation.md)
+- [`code-generation/index.md`](../guide/code-generation/index.md)
 - [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
 - [`drivers.md`](../guide/drivers.md)

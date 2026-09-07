@@ -27,7 +27,7 @@ namespace Gcob\LaraSpecFirst\Generation;
  * newline breaks out of the ` * ` prefix and turns one line of a comment into
  * something a reader has to interpret.
  *
- * @see docs/guide/code-generation.md — "A specification is data, and generated code is code"
+ * @see docs/guide/code-generation/index.md — "A specification is data, and generated code is code"
  */
 final readonly class CommentText
 {

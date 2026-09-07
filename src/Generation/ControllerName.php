@@ -35,7 +35,7 @@ use Illuminate\Support\Str;
  * Identity stays normalized regardless — that is a different question, asked for
  * rename detection rather than for naming.
  *
- * @see docs/guide/code-generation.md — "When operationId is absent, derive from method and path"
+ * @see docs/guide/code-generation/index.md — "When operationId is absent, derive from method and path"
  */
 final readonly class ControllerName
 {

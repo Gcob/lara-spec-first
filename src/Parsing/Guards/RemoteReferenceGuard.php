@@ -231,7 +231,7 @@ final readonly class RemoteReferenceGuard
 
         // DECISION: `--update-refs` refetches unconditionally here, including
         // a reference that was already vendored — the one-flag choice
-        // `docs/guide/code-generation.md` argues for over a separate "add" and
+        // `docs/guide/code-generation/index.md` argues for over a separate "add" and
         // "refresh" pair. The consequence lives at this `if`, not only in that
         // document: adding one new reference to a specification re-downloads
         // every other one already vendored, and whatever drifted upstream in

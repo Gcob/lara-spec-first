@@ -120,7 +120,7 @@ final readonly class RoutesEmitter
      * as the exception rather than leaving a reader to infer that a
      * class-not-found on `Route` is not a build the specification can repair.
      *
-     * @see docs/guide/code-generation.md — "A reference to generated code says what to do when it goes missing"
+     * @see docs/guide/code-generation/index.md — "A reference to generated code says what to do when it goes missing"
      */
     private function missingReferenceNote(bool $custom): string
     {

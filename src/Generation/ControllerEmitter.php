@@ -25,7 +25,7 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
  * three directories away unless the file says so. Every guess it has to make is a
  * chance to write something plausible and wrong into an application.
  *
- * @see docs/guide/code-generation.md — "Every generated file explains itself"
+ * @see docs/guide/code-generation/index.md — "Every generated file explains itself"
  * @see docs/guide/controllers.md — "One controller per operation, one method named routeAction"
  */
 final readonly class ControllerEmitter

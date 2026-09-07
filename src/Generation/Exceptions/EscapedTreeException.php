@@ -16,7 +16,7 @@ use LogicException;
  * so that the invariant is enforced at the boundary rather than trusted across
  * it — a rule nothing checks is a rule until the first refactor.
  *
- * @see docs/guide/code-generation.md — "The invariant: a build never destroys human work"
+ * @see docs/guide/code-generation/index.md — "The invariant: a build never destroys human work"
  */
 final class EscapedTreeException extends LogicException implements SpecException
 {

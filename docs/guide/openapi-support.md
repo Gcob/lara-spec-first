@@ -192,7 +192,8 @@ remote reference guard. It is expected to stay small by design: this doctrine se
 [the doctor](./doctor.md), which _reports_, and keeps here only what makes loading impossible or unsafe. Both of the
 current members earn that: one guards a failure the parser does not survive, the other a request it would make on a
 stranger's behalf. The remaining guard already implied by a decision elsewhere is the check that vendored references are
-present, which [frozen by default](./code-generation.md#remote-references-during-a-build-frozen-by-default) requires.
+present, which [frozen by default](./code-generation/index.md#remote-references-during-a-build-frozen-by-default)
+requires.
 
 The architecture test in `tests/Unit/ArchitectureTest.php` asserts it directly:
 
@@ -451,9 +452,9 @@ Given that, the hard parts were never in the conversion:
   forgotten.
 
 **Leaning: reject, do not convert.** Rule 3 and the position that
-[API design is a skill](./code-generation.md#naming-and-the-rename-problem) point the same way — a build that refuses
-`{user-id}` and says _rename this parameter to `user_id` in your specification_ is teaching a real constraint of the
-platform, once, at build time. A build that silently converts is maintaining a shadow naming scheme forever, and the
+[API design is a skill](./code-generation/index.md#naming-and-the-rename-problem) point the same way — a build that
+refuses `{user-id}` and says _rename this parameter to `user_id` in your specification_ is teaching a real constraint of
+the platform, once, at build time. A build that silently converts is maintaining a shadow naming scheme forever, and the
 developer still meets it the first time they read a generated signature. The 32-character ceiling is not negotiable
 either way and must be checked before the route is ever compiled.
 
@@ -470,11 +471,11 @@ are decided:
   becomes the route prefix.
 - `operationId`: optional in the specification, not guaranteed unique, not guaranteed to be a valid PHP identifier — and
   it is what names the generated controller and method. Public API surface. The naming and rename questions are now
-  answered in [`code-generation.md`](./code-generation.md#naming-and-the-rename-problem); what remains here is how a
-  missing or unusable `operationId` is reported.
+  answered in [`code-generation/index.md`](./code-generation/index.md#naming-and-the-rename-problem); what remains here
+  is how a missing or unusable `operationId` is reported.
 - ~~`php artisan route:cache`~~ **Settled.** Generating the routes rather than deriving them at boot answered most of
   it, and the rest is now verified rather than intended: the registration is a
-  [`[Controller::class, 'routeAction']` pair of plain strings](./code-generation.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
+  [`[Controller::class, 'routeAction']` pair of plain strings](./code-generation/index.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
   and a test runs the real command over a generated tree, then requires the cache file it wrote and checks the routes
   come back. The provider loads the file through `loadRoutesFrom()`, so a cached application skips it as it should.
 - `webhooks` (3.1) and `callbacks`: not routes on this server.
@@ -495,7 +496,7 @@ first release, not shipped behavior.
 | `openapi` 3.1.x                         | Supported    | Dispatches to the 3.1 strategy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Any other version                       | Rejected     | Including 2.x. Convert before adopting.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `info`, `externalDocs`                  | Out of scope | Documentation metadata with no routing effect. `info.version` becomes load-bearing only for [breaking-change enforcement](./lifecycle.md#unstable-by-default-and-what-stable-costs-us).                                                                                                                                                                                                                                                                                                                                                                                       |
-| `tags`                                  | Partial      | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./code-generation.md#the-build-names-the-command-instead-of-running-it).                                                                                                                                                                                                                                                                                                                                          |
+| `tags`                                  | Partial      | No routing effect, but they are the author's own grouping of their contract, and the package reuses it rather than inventing one — see [scaffolding output](./code-generation/index.md#the-build-names-the-command-instead-of-running-it).                                                                                                                                                                                                                                                                                                                                    |
 | `jsonSchemaDialect` (3.1)               | Open         | Only the default dialect is realistically honorable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `servers`                               | Open         | See [still to discuss](#still-to-discuss).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `security` (root)                       | Open         | Not yet decided, and the consequence is worth stating: the root block itself is not read into anything the package keeps. An operation's own `security` — absent, empty or a list — is recorded, but what an absent one actually inherits is not, so changing or removing the root `security` block silently changes what every inheriting operation requires, with nothing in `Contract\` reflecting it. The doctor says that much and no more: one line naming that the block exists and is not read, rather than a list of operations whose requirements nothing resolved. |
@@ -507,20 +508,20 @@ first release, not shipped behavior.
 
 ### Paths and operations
 
-| Construct                               | Level     | Note                                                                                                                                                                                                                     |
-| --------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `paths`                                 | Supported | The source of every registered route.                                                                                                                                                                                    |
-| Path templating `{param}`               | Partial   | Conforming names only, pending the [naming decision](#parameter-names-are-a-naming-contract-not-a-mapping-problem).                                                                                                      |
-| Several parameters in one segment       | Open      |                                                                                                                                                                                                                          |
-| Path Item `$ref`                        | Partial   | A reference to another path or to another file resolves. A reference into `components.pathItems` (3.1) is refused, because the parser [drops it in silence](#parser-caveats).                                            |
-| `get`, `post`, `put`, `patch`, `delete` | Supported |                                                                                                                                                                                                                          |
-| `options`                               | Open      | Conflicts with Laravel's own handling.                                                                                                                                                                                   |
-| `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                                                                             |
-| `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                                                                                                                                 |
-| Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                                                                                                                             |
-| `operationId`                           | Partial   | Names the generated controller and method. **Required on `public` + `stable` operations**; elsewhere the [method and path](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path) stand in for it. |
-| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](./lifecycle.md).                                                                                     |
-| `callbacks`                             | Open      |                                                                                                                                                                                                                          |
+| Construct                               | Level     | Note                                                                                                                                                                                                                           |
+| --------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `paths`                                 | Supported | The source of every registered route.                                                                                                                                                                                          |
+| Path templating `{param}`               | Partial   | Conforming names only, pending the [naming decision](#parameter-names-are-a-naming-contract-not-a-mapping-problem).                                                                                                            |
+| Several parameters in one segment       | Open      |                                                                                                                                                                                                                                |
+| Path Item `$ref`                        | Partial   | A reference to another path or to another file resolves. A reference into `components.pathItems` (3.1) is refused, because the parser [drops it in silence](#parser-caveats).                                                  |
+| `get`, `post`, `put`, `patch`, `delete` | Supported |                                                                                                                                                                                                                                |
+| `options`                               | Open      | Conflicts with Laravel's own handling.                                                                                                                                                                                         |
+| `head`                                  | Open      | Laravel derives HEAD from GET automatically.                                                                                                                                                                                   |
+| `trace`                                 | Rejected  | [Not routable](#trace-cannot-be-routed).                                                                                                                                                                                       |
+| Route ordering                          | Supported | [Document order wins](#route-order-the-spec-files-order-is-the-route-order).                                                                                                                                                   |
+| `operationId`                           | Partial   | Names the generated controller and method. **Required on `public` + `stable` operations**; elsewhere the [method and path](./code-generation/index.md#when-operationid-is-absent-derive-from-method-and-path) stand in for it. |
+| `deprecated`                            | Partial   | No effect on routing, but it is the authoritative lifecycle state and it gates the `x-sunset` rule. See [lifecycle](./lifecycle.md).                                                                                           |
+| `callbacks`                             | Open      |                                                                                                                                                                                                                                |
 
 ### Parameters, bodies, responses
 

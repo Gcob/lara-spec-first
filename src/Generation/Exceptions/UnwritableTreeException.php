@@ -22,7 +22,7 @@ use RuntimeException;
  * describes a contract nothing serves. That is precisely the shape of failure this
  * package exists to prevent, so a write it cannot perform has to stop the build.
  *
- * @see docs/guide/code-generation.md — "The build command: spec:build"
+ * @see docs/guide/code-generation/index.md — "The build command: spec:build"
  */
 final class UnwritableTreeException extends RuntimeException implements SpecException
 {

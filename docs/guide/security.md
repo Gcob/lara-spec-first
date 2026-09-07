@@ -43,9 +43,10 @@ This is less explicit than [rule 3](./openapi-support.md#the-four-rules) usually
 this document where that is a deliberate trade rather than an oversight: the alternative is a second file mapping scheme
 names to guard names, one more thing to keep in sync with both the specification and `config/auth.php`, for a
 relationship that is already a name in both places. The same reasoning already used
-[when `operationId` is absent](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path) and for
-[factory overrides](./code-generation.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares) applies
-here too: match by name first, and only reach for configuration when nomenclature genuinely cannot carry the answer.
+[when `operationId` is absent](./code-generation/index.md#when-operationid-is-absent-derive-from-method-and-path) and
+for [factory overrides](./code-generation/index.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares)
+applies here too: match by name first, and only reach for configuration when nomenclature genuinely cannot carry the
+answer.
 
 **The consequence:** a `securitySchemes` name with no guard of the same name is not a silent no-op — it is a
 misconfiguration [the doctor](#the-doctors-role) reports, because a scheme the middleware cannot resolve to a guard is
@@ -70,15 +71,15 @@ package, a hardcoded rule. The middleware calls the interface and nothing else, 
 point this feature has.
 
 That is narrower than
-[the factory override mechanism](./code-generation.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares):
+[the factory override mechanism](./code-generation/index.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares):
 no directory to configure, no scan, no `extends`. The model already exists in every application and is already the one
 place that knows how its own scopes work — there is nothing to discover, only an interface to implement.
 
 **Decision: the requirement is resolved into the generated route, not read from the spec at request time.** The scheme,
 its matched guard, and the scopes it asks for are baked into the generated route registration as middleware parameters
 when `spec:build` runs, the same way every other build-time decision in this package
-[never reaches the runtime](./code-generation.md#the-runtime-never-sees-the-spec). Wiring the middleware onto the route
-is therefore the build's job, not something a developer adds by hand.
+[never reaches the runtime](./code-generation/index.md#the-runtime-never-sees-the-spec). Wiring the middleware onto the
+route is therefore the build's job, not something a developer adds by hand.
 
 **Open:** exactly which `securitySchemes` _types_ reduce to "the model has a scope" and which do not — `apiKey`,
 `http bearer` and `oauth2` are the clear fits; `mutualTLS` and the details of `openIdConnect` may not be answerable by

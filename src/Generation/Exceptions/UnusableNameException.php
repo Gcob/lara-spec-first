@@ -16,7 +16,7 @@ use InvalidArgumentException;
  * from its cause, and letting one generated class serve two operations would
  * mean the second silently wins.
  *
- * @see docs/guide/code-generation.md — "Naming, and the rename problem"
+ * @see docs/guide/code-generation/index.md — "Naming, and the rename problem"
  */
 final class UnusableNameException extends InvalidArgumentException implements SpecException
 {
@@ -66,7 +66,7 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     /**
      * A custom controller declared inside the generated tree.
      *
-     * @see docs/guide/code-generation.md — "Where your classes go"
+     * @see docs/guide/code-generation/index.md — "Where your classes go"
      */
     public static function customControllerInsideGeneratedTree(
         string $identity,

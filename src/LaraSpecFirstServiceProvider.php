@@ -35,7 +35,7 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
      * sees a specification, so what belongs in this method is configuration and
      * the wiring the build-time commands will resolve.
      *
-     * @see docs/guide/code-generation.md — "The runtime never sees the spec"
+     * @see docs/guide/code-generation/index.md — "The runtime never sees the spec"
      */
     public function register(): void
     {
@@ -143,8 +143,8 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
      * `loadRoutesFrom()` rather than a plain require, because it is what skips
      * the file when the application's routes are already cached.
      *
-     * @see docs/guide/code-generation.md — "The runtime never sees the spec"
-     * @see docs/guide/code-generation.md — "Which generated code is committed"
+     * @see docs/guide/code-generation/index.md — "The runtime never sees the spec"
+     * @see docs/guide/code-generation/index.md — "Which generated code is committed"
      */
     private function loadGeneratedRoutes(): void
     {

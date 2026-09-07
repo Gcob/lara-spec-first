@@ -147,9 +147,9 @@ own.
 **`workbench/app/Http/Generated` is gitignored**, for the same reason any project ignores its build output, and because
 this application exists to model a real consumer one — so it is configured the way one would be. The contract is
 committed; what the contract produces is not.
-[`.gitignore` decides](./docs/guide/code-generation.md#which-generated-code-is-committed), and the cost of ignoring it
-is the `composer install` bargain the [two layers](./docs/guide/code-generation.md#two-layers) section already accepts:
-a fresh clone serves nothing until the build has run once.
+[`.gitignore` decides](./docs/guide/code-generation/index.md#which-generated-code-is-committed), and the cost of
+ignoring it is the `composer install` bargain the [two layers](./docs/guide/code-generation/index.md#two-layers) section
+already accepts: a fresh clone serves nothing until the build has run once.
 
 Which is why the build is a step of `composer build` rather than something to remember — see `workbench.build` in
 `testbench.yaml`. That is also the workflow a consumer has: `spec:build` belongs in whatever bootstraps their

@@ -194,8 +194,8 @@ Two documents govern most of what you will need. Read the one that owns your sub
 - [`docs/project/stack.md`](./docs/project/stack.md) — every technology choice, its status, and its reasoning.
 - [`docs/guide/openapi-support.md`](./docs/guide/openapi-support.md) — what the package honors of the specification and
   what it does not, and why. Read it before writing anything that reads a spec.
-- [`docs/guide/code-generation.md`](./docs/guide/code-generation.md) — the build, and the rule that generated code and
-  human code never share a file. Read it before writing anything that emits PHP.
+- [`docs/guide/code-generation/index.md`](./docs/guide/code-generation/index.md) — the build, and the rule that
+  generated code and human code never share a file. Read it before writing anything that emits PHP.
 
 Eight more documents own one subject each, and each says in its `read_before` when to open it:
 [`docs/guide/doctor.md`](./docs/guide/doctor.md) (what the package reports),

@@ -42,7 +42,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * differently can render `SpecException` however it prefers; this package does not
  * owe that judgment call a guess.
  *
- * @see docs/guide/code-generation.md — "An unimplemented operation answers 501"
+ * @see docs/guide/code-generation/index.md — "An unimplemented operation answers 501"
  */
 final class OperationNotImplementedException extends HttpException implements SpecException
 {

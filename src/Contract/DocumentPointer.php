@@ -9,7 +9,7 @@ namespace Gcob\LaraSpecFirst\Contract;
  * uses everywhere it names a position.
  *
  * **One implementation, because a pointer is an identity.** The generated
- * file's [source map](../../docs/guide/code-generation.md#the-source-map),
+ * file's [source map](../../docs/guide/code-generation/index.md#the-source-map),
  * the cycle detector's chains, and every doctor finding that knows where it
  * looked all answer the same question — _where in the document is this_ —
  * and a second escaping of `~` and `/` is a second answer waiting to
@@ -21,7 +21,7 @@ namespace Gcob\LaraSpecFirst\Contract;
  * `Parsing\` and `Doctor\` all need it, and `Contract\` is the namespace the
  * other three already consume without any of them owning it.
  *
- * @see docs/guide/code-generation.md — "The source map"
+ * @see docs/guide/code-generation/index.md — "The source map"
  */
 final readonly class DocumentPointer
 {

@@ -15,7 +15,7 @@ use RuntimeException;
  * that compiles, that the autoloader never finds, and whose route therefore
  * answers with a class-not-found — for a reason nothing in the project states.
  *
- * @see docs/guide/code-generation.md — "Where your classes go"
+ * @see docs/guide/code-generation/index.md — "Where your classes go"
  */
 final class UnplaceableClassException extends RuntimeException implements SpecException
 {
