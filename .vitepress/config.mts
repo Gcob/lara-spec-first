@@ -115,6 +115,7 @@ export default defineConfig({
         'workbench/**',
         'build/**',
         'reviews/**',
+        'planning/**',
         'tests/**',
         '.claude/**',
         '.github/**',

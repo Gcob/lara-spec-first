@@ -18,6 +18,8 @@ on:
         paths:
             - "**.md"
             - ".vitepress/**"
+            - "docs/diagrams/**"
+            - "scripts/build-diagrams.sh"
             - "package.json"
             - "package-lock.json"
             - ".github/workflows/docs.yml"
@@ -25,6 +27,8 @@ on:
         paths:
             - "**.md"
             - ".vitepress/**"
+            - "docs/diagrams/**"
+            - "scripts/build-diagrams.sh"
             - "package.json"
             - "package-lock.json"
             - ".github/workflows/docs.yml"
@@ -66,6 +70,12 @@ jobs:
             # Fails on a dead internal link. That is the check this job exists for on
             # a pull request.
             - run: npm run docs:build
+
+            # A diagram is committed as an SVG beside the PlantUML that produced it,
+            # so the two can drift. This is what makes that a red check rather than a
+            # picture describing an older design. PlantUML runs through Docker, which
+            # the runner already has, so nothing is installed for it.
+            - run: ./scripts/build-diagrams.sh --check
 
             - uses: actions/upload-pages-artifact@v5
               if: github.event_name != 'pull_request'

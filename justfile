@@ -90,6 +90,16 @@ format-md:
 format-md-check:
     ./scripts/format-markdown.sh --check
 
+# Render docs/diagrams/*.puml to the SVG committed beside each source. Runs
+# outside the container, like the Markdown recipes above and for the same reason:
+# PlantUML is a Java tool and the development image carries no Java.
+diagrams:
+    ./scripts/build-diagrams.sh
+
+# Report which committed diagrams no longer match their source, without writing.
+diagrams-check:
+    ./scripts/build-diagrams.sh --check
+
 # The documentation site is Node as well, so these recipes also run outside the
 # container. Run `just docs-install` once first. What the site contains and how it
 # is laid out is decided in .vitepress/config.mts.

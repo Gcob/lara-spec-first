@@ -270,6 +270,8 @@ Before any rule above can apply, a file has to become a document. Five steps, an
 an implementation detail** — each one is impossible before the one that precedes it, and the last two are impossible
 after.
 
+![The five steps of the reading pipeline, from decoding to the parser](../diagrams/reading-pipeline.svg)
+
 | Step            | What it does                                                                   | Why it sits there                                                                                                                                                                                                                          |
 | --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Decode**      | YAML or JSON into an array.                                                    | Nothing can be decided about bytes. One code path serves both formats, because YAML 1.2 is a superset of JSON — branching on the file extension would only add a way to reject a correctly written document for carrying the wrong suffix. |

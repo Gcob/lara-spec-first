@@ -5,8 +5,9 @@ covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
     principle, the audience vocabulary and the directory each audience owns, the front matter metadata schema and tag
     vocabulary, the TL;DR every document opens with and how it differs from a `covers` claim, the three rules that keep
-    a document readable in one pass, the catalogue of doc smells and the correction each one calls for, and the
-    inventory of every document.
+    a document readable in one pass and the junior developer test that calibrates them, how a diagram is built and when
+    one earns its place, the catalogue of doc smells and the correction each one calls for, and the inventory of every
+    document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
@@ -265,7 +266,30 @@ owed a claim.
 ## Write for one pass
 
 **A sentence the reader has to read twice has failed**, however precise it turns out to be on the second reading. These
-documents are long and they argue, so the writing owes back what the arguing costs. Three rules do most of that work.
+documents are long and they argue, so the writing owes back what the arguing costs. One test says whether it did, and
+three rules do most of the work.
+
+### The Junior Dev Test
+
+The re-read test needs a reader to run it as, or every author passes it on their own prose. **Run it as an engineer who
+knows PHP and Laravel but has never seen this topic.** That is the reader this set actually gets: a contributor on their
+first task, and an agent opening one page with no memory of the others.
+
+Three questions, in order:
+
+- **Would they get the purpose from the TL;DR alone?** If the point only lands in the third section, the summary is a
+  table of contents.
+- **Would they hit a term nobody defined?** This is where you find the vocabulary you assumed, and the rule below is the
+  fix.
+- **Would they know a rule is a rule?** State one as a present-tense fact: "the build refuses a path parameter Laravel
+  cannot match", never "we felt it was probably better to refuse". Hedging reads as an open question, and an open
+  question invites the reader to settle it themselves. Behavior that does not exist yet is the one exception, and it
+  says so by [naming its phase](#doc-smells) rather than by softening the verb.
+
+Where an answer is no, the fix is structural rather than editorial: split the stacked sentence into bullets, define the
+term, or move the edge case into the section that owns the limits. **Not into a collapsed block** — a toggle keeps the
+page looking short while leaving the reader who needed that detail worse off than a link would, and this set already
+answers "secondary detail" with [a file of its own](#one-topic-one-file).
 
 ### The result comes first, the condition second
 
@@ -300,6 +324,50 @@ This is already the strongest habit in the set, and the rule only makes it expec
 [support matrix](../guide/openapi-support.md) states what is parsed and not honored, and
 [`code-generation.md`](../guide/code-generation.md) carries both what the build deliberately does not emit and what was
 decided against. A guide with no such section is claiming it has no edges.
+
+### A diagram is built, not embedded
+
+**Diagrams are PlantUML sources under `docs/diagrams/`, rendered to an SVG committed beside each one, and referenced
+from a page as an image.** Neither GitHub nor the site renders PlantUML on its own, and half the readers of this set are
+on GitHub, so a fenced `plantuml` block is a code listing to one of them and a diagram to neither.
+
+```bash
+just diagrams          # render every docs/diagrams/*.puml to the SVG beside it
+just diagrams-check    # reports a diagram edited without being rebuilt, writes nothing
+```
+
+`scripts/build-diagrams.sh` runs PlantUML through Docker when the machine has no local one, the same shape as
+[Markdown formatting](#formatting) and for the same reason: PlantUML is a Java tool and the development image carries no
+Java. The tool row is in [`stack.md`](../project/stack.md).
+
+Three rules keep a rendered diagram honest:
+
+- **Commit the source and the SVG, and let CI compare them.** A generated file in the tree can drift from what produced
+  it. `diagrams-check` re-renders into a scratch directory and fails when the committed SVG differs, which turns that
+  drift into a red check rather than a diagram quietly describing an older design.
+- **One neutral grey, on a transparent background.** The SVG is one file serving a light theme and a dark one, so it
+  cannot carry a palette. `#888888` clears the contrast floor against both, and the diagram borrows the page's ground
+  rather than painting its own.
+- **A diagram never carries a fact alone.** It complements the prose, the table and the rules around it; anything only
+  the picture says is lost to a reader using a screen reader, and to every `grep`.
+
+#### When a diagram earns its place
+
+**Three steps, or an ordering the prose has to spell out.** Below that a sentence wins, and a diagram of two boxes costs
+a build step to say what a clause already said.
+
+The types worth drawing, and the ones this package has no use for, stated so that nobody draws one to fill the table:
+
+| Diagram             | Shows                                            | Here                                                           |
+| ------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
+| Activity            | The steps of a workflow or an algorithm          | The reading pipeline, the order of a build                     |
+| Sequence            | The order of calls between objects or services   | A request reaching a generated controller and its custom child |
+| State machine       | An entity's lifecycle and the rules that move it | An operation across `beta`, `stable`, `deprecated` and sunset  |
+| Class               | The concepts and how they relate                 | The two-class seam, the `Contract\` types                      |
+| Component           | Module and package boundaries                    | What `Parsing\` may reach, and what `Routing\` may not         |
+| Use case            | Who interacts with the system, and to do what    | Nothing yet. Three Artisan commands are a list, not a diagram  |
+| Entity relationship | The tables of a relational database              | Nothing. This package has no database                          |
+| Deployment          | The machines and containers the code runs on     | Nothing. This is a library, and the host is the consumer's     |
 
 ## Doc smells
 

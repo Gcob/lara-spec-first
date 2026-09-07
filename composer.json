@@ -61,6 +61,8 @@
         "format:check": "pint --test",
         "format:md": "scripts/format-markdown.sh",
         "format:md:check": "scripts/format-markdown.sh --check",
+        "diagrams": "scripts/build-diagrams.sh",
+        "diagrams:check": "scripts/build-diagrams.sh --check",
         "analyse": "phpstan analyse --memory-limit=512M",
         "check": [
             "@format:check",
@@ -92,6 +94,8 @@
         "format:check": "Report formatting issues without changing files.",
         "format:md": "Reflow Markdown prose to the .editorconfig column limit and align tables. Runs Prettier outside the PHP container, since the image carries no Node.",
         "format:md:check": "Report which Markdown files need reformatting, without changing them.",
+        "diagrams": "Render every PlantUML source under docs/diagrams/ to the SVG committed beside it. Runs PlantUML outside the PHP container, since the image carries no Java.",
+        "diagrams:check": "Report which committed diagrams no longer match their source, without writing. This is what catches a diagram edited and not rebuilt.",
         "analyse": "Run PHPStan static analysis.",
         "check": "Run every pre-pull-request check: formatting, static analysis, tests.",
         "check:lowest": "Run the same checks against the lowest supported Laravel and Testbench, then restore the newest. Development tooling is left alone.",
