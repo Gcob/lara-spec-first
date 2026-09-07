@@ -12,6 +12,15 @@ tags: [openapi, compatibility, decisions, workflow, code-review]
 
 # The Doctor
 
+> **TL;DR**
+>
+> - `spec:doctor` is `nginx -t` for your contract: what the package honors, what it does not, and the routing table that
+>   results.
+> - Read-only, always, and an architecture assertion says so rather than a convention nobody can check.
+> - It reports everything it found rather than the first failure, and prints the outcome on a clean run too.
+> - A document fault and a package limit never share an exit code: `0` clean, `1` a document fault, `2` a package limit.
+> - **Not built yet:** the baseline and driver sections, which print a `[not checked]` line instead of passing quietly.
+
 `spec:doctor` is how this package keeps its second rule: **a construct it does not honor must produce a diagnostic.**
 What is honored in the first place lives in [`openapi-support.md`](./openapi-support.md); this document owns how any of
 it is reported.
