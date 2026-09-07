@@ -6,12 +6,13 @@ covers: >
     the rule that generated code is never edited by hand, why scaffolding a class you will own is a separate command,
     the docblock every generated file carries so that a human or an AI agent can navigate it without guessing, the
     comment that sits above a reference to generated code and what to do when that class goes missing, why the
-    specification the build reads is private and how a sanitized copy is produced for publication, why a formatter has
-    to be told to leave the generated tree alone and why the build emits the canonical form anyway, why the build
-    touches the filesystem directly rather than through a Storage disk and what that means for permissions, how a value
-    from the document is escaped on its way into a literal or a comment, why generated output records no time and where
-    the repository already answers that, and how a contract change surfaces as a static analysis error rather than a
-    runtime surprise.
+    specification the build reads is private and how a sanitized copy is produced for publication, why the types a
+    frontend consumes come from `openapi-typescript` rather than from this build, why a formatter has to be told to
+    leave the generated tree alone and why the build emits the canonical form anyway, why the build touches the
+    filesystem directly rather than through a Storage disk and what that means for permissions, how a value from the
+    document is escaped on its way into a literal or a comment, why generated output records no time and where the
+    repository already answers that, and how a contract change surfaces as a static analysis error rather than a runtime
+    surprise.
 read_before: >
     Writing anything that emits PHP from a specification, or changing what the build command does.
 tags: [code-generation, openapi, scope, decisions, laravel]
@@ -432,6 +433,25 @@ Two consequences to state rather than let anyone hit:
 **Open:** the config key names, whether the sanitized copy is emitted in the document's own format or normalized to
 JSON, and whether an operation's `summary` and `description` need a keep-or-strip decision of their own — internal notes
 end up in those fields far more often than anyone intends.
+
+### The frontend gets its types from `openapi-typescript`, not from this build
+
+The component consuming an operation reads the same schema the build already reads, and gets `any`. It is a real gap and
+it is the obvious next emitter to reach for. **Decision: this package does not emit it. A project that wants typed
+requests and responses in the browser runs [`openapi-typescript`](https://openapi-ts.dev) over its own document, and the
+[public copy](#where-the-public-copy-goes) is exactly that tool's input once it exists.**
+
+This is a Laravel package, and its output is PHP. Emitting TypeScript would put Node in the path of `spec:build`, which
+means a build failing on a deploy machine for a reason that has nothing to do with the contract — the development image
+is `php:8.3-cli-alpine` with no Node in it, which is already why
+[Markdown formatting is the documented exception](../contributing/documentation.md#formatting) that runs outside the
+container. It would also mean a schema-to-type mapping to write and maintain for a language this project does not build
+in, next to a good tool that already has one.
+
+**The gap that leaves is worth naming rather than glossing over.** Two tools read one document, so nothing compares what
+the TypeScript says with what the generated PHP says, and the two can describe one operation differently. Running
+`openapi-typescript` against the document this package reads is what keeps that distance at zero, which is the whole
+reason to point at the contract rather than at a hand-written client.
 
 ## Where generated code lives
 

@@ -21,9 +21,10 @@ controller per operation, and the provider loads them at boot without opening a 
 so an operation that declares one gets a parent it may extend and a route that points at the child once that class
 exists; an operation that declares none stays `final`. `spec:make` scaffolds that child on request — one operation, a
 `--tag` or `--all` — offers to write `x-controller` into the specification when it is missing, and builds afterwards;
-the build itself never scaffolds, it names the invocation. There is no `spec:doctor` and no response DTO. The roadmap's
-[state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list, checked boxes meaning
-behavior with tests behind it.
+the build itself never scaffolds, it names the invocation. `spec:doctor` reports what the package will honor, what it
+will not, and the routing table that results, read-only always and asserted to be. There is no response DTO and no
+generated validation. The roadmap's [state section](./docs/project/roadmap.md#where-the-code-is-today) is the
+authoritative list, checked boxes meaning behavior with tests behind it.
 
 Verify your work with `just check` (or `composer check`) — Pint, Larastan, then Pest.
 
