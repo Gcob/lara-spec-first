@@ -20,6 +20,18 @@ tags: [code-generation, openapi, scope, decisions, laravel]
 
 # Code Generation
 
+> **TL;DR**
+>
+> - `spec:build` reads the contract and emits `routes.php` plus one controller per operation, each answering 501 until
+>   something implements it.
+> - A build never destroys human work: generated code and your code never share a file, so the build is always safe to
+>   re-run.
+> - Nothing at runtime ever opens a specification. The provider loads one generated file and knows nothing about how it
+>   was produced.
+> - Every generated file explains itself: where in the contract it came from, what the build worked out, and what runs
+>   instead of it.
+> - **Not built yet:** response DTOs, the sanitized public copy, and `spec:watch`.
+
 Spec-First only pays off if the contract reaches the code. This document owns how it gets there: **one build command
 turns the specification into PHP, and the result is safe to regenerate at any time.**
 

@@ -16,6 +16,15 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 # Controllers
 
+> **TL;DR**
+>
+> - One controller per operation, carrying one method named `routeAction`.
+> - `x-controller` is the whole customization model: it names the class you will own, and the generated parent drops its
+>   `final`.
+> - An operation that declares no `x-controller` gets a `final` controller, which nothing can extend.
+> - `spec:make` is the only command that creates a file you will own. The build never scaffolds, it names the command.
+> - **Not built yet:** `x-model` and everything model-shaped, which is Phase 2.
+
 An operation needs something to answer it. This document owns what that something is: how many files it takes, what it
 assumes about your application, and where a developer's own code attaches to it.
 
