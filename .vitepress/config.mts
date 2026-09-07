@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type DefaultTheme } from 'vitepress'
@@ -19,6 +19,11 @@ const BASE = '/lara-spec-first/'
  * A sidebar group. `directory` is published in `sequence` order; anything found in
  * the directory but missing from `sequence` is appended alphabetically, so a new
  * file is never invisible. `also` names pages outside the directory.
+ *
+ * A subdirectory holding an `index.md` becomes one nested, collapsible entry whose
+ * parent is that index. It is how a subject too large for one file stays one entry
+ * in the sidebar rather than becoming several unrelated-looking ones, and the
+ * `sequence` names it by its directory name like any other page.
  *
  * Titles are never written here: they are read from each document's front matter,
  * which owns them. This file holds order and grouping only.
@@ -77,26 +82,63 @@ function itemFor(path: string): DefaultTheme.SidebarItem {
     return { text: titleOf(path), link: '/' + path.replace(/\.md$/, '') }
 }
 
-function pagesIn(section: Section): string[] {
+/**
+ * The nested entry for a subdirectory: its `index.md` as the clickable parent, and
+ * every sibling beside it as a child, alphabetically. Collapsed, so a subject the
+ * reader is not in stays one line.
+ */
+function groupFor(directory: string): DefaultTheme.SidebarItem {
+    const children = readdirSync(join(ROOT, directory))
+        .filter((name) => name.endsWith('.md') && name !== 'index.md')
+        .sort()
+        .map((name) => itemFor(`${directory}/${name}`))
+
+    // The directory itself rather than `/index`, because that is the URL VitePress
+    // gives a link to that file anywhere else. Two URLs for one page would leave
+    // the sidebar failing to mark it active on half the ways in.
+    return {
+        text: titleOf(`${directory}/index.md`),
+        link: '/' + directory + '/',
+        collapsed: true,
+        items: children,
+    }
+}
+
+/**
+ * Every publishable entry of a directory, named the way `sequence` names it: a page
+ * by its filename without the extension, a subject by its directory name.
+ *
+ * A directory without an `index.md` is not a subject and is skipped, rather than
+ * producing a parent entry that leads nowhere.
+ */
+function entriesIn(section: Section): DefaultTheme.SidebarItem[] {
     if (!section.directory) {
         return []
     }
 
-    const files = readdirSync(join(ROOT, section.directory))
-        .filter((name) => name.endsWith('.md'))
-        .map((name) => name.replace(/\.md$/, ''))
+    const directory = section.directory
+
+    const found = readdirSync(join(ROOT, directory)).flatMap((entry) => {
+        if (statSync(join(ROOT, directory, entry)).isDirectory()) {
+            return existsSync(join(ROOT, directory, entry, 'index.md')) ? [{ name: entry, group: true }] : []
+        }
+
+        return entry.endsWith('.md') ? [{ name: entry.replace(/\.md$/, ''), group: false }] : []
+    })
 
     const sequence = section.sequence ?? []
-    const ordered = sequence.filter((name) => files.includes(name))
-    const rest = files.filter((name) => !sequence.includes(name)).sort()
+    const ordered = sequence.flatMap((name) => found.filter((entry) => entry.name === name))
+    const rest = found.filter((entry) => !sequence.includes(entry.name)).sort((a, b) => a.name.localeCompare(b.name))
 
-    return [...ordered, ...rest].map((name) => `${section.directory}/${name}.md`)
+    return [...ordered, ...rest].map((entry) =>
+        entry.group ? groupFor(`${directory}/${entry.name}`) : itemFor(`${directory}/${entry.name}.md`)
+    )
 }
 
 const sidebar: DefaultTheme.SidebarItem[] = SECTIONS.map((section) => ({
     text: section.text,
     collapsed: false,
-    items: [...pagesIn(section), ...(section.also ?? [])].map(itemFor),
+    items: [...entriesIn(section), ...(section.also ?? []).map(itemFor)],
 }))
 
 export default defineConfig({

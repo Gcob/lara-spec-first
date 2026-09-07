@@ -3,11 +3,11 @@ title: Documentation Guide
 audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
-    principle, the audience vocabulary and the directory each audience owns, the front matter metadata schema and tag
-    vocabulary, the TL;DR every document opens with and how it differs from a `covers` claim, the three rules that keep
-    a document readable in one pass and the junior developer test that calibrates them, how a diagram is built and when
-    one earns its place, the catalogue of doc smells and the correction each one calls for, and the inventory of every
-    document.
+    principle and what happens when a subject outgrows one file, the audience vocabulary and the directory each audience
+    owns, the front matter metadata schema and tag vocabulary, the TL;DR every document opens with and how it differs
+    from a `covers` claim, the three rules that keep a document readable in one pass and the junior developer test that
+    calibrates them, how a diagram is built and when one earns its place, the catalogue of doc smells and the correction
+    each one calls for, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
@@ -76,6 +76,27 @@ The rules:
 
 Signs the rule is being broken: the same decision justified in two places; a section that re-explains something the
 reader was already sent elsewhere to read; a file whose title no longer covers everything inside it.
+
+### A subject too large for one file becomes a directory
+
+**When one topic outgrows one file, it becomes a directory holding an `index.md` and the files it splits into.** Not
+several files side by side in `docs/guide/`: that turns one subject into several sidebar entries with nothing saying
+they belong together, which is a worse answer to "this file is too long" than the length was a problem.
+
+**The index is not a table of contents.** It carries what the other files depend on, plus the part of the subject
+nothing else claims, and it links onward from the body where each question arises. An index that lists its own siblings
+duplicates two things that already exist: each file's `covers`, and the [inventory](#document-inventory), which
+deliberately carries no descriptions for exactly that reason.
+
+Three things follow, and none of them needs configuring:
+
+- **The site publishes the directory as one collapsible entry** whose clickable parent is the index and whose children
+  are its siblings, alphabetically. `.vitepress/config.mts` names it in a `sequence` by its directory name, like any
+  other page.
+- **The directory answers on its own URL**, so `/docs/guide/code-generation` keeps resolving after the split and no
+  external link to the subject breaks.
+- **Every link written as Markdown does have to move**, because the file did. `just docs-check-anchors` is what makes a
+  missed one a red check rather than a fragment nobody notices.
 
 ## Who the reader is decides where the file lives
 

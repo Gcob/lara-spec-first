@@ -752,7 +752,7 @@ the feature was:
 - **What it would still have caught belongs to the developer.** Remove an operation from the contract and the custom
   controller that extended its parent extends nothing. That is a consequence of deleting the operation, and deciding
   what happens to their own class is the developer's call, not a report's — the same position this document takes on
-  [a specification you do not control](./controllers.md#spec-make-is-the-only-way-in) and on
+  [a specification you do not control](./controllers.md#specmake-is-the-only-way-in) and on
   [identifier changes being versioning decisions](#naming-and-the-rename-problem).
 - **It could never have been a guarantee.** The mechanism reads the previous build's own output, and whether that output
   exists is [the consumer's `.gitignore` choice](#which-generated-code-is-committed). On a fresh clone there is nothing
