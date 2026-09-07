@@ -147,7 +147,7 @@ final class BuildCommand extends Command
      * using theirs. This groups the printed list only; every file `spec:make`
      * creates is still one controller for one operation.
      *
-     * @see docs/guide/code-generation/index.md — "The build names the command instead of running it"
+     * @see docs/guide/code-generation/scaffolding.md — "The build names the command instead of running it"
      */
     private function nameTheCommand(BuildPlan $plan): void
     {

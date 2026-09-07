@@ -38,7 +38,7 @@ use function Laravel\Prompts\text;
  * are about to create and ask first.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
- * @see docs/guide/code-generation/index.md — "Scaffolding is spec:make, not a build step"
+ * @see docs/guide/code-generation/scaffolding.md — "Scaffolding is spec:make, not a build step"
  */
 final class MakeCommand extends Command
 {

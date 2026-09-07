@@ -693,7 +693,7 @@ it('refuses a path parameter the generated method could not declare', function (
  * of the invariant: nothing is scaffolded as a side effect, and what a developer
  * gets instead is the exact invocation.
  *
- * @see docs/guide/code-generation/index.md — "The build names the command instead of running it"
+ * @see docs/guide/code-generation/scaffolding.md — "The build names the command instead of running it"
  */
 
 function buildTagged(): string

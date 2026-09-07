@@ -112,7 +112,7 @@ final readonly class BuildPlanner
      *
      * @throws UnusableNameException
      *
-     * @see docs/guide/code-generation/index.md — "Where your classes go"
+     * @see docs/guide/code-generation/scaffolding.md — "Where your classes go"
      */
     private function assertOutsideGeneratedTree(ControllerName $name, string $label): void
     {

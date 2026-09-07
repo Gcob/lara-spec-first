@@ -22,7 +22,7 @@ architecture while letting your business logic live safely in standard Laravel c
 - **Built for AI-assisted coding, and we say it out loud:** a stated goal, not a side effect. Every generated file
   explains itself — where in the contract it came from, what the build worked out while emitting it, and an `@see` at
   the code that actually runs. Your agent shouldn't have to guess. See
-  [`code-generation/index.md`](./docs/guide/code-generation/index.md#every-generated-file-explains-itself).
+  [`code-generation/index.md`](./docs/guide/code-generation/generated-file-anatomy.md#every-generated-file-explains-itself).
 - **Safe to regenerate:** Generated code and your code never share a file, so the build can be re-run at any time
   without losing work — and a contract change surfaces as a static analysis error, not a production incident. See
   [`docs/guide/code-generation/index.md`](./docs/guide/code-generation/index.md).

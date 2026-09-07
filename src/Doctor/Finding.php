@@ -9,7 +9,7 @@ namespace Gcob\LaraSpecFirst\Doctor;
  * sections — one place to add the next check, per docs/guide/doctor.md.
  *
  * `$pointer` is a JSON Pointer to the document position this finding names,
- * exactly as {@see docs/guide/code-generation/index.md#the-source-map} escapes one
+ * exactly as {@see docs/guide/code-generation/generated-file-anatomy.md#the-source-map} escapes one
  * — the same format rather than a second one invented for this report. It is
  * empty for a finding built straight from a `SpecException` the reading
  * pipeline collected: those exceptions carry their position in prose inside

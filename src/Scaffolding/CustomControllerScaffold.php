@@ -31,7 +31,7 @@ use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnwritableScaffoldException;
  * exactly what implementing the operation means.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
- * @see docs/guide/code-generation/index.md — "A reference to generated code says what to do when it goes missing"
+ * @see docs/guide/code-generation/generated-file-anatomy.md — "A reference to generated code says what to do when it goes missing"
  */
 final readonly class CustomControllerScaffold
 {

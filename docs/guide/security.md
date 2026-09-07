@@ -43,8 +43,9 @@ This is less explicit than [rule 3](./openapi-support.md#the-four-rules) usually
 this document where that is a deliberate trade rather than an oversight: the alternative is a second file mapping scheme
 names to guard names, one more thing to keep in sync with both the specification and `config/auth.php`, for a
 relationship that is already a name in both places. The same reasoning already used
-[when `operationId` is absent](./code-generation/index.md#when-operationid-is-absent-derive-from-method-and-path) and
-for [factory overrides](./code-generation/index.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares)
+[when `operationId` is absent](./code-generation/generated-file-anatomy.md#when-operationid-is-absent-derive-from-method-and-path)
+and for
+[factory overrides](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares)
 applies here too: match by name first, and only reach for configuration when nomenclature genuinely cannot carry the
 answer.
 
@@ -71,7 +72,7 @@ package, a hardcoded rule. The middleware calls the interface and nothing else, 
 point this feature has.
 
 That is narrower than
-[the factory override mechanism](./code-generation/index.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares):
+[the factory override mechanism](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares):
 no directory to configure, no scan, no `extends`. The model already exists in every application and is already the one
 place that knows how its own scopes work — there is nothing to discover, only an interface to implement.
 

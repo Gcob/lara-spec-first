@@ -80,7 +80,7 @@ package treats paginated endpoints as ordinary ones, which is exactly what it do
 
 This is the same posture as [the remote reference allowlist](./remote-references.md), empty until a project declares a
 host, and
-[the factory override scan](./code-generation/index.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares),
+[the factory override scan](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares),
 which scans nothing until a project names a directory. A feature whose whole premise is _we cannot know your convention_
 has no business assuming one on your behalf.
 
@@ -233,8 +233,8 @@ protected function respondWithCollection(): UserPageDto
 ```
 
 Nothing here reads configuration at request time, and nothing composes an object graph to hide what is happening. That
-is the property [the docblock norm](./code-generation/index.md#every-generated-file-explains-itself) exists to serve:
-open the file, read what it does.
+is the property [the docblock norm](./code-generation/generated-file-anatomy.md#every-generated-file-explains-itself)
+exists to serve: open the file, read what it does.
 
 Two details the generated code must take from the specification rather than invent:
 

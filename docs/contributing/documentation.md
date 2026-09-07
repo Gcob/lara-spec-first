@@ -495,6 +495,10 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 `docs/guide/` — `Users`:
 
 - [`code-generation/index.md`](../guide/code-generation/index.md)
+    - [`generated-file-anatomy.md`](../guide/code-generation/generated-file-anatomy.md)
+    - [`publishing.md`](../guide/code-generation/publishing.md)
+    - [`response-dtos.md`](../guide/code-generation/response-dtos.md)
+    - [`scaffolding.md`](../guide/code-generation/scaffolding.md)
 - [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
 - [`drivers.md`](../guide/drivers.md)

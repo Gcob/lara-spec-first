@@ -56,10 +56,10 @@ Structure is what is worth writing code for, because structure is what several p
 ### The test for whether a feature needs a driver at all
 
 Customization elsewhere in this documentation is driven by nomenclature: an `operationId`
-[derives a class name](./code-generation/index.md#when-operationid-is-absent-derive-from-method-and-path), a
-`securitySchemes` name [matches a guard](./security.md#scheme-names-are-a-naming-contract-with-your-guards), a factory
+[derives a class name](./code-generation/generated-file-anatomy.md#when-operationid-is-absent-derive-from-method-and-path),
+a `securitySchemes` name [matches a guard](./security.md#scheme-names-are-a-naming-contract-with-your-guards), a factory
 override is
-[found by what it `extends`](./code-generation/index.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares).
+[found by what it `extends`](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares).
 Those work because a name means the same thing everywhere it appears.
 
 So the test is one question: **is there a name that means the same thing across specifications?** Where there is, match

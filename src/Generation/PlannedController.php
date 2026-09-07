@@ -46,7 +46,7 @@ final readonly class PlannedController
      *
      * The generated parent answers until then, which is what keeps an operation
      * whose custom controller has not been written yet at
-     * [501 rather than a fatal](../../docs/guide/code-generation/index.md).
+     * [501 rather than a fatal](../../docs/guide/code-generation/scaffolding.md).
      */
     public function routeTarget(string $namespace): string
     {

@@ -156,7 +156,7 @@ return [
     | `x-controller` in the specification, so the build looks it up rather than
     | searching for it.
     |
-    | See docs/guide/code-generation/index.md — "Overriding a factory".
+    | See docs/guide/code-generation/response-dtos.md — "Overriding a factory".
     |
     */
 
@@ -191,8 +191,8 @@ return [
     | entirely, so every one that survives is public and the key would publish
     | a constant.
     |
-    | See docs/guide/code-generation/index.md — "The specification the build reads is
-    | private".
+    | See docs/guide/code-generation/publishing.md — "The specification the build
+    | reads is private".
     |
     */
 

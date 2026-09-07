@@ -24,7 +24,7 @@ use Gcob\LaraSpecFirst\Generation\PlannedController;
  * and reaching it through a build would mean a filesystem, a document and a
  * planner standing between the assertion and the string it is about.
  *
- * @see docs/guide/code-generation/index.md — "Every generated file explains itself"
+ * @see docs/guide/code-generation/generated-file-anatomy.md — "Every generated file explains itself"
  */
 
 /**
