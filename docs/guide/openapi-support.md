@@ -471,7 +471,7 @@ are decided:
   becomes the route prefix.
 - `operationId`: optional in the specification, not guaranteed unique, not guaranteed to be a valid PHP identifier — and
   it is what names the generated controller and method. Public API surface. The naming and rename questions are now
-  answered in [`code-generation/index.md`](./code-generation/generated-file-anatomy.md#naming-and-the-rename-problem);
+  answered in [`generated-file-anatomy.md`](./code-generation/generated-file-anatomy.md#naming-and-the-rename-problem);
   what remains here is how a missing or unusable `operationId` is reported.
 - ~~`php artisan route:cache`~~ **Settled.** Generating the routes rather than deriving them at boot answered most of
   it, and the rest is now verified rather than intended: the registration is a

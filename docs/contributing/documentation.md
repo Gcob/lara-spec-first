@@ -357,15 +357,18 @@ just diagrams          # render every docs/diagrams/*.puml to the SVG beside it
 just diagrams-check    # reports a diagram edited without being rebuilt, writes nothing
 ```
 
-`scripts/build-diagrams.sh` runs PlantUML through Docker when the machine has no local one, the same shape as
-[Markdown formatting](#formatting) and for the same reason: PlantUML is a Java tool and the development image carries no
-Java. The tool row is in [`stack.md`](../project/stack.md).
+`scripts/build-diagrams.sh` runs PlantUML through Docker, the same shape as [Markdown formatting](#formatting) and for
+the same reason: PlantUML is a Java tool and the development image carries no Java. A PlantUML on your `PATH` is the
+fallback for a render and never the preference, because the image is pinned and your copy is not; `diagrams-check`
+refuses it outright, since it compares byte for byte and the fonts a local JVM can see move the coordinates. The tool
+row is in [`stack.md`](../project/stack.md).
 
 Three rules keep a rendered diagram honest:
 
 - **Commit the source and the SVG, and let CI compare them.** A generated file in the tree can drift from what produced
   it. `diagrams-check` re-renders into a scratch directory and fails when the committed SVG differs, which turns that
-  drift into a red check rather than a diagram quietly describing an older design.
+  drift into a red check rather than a diagram quietly describing an older design. It fails in the other direction too,
+  on an SVG whose `.puml` was deleted: a picture nothing produces any more would otherwise stay green forever.
 - **One neutral grey, on a transparent background.** The SVG is one file serving a light theme and a dark one, so it
   cannot carry a palette. `#888888` clears the contrast floor against both, and the diagram borrows the page's ground
   rather than painting its own.
@@ -471,14 +474,15 @@ the default theme owns, so keep them few and check them after a VitePress upgrad
 ### An anchor is written the way GitHub writes it
 
 **Write a same-page link the way GitHub would slug the heading: lowercase it, delete the punctuation, turn the spaces
-into hyphens.** `## Watching: \`spec:watch\``is`#watching-specwatch`, with the colons gone rather than turned into
+into hyphens.** ``## Watching: `spec:watch` `` is `#watching-specwatch`, with the colons gone rather than turned into
 hyphens.
 
 That is one form and not two because the site is configured to slug a heading exactly as GitHub does
-(`markdown.anchor.slugify` in `.vitepress/config.mts`). Left at its default, the site replaces a punctuation mark where
-GitHub deletes it, one heading yields two different anchors, and a hand-written link can only ever satisfy one of them.
-Fourteen dead ones had accumulated that way before anyone looked, so the override is what closed the class rather than a
-rule asking every author to keep two slug algorithms in their head.
+(`markdown.anchor.slugify` in `.vitepress/config.mts`, which calls `github-slugger` rather than reproducing it). Left at
+its default, the site replaces a punctuation mark where GitHub deletes it, one heading yields two different anchors, and
+a hand-written link can only ever satisfy one of them. Fourteen dead ones had accumulated that way before anyone looked,
+so the override is what closed the class rather than a rule asking every author to keep two slug algorithms in their
+head.
 
 **What still gets past the build is a heading renamed while a link to it was not.** VitePress checks a link's file and
 never its fragment, so nothing about that is visible to `docs:build`:

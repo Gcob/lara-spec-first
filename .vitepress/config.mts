@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { slug as slugify } from 'github-slugger'
 import { defineConfig, type DefaultTheme } from 'vitepress'
 
 // The site source is the repository root, not docs/. That is what lets README.md,
@@ -158,6 +159,7 @@ export default defineConfig({
         'build/**',
         'reviews/**',
         'planning/**',
+        'worktrees/**',
         'tests/**',
         '.claude/**',
         '.github/**',
@@ -198,16 +200,14 @@ export default defineConfig({
         // here is an assertive sentence, and stripping the colons out of
         // `spec:build` to satisfy a slug would cost the reader more than it saves.
         //
-        // This is github-slugger's own rule: lowercase, drop the punctuation it
-        // drops (hyphen and underscore survive), then spaces to hyphens.
+        // It calls github-slugger rather than reproducing it. A hand-written
+        // version of this rule was tried first and was wrong the moment a heading
+        // left ASCII: it dropped the punctuation GitHub drops and kept the
+        // punctuation GitHub also drops, a typographic apostrophe among it. The
+        // stateless `slug` is the one to use here, not the class, because
+        // markdown-it-anchor already gives a repeated heading its own suffix.
         anchor: {
-            slugify: (title: string): string =>
-                title
-                    .normalize('NFKD')
-                    .toLowerCase()
-                    .trim()
-                    .replace(/[\u0000-\u001f!-,./:-@[-^`{-~]/g, '')
-                    .replace(/ /g, '-'),
+            slugify,
         },
 
         config: (md) => {

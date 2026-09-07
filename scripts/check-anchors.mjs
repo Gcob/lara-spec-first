@@ -44,7 +44,13 @@ try {
     process.exit(1)
 }
 
-/** Every page of the site, keyed by the path it answers on, holding the ids it emits. */
+/**
+ * Every page of the site, keyed by the path it answers on, holding the ids it emits.
+ *
+ * Every id, not only a heading's: parsing the DOM to tell them apart would cost a
+ * dependency to catch a link to `#app` or `#VPContent`, which nobody writes on
+ * purpose and which resolves anyway.
+ */
 const pages = new Map()
 
 for (const file of files) {

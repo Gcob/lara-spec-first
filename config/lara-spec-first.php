@@ -156,7 +156,8 @@ return [
     | `x-controller` in the specification, so the build looks it up rather than
     | searching for it.
     |
-    | See docs/guide/code-generation/response-dtos.md — "Overriding a factory".
+    | See docs/guide/code-generation/response-dtos.md — "Overriding a factory:
+    | extend it, in a directory the project declares".
     |
     */
 
