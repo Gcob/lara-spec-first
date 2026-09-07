@@ -98,9 +98,13 @@ filesystem. Any other answer would put the code in charge of something about the
 [`AGENTS.md`](../../AGENTS.md) calls going the wrong way, and which is the one direction this project does not travel.
 
 That reasoning is worth writing down rather than assuming, because the alternatives all look reasonable in isolation and
-every one of them inverts the direction: an attribute on the developer's class, a scan for whatever extends a generated
-parent, a config key listing customized operations. Each puts the answer in PHP. Only the specification saying so keeps
-the direction intact.
+every one of them inverts the direction:
+
+- **An attribute on the developer's class.** The class now decides whether the contract has a custom implementation.
+- **A scan for whatever extends a generated parent.** The filesystem decides, and the answer changes with a refactor.
+- **A config key listing customized operations.** A third file decides, and it is the one nobody updates.
+
+Each puts the answer in PHP. Only the specification saying so keeps the direction intact.
 
 **Decision: `x-controller` on an operation carries the fully-qualified name of its custom controller**, the same way PHP
 itself writes a class reference. It is not a grouping key and it does not name a base class to extend — it names _this
@@ -215,6 +219,16 @@ class UserController extends \App\Http\Generated\Controllers\UserController
 }
 ```
 
+**And the command builds when it is done.** A developer adds `x-controller` and runs `spec:make`: the class it names has
+no generated parent yet, because that parent's name comes from the extension the build has not read. The file would not
+load, in the very moment they are looking at it. So `spec:make` calls `spec:build` after writing — which also
+[points the route at the child](#two-classes-found-by-name-rather-than-by-a-scan), since that target is resolved at
+build time. **This is not [the invariant](./code-generation/index.md#the-invariant-a-build-never-destroys-human-work) in
+reverse:** the rule is that the build never creates a class you will own, and nothing says the command that does may not
+ask the build to catch up. It is skipped after a declined bulk confirmation, because a refusal is respected whole.
+
+#### The scaffold is not a publishable stub
+
 **Decision: the scaffold is not a publishable stub, and what a stub would have to leave alone is the reason.** Every
 Laravel generator worth copying lets a project publish its stubs, so the absence is a choice rather than an omission.
 
@@ -240,13 +254,7 @@ load-bearing lines inserted rather than templated — the parent, the signature,
 that a published stub cannot silently unhook a class from its own operation. Until then the answer to wanting a
 different file is that the file is yours: `spec:make` writes it once and never touches it again.
 
-**And the command builds when it is done.** A developer adds `x-controller` and runs `spec:make`: the class it names has
-no generated parent yet, because that parent's name comes from the extension the build has not read. The file would not
-load, in the very moment they are looking at it. So `spec:make` calls `spec:build` after writing — which also
-[points the route at the child](#two-classes-found-by-name-rather-than-by-a-scan), since that target is resolved at
-build time. **This is not [the invariant](./code-generation/index.md#the-invariant-a-build-never-destroys-human-work) in
-reverse:** the rule is that the build never creates a class you will own, and nothing says the command that does may not
-ask the build to catch up. It is skipped after a declined bulk confirmation, because a refusal is respected whole.
+#### The command offers to write the extension, defaulting to no
 
 **Decision: `spec:make` prints the extension to add, names the exact line, and offers to insert it — defaulting to no.**
 **Shipped.** Wanting a custom controller and having to hand-edit YAML first is friction with no purpose, but the
@@ -291,10 +299,16 @@ that confirmation and the extension prompt above with the answer the command alr
 naming the class, given in advance instead of at a prompt.
 
 **The name is `--yes` and not `--force` because the two words already mean different things in every Laravel
-generator.** `--force` means _overwrite what is there_, and this command never overwrites a file a developer owns — that
-guard does not move for `--yes` either: a file that exists is still left alone, the insertion still verifies itself on a
-copy, and a name this project could not place is still refused, loudly. Borrowing `--force` would promise the one thing
-this command refuses to do.
+generator.** `--force` means _overwrite what is there_, and this command never overwrites a file a developer owns. None
+of the guards moves for `--yes`:
+
+- A file that already exists is still left exactly as it is.
+- The insertion still verifies itself on a copy before anything replaces the original.
+- A name this project could not place is still refused, loudly.
+
+Borrowing `--force` would promise the one thing this command refuses to do.
+
+#### The insertion verifies itself before it lands
 
 **The insertion never round-trips the document through a YAML dumper.** Parsing and re-emitting destroys comments, key
 order and anchors, and this is the one file read in every pull request. YAML's indentation is predictable enough that
@@ -311,11 +325,15 @@ something it did not intend, and falls back to printing the block for a human to
 which is exactly why it must exist: an automatic edit to the source of truth is worth a check that cannot be argued
 with.
 
-**It refuses to offer at all on a document it cannot place a line in.** A flow-style mapping, a JSON specification, an
-operation whose Path Item is a `$ref` into another file: each of those is a document this package still builds from, and
-none is one it may edit blind. The command prints the row, says it could not work out where the line goes, and stops.
-That is a refusal to guess rather than a limitation of YAML editing — the alternative is a line written at a depth
-nobody chose.
+**It refuses to offer at all on a document it cannot place a line in.** Three shapes, each of which this package still
+builds from happily and none of which it may edit blind:
+
+- A flow-style mapping, where there is no line beneath the operation to indent against.
+- A JSON specification, which this insertion has no rules for at all.
+- An operation whose Path Item is a `$ref` into another file, so the line would land in the wrong document.
+
+The command prints the row, says it could not work out where the line goes, and stops. That is a refusal to guess rather
+than a limitation of YAML editing — the alternative is a line written at a depth nobody chose.
 
 **And it refuses outright on a document the project does not own.** An operation reached through a
 [vendored remote reference](./remote-references.md) lives in a file the next fetch overwrites, so an insertion there
@@ -688,6 +706,24 @@ Two checks specific to this document, both of which the specification cannot see
   This is the doctor's to report and not the build's: the build
   [does not compare its own output between runs](./code-generation/generated-file-anatomy.md#rename-and-orphan-detection-decided-against),
   while the doctor is already reading the tree in order to judge it and pays nothing extra for the question.
+
+## What this document does not cover
+
+Four things a reader arrives at a controller wanting, and finds owned elsewhere:
+
+- **Nothing here validates a request.** `$validated` arrives already produced by one generated `FormRequest` per
+  operation, which is [Phase 2](../project/roadmap.md)'s to build and the roadmap's to sequence. This document assumes
+  the value and never derives it.
+- **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
+  teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled
+  here is only that the generated method calls the factory directly.
+- **`x-controller` decides which class answers, never whether the caller may.** Authorization is
+  [`security.md`](./security.md)'s, right down to
+  [the line where a Policy takes over](./security.md#past-the-scope-check-it-is-a-policys-job). A custom controller is
+  not an access-control mechanism, and naming one grants nobody anything.
+- **The build's own rules are stated once, in the build's own document.** What a build may write, where generated code
+  lives, and what a project commits are [`code-generation/index.md`](./code-generation/index.md)'s. This document
+  depends on all three and restates none of them.
 
 ## Open questions
 
