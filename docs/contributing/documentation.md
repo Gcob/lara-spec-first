@@ -4,8 +4,9 @@ audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
     principle, the audience vocabulary and the directory each audience owns, the front matter metadata schema and tag
-    vocabulary, the TL;DR every document opens with and how it differs from a `covers` claim, the catalogue of doc
-    smells and the correction each one calls for, and the inventory of every document.
+    vocabulary, the TL;DR every document opens with and how it differs from a `covers` claim, the three rules that keep
+    a document readable in one pass, the catalogue of doc smells and the correction each one calls for, and the
+    inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
@@ -18,6 +19,7 @@ tags: [documentation, conventions, metadata, code-review, onboarding]
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
 > - The audience decides the directory, and every file declares itself in its own front matter.
 > - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+> - Write for one pass: the result first, and no term the reader is assumed to already know.
 
 The rules and expectations for documentation in `lara-spec-first`. Yes, this is documentation about documentation — and
 it is here for the same reason every other subject has one home: the rules apply to contributors as much as to agents,
@@ -228,6 +230,7 @@ the example is the one that is wrong:
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
 > - The audience decides the directory, and every file declares itself in its own front matter.
 > - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+> - Write for one pass: the result first, and no term the reader is assumed to already know.
 ```
 
 The rules:
@@ -259,6 +262,45 @@ Two summaries at the top of one file is duplication, so the split has to be stat
 The test: **a bullet that could be pasted into `covers` unchanged is a badly written bullet.** It named a topic where it
 owed a claim.
 
+## Write for one pass
+
+**A sentence the reader has to read twice has failed**, however precise it turns out to be on the second reading. These
+documents are long and they argue, so the writing owes back what the arguing costs. Three rules do most of that work.
+
+### The result comes first, the condition second
+
+Put what happens at the front of the sentence and the circumstances behind it. A reader who stops at the comma still
+leaves with the answer.
+
+- **Write:** "Run `spec:build` to emit the routes."
+- **Not:** "When you need to emit routes for your application, you should run `spec:build`."
+
+The same rule holds at paragraph scale: the claim goes in the first sentence, the reasoning underneath it. That is what
+makes a bolded lead sentence worth scanning rather than decoration.
+
+### Every coined term is defined where it is first used
+
+This set invents vocabulary, and it is right to: `drift`, `Deferred`, the marker, the seam, the source map, the
+invariant, an acknowledgement. Each one is precise, and each one means nothing to a reader who has not met it yet.
+
+**Define a coined term on its first use in the document, or link the document that owns it.** First use in the document,
+not in the repository: a reader arrives on one page, never on the set. One clause is usually the whole cost.
+
+- **Write:** "the marker, the comment every generated file carries so the build knows it may delete it"
+- **Not:** "a file without the marker is never pruned"
+
+Assumed vocabulary is the most expensive prose here, because nothing about it looks wrong.
+
+### Say what the document does not cover
+
+**Every guide names its own limits, in a section of its own.** Boundaries are what a reader plans around, and they are
+the first thing to go quietly stale when a feature grows into what a document once excluded.
+
+This is already the strongest habit in the set, and the rule only makes it expected rather than occasional: the
+[support matrix](../guide/openapi-support.md) states what is parsed and not honored, and
+[`code-generation.md`](../guide/code-generation.md) carries both what the build deliberately does not emit and what was
+decided against. A guide with no such section is claiming it has no edges.
+
 ## Doc smells
 
 Everything above is a rule. This is what it looks like from the outside when one of them is being broken, named so that
@@ -274,6 +316,8 @@ point at.
 | **One file, too many subjects**    | `covers` lists subjects with nothing in common, and the title no longer describes everything under it | Split it, [one topic per file](#one-topic-one-file), and leave a link behind                                                  |
 | **The decision tunnel**            | The chronology of how a decision was reached, ahead of the decision itself                            | [Result first, reason second, history never](#the-reasoning-stays-the-chronology-goes)                                        |
 | **The wall of text**               | A paragraph past roughly ten lines with no bold, no bullet and no subheading anywhere in it           | An assertive heading, bold on the sentence that decides, bullets for the cases                                                |
+| **The sentence you read twice**    | You reached the end of it and went back to the start                                                  | Split it, and [put the result first](#write-for-one-pass)                                                                     |
+| **The stacked clause**             | More than two commas or conditions carried by one sentence                                            | One idea per sentence, or bullets when the sentence was really a list                                                         |
 | **Duplication**                    | The same reasoning justified in two files                                                             | Move it, never copy it, and leave a link. [The rule](#one-topic-one-file)                                                     |
 | **No TL;DR**                       | Five paragraphs before the reader learns what the thing is for                                        | [The summary rule above](#every-document-opens-with-a-summary)                                                                |
 | **Stale metadata**                 | A `covers` claim, a status column or a state paragraph that no longer matches the file under it       | Fix it in the change that made it stale. A `Planned` row for something already shipped is a lie the table tells on every read |
