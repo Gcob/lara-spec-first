@@ -1,0 +1,79 @@
+/*
+ * Overrides of the default theme, each with the reason it exists.
+ *
+ * A rule here is a selector the default theme owns, so a VitePress upgrade can
+ * move it out from under us. The overrides are deliberately few and shallow for
+ * that reason, and every one of them degrades into "the page looks like stock
+ * VitePress" rather than into a broken layout.
+ */
+
+/*
+ * The right-hand outline shows a heading whole, wrapping instead of truncating.
+ *
+ * The default theme gives each outline entry one line and an ellipsis. That works
+ * for a documentation set whose headings are labels; this one deliberately writes
+ * them as assertive sentences — "The routes are one file, and the only one the
+ * runtime opens" — so the ellipsis lands mid-sentence on most entries and the
+ * outline stops being readable at exactly the width it is supposed to help at.
+ *
+ * The box of a single-line entry stays 32px tall (20px of line plus 6px above and
+ * below), because the default theme positions the active marker from JavaScript at
+ * `offsetTop + 39`, a constant tuned to that height. Keeping the height keeps the
+ * marker centred on a one-line entry, and puts it on the first line of a wrapped
+ * one, which is where it belongs.
+ */
+.VPDocAsideOutline .outline-link {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 20px;
+    padding: 6px 0;
+}
+
+/*
+ * And the outline gets more room to wrap into on a wide screen.
+ *
+ * The default is 256px at every width above 1280px, which leaves a sentence
+ * heading wrapping to three lines on a display with several hundred pixels going
+ * spare. The prose column is deliberately not widened with it: it is already at
+ * the line length this project formats Markdown to, and the space belongs to the
+ * outline rather than to longer lines of text.
+ *
+ * `.aside` sets the column, `.aside-container` and `.aside-curtain` are fixed
+ * pixel widths in the default theme that have to follow it.
+ */
+@media (min-width: 1440px) {
+    .VPDoc .aside {
+        max-width: 320px;
+    }
+
+    .VPDoc .aside-container,
+    .VPDoc .aside-curtain {
+        width: 288px;
+    }
+}
+
+/*
+ * Past 1760px the outline takes 400px, and the page itself has to grow with it.
+ *
+ * The default theme caps the whole layout at 1440px, and the content area inside
+ * that cap is what the outline is taking its extra width from: left alone, a 400px
+ * outline squeezes the prose column from 688px down to 625px, which is the
+ * opposite of the point. Raising the cap to 1536px is what keeps the prose column
+ * at its full width while the outline widens — 272 of sidebar, 688 of prose, 400
+ * of outline and the padding between them.
+ */
+@media (min-width: 1760px) {
+    :root {
+        --vp-layout-max-width: 1536px;
+    }
+
+    .VPDoc .aside {
+        max-width: 400px;
+    }
+
+    .VPDoc .aside-container,
+    .VPDoc .aside-curtain {
+        width: 368px;
+    }
+}

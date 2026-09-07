@@ -462,6 +462,12 @@ The same build runs on every pull request, so a dead link is a red check rather 
 matter, so a document is named in one place only. Deployment is `.github/workflows/docs.yml`, and the tool row is in
 [`stack.md`](../project/stack.md).
 
+**The theme is the default one, with a stylesheet layered over it.** `.vitepress/theme/custom.css` holds every visual
+change this site makes, and each rule carries the reason it exists. There is one today, and it follows from how this set
+writes headings: a heading here is an assertive sentence, which the default right-hand outline truncates to an ellipsis
+mid-sentence. The outline wraps instead, and widens on a screen with the room for it. A rule there overrides a selector
+the default theme owns, so keep them few and check them after a VitePress upgrade.
+
 ### An anchor is written the way GitHub writes it
 
 **Write a same-page link the way GitHub would slug the heading: lowercase it, delete the punctuation, turn the spaces
