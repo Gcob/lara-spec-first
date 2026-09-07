@@ -10,6 +10,14 @@ tags: [agents, workflow, testing, code-review, conventions, onboarding]
 
 # AGENTS.md
 
+> **TL;DR**
+>
+> - Every change lands in three places at once: code, documentation, and tests. A partial change is an unfinished one.
+> - When a change can be shown working in the Workbench, showing it is part of finishing it.
+> - The OpenAPI contract is the source of truth. Anything that makes PHP authoritative over it is going the wrong way.
+> - Review in priority order, and the three places is what you check before reading a line of logic.
+> - Verify with `just check`: Pint, then Larastan, then Pest.
+
 Guidance for AI coding agents working on `lara-spec-first`.
 
 This package is **Spec-First**: the OpenAPI contract is the source of truth, and PHP follows from it. When a change
