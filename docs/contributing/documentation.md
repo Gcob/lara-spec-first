@@ -4,12 +4,20 @@ audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
     principle, the audience vocabulary and the directory each audience owns, the front matter metadata schema and tag
-    vocabulary, and the inventory of every document.
+    vocabulary, the TL;DR every document opens with and how it differs from a `covers` claim, the catalogue of doc
+    smells and the correction each one calls for, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
 
 # Documentation Guide
+
+> **TL;DR**
+>
+> - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
+> - Every topic has exactly one owning file. Other files link to it rather than restate it.
+> - The audience decides the directory, and every file declares itself in its own front matter.
+> - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
 
 The rules and expectations for documentation in `lara-spec-first`. Yes, this is documentation about documentation — and
 it is here for the same reason every other subject has one home: the rules apply to contributors as much as to agents,
@@ -187,7 +195,7 @@ grep -rl 'tags:.*versions' --include='*.md' .
 | `versions`        | Supported and required versions                                                    |
 | `workflow`        | The day-to-day process of making a change                                          |
 
-### `README.md` carries no front matter — deliberately
+### The README carries no front matter, deliberately
 
 This is a decision, not an oversight. **Do not add front matter to `README.md`.** Two reasons:
 
@@ -199,6 +207,95 @@ This is a decision, not an oversight. **Do not add front matter to `README.md`.*
   would place a metadata block above the project title on the page whose only job is to explain the project.
 
 Every other Markdown document in the repository takes the full set of fields.
+
+## Every document opens with a summary
+
+**Every Markdown document in the [inventory](#document-inventory) opens with a TL;DR**, directly under the `#` title and
+above the first section. It carries what the reader needs if they read nothing else.
+
+It exists because of the failure this set is most exposed to. These documents argue: they record a decision and the
+reasoning that produced it, which is deliberate and is not changing. The cost is that the first thing a reader meets is
+an argument, and working out what the file actually claims takes five paragraphs. The TL;DR pays that back at the top,
+for four lines.
+
+A blockquote, three to five bullets, one line each. **This file's own TL;DR is the example** — if the two ever differ,
+the example is the one that is wrong:
+
+```markdown
+> **TL;DR**
+>
+> - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
+> - Every topic has exactly one owning file. Other files link to it rather than restate it.
+> - The audience decides the directory, and every file declares itself in its own front matter.
+> - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+```
+
+The rules:
+
+- **A blockquote, never a heading.** The site builds each page's outline from its headings, so a `## TL;DR` in every
+  document adds one entry of pure noise per page. A blockquote also renders on GitHub, which is where `AGENTS.md` and
+  `CONTRIBUTING.md` are actually read.
+- **Three to five bullets, one line each.** Under three, and the file probably should not be a file of its own. Over
+  five, and it is a table of contents rather than a summary, which is [a smell](#doc-smells) rather than a thorough
+  TL;DR.
+- **Assertions, not subjects.** "Nothing at runtime ever opens a specification" tells the reader something. "The
+  relationship between the runtime and the specification" sends them into the body, which is what the TL;DR was there to
+  spare them.
+- **Name what is not built yet.** Much of this set describes behavior that does not exist, and the phase banner that
+  says so is usually further down. A closing bullet separating what runs from what is designed is what stops a reader
+  planning around a feature nobody has written.
+- **`README.md` is exempt.** The whole file is already a summary of the project, which is the first of the two reasons
+  it [carries no front matter](#the-readme-carries-no-front-matter-deliberately) either.
+
+### A summary is not a second covers
+
+Two summaries at the top of one file is duplication, so the split has to be stated rather than felt:
+
+- **`covers` is written for the reader deciding whether to open the file.** It claims subjects: this is what this file
+  owns. It is an index entry, and it is what makes an overlap between two files detectable.
+- **The TL;DR is written for the reader who has already opened it.** It gives answers rather than subjects: this is what
+  the file says about them.
+
+The test: **a bullet that could be pasted into `covers` unchanged is a badly written bullet.** It named a topic where it
+owed a claim.
+
+## Doc smells
+
+Everything above is a rule. This is what it looks like from the outside when one of them is being broken, named so that
+a review can report a documentation problem the way it reports a code one — a finding with a correction attached, rather
+than "this file feels heavy".
+
+**A smell is a reason to look, not a verdict.** A long file that genuinely owns one subject is fine; a short one that
+owns three is not. What each row gives you is the observable sign, so that the judgment happens over something you can
+point at.
+
+| Smell                              | What you see                                                                                          | What to do                                                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **One file, too many subjects**    | `covers` lists subjects with nothing in common, and the title no longer describes everything under it | Split it, [one topic per file](#one-topic-one-file), and leave a link behind                                                  |
+| **The decision tunnel**            | The chronology of how a decision was reached, ahead of the decision itself                            | [Result first, reason second, history never](#the-reasoning-stays-the-chronology-goes)                                        |
+| **The wall of text**               | A paragraph past roughly ten lines with no bold, no bullet and no subheading anywhere in it           | An assertive heading, bold on the sentence that decides, bullets for the cases                                                |
+| **Duplication**                    | The same reasoning justified in two files                                                             | Move it, never copy it, and leave a link. [The rule](#one-topic-one-file)                                                     |
+| **No TL;DR**                       | Five paragraphs before the reader learns what the thing is for                                        | [The summary rule above](#every-document-opens-with-a-summary)                                                                |
+| **Stale metadata**                 | A `covers` claim, a status column or a state paragraph that no longer matches the file under it       | Fix it in the change that made it stale. A `Planned` row for something already shipped is a lie the table tells on every read |
+| **Undeclared future**              | Behavior that does not exist yet, written in the present tense, with no phase said out loud           | Name the phase at the top of the section, the way the guides already do                                                       |
+| **A heading that asserts nothing** | "Overview", "Notes", "Details", "More on this"                                                        | Put the claim in the heading. The page outline is read as a summary, and these entries spend a line of it saying nothing      |
+| **A rule with no example**         | A convention stated in prose, with nothing showing what it looks like                                 | Show the real thing, and say that it is the real thing, so that it cannot quietly go stale                                    |
+
+### The reasoning stays, the chronology goes
+
+The decision tunnel is the one smell that gets applied wrongly if the line is not drawn, because **this repository
+documents its reasoning on purpose** and that is not what the smell complains about. `code-generation.md` carries
+twenty-five `**Decision:**` blocks. They stay.
+
+What it names is narrative, not justification:
+
+- **Keep** the decision, the reason that holds it up, and the alternative that was rejected with why it was. A reader
+  who disagrees needs all three to argue with it.
+- **Cut** the sequence of events that produced it: what was tried first, what an earlier version did, what came up in
+  discussion, what was built and then removed before anything shipped.
+
+The difference is which question the reader is asking. _Why is it this way_ is answered by the reasoning. _How did we
+get here_ is answered by git, which is better at it than prose and never goes stale.
 
 ## Formatting
 
@@ -232,6 +329,22 @@ The same build runs on every pull request, so a dead link is a red check rather 
 matter, so a document is named in one place only. Deployment is `.github/workflows/docs.yml`, and the tool row is in
 [`stack.md`](../project/stack.md).
 
+### A heading you link to carries letters, digits and spaces only
+
+**The build catches a dead link to another file. It does not catch a dead link to an anchor on the same page**, and
+those break for a reason nothing warns about: GitHub and the site turn punctuation in a heading into different anchors.
+GitHub deletes the character, the site replaces it with a hyphen, so one heading yields two slugs and a hand-written
+link can only satisfy one of them.
+
+| Heading                        | On GitHub                 | On the site                |
+| ------------------------------ | ------------------------- | -------------------------- |
+| `### README.md and the anchor` | `readmemd-and-the-anchor` | `readme-md-and-the-anchor` |
+| `### A rule — deliberately`    | `a-rule--deliberately`    | `a-rule-—-deliberately`    |
+
+The rule that avoids the whole class: **a heading anything links to contains letters, digits and spaces, and nothing
+else.** Commas are safe because both renderers drop them the same way. A period, a semicolon, a backtick or an em dash
+is not, and `TL;DR` in a heading is the trap that looks most harmless.
+
 ## Document inventory
 
 Each document declares its own `title`, `audience`, `covers`, `read_before`, and `tags` in its
@@ -263,7 +376,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 Repository root:
 
-- [`README.md`](../../README.md) — no front matter, [by design](#readmemd-carries-no-front-matter--deliberately)
+- [`README.md`](../../README.md) — no front matter, [by design](#the-readme-carries-no-front-matter-deliberately)
 - [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — `Contributors`
 - [`AGENTS.md`](../../AGENTS.md) — `AI coding agents`
 - [`LICENSE`](https://github.com/Gcob/lara-spec-first/blob/main/LICENSE) — MIT, plain text, no front matter
