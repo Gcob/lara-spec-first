@@ -10,6 +10,15 @@ tags: [stack, dependencies, versions, php, laravel, ci, decisions]
 
 # Technical Stack
 
+> **TL;DR**
+>
+> - The Status column is binding: a `Planned` or `Undecided` row is not a settled decision and must not be presented as
+>   one.
+> - PHP 8.3 through 8.5 and Laravel 12 and 13, with `devizzent/cebe-php-openapi` as the parser for its OpenAPI 3.1
+>   support.
+> - Pest, Pint and Larastan at level 8 are the toolchain, and all three are `Decided`.
+> - A choice moving from `Planned` to `Decided` is updated in the same change that installs it.
+
 The technology choices behind `lara-spec-first`, and the reasoning that produced them.
 
 The project is in **early bootstrap** (Phase 1 of the [Roadmap](./roadmap.md)). `composer.json` now declares the
