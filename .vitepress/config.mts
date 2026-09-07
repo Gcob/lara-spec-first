@@ -141,6 +141,33 @@ export default defineConfig({
     },
 
     markdown: {
+        // Slugify a heading the way GitHub does, rather than the way markdown-it
+        // does by default. Every same-page link in this repository is written by
+        // hand in GitHub's form, and the two renderers disagree the moment a
+        // heading carries punctuation: GitHub deletes the character where the
+        // default replaces it with a hyphen, so `## Watching: \`spec:watch\``
+        // yields `watching-specwatch` on GitHub and `watching-spec-watch` here.
+        //
+        // The site build does not catch that. It compares links against the source
+        // tree, so a dead link to an anchor on the same page is invisible to it,
+        // and fourteen of them had accumulated before anyone looked.
+        //
+        // Matching GitHub is the fix rather than rewriting the headings: a heading
+        // here is an assertive sentence, and stripping the colons out of
+        // `spec:build` to satisfy a slug would cost the reader more than it saves.
+        //
+        // This is github-slugger's own rule: lowercase, drop the punctuation it
+        // drops (hyphen and underscore survive), then spaces to hyphens.
+        anchor: {
+            slugify: (title: string): string =>
+                title
+                    .normalize('NFKD')
+                    .toLowerCase()
+                    .trim()
+                    .replace(/[\u0000-\u001f!-,./:-@[-^`{-~]/g, '')
+                    .replace(/ /g, '-'),
+        },
+
         config: (md) => {
             // The rewrite above publishes README.md as the home page, so no /README
             // page exists — but a relative link to it is resolved against the source

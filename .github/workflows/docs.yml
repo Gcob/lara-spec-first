@@ -20,6 +20,7 @@ on:
             - ".vitepress/**"
             - "docs/diagrams/**"
             - "scripts/build-diagrams.sh"
+            - "scripts/check-anchors.mjs"
             - "package.json"
             - "package-lock.json"
             - ".github/workflows/docs.yml"
@@ -29,6 +30,7 @@ on:
             - ".vitepress/**"
             - "docs/diagrams/**"
             - "scripts/build-diagrams.sh"
+            - "scripts/check-anchors.mjs"
             - "package.json"
             - "package-lock.json"
             - ".github/workflows/docs.yml"
@@ -70,6 +72,11 @@ jobs:
             # Fails on a dead internal link. That is the check this job exists for on
             # a pull request.
             - run: npm run docs:build
+
+            # The build checks a link's file, never its fragment, so a link to a
+            # renamed heading on the same page survives it. This reads the built
+            # site and compares the ids emitted against the hrefs written.
+            - run: npm run docs:check-anchors
 
             # A diagram is committed as an SVG beside the PlantUML that produced it,
             # so the two can drift. This is what makes that a red check rather than a

@@ -6,7 +6,8 @@
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
+    "docs:preview": "vitepress preview",
+    "docs:check-anchors": "node scripts/check-anchors.mjs"
   },
   "devDependencies": {
     "vitepress": "^1.6.4"

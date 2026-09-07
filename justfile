@@ -116,6 +116,12 @@ docs:
 docs-build:
     npm run docs:build
 
+# Report links pointing at an anchor no heading produces. Reads the built site,
+# so run `just docs-build` first. The site build itself never sees these: it
+# checks a link's file and not its fragment.
+docs-check-anchors:
+    npm run docs:check-anchors
+
 # Serve the built site exactly as it will be published.
 docs-preview:
     npm run docs:preview

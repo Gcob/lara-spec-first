@@ -441,21 +441,28 @@ The same build runs on every pull request, so a dead link is a red check rather 
 matter, so a document is named in one place only. Deployment is `.github/workflows/docs.yml`, and the tool row is in
 [`stack.md`](../project/stack.md).
 
-### A heading you link to carries letters, digits and spaces only
+### An anchor is written the way GitHub writes it
 
-**The build catches a dead link to another file. It does not catch a dead link to an anchor on the same page**, and
-those break for a reason nothing warns about: GitHub and the site turn punctuation in a heading into different anchors.
-GitHub deletes the character, the site replaces it with a hyphen, so one heading yields two slugs and a hand-written
-link can only satisfy one of them.
+**Write a same-page link the way GitHub would slug the heading: lowercase it, delete the punctuation, turn the spaces
+into hyphens.** `## Watching: \`spec:watch\``is`#watching-specwatch`, with the colons gone rather than turned into
+hyphens.
 
-| Heading                        | On GitHub                 | On the site                |
-| ------------------------------ | ------------------------- | -------------------------- |
-| `### README.md and the anchor` | `readmemd-and-the-anchor` | `readme-md-and-the-anchor` |
-| `### A rule — deliberately`    | `a-rule--deliberately`    | `a-rule-—-deliberately`    |
+That is one form and not two because the site is configured to slug a heading exactly as GitHub does
+(`markdown.anchor.slugify` in `.vitepress/config.mts`). Left at its default, the site replaces a punctuation mark where
+GitHub deletes it, one heading yields two different anchors, and a hand-written link can only ever satisfy one of them.
+Fourteen dead ones had accumulated that way before anyone looked, so the override is what closed the class rather than a
+rule asking every author to keep two slug algorithms in their head.
 
-The rule that avoids the whole class: **a heading anything links to contains letters, digits and spaces, and nothing
-else.** Commas are safe because both renderers drop them the same way. A period, a semicolon, a backtick or an em dash
-is not, and `TL;DR` in a heading is the trap that looks most harmless.
+**What still gets past the build is a heading renamed while a link to it was not.** VitePress checks a link's file and
+never its fragment, so nothing about that is visible to `docs:build`:
+
+```bash
+just docs-build           # first: the check reads the built site
+just docs-check-anchors   # every link whose anchor no heading produces
+```
+
+It runs in CI beside the build. It reads the emitted ids rather than re-deriving them from the Markdown, so there is no
+second implementation of the slug rule to disagree with the first.
 
 ## Document inventory
 
