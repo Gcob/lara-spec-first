@@ -12,6 +12,14 @@ tags: [openapi, security, decisions, scope, laravel]
 
 # Security & Permissions
 
+> **TL;DR**
+>
+> - **Not built yet.** `security` is reported by the doctor and not enforced. Enforcement is Phase 2.
+> - A `securitySchemes` name matches a Laravel guard by nomenclature, never by a mapping written out by hand.
+> - One built-in middleware asks one question: does the authenticated model carry the scope.
+> - The requirement is resolved into the generated route at build time, never read from the specification per request.
+> - Past the scope check, authorization is a Policy's job and the specification has no vocabulary left for it.
+
 OpenAPI can say an operation requires `bearerAuth` with scope `write`. It cannot say anything about the row being
 written — whether the caller may touch _this_ record — because the specification has no vocabulary for it. This document
 owns the line between the two: what the package enforces because the contract actually says it, and what it deliberately
