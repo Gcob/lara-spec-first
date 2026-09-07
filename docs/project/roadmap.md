@@ -12,6 +12,15 @@ tags: [planning, migration, scope, openapi, testing, decisions]
 
 # Project Roadmap: lara-spec-first
 
+> **TL;DR**
+>
+> - A checked box is behavior with tests behind it, never a design that has been agreed on.
+> - Phase 1 runs today: a contract becomes routes and one controller per operation, answering 501 until something
+>   implements it.
+> - The order is Phase 1, the `0.x` tag, Phase 2, then `1.0`. Breaking-change enforcement and Phase 3 both come after
+>   that.
+> - Where the code is today is the authoritative list of what exists. Every other document defers to it.
+
 This document owns the sequencing. What each feature is, and why it was designed that way, lives in the document that
 owns the subject; what lands when, and in which order, is decided here.
 
@@ -232,7 +241,7 @@ the code, and a gap in it is loud.
       second line of defense independent of the shape. Either closes the gap; the conformance suite's subprocess case is
       what turns green once it does. See [parser caveats](../guide/openapi-support.md#parser-caveats).
 
-- [ ] **The reading pipeline stops refusing at the first fault.** `SpecDocumentReader`, the guards under
+- [x] **The reading pipeline stops refusing at the first fault.** `SpecDocumentReader`, the guards under
       `Parsing\Guards\` and `OperationExtractor` return what they found instead of throwing: a `ReadOutcome` carrying
       every operation that could be extracted and every fault encountered, blocking or not. `spec:build` and `spec:make`
       keep today's behavior exactly — they inspect the outcome and refuse the moment it carries a fault — but the
