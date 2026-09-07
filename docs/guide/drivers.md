@@ -151,3 +151,18 @@ have in common.
   cannot find what its mapping points at: all of it reports through [the doctor](./doctor.md), in the doctor's format,
   with the [document position](./doctor.md#the-contract) like any other finding. A third-party driver that writes to the
   log instead has quietly opted its users out of rule 2.
+
+## What this document does not cover
+
+Three things a reader could expect from a word as broad as "driver", and will not find here:
+
+- **This is not a general plugin system.** A driver answers one question, for one feature: where in the document that
+  feature's structure is declared. Nothing here lets a package add a command, an emitter, a parsing rule or a doctor
+  check. Those are not extension points today, and calling this mechanism one would promise something it does not do.
+- **A driver does not widen what the package can read.** It is asked about a document the
+  [reading pipeline](./openapi-support.md#the-four-rules) has already accepted and resolved, so it cannot rescue a shape
+  that was refused. What is parsed, what is honored and what is rejected is
+  [`openapi-support.md`](./openapi-support.md)'s matrix, and a driver never appears in it.
+- **Which feature becomes driver-based next is not decided here.** Rate limiting and pagination are the two that exist;
+  what joins them, and when, is the [Roadmap](../project/roadmap.md)'s sequencing. This document owns the mechanism, not
+  its scope.
