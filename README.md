@@ -26,10 +26,11 @@ architecture while letting your business logic live safely in standard Laravel c
 - **Safe to regenerate:** Generated code and your code never share a file, so the build can be re-run at any time
   without losing work — and a contract change surfaces as a static analysis error, not a production incident. See
   [`docs/guide/code-generation/index.md`](./docs/guide/code-generation/index.md).
-- **Plays well with your formatter, and tell it to skip the generated tree anyway.** What the build emits is already
-  canonical under Pint's `laravel` preset, so most projects need to do nothing. Add `"exclude": ["app/Http/Generated"]`
-  to your `pint.json` regardless: a formatter and a build that both rewrite one file undo each other forever, and no
-  generator can be canonical under every rule set. Two lines of reasoning, one line of config:
+- **Plays well with your formatter, and tell it to skip the [generated tree](./docs/guide/glossary.md#generated-tree)
+  anyway.** What the build emits is already canonical under Pint's `laravel` preset, so most projects need to do
+  nothing. Add `"exclude": ["app/Http/Generated"]` to your `pint.json` regardless: a formatter and a build that both
+  rewrite one file undo each other forever, and no generator can be canonical under every rule set. Two lines of
+  reasoning, one line of config:
   [your formatter and the build](./docs/guide/code-generation/index.md#your-formatter-and-the-build-both-want-to-own-these-files).
 
 ---

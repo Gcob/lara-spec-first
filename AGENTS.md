@@ -80,8 +80,9 @@ The reason is that it is the closest thing this repository has to end-to-end. A 
 feature test proves the package behaves inside a booted framework; the Workbench is the only place where a contract
 becomes a route that a browser actually reaches, through the same Composer autoloader, the same service provider
 discovery and the same request lifecycle a consumer will have. **Several defects in this package have only ever been
-visible there** — a docblock a consumer's formatter would rewrite, a generated tree landing where nothing is committed,
-a path that resolves differently than it reads.
+visible there** — a docblock a consumer's formatter would rewrite, a
+[generated tree](./docs/guide/glossary.md#generated-tree) landing where nothing is committed, a path that resolves
+differently than it reads.
 
 Concretely, for a change that adds or alters behavior a consumer can observe:
 

@@ -191,9 +191,9 @@ Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document
 remote reference guard. It is expected to stay small by design: this doctrine sends almost every check to
 [the doctor](./doctor.md), which _reports_, and keeps here only what makes loading impossible or unsafe. Both of the
 current members earn that: one guards a failure the parser does not survive, the other a request it would make on a
-stranger's behalf. The remaining guard already implied by a decision elsewhere is the check that vendored references are
-present, which [frozen by default](./code-generation/index.md#remote-references-during-a-build-frozen-by-default)
-requires.
+stranger's behalf. The remaining guard already implied by a decision elsewhere is the check that
+[vendored references](./glossary.md#vendored-reference) are present, which
+[frozen by default](./code-generation/index.md#remote-references-during-a-build-frozen-by-default) requires.
 
 The architecture test in `tests/Unit/ArchitectureTest.php` asserts it directly:
 
@@ -289,13 +289,13 @@ after.
 | **Cycles**      | Collect every `$ref` chain that never reaches content.                         | Last, and necessarily before the parser. See below.                                                                                                                                                                                        |
 | **Remote refs** | Collect every `$ref` that would be fetched over the network.                   | Also before the parser: it resolves a URL by calling `file_get_contents()` on it (`ReferenceContext.php:217`), so by the time it raises, the request has been made and the document has already chosen where the application connects.     |
 
-**Why the cycle check cannot move.** A pure reference cycle is the one document fault the parser does not survive: it
-recurses past its own guards and exhausts memory rather than raising ([parser caveats](#parser-caveats)). Once the
-parser holds the document there is no exception left to catch and no process left to report with. So the check runs on
-the decoded array, before anything is handed over, and it cannot be folded into a wrapper around the parser — and
-whatever reads this pipeline's result must never hand a document carrying a cycle fault to the parser either, which is
-exactly what [the pipeline's result](#the-pipeline-does-not-throw-callers-decide) guarantees rather than merely hopes
-for.
+**Why the cycle check cannot move.** A pure reference cycle is the one [document fault](./glossary.md#document-fault)
+the parser does not survive: it recurses past its own guards and exhausts memory rather than raising
+([parser caveats](#parser-caveats)). Once the parser holds the document there is no exception left to catch and no
+process left to report with. So the check runs on the decoded array, before anything is handed over, and it cannot be
+folded into a wrapper around the parser — and whatever reads this pipeline's result must never hand a document carrying
+a cycle fault to the parser either, which is exactly what
+[the pipeline's result](#the-pipeline-does-not-throw-callers-decide) guarantees rather than merely hopes for.
 
 ### The pipeline does not throw; callers decide
 
@@ -476,8 +476,9 @@ are decided:
 - ~~`php artisan route:cache`~~ **Settled.** Generating the routes rather than deriving them at boot answered most of
   it, and the rest is now verified rather than intended: the registration is a
   [`[Controller::class, 'routeAction']` pair of plain strings](./code-generation/index.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
-  and a test runs the real command over a generated tree, then requires the cache file it wrote and checks the routes
-  come back. The provider loads the file through `loadRoutesFrom()`, so a cached application skips it as it should.
+  and a test runs the real command over a [generated tree](./glossary.md#generated-tree), then requires the cache file
+  it wrote and checks the routes come back. The provider loads the file through `loadRoutesFrom()`, so a cached
+  application skips it as it should.
 - `webhooks` (3.1) and `callbacks`: not routes on this server.
 - `HEAD` and `OPTIONS`: Laravel handles HEAD for GET automatically, so an explicit `head` operation conflicts.
 - Phase 2 territory: `style` and `explode`, `deepObject`, `multipart/form-data` with `encoding`, multi-media-type
@@ -502,7 +503,7 @@ first release, not shipped behavior.
 | `security` (root)                       | Open         | Not yet decided, and the consequence is worth stating: the root block itself is not read into anything the package keeps. An operation's own `security` — absent, empty or a list — is recorded, but what an absent one actually inherits is not, so changing or removing the root `security` block silently changes what every inheriting operation requires, with nothing in `Contract\` reflecting it. The doctor says that much and no more: one line naming that the block exists and is not read, rather than a list of operations whose requirements nothing resolved. |
 | `webhooks` (3.1)                        | Open         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `x-` extensions                         | Out of scope | Preserved by the parser and readable, but the package acts on none of them — except the ones it defines itself, on the rows beneath.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The lifecycle extensions this package defines. Read with defaults resolved and an unrecognized value refused rather than silently taken as the default. The doctor's rules over them run — a deprecation with no removal date, a date passed or unreadable, the `beta` listing and the protection report. The breaking-change enforcement `x-lifecycle` gates is [not built yet](../project/roadmap.md). Rules: [lifecycle](./lifecycle.md).                                                                                                                                  |
+| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The lifecycle extensions this package defines. Read with defaults resolved and an unrecognized value refused rather than silently taken as the default. The doctor's rules over them run — a deprecation with no removal date, a date passed or unreadable, the `beta` listing and the [protection report](./glossary.md#protection-report). The breaking-change enforcement `x-lifecycle` gates is [not built yet](../project/roadmap.md). Rules: [lifecycle](./lifecycle.md).                                                                                               |
 | `x-controller`                          | Supported    | Names the class of an operation's custom controller, which is also what makes that operation customizable at all: without it the generated controller is `final`. Rules: [controllers](./controllers.md#the-specification-decides-what-is-customizable).                                                                                                                                                                                                                                                                                                                      |
 | `x-model`                               | Partial      | Names the Eloquent model an operation reads and writes. It supplies the generated controller's default query, its route-model-binding type hint, and the CRUD default the build emits. Rules: [controllers](./controllers.md#how-the-semantic-is-detected).                                                                                                                                                                                                                                                                                                                   |
 

@@ -100,8 +100,9 @@ default with no subclass at all; [`controllers.md`](../controllers.md) owns whic
 matter of taste:
 
 - **`.gitignore` works by directory, and we made `.gitignore`
-  [the mechanism](./index.md#which-generated-code-is-committed).** Put your classes inside the generated tree and a
-  consumer who ignores that tree loses their own work. That single fact rules the option out.
+  [the mechanism](./index.md#which-generated-code-is-committed).** Put your classes inside the
+  [generated tree](../glossary.md#generated-tree) and a consumer who ignores that tree loses their own work. That single
+  fact rules the option out.
 - **It is an ordinary Laravel controller.** Once the file exists it has nothing to do with this package except that it
   extends a generated class. Your conventions, your IDE, your tests and your `make:` habits all already point at that
   directory. The generated parent is the unusual object here; the concrete class is not.
@@ -124,8 +125,9 @@ invocation, a human present. `build` does not operate on an operation you named 
 specification. So `spec:build --make` means _scaffold every missing implementation_, which is how a hundred empty
 classes get committed by accident.
 
-The deeper cost is that it makes the invariant conditional again: _the build never writes a file it does not own, unless
-you pass `--make`_. The architecture test stops being absolute, and the next feature has a precedent to point at.
+The deeper cost is that it makes [the invariant](../glossary.md#invariant) conditional again: _the build never writes a
+file it does not own, unless you pass `--make`_. The architecture test stops being absolute, and the next feature has a
+precedent to point at.
 
 The counter-argument is real and worth recording, because it comes from this subject's own logic: a flag typed by a
 human **is** explicit intent, exactly as [watch](#watching-specwatch) is. But that is precisely why watch is a separate

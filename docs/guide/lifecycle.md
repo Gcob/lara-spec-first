@@ -160,9 +160,10 @@ smuggled into the first release.
 
 **3. The escape hatch already exists in the document: `info.version`.** A build that only says _you broke a stable
 operation_ is an obstacle. A build that says **this change requires `info.version` to go from `2.4.1` to `3.0.0`, and
-will pass once it does** has turned enforcement into instruction. It needs no config, no flag and no acknowledgement
-entry — the contract carries its own version, and deliberately breaking one becomes indistinguishable from publishing a
-major, which is exactly what it should be. Breaking on purpose stays possible; breaking by accident stops being.
+will pass once it does** has turned enforcement into instruction. It needs no config, no flag and no
+[acknowledgement](./glossary.md#acknowledgement) entry — the contract carries its own version, and deliberately breaking
+one becomes indistinguishable from publishing a major, which is exactly what it should be. Breaking on purpose stays
+possible; breaking by accident stops being.
 
 **4. The doctor must report how much of the API is actually protected.** A specification imported from elsewhere has no
 `x-lifecycle` anywhere, so every public operation defaults to `beta` and the strongest rule in this document is silently

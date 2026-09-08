@@ -19,7 +19,8 @@ tags: [openapi, compatibility, decisions, workflow, code-review]
 > - Read-only, always, and an architecture assertion says so rather than a convention nobody can check.
 > - It reports everything it found rather than the first failure, and prints the outcome on a clean run too.
 > - A document fault and a package limit never share an exit code: `0` clean, `1` a document fault, `2` a package limit.
-> - **Not built yet:** the baseline and driver sections, which print a `[not checked]` line instead of passing quietly.
+> - **Not built yet:** the [baseline](./glossary.md#baseline) and driver sections, which print a `[not checked]` line
+>   instead of passing quietly.
 
 `spec:doctor` is how this package keeps its second rule: **a construct it does not honor must produce a diagnostic.**
 What is honored in the first place lives in [`openapi-support.md`](./openapi-support.md); this document owns how any of
@@ -28,13 +29,14 @@ it is reported.
 > **Shipped, in its Phase 1 form.** `spec:doctor` reads the ten sections whose inputs already existed:
 > [configuration](#what-it-checks), document validity, version, references, [support findings](#what-it-checks)
 > (`Rejected` constructs the reading pipeline already collects, `operationId` required on a `public` + `stable`
-> operation, and one summary line per `Deferred` construct actually present), [routing outcome](#what-it-checks)
-> (shadowing included), [drift](#what-it-checks), and [installation](#what-it-checks). `--json` ships alongside the text
-> report. Also shipped: the [lifecycle rules](./lifecycle.md#the-doctor-rules-that-follow) — a deprecation with no
-> `x-sunset`, a date that has passed, a date nothing can read, the `beta` listing and the protection report — and the
-> `security` finding, which names every operation whose declared requirements this phase does not apply yet. **Not yet
-> built:** the [baseline](#what-it-checks) and [drivers](#what-it-checks) sections, and the `security` section in its
-> enforcing form — see the [Roadmap](../project/roadmap.md) for all three. Both unbuilt sections still print, with a
+> operation, and one summary line per [`Deferred`](./glossary.md#deferred) construct actually present),
+> [routing outcome](#what-it-checks) (shadowing included), [drift](#what-it-checks), and
+> [installation](#what-it-checks). `--json` ships alongside the text report. Also shipped: the
+> [lifecycle rules](./lifecycle.md#the-doctor-rules-that-follow) — a deprecation with no `x-sunset`, a date that has
+> passed, a date nothing can read, the `beta` listing and the [protection report](./glossary.md#protection-report) — and
+> the `security` finding, which names every operation whose declared requirements this phase does not apply yet. **Not
+> yet built:** the [baseline](#what-it-checks) and [drivers](#what-it-checks) sections, and the `security` section in
+> its enforcing form — see the [Roadmap](../project/roadmap.md) for all three. Both unbuilt sections still print, with a
 > `[not checked]` line saying what they do not diagnose, so a green exit is never read as covering them. Items marked
 > `Open` below are undecided.
 
@@ -174,8 +176,8 @@ three:
   made the promise, and this package publishes the rule that the promise requires an identity that survives a rename.
   Only the author can add it. The finding still carries its `Partial`
   [support level](./openapi-support.md#support-levels), which is what says the construct is honored when present.
-- **Drift.** The specification and the generated tree disagree. `spec:build` is the fix, and only the project can run
-  it.
+- **Drift.** The specification and the [generated tree](./glossary.md#generated-tree) disagree. `spec:build` is the fix,
+  and only the project can run it.
 - **Installation.** The project's `generated.path`, `generated.namespace` and `composer.json` disagree with each other,
   or its `.gitignore` excludes a directory its build depends on. Nothing in this package can settle any of that.
 

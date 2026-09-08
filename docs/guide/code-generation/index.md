@@ -27,7 +27,7 @@ tags: [code-generation, openapi, scope, decisions, laravel]
 >   was produced.
 > - Generated abstracts extended by your concrete classes is what turns a contract change into a static analysis error
 >   rather than a runtime surprise.
-> - **Not built yet:** response DTOs, request validation, and the sanitized public copy.
+> - **Not built yet:** response DTOs, request validation, and the sanitized [public copy](../glossary.md#public-copy).
 
 Spec-First only pays off if the contract reaches the code. This document owns how it gets there: **one build command
 turns the specification into PHP, and the result is safe to regenerate at any time.** It carries what the rest of the
@@ -95,8 +95,8 @@ What follows from it:
   door as everything else.
 - **It creates one new failure mode, and it must be named:** edit the spec, forget to build, and the application serves
   the previous contract without a word — because nothing at runtime knows a spec exists to compare against. **Detecting
-  that drift is the doctor's job**, which makes it a required CI check rather than a convenience. A package this strict
-  about contracts cannot ship the one silent way to be out of date.
+  that [drift](../glossary.md#drift) is the doctor's job**, which makes it a required CI check rather than a
+  convenience. A package this strict about contracts cannot ship the one silent way to be out of date.
 
 ## Three kinds of file, and only two are the build's
 
@@ -166,12 +166,13 @@ Its properties:
 - **Idempotent.** Running it twice in a row changes nothing the second time. If a build produces a diff on an unchanged
   spec, that is a defect. A formatter counts as part of that promise, which is why
   [it gets its own section](#your-formatter-and-the-build-both-want-to-own-these-files).
-- **Ordered, and it stops.** Check the vendored references are present, parse, normalize in memory, **compare against
-  the specification's previously committed version, read from git**, then generate. A spec that fails
-  [the doctor's](../doctor.md) hard checks does not reach the generator — half-generated output from a broken contract
-  is worse than no output. The comparison sits before generation for the same reason: nothing is written until it is
-  known to be allowed. See [the baseline](../lifecycle.md#unstable-by-default-and-what-stable-costs-us) for what
-  "previously committed" means and why it depends on git history rather than a file the build writes.
+- **Ordered, and it stops.** Check the [vendored references](../glossary.md#vendored-reference) are present, parse,
+  normalize in memory, **compare against the specification's previously committed version, read from git**, then
+  generate. A spec that fails [the doctor's](../doctor.md) hard checks does not reach the generator — half-generated
+  output from a broken contract is worse than no output. The comparison sits before generation for the same reason:
+  nothing is written until it is known to be allowed. See
+  [the baseline](../lifecycle.md#unstable-by-default-and-what-stable-costs-us) for what "previously committed" means and
+  why it depends on git history rather than a file the build writes.
 - **It never writes outside its own directories.** No exceptions, no conditions. This is the
   [invariant](#the-invariant-a-build-never-destroys-human-work) in one sentence, and it is testable — which is the point
   of stating it without a clause.

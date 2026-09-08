@@ -323,20 +323,31 @@ leaves with the answer.
 The same rule holds at paragraph scale: the claim goes in the first sentence, the reasoning underneath it. That is what
 makes a bolded lead sentence worth scanning rather than decoration.
 
-### A coined term links to the glossary on its first use
+### A coined term is linked on its first use, never left bare
 
-This set invents vocabulary, and it is right to: `drift`, `Deferred`, the marker, the source map, the invariant, an
-acknowledgement. Each one is precise, and each one means nothing to a reader who has not met it yet.
+This set invents vocabulary, and it is right to: [`drift`](../guide/glossary.md#drift),
+[`Deferred`](../guide/glossary.md#deferred), [the marker](../guide/glossary.md#marker),
+[the source map](../guide/glossary.md#source-map), [the invariant](../guide/glossary.md#invariant),
+[an acknowledgement](../guide/glossary.md#acknowledgement). Each one is precise, each one means nothing to a reader who
+has not met it yet, and this paragraph is the rule below applied to itself.
 
-**The first use of a coined term in a document links to its row in [`glossary.md`](../guide/glossary.md).** Not a
-definition written out again. Writing one in every document that uses the word is the same clause in ten files, which is
-[the duplication smell](#doc-smells) with extra steps, and the copies are what go stale.
+**The first use of a coined term in a document is a link.** Not a definition written out again: writing one in every
+document that uses the word is the same clause in ten files, which is [the duplication smell](#doc-smells) with extra
+steps, and the copies are what go stale.
 
 - **Write:** "reporting [drift](../guide/glossary.md#drift) is the doctor's job"
 - **Not:** "reporting drift is the doctor's job", leaving a reader who has not met the word
 
-**Every term carries its own anchor**, the term itself with any leading article dropped: `#drift`, `#invariant`,
-`#two-class-seam`. So the link is guessable, and `docs:check-anchors` fails the build on one that is not.
+**Two targets are correct, and the sentence decides.** The [glossary](../guide/glossary.md) row is the default: one
+target per term, so a section that moves is one row to fix rather than ten links. Link the owning section directly when
+the sentence is already reaching for it — "see [the drift check](../guide/doctor.md#what-it-checks)" is better as itself
+than as a detour through a row. What is never correct is the third option, which is leaving the word bare.
+
+**The document that owns a term does not link to the glossary for it.** It carries the definition, so pointing its own
+reader at a row that points back is a loop. Its first use links the section that defines it, or is that section.
+
+**Every term carries its own anchor** in the glossary, the term itself with any leading article dropped: `#drift`,
+`#invariant`, `#two-class-seam`. So the link is guessable, and `docs:check-anchors` fails the build on one that is not.
 
 The row is one clause and a link onward to the section that owns the concept, so the reader gets the short answer in one
 hop and the whole argument in two. That section stays the authority; the row is a pointer that happens to be enough most
@@ -402,16 +413,16 @@ a build step to say what a clause already said.
 
 The types worth drawing, and the ones this package has no use for, stated so that nobody draws one to fill the table:
 
-| Diagram             | Shows                                            | Here                                                           |
-| ------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
-| Activity            | The steps of a workflow or an algorithm          | The reading pipeline, the order of a build                     |
-| Sequence            | The order of calls between objects or services   | A request reaching a generated controller and its custom child |
-| State machine       | An entity's lifecycle and the rules that move it | An operation across `beta`, `stable`, `deprecated` and sunset  |
-| Class               | The concepts and how they relate                 | The two-class seam, the `Contract\` types                      |
-| Component           | Module and package boundaries                    | What `Parsing\` may reach, and what `Routing\` may not         |
-| Use case            | Who interacts with the system, and to do what    | Nothing yet. Three Artisan commands are a list, not a diagram  |
-| Entity relationship | The tables of a relational database              | Nothing. This package has no database                          |
-| Deployment          | The machines and containers the code runs on     | Nothing. This is a library, and the host is the consumer's     |
+| Diagram             | Shows                                            | Here                                                                             |
+| ------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------- |
+| Activity            | The steps of a workflow or an algorithm          | The reading pipeline, the order of a build                                       |
+| Sequence            | The order of calls between objects or services   | A request reaching a generated controller and its custom child                   |
+| State machine       | An entity's lifecycle and the rules that move it | An operation across `beta`, `stable`, `deprecated` and sunset                    |
+| Class               | The concepts and how they relate                 | The [two-class seam](../guide/glossary.md#two-class-seam), the `Contract\` types |
+| Component           | Module and package boundaries                    | What `Parsing\` may reach, and what `Routing\` may not                           |
+| Use case            | Who interacts with the system, and to do what    | Nothing yet. Three Artisan commands are a list, not a diagram                    |
+| Entity relationship | The tables of a relational database              | Nothing. This package has no database                                            |
+| Deployment          | The machines and containers the code runs on     | Nothing. This is a library, and the host is the consumer's                       |
 
 ## Doc smells
 

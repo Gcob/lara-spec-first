@@ -21,8 +21,8 @@ tags: [openapi, code-generation, drivers, compatibility, laravel]
 
 This set invents vocabulary, and it is right to: `drift` and `Deferred` and the marker are each precise, and each of
 them means nothing on first contact. **Every guide links a term here the first time it uses one**, which is
-[the rule](../contributing/documentation.md#a-coined-term-links-to-the-glossary-on-its-first-use) this page exists to
-serve, so a reader who starts in the middle of a document is one click from the word that stopped them.
+[the rule](../contributing/documentation.md#a-coined-term-is-linked-on-its-first-use-never-left-bare) this page exists
+to serve, so a reader who starts in the middle of a document is one click from the word that stopped them.
 
 **It carries no reasoning, deliberately.** A definition and its justification in two places is the shape the same rules
 forbid, because the copy is what goes stale. So a row is a clause and a pointer, short enough that it cannot drift into

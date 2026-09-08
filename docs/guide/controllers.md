@@ -47,8 +47,8 @@ assumes about your application, and where a developer's own code attaches to it.
 
 **One fixed method name rather than one derived from the operation**, and the reasoning is predictability: every
 controller this package generates has `routeAction`, so "which method do I override" has one answer, forever, with no
-naming convention to learn and no derived spelling to reconstruct. The operation's identity is carried by the class name
-and stated exactly in
+naming convention to learn and no derived spelling to reconstruct. The
+[operation's identity](./glossary.md#operations-identity) is carried by the class name and stated exactly in
 [the file's own docblock](./code-generation/generated-file-anatomy.md#every-generated-file-explains-itself), which is
 where a reader looks anyway.
 
@@ -527,8 +527,8 @@ Two signals, and each answers a different question. Neither is a heuristic on wo
 The response schema decides the read shape rather than the path, and the counter-example is what settles it:
 `GET /users/{id}/invoices` carries a parameter **and** returns a collection. The parameter says what is addressed, the
 schema says what comes back, and for choosing between a single and a collection it is what comes back that matters.
-Hardcoding the envelope property to `data` instead of reusing the pagination mapping would be the same
-two-sources-of-truth failure this document keeps avoiding.
+Hardcoding the [envelope](./glossary.md#envelope) property to `data` instead of reusing the pagination mapping would be
+the same two-sources-of-truth failure this document keeps avoiding.
 
 The path parameter settles the write side:
 

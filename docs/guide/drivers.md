@@ -39,10 +39,10 @@ say what it does, without that answer having to be written into this package.
 
 This is the whole design, and everything good about it follows from keeping the two apart:
 
-| Concern                                                     | Lives in    | Because                                                                                   |
-| ----------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
-| **Where and how the structure is declared** in the document | The driver  | It is behavior — response headers, an `x-` extension, a nested envelope — so it is code.  |
-| **What this project's fields are called**                   | The mapping | It is a fact about one specification, and it changes per project, so it is configuration. |
+| Concern                                                     | Lives in    | Because                                                                                                            |
+| ----------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Where and how the structure is declared** in the document | The driver  | It is behavior — response headers, an `x-` extension, a nested [envelope](./glossary.md#envelope) — so it is code. |
+| **What this project's fields are called**                   | The mapping | It is a fact about one specification, and it changes per project, so it is configuration.                          |
 
 A driver knows that a rate limit is expressed as documented response headers, or that a page's collection sits in a
 nested property of the response schema. It does **not** know that _this_ project calls that header `X-RateLimit-Limit`
