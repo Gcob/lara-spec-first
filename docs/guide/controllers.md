@@ -152,12 +152,18 @@ which has to scan configured directories precisely because nothing in the specif
 The route points at the child when it exists, and at the generated parent when it does not — resolved at build time, so
 the registration stays a serializable pair of strings and `route:cache` keeps working.
 
-![The shipped base, the generated parent and the custom child, and what each one owns](../diagrams/two-class-seam.svg)
+![What the package ships, what the build rewrites, what you own, and the types the three share](../diagrams/two-class-seam.svg)
 
-Three boxes and who rewrites each is the part a paragraph keeps having to restate: the package ships the base, the build
-owns the middle layer entirely, and the bottom one is written once by a person and never touched again. That is the
-structure; [the request path](#reads-and-where-they-stop-needing-a-line-of-code) is the same three boxes seen from a
-request arriving.
+Who rewrites each layer is the part a paragraph keeps having to restate: the package ships the base, the interfaces and
+the trait, the build owns the middle layer entirely, and the bottom one is written once by a person and never touched
+again. That is the structure; [the request path](#reads-and-where-they-stop-needing-a-line-of-code) is the same layers
+seen from a request arriving.
+
+**The names in it are working names, and the picture is a reading aid rather than a settled contract.** Every interface
+and trait it draws is public API surface under [rule 4](./openapi-support.md#the-four-rules) from the first release on,
+and [settling those names is still open](#the-detected-crud-semantic-is-a-marker-interface-deliberately-empty). It is
+drawn from what this document set claims today, so read it for how the pieces fit and read the section that owns a name
+before depending on it. Expect to revisit it rather than to inherit it.
 
 **The generated parent takes the same short name, inside
 [the generated namespace](./code-generation/index.md#where-generated-code-lives), and the child extends it by
@@ -492,7 +498,8 @@ model cannot.** That single rule decides which family an interface belongs to, s
 **Only `getModelClass()` is generated**, because it is the only part that differs per operation. `getQuery()` lives in
 the trait so its default exists in one place rather than repeated across every model-backed controller — and it stays
 the seam a project overrides most often: a global scope, eager loading, hiding soft-deleted rows are all legitimate
-query construction that never contradicts what the specification declared.
+query construction that never contradicts what the specification declared. Both, and the trait, are drawn in
+[the seam diagram](#two-classes-found-by-name-rather-than-by-a-scan) above.
 
 ### The detected CRUD semantic is a marker interface, deliberately empty
 
@@ -515,7 +522,9 @@ What the marker buys over the docblock that already states the same finding:
   it is an interface rather than an attribute.
 
 **And no interface is a signal too.** An operation the build could not read a semantic from implements none, and its
-`routeAction` throws. The declaration line therefore tells the whole story either way.
+`routeAction` throws. The declaration line therefore tells the whole story either way. All five are drawn in
+[the seam diagram](#two-classes-found-by-name-rather-than-by-a-scan), where the generated class implements exactly one
+of them.
 
 **One framing precision, because the marker could otherwise lie.** A custom child inherits it and is free to reimplement
 `routeAction` as something else entirely. So the interface documents **what the build detected in the specification**,

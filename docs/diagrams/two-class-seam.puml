@@ -65,7 +65,23 @@ package "Shipped by the package" {
     +getModelClass()
     +getQuery()
   }
-  interface ShowsResource
+  class InteractsWithModel <<trait>> {
+    +getQuery()
+  }
+  package "One per detected semantic, all empty" {
+    interface CreatesResource
+    interface ShowsResource
+    interface ListsResources
+    interface UpdatesResource
+    interface DeletesResource
+
+    ' Laid out in one row on purpose: five empty boxes let free would
+    ' spread across the package and leave it mostly white space.
+    CreatesResource -[hidden]right- ListsResources
+    ListsResources -[hidden]right- UpdatesResource
+    UpdatesResource -[hidden]right- DeletesResource
+    DeletesResource -[hidden]right- ShowsResource
+  }
 }
 
 package "Generated, rewritten on every build" {
@@ -83,12 +99,15 @@ package "Yours, created once and never touched again" {
 
 SpecController <|-- Parent
 HasModel <|.. Parent
+InteractsWithModel <.. Parent : use
 ShowsResource <|.. Parent
 Parent <|-- Child
 
 note right of Parent
   final unless the operation
-  declares x-controller
+  declares x-controller.
+  getModelClass() is the only
+  member the build writes.
 end note
 
 note bottom of Child
@@ -96,5 +115,18 @@ note bottom of Child
   exists, and at the generated parent
   when it does not. Decided at build
   time, so route:cache keeps working.
+end note
+
+note top of ShowsResource
+  The build implements the one its
+  detection produced, and none at all
+  when it read no semantic.
+end note
+
+note as Disclosure
+  Working names, every one of them, and
+  public API from the first release on.
+  Read this to see how the pieces fit,
+  not as a settled contract.
 end note
 @enduml

@@ -440,7 +440,9 @@ adding a sibling the exception.
 package ahead of its code and says so everywhere in prose, so a picture restricted to what ships today would hide the
 part a reader most needs to plan around. The [undeclared future](#doc-smells) smell applies to an image exactly as it
 does to a sentence, and the answer is the same one: say the phase out loud. A PlantUML `note` is where it goes, because
-it travels with the diagram rather than sitting in a caption a reader may not reach.
+it travels with the diagram rather than sitting in a caption a reader may not reach. **A name the repository has not
+settled is said the same way**, in the same note: a picture reads as more settled than the prose it accompanies, so a
+diagram of working names has to say that is what they are.
 
 The table below separates what is drawn from what would earn a diagram and has not been drawn yet, so that neither is
 mistaken for the other. **A row empty on both sides is a "no" with a reason**, kept so that nobody draws one to fill the
