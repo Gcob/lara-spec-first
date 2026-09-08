@@ -87,13 +87,15 @@
  * short terms without pinning the long ones, which are free to wrap once rather
  * than force a column nothing else needs.
  *
- * Matched on the suffix of the page class VitePress emits, because the whole class
+ * Matched on a substring of the page class VitePress emits, because the whole class
  * begins with the npm package name and that is not something a stylesheet should
- * depend on. Below the breakpoint the floor is dropped: a phone needs the wrap more
- * than it needs the alignment.
+ * depend on. A substring rather than a suffix: the class sits in a list, and `$=`
+ * would stop matching the day VitePress appends anything after it. Below the
+ * breakpoint the floor is dropped: a phone needs the wrap more than it needs the
+ * alignment.
  */
 @media (min-width: 640px) {
-    [class$='_docs_guide_glossary'] table td:first-child {
+    [class*='_docs_guide_glossary'] table td:first-child {
         min-width: 11rem;
     }
 }

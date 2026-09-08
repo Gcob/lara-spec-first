@@ -39,6 +39,11 @@ skinparam shadowing false
 
 ' Two regions rather than one chain, because the two keys are independent: an
 ' operation is stable AND deprecated in the normal, well-behaved case.
+'
+' Separated by "||" and not "--". PlantUML's "--" draws a horizontal rule, which
+' stacks the regions one above the other; "||" draws a vertical one and puts them
+' side by side, which is the shape the prose argues for and the only one that
+' shows the two tracks running in parallel rather than in sequence.
 state "An operation the document declares" as Operation {
 
   state "How strong the promise is\n(x-lifecycle)" as Promise {
@@ -49,7 +54,7 @@ state "An operation the document declares" as Operation {
     state "no claim" as no_claim
   }
 
-  --
+  ||
 
   state "Whether it is going away\n(deprecated, x-sunset)" as Removal {
     [*] --> current

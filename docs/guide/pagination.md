@@ -265,9 +265,9 @@ Three things a reader looking at a paginated endpoint will want, and will not fi
 - **Filtering, sorting and search.** OpenAPI has no vocabulary for a filter DSL, and inventing one is a far larger
   commitment than anything on this page. `getQuery()` is the hook, and
   [`controllers.md`](./controllers.md#reads-and-where-they-stop-needing-a-line-of-code) says so in the same words.
-- **How a page reaches the wire.** The [envelope](./glossary.md#envelope) DTO's own shape, its factory, and the
-  generated method that fills it belong to [`response-dtos.md`](./code-generation/response-dtos.md). This document owns
-  where the page comes from, not what the type around it looks like.
+- **How a page reaches the wire.** The envelope DTO's own shape, its factory, and the generated method that fills it
+  belong to [`response-dtos.md`](./code-generation/response-dtos.md). This document owns where the page comes from, not
+  what the type around it looks like.
 - **The mechanism the driver plugs into.** Registration, the mapping split and what makes a driver portable are
   [`drivers.md`](./drivers.md)'s, and this page is one of the two features built on it.
 

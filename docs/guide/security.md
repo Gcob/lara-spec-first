@@ -119,8 +119,7 @@ package to close, one deliberate decision at a time, not a reason to stay purist
 
 ## The doctor's role
 
-Once a [baseline](./glossary.md#baseline) is enforced by default, the doctor's job past that changes shape. What it
-checks, concretely:
+Once a baseline is enforced by default, the doctor's job past that changes shape. What it checks, concretely:
 
 - **A `securitySchemes` name with no guard of the same name** — the
   [naming contract](#scheme-names-are-a-naming-contract-with-your-guards) broken, reported before it becomes a route

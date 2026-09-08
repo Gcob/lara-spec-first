@@ -348,6 +348,8 @@ reader at a row that points back is a loop. Its first use links the section that
 
 **Every term carries its own anchor** in the glossary, the term itself with any leading article dropped: `#drift`,
 `#invariant`, `#two-class-seam`. So the link is guessable, and `docs:check-anchors` fails the build on one that is not.
+A row is a table cell rather than a heading, so
+[the anchor is written as HTML](#an-anchor-on-something-that-is-not-a-heading-is-written-as-html).
 
 The row is one clause and a link onward to the section that owns the concept, so the reader gets the short answer in one
 hop and the whole argument in two. That section stays the authority; the row is a pointer that happens to be enough most
@@ -532,6 +534,23 @@ just docs-check-anchors   # every link whose anchor no heading produces
 
 It runs in CI beside the build. It reads the emitted ids rather than re-deriving them from the Markdown, so there is no
 second implementation of the slug rule to disagree with the first.
+
+### An anchor on something that is not a heading is written as HTML
+
+A [glossary](../guide/glossary.md) row is a table cell, and a table cell has no slug. **Give it one with an empty anchor
+element in front of the term**, never with a `{#id}` attribute:
+
+- **Write:** `| <a id="drift"></a>[Drift](./doctor.md#what-it-checks) | … |`
+- **Not:** `| [Drift](./doctor.md#what-it-checks){#drift} | … |`
+
+**The reason is the same one the rule above serves: one form, and it has to work on both renderers.** `{#id}` is
+`markdown-it-attrs`, which VitePress enables and GitHub does not, so on GitHub the braces print as text and no `id` is
+produced — every link into the page lands at the top of it, silently, and `docs:check-anchors` cannot see it because it
+reads the built site. The empty anchor survives both: GitHub keeps it, prefixed to `user-content-drift`, which its own
+scroll script resolves from `#drift`, and VitePress passes the raw HTML through untouched.
+
+It is more to type than the attribute, and it is the only part of this that is not free. That is the trade for a link
+that resolves for the half of this set's readers who are on GitHub.
 
 ## Document inventory
 

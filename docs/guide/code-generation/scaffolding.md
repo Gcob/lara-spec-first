@@ -125,9 +125,8 @@ invocation, a human present. `build` does not operate on an operation you named 
 specification. So `spec:build --make` means _scaffold every missing implementation_, which is how a hundred empty
 classes get committed by accident.
 
-The deeper cost is that it makes [the invariant](../glossary.md#invariant) conditional again: _the build never writes a
-file it does not own, unless you pass `--make`_. The architecture test stops being absolute, and the next feature has a
-precedent to point at.
+The deeper cost is that it makes the invariant conditional again: _the build never writes a file it does not own, unless
+you pass `--make`_. The architecture test stops being absolute, and the next feature has a precedent to point at.
 
 The counter-argument is real and worth recording, because it comes from this subject's own logic: a flag typed by a
 human **is** explicit intent, exactly as [watch](#watching-specwatch) is. But that is precisely why watch is a separate
