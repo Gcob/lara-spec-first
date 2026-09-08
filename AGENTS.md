@@ -122,6 +122,10 @@ Two traps worth knowing before you go in:
   `justfile`. Same for reviews: formatting is not a finding.
 - **Let the docs build find your dead links.** Moving or renaming a document breaks every link into it.
   `just docs-build` fails on the first one and names the file — faster and more complete than grepping for the old path.
+- **A change that moves a design moves the diagram that draws it.** `just diagrams-check` compares an SVG to its
+  PlantUML source and never to the page around it, so an image describing an older design stays green. Nothing but
+  review catches that one — see
+  [the diagram rules](./docs/contributing/documentation.md#a-diagram-is-built-not-embedded).
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)** — see `CONTRIBUTING.md`.
 - **No emojis in documentation.**
 
