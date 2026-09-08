@@ -1,53 +1,15 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-activityDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
-  activity {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  diamond {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  circle {
-    BackgroundColor #888888
-    LineColor #888888
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-}
-</style>
-skinparam shadowing false
 
 start
 :One finding;
 
 if (Who can fix it?) then (the project alone)
-  :Document fault;
-  :Exit 1, the hard gate;
+  :Document fault; <<yours>>
+  :Exit 1, the hard gate; <<yours>>
   note right
     Per run, not per finding: a
     document fault always wins when
@@ -57,19 +19,19 @@ if (Who can fix it?) then (the project alone)
   end note
   stop
 else (us, eventually)
-  :Package limit;
+  :Package limit; <<shipped>>
 
   if (Is the support level Deferred?) then (yes)
-    :Reported, and never gates.\nOur schedule is not their defect;
+    :Reported, and never gates.\nOur schedule is not their defect; <<shipped>>
     stop
   else (no)
   endif
 
   if (Acknowledged in configuration?) then (yes)
-    :Reported in its own section,\nwith no effect on the exit code;
+    :Reported in its own section,\nwith no effect on the exit code; <<shipped>>
     stop
   else (no)
-    :Exit 2, the softer signal;
+    :Exit 2, the softer signal; <<shipped>>
     stop
   endif
 endif

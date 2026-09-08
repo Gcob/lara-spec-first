@@ -1,46 +1,8 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-activityDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
-  activity {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  diamond {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  circle {
-    BackgroundColor #888888
-    LineColor #888888
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-}
-</style>
-skinparam shadowing false
 
 start
 :spec:make, for one operation;
@@ -48,13 +10,13 @@ start
 if (Does the operation declare x-controller?) then (no)
 
   if (Is the document vendored?) then (yes)
-    :Refuse. The next fetch\nwould overwrite the line;
+    :Refuse. The next fetch\nwould overwrite the line; <<refusal>>
     stop
   else (no)
   endif
 
   if (Can a line be placed under the operation?) then (no)
-    :Print the block, and say where\nit could not work out the depth;
+    :Print the block, and say where\nit could not work out the depth; <<refusal>>
     note right
       Flow-style, JSON, or a Path Item
       that is a $ref into another file.
@@ -66,7 +28,7 @@ if (Does the operation declare x-controller?) then (no)
   :Print the block and offer\nto insert it, defaulting to no;
 
   if (Accepted?) then (no)
-    :Leave the document alone;
+    :Leave the document alone; <<refusal>>
     stop
   else (yes)
   endif
@@ -75,23 +37,23 @@ if (Does the operation declare x-controller?) then (no)
   :Read the copy back through\nthe normal reading pipeline;
 
   if (Do the operations match, but for the extension?) then (no)
-    :Print the block instead,\nand write nothing;
+    :Print the block instead,\nand write nothing; <<refusal>>
     stop
   else (yes)
   endif
 
-  :The copy replaces the original;
+  :The copy replaces the original; <<yours>>
 
 else (yes)
 endif
 
 if (Does the class file already exist?) then (yes)
-  :Leave it exactly as it is,\nand say so;
+  :Leave it exactly as it is,\nand say so; <<refusal>>
   stop
 else (no)
 endif
 
-:Write the class: the extends, the comment,\nand routeAction calling the parent;
+:Write the class: the extends, the comment,\nand routeAction calling the parent; <<yours>>
 :Run spec:build, so the parent exists\nand the route points here;
 stop
 @enduml

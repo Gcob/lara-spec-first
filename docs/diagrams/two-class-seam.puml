@@ -1,48 +1,8 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-classDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
-  class {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-
-    header {
-      BackgroundColor transparent
-      FontColor #888888
-    }
-  }
-  package {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-    FontStyle italic
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-}
-</style>
-skinparam shadowing false
 
 ' The spot circle on a class and the coloured dot on a member are drawn from
 ' PlantUML's own palette, hardcoded, and one of them paints its letter black:
@@ -56,24 +16,24 @@ hide empty members
 ' "Generated. Rewritten..." into two nested boxes. Turned off so a label is a label.
 set separator none
 
-package "Shipped by the package" {
-  abstract class SpecController {
+package "Shipped by the package" #line:$shipped;text:$shipped;back:transparent {
+  abstract class SpecController #line:$shipped;text:$shipped;back:transparent {
     +routeAction()
     +middleware()
   }
-  interface HasModel {
+  interface HasModel #line:$shipped;text:$shipped;back:transparent {
     +getModelClass()
     +getQuery()
   }
-  class InteractsWithModel <<trait>> {
+  class InteractsWithModel <<trait>> #line:$shipped;text:$shipped;back:transparent {
     +getQuery()
   }
-  package "One per detected semantic, all empty" {
-    interface CreatesResource
-    interface ShowsResource
-    interface ListsResources
-    interface UpdatesResource
-    interface DeletesResource
+  package "One per detected semantic, all empty" #line:$shipped;text:$shipped;back:transparent {
+    interface CreatesResource #line:$shipped;text:$shipped;back:transparent
+    interface ShowsResource #line:$shipped;text:$shipped;back:transparent
+    interface ListsResources #line:$shipped;text:$shipped;back:transparent
+    interface UpdatesResource #line:$shipped;text:$shipped;back:transparent
+    interface DeletesResource #line:$shipped;text:$shipped;back:transparent
 
     ' Laid out in one row on purpose: five empty boxes let free would
     ' spread across the package and leave it mostly white space.
@@ -84,15 +44,15 @@ package "Shipped by the package" {
   }
 }
 
-package "Generated, rewritten on every build" {
-  class "Generated\\Controllers\\UserController" as Parent {
+package "Generated, rewritten on every build" #line:$generated;text:$generated;back:transparent {
+  class "Generated\\Controllers\\UserController" as Parent #line:$generated;text:$generated;back:transparent {
     +routeAction(User): UserDto
     +getModelClass(): string
   }
 }
 
-package "Yours, created once and never touched again" {
-  class "Controllers\\UserController" as Child {
+package "Yours, created once and never touched again" #line:$yours;text:$yours;back:transparent {
+  class "Controllers\\UserController" as Child #line:$yours;text:$yours;back:transparent {
     +routeAction(User): UserDto
   }
 }

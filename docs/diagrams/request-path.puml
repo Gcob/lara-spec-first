@@ -1,63 +1,21 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-sequenceDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
-  participant {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  lifeLine {
-    BackgroundColor transparent
-    LineColor #888888
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-  group {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  divider {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-}
-</style>
-skinparam shadowing false
 hide footbox
+hide stereotype
 
 ' A period in a participant name is a namespace separator to PlantUML, which
 ' splits a label into two boxes. Turned off so a label is a label.
 set separator none
 
 participant "Client" as Client
-participant "routes.php\ngenerated" as Route
-participant "the scope middleware" as Scope
-participant "Controllers\\UserController\nyours" as Child
-participant "Generated\\Controllers\\UserController\ngenerated" as Parent
-participant "UserDtoFactory\ngenerated" as Factory
+participant "routes.php\ngenerated" as Route <<generated>>
+participant "the scope middleware" as Scope <<shipped>>
+participant "Controllers\\UserController\nyours" as Child <<yours>>
+participant "Generated\\Controllers\\UserController\ngenerated" as Parent <<generated>>
+participant "UserDtoFactory\ngenerated" as Factory <<generated>>
 
 note over Scope, Factory
   Phase 2, not shipped: the scope middleware,

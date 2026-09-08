@@ -1,52 +1,14 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-activityDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
-  activity {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  diamond {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  circle {
-    BackgroundColor #888888
-    LineColor #888888
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-}
-</style>
-skinparam shadowing false
 
 start
 :spec:build;
 
 if (Is every vendored reference on disk?) then (no)
-  :Stop, naming --update-refs;
+  :Stop, naming --update-refs; <<refusal>>
   note right
     The build never reaches
     the network on its own.
@@ -65,7 +27,7 @@ end note
 :Normalize in memory;
 
 if (Did reading collect a document fault?) then (yes)
-  :Stop before the generator.\nNothing is written;
+  :Stop before the generator.\nNothing is written; <<refusal>>
   stop
 else (no)
 endif
@@ -78,14 +40,14 @@ note right
 end note
 
 if (Does the change break a stable operation?) then (yes)
-  :Stop, naming the info.version\nbump that would allow it;
+  :Stop, naming the info.version\nbump that would allow it; <<refusal>>
   stop
 else (no)
 endif
 
 :Plan every file in memory;
-:Write;
-:Prune what the contract no longer has;
+:Write; <<generated>>
+:Prune what the contract no longer has; <<generated>>
 note right
   Only a file carrying the marker
   is ever removed.

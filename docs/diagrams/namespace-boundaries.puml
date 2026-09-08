@@ -1,43 +1,8 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-componentDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
-  component {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  package {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-    FontStyle italic
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-}
-</style>
-skinparam shadowing false
 
 ' A period in a package name is a namespace separator to PlantUML, which splits
 ' a label into two nested boxes. Turned off so a label is a label.
@@ -45,20 +10,20 @@ set separator none
 
 top to bottom direction
 
-package "Parsing\\" as Parsing {
-  component "cebe\\openapi\\\nthe third-party reader" as Cebe
+package "Parsing\\" as Parsing #line:$shipped;text:$shipped;back:transparent {
+  component "cebe\\openapi\\\nthe third-party reader" as Cebe #line:$foreign;text:$foreign;back:transparent
 }
 
-component "Contract\\\nour own types" as Contract
+component "Contract\\\nour own types" as Contract #line:$shipped;text:$shipped;back:transparent
 
-package "Consume Contract\\, and only it" as Consumers {
-  component "Generation\\" as Generation
-  component "Console\\" as Console
-  component "Routing\\" as Routing
+package "Consume Contract\\, and only it" as Consumers #line:$shipped;text:$shipped;back:transparent {
+  component "Generation\\" as Generation #line:$shipped;text:$shipped;back:transparent
+  component "Console\\" as Console #line:$shipped;text:$shipped;back:transparent
+  component "Routing\\" as Routing #line:$shipped;text:$shipped;back:transparent
 }
 
 Parsing -down-> Contract : produces
-Contract -[dashed]-> Parsing : never
+Contract -[#$refusal,dashed]-> Parsing : never
 
 Generation -up-> Contract
 Console -up-> Contract

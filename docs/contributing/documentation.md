@@ -389,8 +389,12 @@ can find, not a phrase to grep for.
 ### A diagram is built, not embedded
 
 **Diagrams are PlantUML sources under `docs/diagrams/`, rendered to an SVG committed beside each one, and referenced
-from a page as an image.** Neither GitHub nor the site renders PlantUML on its own, and half the readers of this set are
-on GitHub, so a fenced `plantuml` block is a code listing to one of them and a diagram to neither.
+from a page as an image.** Their shared look — the fonts, the transparent ground and
+[the palette](#the-palette-is-seven-colors-with-one-meaning-each) — lives in
+[`palette.iuml`](https://github.com/Gcob/lara-spec-first/blob/main/docs/diagrams/palette.iuml), which every source
+includes. It is named `.iuml` rather than `.puml` because `build-diagrams.sh` renders every `*.puml` in that directory,
+and a fragment is not a diagram. Neither GitHub nor the site renders PlantUML on its own, and half the readers of this
+set are on GitHub, so a fenced `plantuml` block is a code listing to one of them and a diagram to neither.
 
 ```bash
 just diagrams          # render every docs/diagrams/*.puml to the SVG beside it
@@ -413,13 +417,53 @@ Four rules keep a rendered diagram honest:
   never the diagram to the prose around it, so an image perfectly in sync with its `.puml` can describe a design from
   three months ago. That drift is caught in review or it is caught nowhere, and it is the only one that makes a diagram
   worse than no diagram at all: a picture contradicting its page still reads as the authority.
-- **One neutral grey, on a transparent background.** The SVG is one file serving a light theme and a dark one, so it
-  cannot carry a palette. `#888888` clears the contrast floor against both, and the diagram borrows the page's ground
-  rather than painting its own.
-- **A diagram never carries a fact alone.** It complements the prose, the table and the rules around it; anything only
-  the picture says is lost to a reader using a screen reader, and to every `grep`. In this set that costs close to
-  nothing: every section already carries its prose, its table and its rules, so a diagram is added beside them rather
-  than paid for by rewriting them.
+- **The ground stays transparent, and the color lives in the ink.** The SVG is one file serving a light theme and a dark
+  one, with no way of knowing which is active, so a filled background would paint its own ground and be wrong on one of
+  the two. PlantUML settles the question anyway: it has neither alpha nor opacity, so a fill is always opaque. Borders,
+  labels and arrows carry every color this set uses, and the page keeps supplying the ground.
+- **A diagram never carries a fact alone, and neither does a color.** It complements the prose, the table and the rules
+  around it; anything only the picture says is lost to a reader using a screen reader, and to every `grep`. The same
+  holds one level down: a box painted amber is labelled "generated" in words, so a reader who cannot separate two hues
+  loses nothing. In this set that costs close to nothing: every section already carries its prose, its table and its
+  rules, so a diagram is added beside them rather than paid for by rewriting them.
+
+#### The palette is seven colors with one meaning each
+
+**A color says something, or a diagram does not use it.** The seven below are the whole vocabulary, they are defined
+once in [`palette.iuml`](https://github.com/Gcob/lara-spec-first/blob/main/docs/diagrams/palette.iuml), and each one
+says something this document set already argues in prose:
+
+| Color  | Hex       | Says                                                   |
+| ------ | --------- | ------------------------------------------------------ |
+| Blue   | `#478ECA` | Shipped by the package                                 |
+| Amber  | `#AC8148` | Generated, and rewritten on every build                |
+| Green  | `#5A9662` | The project's own, ours to neither write nor rewrite   |
+| Violet | `#A17AB8` | Third-party, and not ours to change                    |
+| Red    | `#C8706F` | A refusal: where the package stops rather than guesses |
+| Yellow | `#8B8E22` | A note: the diagram talking about itself               |
+| Grey   | `#888888` | Everything else, which is most of every diagram        |
+
+**All seven sit at the same lightness, and that is what makes one SVG serve both themes.** Each is computed at L\* 57,
+the lightness of the grey it joins, so its contrast is the grey's on a white page, on the site's dark ground and on
+GitHub's, to within a twentieth of a ratio:
+
+| Against         | Grey | The six hues |
+| --------------- | ---- | ------------ |
+| A white page    | 3.54 | 3.45 to 3.52 |
+| The site's dark | 4.84 | 4.88 to 4.97 |
+| GitHub's dark   | 5.34 | 5.38 to 5.48 |
+
+**An eighth color is computed at that lightness, never picked because it looks right.** The property holds only while
+the set stays isoluminant, and a hue chosen by eye is the one that breaks it on the theme its author was not looking at.
+
+**And it is checked against the hues already there, on both grounds.** Equal lightness is what makes a color readable;
+it is not what makes two colors distinguishable. The note yellow was drawn twice for that reason: the first attempt sat
+close enough to the amber that on a dark ground a note and a generated step stopped being separable at a glance. Same
+contrast, same legibility, and the wrong answer. Look at the render on both grounds before keeping a hue.
+
+**Most of a diagram stays grey.** Color marks the thing worth marking — an owner, or a refusal — and a diagram with no
+such distinction to draw is right to carry none, the way
+[`operation-lifecycle`](../guide/lifecycle.md#two-keys-one-discriminator) marks one state and leaves the rest neutral.
 
 #### When a diagram earns its place
 
