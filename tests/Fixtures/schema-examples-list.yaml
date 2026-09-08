@@ -1,10 +1,16 @@
-# Accepted: the JSON Schema `examples` keyword is a list of literal values, so a
-# `$ref` written inside one is data, not a reference.
+# Rejected: the JSON Schema `examples` keyword is a list of literal values and
+# is never walked, so the `$ref` written inside it is data — but B is a Reference
+# Object pointing at the position that literal occupies, and following it closes
+# a cycle that reaches no schema.
 #
-# Schema A is also used by a real operation, rather than left dangling in
-# `components` — the conformance suite's copy of this fixture reads that
-# operation back to prove the boundary holds when the schema it protects is
-# actually resolved, not merely declared.
+# The third spelling of one shape, beside `ref-inside-example.yaml` and
+# `example-object-value.yaml`: which data-carrying key holds the literal makes no
+# difference to the rule, and `examples-list-is-data.yaml` is the same list
+# keyword with nothing pointing into it, still read as data and still accepted.
+#
+# Schema A is used by a real operation rather than left dangling in `components`,
+# so the refusal is proven on a document the engine would otherwise have work to
+# do on.
 openapi: "3.1.0"
 info:
   title: Fixture API

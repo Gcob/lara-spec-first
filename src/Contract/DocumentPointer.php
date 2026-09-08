@@ -53,4 +53,18 @@ final readonly class DocumentPointer
     {
         return str_replace(['~', '/'], ['~0', '~1'], $segment);
     }
+
+    /**
+     * One segment, read back — the inverse of {@see self::escape()}, and the
+     * half a reader needs when it has to walk a pointer into the document
+     * rather than merely name a position.
+     *
+     * Order matters here too, and it is the mirror of the one above: `~1` is
+     * replaced first, so an escaped `~1` written as `~01` comes back as the
+     * literal `~1` rather than as a `/`.
+     */
+    public static function unescape(string $segment): string
+    {
+        return str_replace(['~1', '~0'], ['/', '~'], $segment);
+    }
 }

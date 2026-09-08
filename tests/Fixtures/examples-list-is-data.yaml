@@ -1,0 +1,32 @@
+# Accepted: the JSON Schema `examples` keyword is a list of literal values, so a
+# `$ref` written inside one is data and nothing resolves it.
+#
+# Written as a pointer back at the very schema that carries it, because that is
+# the sharpest form the boundary takes: read as a reference it would close a
+# cycle on itself and the document would be refused outright, so this operation
+# can only be read at all if the literal stays a literal.
+#
+# Nothing in this document points *at* that literal's position, which is what
+# separates it from `schema-examples-list.yaml` beside it: a `$ref` inside data
+# is data until a Reference Object aims at the position holding it.
+openapi: "3.1.0"
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /items:
+    get:
+      operationId: listItems
+      responses:
+        '200':
+          description: Items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A'
+components:
+  schemas:
+    A:
+      type: object
+      examples:
+        - $ref: '#/components/schemas/A'
