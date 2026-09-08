@@ -204,6 +204,12 @@ scaffolds one file for one operation, extending that operation's generated paren
 [names what it cannot scaffold](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step). What it
 writes is deliberately almost nothing: the `extends`, the comment about that one line, and the signature to override.
 
+![The five decisions spec:make walks, from a missing extension to the build it runs at the end](../diagrams/spec-make.svg)
+
+The whole command in one picture, and the subsections below take each branch in turn. Four of its five decisions are
+refusals, which is the shape of a command that edits the source of truth and writes a file a developer will then own:
+the nominal path is short, and everything else is a reason to stop and hand the decision back.
+
 **It writes `routeAction` with the signature the parent declares, and one line in it.** Writing the method is what a
 `make` is for: the signature is the fiddly part, PHP will not let a child widen it, and copying it out of a comment is
 work a generator should have done.
