@@ -82,7 +82,15 @@ final readonly class ReferenceCycleDetector
      */
     public function findCycles(array $document): array
     {
-        $references = self::followTargetsIntoData($this->collect($document, ''), $document);
+        $collected = $this->collect($document, '');
+        $references = self::followTargetsIntoData($collected, $document);
+
+        // Every position the walk above had to reach *through* data rather than
+        // through a Reference Object — the difference between the two graphs,
+        // and the only thing a reader needs to be told apart from the chain
+        // itself. See CyclicReferenceException::chain().
+        $inData = array_keys(array_diff_key($references, $collected));
+
         $visited = [];
         $faults = [];
 
@@ -91,7 +99,7 @@ final readonly class ReferenceCycleDetector
                 continue;
             }
 
-            $fault = $this->follow($start, $references, $visited);
+            $fault = $this->follow($start, $references, $visited, $inData);
 
             if ($fault !== null) {
                 $faults[] = $fault;
@@ -260,7 +268,7 @@ final readonly class ReferenceCycleDetector
         $node = $document;
 
         foreach (array_slice(explode('/', $pointer), 1) as $segment) {
-            $key = DocumentPointer::unescape($segment);
+            $key = self::unescape($segment);
 
             if (! is_array($node) || ! array_key_exists($key, $node)) {
                 return null;
@@ -316,8 +324,11 @@ final readonly class ReferenceCycleDetector
      *                                        so a later start sharing part of this
      *                                        chain neither re-walks it nor reports
      *                                        the same cycle twice.
+     * @param  list<string>  $inData  every pointer in the graph that names a position
+     *                                holding a value; passed through so the fault can
+     *                                say which of them this chain runs through
      */
-    private function follow(string $start, array $references, array &$visited): ?CyclicReferenceException
+    private function follow(string $start, array $references, array &$visited, array $inData): ?CyclicReferenceException
     {
         $chain = [$start];
         $seen = [$start => true];
@@ -330,7 +341,10 @@ final readonly class ReferenceCycleDetector
             if (isset($seen[$target])) {
                 self::markVisited($chain, $visited);
 
-                return CyclicReferenceException::chain($chain);
+                return CyclicReferenceException::chain(
+                    $chain,
+                    array_values(array_unique(array_intersect($chain, $inData))),
+                );
             }
 
             $seen[$target] = true;
@@ -360,5 +374,19 @@ final readonly class ReferenceCycleDetector
     private static function escape(string $segment): string
     {
         return DocumentPointer::escape($segment);
+    }
+
+    /**
+     * The same round trip, read back, for the one place this class walks a
+     * pointer into the document instead of writing one out.
+     *
+     * Beside its counterpart rather than called through `DocumentPointer`
+     * directly at the one call site: the pair is what makes it visible that
+     * both directions of the spelling come from the same place, which is the
+     * whole point of that class owning it.
+     */
+    private static function unescape(string $segment): string
+    {
+        return DocumentPointer::unescape($segment);
     }
 }

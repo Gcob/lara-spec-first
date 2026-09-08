@@ -317,6 +317,12 @@ final readonly class SupportMatrixCheck
      * and this is one lookup a count needs rather than a second resolver for
      * the package to keep in step with the first.
      *
+     * The walk is this method's own; the *spelling* of a segment is not, and
+     * comes from {@see DocumentPointer::unescape()}. That split is the one
+     * `DocumentPointer` exists to enforce — a pointer is an identity, so a
+     * second escaping of `~` and `/` would be a second answer waiting to
+     * disagree with the first — and it costs this method nothing to honor.
+     *
      * @param  array<array-key, mixed>  $raw
      * @return ?array<array-key, mixed>
      */
@@ -329,7 +335,7 @@ final readonly class SupportMatrixCheck
         $node = $raw;
 
         foreach (explode('/', substr($reference, 2)) as $segment) {
-            $key = str_replace(['~1', '~0'], ['/', '~'], $segment);
+            $key = DocumentPointer::unescape($segment);
 
             if (! array_key_exists($key, $node)) {
                 return null;

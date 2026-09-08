@@ -364,6 +364,14 @@ The check is deliberately narrow, and each limit below is stated in a test rathe
   Response or an Example Object to point at in the first place. Which key the data sits under makes no difference, so
   the three spellings — `example`, an Example Object's `value`, an item of the JSON Schema `examples` list — are one
   rule and one refusal.
+- **That refusal is wider than the parser's own failure surface, deliberately.** Of the four data-carrying keys, three
+  are load-bearing: a reference aimed into an `example`, a `default` or an `enum` exhausts memory, verified at both 3.0
+  and 3.1 with the guard bypassed. A reference aimed into a `const` does not, because the parser does not model the
+  keyword and nothing resolves through it. It is refused all the same. The rule is _a reference aimed at a position
+  holding data is refused_, not _a reference aimed at a position holding data would otherwise kill the parser_, and only
+  the first of those is true for all four. Narrowing it to the three would tie this check to which keywords this
+  particular parser happens to model, which is the kind of dependency on a defect the conformance suite exists to keep
+  out of `src/`.
 - **`examples` is two things wearing one name, and the shape decides.** The JSON Schema keyword is a _list_ of literal
   values; the OpenAPI field of the same name — on Components, a Media Type Object, a Parameter — is a _map_ of Example
   Objects, and an Example Object may be a Reference Object. The list is data and is skipped; the map is specification

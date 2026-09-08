@@ -102,6 +102,12 @@ it('does not read a literal $ref inside a value as a reference', function (strin
 // the data and follows it, which is how the same memory exhaustion a pure cycle
 // causes is reached from a shape no rule about key names can see. ---
 
+// Three of the four keys are load-bearing and one is not: `example`, `default`
+// and `enum` each exhaust the parser's memory on this document with the guard
+// bypassed, and `const` parses fine, because the parser does not model the
+// keyword. It is refused all the same. The rule is about what a pointer names,
+// not about which keywords the current parser happens to survive — see the
+// narrow-limits list in docs/guide/openapi-support.md.
 it('follows a reference whose pointer lands inside a data-carrying key', function (string $key): void {
     $document = ['components' => ['schemas' => [
         'A' => ['type' => 'object', $key => ['$ref' => '#/components/schemas/B']],
@@ -110,6 +116,33 @@ it('follows a reference whose pointer lands inside a data-carrying key', functio
 
     expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
 })->with(['example', 'default', 'enum', 'const']);
+
+// The remedy has to fit the shape, and for this one the pure-cycle advice does
+// not: `#/components/schemas/A/example` can never be made to point at a schema,
+// because it is not a reference. What has to change is the reference aiming at
+// it, so the fault names the position rather than leaving it to be picked out
+// of the chain.
+it('names the position inside data that a chain closes through', function (): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['type' => 'object', 'example' => ['$ref' => '#/components/schemas/B']],
+        'B' => ['$ref' => '#/components/schemas/A/example'],
+    ]]];
+
+    $message = (new ReferenceCycleDetector)->findCycles($document)[0]->getMessage();
+
+    expect($message)->toContain('closes through data rather than through references')
+        ->and($message)->toContain('#/components/schemas/A/example names a position holding a value')
+        ->and($message)->not->toContain('must point at a schema rather than at another reference');
+});
+
+// The pure cycle keeps the advice that does fit it, so the two shapes cannot
+// quietly collapse into one message.
+it('keeps the pure-cycle remedy for a chain that closes through references alone', function (): void {
+    $message = (new ReferenceCycleDetector)->findCycles(specFixture('cycle-pointer.yaml'))[0]->getMessage();
+
+    expect($message)->toContain('must point at a schema rather than at another reference')
+        ->and($message)->not->toContain('closes through data');
+});
 
 it('catches the same shape in each of the three fixtures that spell it', function (string $fixture): void {
     expect((new ReferenceCycleDetector)->findCycles(specFixture($fixture)))->toHaveCount(1);
