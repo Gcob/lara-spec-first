@@ -152,6 +152,11 @@ which has to scan configured directories precisely because nothing in the specif
 The route points at the child when it exists, and at the generated parent when it does not — resolved at build time, so
 the registration stays a serializable pair of strings and `route:cache` keeps working.
 
+![The shipped base, the generated parent and the custom child, and what each one owns](../diagrams/two-class-seam.svg)
+
+Three boxes and who rewrites each is the part a paragraph keeps having to restate: the package ships the base, the build
+owns the middle layer entirely, and the bottom one is written once by a person and never touched again.
+
 **The generated parent takes the same short name, inside
 [the generated namespace](./code-generation/index.md#where-generated-code-lives), and the child extends it by
 fully-qualified name.** No `use`, no alias, no suffix:

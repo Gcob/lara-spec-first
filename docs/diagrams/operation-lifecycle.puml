@@ -1,0 +1,66 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+'
+' One neutral grey on a transparent background, so a single SVG stays legible on
+' the light theme and the dark one. Nothing here picks a palette, which is what
+' lets the site own its own colors.
+<style>
+document {
+  BackgroundColor transparent
+}
+stateDiagram {
+  BackgroundColor transparent
+  LineColor #888888
+  FontColor #888888
+  FontName Helvetica
+  FontSize 13
+
+  state {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+  arrow {
+    LineColor #888888
+    FontColor #888888
+  }
+  diamond {
+    BackgroundColor #888888
+    LineColor #888888
+  }
+}
+</style>
+skinparam shadowing false
+
+' Two regions rather than one chain, because the two keys are independent: an
+' operation is stable AND deprecated in the normal, well-behaved case.
+state "An operation the document declares" as Operation {
+
+  state "How strong the promise is\n(x-lifecycle)" as Promise {
+    [*] --> beta : public, and nothing declared
+    [*] --> no_claim : x-audience: internal
+    beta --> stable : the author promises it
+    no_claim --> stable : an internal endpoint may promise too
+    state "no claim" as no_claim
+  }
+
+  --
+
+  state "Whether it is going away\n(deprecated, x-sunset)" as Removal {
+    [*] --> current
+    current --> deprecated : deprecated: true,\nwhich requires x-sunset
+    deprecated --> past_sunset : the date arrives
+    state "past its sunset" as past_sunset
+  }
+}
+
+note bottom of Operation
+  The two regions are independent. Stable and deprecated is not a
+  contradiction, it is a promise kept to its stated removal date.
+end note
+@enduml

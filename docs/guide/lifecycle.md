@@ -87,6 +87,11 @@ case: a promise being honored right up to its stated removal date is exactly wha
 `x-lifecycle` is then a binary, and what it adds to OpenAPI is one word the specification has no way to express: whether
 an operation is promised at all.
 
+![Two independent tracks: how strong the promise is, and whether the operation is going away](../diagrams/operation-lifecycle.svg)
+
+The two tracks are drawn side by side because that is the shape the prose above argues for and the shape a single chain
+of states would get wrong.
+
 ## The doctor rules that follow
 
 | Rule                                                               | Why                                                                                                                                                                                                                                                                                                                                                                              |
