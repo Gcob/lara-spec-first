@@ -158,6 +158,12 @@ is deliberately excluded from both: `Deferred` — see [openapi-support.md](./op
 gates the exit code, however many of them a document carries, because recognizing a construct the roadmap has not built
 yet is a fact about our schedule, not a defect worth failing a pipeline over.
 
+![How one finding is classified, and which exit code it can reach](../diagrams/finding-classification.svg)
+
+The diamond at the top is the whole classification rule, and
+[the section below](#the-class-is-decided-by-who-can-fix-it-not-by-whether-the-document-parses) is what made it that
+question rather than whether the document parses. Of the four endings, two gate a pipeline.
+
 The rule that follows from this: **a package limit is never reported as if the consumer made a mistake.** They wrote a
 valid contract. We are the ones who cannot serve all of it yet, and the message says so.
 
