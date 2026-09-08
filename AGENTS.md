@@ -196,6 +196,9 @@ Two documents govern most of what you will need. Read the one that owns your sub
   what it does not, and why. Read it before writing anything that reads a spec.
 - [`docs/guide/code-generation/index.md`](./docs/guide/code-generation/index.md) — the build, and the rule that
   generated code and human code never share a file. Read it before writing anything that emits PHP.
+- [`docs/guide/glossary.md`](./docs/guide/glossary.md) — every term this set coined, in one clause each, with a link to
+  the section that owns it. Read a row when a word means nothing to you; read the section it points at before you rely
+  on the word.
 
 Eight more documents own one subject each, and each says in its `read_before` when to open it:
 [`docs/guide/doctor.md`](./docs/guide/doctor.md) (what the package reports),

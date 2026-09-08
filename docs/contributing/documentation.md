@@ -325,8 +325,8 @@ makes a bolded lead sentence worth scanning rather than decoration.
 
 ### Every coined term is defined where it is first used
 
-This set invents vocabulary, and it is right to: `drift`, `Deferred`, the marker, the seam, the source map, the
-invariant, an acknowledgement. Each one is precise, and each one means nothing to a reader who has not met it yet.
+This set invents vocabulary, and it is right to: `drift`, `Deferred`, the marker, the source map, the invariant, an
+acknowledgement. Each one is precise, and each one means nothing to a reader who has not met it yet.
 
 **Define a coined term on its first use in the document, or link the document that owns it.** First use in the document,
 not in the repository: a reader arrives on one page, never on the set. One clause is usually the whole cost.
@@ -335,6 +335,16 @@ not in the repository: a reader arrives on one page, never on the set. One claus
 - **Not:** "a file without the marker is never pruned"
 
 Assumed vocabulary is the most expensive prose here, because nothing about it looks wrong.
+
+**Every term also has a row in [`glossary.md`](../guide/glossary.md), and that page does not replace this rule.** The
+row is a clause and a link for the reader who is already lost; defining the term where you use it is what stops them
+getting lost. Two consequences for anyone coining one:
+
+- **The owning section comes first.** A glossary row points at the section that defines the term, so a term with no
+  owner is a term nothing defines — which is what writing the row will tell you. Give it a home, then index it.
+- **The row carries no reasoning.** If a term needs a paragraph to land, that paragraph belongs to the owning document
+  and the row stays one clause. A glossary that argues is a second copy of the argument, and the copy is what goes
+  stale.
 
 ### Say what the document does not cover
 
@@ -512,6 +522,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 - [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
 - [`drivers.md`](../guide/drivers.md)
+- [`glossary.md`](../guide/glossary.md)
 - [`lifecycle.md`](../guide/lifecycle.md)
 - [`openapi-support.md`](../guide/openapi-support.md)
 - [`pagination.md`](../guide/pagination.md)

@@ -77,3 +77,23 @@
         width: 368px;
     }
 }
+
+/*
+ * The glossary's term column stops wrapping every row.
+ *
+ * A glossary is read by scanning the left edge, and the default table layout gives
+ * the wide column the room: "Support level" broke over two lines on every row while
+ * the clause beside it had space to spare. A floor on the first column fixes the
+ * short terms without pinning the long ones, which are free to wrap once rather
+ * than force a column nothing else needs.
+ *
+ * Matched on the suffix of the page class VitePress emits, because the whole class
+ * begins with the npm package name and that is not something a stylesheet should
+ * depend on. Below the breakpoint the floor is dropped: a phone needs the wrap more
+ * than it needs the alignment.
+ */
+@media (min-width: 640px) {
+    [class$='_docs_guide_glossary'] table td:first-child {
+        min-width: 11rem;
+    }
+}
