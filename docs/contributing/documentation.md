@@ -323,18 +323,51 @@ leaves with the answer.
 The same rule holds at paragraph scale: the claim goes in the first sentence, the reasoning underneath it. That is what
 makes a bolded lead sentence worth scanning rather than decoration.
 
-### Every coined term is defined where it is first used
+### A coined term is linked on its first use, never left bare
 
-This set invents vocabulary, and it is right to: `drift`, `Deferred`, the marker, the seam, the source map, the
-invariant, an acknowledgement. Each one is precise, and each one means nothing to a reader who has not met it yet.
+This set invents vocabulary, and it is right to: [`drift`](../guide/glossary.md#drift),
+[`Deferred`](../guide/glossary.md#deferred), [the marker](../guide/glossary.md#marker),
+[the source map](../guide/glossary.md#source-map), [the invariant](../guide/glossary.md#invariant),
+[an acknowledgement](../guide/glossary.md#acknowledgement). Each one is precise, each one means nothing to a reader who
+has not met it yet, and this paragraph is the rule below applied to itself.
 
-**Define a coined term on its first use in the document, or link the document that owns it.** First use in the document,
-not in the repository: a reader arrives on one page, never on the set. One clause is usually the whole cost.
+**The first use of a coined term in a document is a link.** Not a definition written out again: writing one in every
+document that uses the word is the same clause in ten files, which is [the duplication smell](#doc-smells) with extra
+steps, and the copies are what go stale.
 
-- **Write:** "the marker, the comment every generated file carries so the build knows it may delete it"
-- **Not:** "a file without the marker is never pruned"
+- **Write:** "reporting [drift](../guide/glossary.md#drift) is the doctor's job"
+- **Not:** "reporting drift is the doctor's job", leaving a reader who has not met the word
 
-Assumed vocabulary is the most expensive prose here, because nothing about it looks wrong.
+**Two targets are correct, and the sentence decides.** The [glossary](../guide/glossary.md) row is the default: one
+target per term, so a section that moves is one row to fix rather than ten links. Link the owning section directly when
+the sentence is already reaching for it — "see [the drift check](../guide/doctor.md#what-it-checks)" is better as itself
+than as a detour through a row. What is never correct is the third option, which is leaving the word bare.
+
+**The document that owns a term does not link to the glossary for it.** It carries the definition, so pointing its own
+reader at a row that points back is a loop. Its first use links the section that defines it, or is that section.
+
+**Every term carries its own anchor** in the glossary, the term itself with any leading article dropped: `#drift`,
+`#invariant`, `#two-class-seam`. So the link is guessable, and `docs:check-anchors` fails the build on one that is not.
+A row is a table cell rather than a heading, so
+[the anchor is written as HTML](#an-anchor-on-something-that-is-not-a-heading-is-written-as-html).
+
+The row is one clause and a link onward to the section that owns the concept, so the reader gets the short answer in one
+hop and the whole argument in two. That section stays the authority; the row is a pointer that happens to be enough most
+of the time.
+
+**First use in the document, not in the repository.** A reader arrives on one page, never on the set.
+
+**First use, not every use.** `drift` appears twenty-five times and `acknowledgement` thirty-three; linking each one
+would put a link in most sentences of `doctor.md` and teach nobody anything after the first. A later mention in the same
+document is prose.
+
+**Only the coined sense.** Most occurrences of these words are ordinary English and must stay unlinked: `drift` is a
+doctor finding, but "the table drifts fastest" is a verb; `Deferred` is a support level, but "**Deferred deliberately**"
+is this set's own marker for an undecided item. Linking the ordinary sense is worse than linking nothing, because it
+makes the coined one invisible.
+
+**A term with no glossary row is a term nothing owns.** Writing the row is what tells you: if there is no section to
+point at, that section is the thing to write, and the row comes after it.
 
 ### Say what the document does not cover
 
@@ -345,6 +378,13 @@ This is already the strongest habit in the set, and the rule only makes it expec
 [support matrix](../guide/openapi-support.md) states what is parsed and not honored, and
 [`code-generation/index.md`](../guide/code-generation/index.md) carries both what the build deliberately does not emit
 and what was decided against. A guide with no such section is claiming it has no edges.
+
+**The section's title is not part of the rule.** "What this document does not cover" is the plain form and several
+guides use it, but
+[`Past the scope check, it is a Policy's job`](../guide/security.md#past-the-scope-check-it-is-a-policys-job) and
+[`Laravel constraints we do not fight`](../guide/openapi-support.md#laravel-constraints-we-do-not-fight) are the same
+rule kept in the assertive voice the rest of the set writes headings in. What the rule asks for is a section a reader
+can find, not a phrase to grep for.
 
 ### A diagram is built, not embedded
 
@@ -382,16 +422,16 @@ a build step to say what a clause already said.
 
 The types worth drawing, and the ones this package has no use for, stated so that nobody draws one to fill the table:
 
-| Diagram             | Shows                                            | Here                                                           |
-| ------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
-| Activity            | The steps of a workflow or an algorithm          | The reading pipeline, the order of a build                     |
-| Sequence            | The order of calls between objects or services   | A request reaching a generated controller and its custom child |
-| State machine       | An entity's lifecycle and the rules that move it | An operation across `beta`, `stable`, `deprecated` and sunset  |
-| Class               | The concepts and how they relate                 | The two-class seam, the `Contract\` types                      |
-| Component           | Module and package boundaries                    | What `Parsing\` may reach, and what `Routing\` may not         |
-| Use case            | Who interacts with the system, and to do what    | Nothing yet. Three Artisan commands are a list, not a diagram  |
-| Entity relationship | The tables of a relational database              | Nothing. This package has no database                          |
-| Deployment          | The machines and containers the code runs on     | Nothing. This is a library, and the host is the consumer's     |
+| Diagram             | Shows                                            | Here                                                                             |
+| ------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------- |
+| Activity            | The steps of a workflow or an algorithm          | The reading pipeline, the order of a build                                       |
+| Sequence            | The order of calls between objects or services   | A request reaching a generated controller and its custom child                   |
+| State machine       | An entity's lifecycle and the rules that move it | An operation across `beta`, `stable`, `deprecated` and sunset                    |
+| Class               | The concepts and how they relate                 | The [two-class seam](../guide/glossary.md#two-class-seam), the `Contract\` types |
+| Component           | Module and package boundaries                    | What `Parsing\` may reach, and what `Routing\` may not                           |
+| Use case            | Who interacts with the system, and to do what    | Nothing yet. Three Artisan commands are a list, not a diagram                    |
+| Entity relationship | The tables of a relational database              | Nothing. This package has no database                                            |
+| Deployment          | The machines and containers the code runs on     | Nothing. This is a library, and the host is the consumer's                       |
 
 ## Doc smells
 
@@ -495,6 +535,23 @@ just docs-check-anchors   # every link whose anchor no heading produces
 It runs in CI beside the build. It reads the emitted ids rather than re-deriving them from the Markdown, so there is no
 second implementation of the slug rule to disagree with the first.
 
+### An anchor on something that is not a heading is written as HTML
+
+A [glossary](../guide/glossary.md) row is a table cell, and a table cell has no slug. **Give it one with an empty anchor
+element in front of the term**, never with a `{#id}` attribute:
+
+- **Write:** `| <a id="drift"></a>[Drift](./doctor.md#what-it-checks) | … |`
+- **Not:** `| [Drift](./doctor.md#what-it-checks){#drift} | … |`
+
+**The reason is the same one the rule above serves: one form, and it has to work on both renderers.** `{#id}` is
+`markdown-it-attrs`, which VitePress enables and GitHub does not, so on GitHub the braces print as text and no `id` is
+produced — every link into the page lands at the top of it, silently, and `docs:check-anchors` cannot see it because it
+reads the built site. The empty anchor survives both: GitHub keeps it, prefixed to `user-content-drift`, which its own
+scroll script resolves from `#drift`, and VitePress passes the raw HTML through untouched.
+
+It is more to type than the attribute, and it is the only part of this that is not free. That is the trade for a link
+that resolves for the half of this set's readers who are on GitHub.
+
 ## Document inventory
 
 Each document declares its own `title`, `audience`, `covers`, `read_before`, and `tags` in its
@@ -512,6 +569,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 - [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
 - [`drivers.md`](../guide/drivers.md)
+- [`glossary.md`](../guide/glossary.md)
 - [`lifecycle.md`](../guide/lifecycle.md)
 - [`openapi-support.md`](../guide/openapi-support.md)
 - [`pagination.md`](../guide/pagination.md)

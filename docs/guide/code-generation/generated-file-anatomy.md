@@ -40,12 +40,12 @@ reader, and the naming rules that decide what the file is called in the first pl
 in the specification.
 
 **And the file it points into is named from the project root, never absolutely.** Whether a project commits its
-generated tree is [its own choice](./index.md#which-generated-code-is-committed), so an absolute path is a defect
-waiting for the first project that does: it differs between every developer and every CI runner, which is a diff nobody
-made, and it publishes one machine's directory layout — a username included — into a repository. The root is the nearest
-ancestor holding a `composer.json`, which for an ordinary application is the same directory as `base_path()` and stays
-correct where the two differ. A specification genuinely outside any project keeps its absolute path, because there is no
-shorter honest name for it.
+[generated tree](../glossary.md#generated-tree) is [its own choice](./index.md#which-generated-code-is-committed), so an
+absolute path is a defect waiting for the first project that does: it differs between every developer and every CI
+runner, which is a diff nobody made, and it publishes one machine's directory layout — a username included — into a
+repository. The root is the nearest ancestor holding a `composer.json`, which for an ordinary application is the same
+directory as `base_path()` and stays correct where the two differ. A specification genuinely outside any project keeps
+its absolute path, because there is no shorter honest name for it.
 
 It is the same idea a bundler's source map serves, and the same need: generated code is read by people who did not write
 it, and the first question any of them has is _where did this come from?_ A developer debugging, a reviewer judging a

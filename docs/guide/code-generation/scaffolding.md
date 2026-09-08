@@ -100,8 +100,9 @@ default with no subclass at all; [`controllers.md`](../controllers.md) owns whic
 matter of taste:
 
 - **`.gitignore` works by directory, and we made `.gitignore`
-  [the mechanism](./index.md#which-generated-code-is-committed).** Put your classes inside the generated tree and a
-  consumer who ignores that tree loses their own work. That single fact rules the option out.
+  [the mechanism](./index.md#which-generated-code-is-committed).** Put your classes inside the
+  [generated tree](../glossary.md#generated-tree) and a consumer who ignores that tree loses their own work. That single
+  fact rules the option out.
 - **It is an ordinary Laravel controller.** Once the file exists it has nothing to do with this package except that it
   extends a generated class. Your conventions, your IDE, your tests and your `make:` habits all already point at that
   directory. The generated parent is the unusual object here; the concrete class is not.

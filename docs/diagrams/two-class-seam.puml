@@ -1,0 +1,100 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+'
+' One neutral grey on a transparent background, so a single SVG stays legible on
+' the light theme and the dark one. Nothing here picks a palette, which is what
+' lets the site own its own colors.
+<style>
+document {
+  BackgroundColor transparent
+}
+classDiagram {
+  BackgroundColor transparent
+  LineColor #888888
+  FontColor #888888
+  FontName Helvetica
+  FontSize 13
+
+  class {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+
+    header {
+      BackgroundColor transparent
+      FontColor #888888
+    }
+  }
+  package {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+    FontStyle italic
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+  arrow {
+    LineColor #888888
+    FontColor #888888
+  }
+}
+</style>
+skinparam shadowing false
+
+' The spot circle on a class and the coloured dot on a member are drawn from
+' PlantUML's own palette, hardcoded, and one of them paints its letter black:
+' invisible on the dark theme, and off the single grey this set draws in. Both
+' are turned off rather than restyled.
+hide circle
+skinparam classAttributeIconSize 0
+hide empty members
+
+' A period in a package name is a namespace separator to PlantUML, which splits
+' "Generated. Rewritten..." into two nested boxes. Turned off so a label is a label.
+set separator none
+
+package "Shipped by the package" {
+  abstract class SpecController {
+    +routeAction()
+    +middleware()
+  }
+  interface HasModel {
+    +getModelClass()
+    +getQuery()
+  }
+  interface ShowsResource
+}
+
+package "Generated, rewritten on every build" {
+  class "Generated\\Controllers\\UserController" as Parent {
+    +routeAction(User): UserDto
+    +getModelClass(): string
+  }
+}
+
+package "Yours, created once and never touched again" {
+  class "Controllers\\UserController" as Child {
+    +routeAction(User): UserDto
+  }
+}
+
+SpecController <|-- Parent
+HasModel <|.. Parent
+ShowsResource <|.. Parent
+Parent <|-- Child
+
+note right of Parent
+  final unless the operation
+  declares x-controller
+end note
+
+note bottom of Child
+  routes.php points here when the file
+  exists, and at the generated parent
+  when it does not. Decided at build
+  time, so route:cache keeps working.
+end note
+@enduml

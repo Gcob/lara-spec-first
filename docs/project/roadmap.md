@@ -66,7 +66,7 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
       [`ConfigurationMerger`](https://github.com/Gcob/lara-spec-first/blob/main/src/Configuration/ConfigurationMerger.php)
       merging the package defaults deeply beneath whatever an application published, so a nested key added in a later
       release does not arrive missing.
-- [x] **The remote-reference allowlist, fetching and vendoring included.**
+- [x] **The remote-reference [allowlist](../guide/glossary.md#allowlist), fetching and vendoring included.**
       [`remote_references.allowed_hosts`](../guide/remote-references.md#the-setting) is empty by default and every
       remote reference is refused before the parser can fetch it. Naming a host lets `spec:build --update-refs` fetch it
       once and commit the copy under `vendor_path`; every build after that resolves the reference against the committed
@@ -77,16 +77,18 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
 - [x] **`spec:build`.** Reads the configured specification, plans every file in memory, then writes: the routes and one
       controller per operation, each explaining its own provenance and answering 501 — `final` unless `x-controller`
       names a class of the project's own, in which case the route reaches that class instead once it exists. Idempotent,
-      confined to the generated tree, and it prunes what the contract no longer describes.
+      confined to the [generated tree](../guide/glossary.md#generated-tree), and it prunes what the contract no longer
+      describes.
 - [x] **`spec:make`.** The only command that creates a file a project will own: one operation, a whole `--tag`, or
       `--all`, with the bulk forms listing what they would create and asking first. It offers to write `x-controller`
       into the specification when an operation declares none — the value prefilled and editable, the edit verified on a
       copy — never overwrites a file, and runs the build afterwards so the class it wrote has a parent to extend.
       `--yes` takes every proposal for a developer who would rather not be asked.
-- [x] **`spec:doctor`, in its Phase 1 form.** Read-only, always: Routing outcome and Drift only ever plan against
-      `BuildPlanner`, the same class `spec:build` calls, and never reach `GeneratedTree::write()`. Reports the outcome
-      as well as the problems — the resolved routing table prints even on a clean run — and never mixes a document fault
-      with a package limit in one exit code. See [the doctor](../guide/doctor.md) and its item below.
+- [x] **`spec:doctor`, in its Phase 1 form.** Read-only, always: Routing outcome and [Drift](../guide/glossary.md#drift)
+      only ever plan against `BuildPlanner`, the same class `spec:build` calls, and never reach
+      `GeneratedTree::write()`. Reports the outcome as well as the problems — the resolved routing table prints even on
+      a clean run — and never mixes a [document fault](../guide/glossary.md#document-fault) with a package limit in one
+      exit code. See [the doctor](../guide/doctor.md) and its item below.
 - [x] **The architecture assertions.** The parser is contained to `Parsing\`, `Contract\` is forbidden from knowing
       anything about the layer that produced it, `Routing\` may reach neither `Parsing\` nor the YAML decoder, and
       `Doctor\` may not write a file at all — the read-only guarantee the doctor's own docblock claims, asserted rather
@@ -96,9 +98,9 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
 ### What does not exist yet
 
 What is missing is no longer a namespace but the second half of several features: `security` is reported and not
-enforced, breaking-change enforcement has no baseline to compare against, and there is no response DTO or generated
-validation. Four of the nine blocks in `config/lara-spec-first.php` are marked `TODO` in the file itself and are inert,
-which the file says out loud rather than leaving to be discovered, and which
+enforced, breaking-change enforcement has no [baseline](../guide/glossary.md#baseline) to compare against, and there is
+no response DTO or generated validation. Four of the nine blocks in `config/lara-spec-first.php` are marked `TODO` in
+the file itself and are inert, which the file says out loud rather than leaving to be discovered, and which
 [the first tag removes](#the-first-tag-0x-once-phase-1-runs).
 
 ## Phase 1: The Foundation
@@ -131,12 +133,13 @@ the code, and a gap in it is loud.
       clause precisely so that it can be tested as one, which it is. It also refuses what it cannot serve rather than
       emitting it: a path parameter Laravel's router would never match, one past the compiler's 32-character ceiling, an
       `operationId` PHP cannot carry, and two operations claiming one class name. `lara-spec-first.spec.path` names the
-      document, and stale generated files are pruned by the marker they carry, so nothing a human wrote inside the tree
-      is ever removed.
-- [x] **The two-class seam.** One controller per operation carrying one `routeAction`, over the `SpecController` base
-      with its `middleware()` method, asserted on the classes a real build produces rather than on the text that emitted
-      them. And [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself: read
-      into `Contract\Operation` and refused there when it is not a name PHP could carry, naming the generated parent and
+      document, and stale generated files are pruned by [the marker](../guide/glossary.md#marker) they carry, so nothing
+      a human wrote inside the tree is ever removed.
+- [x] **[The two-class seam](../guide/glossary.md#two-class-seam).** One controller per operation carrying one
+      `routeAction`, over the `SpecController` base with its `middleware()` method, asserted on the classes a real build
+      produces rather than on the text that emitted them. And
+      [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself: read into
+      `Contract\Operation` and refused there when it is not a name PHP could carry, naming the generated parent and
       dropping its `final`, with the route pointing at the child once that class has a file the autoloader can find and
       at the parent until then. Two values reducing to one generated parent is a build error naming both, and so is one
       naming a class inside the generated tree, which would extend itself. It also settled a signature: `routeAction`
@@ -259,23 +262,23 @@ the code, and a gap in it is loud.
       existed. The two that do not — baseline and drivers — still print, each with a `[not checked]` line naming what it
       does not diagnose, so a zero exit is never read as covering them; security and lifecycle came off that list in the
       change that built them, which is the only way an entry there is meant to be removed. Routing outcome includes
-      shadowing, where an earlier templated path would match every request a later one was meant to answer, literal or
-      templated — a `GET /{owner}/{repo}` written first swallows every two-segment GET after it, which is the shape real
-      specifications make this mistake in; `GeneratedTree` gained a read-only `diff()` beside `write()` so Drift
-      compares against the exact same logic a build would apply rather than a second implementation of it. The two kinds
-      of finding stay distinct in the exit code — `0` clean, `1` a document fault, `2` a package limit with no document
-      fault alongside it — with `Deferred` excluded from both, however many of them a real document carries: a construct
-      the roadmap has not built yet must never fail a pipeline over it. `--json` ships alongside the text report in this
-      same release rather than after it. The lifecycle rules and the `security` finding are their own items below, not
-      this one.
+      [shadowing](../guide/glossary.md#shadowing), where an earlier templated path would match every request a later one
+      was meant to answer, literal or templated — a `GET /{owner}/{repo}` written first swallows every two-segment GET
+      after it, which is the shape real specifications make this mistake in; `GeneratedTree` gained a read-only `diff()`
+      beside `write()` so Drift compares against the exact same logic a build would apply rather than a second
+      implementation of it. The two kinds of finding stay distinct in the exit code — `0` clean, `1` a document fault,
+      `2` a package limit with no document fault alongside it — with [`Deferred`](../guide/glossary.md#deferred)
+      excluded from both, however many of them a real document carries: a construct the roadmap has not built yet must
+      never fail a pipeline over it. `--json` ships alongside the text report in this same release rather than after it.
+      The lifecycle rules and the `security` finding are their own items below, not this one.
 - [x] **The lifecycle rules in the doctor.** `deprecated: true` requiring `x-sunset`, a sunset in the past, a sunset
-      nothing can read, the `beta` listing, and the protection report counting how many _public_ operations are actually
-      `stable`. An unrecognized `x-lifecycle` value was already refused where the document is read, so it stays a
-      Document validity fault rather than being reported a second time here. A sunset merely _approaching_ is reported
-      beside the protection report rather than as a finding, with a configurable horizon
-      (`lifecycle.sunset_horizon_days`, 90 days by default): every finding that is not `Deferred` gates the exit code,
-      and a date crossing a horizon must never fail a pipeline on a day nobody committed anything. See
-      [the doctor rules](../guide/lifecycle.md#the-doctor-rules-that-follow).
+      nothing can read, the `beta` listing, and the [protection report](../guide/glossary.md#protection-report) counting
+      how many _public_ operations are actually `stable`. An unrecognized `x-lifecycle` value was already refused where
+      the document is read, so it stays a Document validity fault rather than being reported a second time here. A
+      sunset merely _approaching_ is reported beside the protection report rather than as a finding, with a configurable
+      [horizon](../guide/glossary.md#sunset-horizon) (`lifecycle.sunset_horizon_days`, 90 days by default): every
+      finding that is not `Deferred` gates the exit code, and a date crossing a horizon must never fail a pipeline on a
+      day nobody committed anything. See [the doctor rules](../guide/lifecycle.md#the-doctor-rules-that-follow).
 - [x] **`security` is reported, not enforced, and the report says so in those words.** Enforcement is
       [Phase 2](#authorization-the-contract-can-express), and a phase that registers routes without it must not let a
       consumer mistake a documented promise for a kept one. So Phase 1 owes an operation whose contract declares
@@ -283,11 +286,11 @@ the code, and a gap in it is loud.
       [doctor.md already reserves for security](../guide/doctor.md#acknowledging-changes-behavior-not-just-noise): every
       affected operation listed individually, on every run, never folded into a count. That is the existing rule
       applied, not a new category. Whether a finding can also be made impossible to acknowledge is a question about the
-      acknowledgement mechanism, so it belongs in `doctor.md` if it is ever wanted, and this document does not assume
-      it. Shipped as its own section of the report, at `Partial` rather than `Deferred`, so it gates: a contract that
-      declares `security` exits `2` until enforcement lands, which is the point rather than a side effect. The root
-      `security` block stays [Open](../guide/openapi-support.md#the-support-matrix) and is named in one line rather than
-      claimed to be understood.
+      [acknowledgement](../guide/glossary.md#acknowledgement) mechanism, so it belongs in `doctor.md` if it is ever
+      wanted, and this document does not assume it. Shipped as its own section of the report, at `Partial` rather than
+      `Deferred`, so it gates: a contract that declares `security` exits `2` until enforcement lands, which is the point
+      rather than a side effect. The root `security` block stays [Open](../guide/openapi-support.md#the-support-matrix)
+      and is named in one line rather than claimed to be understood.
 
 ## Phase 2: The generated pipeline, mocks and the driver features
 
@@ -322,7 +325,7 @@ and the mock server).
       enforces them; this is the third thing they buy, and it needs a response path to attach to, which is why it lands
       here rather than in Phase 1. Declared once in the spec, enforced in CI, advertised over HTTP, with nobody writing
       that code.
-- [ ] **The sanitized public copy of the specification.** Off unless a project
+- [ ] **The sanitized [public copy](../guide/glossary.md#public-copy) of the specification.** Off unless a project
       [names a disk](../guide/code-generation/publishing.md#where-the-public-copy-goes), so Phase 1 publishes nothing by
       default and leaks nothing. It lands here because `x-model` is what makes the private document genuinely sensitive,
       and because the work is larger than it looks: excluding `x-audience: internal` operations outright, then pruning
@@ -351,10 +354,10 @@ remove redundancy: nothing breaks without them.
 - [ ] **The driver mechanism itself,** and above all its registration API, which is public API surface under
       [rule 4](../guide/openapi-support.md#the-four-rules) and has to be decided once for every driver-based feature at
       once. Each feature publishes an interface for the contract and an abstract class for the boring half.
-- [ ] **Pagination.** The `laravel` built-in driver, the envelope DTO per paginated operation beside its item and
-      metadata DTOs, the `getPaginator()` and `respondWithCollection()` seams (only the first of which depends on
-      `x-model`), and the doctor finding for a paginated response whose operation declares no pagination parameters. See
-      [pagination](../guide/pagination.md).
+- [ ] **Pagination.** The `laravel` built-in driver, the [envelope](../guide/glossary.md#envelope) DTO per paginated
+      operation beside its item and metadata DTOs, the `getPaginator()` and `respondWithCollection()` seams (only the
+      first of which depends on `x-model`), and the doctor finding for a paginated response whose operation declares no
+      pagination parameters. See [pagination](../guide/pagination.md).
 - [ ] **Rate limiting.** The `headers` and `extension` built-in drivers, windows first-class from the first release
       because a dimension added later costs a major, the normalized `reset` spelling, and the doctor finding for 429
       declarations that are not structurally identical across operations. One thing has to be decided before the adapter

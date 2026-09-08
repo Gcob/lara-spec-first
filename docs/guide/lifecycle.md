@@ -87,6 +87,11 @@ case: a promise being honored right up to its stated removal date is exactly wha
 `x-lifecycle` is then a binary, and what it adds to OpenAPI is one word the specification has no way to express: whether
 an operation is promised at all.
 
+![Two independent tracks: how strong the promise is, and whether the operation is going away](../diagrams/operation-lifecycle.svg)
+
+The two tracks are drawn side by side because that is the shape the prose above argues for and the shape a single chain
+of states would get wrong.
+
 ## The doctor rules that follow
 
 | Rule                                                               | Why                                                                                                                                                                                                                                                                                                                                                                              |
@@ -160,9 +165,10 @@ smuggled into the first release.
 
 **3. The escape hatch already exists in the document: `info.version`.** A build that only says _you broke a stable
 operation_ is an obstacle. A build that says **this change requires `info.version` to go from `2.4.1` to `3.0.0`, and
-will pass once it does** has turned enforcement into instruction. It needs no config, no flag and no acknowledgement
-entry — the contract carries its own version, and deliberately breaking one becomes indistinguishable from publishing a
-major, which is exactly what it should be. Breaking on purpose stays possible; breaking by accident stops being.
+will pass once it does** has turned enforcement into instruction. It needs no config, no flag and no
+[acknowledgement](./glossary.md#acknowledgement) entry — the contract carries its own version, and deliberately breaking
+one becomes indistinguishable from publishing a major, which is exactly what it should be. Breaking on purpose stays
+possible; breaking by accident stops being.
 
 **4. The doctor must report how much of the API is actually protected.** A specification imported from elsewhere has no
 `x-lifecycle` anywhere, so every public operation defaults to `beta` and the strongest rule in this document is silently

@@ -237,6 +237,19 @@ a rule for which window wins — or several middleware instances, one per window
 [window dimension had to exist first](#windows-are-first-class-from-the-start): it is load-bearing for whichever of
 these two ships, not a refinement on top of them.
 
+## What this document does not cover
+
+Three boundaries, because a document about rate limits invites all three questions:
+
+- **This package does not enforce a limit.** It reads what the contract declares about one. Whether that declaration
+  ever reaches Laravel's `throttle` middleware is
+  [the open question above](#open-what-the-adapters-answer-actually-powers), and until it is settled, enforcement is the
+  application's.
+- **Nothing here decides who the caller is.** A limit is per-something, and the package has no opinion on what that
+  something is: authentication and identity are [`security.md`](./security.md)'s subject.
+- **The mechanism the driver plugs into** belongs to [`drivers.md`](./drivers.md). This page owns the two built-in
+  drivers and what a limit looks like in a document, not registration or the mapping split.
+
 ## Open questions
 
 - The config key names — `rate_limiting`, `driver`, `mapping` — are working names, not decided. Public API surface under

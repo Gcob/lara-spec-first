@@ -80,8 +80,9 @@ The reason is that it is the closest thing this repository has to end-to-end. A 
 feature test proves the package behaves inside a booted framework; the Workbench is the only place where a contract
 becomes a route that a browser actually reaches, through the same Composer autoloader, the same service provider
 discovery and the same request lifecycle a consumer will have. **Several defects in this package have only ever been
-visible there** — a docblock a consumer's formatter would rewrite, a generated tree landing where nothing is committed,
-a path that resolves differently than it reads.
+visible there** — a docblock a consumer's formatter would rewrite, a
+[generated tree](./docs/guide/glossary.md#generated-tree) landing where nothing is committed, a path that resolves
+differently than it reads.
 
 Concretely, for a change that adds or alters behavior a consumer can observe:
 
@@ -196,6 +197,9 @@ Two documents govern most of what you will need. Read the one that owns your sub
   what it does not, and why. Read it before writing anything that reads a spec.
 - [`docs/guide/code-generation/index.md`](./docs/guide/code-generation/index.md) — the build, and the rule that
   generated code and human code never share a file. Read it before writing anything that emits PHP.
+- [`docs/guide/glossary.md`](./docs/guide/glossary.md) — every term this set coined, in one clause each, with a link to
+  the section that owns it. Read a row when a word means nothing to you; read the section it points at before you rely
+  on the word.
 
 Eight more documents own one subject each, and each says in its `read_before` when to open it:
 [`docs/guide/doctor.md`](./docs/guide/doctor.md) (what the package reports),

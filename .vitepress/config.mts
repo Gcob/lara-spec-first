@@ -51,6 +51,7 @@ const SECTIONS: Section[] = [
             'rate-limiting',
             'pagination',
             'remote-references',
+            'glossary',
         ],
     },
     {
