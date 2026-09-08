@@ -184,6 +184,12 @@ than two. Both are public API surface under [rule 4](./openapi-support.md#the-fo
 way the root specification is — every `$ref` it names is checked against the allowlist and vendored in turn, so a schema
 registry that splits its documents across several files works exactly as it would if none of them were remote.
 
+![One reference, its two refusals, and the two ways the walk can end](../diagrams/update-refs-walk.svg)
+
+One reference, and the recursion is the diagram calling itself. The two endings are the part worth the second look: the
+same walk either points the parent at a local path, or leaves upstream's bytes on disk and takes the parent's reference
+away.
+
 The allowlist applies again at every hop: a vendored document naming a host nobody allowed refuses exactly like the root
 document would, and a chain of references that closes back on a URL already being fetched raises rather than recursing
 forever. Nothing about depth is special-cased — the same check, run again, is what "at every hop" means.
