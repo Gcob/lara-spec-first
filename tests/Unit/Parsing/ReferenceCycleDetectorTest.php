@@ -85,24 +85,102 @@ it('accepts the documents that carry no cycle', function (string $name): void {
 // Schema will carry one in an example, and refusing to load such a document
 // would be the worst failure this class can produce — a valid contract turned
 // away, where a false negative would merely leave the parser to complain.
-it('does not read a literal $ref inside a value as a reference', function (): void {
-    expect((new ReferenceCycleDetector)->findCycles(specFixture('ref-inside-example.yaml')))->toBe([]);
-});
-
-it('treats every data-carrying key as opaque', function (string $key): void {
+//
+// Written as a literal pointing at the position it occupies itself: walked, it
+// would close a cycle on the spot, so the assertion cannot pass by accident.
+it('does not read a literal $ref inside a value as a reference', function (string $key): void {
     $document = ['components' => ['schemas' => [
-        'A' => ['type' => 'object', $key => ['$ref' => '#/components/schemas/B']],
-        'B' => ['$ref' => '#/components/schemas/A/'.$key],
+        'A' => ['type' => 'object', $key => ['$ref' => '#/components/schemas/A/'.$key]],
     ]]];
 
     expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);
 })->with(['example', 'default', 'enum', 'const']);
 
+// --- The other half of that boundary: a literal stays a literal only until a
+// Reference Object aims at the position holding it. The parser resolves that
+// pointer against the tree it has already built, finds the `$ref` sitting in
+// the data and follows it, which is how the same memory exhaustion a pure cycle
+// causes is reached from a shape no rule about key names can see. ---
+
+// Three of the four keys are load-bearing and one is not: `example`, `default`
+// and `enum` each exhaust the parser's memory on this document with the guard
+// bypassed, and `const` parses fine, because the parser does not model the
+// keyword. It is refused all the same. The rule is about what a pointer names,
+// not about which keywords the current parser happens to survive — see the
+// narrow-limits list in docs/guide/openapi-support.md.
+it('follows a reference whose pointer lands inside a data-carrying key', function (string $key): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['type' => 'object', $key => ['$ref' => '#/components/schemas/B']],
+        'B' => ['$ref' => '#/components/schemas/A/'.$key],
+    ]]];
+
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
+})->with(['example', 'default', 'enum', 'const']);
+
+// The remedy has to fit the shape, and for this one the pure-cycle advice does
+// not: `#/components/schemas/A/example` can never be made to point at a schema,
+// because it is not a reference. What has to change is the reference aiming at
+// it, so the fault names the position rather than leaving it to be picked out
+// of the chain.
+it('names the position inside data that a chain closes through', function (): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['type' => 'object', 'example' => ['$ref' => '#/components/schemas/B']],
+        'B' => ['$ref' => '#/components/schemas/A/example'],
+    ]]];
+
+    $message = (new ReferenceCycleDetector)->findCycles($document)[0]->getMessage();
+
+    expect($message)->toContain('closes through data rather than through references')
+        ->and($message)->toContain('#/components/schemas/A/example names a position holding a value')
+        ->and($message)->not->toContain('must point at a schema rather than at another reference');
+});
+
+// The pure cycle keeps the advice that does fit it, so the two shapes cannot
+// quietly collapse into one message.
+it('keeps the pure-cycle remedy for a chain that closes through references alone', function (): void {
+    $message = (new ReferenceCycleDetector)->findCycles(specFixture('cycle-pointer.yaml'))[0]->getMessage();
+
+    expect($message)->toContain('must point at a schema rather than at another reference')
+        ->and($message)->not->toContain('closes through data');
+});
+
+it('catches the same shape in each of the three fixtures that spell it', function (string $fixture): void {
+    expect((new ReferenceCycleDetector)->findCycles(specFixture($fixture)))->toHaveCount(1);
+})->with([
+    'a pointer into a schema\'s example' => ['ref-inside-example.yaml'],
+    'a pointer into an Example Object\'s value' => ['example-object-value.yaml'],
+    'a pointer into a JSON Schema examples list' => ['schema-examples-list.yaml'],
+]);
+
+// Following a target into data reports a cycle, never a chain: data a reference
+// legitimately points through still has to be allowed to reach a schema.
+it('accepts a reference that lands inside data and does reach content', function (): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['type' => 'object', 'example' => ['$ref' => '#/components/schemas/C']],
+        'B' => ['$ref' => '#/components/schemas/A/example'],
+        'C' => ['type' => 'string'],
+    ]]];
+
+    expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);
+});
+
+// A target inside data may itself point into more data, so the walk repeats
+// rather than resolving one step and stopping.
+it('follows a chain that crosses data more than once', function (): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['type' => 'object', 'example' => ['$ref' => '#/components/schemas/B/example']],
+        'B' => ['type' => 'object', 'example' => ['$ref' => '#/components/schemas/A/example']],
+        'C' => ['$ref' => '#/components/schemas/A/example'],
+    ]]];
+
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
+});
+
 // `examples` is two different things wearing one name, and only its shape tells
 // them apart. Both directions matter, so both are asserted: reading the OpenAPI
 // map as data would hide a cycle on exactly the shape the parser dies on.
 it('ignores a $ref inside the JSON Schema examples keyword, which is a list', function (): void {
-    expect((new ReferenceCycleDetector)->findCycles(specFixture('schema-examples-list.yaml')))->toBe([]);
+    expect((new ReferenceCycleDetector)->findCycles(specFixture('examples-list-is-data.yaml')))->toBe([]);
 });
 
 it('still catches a cycle through OpenAPI Example Objects, which are a map', function (): void {
@@ -124,7 +202,11 @@ it('does not catch a reference aimed at its own ancestor', function (): void {
 // join the opaque list, since `properties: {value: {...}}` is an ordinary
 // schema; only its position inside an Example Object makes it data.
 it('does not follow the value of an Example Object', function (): void {
-    expect((new ReferenceCycleDetector)->findCycles(specFixture('example-object-value.yaml')))->toBe([]);
+    $document = ['components' => ['examples' => [
+        'A' => ['value' => ['$ref' => '#/components/examples/A/value']],
+    ]]];
+
+    expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);
 });
 
 it('still follows an Example Object that is itself a reference', function (): void {
@@ -137,13 +219,26 @@ it('still follows an Example Object that is itself a reference', function (): vo
 });
 
 // The opaque list reasons about key names, never about positions, so a schema
-// property that happens to be named like one of them is not followed. A false
-// negative, which is the harmless direction, and stated here because the
-// documented limits claim to be stated in tests rather than in comments.
-it('does not follow a schema property named like a data-carrying key', function (string $name): void {
+// property genuinely named like one of them is not walked into. Aiming a
+// reference at it is caught all the same, because that no longer depends on the
+// name the position was reached through.
+it('still catches a reference aimed at a schema property named like a data-carrying key', function (string $name): void {
     $document = ['components' => ['schemas' => [
         'A' => ['type' => 'object', 'properties' => [$name => ['$ref' => '#/components/schemas/B']]],
         'B' => ['$ref' => '#/components/schemas/A/properties/'.$name],
+    ]]];
+
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
+})->with(['default', 'example', 'enum', 'const']);
+
+// What the name-based rule still misses, and it is worth stating rather than
+// implying: a cycle closing entirely inside a schema property named like a
+// data-carrying key, with nothing pointing at it from outside. Nothing collects
+// it and no target reaches it. A false negative, which leaves the parser to
+// fail rather than refusing a document that was fine.
+it('does not catch a cycle closing only inside a schema property named like a data-carrying key', function (string $name): void {
+    $document = ['components' => ['schemas' => [
+        'A' => ['type' => 'object', 'properties' => [$name => ['$ref' => '#/components/schemas/A/properties/'.$name]]],
     ]]];
 
     expect((new ReferenceCycleDetector)->findCycles($document))->toBe([]);

@@ -27,6 +27,12 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
  * raising, so it has to be caught here, on the decoded array, before the parser
  * is handed anything.
  *
+ * A chain closes through *data* as readily as through components, which is the
+ * one thing the distinction above does not say on its own: a `$ref` written
+ * inside an `example` is a literal, right up until a Reference Object aims at
+ * the position holding it, at which point the parser resolves it like any
+ * other and the chain is real. See followTargetsIntoData().
+ *
  * Stateless on purpose: it is injected into readonly collaborators and reused
  * across documents, so nothing about one document may survive into the next.
  *
@@ -49,6 +55,14 @@ final readonly class ReferenceCycleDetector
      *
      * `examples` is deliberately absent: it is two different things wearing one
      * name, and only its shape tells them apart. See isOpaque().
+     *
+     * **This list says what is never walked into looking for references. It does
+     * not say what happens when a reference lands inside one.** The two are
+     * different questions, and only the first one is answered by a key's name:
+     * a `$ref` sitting in an `example` is a literal right up until a Reference
+     * Object points at the position it occupies, at which moment the parser
+     * resolves that position and reads the literal as a reference. See
+     * followTargetsIntoData().
      */
     private const OPAQUE_KEYS = ['example', 'default', 'enum', 'const'];
 
@@ -68,7 +82,15 @@ final readonly class ReferenceCycleDetector
      */
     public function findCycles(array $document): array
     {
-        $references = $this->collect($document, '');
+        $collected = $this->collect($document, '');
+        $references = self::followTargetsIntoData($collected, $document);
+
+        // Every position the walk above had to reach *through* data rather than
+        // through a Reference Object — the difference between the two graphs,
+        // and the only thing a reader needs to be told apart from the chain
+        // itself. See CyclicReferenceException::chain().
+        $inData = array_keys(array_diff_key($references, $collected));
+
         $visited = [];
         $faults = [];
 
@@ -77,7 +99,7 @@ final readonly class ReferenceCycleDetector
                 continue;
             }
 
-            $fault = $this->follow($start, $references, $visited);
+            $fault = $this->follow($start, $references, $visited, $inData);
 
             if ($fault !== null) {
                 $faults[] = $fault;
@@ -165,6 +187,100 @@ final readonly class ReferenceCycleDetector
     }
 
     /**
+     * Extend the graph with every position inside data that a real reference
+     * actually points at.
+     *
+     * The gap this closes, and why it is not a hole in the opaque list above:
+     * `#/components/schemas/A/example` is a legal pointer, `example` is
+     * legitimately data, and collect() is right never to walk into it. But a
+     * Reference Object aiming *at* that position is specification, and the
+     * parser resolves it against the object tree it has already built — where
+     * it finds the `$ref` sitting in that data and follows it like any other.
+     * Nothing in the chain collect() walks is `$ref`-shaped, so the chain looks
+     * finite to us and is not: it is the same memory exhaustion a pure cycle
+     * causes, reached from a shape a name-based rule cannot see.
+     *
+     * **A literal stays a literal until something points at it.** The edge is
+     * added for the target of a reference and never for the contents of data at
+     * large, so a document that merely carries a `$ref` inside an `example` —
+     * the valid contract the opaque list exists to protect — is untouched. What
+     * is refused is only ever a document that aims a reference at a position
+     * holding data, which is a pointer at something that is not a Schema, a
+     * Response or an Example Object in the first place.
+     *
+     * Iterative rather than recursive, because a target inside data may itself
+     * point into more data. It terminates because every pass either adds a
+     * pointer the document actually resolves or drops it, and a document has
+     * finitely many positions.
+     *
+     * @param  array<string, string>  $references  pointer of the reference => pointer it targets
+     * @param  array<string, mixed>  $document
+     * @return array<string, string>
+     */
+    private static function followTargetsIntoData(array $references, array $document): array
+    {
+        $pending = array_values($references);
+
+        while ($pending !== []) {
+            $target = array_pop($pending);
+
+            // Already a Reference Object in its own right: collect() has the
+            // edge, and re-deriving it here would only invite disagreement.
+            if (isset($references[$target])) {
+                continue;
+            }
+
+            $node = self::nodeAt($target, $document);
+
+            if ($node === null || ! isset($node['$ref']) || ! is_string($node['$ref'])) {
+                continue;
+            }
+
+            // Skipped for the same reason collect() skips them: resolving a
+            // reference into another file or over the network needs the
+            // vendored copies a later step loads.
+            if (! str_starts_with($node['$ref'], '#/')) {
+                continue;
+            }
+
+            $references[$target] = $node['$ref'];
+            $pending[] = $node['$ref'];
+        }
+
+        return $references;
+    }
+
+    /**
+     * The decoded node one pointer names, or null when the document has nothing
+     * there or has something that is not an object.
+     *
+     * Deliberately the plainest possible walk: it resolves a pointer against the
+     * *decoded array*, which is all this guard ever sees, and it resolves
+     * nothing else on the way — a `$ref` met mid-path is not followed, because
+     * a pointer whose own path runs through a reference is a shape the parser
+     * would have to answer for, not this guard.
+     *
+     * @param  array<string, mixed>  $document
+     * @return array<array-key, mixed>|null
+     */
+    private static function nodeAt(string $pointer, array $document): ?array
+    {
+        $node = $document;
+
+        foreach (array_slice(explode('/', $pointer), 1) as $segment) {
+            $key = self::unescape($segment);
+
+            if (! is_array($node) || ! array_key_exists($key, $node)) {
+                return null;
+            }
+
+            $node = $node[$key];
+        }
+
+        return is_array($node) ? $node : null;
+    }
+
+    /**
      * Whether a key's contents are data rather than specification.
      *
      * `examples` is the whole reason this is a method and not a lookup. The
@@ -208,8 +324,11 @@ final readonly class ReferenceCycleDetector
      *                                        so a later start sharing part of this
      *                                        chain neither re-walks it nor reports
      *                                        the same cycle twice.
+     * @param  list<string>  $inData  every pointer in the graph that names a position
+     *                                holding a value; passed through so the fault can
+     *                                say which of them this chain runs through
      */
-    private function follow(string $start, array $references, array &$visited): ?CyclicReferenceException
+    private function follow(string $start, array $references, array &$visited, array $inData): ?CyclicReferenceException
     {
         $chain = [$start];
         $seen = [$start => true];
@@ -222,7 +341,10 @@ final readonly class ReferenceCycleDetector
             if (isset($seen[$target])) {
                 self::markVisited($chain, $visited);
 
-                return CyclicReferenceException::chain($chain);
+                return CyclicReferenceException::chain(
+                    $chain,
+                    array_values(array_unique(array_intersect($chain, $inData))),
+                );
             }
 
             $seen[$target] = true;
@@ -252,5 +374,19 @@ final readonly class ReferenceCycleDetector
     private static function escape(string $segment): string
     {
         return DocumentPointer::escape($segment);
+    }
+
+    /**
+     * The same round trip, read back, for the one place this class walks a
+     * pointer into the document instead of writing one out.
+     *
+     * Beside its counterpart rather than called through `DocumentPointer`
+     * directly at the one call site: the pair is what makes it visible that
+     * both directions of the spelling come from the same place, which is the
+     * whole point of that class owning it.
+     */
+    private static function unescape(string $segment): string
+    {
+        return DocumentPointer::unescape($segment);
     }
 }

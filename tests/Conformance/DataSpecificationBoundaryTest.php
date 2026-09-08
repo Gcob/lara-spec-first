@@ -15,16 +15,27 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
 //
 // ReferenceCycleDetectorTest.php pins this same boundary against the guard in
 // isolation, key by key. What belongs here is proof that the boundary holds
-// through the whole reading engine — which is why two of the four shapes that
-// boundary names are asserted elsewhere instead of below: `ref-inside-example`
-// and an Example Object's `value` are exactly the two shapes where the guard is
-// correct and the parser is not. Guarded correctly, they would duplicate
-// ReferenceCycleDetectorTest.php here; run end to end, they kill the process
-// before any assertion in this file could run. Their permanent, end-to-end case
-// lives in KnownParserBugsTest.php, in a child process, for that reason.
+// through the whole reading engine, in both directions — a document whose data
+// merely contains a `$ref` is read, and a document that aims a reference at the
+// position holding one is refused.
+//
+// Which key the data sits under makes no difference to either direction, so the
+// two remaining spellings of the refusal — a schema's `example`, and an Example
+// Object's `value` — are not repeated below. Their permanent end-to-end case
+// lives in KnownParserBugsTest.php, where it stays because those two documents
+// used to kill the process rather than raise, and that file is the record of
+// every parser defect this package has found.
 
 it('does not read a $ref inside the JSON Schema examples list as a reference', function (): void {
-    expect(extractFixture('schema-examples-list.yaml'))->toHaveCount(1);
+    expect(extractFixture('examples-list-is-data.yaml'))->toHaveCount(1);
+});
+
+// The same list keyword, with a Reference Object aimed at the position the
+// literal occupies. The literal is still not collected as a reference; it is
+// reached because something points at it, which is what the parser does too.
+it('refuses a document that aims a reference into that list', function (): void {
+    expect(fn () => extractFixture('schema-examples-list.yaml'))
+        ->toThrow(CyclicReferenceException::class);
 });
 
 // The map an Example Object lives in is specification, not data, precisely

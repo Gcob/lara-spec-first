@@ -229,21 +229,31 @@ the code, and a gap in it is loud.
     about it can only grow — and it already has: writing `DataSpecificationBoundaryTest.php` against the full reading
     engine, rather than against the cycle guard alone, is what surfaced the third defect above. A `$ref` whose JSON
     pointer lands inside data the guard correctly treats as opaque (an `example`, an Example Object's `value`) reaches
-    the same unrecoverable failure as an ordinary cycle, on a shape the guard cannot see by its own design. It is not
-    yet guarded against, but it is pinned: an unrecoverable fatal cannot be asserted in the same process as the test
-    runner without taking the run down with it, so `KnownParserBugsTest.php` runs it in a child process instead and
-    asserts the exit code and stderr — `tests/Support/extract.php`, and the "Subprocess assertions" row in
-    [`stack.md`](./stack.md). Closing the gap it pins is follow-up work, tracked below rather than folded into this
-    item. The suite ends up being what an adapter was wanted for regardless: **the acceptance criteria a replacement
-    parser would have to meet.** An interface would only prove a substitute compiles; this proves one behaves.
+    the same unrecoverable failure as an ordinary cycle, on a shape a rule about key names cannot see. Pinning it came
+    first and guarding it came after, in the item below: an unrecoverable fatal cannot be asserted in the same process
+    as the test runner without taking the run down with it, so `KnownParserBugsTest.php` ran it in a child process and
+    asserted the exit code and stderr — `tests/Support/extract.php`, and the "Subprocess assertions" row in
+    [`stack.md`](./stack.md). That child process is still there now that the defect is guarded, asserting the survival
+    where it used to assert the death, because it remains the only thing that can tell the two apart. The suite ends up
+    being what an adapter was wanted for regardless: **the acceptance criteria a replacement parser would have to
+    meet.** An interface would only prove a substitute compiles; this proves one behaves.
 
-- [ ] **Guard against the third parser defect `KnownParserBugsTest.php` pins but does not yet prevent.** A `$ref` whose
-      JSON pointer resolves into a key `ReferenceCycleDetector` treats as opaque — an `example`, an Example Object's
-      `value` — still exhausts the parser's memory instead of raising, the same failure the cycle guard exists to
-      prevent, on a shape it cannot see by design. Decide whether the guard should follow a pointer's target into opaque
-      data before deciding it is safe to skip, or whether `ReferenceCycleDetector` gains a depth or step ceiling as a
-      second line of defense independent of the shape. Either closes the gap; the conformance suite's subprocess case is
-      what turns green once it does. See [parser caveats](../guide/openapi-support.md#parser-caveats).
+- [x] **The third parser defect `KnownParserBugsTest.php` pinned is guarded against.** A `$ref` whose JSON pointer
+      resolves into a key `ReferenceCycleDetector` treats as opaque — an `example`, an Example Object's `value`, an item
+      of the JSON Schema `examples` list — exhausted the parser's memory instead of raising, the same failure the cycle
+      guard exists to prevent, on a shape a rule about key names cannot see. **Of the two ways out this roadmap named,
+      only one could work:** a depth or step ceiling would never have fired, because the guard's own walk terminates
+      immediately on these documents rather than running away, so the missing edge is not a long chain but no chain at
+      all. The guard therefore follows a pointer's target into the data it lands in, and only a target: a literal `$ref`
+      inside an example stays a literal until a Reference Object aims at the position holding it, which is the one
+      moment the parser reads it as specification and therefore the one moment we must too. The conformance suite's
+      subprocess case is green, inverted rather than deleted — it now pins that these documents leave the interpreter
+      standing. **One documented boundary moved with it, and is worth naming rather than leaving to be noticed:**
+      `tests/Fixtures/schema-examples-list.yaml` is refused where it used to be accepted, since it aims a reference into
+      a JSON Schema `examples` list and only survived the parser by accident of 3.1 keywords being handed back as raw
+      arrays; the boundary it was written to protect — a `$ref` inside data is data — is unchanged and is now pinned by
+      `examples-list-is-data.yaml`, which carries the same literal with nothing pointing at it. See
+      [parser caveats](../guide/openapi-support.md#parser-caveats).
 
 - [x] **The reading pipeline stops refusing at the first fault.** `SpecDocumentReader`, the guards under
       `Parsing\Guards\` and `OperationExtractor` return what they found instead of throwing: a `ReadOutcome` carrying

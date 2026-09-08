@@ -1,6 +1,13 @@
-# Accepted: `$ref` here is a literal key inside an example value, not a
-# Reference Object. A spec describing an API that itself handles JSON Schema
-# will contain these, and rejecting it would refuse a valid document.
+# Rejected: schema B is a Reference Object, and its pointer lands on the
+# position an example value occupies. The `$ref` written in that example is a
+# literal on its own — a spec describing an API that itself handles JSON Schema
+# will carry one, and `examples-list-is-data.yaml` is that document — but a
+# reference aimed at the position holding it makes the parser resolve it, and
+# the chain closes back on B without ever reaching a schema.
+#
+# The one shape where the guard reading data as data is not enough: the cycle is
+# invisible to a rule about key names, and the parser exhausts memory on it
+# rather than raising.
 openapi: 3.0.3
 info:
   title: Fixture API
