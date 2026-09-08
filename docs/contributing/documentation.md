@@ -377,6 +377,13 @@ This is already the strongest habit in the set, and the rule only makes it expec
 [`code-generation/index.md`](../guide/code-generation/index.md) carries both what the build deliberately does not emit
 and what was decided against. A guide with no such section is claiming it has no edges.
 
+**The section's title is not part of the rule.** "What this document does not cover" is the plain form and several
+guides use it, but
+[`Past the scope check, it is a Policy's job`](../guide/security.md#past-the-scope-check-it-is-a-policys-job) and
+[`Laravel constraints we do not fight`](../guide/openapi-support.md#laravel-constraints-we-do-not-fight) are the same
+rule kept in the assertive voice the rest of the set writes headings in. What the rule asks for is a section a reader
+can find, not a phrase to grep for.
+
 ### A diagram is built, not embedded
 
 **Diagrams are PlantUML sources under `docs/diagrams/`, rendered to an SVG committed beside each one, and referenced
