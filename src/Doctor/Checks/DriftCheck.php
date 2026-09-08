@@ -18,7 +18,7 @@ use Gcob\LaraSpecFirst\Generation\GeneratedTree;
  * planning a second time — one `BuildPlanner::plan()` call for both sections.
  *
  * @see docs/guide/doctor.md — "What it checks"
- * @see docs/guide/code-generation.md — "The runtime never sees the spec"
+ * @see docs/guide/code-generation/index.md — "The runtime never sees the spec"
  */
 final readonly class DriftCheck
 {

@@ -27,7 +27,7 @@ use function Laravel\Prompts\text;
  *
  * **The only command that writes a class a developer will own, and it does it on
  * request, once.** The build never scaffolds — that is
- * [the invariant](../../docs/guide/code-generation.md#the-invariant-a-build-never-destroys-human-work)
+ * [the invariant](../../docs/guide/code-generation/index.md#the-invariant-a-build-never-destroys-human-work)
  * rather than a preference — and a flag on the build would have made the invariant
  * conditional, which is how a hundred empty classes get committed by accident.
  *
@@ -38,7 +38,7 @@ use function Laravel\Prompts\text;
  * are about to create and ask first.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
- * @see docs/guide/code-generation.md — "Scaffolding is spec:make, not a build step"
+ * @see docs/guide/code-generation/scaffolding.md — "Scaffolding is spec:make, not a build step"
  */
 final class MakeCommand extends Command
 {

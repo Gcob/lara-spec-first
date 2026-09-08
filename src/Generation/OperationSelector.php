@@ -15,7 +15,7 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\NoSuchOperationException;
  * is a grouped file, so there is nothing a bulk invocation could produce that is
  * not simply the singular form run several times.
  *
- * @see docs/guide/code-generation.md — "The build names the command instead of running it"
+ * @see docs/guide/code-generation/scaffolding.md — "The build names the command instead of running it"
  */
 final readonly class OperationSelector
 {
@@ -29,7 +29,7 @@ final readonly class OperationSelector
      *
      * **`operationId` first, then the method and path.** An `operationId` is the
      * name its author chose and the obvious thing to type; the label exists
-     * because [an operation need not have one](../../docs/guide/code-generation.md)
+     * because [an operation need not have one](../../docs/guide/code-generation/generated-file-anatomy.md)
      * — and an operation with no `operationId` can still declare `x-controller`,
      * so it can still need scaffolding. The method is matched however it was
      * typed, since `GET /users/{id}` is how everyone writes an endpoint and
@@ -105,7 +105,7 @@ final readonly class OperationSelector
      *
      * Lives here because it answers the same question from the other end: what a
      * developer could type. `spec:build` prints it to
-     * [name the commands rather than run them](../../docs/guide/code-generation.md#the-build-names-the-command-instead-of-running-it),
+     * [name the commands rather than run them](../../docs/guide/code-generation/scaffolding.md#the-build-names-the-command-instead-of-running-it),
      * and a specification with two hundred unimplemented operations needs a
      * grouping rather than two hundred lines.
      *

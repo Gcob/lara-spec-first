@@ -21,8 +21,8 @@ use Gcob\LaraSpecFirst\Support\Path;
  * Constructed with the configured values rather than reading configuration
  * itself, so it stays a plain object a unit test can build.
  *
- * @see docs/guide/code-generation.md — "The runtime never sees the spec"
- * @see docs/guide/code-generation.md — "Where generated code lives"
+ * @see docs/guide/code-generation/index.md — "The runtime never sees the spec"
+ * @see docs/guide/code-generation/index.md — "Where generated code lives"
  */
 final readonly class GeneratedRoutesLocator
 {

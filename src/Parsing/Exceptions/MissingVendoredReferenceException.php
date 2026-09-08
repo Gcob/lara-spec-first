@@ -16,7 +16,7 @@ use RuntimeException;
  * fires again for that reference — resolution reads the committed file instead.
  *
  * @see docs/guide/remote-references.md — "A remote reference is a dependency, not a cache entry"
- * @see docs/guide/code-generation.md — "Remote references during a build: frozen by default"
+ * @see docs/guide/code-generation/index.md — "Remote references during a build: frozen by default"
  */
 final class MissingVendoredReferenceException extends RuntimeException implements SpecException
 {

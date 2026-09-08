@@ -70,7 +70,7 @@ final readonly class Operation
      * than linked with `@see`, on purpose: `Contract\` is not allowed to import
      * either namespace, and a docblock reference is exactly what would add one.)
      *
-     * @see docs/guide/code-generation.md — "Identity is the path and the method, not the name"
+     * @see docs/guide/code-generation/generated-file-anatomy.md — "Identity is the path and the method, not the name"
      */
     public function identity(): string
     {

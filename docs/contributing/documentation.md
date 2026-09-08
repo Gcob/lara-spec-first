@@ -3,13 +3,24 @@ title: Documentation Guide
 audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
-    principle, the audience vocabulary and the directory each audience owns, the front matter metadata schema and tag
-    vocabulary, and the inventory of every document.
+    principle and what happens when a subject outgrows one file, the audience vocabulary and the directory each audience
+    owns, the front matter metadata schema and tag vocabulary, the TL;DR every document opens with and how it differs
+    from a `covers` claim, the three rules that keep a document readable in one pass and the junior developer test that
+    calibrates them, how a diagram is built and when one earns its place, the catalogue of doc smells and the correction
+    each one calls for, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
 
 # Documentation Guide
+
+> **TL;DR**
+>
+> - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
+> - Every topic has exactly one owning file. Other files link to it rather than restate it.
+> - The audience decides the directory, and every file declares itself in its own front matter.
+> - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+> - Write for one pass: the result first, and no term the reader is assumed to already know.
 
 The rules and expectations for documentation in `lara-spec-first`. Yes, this is documentation about documentation — and
 it is here for the same reason every other subject has one home: the rules apply to contributors as much as to agents,
@@ -65,6 +76,27 @@ The rules:
 
 Signs the rule is being broken: the same decision justified in two places; a section that re-explains something the
 reader was already sent elsewhere to read; a file whose title no longer covers everything inside it.
+
+### A subject too large for one file becomes a directory
+
+**When one topic outgrows one file, it becomes a directory holding an `index.md` and the files it splits into.** Not
+several files side by side in `docs/guide/`: that turns one subject into several sidebar entries with nothing saying
+they belong together, which is a worse answer to "this file is too long" than the length was a problem.
+
+**The index is not a table of contents.** It carries what the other files depend on, plus the part of the subject
+nothing else claims, and it links onward from the body where each question arises. An index that lists its own siblings
+duplicates two things that already exist: each file's `covers`, and the [inventory](#document-inventory), which
+deliberately carries no descriptions for exactly that reason.
+
+Three things follow, and none of them needs configuring:
+
+- **The site publishes the directory as one collapsible entry** whose clickable parent is the index and whose children
+  are its siblings, alphabetically. `.vitepress/config.mts` names it in a `sequence` by its directory name, like any
+  other page.
+- **The directory answers on its own URL**, so `/docs/guide/code-generation` keeps resolving after the split and no
+  external link to the subject breaks.
+- **Every link written as Markdown does have to move**, because the file did. `just docs-check-anchors` is what makes a
+  missed one a red check rather than a fragment nobody notices.
 
 ## Who the reader is decides where the file lives
 
@@ -187,7 +219,7 @@ grep -rl 'tags:.*versions' --include='*.md' .
 | `versions`        | Supported and required versions                                                    |
 | `workflow`        | The day-to-day process of making a change                                          |
 
-### `README.md` carries no front matter — deliberately
+### The README carries no front matter, deliberately
 
 This is a decision, not an oversight. **Do not add front matter to `README.md`.** Two reasons:
 
@@ -199,6 +231,207 @@ This is a decision, not an oversight. **Do not add front matter to `README.md`.*
   would place a metadata block above the project title on the page whose only job is to explain the project.
 
 Every other Markdown document in the repository takes the full set of fields.
+
+## Every document opens with a summary
+
+**Every Markdown document in the [inventory](#document-inventory) opens with a TL;DR**, directly under the `#` title and
+above the first section. It carries what the reader needs if they read nothing else.
+
+It exists because of the failure this set is most exposed to. These documents argue: they record a decision and the
+reasoning that produced it, which is deliberate and is not changing. The cost is that the first thing a reader meets is
+an argument, and working out what the file actually claims takes five paragraphs. The TL;DR pays that back at the top,
+for four lines.
+
+A blockquote, three to five bullets, one line each. **This file's own TL;DR is the example** — if the two ever differ,
+the example is the one that is wrong:
+
+```markdown
+> **TL;DR**
+>
+> - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
+> - Every topic has exactly one owning file. Other files link to it rather than restate it.
+> - The audience decides the directory, and every file declares itself in its own front matter.
+> - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+> - Write for one pass: the result first, and no term the reader is assumed to already know.
+```
+
+The rules:
+
+- **A blockquote, never a heading.** The site builds each page's outline from its headings, so a `## TL;DR` in every
+  document adds one entry of pure noise per page. A blockquote also renders on GitHub, which is where `AGENTS.md` and
+  `CONTRIBUTING.md` are actually read.
+- **Three to five bullets, one line each.** Under three, and the file probably should not be a file of its own. Over
+  five, and it is a table of contents rather than a summary, which is [a smell](#doc-smells) rather than a thorough
+  TL;DR.
+- **Assertions, not subjects.** "Nothing at runtime ever opens a specification" tells the reader something. "The
+  relationship between the runtime and the specification" sends them into the body, which is what the TL;DR was there to
+  spare them.
+- **Name what is not built yet.** Much of this set describes behavior that does not exist, and the phase banner that
+  says so is usually further down. A closing bullet separating what runs from what is designed is what stops a reader
+  planning around a feature nobody has written.
+- **`README.md` is exempt.** The whole file is already a summary of the project, which is the first of the two reasons
+  it [carries no front matter](#the-readme-carries-no-front-matter-deliberately) either.
+
+### A summary is not a second covers
+
+Two summaries at the top of one file is duplication, so the split has to be stated rather than felt:
+
+- **`covers` is written for the reader deciding whether to open the file.** It claims subjects: this is what this file
+  owns. It is an index entry, and it is what makes an overlap between two files detectable.
+- **The TL;DR is written for the reader who has already opened it.** It gives answers rather than subjects: this is what
+  the file says about them.
+
+The test: **a bullet that could be pasted into `covers` unchanged is a badly written bullet.** It named a topic where it
+owed a claim.
+
+## Write for one pass
+
+**A sentence the reader has to read twice has failed**, however precise it turns out to be on the second reading. These
+documents are long and they argue, so the writing owes back what the arguing costs. One test says whether it did, and
+three rules do most of the work.
+
+### The Junior Dev Test
+
+The re-read test needs a reader to run it as, or every author passes it on their own prose. **Run it as an engineer who
+knows PHP and Laravel but has never seen this topic.** That is the reader this set actually gets: a contributor on their
+first task, and an agent opening one page with no memory of the others.
+
+Three questions, in order:
+
+- **Would they get the purpose from the TL;DR alone?** If the point only lands in the third section, the summary is a
+  table of contents.
+- **Would they hit a term nobody defined?** This is where you find the vocabulary you assumed, and the rule below is the
+  fix.
+- **Would they know a rule is a rule?** State one as a present-tense fact: "the build refuses a path parameter Laravel
+  cannot match", never "we felt it was probably better to refuse". Hedging reads as an open question, and an open
+  question invites the reader to settle it themselves. Behavior that does not exist yet is the one exception, and it
+  says so by [naming its phase](#doc-smells) rather than by softening the verb.
+
+Where an answer is no, the fix is structural rather than editorial: split the stacked sentence into bullets, define the
+term, or move the edge case into the section that owns the limits. **Not into a collapsed block** — a toggle keeps the
+page looking short while leaving the reader who needed that detail worse off than a link would, and this set already
+answers "secondary detail" with [a file of its own](#one-topic-one-file).
+
+### The result comes first, the condition second
+
+Put what happens at the front of the sentence and the circumstances behind it. A reader who stops at the comma still
+leaves with the answer.
+
+- **Write:** "Run `spec:build` to emit the routes."
+- **Not:** "When you need to emit routes for your application, you should run `spec:build`."
+
+The same rule holds at paragraph scale: the claim goes in the first sentence, the reasoning underneath it. That is what
+makes a bolded lead sentence worth scanning rather than decoration.
+
+### Every coined term is defined where it is first used
+
+This set invents vocabulary, and it is right to: `drift`, `Deferred`, the marker, the seam, the source map, the
+invariant, an acknowledgement. Each one is precise, and each one means nothing to a reader who has not met it yet.
+
+**Define a coined term on its first use in the document, or link the document that owns it.** First use in the document,
+not in the repository: a reader arrives on one page, never on the set. One clause is usually the whole cost.
+
+- **Write:** "the marker, the comment every generated file carries so the build knows it may delete it"
+- **Not:** "a file without the marker is never pruned"
+
+Assumed vocabulary is the most expensive prose here, because nothing about it looks wrong.
+
+### Say what the document does not cover
+
+**Every guide names its own limits, in a section of its own.** Boundaries are what a reader plans around, and they are
+the first thing to go quietly stale when a feature grows into what a document once excluded.
+
+This is already the strongest habit in the set, and the rule only makes it expected rather than occasional: the
+[support matrix](../guide/openapi-support.md) states what is parsed and not honored, and
+[`code-generation/index.md`](../guide/code-generation/index.md) carries both what the build deliberately does not emit
+and what was decided against. A guide with no such section is claiming it has no edges.
+
+### A diagram is built, not embedded
+
+**Diagrams are PlantUML sources under `docs/diagrams/`, rendered to an SVG committed beside each one, and referenced
+from a page as an image.** Neither GitHub nor the site renders PlantUML on its own, and half the readers of this set are
+on GitHub, so a fenced `plantuml` block is a code listing to one of them and a diagram to neither.
+
+```bash
+just diagrams          # render every docs/diagrams/*.puml to the SVG beside it
+just diagrams-check    # reports a diagram edited without being rebuilt, writes nothing
+```
+
+`scripts/build-diagrams.sh` runs PlantUML through Docker, the same shape as [Markdown formatting](#formatting) and for
+the same reason: PlantUML is a Java tool and the development image carries no Java. A PlantUML on your `PATH` is the
+fallback for a render and never the preference, because the image is pinned and your copy is not; `diagrams-check`
+refuses it outright, since it compares byte for byte and the fonts a local JVM can see move the coordinates. The tool
+row is in [`stack.md`](../project/stack.md).
+
+Three rules keep a rendered diagram honest:
+
+- **Commit the source and the SVG, and let CI compare them.** A generated file in the tree can drift from what produced
+  it. `diagrams-check` re-renders into a scratch directory and fails when the committed SVG differs, which turns that
+  drift into a red check rather than a diagram quietly describing an older design. It fails in the other direction too,
+  on an SVG whose `.puml` was deleted: a picture nothing produces any more would otherwise stay green forever.
+- **One neutral grey, on a transparent background.** The SVG is one file serving a light theme and a dark one, so it
+  cannot carry a palette. `#888888` clears the contrast floor against both, and the diagram borrows the page's ground
+  rather than painting its own.
+- **A diagram never carries a fact alone.** It complements the prose, the table and the rules around it; anything only
+  the picture says is lost to a reader using a screen reader, and to every `grep`.
+
+#### When a diagram earns its place
+
+**Three steps, or an ordering the prose has to spell out.** Below that a sentence wins, and a diagram of two boxes costs
+a build step to say what a clause already said.
+
+The types worth drawing, and the ones this package has no use for, stated so that nobody draws one to fill the table:
+
+| Diagram             | Shows                                            | Here                                                           |
+| ------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
+| Activity            | The steps of a workflow or an algorithm          | The reading pipeline, the order of a build                     |
+| Sequence            | The order of calls between objects or services   | A request reaching a generated controller and its custom child |
+| State machine       | An entity's lifecycle and the rules that move it | An operation across `beta`, `stable`, `deprecated` and sunset  |
+| Class               | The concepts and how they relate                 | The two-class seam, the `Contract\` types                      |
+| Component           | Module and package boundaries                    | What `Parsing\` may reach, and what `Routing\` may not         |
+| Use case            | Who interacts with the system, and to do what    | Nothing yet. Three Artisan commands are a list, not a diagram  |
+| Entity relationship | The tables of a relational database              | Nothing. This package has no database                          |
+| Deployment          | The machines and containers the code runs on     | Nothing. This is a library, and the host is the consumer's     |
+
+## Doc smells
+
+Everything above is a rule. This is what it looks like from the outside when one of them is being broken, named so that
+a review can report a documentation problem the way it reports a code one — a finding with a correction attached, rather
+than "this file feels heavy".
+
+**A smell is a reason to look, not a verdict.** A long file that genuinely owns one subject is fine; a short one that
+owns three is not. What each row gives you is the observable sign, so that the judgment happens over something you can
+point at.
+
+| Smell                              | What you see                                                                                          | What to do                                                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **One file, too many subjects**    | `covers` lists subjects with nothing in common, and the title no longer describes everything under it | Split it, [one topic per file](#one-topic-one-file), and leave a link behind                                                  |
+| **The decision tunnel**            | The chronology of how a decision was reached, ahead of the decision itself                            | [Result first, reason second, history never](#the-reasoning-stays-the-chronology-goes)                                        |
+| **The wall of text**               | A paragraph past roughly ten lines with no bold, no bullet and no subheading anywhere in it           | An assertive heading, bold on the sentence that decides, bullets for the cases                                                |
+| **The sentence you read twice**    | You reached the end of it and went back to the start                                                  | Split it, and [put the result first](#write-for-one-pass)                                                                     |
+| **The stacked clause**             | More than two commas or conditions carried by one sentence                                            | One idea per sentence, or bullets when the sentence was really a list                                                         |
+| **Duplication**                    | The same reasoning justified in two files                                                             | Move it, never copy it, and leave a link. [The rule](#one-topic-one-file)                                                     |
+| **No TL;DR**                       | Five paragraphs before the reader learns what the thing is for                                        | [The summary rule above](#every-document-opens-with-a-summary)                                                                |
+| **Stale metadata**                 | A `covers` claim, a status column or a state paragraph that no longer matches the file under it       | Fix it in the change that made it stale. A `Planned` row for something already shipped is a lie the table tells on every read |
+| **Undeclared future**              | Behavior that does not exist yet, written in the present tense, with no phase said out loud           | Name the phase at the top of the section, the way the guides already do                                                       |
+| **A heading that asserts nothing** | "Overview", "Notes", "Details", "More on this"                                                        | Put the claim in the heading. The page outline is read as a summary, and these entries spend a line of it saying nothing      |
+| **A rule with no example**         | A convention stated in prose, with nothing showing what it looks like                                 | Show the real thing, and say that it is the real thing, so that it cannot quietly go stale                                    |
+
+### The reasoning stays, the chronology goes
+
+The decision tunnel is the one smell that gets applied wrongly if the line is not drawn, because **this repository
+documents its reasoning on purpose** and that is not what the smell complains about. `code-generation/index.md` carries
+twenty-five `**Decision:**` blocks. They stay.
+
+What it names is narrative, not justification:
+
+- **Keep** the decision, the reason that holds it up, and the alternative that was rejected with why it was. A reader
+  who disagrees needs all three to argue with it.
+- **Cut** the sequence of events that produced it: what was tried first, what an earlier version did, what came up in
+  discussion, what was built and then removed before anything shipped.
+
+The difference is which question the reader is asking. _Why is it this way_ is answered by the reasoning. _How did we
+get here_ is answered by git, which is better at it than prose and never goes stale.
 
 ## Formatting
 
@@ -232,6 +465,36 @@ The same build runs on every pull request, so a dead link is a red check rather 
 matter, so a document is named in one place only. Deployment is `.github/workflows/docs.yml`, and the tool row is in
 [`stack.md`](../project/stack.md).
 
+**The theme is the default one, with a stylesheet layered over it.** `.vitepress/theme/custom.css` holds every visual
+change this site makes, and each rule carries the reason it exists. There is one today, and it follows from how this set
+writes headings: a heading here is an assertive sentence, which the default right-hand outline truncates to an ellipsis
+mid-sentence. The outline wraps instead, and widens on a screen with the room for it. A rule there overrides a selector
+the default theme owns, so keep them few and check them after a VitePress upgrade.
+
+### An anchor is written the way GitHub writes it
+
+**Write a same-page link the way GitHub would slug the heading: lowercase it, delete the punctuation, turn the spaces
+into hyphens.** ``## Watching: `spec:watch` `` is `#watching-specwatch`, with the colons gone rather than turned into
+hyphens.
+
+That is one form and not two because the site is configured to slug a heading exactly as GitHub does
+(`markdown.anchor.slugify` in `.vitepress/config.mts`, which calls `github-slugger` rather than reproducing it). Left at
+its default, the site replaces a punctuation mark where GitHub deletes it, one heading yields two different anchors, and
+a hand-written link can only ever satisfy one of them. Fourteen dead ones had accumulated that way before anyone looked,
+so the override is what closed the class rather than a rule asking every author to keep two slug algorithms in their
+head.
+
+**What still gets past the build is a heading renamed while a link to it was not.** VitePress checks a link's file and
+never its fragment, so nothing about that is visible to `docs:build`:
+
+```bash
+just docs-build           # first: the check reads the built site
+just docs-check-anchors   # every link whose anchor no heading produces
+```
+
+It runs in CI beside the build. It reads the emitted ids rather than re-deriving them from the Markdown, so there is no
+second implementation of the slug rule to disagree with the first.
+
 ## Document inventory
 
 Each document declares its own `title`, `audience`, `covers`, `read_before`, and `tags` in its
@@ -241,7 +504,11 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 `docs/guide/` — `Users`:
 
-- [`code-generation.md`](../guide/code-generation.md)
+- [`code-generation/index.md`](../guide/code-generation/index.md)
+    - [`generated-file-anatomy.md`](../guide/code-generation/generated-file-anatomy.md)
+    - [`publishing.md`](../guide/code-generation/publishing.md)
+    - [`response-dtos.md`](../guide/code-generation/response-dtos.md)
+    - [`scaffolding.md`](../guide/code-generation/scaffolding.md)
 - [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
 - [`drivers.md`](../guide/drivers.md)
@@ -263,7 +530,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 Repository root:
 
-- [`README.md`](../../README.md) — no front matter, [by design](#readmemd-carries-no-front-matter--deliberately)
+- [`README.md`](../../README.md) — no front matter, [by design](#the-readme-carries-no-front-matter-deliberately)
 - [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — `Contributors`
 - [`AGENTS.md`](../../AGENTS.md) — `AI coding agents`
 - [`LICENSE`](https://github.com/Gcob/lara-spec-first/blob/main/LICENSE) — MIT, plain text, no front matter

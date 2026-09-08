@@ -12,6 +12,15 @@ tags: [openapi, compatibility, versions, decisions, scope]
 
 # Operation Lifecycle
 
+> **TL;DR**
+>
+> - `x-audience` says who an operation is for. `x-lifecycle` says how strong a promise it carries.
+> - A public operation that declares no `x-lifecycle` is `beta`: unstable until somebody says otherwise.
+> - `deprecated` is OpenAPI's own key and stays out of `x-lifecycle`, which is why the package reads both.
+> - The doctor enforces the sunset rules today. `stable` is reported and not yet protected, and the protection report
+>   says so.
+> - **Not built yet:** the RFC 8594 `Sunset` headers the generated code will emit, in Phase 2.
+
 OpenAPI can say an operation is deprecated. It cannot say how strong a promise the operation carries before that, nor
 when it disappears — which is the only part a consumer can plan around. This document owns the extensions that close the
 gap, and the enforcement that gives them teeth.
@@ -25,9 +34,7 @@ gap, and the enforcement that gives them teeth.
 > [RFC 8594 headers](#the-runtime-payoff) the generated code will emit. Both are in the
 > [Roadmap](../project/roadmap.md). Items marked `Open` are undecided.
 
-OpenAPI can say an operation is `deprecated`. It cannot say what comes before deprecation, and it cannot say _when the
-endpoint disappears_ — which is the only part a consumer can actually plan around. **Decision: the package defines three
-extension keys to close that gap.**
+**Decision: the package defines three extension keys to close that gap.**
 
 | Key           | Where     | Value                                                                                   |
 | ------------- | --------- | --------------------------------------------------------------------------------------- |
@@ -47,22 +54,20 @@ keys, with the audience acting as the discriminator that sets the other's defaul
 
 Three constraints make this safe rather than merely convenient:
 
-**`x-audience` itself defaults to `public`.** This is not a coin flip — it is the same principle as defaulting to
-`beta`. Omission must never be the cheaper path to less protection, because omission is what happens when a spec is
-imported, generated, or written in a hurry. Declaring an endpoint internal is an act; being treated as public is what
-happens by default.
-
-**A missing lifecycle is the absence of a claim, not a prohibition.** An internal endpoint can still declare
-`x-lifecycle: stable`, and it can still be `deprecated` with a full
-[`x-sunset` treatment](#the-doctor-rules-that-follow) — internal consumers deserve a removal date as much as anyone.
-They simply do not need a promise on every route to get one.
-
-**Demoting `public` to `internal` is reported.** This is the hole the composite otherwise opens: once a breaking change
-to a `stable` operation fails the build, flipping its audience to `internal` makes the failure disappear. That may be
-entirely legitimate — an endpoint really can stop being public — but it is _revoking a promise_, and a promise cannot be
-revoked silently in a package built on contracts. The report names it, in the same spirit as labelling a
-[non-representative run](./doctor.md#flags). Whether it merely reports or requires the same `info.version` bump a break
-would is **open**.
+- **`x-audience` itself defaults to `public`.** This is not a coin flip — it is the same principle as defaulting to
+  `beta`. Omission must never be the cheaper path to less protection, because omission is what happens when a spec is
+  imported, generated, or written in a hurry. Declaring an endpoint internal is an act; being treated as public is what
+  happens by default.
+- **A missing lifecycle is the absence of a claim, not a prohibition.** An internal endpoint can still declare
+  `x-lifecycle: stable`, and it can still be `deprecated` with a full
+  [`x-sunset` treatment](#the-doctor-rules-that-follow) — internal consumers deserve a removal date as much as anyone.
+  They simply do not need a promise on every route to get one.
+- **Demoting `public` to `internal` is reported.** This is the hole the composite otherwise opens: once a breaking
+  change to a `stable` operation fails the build, flipping its audience to `internal` makes the failure disappear. That
+  may be entirely legitimate — an endpoint really can stop being public — but it is _revoking a promise_, and a promise
+  cannot be revoked silently in a package built on contracts. The report names it, in the same spirit as labelling a
+  [non-representative run](./doctor.md#flags). Whether it merely reports or requires the same `info.version` bump a
+  break would is **open**.
 
 One consequence worth having: the doctor's protection report counts **public** operations only. A monolith with two
 hundred internal routes should not have its _0 of 47 public operations are stable_ finding drowned by endpoints that
@@ -91,7 +96,7 @@ an operation is promised at all.
 | `x-sunset` approaching is a warning                                | With a configurable horizon — `lifecycle.sunset_horizon_days`, 90 days by default — so it lands in CI while there is still time to act. It decides what is _mentioned_, never what fails: an approaching date is reported beside the protection report rather than as a finding, because a horizon nobody tuned must not turn a pipeline red on a day nobody committed anything. |
 | An unrecognized `x-lifecycle` value is a finding                   | Extensions are untyped by nature: `x-lifecycle: stabel` is silent everywhere else in the toolchain. Refused where the document is read, so the doctor reports it under [Document validity](./doctor.md#what-it-checks) with every other refusal of that class rather than a second time here.                                                                                    |
 | `beta` operations are listed                                       | The unstable surface of an API, on one screen, is worth printing even when nothing is wrong.                                                                                                                                                                                                                                                                                     |
-| A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path).                                                                                                                                                                                     |
+| A `public` + `stable` operation without `operationId` is a finding | Promoting an operation to `stable` is the moment its generated class name stops being disposable. See [naming](./code-generation/generated-file-anatomy.md#when-operationid-is-absent-derive-from-method-and-path).                                                                                                                                                              |
 
 ### When a date-only `x-sunset` counts as passed
 
@@ -140,12 +145,18 @@ comparison needs history to exist, and [the doctor](./doctor.md#what-it-checks) 
 specification gets caught, before it is mistaken for "nothing changed".
 
 **2. "Breaking" is directional, and the direction inverts between request and response.** This is where implementations
-get it wrong, so it has to be a written table rather than a judgement call: adding a required _request_ field breaks
-clients; adding a _response_ field usually does not. Removing a response field breaks them; removing an optional request
-field usually does not. Widening an enum breaks response consumers and helps request senders; narrowing it does the
-opposite. That table is itself public API under [rule 4](./openapi-support.md#the-four-rules) — a change to what counts
-as breaking changes whose build fails — and it is large enough to deserve its own phase rather than being smuggled into
-the first release.
+get it wrong, so it has to be a written table rather than a judgement call:
+
+| Change                     | On the request                                        | On the response                                                 |
+| -------------------------- | ----------------------------------------------------- | --------------------------------------------------------------- |
+| Adding a required field    | **Breaking.** Existing callers omit it.               | Not breaking, in the ordinary case.                             |
+| Removing an optional field | Not breaking, in the ordinary case.                   | **Breaking.** A consumer was reading it.                        |
+| Widening an enum           | Helps senders. Not breaking.                          | **Breaking.** A consumer must handle a value it has never seen. |
+| Narrowing an enum          | **Breaking.** A value that was accepted no longer is. | Not breaking.                                                   |
+
+That table is itself public API under [rule 4](./openapi-support.md#the-four-rules) — a change to what counts as
+breaking changes whose build fails — and its exhaustive form is large enough to deserve its own phase rather than being
+smuggled into the first release.
 
 **3. The escape hatch already exists in the document: `info.version`.** A build that only says _you broke a stable
 operation_ is an obstacle. A build that says **this change requires `info.version` to go from `2.4.1` to `3.0.0`, and
@@ -168,7 +179,28 @@ every response, to every client, without anyone writing that code.
 Declared once in the spec, enforced in CI by the doctor, and advertised over HTTP by the generated controller — that is
 the whole thesis of this package applied to a single field.
 
-**Open.** The date format (`x-sunset` should almost certainly be RFC 3339, converted to the HTTP-date the header
-requires); whether emitting the headers is on by default; the warning horizon; and the collision risk of a name as
-generic as `x-lifecycle`, which another tool may already define differently. A vendor prefix would remove the ambiguity
-at the cost of every consumer typing it.
+**Open**, four questions rather than one:
+
+- The date format. `x-sunset` should almost certainly be RFC 3339, converted to the HTTP-date the header requires.
+- Whether emitting the headers is on by default.
+- The warning horizon the emitted header implies, as distinct from [the doctor's](#the-doctor-rules-that-follow), which
+  is already configurable.
+- The collision risk of a name as generic as `x-lifecycle`, which another tool may already define differently. A vendor
+  prefix would remove the ambiguity at the cost of every consumer typing it.
+
+## What this document does not cover
+
+Four questions a reader arrives with that are answered elsewhere, or not yet answered at all:
+
+- **These keys are not access control.** `x-audience: internal` says who an operation is _promised_ to, never who may
+  call it: nothing in the routing or the middleware reads it. Who may call an operation is
+  [`security.md`](./security.md)'s subject. The one place the key changes an artifact is the
+  [sanitized public copy](./code-generation/publishing.md#internal-operations-are-excluded-not-merely-stripped), which
+  leaves internal operations out entirely.
+- **Nothing stops serving a sunset operation.** `x-sunset` is a date the doctor holds you to, not a switch. The build
+  still emits the route the day after it passes, and the finding is the whole of the enforcement — removing an endpoint
+  is an edit to the contract, which is the only place that decision belongs.
+- **What counts as a breaking change is not settled here.** The table above states the direction; the exhaustive rule
+  set is public API and lands with the phase that enforces it.
+- **How any of this is printed belongs to [the doctor](./doctor.md).** This document owns the rules and their defaults.
+  Exit codes, flags, the JSON shape and where each finding is grouped are that document's.

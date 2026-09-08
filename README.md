@@ -22,15 +22,15 @@ architecture while letting your business logic live safely in standard Laravel c
 - **Built for AI-assisted coding, and we say it out loud:** a stated goal, not a side effect. Every generated file
   explains itself — where in the contract it came from, what the build worked out while emitting it, and an `@see` at
   the code that actually runs. Your agent shouldn't have to guess. See
-  [`code-generation.md`](./docs/guide/code-generation.md#every-generated-file-explains-itself).
+  [`code-generation/generated-file-anatomy.md`](./docs/guide/code-generation/generated-file-anatomy.md#every-generated-file-explains-itself).
 - **Safe to regenerate:** Generated code and your code never share a file, so the build can be re-run at any time
   without losing work — and a contract change surfaces as a static analysis error, not a production incident. See
-  [`docs/guide/code-generation.md`](./docs/guide/code-generation.md).
+  [`docs/guide/code-generation/index.md`](./docs/guide/code-generation/index.md).
 - **Plays well with your formatter, and tell it to skip the generated tree anyway.** What the build emits is already
   canonical under Pint's `laravel` preset, so most projects need to do nothing. Add `"exclude": ["app/Http/Generated"]`
   to your `pint.json` regardless: a formatter and a build that both rewrite one file undo each other forever, and no
   generator can be canonical under every rule set. Two lines of reasoning, one line of config:
-  [your formatter and the build](./docs/guide/code-generation.md#your-formatter-and-the-build-both-want-to-own-these-files).
+  [your formatter and the build](./docs/guide/code-generation/index.md#your-formatter-and-the-build-both-want-to-own-these-files).
 
 ---
 

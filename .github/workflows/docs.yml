@@ -18,6 +18,9 @@ on:
         paths:
             - "**.md"
             - ".vitepress/**"
+            - "docs/diagrams/**"
+            - "scripts/build-diagrams.sh"
+            - "scripts/check-anchors.mjs"
             - "package.json"
             - "package-lock.json"
             - ".github/workflows/docs.yml"
@@ -25,6 +28,9 @@ on:
         paths:
             - "**.md"
             - ".vitepress/**"
+            - "docs/diagrams/**"
+            - "scripts/build-diagrams.sh"
+            - "scripts/check-anchors.mjs"
             - "package.json"
             - "package-lock.json"
             - ".github/workflows/docs.yml"
@@ -66,6 +72,43 @@ jobs:
             # Fails on a dead internal link. That is the check this job exists for on
             # a pull request.
             - run: npm run docs:build
+
+            # The build checks a link's file, never its fragment, so a link to a
+            # renamed heading on the same page survives it. This reads the built
+            # site and compares the ids emitted against the hrefs written.
+            - run: npm run docs:check-anchors
+
+            # Whether this run has any reason to render a diagram.
+            #
+            # The check below pulls a PlantUML image from Docker Hub: an anonymous
+            # pull from a shared runner IP, against a rate limit this repository does
+            # not control. This job's path filter fires on any `**.md`, so without
+            # this step a pull request that changes one sentence would pay for that
+            # pull on a check that cannot fail for a reason related to the change.
+            #
+            # A push to the default branch always renders. That is the run that
+            # publishes, and a stale picture must not reach the site.
+            - id: diagrams
+              run: |
+                  if [ "${{ github.event_name }}" != 'pull_request' ]; then
+                      echo 'render=true' >> "$GITHUB_OUTPUT"
+                      exit 0
+                  fi
+
+                  changed=$(git diff --name-only '${{ github.event.pull_request.base.sha }}' HEAD)
+
+                  if printf '%s\n' "$changed" | grep -qE '^(docs/diagrams/|scripts/build-diagrams\.sh$)'; then
+                      echo 'render=true' >> "$GITHUB_OUTPUT"
+                  else
+                      echo 'render=false' >> "$GITHUB_OUTPUT"
+                  fi
+
+            # A diagram is committed as an SVG beside the PlantUML that produced it,
+            # so the two can drift. This is what makes that a red check rather than a
+            # picture describing an older design. PlantUML runs through Docker, which
+            # the runner already has, so nothing is installed for it.
+            - if: steps.diagrams.outputs.render == 'true'
+              run: ./scripts/build-diagrams.sh --check
 
             - uses: actions/upload-pages-artifact@v5
               if: github.event_name != 'pull_request'

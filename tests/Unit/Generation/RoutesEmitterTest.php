@@ -18,7 +18,7 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
  * for a controller, plus the one thing this file has and a controller does not —
  * references to other generated code, and what to do when PHP cannot find one.
  *
- * @see docs/guide/code-generation.md — "The routes are one file, and the only one the runtime opens"
+ * @see docs/guide/code-generation/index.md — "The routes are one file, and the only one the runtime opens"
  */
 
 /**

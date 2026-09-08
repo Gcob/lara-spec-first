@@ -54,7 +54,7 @@ arch('the generated controllers\' base carries Laravel\'s middleware contract')
 // for the formatter to turn it into a real import, which is how the comment
 // below came to be written.
 //
-// See docs/guide/code-generation.md — "The runtime never sees the spec"
+// See docs/guide/code-generation/index.md — "The runtime never sees the spec"
 arch('routing at boot cannot reach a specification')
     ->expect('Gcob\LaraSpecFirst\Routing')
     ->not->toUse([
@@ -91,7 +91,7 @@ arch('the contract knows nothing about how it was produced')
 // pointers out of `Generation\`, because the class it scaffolds has to agree with
 // the parent the build emits about what both are called.
 //
-// See docs/guide/code-generation.md — "Scaffolding is spec:make, not a build step"
+// See docs/guide/code-generation/scaffolding.md — "Scaffolding is spec:make, not a build step"
 // Written as two assertions rather than one over a list of namespaces, because the
 // list form does not do what it reads like: `expect([A, B])->not->toUse(C)` passed
 // against a `Generation\` class that really did import `Scaffolding\`. Verified by

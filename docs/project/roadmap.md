@@ -12,6 +12,15 @@ tags: [planning, migration, scope, openapi, testing, decisions]
 
 # Project Roadmap: lara-spec-first
 
+> **TL;DR**
+>
+> - A checked box is behavior with tests behind it, never a design that has been agreed on.
+> - Phase 1 runs today: a contract becomes routes and one controller per operation, answering 501 until something
+>   implements it.
+> - The order is Phase 1, the `0.x` tag, Phase 2, then `1.0`. Breaking-change enforcement and Phase 3 both come after
+>   that.
+> - Where the code is today is the authoritative list of what exists. Every other document defers to it.
+
 This document owns the sequencing. What each feature is, and why it was designed that way, lives in the document that
 owns the subject; what lands when, and in which order, is decided here.
 
@@ -107,7 +116,7 @@ the code, and a gap in it is loud.
 - [x] **`Routing\`: the service provider registers the generated routes.** It **does not read the spec**, at boot or
       ever, and an architecture assertion says so rather than a convention: `Routing\` may reach neither `Parsing\` nor
       the YAML decoder. One
-      [`routes.php` at the root of the generated tree](../guide/code-generation.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
+      [`routes.php` at the root of the generated tree](../guide/code-generation/index.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
       loaded through Laravel's own `loadRoutesFrom()`, and a missing one is silence rather than an exception because
       `spec:build` is a command of this same package. Serializability is verified rather than hoped for, by the real
       command: a test runs `route:cache` over a generated tree, then requires the cache file it wrote and checks the
@@ -118,9 +127,9 @@ the code, and a gap in it is loud.
       controllers. Idempotent (a second run against an unchanged document does not touch a file, not even its
       modification time), ordered (every file is planned in memory before any is written, so a refused document leaves
       the working tree untouched), and it never writes outside its own directories — the
-      [invariant](../guide/code-generation.md#the-invariant-a-build-never-destroys-human-work) stated without a clause
-      precisely so that it can be tested as one, which it is. It also refuses what it cannot serve rather than emitting
-      it: a path parameter Laravel's router would never match, one past the compiler's 32-character ceiling, an
+      [invariant](../guide/code-generation/index.md#the-invariant-a-build-never-destroys-human-work) stated without a
+      clause precisely so that it can be tested as one, which it is. It also refuses what it cannot serve rather than
+      emitting it: a path parameter Laravel's router would never match, one past the compiler's 32-character ceiling, an
       `operationId` PHP cannot carry, and two operations claiming one class name. `lara-spec-first.spec.path` names the
       document, and stale generated files are pruned by the marker they carry, so nothing a human wrote inside the tree
       is ever removed.
@@ -135,18 +144,19 @@ the code, and a gap in it is loud.
       named as the document names them, because PHP forbids an override from adding a required parameter — a
       parameterless parent would have made `x-controller` useless on every templated path. Found in the Workbench, where
       a child answers `GET /users/{id}` for real while the operations around it still answer 501.
-- [x] **Every generated file explains itself.** The [source map](../guide/code-generation.md#the-source-map) (the JSON
-      pointer the file came from) and the
-      [docblock norm](../guide/code-generation.md#every-generated-file-explains-itself) (provenance, findings,
-      navigation), emitted unconditionally and asserted by the generator's own tests. It shipped with the first
-      generated file rather than after it: retrofitting a convention across a generated tree is an audit, writing it
-      into the first emitter is a paragraph. What a finding can say will grow with what the build knows; the norm itself
-      is in place. Both emitters have a test class of their own, where the parts are asserted one by one — every
-      finding, the pointer's `~0`/`~1` escaping, the blank line a formatter would otherwise insert, a value from the
-      document that would close the comment early, a token too long for a line, and the absence of anything (a clock
+- [x] **Every generated file explains itself.** The
+      [source map](../guide/code-generation/generated-file-anatomy.md#the-source-map) (the JSON pointer the file came
+      from) and the
+      [docblock norm](../guide/code-generation/generated-file-anatomy.md#every-generated-file-explains-itself)
+      (provenance, findings, navigation), emitted unconditionally and asserted by the generator's own tests. It shipped
+      with the first generated file rather than after it: retrofitting a convention across a generated tree is an audit,
+      writing it into the first emitter is a paragraph. What a finding can say will grow with what the build knows; the
+      norm itself is in place. Both emitters have a test class of their own, where the parts are asserted one by one —
+      every finding, the pointer's `~0`/`~1` escaping, the blank line a formatter would otherwise insert, a value from
+      the document that would close the comment early, a token too long for a line, and the absence of anything (a clock
       above all) that would make two runs differ — while the command's own test asserts the complementary property over
       every file it writes rather than a sample of one: that the norm is there at all. The
-      [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
+      [reference comment](../guide/code-generation/generated-file-anatomy.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
       landed with them, in `routes.php`, the only generated file that references other generated code today.
 - **Rename and orphan detection: dropped, not pending.** It was designed, built against the source map above, and
   removed before it shipped — so this is a decision recorded rather than work waiting. The premise expired when
@@ -155,10 +165,10 @@ the code, and a gap in it is loud.
   follows an edit its own author just made. What it would still have caught — a custom controller left extending nothing
   after its operation left the contract — is that author's call to make, and reading the previous build's output could
   never have been a CI guarantee anyway, since whether that output exists is
-  [a `.gitignore` choice](../guide/code-generation.md#which-generated-code-is-committed). The full reasoning is in
-  [code-generation](../guide/code-generation.md#rename-and-orphan-detection-decided-against); the
-  [reference comment](../guide/code-generation.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing) a
-  generated file carries is what does the cheap half of that job today, and
+  [a `.gitignore` choice](../guide/code-generation/index.md#which-generated-code-is-committed). The full reasoning is in
+  [code-generation](../guide/code-generation/generated-file-anatomy.md#rename-and-orphan-detection-decided-against); the
+  [reference comment](../guide/code-generation/generated-file-anatomy.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
+  a generated file carries is what does the cheap half of that job today, and
   [the doctor](../guide/controllers.md#the-doctor-counts-two-things-not-three) is where the orphan question lands if it
   is ever wanted.
 - [x] **`spec:make`: the only command that creates a file the developer will own.** Shipped in its three forms — a named
@@ -170,7 +180,7 @@ the code, and a gap in it is loud.
       it writes is deliberately not a [publishable stub](../guide/controllers.md#specmake-is-the-only-way-in): nearly
       every line is derived, and a template is a way to reintroduce guessing into the one file where nothing is guessed.
       `spec:build` never scaffolds and now
-      [names the commands to run](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it)
+      [names the commands to run](../guide/code-generation/scaffolding.md#the-build-names-the-command-instead-of-running-it)
       instead, summarised by tag, with the atomic form named for the operations no tag reaches — and the generated 501
       names it too. The [insertion prompt](../guide/controllers.md#specmake-is-the-only-way-in) closes the item: the
       value is derived from the configured controller namespace and prefilled so it can be edited, the exact line is
@@ -182,18 +192,18 @@ the code, and a gap in it is loud.
 - [x] **An unimplemented operation answers `501`.** The generated controller's `routeAction` throws an exception that
       Laravel renders as `501`, which is what reconciles the two things this documentation set said: the generated
       controller _is_ the handler position, so one controller per operation stays true. See
-      [501](../guide/code-generation.md#an-unimplemented-operation-answers-501). It is the seam the Phase 2 mock plugs
-      into, so its position is settled now rather than later. The body names the `spec:make` invocation that creates the
-      class, which was owed once that command existed and is paid.
+      [501](../guide/code-generation/scaffolding.md#an-unimplemented-operation-answers-501). It is the seam the Phase 2
+      mock plugs into, so its position is settled now rather than later. The body names the `spec:make` invocation that
+      creates the class, which was owed once that command existed and is paid.
 
 ### Reading, reporting, refusing
 
 - [x] **Remote reference vendoring.** `spec:build --update-refs` fetches an allowed reference once, commits the copy
       under `remote_references.vendor_path`, and rewrites the `$ref` to point at it — followed transitively, so a
       vendored document naming a reference of its own is vendored too, the allowlist checked again at every hop.
-      [Frozen by default](../guide/code-generation.md#remote-references-during-a-build-frozen-by-default): every other
-      build reaches the network only when that flag says so, and a missing vendored copy is an error naming it instead.
-      See [remote references](../guide/remote-references.md).
+      [Frozen by default](../guide/code-generation/index.md#remote-references-during-a-build-frozen-by-default): every
+      other build reaches the network only when that flag says so, and a missing vendored copy is an error naming it
+      instead. See [remote references](../guide/remote-references.md).
 - [x] **A conformance suite over the reading engine, organized by equivalence class.** **Not routine coverage, but a
       deliberate answer to a risk already observed.** Three defects with no symptom have now been found in the OpenAPI
       parser, on a surface no wider than paths and references: two shapes of a pure `$ref` cycle exhaust memory instead
@@ -232,7 +242,7 @@ the code, and a gap in it is loud.
       second line of defense independent of the shape. Either closes the gap; the conformance suite's subprocess case is
       what turns green once it does. See [parser caveats](../guide/openapi-support.md#parser-caveats).
 
-- [ ] **The reading pipeline stops refusing at the first fault.** `SpecDocumentReader`, the guards under
+- [x] **The reading pipeline stops refusing at the first fault.** `SpecDocumentReader`, the guards under
       `Parsing\Guards\` and `OperationExtractor` return what they found instead of throwing: a `ReadOutcome` carrying
       every operation that could be extracted and every fault encountered, blocking or not. `spec:build` and `spec:make`
       keep today's behavior exactly — they inspect the outcome and refuse the moment it carries a fault — but the
@@ -295,12 +305,12 @@ and the mock server).
       schemas, with `PUT` requiring the full body where `PATCH` makes fields optional. It is what supplies `$validated`
       to everything below, so it comes first.
 - [ ] **Response DTOs.** `final readonly`, generated from the response schema, with
-      [no abstract layer to extend](../guide/code-generation.md#response-dtos) because a value object mirroring the
-      contract has no behavior of its own to grow. Whether `spatie/laravel-data` becomes a dependency or only an
-      influence is [`stack.md`](./stack.md)'s row to settle, in the same change that installs or declines it.
+      [no abstract layer to extend](../guide/code-generation/response-dtos.md#response-dtos) because a value object
+      mirroring the contract has no behavior of its own to grow. Whether `spatie/laravel-data` becomes a dependency or
+      only an influence is [`stack.md`](./stack.md)'s row to settle, in the same change that installs or declines it.
 - [ ] **DTO factories.** One generated per DTO, mapping by name, with a default that covers the ordinary case.
       Overridden by a class that `extends` it, found by scanning
-      [the directories a project declares](../guide/code-generation.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares)
+      [the directories a project declares](../guide/code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares)
       and nothing else, with exactly one override per factory and a hard error naming both classes when two claim one.
 - [ ] **`x-model` and the CRUD defaults.** The `HasModel` interface with its `InteractsWithModel` trait, the
       [empty marker interface](../guide/controllers.md#the-detected-crud-semantic-is-a-marker-interface-deliberately-empty)
@@ -313,9 +323,9 @@ and the mock server).
       here rather than in Phase 1. Declared once in the spec, enforced in CI, advertised over HTTP, with nobody writing
       that code.
 - [ ] **The sanitized public copy of the specification.** Off unless a project
-      [names a disk](../guide/code-generation.md#where-the-public-copy-goes), so Phase 1 publishes nothing by default
-      and leaks nothing. It lands here because `x-model` is what makes the private document genuinely sensitive, and
-      because the work is larger than it looks: excluding `x-audience: internal` operations outright, then pruning
+      [names a disk](../guide/code-generation/publishing.md#where-the-public-copy-goes), so Phase 1 publishes nothing by
+      default and leaks nothing. It lands here because `x-model` is what makes the private document genuinely sensitive,
+      and because the work is larger than it looks: excluding `x-audience: internal` operations outright, then pruning
       transitively what they orphan (components, emptied path items, dangling tags), and reporting what was removed.
 
 ### Authorization the contract can express
@@ -355,19 +365,19 @@ remove redundancy: nothing breaks without them.
 ### Mocks and the design loop
 
 - [ ] **Faker-based mocking for operations with no implementation.** It replaces the body of the
-      [`501` handler](../guide/code-generation.md#an-unimplemented-operation-answers-501) rather than adding a
-      mechanism: same route, same handler position, a better answer. Its hard part is not Faker, it is the
+      [`501` handler](../guide/code-generation/scaffolding.md#an-unimplemented-operation-answers-501) rather than adding
+      a mechanism: same route, same handler position, a better answer. Its hard part is not Faker, it is the
       [parser caveat](../guide/openapi-support.md#parser-caveats) that hands 3.1 schema keywords back as raw arrays with
       unresolved `$ref`, which is where this feature will actually be spent.
 - [ ] **A mock server driven by the spec:** serve the whole contract with conforming responses, with no application
       behind it. Distinct from the fallback above, which fills the gaps in a real application, and the first execution
       context that legitimately reads a specification outside a build. It is where
-      [the runtime never sees the spec](../guide/code-generation.md#the-runtime-never-sees-the-spec) gets the
+      [the runtime never sees the spec](../guide/code-generation/index.md#the-runtime-never-sees-the-spec) gets the
       enumeration of contexts it deliberately deferred.
 - [ ] **`spec:watch`:** the design loop, rebuilding on change and allowed to fetch references that `spec:build`
       deliberately refuses to. A separate command because a running process states intent every time and dies with the
       terminal, where a config key would quietly follow you into CI. Its one hard rule is that it must never produce
-      output `build` would not. See [watching](../guide/code-generation.md#watching-specwatch).
+      output `build` would not. See [watching](../guide/code-generation/scaffolding.md#watching-specwatch).
 - [ ] **Spec-driven test data,** so that testing an endpoint does not start by writing a factory. The schema already
       states the shape, the constraints and often the examples. **Where this stops matters and must be said plainly:** a
       schema describes shapes, not domain truth. Referential integrity, business invariants and database constraints are
@@ -477,8 +487,8 @@ Three properties matter, in this order:
 - **Reliable.** You should be able to trust that the extracted spec actually describes what your API does today,
   _before_ you hand it the keys. A migration you cannot verify is not a migration.
 - **Simple.** Adoptable route by route, never a big-bang rewrite. That is the shape
-  [`spec:make --tag=`](../guide/code-generation.md#the-build-names-the-command-instead-of-running-it) already has, which
-  is not a coincidence: adopting tag by tag was designed for this phase.
+  [`spec:make --tag=`](../guide/code-generation/scaffolding.md#the-build-names-the-command-instead-of-running-it)
+  already has, which is not a coincidence: adopting tag by tag was designed for this phase.
 - **Fast.** The boring parts should be mechanical.
 
 - [ ] Tooling to bootstrap a spec from an existing Code-First app, and to verify it against real behavior before

@@ -6,9 +6,11 @@
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
+    "docs:preview": "vitepress preview",
+    "docs:check-anchors": "node scripts/check-anchors.mjs"
   },
   "devDependencies": {
+    "github-slugger": "^2.0.0",
     "vitepress": "^1.6.4"
   }
 }

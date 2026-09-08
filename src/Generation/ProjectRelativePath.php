@@ -9,7 +9,7 @@ namespace Gcob\LaraSpecFirst\Generation;
  *
  * **An absolute path must never reach a generated file.** These files are emitted
  * on one machine and read on others, and whether they are committed is
- * [the consumer's choice](../../docs/guide/code-generation.md), not ours — so an
+ * [the consumer's choice](../../docs/guide/code-generation/index.md), not ours — so an
  * absolute path is a defect waiting for the first project that tracks its
  * generated tree. It would differ between every developer and every CI runner,
  * producing a diff nobody made, and it would publish one machine's directory

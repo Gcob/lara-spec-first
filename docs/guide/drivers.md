@@ -13,6 +13,14 @@ tags: [drivers, openapi, decisions, scope, laravel]
 
 # Drivers
 
+> **TL;DR**
+>
+> - **Not built yet.** The driver mechanism lands in Phase 2, together with the two features that need it.
+> - A driver knows where a structure lives in the document; the mapping names the fields a project calls them.
+> - That split is what makes a driver portable: it carries structure and no project's field names.
+> - A project registers its own driver from its service provider, like any other Laravel extension.
+> - Pagination and rate limiting are the two driver-based features.
+
 Some things every real API needs are things OpenAPI never gave a vocabulary to. [Rate limits](./rate-limiting.md) and
 [pagination](./pagination.md) are the two this package has met so far, and they will not be the last. This document owns
 the mechanism they share, so that the next one is a driver rather than a new invention.
@@ -48,9 +56,10 @@ Structure is what is worth writing code for, because structure is what several p
 ### The test for whether a feature needs a driver at all
 
 Customization elsewhere in this documentation is driven by nomenclature: an `operationId`
-[derives a class name](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path), a `securitySchemes`
-name [matches a guard](./security.md#scheme-names-are-a-naming-contract-with-your-guards), a factory override is
-[found by what it `extends`](./code-generation.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares).
+[derives a class name](./code-generation/generated-file-anatomy.md#when-operationid-is-absent-derive-from-method-and-path),
+a `securitySchemes` name [matches a guard](./security.md#scheme-names-are-a-naming-contract-with-your-guards), a factory
+override is
+[found by what it `extends`](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares).
 Those work because a name means the same thing everywhere it appears.
 
 So the test is one question: **is there a name that means the same thing across specifications?** Where there is, match
@@ -100,9 +109,9 @@ abstract class implements what every driver of that feature would otherwise rewr
 configured key, normalizing what comes back — so a custom driver only writes the part that is actually custom: where to
 look in the document.
 
-It is the [same split as the generated two layers](./code-generation.md#two-layers), for the same reason: the interface
-is what makes a substitution safe, and the abstract class is what makes writing one cheap. A driver author may ignore
-the abstract class and implement the interface directly; nothing depends on the base class being used.
+It is the [same split as the generated two layers](./code-generation/index.md#two-layers), for the same reason: the
+interface is what makes a substitution safe, and the abstract class is what makes writing one cheap. A driver author may
+ignore the abstract class and implement the interface directly; nothing depends on the base class being used.
 
 ## Drivers are meant to be shared
 
@@ -134,7 +143,7 @@ have in common.
 
 - **A driver resolves at build time, and what it resolved is baked into what the build emits.** Registering a driver in
   a service provider is how the class becomes _findable_; it is not a licence for the request path to read a
-  specification, which [it never does](./code-generation.md#the-runtime-never-sees-the-spec). The build runs as an
+  specification, which [it never does](./code-generation/index.md#the-runtime-never-sees-the-spec). The build runs as an
   Artisan command, so a provider-registered driver is available to it — the ordering works out without an exception to
   that rule. Where a feature genuinely needs the driver at request time, that is stated in the feature's own document
   and is a different claim from this one.
@@ -142,3 +151,18 @@ have in common.
   cannot find what its mapping points at: all of it reports through [the doctor](./doctor.md), in the doctor's format,
   with the [document position](./doctor.md#the-contract) like any other finding. A third-party driver that writes to the
   log instead has quietly opted its users out of rule 2.
+
+## What this document does not cover
+
+Three things a reader could expect from a word as broad as "driver", and will not find here:
+
+- **This is not a general plugin system.** A driver answers one question, for one feature: where in the document that
+  feature's structure is declared. Nothing here lets a package add a command, an emitter, a parsing rule or a doctor
+  check. Those are not extension points today, and calling this mechanism one would promise something it does not do.
+- **A driver does not widen what the package can read.** It is asked about a document the
+  [reading pipeline](./openapi-support.md#the-four-rules) has already accepted and resolved, so it cannot rescue a shape
+  that was refused. What is parsed, what is honored and what is rejected is
+  [`openapi-support.md`](./openapi-support.md)'s matrix, and a driver never appears in it.
+- **Which feature becomes driver-based next is not decided here.** Rate limiting and pagination are the two that exist;
+  what joins them, and when, is the [Roadmap](../project/roadmap.md)'s sequencing. This document owns the mechanism, not
+  its scope.

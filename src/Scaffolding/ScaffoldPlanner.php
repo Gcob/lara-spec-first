@@ -16,7 +16,7 @@ use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
  * path, extending which parent, and whether it is already there — so that the
  * command can print that answer and ask before any of it happens.
  *
- * @see docs/guide/code-generation.md — "Scaffolding is spec:make, not a build step"
+ * @see docs/guide/code-generation/scaffolding.md — "Scaffolding is spec:make, not a build step"
  */
 final readonly class ScaffoldPlanner
 {

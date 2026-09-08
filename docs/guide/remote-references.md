@@ -12,6 +12,14 @@ tags: [openapi, dependencies, decisions, scope, compatibility]
 
 # Remote References
 
+> **TL;DR**
+>
+> - A `$ref` pointing at a URL is refused unless its host is named in the allowlist, which ships empty.
+> - `spec:build --update-refs` fetches an allowed reference once and commits the copy. Every later build reads that
+>   copy, never the network.
+> - The vendored copies are committed and there is no lock file, because git is the lock.
+> - A vendored document naming a reference of its own is vendored too, with the allowlist checked again at every hop.
+
 Every other input to the build sits in the repository. A `$ref` pointing at a URL does not, and this document owns what
 the package does about that difference.
 
@@ -147,7 +155,7 @@ The parts of the pattern worth taking, and only these:
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Vendored copies, committed**   | The fetched documents, on disk, in version control. Once they exist, boot resolves everything locally and **the runtime never touches the network** — not on a miss, not on the first request after a restart, never, because there is no lookup to miss. Their diffs are how a change to your API contract shows up in a pull request instead of in production. |
 | **Frozen by default**            | The build never reaches the network on its own. A fresh clone builds offline; a missing vendored copy is an error naming the flag to run, never an implicit fetch.                                                                                                                                                                                               |
-| **Fetching is one explicit act** | Adding a reference and refreshing one are both deliberate, flagged operations, because both can change your contract. See [the build](./code-generation.md#remote-references-during-a-build-frozen-by-default).                                                                                                                                                  |
+| **Fetching is one explicit act** | Adding a reference and refreshing one are both deliberate, flagged operations, because both can change your contract. See [the build](./code-generation/index.md#remote-references-during-a-build-frozen-by-default).                                                                                                                                            |
 | **Integrity by repository**      | Upstream changed under you? The refetch produces a diff, in a commit, in a review. A remote `$ref` is third-party content that shapes your public API surface, and treating it as untrusted input is the lesson every package ecosystem learned the expensive way — git gives us that property without a mechanism of our own.                                   |
 
 The [allowlist](#the-setting) still governs every fetch, but its threat model shrinks to almost nothing: outbound
@@ -227,8 +235,8 @@ anything to fetch.
 ### Vendoring is one part of the build
 
 Vendoring makes the _inputs_ local. Turning those inputs into routes, controllers and validation is a separate job, and
-both belong to the same command — see [`code-generation.md`](./code-generation.md). Do not conflate the two: vendoring
-alone already guarantees no network at boot, whatever the build does afterwards.
+both belong to the same command — see [`code-generation/index.md`](./code-generation/index.md). Do not conflate the two:
+vendoring alone already guarantees no network at boot, whatever the build does afterwards.
 
 What is settled here regardless: **the doctor reads, it never writes** — it is
 [read-only by contract](./doctor.md#the-contract) — and its report names which sources it read, because a doctor that

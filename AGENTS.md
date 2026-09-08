@@ -10,6 +10,14 @@ tags: [agents, workflow, testing, code-review, conventions, onboarding]
 
 # AGENTS.md
 
+> **TL;DR**
+>
+> - Every change lands in three places at once: code, documentation, and tests. A partial change is an unfinished one.
+> - When a change can be shown working in the Workbench, showing it is part of finishing it.
+> - The OpenAPI contract is the source of truth. Anything that makes PHP authoritative over it is going the wrong way.
+> - Review in priority order, and the three places is what you check before reading a line of logic.
+> - Verify with `just check`: Pint, then Larastan, then Pest.
+
 Guidance for AI coding agents working on `lara-spec-first`.
 
 This package is **Spec-First**: the OpenAPI contract is the source of truth, and PHP follows from it. When a change
@@ -186,8 +194,8 @@ Two documents govern most of what you will need. Read the one that owns your sub
 - [`docs/project/stack.md`](./docs/project/stack.md) — every technology choice, its status, and its reasoning.
 - [`docs/guide/openapi-support.md`](./docs/guide/openapi-support.md) — what the package honors of the specification and
   what it does not, and why. Read it before writing anything that reads a spec.
-- [`docs/guide/code-generation.md`](./docs/guide/code-generation.md) — the build, and the rule that generated code and
-  human code never share a file. Read it before writing anything that emits PHP.
+- [`docs/guide/code-generation/index.md`](./docs/guide/code-generation/index.md) — the build, and the rule that
+  generated code and human code never share a file. Read it before writing anything that emits PHP.
 
 Eight more documents own one subject each, and each says in its `read_before` when to open it:
 [`docs/guide/doctor.md`](./docs/guide/doctor.md) (what the package reports),

@@ -13,7 +13,7 @@ use Gcob\LaraSpecFirst\Generation\OperationSelector;
  * is the primitive; `--tag` and `--all` are loops over it rather than a second
  * mechanism.
  *
- * @see docs/guide/code-generation.md — "The build names the command instead of running it"
+ * @see docs/guide/code-generation/scaffolding.md — "The build names the command instead of running it"
  */
 
 /**

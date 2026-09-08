@@ -17,7 +17,7 @@ use Gcob\LaraSpecFirst\Generation\BuildPlanner;
  * ask**, which is the guard that keeps a `--tag` run from being how a hundred
  * empty classes get committed by accident.
  *
- * @see docs/guide/code-generation.md — "Scaffolding is spec:make, not a build step"
+ * @see docs/guide/code-generation/scaffolding.md — "Scaffolding is spec:make, not a build step"
  */
 final readonly class PlannedScaffold
 {

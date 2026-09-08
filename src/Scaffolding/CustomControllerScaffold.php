@@ -31,7 +31,7 @@ use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnwritableScaffoldException;
  * exactly what implementing the operation means.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
- * @see docs/guide/code-generation.md — "A reference to generated code says what to do when it goes missing"
+ * @see docs/guide/code-generation/generated-file-anatomy.md — "A reference to generated code says what to do when it goes missing"
  */
 final readonly class CustomControllerScaffold
 {
@@ -116,7 +116,7 @@ final readonly class CustomControllerScaffold
      * What to do when PHP cannot find the parent.
      *
      * **Written once, by the command that creates the file, and never again.** The
-     * build [never writes outside its own directories](../../docs/guide/code-generation.md),
+     * build [never writes outside its own directories](../../docs/guide/code-generation/index.md),
      * and that rule has no exception for a helpful comment — so from here on the
      * comment belongs to the developer, including the freedom to delete it.
      *

@@ -15,6 +15,14 @@ tags: [openapi, pagination, decisions, scope, laravel]
 
 # Pagination
 
+> **TL;DR**
+>
+> - **Not built yet.** Phase 2, with the driver mechanism it shares with rate limiting.
+> - OpenAPI has no vocabulary for pagination, so paginated endpoints are ordinary ones until a project names a driver.
+> - One built-in driver ships, `laravel`, matching Laravel's own paginator envelope.
+> - The build emits one envelope DTO per paginated operation, beside its item DTO and its metadata DTO.
+> - An operation paginates with no Eloquent model at all, which is the case the two seams exist to prove.
+
 OpenAPI describes a paginated endpoint the same way it describes any other: some query parameters go in, some object
 comes back. It has no construct saying _this parameter is the page number_ or _this property holds the collection_ —
 nothing a tool can read to know a response is a page of something rather than a thing.
@@ -72,7 +80,7 @@ package treats paginated endpoints as ordinary ones, which is exactly what it do
 
 This is the same posture as [the remote reference allowlist](./remote-references.md), empty until a project declares a
 host, and
-[the factory override scan](./code-generation.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares),
+[the factory override scan](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares),
 which scans nothing until a project names a directory. A feature whose whole premise is _we cannot know your convention_
 has no business assuming one on your behalf.
 
@@ -225,8 +233,8 @@ protected function respondWithCollection(): UserPageDto
 ```
 
 Nothing here reads configuration at request time, and nothing composes an object graph to hide what is happening. That
-is the property [the docblock norm](./code-generation.md#every-generated-file-explains-itself) exists to serve: open the
-file, read what it does.
+is the property [the docblock norm](./code-generation/generated-file-anatomy.md#every-generated-file-explains-itself)
+exists to serve: open the file, read what it does.
 
 Two details the generated code must take from the specification rather than invent:
 

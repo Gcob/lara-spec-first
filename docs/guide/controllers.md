@@ -16,16 +16,25 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 # Controllers
 
+> **TL;DR**
+>
+> - One controller per operation, carrying one method named `routeAction`.
+> - `x-controller` is the whole customization model: it names the class you will own, and the generated parent drops its
+>   `final`.
+> - An operation that declares no `x-controller` gets a `final` controller, which nothing can extend.
+> - `spec:make` is the only command that creates a file you will own. The build never scaffolds, it names the command.
+> - **Not built yet:** `x-model` and everything model-shaped, which is Phase 2.
+
 An operation needs something to answer it. This document owns what that something is: how many files it takes, what it
 assumes about your application, and where a developer's own code attaches to it.
 
 > **Partly shipped, and this document spans two phases.** `spec:build` emits one controller per operation, each carrying
 > one `routeAction` over the shipped `SpecController` base with its `middleware()` method, and answering
-> [501](./code-generation.md#an-unimplemented-operation-answers-501). **The two-class seam is shipped whole:**
-> `x-controller` is read, a declared controller names the generated parent and drops its `final`, the route points at
-> the child once that class exists, and two values reducing to one parent is a build error naming both. **`spec:make`
-> ships whole**: its three forms, the insertion prompt below with the edit verified on a copy, and the build it runs
-> afterwards. Nothing in [Phase 1](../project/roadmap.md#phase-1-the-foundation) is left in this document.
+> [501](./code-generation/scaffolding.md#an-unimplemented-operation-answers-501). **The two-class seam is shipped
+> whole:** `x-controller` is read, a declared controller names the generated parent and drops its `final`, the route
+> points at the child once that class exists, and two values reducing to one parent is a build error naming both.
+> **`spec:make` ships whole**: its three forms, the insertion prompt below with the edit verified on a copy, and the
+> build it runs afterwards. Nothing in [Phase 1](../project/roadmap.md#phase-1-the-foundation) is left in this document.
 > [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features) carries everything
 > model-shaped: `x-model`, the CRUD defaults, `HasModel` and its trait, the marker interfaces, the DTO factory calls,
 > the pagination seams and the mass-assignment check, because a generated CRUD body has nothing to return until the DTOs
@@ -39,7 +48,8 @@ assumes about your application, and where a developer's own code attaches to it.
 **One fixed method name rather than one derived from the operation**, and the reasoning is predictability: every
 controller this package generates has `routeAction`, so "which method do I override" has one answer, forever, with no
 naming convention to learn and no derived spelling to reconstruct. The operation's identity is carried by the class name
-and stated exactly in [the file's own docblock](./code-generation.md#every-generated-file-explains-itself), which is
+and stated exactly in
+[the file's own docblock](./code-generation/generated-file-anatomy.md#every-generated-file-explains-itself), which is
 where a reader looks anyway.
 
 Two alternatives were considered and dropped:
@@ -67,8 +77,8 @@ reasoning: a child declaring `routeAction(string $id)` over a parameterless pare
 **Named, because Laravel matches route parameters to method parameters by name** rather than by position. That makes the
 specification's spelling load-bearing here in a way it is not elsewhere — renaming `{id}` to `{userId}` changes this
 signature, and a child overriding it has to follow. Identity is
-[still normalized](./code-generation.md#identity-is-the-path-and-the-method-not-the-name), because that question is
-asked for rename detection rather than for signatures, and the two must not be conflated.
+[still normalized](./code-generation/generated-file-anatomy.md#identity-is-the-path-and-the-method-not-the-name),
+because that question is asked for rename detection rather than for signatures, and the two must not be conflated.
 
 **`string` until something says otherwise.** A route parameter is text on the wire; `x-model` is what will turn one into
 a bound model, and the parent will declare that type when it does. A child may narrow the return type — `array` where
@@ -88,9 +98,13 @@ filesystem. Any other answer would put the code in charge of something about the
 [`AGENTS.md`](../../AGENTS.md) calls going the wrong way, and which is the one direction this project does not travel.
 
 That reasoning is worth writing down rather than assuming, because the alternatives all look reasonable in isolation and
-every one of them inverts the direction: an attribute on the developer's class, a scan for whatever extends a generated
-parent, a config key listing customized operations. Each puts the answer in PHP. Only the specification saying so keeps
-the direction intact.
+every one of them inverts the direction:
+
+- **An attribute on the developer's class.** The class now decides whether the contract has a custom implementation.
+- **A scan for whatever extends a generated parent.** The filesystem decides, and the answer changes with a refactor.
+- **A config key listing customized operations.** A third file decides, and it is the one nobody updates.
+
+Each puts the answer in PHP. Only the specification saying so keeps the direction intact.
 
 **Decision: `x-controller` on an operation carries the fully-qualified name of its custom controller**, the same way PHP
 itself writes a class reference. It is not a grouping key and it does not name a base class to extend — it names _this
@@ -111,11 +125,11 @@ be read two ways. There is nothing to concatenate, so there is nothing to get wr
 **That table is the whole design, and the reason is one property: the extendable class's name comes from a value that
 exists only to name it.** `x-controller` has no other meaning in the contract, so nothing else can move it. An
 `operationId` can be renamed, or added to an operation that never had one — and the doctor
-[actively encourages adding one](./code-generation.md#when-operationid-is-absent-derive-from-method-and-path), which
-under any name-from-`operationId` scheme means the package nudges you toward breaking your own imports. Deriving the
-extendable name from `x-controller` instead means **the only thing that can break an import is the developer changing
-the name they chose themselves**, which is the deliberate versioning decision this package already says an identifier
-change is.
+[actively encourages adding one](./code-generation/generated-file-anatomy.md#when-operationid-is-absent-derive-from-method-and-path),
+which under any name-from-`operationId` scheme means the package nudges you toward breaking your own imports. Deriving
+the extendable name from `x-controller` instead means **the only thing that can break an import is the developer
+changing the name they chose themselves**, which is the deliberate versioning decision this package already says an
+identifier change is.
 
 **And `final` is what makes that guarantee real rather than advisory.** An operation with no `x-controller` has a
 derived name, the documentation has always called derived names disposable, and `final` stops anyone from building an
@@ -123,24 +137,24 @@ derived name, the documentation has always called derived names disposable, and 
 intend to depend on it."
 
 The same rule generalizes past controllers: **anything whose generated name is derived rather than declared is
-`final`.** A [DTO factory](./code-generation.md#factories-not-subclasses-are-where-behavior-lives) named from a
-`components/schemas` entry is extendable because that name was chosen; one named from an inline, anonymous response
-schema is not.
+`final`.** A [DTO factory](./code-generation/response-dtos.md#factories-not-subclasses-are-where-behavior-lives) named
+from a `components/schemas` entry is extendable because that name was chosen; one named from an inline, anonymous
+response schema is not.
 
 ### Two classes, found by name rather than by a scan
 
 A customizable operation therefore has two controllers: the generated parent, rewritten on every build, and the custom
 child, created once. **The build does not scan for the child — the specification already told it the name**, so
 resolution is a lookup rather than a search. That is simpler than
-[the factory override mechanism](./code-generation.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares),
+[the factory override mechanism](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares),
 which has to scan configured directories precisely because nothing in the specification names a factory override.
 
 The route points at the child when it exists, and at the generated parent when it does not — resolved at build time, so
 the registration stays a serializable pair of strings and `route:cache` keeps working.
 
 **The generated parent takes the same short name, inside
-[the generated namespace](./code-generation.md#where-generated-code-lives), and the child extends it by fully-qualified
-name.** No `use`, no alias, no suffix:
+[the generated namespace](./code-generation/index.md#where-generated-code-lives), and the child extends it by
+fully-qualified name.** No `use`, no alias, no suffix:
 
 ```php
 namespace App\Http\Controllers;
@@ -164,7 +178,7 @@ being named from an `operationId`, so advice about that key would send a reader 
 
 **And an `x-controller` inside the generated namespace is refused too.** The generated parent takes the same short name
 there, so the child would extend itself — and a build rewrites everything under that namespace, so
-[the work would not survive one](./code-generation.md#where-your-classes-go).
+[the work would not survive one](./code-generation/scaffolding.md#where-your-classes-go).
 
 **The child is looked for by file, not by loading it.** Asking PHP whether the class exists would load it, and a child
 extending a parent this build has not written yet is exactly what a first build meets — so the question would raise on
@@ -176,12 +190,12 @@ make the build's output depend on whether a previous build had run.
 ### `spec:make` is the only way in
 
 **Decision: a custom controller is created by `spec:make` and never by the build**, which is
-[the invariant](./code-generation.md#the-invariant-a-build-never-destroys-human-work) rather than a new rule. It
+[the invariant](./code-generation/index.md#the-invariant-a-build-never-destroys-human-work) rather than a new rule. It
 scaffolds one file for one operation, extending that operation's generated parent.
 
 **Shipped, except the insertion.** The command creates the class, refuses to overwrite one, and
-[names what it cannot scaffold](./code-generation.md#scaffolding-is-specmake-not-a-build-step). What it writes is
-deliberately almost nothing: the `extends`, the comment about that one line, and the signature to override.
+[names what it cannot scaffold](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step). What it
+writes is deliberately almost nothing: the `extends`, the comment about that one line, and the signature to override.
 
 **It writes `routeAction` with the signature the parent declares, and one line in it.** Writing the method is what a
 `make` is for: the signature is the fiddly part, PHP will not let a child widen it, and copying it out of a comment is
@@ -205,14 +219,24 @@ class UserController extends \App\Http\Generated\Controllers\UserController
 }
 ```
 
+**And the command builds when it is done.** A developer adds `x-controller` and runs `spec:make`: the class it names has
+no generated parent yet, because that parent's name comes from the extension the build has not read. The file would not
+load, in the very moment they are looking at it. So `spec:make` calls `spec:build` after writing — which also
+[points the route at the child](#two-classes-found-by-name-rather-than-by-a-scan), since that target is resolved at
+build time. **This is not [the invariant](./code-generation/index.md#the-invariant-a-build-never-destroys-human-work) in
+reverse:** the rule is that the build never creates a class you will own, and nothing says the command that does may not
+ask the build to catch up. It is skipped after a declined bulk confirmation, because a refusal is respected whole.
+
+#### The scaffold is not a publishable stub
+
 **Decision: the scaffold is not a publishable stub, and what a stub would have to leave alone is the reason.** Every
 Laravel generator worth copying lets a project publish its stubs, so the absence is a choice rather than an omission.
 
 Almost every line here is derived. The class declaration carries the parent's fully-qualified name, which
-[the build's naming rule](./code-generation.md#naming-and-the-rename-problem) produced; `routeAction`'s parameter list
-is the path's own, and [PHP forbids a child from widening it](#the-signature-is-the-contract-with-the-child). A stub can
-hold placeholders for those, but a stub whose placeholders are all mandatory is a template with one editable region —
-the comment.
+[the build's naming rule](./code-generation/generated-file-anatomy.md#naming-and-the-rename-problem) produced;
+`routeAction`'s parameter list is the path's own, and
+[PHP forbids a child from widening it](#the-signature-is-the-contract-with-the-child). A stub can hold placeholders for
+those, but a stub whose placeholders are all mandatory is a template with one editable region — the comment.
 
 **And its failure mode is quiet.** Drop `extends` from a published stub, by accident or because a placeholder was
 renamed, and `spec:make` writes a class that compiles, that the route still points at, and that answers nothing the
@@ -230,13 +254,7 @@ load-bearing lines inserted rather than templated — the parent, the signature,
 that a published stub cannot silently unhook a class from its own operation. Until then the answer to wanting a
 different file is that the file is yours: `spec:make` writes it once and never touches it again.
 
-**And the command builds when it is done.** A developer adds `x-controller` and runs `spec:make`: the class it names has
-no generated parent yet, because that parent's name comes from the extension the build has not read. The file would not
-load, in the very moment they are looking at it. So `spec:make` calls `spec:build` after writing — which also
-[points the route at the child](#two-classes-found-by-name-rather-than-by-a-scan), since that target is resolved at
-build time. **This is not [the invariant](./code-generation.md#the-invariant-a-build-never-destroys-human-work) in
-reverse:** the rule is that the build never creates a class you will own, and nothing says the command that does may not
-ask the build to catch up. It is skipped after a declined bulk confirmation, because a refusal is respected whole.
+#### The command offers to write the extension, defaulting to no
 
 **Decision: `spec:make` prints the extension to add, names the exact line, and offers to insert it — defaulting to no.**
 **Shipped.** Wanting a custom controller and having to hand-edit YAML first is friction with no purpose, but the
@@ -254,9 +272,9 @@ Insert it there now? (yes/no) [no]
 
 **The value is derived, not asked for.** It is `make.controllers` from the configuration — `App\Http\Controllers` by
 default — plus the short name
-[the build would have generated anyway](./code-generation.md#naming-and-the-rename-problem): the `operationId`
-studly-cased and suffixed, or the method and path for an operation with no `operationId`. So a developer types
-`spec:make showUser` and never a fully-qualified class name.
+[the build would have generated anyway](./code-generation/generated-file-anatomy.md#naming-and-the-rename-problem): the
+`operationId` studly-cased and suffixed, or the method and path for an operation with no `operationId`. So a developer
+types `spec:make showUser` and never a fully-qualified class name.
 
 **Only the namespace is configured, because the directory follows from PSR-4.** Asking for both would be two places that
 can disagree about one file, and the project's own `composer.json` already answers the second — which is the same map
@@ -269,8 +287,8 @@ next insertion proposes and nothing that was already inserted. That is the whole
 the other direction.
 
 Answering no leaves a copyable block and the exact line, which is
-[the pattern this package already uses](./code-generation.md#the-build-names-the-command-instead-of-running-it) when a
-human decision is required. Answering yes runs the insertion below, and then scaffolds the class and builds — one
+[the pattern this package already uses](./code-generation/scaffolding.md#the-build-names-the-command-instead-of-running-it)
+when a human decision is required. Answering yes runs the insertion below, and then scaffolds the class and builds — one
 command from an operation the contract says nothing about to a class the route reaches.
 
 **Decision: a developer who does not want to be asked types `--yes`, never `--force`.** `--tag=` and `--all` are the
@@ -281,10 +299,16 @@ that confirmation and the extension prompt above with the answer the command alr
 naming the class, given in advance instead of at a prompt.
 
 **The name is `--yes` and not `--force` because the two words already mean different things in every Laravel
-generator.** `--force` means _overwrite what is there_, and this command never overwrites a file a developer owns — that
-guard does not move for `--yes` either: a file that exists is still left alone, the insertion still verifies itself on a
-copy, and a name this project could not place is still refused, loudly. Borrowing `--force` would promise the one thing
-this command refuses to do.
+generator.** `--force` means _overwrite what is there_, and this command never overwrites a file a developer owns. None
+of the guards moves for `--yes`:
+
+- A file that already exists is still left exactly as it is.
+- The insertion still verifies itself on a copy before anything replaces the original.
+- A name this project could not place is still refused, loudly.
+
+Borrowing `--force` would promise the one thing this command refuses to do.
+
+#### The insertion verifies itself before it lands
 
 **The insertion never round-trips the document through a YAML dumper.** Parsing and re-emitting destroys comments, key
 order and anchors, and this is the one file read in every pull request. YAML's indentation is predictable enough that
@@ -301,11 +325,15 @@ something it did not intend, and falls back to printing the block for a human to
 which is exactly why it must exist: an automatic edit to the source of truth is worth a check that cannot be argued
 with.
 
-**It refuses to offer at all on a document it cannot place a line in.** A flow-style mapping, a JSON specification, an
-operation whose Path Item is a `$ref` into another file: each of those is a document this package still builds from, and
-none is one it may edit blind. The command prints the row, says it could not work out where the line goes, and stops.
-That is a refusal to guess rather than a limitation of YAML editing — the alternative is a line written at a depth
-nobody chose.
+**It refuses to offer at all on a document it cannot place a line in.** Three shapes, each of which this package still
+builds from happily and none of which it may edit blind:
+
+- A flow-style mapping, where there is no line beneath the operation to indent against.
+- A JSON specification, which this insertion has no rules for at all.
+- An operation whose Path Item is a `$ref` into another file, so the line would land in the wrong document.
+
+The command prints the row, says it could not work out where the line goes, and stops. That is a refusal to guess rather
+than a limitation of YAML editing — the alternative is a line written at a depth nobody chose.
 
 **And it refuses outright on a document the project does not own.** An operation reached through a
 [vendored remote reference](./remote-references.md) lives in a file the next fetch overwrites, so an insertion there
@@ -370,7 +398,7 @@ A child overriding `create()` receives `array $validated` and never touches the 
 
 **Decision: `x-model` is the switch for the whole persistence layer.** Declaring it gives an operation a model contract,
 a default query, CRUD defaults and a DTO factory. Declaring nothing gives it none of them, and its `routeAction` throws
-[the `501`](./code-generation.md#an-unimplemented-operation-answers-501) rather than pretending.
+[the `501`](./code-generation/scaffolding.md#an-unimplemented-operation-answers-501) rather than pretending.
 
 | The operation declares | Generated controller gets                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------ |
@@ -478,8 +506,9 @@ What the marker buys over the docblock that already states the same finding:
 
 **One framing precision, because the marker could otherwise lie.** A custom child inherits it and is free to reimplement
 `routeAction` as something else entirely. So the interface documents **what the build detected in the specification**,
-never what the class does — it is a [finding](./code-generation.md#every-generated-file-explains-itself), in the same
-sense the docblock's findings are, and it stays true no matter what a developer writes on top of it.
+never what the class does — it is a
+[finding](./code-generation/generated-file-anatomy.md#every-generated-file-explains-itself), in the same sense the
+docblock's findings are, and it stays true no matter what a developer writes on top of it.
 
 **Open:** the names. `HasModel`, `InteractsWithModel`, `CreatesResource`, `UpdatesResource`, `DeletesResource`,
 `ShowsResource` and `ListsResources` are working names, and each is public API surface under
@@ -525,8 +554,8 @@ replacement semantics overrides `update()`.
 ### The factory is recommended, not imposed
 
 The generated CRUD method calls the operation's
-[DTO factory](./code-generation.md#factories-not-subclasses-are-where-behavior-lives), and **the generated code says in
-a comment that keeping that call is strongly recommended.**
+[DTO factory](./code-generation/response-dtos.md#factories-not-subclasses-are-where-behavior-lives), and **the generated
+code says in a comment that keeping that call is strongly recommended.**
 
 A comment rather than a constraint, and the reason is worth stating so it does not read as softness: **bypassing the
 factory does not break anything.** A child that overrides `respondWithSingle()` and builds its DTO by hand still returns
@@ -570,9 +599,9 @@ the part that earns a developer's attention.
 A single-resource read needs no override at all. Laravel's own implicit route-model binding resolves it: **the generated
 method's parameter is type-hinted with the model class**, a build-time decision, and Laravel does the actual binding at
 request time with no package code involved — consistent with
-[the runtime never seeing the spec](./code-generation.md#the-runtime-never-sees-the-spec). The type hint comes from
-`x-model`, so one value in the specification feeds three things: this hint, the factory the generated method calls, and
-`getQuery()`'s default source. One fact, three consumers, never two answers.
+[the runtime never seeing the spec](./code-generation/index.md#the-runtime-never-sees-the-spec). The type hint comes
+from `x-model`, so one value in the specification feeds three things: this hint, the factory the generated method calls,
+and `getQuery()`'s default source. One fact, three consumers, never two answers.
 
 A collection read has nothing bound to receive, so its `routeAction` takes no model and `respondWithCollection()` starts
 from `$this->getQuery()`, handed to [pagination's built-in driver](./pagination.md#one-built-in-driver) when the
@@ -649,7 +678,8 @@ rather than to the empty markers — the same rule, applied again.
 
 That is the practical payoff of dropping the context objects. The earlier design had to answer "how does a capability
 attach to a context" as a design question; now the build writes the calls it decided on, and the generated file's own
-[docblock](./code-generation.md#every-generated-file-explains-itself) names what it detected and why.
+[docblock](./code-generation/generated-file-anatomy.md#every-generated-file-explains-itself) names what it detected and
+why.
 
 ## The doctor counts two things, not three
 
@@ -663,10 +693,10 @@ attach to a context" as a design question; now the build writes the calls it dec
 `501` is a real gap: nothing answers the request. Everything else is not a gap, whether it runs on a generated CRUD
 default or on a custom child — **the doctor exists to find failures, not to narrate every file that is fine.** Whether a
 working operation is a default or an override is already answered by that file's own
-[docblock](./code-generation.md#every-generated-file-explains-itself), the moment anyone opens it. Repeating the
-distinction in the coverage report would be the doctor auditing something the code already says about itself, which is
-not what [rule 2](./openapi-support.md#the-four-rules) asks for: it asks that a gap be loud, not that every working file
-be annotated twice.
+[docblock](./code-generation/generated-file-anatomy.md#every-generated-file-explains-itself), the moment anyone opens
+it. Repeating the distinction in the coverage report would be the doctor auditing something the code already says about
+itself, which is not what [rule 2](./openapi-support.md#the-four-rules) asks for: it asks that a gap be loud, not that
+every working file be annotated twice.
 
 Two checks specific to this document, both of which the specification cannot see for itself:
 
@@ -674,8 +704,26 @@ Two checks specific to this document, both of which the specification cannot see
   provides it. The fix is `spec:make`, and the report says so.
 - **A custom child whose `x-controller` value has changed**, leaving it extending a parent the build no longer emits.
   This is the doctor's to report and not the build's: the build
-  [does not compare its own output between runs](./code-generation.md#rename-and-orphan-detection-decided-against),
+  [does not compare its own output between runs](./code-generation/generated-file-anatomy.md#rename-and-orphan-detection-decided-against),
   while the doctor is already reading the tree in order to judge it and pays nothing extra for the question.
+
+## What this document does not cover
+
+Four things a reader arrives at a controller wanting, and finds owned elsewhere:
+
+- **Nothing here validates a request.** `$validated` arrives already produced by one generated `FormRequest` per
+  operation, which is [Phase 2](../project/roadmap.md)'s to build and the roadmap's to sequence. This document assumes
+  the value and never derives it.
+- **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
+  teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled
+  here is only that the generated method calls the factory directly.
+- **`x-controller` decides which class answers, never whether the caller may.** Authorization is
+  [`security.md`](./security.md)'s, right down to
+  [the line where a Policy takes over](./security.md#past-the-scope-check-it-is-a-policys-job). A custom controller is
+  not an access-control mechanism, and naming one grants nobody anything.
+- **The build's own rules are stated once, in the build's own document.** What a build may write, where generated code
+  lives, and what a project commits are [`code-generation/index.md`](./code-generation/index.md)'s. This document
+  depends on all three and restates none of them.
 
 ## Open questions
 
