@@ -155,7 +155,9 @@ the registration stays a serializable pair of strings and `route:cache` keeps wo
 ![The shipped base, the generated parent and the custom child, and what each one owns](../diagrams/two-class-seam.svg)
 
 Three boxes and who rewrites each is the part a paragraph keeps having to restate: the package ships the base, the build
-owns the middle layer entirely, and the bottom one is written once by a person and never touched again.
+owns the middle layer entirely, and the bottom one is written once by a person and never touched again. That is the
+structure; [the request path](#reads-and-where-they-stop-needing-a-line-of-code) is the same three boxes seen from a
+request arriving.
 
 **The generated parent takes the same short name, inside
 [the generated namespace](./code-generation/index.md#where-generated-code-lives), and the child extends it by
@@ -600,6 +602,12 @@ The third row is the common case for anything interesting: the defaults handle t
 the part that earns a developer's attention.
 
 ## Reads, and where they stop needing a line of code
+
+![A GET request crossing the route, the scope middleware, your controller, its generated parent and the DTO factory](../diagrams/request-path.svg)
+
+One level below [the two-class seam](#two-classes-found-by-name-rather-than-by-a-scan): the same classes, in the order a
+request reaches them. Every hop after the route is a method a child may override, and the phase note names the three
+participants that do not exist yet.
 
 A single-resource read needs no override at all. Laravel's own implicit route-model binding resolves it: **the generated
 method's parameter is type-hinted with the model class**, a build-time decision, and Laravel does the actual binding at

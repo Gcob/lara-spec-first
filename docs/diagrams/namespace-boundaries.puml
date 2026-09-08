@@ -1,0 +1,80 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+'
+' One neutral grey on a transparent background, so a single SVG stays legible on
+' the light theme and the dark one. Nothing here picks a palette, which is what
+' lets the site own its own colors.
+<style>
+document {
+  BackgroundColor transparent
+}
+componentDiagram {
+  BackgroundColor transparent
+  LineColor #888888
+  FontColor #888888
+  FontName Helvetica
+  FontSize 13
+
+  component {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+  package {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+    FontStyle italic
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+  arrow {
+    LineColor #888888
+    FontColor #888888
+  }
+}
+</style>
+skinparam shadowing false
+
+' A period in a package name is a namespace separator to PlantUML, which splits
+' a label into two nested boxes. Turned off so a label is a label.
+set separator none
+
+top to bottom direction
+
+package "Parsing\\" as Parsing {
+  component "cebe\\openapi\\\nthe third-party reader" as Cebe
+}
+
+component "Contract\\\nour own types" as Contract
+
+package "Consume Contract\\, and only it" as Consumers {
+  component "Generation\\" as Generation
+  component "Console\\" as Console
+  component "Routing\\" as Routing
+}
+
+Parsing -down-> Contract : produces
+Contract -[dashed]-> Parsing : never
+
+Generation -up-> Contract
+Console -up-> Contract
+Routing -up-> Contract
+
+note bottom of Cebe
+  The parser is imported here and
+  nowhere else, and the assertion in
+  tests/Unit/ArchitectureTest.php
+  is what keeps it that way.
+end note
+
+note right of Contract
+  The only thing that crosses. A future
+  version cebe cannot serve brings its own
+  parser behind the same interface, and
+  the consumers never notice.
+end note
+@enduml

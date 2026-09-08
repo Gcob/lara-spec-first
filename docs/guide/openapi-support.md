@@ -187,6 +187,12 @@ the parser:
 | `Console\`    | The commands.                                                          | Started |
 | `Routing\`    | What the service provider loads at boot.                               | Yes     |
 
+![One namespace holds the third-party parser, and only our own types cross out of it](../diagrams/namespace-boundaries.svg)
+
+The table says what each namespace owns; the picture says which way the dependency runs, which is the whole point of the
+arrangement. One box contains the third-party library, one type of thing leaves it, and the arrow back into `Parsing\`
+is the one nothing may draw.
+
 Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document — the reference cycle detector and the
 remote reference guard. It is expected to stay small by design: this doctrine sends almost every check to
 [the doctor](./doctor.md), which _reports_, and keeps here only what makes loading impossible or unsafe. Both of the

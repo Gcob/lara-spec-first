@@ -1,0 +1,90 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+'
+' One neutral grey on a transparent background, so a single SVG stays legible on
+' the light theme and the dark one. Nothing here picks a palette, which is what
+' lets the site own its own colors.
+<style>
+document {
+  BackgroundColor transparent
+}
+sequenceDiagram {
+  BackgroundColor transparent
+  LineColor #888888
+  FontColor #888888
+  FontName Helvetica
+  FontSize 13
+
+  participant {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+  lifeLine {
+    BackgroundColor transparent
+    LineColor #888888
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+  arrow {
+    LineColor #888888
+    FontColor #888888
+  }
+  group {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+  divider {
+    BackgroundColor transparent
+    LineColor #888888
+    FontColor #888888
+  }
+}
+</style>
+skinparam shadowing false
+hide footbox
+
+' A period in a participant name is a namespace separator to PlantUML, which
+' splits a label into two boxes. Turned off so a label is a label.
+set separator none
+
+participant "Client" as Client
+participant "routes.php\ngenerated" as Route
+participant "the scope middleware" as Scope
+participant "Controllers\\UserController\nyours" as Child
+participant "Generated\\Controllers\\UserController\ngenerated" as Parent
+participant "UserDtoFactory\ngenerated" as Factory
+
+note over Scope, Factory
+  Phase 2, not shipped: the scope middleware,
+  the DTO and its factory. Today routeAction
+  throws and Laravel renders 501 until a custom
+  child answers.
+end note
+
+Client -> Route : GET /users/42
+Route -> Route : implicit binding\nresolves User 42
+Route -> Scope : does the model\nhave the scope?
+Scope --> Route : yes
+Route -> Child : routeAction(User)
+
+note over Route, Child
+  The route points at your class when its file
+  exists, and at the generated parent when it
+  does not. Decided at build time, so
+  route:cache keeps working.
+end note
+
+Child -> Parent : parent::routeAction(User)
+Parent -> Parent : respondWithSingle(User)
+Parent -> Factory : from(User)
+Factory --> Parent : UserDto
+Parent --> Child : UserDto
+Child --> Client : 200, the response schema's shape
+
+
+@enduml
