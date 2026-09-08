@@ -161,6 +161,12 @@ half-generated tree behind the first operation it could not handle, and half-gen
 worse than no output: it analyses, it autocompletes, and it lies. Planning first means a refusal costs nothing, and the
 working tree is exactly as it was.
 
+![The ordered steps of a build, and the three points where it refuses](../../diagrams/build-order.svg)
+
+The order, with its refusals drawn where they sit. The picture also places
+[the reading pipeline](../openapi-support.md#reading-a-document) where it belongs: one step of a build rather than the
+whole of it, which is the relationship a reader arriving on either page has had to assemble for themselves.
+
 Its properties:
 
 - **Idempotent.** Running it twice in a row changes nothing the second time. If a build produces a diff on an unchanged
