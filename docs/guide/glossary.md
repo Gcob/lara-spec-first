@@ -15,17 +15,16 @@ tags: [openapi, code-generation, drivers, compatibility, laravel]
 > **TL;DR**
 >
 > - Every term below means something specific here, and nothing to a reader who has not met it yet.
-> - Each row is one clause. The term links to the section where it is actually defined.
+> - Each row is one clause, and the term links to the section where the concept is actually argued.
 > - The grouping is by owning document, so this page doubles as a map of which guide owns which idea.
 > - When a row and the document it points at disagree, the document is right and the row is a bug.
 
 This set invents vocabulary, and it is right to: `drift` and `Deferred` and the marker are each precise, and each of
-them means nothing on first contact. Every guide is meant to define its own terms on first use, so a reader who starts
-in the middle of one is never stuck. **This page is the other half of that promise: the reader who arrives already
-stuck, and needs one place to look.**
+them means nothing on first contact. **Every guide links a term here the first time it uses one**, which is
+[the rule](../contributing/documentation.md#a-coined-term-links-to-the-glossary-on-its-first-use) this page exists to
+serve, so a reader who starts in the middle of a document is one click from the word that stopped them.
 
-**It carries no reasoning, deliberately.** A definition and its justification in two places is the one shape
-[this repository's own rules](../contributing/documentation.md#every-coined-term-is-defined-where-it-is-first-used)
+**It carries no reasoning, deliberately.** A definition and its justification in two places is the shape the same rules
 forbid, because the copy is what goes stale. So a row is a clause and a pointer, short enough that it cannot drift into
 a second explanation, and the section it links to is the authority.
 
@@ -33,12 +32,12 @@ a second explanation, and the section it links to is the authority.
 
 What the package reads, and what it refuses to. [`openapi-support.md`](./openapi-support.md).
 
-| Term                                                                     | In one clause                                                                                                                        |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| [Support level](./openapi-support.md#support-levels)                     | One of five verdicts the package publishes for every OpenAPI construct: `Supported`, `Partial`, `Ignored`, `Deferred` or `Rejected`. |
-| [`Deferred`](./openapi-support.md#support-levels)                        | The level meaning recognized, planned, and not built yet, as against `Ignored`, which is not planned.                                |
-| [`Rejected`](./openapi-support.md#support-levels)                        | The level meaning the package refuses the document rather than serving it wrong.                                                     |
-| [Fault](./openapi-support.md#the-pipeline-does-not-throw-callers-decide) | Something wrong the reading pipeline found, carried back with whatever it still managed to read rather than thrown.                  |
+| Term                                                                             | In one clause                                                                                                                        |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [Support level](./openapi-support.md#support-levels){#support-level}             | One of five verdicts the package publishes for every OpenAPI construct: `Supported`, `Partial`, `Ignored`, `Deferred` or `Rejected`. |
+| [`Deferred`](./openapi-support.md#support-levels){#deferred}                     | The level meaning recognized, planned, and not built yet, as against `Ignored`, which is not planned.                                |
+| [`Rejected`](./openapi-support.md#support-levels){#rejected}                     | The level meaning the package refuses the document rather than serving it wrong.                                                     |
+| [Fault](./openapi-support.md#the-pipeline-does-not-throw-callers-decide){#fault} | Something wrong the reading pipeline found, carried back with whatever it still managed to read rather than thrown.                  |
 
 ## Code Generation
 
@@ -46,89 +45,89 @@ What the package reads, and what it refuses to. [`openapi-support.md`](./openapi
 
 [`code-generation/index.md`](./code-generation/index.md).
 
-| Term                                                                                           | In one clause                                                                                                                             |
-| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| [The invariant](./code-generation/index.md#the-invariant-a-build-never-destroys-human-work)    | The one property every build rule serves: a build never destroys human work, on any machine, however many times it runs.                  |
-| [The generated tree](./code-generation/index.md#where-generated-code-lives)                    | The directory and namespace the build owns completely, `app/Http/Generated` by default.                                                   |
-| [The marker](./code-generation/index.md#the-marker-is-how-the-build-recognizes-its-own-output) | The `@generated by lara-spec-first` line every generated file carries, and the only thing that lets the build delete a file.              |
-| [Pruning](./code-generation/index.md#the-marker-is-how-the-build-recognizes-its-own-output)    | The build removing a generated file the contract no longer describes, touching nothing that lacks the marker.                             |
-| [The two layers](./code-generation/index.md#two-layers)                                        | A generated abstract or interface extended by a class a human writes, which is what turns a contract change into a static analysis error. |
+| Term                                                                                                    | In one clause                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| [The invariant](./code-generation/index.md#the-invariant-a-build-never-destroys-human-work){#invariant} | The one property every build rule serves: a build never destroys human work, on any machine, however many times it runs.                  |
+| [The generated tree](./code-generation/index.md#where-generated-code-lives){#generated-tree}            | The directory and namespace the build owns completely, `app/Http/Generated` by default.                                                   |
+| [The marker](./code-generation/index.md#the-marker-is-how-the-build-recognizes-its-own-output){#marker} | The `@generated by lara-spec-first` line every generated file carries, and the only thing that lets the build delete a file.              |
+| [Pruning](./code-generation/index.md#the-marker-is-how-the-build-recognizes-its-own-output){#pruning}   | The build removing a generated file the contract no longer describes, touching nothing that lacks the marker.                             |
+| [The two layers](./code-generation/index.md#two-layers){#two-layers}                                    | A generated abstract or interface extended by a class a human writes, which is what turns a contract change into a static analysis error. |
 
 ### Anatomy of a generated file
 
 [`generated-file-anatomy.md`](./code-generation/generated-file-anatomy.md).
 
-| Term                                                                                                                    | In one clause                                                                                                                    |
-| ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| [The source map](./code-generation/generated-file-anatomy.md#the-source-map)                                            | The JSON pointer every generated file carries, naming the exact position in the specification it came from.                      |
-| [An operation's identity](./code-generation/generated-file-anatomy.md#identity-is-the-path-and-the-method-not-the-name) | Its path and HTTP method with path parameters reduced to positions, as against its name, which is what the build generates from. |
+| Term                                                                                                                                          | In one clause                                                                                                                    |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| [The source map](./code-generation/generated-file-anatomy.md#the-source-map){#source-map}                                                     | The JSON pointer every generated file carries, naming the exact position in the specification it came from.                      |
+| [An operation's identity](./code-generation/generated-file-anatomy.md#identity-is-the-path-and-the-method-not-the-name){#operations-identity} | Its path and HTTP method with path parameters reduced to positions, as against its name, which is what the build generates from. |
 
 ### Scaffolding, publishing and DTOs
 
-| Term                                                                                                  | In one clause                                                                                                                               |
-| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Scaffolding](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step)              | `spec:make` creating one file you will own, on request, which the build itself never does.                                                  |
-| [The public copy](./code-generation/publishing.md#where-the-public-copy-goes)                         | The sanitized specification the build can emit for publication, with internal operations removed. Not built yet.                            |
-| [A DTO factory](./code-generation/response-dtos.md#factories-not-subclasses-are-where-behavior-lives) | The generated class beside a response DTO whose one job is building it, and the seam a project overrides instead of the DTO. Not built yet. |
+| Term                                                                                                                | In one clause                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Scaffolding](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step){#scaffolding}              | `spec:make` creating one file you will own, on request, which the build itself never does.                                                  |
+| [The public copy](./code-generation/publishing.md#where-the-public-copy-goes){#public-copy}                         | The sanitized specification the build can emit for publication, with internal operations removed. Not built yet.                            |
+| [A DTO factory](./code-generation/response-dtos.md#factories-not-subclasses-are-where-behavior-lives){#dto-factory} | The generated class beside a response DTO whose one job is building it, and the seam a project overrides instead of the DTO. Not built yet. |
 
 ## Controllers
 
 The controller of one operation. [`controllers.md`](./controllers.md).
 
-| Term                                                                                                                    | In one clause                                                                                                                       |
-| ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [`routeAction`](./controllers.md#one-controller-per-operation-one-method-named-routeaction)                             | The one method every generated controller carries, and the only method a route ever points at.                                      |
-| [`SpecController`](./controllers.md#what-the-generated-controller-contains)                                             | The single thin abstract base every generated controller extends, holding no per-operation knowledge.                               |
-| [The two-class seam](./controllers.md#two-classes-found-by-name-rather-than-by-a-scan)                                  | The generated parent and the custom child an operation gets when it declares `x-controller`, found by name rather than by a scan.   |
-| [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable)                                       | The extension naming an operation's custom controller, and the only thing that makes a generated controller extendable.             |
-| [`x-model`](./controllers.md#x-model-is-what-turns-on-everything-model-shaped)                                          | The extension naming an operation's Eloquent model, which is what turns on route-model binding and the CRUD defaults.               |
-| [A marker interface](./controllers.md#the-detected-crud-semantic-is-a-marker-interface-deliberately-empty)              | An empty interface a generated controller implements to state the CRUD semantic the build detected, carrying no methods on purpose. |
-| [`HasModel` and `InteractsWithModel`](./controllers.md#the-model-contract-is-an-interface-a-trait-supplies-what-it-can) | The interface declaring the model contract, and the trait shipping the half of it that can be written once for everyone.            |
+| Term                                                                                                                                                      | In one clause                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [`routeAction`](./controllers.md#one-controller-per-operation-one-method-named-routeaction){#routeaction}                                                 | The one method every generated controller carries, and the only method a route ever points at.                                      |
+| [`SpecController`](./controllers.md#what-the-generated-controller-contains){#speccontroller}                                                              | The single thin abstract base every generated controller extends, holding no per-operation knowledge.                               |
+| [The two-class seam](./controllers.md#two-classes-found-by-name-rather-than-by-a-scan){#two-class-seam}                                                   | The generated parent and the custom child an operation gets when it declares `x-controller`, found by name rather than by a scan.   |
+| [`x-controller`](./controllers.md#the-specification-decides-what-is-customizable){#x-controller}                                                          | The extension naming an operation's custom controller, and the only thing that makes a generated controller extendable.             |
+| [`x-model`](./controllers.md#x-model-is-what-turns-on-everything-model-shaped){#x-model}                                                                  | The extension naming an operation's Eloquent model, which is what turns on route-model binding and the CRUD defaults.               |
+| [A marker interface](./controllers.md#the-detected-crud-semantic-is-a-marker-interface-deliberately-empty){#marker-interface}                             | An empty interface a generated controller implements to state the CRUD semantic the build detected, carrying no methods on purpose. |
+| [`HasModel` and `InteractsWithModel`](./controllers.md#the-model-contract-is-an-interface-a-trait-supplies-what-it-can){#hasmodel-and-interactswithmodel} | The interface declaring the model contract, and the trait shipping the half of it that can be written once for everyone.            |
 
 ## The Doctor
 
 What the package reports about your contract. [`doctor.md`](./doctor.md).
 
-| Term                                                                        | In one clause                                                                                                                       |
-| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [Document fault](./doctor.md#two-kinds-of-finding-never-mixed)              | A finding whose owner is the specification's author: the document is invalid, inconsistent, or breaks a rule this package requires. |
-| [Package limit](./doctor.md#two-kinds-of-finding-never-mixed)               | A finding whose owner is this package: the document is correct and the construct is not honored.                                    |
-| [Drift](./doctor.md#what-it-checks)                                         | The generated code and the specification disagreeing, which is what happens when somebody edits the contract and forgets to build.  |
-| [Shadowing](./doctor.md#what-it-checks)                                     | An earlier templated path matching every request a later one was meant to answer, so the later route never runs.                    |
-| [An acknowledgement](./doctor.md#acknowledged-limits-the-consumers-opt-out) | A consumer's recorded opt-out of a package limit, which changes what the doctor does rather than only what it prints.               |
+| Term                                                                                          | In one clause                                                                                                                       |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [Document fault](./doctor.md#two-kinds-of-finding-never-mixed){#document-fault}               | A finding whose owner is the specification's author: the document is invalid, inconsistent, or breaks a rule this package requires. |
+| [Package limit](./doctor.md#two-kinds-of-finding-never-mixed){#package-limit}                 | A finding whose owner is this package: the document is correct and the construct is not honored.                                    |
+| [Drift](./doctor.md#what-it-checks){#drift}                                                   | The generated code and the specification disagreeing, which is what happens when somebody edits the contract and forgets to build.  |
+| [Shadowing](./doctor.md#what-it-checks){#shadowing}                                           | An earlier templated path matching every request a later one was meant to answer, so the later route never runs.                    |
+| [An acknowledgement](./doctor.md#acknowledged-limits-the-consumers-opt-out){#acknowledgement} | A consumer's recorded opt-out of a package limit, which changes what the doctor does rather than only what it prints.               |
 
 ## Operation Lifecycle
 
 How strong a promise an operation carries. [`lifecycle.md`](./lifecycle.md).
 
-| Term                                                                                                     | In one clause                                                                                                                                 |
-| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`x-audience`](./lifecycle.md#two-keys-one-discriminator)                                                | The extension saying who an operation is promised to, `public` or `internal`; absent means `public`.                                          |
-| [`x-lifecycle`](./lifecycle.md#two-keys-one-discriminator)                                               | The extension saying how strong that promise is, `beta` or `stable`; a public operation that says nothing is `beta`.                          |
-| [`x-sunset`](./lifecycle.md#the-doctor-rules-that-follow)                                                | The extension stating the date an endpoint stops being served, which a deprecation is required to carry.                                      |
-| [The baseline](./lifecycle.md#unstable-by-default-and-what-stable-costs-us)                              | The previously committed version of the specification, read from git, that a breaking-change comparison runs against.                         |
-| [The protection report](./lifecycle.md#unstable-by-default-and-what-stable-costs-us)                     | The doctor line counting how many public operations are actually `stable`, so protection that is off never looks like protection that passed. |
-| [The sunset horizon](./lifecycle.md#the-horizon-is-not-in-a-config-file-you-published-before-it-existed) | The configurable number of days before a sunset date at which the doctor starts mentioning it, 90 by default.                                 |
+| Term                                                                                                                      | In one clause                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`x-audience`](./lifecycle.md#two-keys-one-discriminator){#x-audience}                                                    | The extension saying who an operation is promised to, `public` or `internal`; absent means `public`.                                          |
+| [`x-lifecycle`](./lifecycle.md#two-keys-one-discriminator){#x-lifecycle}                                                  | The extension saying how strong that promise is, `beta` or `stable`; a public operation that says nothing is `beta`.                          |
+| [`x-sunset`](./lifecycle.md#the-doctor-rules-that-follow){#x-sunset}                                                      | The extension stating the date an endpoint stops being served, which a deprecation is required to carry.                                      |
+| [The baseline](./lifecycle.md#unstable-by-default-and-what-stable-costs-us){#baseline}                                    | The previously committed version of the specification, read from git, that a breaking-change comparison runs against.                         |
+| [The protection report](./lifecycle.md#unstable-by-default-and-what-stable-costs-us){#protection-report}                  | The doctor line counting how many public operations are actually `stable`, so protection that is off never looks like protection that passed. |
+| [The sunset horizon](./lifecycle.md#the-horizon-is-not-in-a-config-file-you-published-before-it-existed){#sunset-horizon} | The configurable number of days before a sunset date at which the doctor starts mentioning it, 90 by default.                                 |
 
 ## Drivers, pagination and rate limiting
 
 The mechanism behind every feature OpenAPI never standardized, and the two features built on it.
 
-| Term                                                                     | In one clause                                                                                                 |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| [A driver](./drivers.md#a-driver-is-structure-the-mapping-is-names)      | A class that knows where a structure is declared in a document, and never what this project calls its fields. |
-| [A mapping](./drivers.md#a-driver-is-structure-the-mapping-is-names)     | The configuration naming those fields for one project, which is what makes the driver beside it portable.     |
-| [The envelope](./pagination.md#one-envelope-dto-per-paginated-operation) | The wrapper a paginated response puts its collection in, generated as its own DTO per paginated operation.    |
-| [A window](./rate-limiting.md#windows-are-first-class-from-the-start)    | The period a rate limit is expressed over, plural from the first release rather than assumed to be a minute.  |
+| Term                                                                                | In one clause                                                                                                 |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| [A driver](./drivers.md#a-driver-is-structure-the-mapping-is-names){#driver}        | A class that knows where a structure is declared in a document, and never what this project calls its fields. |
+| [A mapping](./drivers.md#a-driver-is-structure-the-mapping-is-names){#mapping}      | The configuration naming those fields for one project, which is what makes the driver beside it portable.     |
+| [The envelope](./pagination.md#one-envelope-dto-per-paginated-operation){#envelope} | The wrapper a paginated response puts its collection in, generated as its own DTO per paginated operation.    |
+| [A window](./rate-limiting.md#windows-are-first-class-from-the-start){#window}      | The period a rate limit is expressed over, plural from the first release rather than assumed to be a minute.  |
 
 ## Remote References
 
 A `$ref` that reaches over the network. [`remote-references.md`](./remote-references.md).
 
-| Term                                                                                                | In one clause                                                                                                                       |
-| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [A vendored reference](./remote-references.md#a-remote-reference-is-a-dependency-not-a-cache-entry) | A remote `$ref` fetched once, on request, and committed into the repository as a dependency rather than a cache entry.              |
-| [The allowlist](./remote-references.md#the-setting)                                                 | The configured set of hosts a remote reference may be fetched from, empty by default so nothing is fetched until a project says so. |
+| Term                                                                                                                     | In one clause                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [A vendored reference](./remote-references.md#a-remote-reference-is-a-dependency-not-a-cache-entry){#vendored-reference} | A remote `$ref` fetched once, on request, and committed into the repository as a dependency rather than a cache entry.              |
+| [The allowlist](./remote-references.md#the-setting){#allowlist}                                                          | The configured set of hosts a remote reference may be fetched from, empty by default so nothing is fetched until a project says so. |
 
 ## What this document does not cover
 

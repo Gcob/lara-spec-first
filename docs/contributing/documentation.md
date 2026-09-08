@@ -323,28 +323,38 @@ leaves with the answer.
 The same rule holds at paragraph scale: the claim goes in the first sentence, the reasoning underneath it. That is what
 makes a bolded lead sentence worth scanning rather than decoration.
 
-### Every coined term is defined where it is first used
+### A coined term links to the glossary on its first use
 
 This set invents vocabulary, and it is right to: `drift`, `Deferred`, the marker, the source map, the invariant, an
 acknowledgement. Each one is precise, and each one means nothing to a reader who has not met it yet.
 
-**Define a coined term on its first use in the document, or link the document that owns it.** First use in the document,
-not in the repository: a reader arrives on one page, never on the set. One clause is usually the whole cost.
+**The first use of a coined term in a document links to its row in [`glossary.md`](../guide/glossary.md).** Not a
+definition written out again. Writing one in every document that uses the word is the same clause in ten files, which is
+[the duplication smell](#doc-smells) with extra steps, and the copies are what go stale.
 
-- **Write:** "the marker, the comment every generated file carries so the build knows it may delete it"
-- **Not:** "a file without the marker is never pruned"
+- **Write:** "reporting [drift](../guide/glossary.md#drift) is the doctor's job"
+- **Not:** "reporting drift is the doctor's job", leaving a reader who has not met the word
 
-Assumed vocabulary is the most expensive prose here, because nothing about it looks wrong.
+**Every term carries its own anchor**, the term itself with any leading article dropped: `#drift`, `#invariant`,
+`#two-class-seam`. So the link is guessable, and `docs:check-anchors` fails the build on one that is not.
 
-**Every term also has a row in [`glossary.md`](../guide/glossary.md), and that page does not replace this rule.** The
-row is a clause and a link for the reader who is already lost; defining the term where you use it is what stops them
-getting lost. Two consequences for anyone coining one:
+The row is one clause and a link onward to the section that owns the concept, so the reader gets the short answer in one
+hop and the whole argument in two. That section stays the authority; the row is a pointer that happens to be enough most
+of the time.
 
-- **The owning section comes first.** A glossary row points at the section that defines the term, so a term with no
-  owner is a term nothing defines — which is what writing the row will tell you. Give it a home, then index it.
-- **The row carries no reasoning.** If a term needs a paragraph to land, that paragraph belongs to the owning document
-  and the row stays one clause. A glossary that argues is a second copy of the argument, and the copy is what goes
-  stale.
+**First use in the document, not in the repository.** A reader arrives on one page, never on the set.
+
+**First use, not every use.** `drift` appears twenty-five times and `acknowledgement` thirty-three; linking each one
+would put a link in most sentences of `doctor.md` and teach nobody anything after the first. A later mention in the same
+document is prose.
+
+**Only the coined sense.** Most occurrences of these words are ordinary English and must stay unlinked: `drift` is a
+doctor finding, but "the table drifts fastest" is a verb; `Deferred` is a support level, but "**Deferred deliberately**"
+is this set's own marker for an undecided item. Linking the ordinary sense is worse than linking nothing, because it
+makes the coined one invisible.
+
+**A term with no glossary row is a term nothing owns.** Writing the row is what tells you: if there is no section to
+point at, that section is the thing to write, and the row comes after it.
 
 ### Say what the document does not cover
 
