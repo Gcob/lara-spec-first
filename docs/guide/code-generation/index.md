@@ -17,7 +17,7 @@ tags: [code-generation, openapi, scope, decisions, laravel]
 
 # Code Generation
 
-> **TL;DR**
+> **In brief**
 >
 > - `spec:build` reads the contract and emits `routes.php` plus one controller per operation, each answering 501 until
 >   something implements it.

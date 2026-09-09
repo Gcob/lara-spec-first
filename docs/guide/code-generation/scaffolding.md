@@ -14,7 +14,7 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 # Scaffolding & Watching
 
-> **TL;DR**
+> **In brief**
 >
 > - The build never creates a class you will own. `spec:make` does, on request, and it never overwrites a file that
 >   already exists.

@@ -14,7 +14,7 @@ tags: [code-generation, openapi, security, scope, decisions]
 
 # Publishing the Specification
 
-> **TL;DR**
+> **In brief**
 >
 > - The document the build reads is internal: `x-model` and `x-controller` describe the inside of the application, so
 >   publishing it hands out your database shape and your namespace layout.

@@ -232,3 +232,51 @@
     line-height: 22px;
     text-align: center;
 }
+
+/*
+ * The summary at the top of every page is given a card of its own.
+ *
+ * It is written as a blockquote because that is the one form that renders on
+ * GitHub as well as here — the reason is in documentation.md — and the default
+ * blockquote is a grey bar in the left margin, which is the same weight the site
+ * gives to an aside. This block is the opposite of an aside: it is the first
+ * thing on the page and the part a reader may read instead of the page.
+ *
+ * Matched by position rather than by a class, the way the caption above is. The
+ * summary is the blockquote directly after the page title, and there is exactly
+ * one of those per document, so there is nothing for an author to remember and
+ * nothing that renders differently on GitHub.
+ */
+.vp-doc h1 + blockquote {
+    margin: 24px 0 0;
+    padding: 20px 24px;
+    border-left: none;
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 12px;
+    background-color: var(--vp-c-bg-soft);
+}
+
+.vp-doc h1 + blockquote > p:first-child {
+    margin: 0 0 12px;
+}
+
+.vp-doc h1 + blockquote > p:first-child > strong {
+    color: var(--vp-c-brand-1);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.vp-doc h1 + blockquote ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.vp-doc h1 + blockquote li + li {
+    margin-top: 6px;
+}
+
+.vp-doc h1 + blockquote li::marker {
+    color: var(--vp-c-text-3);
+}

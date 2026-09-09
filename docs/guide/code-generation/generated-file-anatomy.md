@@ -16,7 +16,7 @@ tags: [code-generation, openapi, decisions, laravel]
 
 # Anatomy of a Generated File
 
-> **TL;DR**
+> **In brief**
 >
 > - Every generated file carries the JSON pointer it came from, named from the project root rather than absolutely,
 >   emitted in every mode.

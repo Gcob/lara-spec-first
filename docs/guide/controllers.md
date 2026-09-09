@@ -16,7 +16,7 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 # Controllers
 
-> **TL;DR**
+> **In brief**
 >
 > - One controller per operation, carrying one method named `routeAction`.
 > - `x-controller` is the whole customization model: it names the class you will own, and the generated parent drops its

@@ -13,7 +13,7 @@ tags: [drivers, openapi, decisions, scope, laravel]
 
 # Drivers
 
-> **TL;DR**
+> **In brief**
 >
 > - **Not built yet.** The driver mechanism lands in Phase 2, together with the two features that need it.
 > - A driver knows where a structure lives in the document; the mapping names the fields a project calls them.

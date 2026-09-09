@@ -13,7 +13,7 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 # Response DTOs
 
-> **TL;DR**
+> **In brief**
 >
 > - **Not built yet.** No DTO and no factory is emitted today; this is the design Phase 2 will follow.
 > - The shape is generated and not yours; the behavior is yours. That tension is the whole design.

@@ -13,7 +13,7 @@ tags: [openapi, rate-limiting, decisions, scope, laravel]
 
 # Rate Limiting
 
-> **TL;DR**
+> **In brief**
 >
 > - **Not built yet.** Phase 2, with the driver mechanism it shares with pagination.
 > - OpenAPI has no vocabulary for rate limits, so the driver is configured and never detected.

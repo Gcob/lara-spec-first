@@ -12,7 +12,7 @@ tags: [openapi, dependencies, decisions, scope, compatibility]
 
 # Remote References
 
-> **TL;DR**
+> **In brief**
 >
 > - A `$ref` pointing at a URL is refused unless its host is named in the allowlist, which ships empty.
 > - `spec:build --update-refs` fetches an allowed reference once and commits the copy. Every later build reads that

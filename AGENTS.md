@@ -10,7 +10,7 @@ tags: [agents, workflow, testing, code-review, conventions, onboarding]
 
 # AGENTS.md
 
-> **TL;DR**
+> **In brief**
 >
 > - Every change lands in three places at once: code, documentation, and tests. A partial change is an unfinished one.
 > - When a change can be shown working in the Workbench, showing it is part of finishing it.

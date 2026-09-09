@@ -4,7 +4,7 @@ audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
     principle and what happens when a subject outgrows one file, the audience vocabulary and the directory each audience
-    owns, the front matter metadata schema and tag vocabulary, the TL;DR every document opens with and how it differs
+    owns, the front matter metadata schema and tag vocabulary, the summary every document opens with and how it differs
     from a `covers` claim, the three rules that keep a document readable in one pass and the junior developer test that
     calibrates them, how a diagram is built and when one earns its place, the catalogue of doc smells and the correction
     each one calls for, and the inventory of every document.
@@ -14,12 +14,12 @@ tags: [documentation, conventions, metadata, code-review, onboarding]
 
 # Documentation Guide
 
-> **TL;DR**
+> **In brief**
 >
 > - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
 > - The audience decides the directory, and every file declares itself in its own front matter.
-> - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+> - Every file opens with a summary, and the doc smells below are how a review names what is wrong with one.
 > - Write for one pass: the result first, and no term the reader is assumed to already know.
 
 The rules and expectations for documentation in `lara-spec-first`. Yes, this is documentation about documentation — and
@@ -234,38 +234,37 @@ Every other Markdown document in the repository takes the full set of fields.
 
 ## Every document opens with a summary
 
-**Every Markdown document in the [inventory](#document-inventory) opens with a TL;DR**, directly under the `#` title and
-above the first section. It carries what the reader needs if they read nothing else.
+**Every Markdown document in the [inventory](#document-inventory) opens with a summary, titled "In brief"**, directly
+under the `#` title and above the first section. It carries what the reader needs if they read nothing else.
 
 It exists because of the failure this set is most exposed to. These documents argue: they record a decision and the
 reasoning that produced it, which is deliberate and is not changing. The cost is that the first thing a reader meets is
-an argument, and working out what the file actually claims takes five paragraphs. The TL;DR pays that back at the top,
+an argument, and working out what the file actually claims takes five paragraphs. The summary pays that back at the top,
 for four lines.
 
-A blockquote, three to five bullets, one line each. **This file's own TL;DR is the example** — if the two ever differ,
-the example is the one that is wrong:
+A blockquote titled **In brief**, three to five bullets, one line each. **This file's own summary is the example** — if
+the two ever differ, the example is the one that is wrong:
 
 ```markdown
-> **TL;DR**
+> **In brief**
 >
 > - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
 > - The audience decides the directory, and every file declares itself in its own front matter.
-> - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+> - Every file opens with a summary, and the doc smells below are how a review names what is wrong with one.
 > - Write for one pass: the result first, and no term the reader is assumed to already know.
 ```
 
 The rules:
 
-- **A blockquote, never a heading.** The site builds each page's outline from its headings, so a `## TL;DR` in every
+- **A blockquote, never a heading.** The site builds each page's outline from its headings, so an `## In brief` in every
   document adds one entry of pure noise per page. A blockquote also renders on GitHub, which is where `AGENTS.md` and
   `CONTRIBUTING.md` are actually read.
 - **Three to five bullets, one line each.** Under three, and the file probably should not be a file of its own. Over
-  five, and it is a table of contents rather than a summary, which is [a smell](#doc-smells) rather than a thorough
-  TL;DR.
+  five, and it is a table of contents rather than a summary, which is [a smell](#doc-smells) rather than a thorough one.
 - **Assertions, not subjects.** "Nothing at runtime ever opens a specification" tells the reader something. "The
-  relationship between the runtime and the specification" sends them into the body, which is what the TL;DR was there to
-  spare them.
+  relationship between the runtime and the specification" sends them into the body, which is what the summary was there
+  to spare them.
 - **Name what is not built yet.** Much of this set describes behavior that does not exist, and the phase banner that
   says so is usually further down. A closing bullet separating what runs from what is designed is what stops a reader
   planning around a feature nobody has written.
@@ -278,8 +277,8 @@ Two summaries at the top of one file is duplication, so the split has to be stat
 
 - **`covers` is written for the reader deciding whether to open the file.** It claims subjects: this is what this file
   owns. It is an index entry, and it is what makes an overlap between two files detectable.
-- **The TL;DR is written for the reader who has already opened it.** It gives answers rather than subjects: this is what
-  the file says about them.
+- **The summary is written for the reader who has already opened it.** It gives answers rather than subjects: this is
+  what the file says about them.
 
 The test: **a bullet that could be pasted into `covers` unchanged is a badly written bullet.** It named a topic where it
 owed a claim.
@@ -298,7 +297,7 @@ first task, and an agent opening one page with no memory of the others.
 
 Three questions, in order:
 
-- **Would they get the purpose from the TL;DR alone?** If the point only lands in the third section, the summary is a
+- **Would they get the purpose from the summary alone?** If the point only lands in the third section, the summary is a
   table of contents.
 - **Would they hit a term nobody defined?** This is where you find the vocabulary you assumed, and the rule below is the
   fix.
@@ -537,7 +536,7 @@ point at.
 | **The sentence you read twice**        | You reached the end of it and went back to the start                                                                        | Split it, and [put the result first](#write-for-one-pass)                                                                     |
 | **The stacked clause**                 | More than two commas or conditions carried by one sentence                                                                  | One idea per sentence, or bullets when the sentence was really a list                                                         |
 | **Duplication**                        | The same reasoning justified in two files                                                                                   | Move it, never copy it, and leave a link. [The rule](#one-topic-one-file)                                                     |
-| **No TL;DR**                           | Five paragraphs before the reader learns what the thing is for                                                              | [The summary rule above](#every-document-opens-with-a-summary)                                                                |
+| **No summary**                         | Five paragraphs before the reader learns what the thing is for                                                              | [The summary rule above](#every-document-opens-with-a-summary)                                                                |
 | **Stale metadata**                     | A `covers` claim, a status column or a state paragraph that no longer matches the file under it                             | Fix it in the change that made it stale. A `Planned` row for something already shipped is a lie the table tells on every read |
 | **Undeclared future**                  | Behavior that does not exist yet, written in the present tense, with no phase said out loud                                 | Name the phase at the top of the section, the way the guides already do                                                       |
 | **A heading that asserts nothing**     | "Overview", "Notes", "Details", "More on this"                                                                              | Put the claim in the heading. The page outline is read as a summary, and these entries spend a line of it saying nothing      |

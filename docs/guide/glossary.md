@@ -12,7 +12,7 @@ tags: [openapi, code-generation, drivers, compatibility, laravel]
 
 # Glossary
 
-> **TL;DR**
+> **In brief**
 >
 > - Every term below means something specific here, and nothing to a reader who has not met it yet.
 > - Each row is one clause, and the term links to the section where the concept is actually argued.

@@ -10,7 +10,7 @@ tags: [contributing, workflow, docker, testing, conventions, scope, onboarding]
 
 # Contributing to lara-spec-first
 
-> **TL;DR**
+> **In brief**
 >
 > - Docker is the recommended setup and needs nothing installed locally. `just` is the shortest path through it.
 > - The Workbench is a real Laravel application with the package installed, served by `composer serve`.

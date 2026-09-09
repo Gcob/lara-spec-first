@@ -10,7 +10,7 @@ tags: [stack, dependencies, versions, php, laravel, ci, decisions]
 
 # Technical Stack
 
-> **TL;DR**
+> **In brief**
 >
 > - The Status column is binding: a `Planned` or `Undecided` row is not a settled decision and must not be presented as
 >   one.

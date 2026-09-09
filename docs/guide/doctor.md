@@ -12,7 +12,7 @@ tags: [openapi, compatibility, decisions, workflow, code-review]
 
 # The Doctor
 
-> **TL;DR**
+> **In brief**
 >
 > - `spec:doctor` is `nginx -t` for your contract: what the package honors, what it does not, and the routing table that
 >   results.

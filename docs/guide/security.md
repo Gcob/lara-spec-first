@@ -12,7 +12,7 @@ tags: [openapi, security, decisions, scope, laravel]
 
 # Security & Permissions
 
-> **TL;DR**
+> **In brief**
 >
 > - **Not built yet.** `security` is reported by the doctor and not enforced. Enforcement is Phase 2.
 > - A `securitySchemes` name matches a Laravel guard by nomenclature, never by a mapping written out by hand.

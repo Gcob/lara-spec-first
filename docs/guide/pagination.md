@@ -15,7 +15,7 @@ tags: [openapi, pagination, decisions, scope, laravel]
 
 # Pagination
 
-> **TL;DR**
+> **In brief**
 >
 > - **Not built yet.** Phase 2, with the driver mechanism it shares with rate limiting.
 > - OpenAPI has no vocabulary for pagination, so paginated endpoints are ordinary ones until a project names a driver.

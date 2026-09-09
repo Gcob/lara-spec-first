@@ -12,7 +12,7 @@ tags: [openapi, compatibility, versions, decisions, scope]
 
 # Operation Lifecycle
 
-> **TL;DR**
+> **In brief**
 >
 > - `x-audience` says who an operation is for. `x-lifecycle` says how strong a promise it carries.
 > - A public operation that declares no `x-lifecycle` is `beta`: unstable until somebody says otherwise.

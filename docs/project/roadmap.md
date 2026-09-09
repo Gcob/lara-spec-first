@@ -12,7 +12,7 @@ tags: [planning, migration, scope, openapi, testing, decisions]
 
 # Project Roadmap: lara-spec-first
 
-> **TL;DR**
+> **In brief**
 >
 > - A checked box is behavior with tests behind it, never a design that has been agreed on.
 > - Phase 1 runs today: a contract becomes routes and one controller per operation, answering 501 until something

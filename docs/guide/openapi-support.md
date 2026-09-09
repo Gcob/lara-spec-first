@@ -14,7 +14,7 @@ tags: [openapi, compatibility, scope, versions, decisions]
 
 # OpenAPI Support
 
-> **TL;DR**
+> **In brief**
 >
 > - Parsing is not honoring: 3.0 and 3.1 are both read, and a documented subset of what they allow is honored.
 > - Four rules govern every one of those decisions, and the support matrix answers construct by construct.
