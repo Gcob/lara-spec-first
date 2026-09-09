@@ -597,7 +597,7 @@ same shape as every other extension point rather than a second thing to learn â€
 one list of overridable methods to read.
 
 **Everything the specification derives stays on the route, never in `middleware()`.** That is already what
-[`security.md`](./security.md#one-middleware-one-question) decided for the scope check, and keeping it there is what
+[`security.md`](./security.md#one-middleware-checks-the-scope) decided for the scope check, and keeping it there is what
 makes overriding `middleware()` safe: Laravel combines route middleware with controller middleware rather than replacing
 one with the other, so **a child cannot drop its own security by forgetting `parent::middleware()`**. There is nothing
 of ours in that method to preserve.

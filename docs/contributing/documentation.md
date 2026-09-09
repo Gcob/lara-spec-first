@@ -437,6 +437,47 @@ makes the coined one invisible.
 **A term with no glossary row is a term nothing owns.** Writing the row is what tells you: if there is no section to
 point at, that section is the thing to write, and the row comes after it.
 
+### The example comes early, never last
+
+**On a page written for `Users`, the example arrives in the first screen of its section.** A developer reads code before
+sentences, so an example at the foot of a section is an example the reader gave up on three paragraphs earlier. The test
+is whether the code is reachable without scrolling, not whether it is on the first line: a sentence of framing in front
+of it is fine and sometimes necessary, and three paragraphs of setup are not.
+
+**And only where there is something to show.** A section arguing a boundary has no snippet to give, and inventing one to
+satisfy a rule is worse than the prose it padded.
+
+**A `Users` section that names a key, a file or a signature shows it.** Not every page can show output: much of this
+package is designed and not built. The _input_ always exists, because the reader writes it, so a section about
+`x-lifecycle` can show three lines of YAML whether or not anything reads them yet.
+
+**The gap this closes is measured rather than felt.** Laravel's documentation carries about 16 code blocks per thousand
+words. This set carries 0.6, and five of its guides carry none at all, including one that spends two thousand words on
+three specification keys it never shows.
+
+**The order flips for a reader who is deciding rather than doing.** On a `Contributors` page the claim comes first and
+the example illustrates it, which is what [a rule with no example](#doc-smells) is about. The audience decides this the
+way it [decides the voice](#the-audience-decides-the-voice-too).
+
+### A table and an example say what they are
+
+**A table is introduced by the line above it, and an example carries its own name.** Same job as
+[a diagram's caption](#a-diagram-is-built-not-embedded), and it sits on the other side for a reason: a picture is taken
+in at a glance and then wants naming, where a table and a block of code are only read if the reader decides they are
+worth reading. That decision happens before the first row, so the label has to be there before it.
+
+**A table's lead says what the table answers.** One line above it, in the bolded form this set already uses for the
+sentence that decides, and a second sentence after it only when the first is not enough. A table whose first row is the
+first thing a reader learns about it is a table they have to read in full to find out whether they needed it.
+
+**An example names its file on its first line, as a comment.** `// config/auth.php`, `# openapi.yaml`. It is the form
+that survives being copied: a reader who pastes the block keeps the path it belongs at, which a line above the fence
+would have left behind. Where there is no file to name, a bolded lead above does the same job.
+
+**Not a fence attribute.** VitePress renders a title from ` ```php [app/Models/Comment.php] `, GitHub renders nothing at
+all from it, and half of this set's readers are on GitHub. Same reason
+[the anchor rule](#an-anchor-on-something-that-is-not-a-heading-is-written-as-html) picks the form that works on both.
+
 ### Headings are short claims
 
 **A heading carries its claim in as few words as the claim takes.** A reader looking for something reads the outline,
@@ -448,6 +489,11 @@ of two words per heading, over 315 of them across four pages, with 2% above six.
 not try: a label is shorter than a claim, and [a claim is what this set writes](#doc-smells). Six words is what a claim
 costs. Past eight, the section usually has a second subject in it, or the heading is carrying a subtitle that belongs in
 its first sentence instead.
+
+**And it names what it is about.** Short and assertive is not enough on its own. `One middleware, one question` was
+both, and the person who wrote it could not say what the section covered when they met it again in the outline. A
+heading is scanned by somebody looking for a subject, so the subject has to be in it: `One middleware checks the scope`
+is the same claim with the thing it is about put back.
 
 This does not soften the rule that a heading asserts something. `The doctor's role` is shorter than
 `The doctor checks wiring, not rows` and worse, because the short one names a topic while the longer one makes a claim.
@@ -646,6 +692,8 @@ is not. What each row gives you is the observable sign, so that the judgment hap
 | **A heading that asserts nothing**     | "Overview", "Notes", "Details", "More on this"                                                                              | Put the claim in the heading. The page outline is read as a summary, and these entries spend a line of it saying nothing      |
 | **Content above the first heading**    | More than a paragraph or two between the page title and the first `##`                                                      | Give it a heading, or move it under the one that follows. The outline cannot reach it where it is                             |
 | **A rule with no example**             | A convention stated in prose, with nothing showing what it looks like                                                       | Show the real thing, and say that it is the real thing, so that it cannot quietly go stale                                    |
+| **A described shape nobody shows**     | A `Users` section names a key, a file or a signature and shows none of them                                                 | Show it, above the paragraph that explains it                                                                                 |
+| **A table nobody introduced**          | A table whose first row is the first thing said about it                                                                    | Put a line above it saying what it answers                                                                                    |
 | **Borrowed enthusiasm**                | A brochure adjective, or a sentence that addresses the reader before it starts                                              | Cut it, and put the fact that produced it in its place                                                                        |
 | **An ordering carried by prose alone** | A section spells out three steps or more, with at least one branch or one refusal among them, and the page carries no image | Draw it, or say why it does not [earn one](#when-a-diagram-earns-its-place)                                                   |
 

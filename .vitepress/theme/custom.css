@@ -285,3 +285,28 @@
 .vp-doc h1 + blockquote li::marker {
     color: var(--vp-c-text-3);
 }
+
+/*
+ * The summary gets an entry above the outline.
+ *
+ * Rendered by InBriefLink.ts into the theme's `aside-outline-before` slot, which
+ * says why it is not a heading in the Markdown. What is here is the styling that
+ * makes it read as part of the outline rather than as something bolted above it:
+ * the same size, colour and hover as an outline link, over a divider that
+ * separates it from the list of sections, because it is not one of them.
+ */
+.in-brief-link {
+    display: block;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--vp-c-divider);
+    margin-bottom: 12px;
+    color: var(--vp-c-text-2);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 20px;
+    transition: color 0.25s;
+}
+
+.in-brief-link:hover {
+    color: var(--vp-c-text-1);
+}
