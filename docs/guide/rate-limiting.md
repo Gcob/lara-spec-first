@@ -256,8 +256,7 @@ Three boundaries, because a document about rate limits invites all three questio
 - The config key names — `rate_limiting`, `driver`, `mapping` — are working names, not decided. Public API surface under
   [rule 4](./openapi-support.md#the-four-rules).
 - Whether [the doctor](./doctor.md) validates the mapping (a required key missing, a driver name it does not recognize)
-  the same way it validates
-  [the security scheme naming contract](./security.md#scheme-names-are-a-naming-contract-with-your-guards). With
+  the same way it validates [the security scheme naming contract](./security.md#scheme-names-match-guard-names). With
   [windows](#windows-are-first-class-from-the-start) the check has a second half worth stating: a configured window
   whose fields appear in no 429, and the reverse — a 429 declaring fields no configured window claims, which is a limit
   the contract publishes and the package reads as nothing.

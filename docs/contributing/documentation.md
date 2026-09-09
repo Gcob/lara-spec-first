@@ -437,6 +437,28 @@ makes the coined one invisible.
 **A term with no glossary row is a term nothing owns.** Writing the row is what tells you: if there is no section to
 point at, that section is the thing to write, and the row comes after it.
 
+### Headings are short claims
+
+**A heading carries its claim in as few words as the claim takes.** A reader looking for something reads the outline,
+not the page: they scan a column of headings at speed and stop at the one that answers them. A heading that has to be
+read like a sentence has stopped being scannable, whatever it says.
+
+**Four to six words, and eight is already a section with two subjects in it.** Laravel's own documentation runs a median
+of two words per heading, over 315 of them across four pages, with 2% above six. This set will not get there and should
+not try: a label is shorter than a claim, and [a claim is what this set writes](#doc-smells). Six words is what a claim
+costs. Past eight, the section usually has a second subject in it, or the heading is carrying a subtitle that belongs in
+its first sentence instead.
+
+This does not soften the rule that a heading asserts something. `The doctor's role` is shorter than
+`The doctor checks wiring, not rows` and worse, because the short one names a topic while the longer one makes a claim.
+Short and assertive is the target; short and empty is the failure the other rule catches.
+
+**And nothing important sits above the first heading.** The site builds its outline from `##` and `###`
+([`outline: [2, 3]`](#the-documentation-site)), so everything between the page title and the first section is
+unreachable from it and belongs to no group. Two documents have most of their content there today, one of them the table
+of every technology choice this project has made. After the summary, reach a heading quickly: a paragraph or two of
+orientation is fine, and anything past that has earned a heading of its own.
+
 ### Say what the document does not cover
 
 **Every guide names its own limits, in a section of its own.** Boundaries are what a reader plans around, and they are
@@ -448,8 +470,7 @@ This is already the strongest habit in the set, and the rule only makes it expec
 and what was decided against. A guide with no such section is claiming it has no edges.
 
 **The section's title is not part of the rule.** "What this document does not cover" is the plain form and several
-guides use it, but
-[`Past the scope check, it is a Policy's job`](../guide/security.md#past-the-scope-check-it-is-a-policys-job) and
+guides use it, but [`Row-level rules are a Policy's job`](../guide/security.md#row-level-rules-are-a-policys-job) and
 [`Laravel constraints we do not fight`](../guide/openapi-support.md#laravel-constraints-we-do-not-fight) are the same
 rule kept in the assertive voice the rest of the set writes headings in. What the rule asks for is a section a reader
 can find, not a phrase to grep for.
@@ -623,6 +644,7 @@ is not. What each row gives you is the observable sign, so that the judgment hap
 | **Stale metadata**                     | A `covers` claim, a status column or a state paragraph that no longer matches the file under it                             | Fix it in the change that made it stale. A `Planned` row for something already shipped is a lie the table tells on every read |
 | **Undeclared future**                  | Behavior that does not exist yet, written in the present tense, with no phase said out loud                                 | Name the phase at the top of the section, the way the guides already do                                                       |
 | **A heading that asserts nothing**     | "Overview", "Notes", "Details", "More on this"                                                                              | Put the claim in the heading. The page outline is read as a summary, and these entries spend a line of it saying nothing      |
+| **Content above the first heading**    | More than a paragraph or two between the page title and the first `##`                                                      | Give it a heading, or move it under the one that follows. The outline cannot reach it where it is                             |
 | **A rule with no example**             | A convention stated in prose, with nothing showing what it looks like                                                       | Show the real thing, and say that it is the real thing, so that it cannot quietly go stale                                    |
 | **Borrowed enthusiasm**                | A brochure adjective, or a sentence that addresses the reader before it starts                                              | Cut it, and put the fact that produced it in its place                                                                        |
 | **An ordering carried by prose alone** | A section spells out three steps or more, with at least one branch or one refusal among them, and the page carries no image | Draw it, or say why it does not [earn one](#when-a-diagram-earns-its-place)                                                   |

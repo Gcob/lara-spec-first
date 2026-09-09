@@ -344,12 +344,12 @@ and the mock server).
 ### Authorization the contract can express
 
 - [ ] **`security` becomes an authorization check.** The `securitySchemes` name matched to a Laravel guard
-      [by nomenclature](../guide/security.md#scheme-names-are-a-naming-contract-with-your-guards), the one `final`
-      built-in middleware asking one question, the `HasSecurityScopes` interface the authenticated model implements, and
-      the requirement resolved into the generated route at build time rather than read from the spec per request. The
-      Phase 1 "not enforced" finding is deleted in the same change, and the doctor's
-      [security section](../guide/doctor.md#what-it-checks) becomes real: a scheme with no matching guard, a scheme type
-      the middleware cannot enforce, a model missing the interface.
+      [by nomenclature](../guide/security.md#scheme-names-match-guard-names), the one `final` built-in middleware asking
+      one question, the `HasSecurityScopes` interface the authenticated model implements, and the requirement resolved
+      into the generated route at build time rather than read from the spec per request. The Phase 1 "not enforced"
+      finding is deleted in the same change, and the doctor's [security section](../guide/doctor.md#what-it-checks)
+      becomes real: a scheme with no matching guard, a scheme type the middleware cannot enforce, a model missing the
+      interface.
 - [ ] **Decide which scheme types reduce to "the model has a scope".** `apiKey`, `http bearer` and `oauth2` are the
       clear fits; `mutualTLS` and the details of `openIdConnect` may not be answerable by one middleware at all, and a
       scheme it cannot enforce is a case for

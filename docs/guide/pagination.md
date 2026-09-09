@@ -255,8 +255,7 @@ over what the API accepts.
 The consequence runs the other way. **A paginated response whose operation declares no pagination parameters is a
 [doctor](./doctor.md) finding**: the contract promises a page but gives a consumer no documented way to ask for one. The
 mapping says what the parameters are called, the specification says they exist, and the doctor checks the two agree —
-the same shape as
-[the security scheme naming contract](./security.md#scheme-names-are-a-naming-contract-with-your-guards).
+the same shape as [the security scheme naming contract](./security.md#scheme-names-match-guard-names).
 
 ## What this document does not cover
 

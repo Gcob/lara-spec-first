@@ -57,8 +57,7 @@ Structure is what is worth writing code for, because structure is what several p
 
 Customization elsewhere in this documentation is driven by nomenclature: an `operationId`
 [derives a class name](./code-generation/generated-file-anatomy.md#when-operationid-is-absent-derive-from-method-and-path),
-a `securitySchemes` name [matches a guard](./security.md#scheme-names-are-a-naming-contract-with-your-guards), a factory
-override is
+a `securitySchemes` name [matches a guard](./security.md#scheme-names-match-guard-names), a factory override is
 [found by what it `extends`](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares).
 Those work because a name means the same thing everywhere it appears.
 

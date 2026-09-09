@@ -597,10 +597,10 @@ same shape as every other extension point rather than a second thing to learn �
 one list of overridable methods to read.
 
 **Everything the specification derives stays on the route, never in `middleware()`.** That is already what
-[`security.md`](./security.md#one-middleware-one-question-does-the-model-have-the-scope) decided for the scope check,
-and keeping it there is what makes overriding `middleware()` safe: Laravel combines route middleware with controller
-middleware rather than replacing one with the other, so **a child cannot drop its own security by forgetting
-`parent::middleware()`**. There is nothing of ours in that method to preserve.
+[`security.md`](./security.md#one-middleware-one-question) decided for the scope check, and keeping it there is what
+makes overriding `middleware()` safe: Laravel combines route middleware with controller middleware rather than replacing
+one with the other, so **a child cannot drop its own security by forgetting `parent::middleware()`**. There is nothing
+of ours in that method to preserve.
 
 Two consequences of using Laravel's interface as-is: `middleware()` is `static` where the others are instance methods,
 and being `static` it cannot reach instance state — so middleware stays declarative, which is the right constraint
@@ -642,7 +642,7 @@ from `$this->getQuery()`, handed to [pagination's built-in driver](./pagination.
 operation's response declares a page.
 
 **Decision: this package ships no filtering or sorting.** OpenAPI has no vocabulary for a filter DSL any more than it
-does for [row-level authorization](./security.md#past-the-scope-check-it-is-a-policys-job), and the same test applies:
+does for [row-level authorization](./security.md#row-level-rules-are-a-policys-job), and the same test applies:
 inventing one would be a far larger commitment than anything else in this document set, for a feature every serious
 Laravel project already reaches for a dedicated package to solve. `getQuery()` is already the hook — override it and
 wire in Spatie's Query Builder, Scout, or whatever the project already uses.
@@ -667,8 +667,8 @@ body schema — nothing new reads the specification a second time.
 accept is therefore invisible at the wire and only ever noticed as "why didn't this save," far from its cause.
 **Decision: the doctor compares a model-aware operation's validated fields against the bound model's mass-assignment
 rules**, and reports the mismatch by name — the same shape as
-[the security scheme naming contract](./security.md#scheme-names-are-a-naming-contract-with-your-guards): a relationship
-that has to hold between two files the specification cannot itself see across.
+[the security scheme naming contract](./security.md#scheme-names-match-guard-names): a relationship that has to hold
+between two files the specification cannot itself see across.
 
 Anything past plain mass assignment is an ordinary override, and the child chooses which seam to take it at:
 
@@ -686,10 +686,10 @@ protected function create(array $validated): OrderDto
 `POST /orders` that saves the row and returns `200` while nothing charged the card. That is not a defect in this default
 — it is the boundary this package has been honest about from the start. **Neither the specification nor this package is
 magic.** They own how a client talks to the application over HTTP; a developer owns what happens once a request arrives,
-exactly as [`security.md`](./security.md#past-the-scope-check-it-is-a-policys-job) draws the same line for
-authorization. A flag to suppress the default would only protect a developer who shipped `x-model: Order` on a
-payment-charging endpoint without ever opening the generated file, and building for that case would mean designing
-around the wrong audience rather than trusting the one this package is for.
+exactly as [`security.md`](./security.md#row-level-rules-are-a-policys-job) draws the same line for authorization. A
+flag to suppress the default would only protect a developer who shipped `x-model: Order` on a payment-charging endpoint
+without ever opening the generated file, and building for that case would mean designing around the wrong audience
+rather than trusting the one this package is for.
 
 ## Where pagination attaches
 
@@ -753,8 +753,8 @@ Four things a reader arrives at a controller wanting, and finds owned elsewhere:
   here is only that the generated method calls the factory directly.
 - **`x-controller` decides which class answers, never whether the caller may.** Authorization is
   [`security.md`](./security.md)'s, right down to
-  [the line where a Policy takes over](./security.md#past-the-scope-check-it-is-a-policys-job). A custom controller is
-  not an access-control mechanism, and naming one grants nobody anything.
+  [the line where a Policy takes over](./security.md#row-level-rules-are-a-policys-job). A custom controller is not an
+  access-control mechanism, and naming one grants nobody anything.
 - **The build's own rules are stated once, in the build's own document.** What a build may write, where generated code
   lives, and what a project commits are [`code-generation/index.md`](./code-generation/index.md)'s. This document
   depends on all three and restates none of them.
