@@ -31,18 +31,61 @@
 }
 
 /*
- * And the outline gets more room to wrap into on a wide screen.
+ * The prose column is 800px rather than the default 688px.
+ *
+ * The earlier answer here was that 688px matches the line length this project
+ * formats Markdown to, so the spare width on a wide screen belonged to the
+ * outline instead. That reasoning only ever covered prose. It does not cover what
+ * this set has since grown: tables of five columns of full sentences, and nine
+ * diagrams, several of them wider than the column they render into. Both were
+ * being scaled down to fit a cap chosen for paragraphs.
+ *
+ * 800px is where it stops rather than an arbitrary bump. Past it the line length
+ * starts costing more in reading comfort than the tables and the diagrams gain,
+ * which is the same argument the 688px was making, one size later.
+ *
+ * The layout cap has to move with it. The default theme caps the whole layout at
+ * 1440px, and everything is measured out of that total: 272 of sidebar, 64 of
+ * page padding, the outline and its 32, 64 of column padding, and the prose gets
+ * the rest. At 1440 that rest is 752px, so the cap goes to 1600 and the column
+ * reaches its 800 from about 1490px of viewport upward.
+ *
+ * `has-sidebar` is in the selector for specificity rather than for meaning. The
+ * rule this overrides is written inside a Vue `<style scoped>` block, so it ships
+ * as `.VPDoc.has-aside .content-container[data-v-…]` — four things to match, where
+ * the obvious override has three, and the default wins however late it is loaded.
+ * A third class ties the count, and a tie goes to the stylesheet loaded last,
+ * which is this one. On a page with no sidebar the rule stops applying and the
+ * column is stock VitePress, which is the failure mode every rule here is meant
+ * to have.
+ */
+@media (min-width: 1280px) {
+    :root {
+        --vp-layout-max-width: 1600px;
+    }
+
+    .VPDoc.has-sidebar.has-aside .content-container {
+        max-width: 800px;
+    }
+}
+
+/*
+ * And then the outline gets more room to wrap into, once the prose has its own.
  *
  * The default is 256px at every width above 1280px, which leaves a sentence
  * heading wrapping to three lines on a display with several hundred pixels going
- * spare. The prose column is deliberately not widened with it: it is already at
- * the line length this project formats Markdown to, and the space belongs to the
- * outline rather than to longer lines of text.
+ * spare. Both columns want that space and the prose is served first: this step
+ * used to start at 1440px, where it took its 64px straight out of the column
+ * above, and it starts at 1600px now, where there is enough for both.
  *
  * `.aside` sets the column, `.aside-container` and `.aside-curtain` are fixed
  * pixel widths in the default theme that have to follow it.
  */
-@media (min-width: 1440px) {
+@media (min-width: 1600px) {
+    :root {
+        --vp-layout-max-width: 1680px;
+    }
+
     .VPDoc .aside {
         max-width: 320px;
     }
@@ -54,18 +97,16 @@
 }
 
 /*
- * Past 1760px the outline takes 400px, and the page itself has to grow with it.
+ * Past 1880px the outline takes 400px, and the page grows again to pay for it.
  *
- * The default theme caps the whole layout at 1440px, and the content area inside
- * that cap is what the outline is taking its extra width from: left alone, a 400px
- * outline squeezes the prose column from 688px down to 625px, which is the
- * opposite of the point. Raising the cap to 1536px is what keeps the prose column
- * at its full width while the outline widens — 272 of sidebar, 688 of prose, 400
- * of outline and the padding between them.
+ * Same trade as the step above, one size up: 272 of sidebar, 800 of prose, 400 of
+ * outline and the padding between them is 1776px, so that is the cap. Left alone,
+ * a 400px outline would take its extra width back out of the prose column, which
+ * is the trade this file keeps making in the other direction.
  */
-@media (min-width: 1760px) {
+@media (min-width: 1880px) {
     :root {
-        --vp-layout-max-width: 1536px;
+        --vp-layout-max-width: 1776px;
     }
 
     .VPDoc .aside {
@@ -95,7 +136,68 @@
  * alignment.
  */
 @media (min-width: 640px) {
-    [class*='_docs_guide_glossary'] table td:first-child {
+    [class*="_docs_guide_glossary"] table td:first-child {
         min-width: 11rem;
     }
+}
+
+/*
+ * A diagram opens over the page when it is clicked.
+ *
+ * The behaviour is in imageZoom.ts, which says why it is written rather than
+ * installed. What is here is the pointer that says an image is clickable, and the
+ * overlay it opens into.
+ *
+ * The overlay takes the page's own background rather than the usual dimmed black:
+ * these diagrams are transparent SVGs drawn in one grey and six hues chosen to sit
+ * on the site's ground, and a black scrim behind a light theme would be the one
+ * surface they were never checked against.
+ *
+ * The image is given the viewport's width rather than being fitted into it. A
+ * decision tree is 600px wide and 1500px tall, and fitting that whole shape onto a
+ * screen is how it became unreadable in the column. Scrolling a large picture is
+ * the better half of that trade, and an SVG scales up without losing anything.
+ */
+.vp-doc img {
+    cursor: zoom-in;
+    outline: 2px solid transparent;
+    outline-offset: 6px;
+    border-radius: 4px;
+    transition: outline-color 0.2s;
+}
+
+.vp-doc img:hover,
+.vp-doc img:focus-visible {
+    outline-color: var(--vp-c-brand-1);
+}
+
+/*
+ * `:not([hidden])` rather than `display: flex` on the class itself. A display
+ * declaration outranks the browser's own `[hidden] { display: none }`, so setting
+ * the attribute closed nothing and the overlay stayed over the page with no way
+ * out of it. Written as the negation so that the two cannot come apart again.
+ */
+.diagram-zoom:not([hidden]) {
+    display: flex;
+}
+
+.diagram-zoom {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    overflow: auto;
+    padding: 24px;
+    background-color: var(--vp-c-bg);
+    cursor: zoom-out;
+}
+
+.diagram-zoom img {
+    width: min(1600px, 100%);
+    height: auto;
+    margin: auto;
+}
+
+.diagram-zoom-open,
+.diagram-zoom-open body {
+    overflow: hidden;
 }
