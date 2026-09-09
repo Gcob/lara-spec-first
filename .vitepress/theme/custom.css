@@ -203,7 +203,12 @@
 }
 
 /*
- * The paragraph under a diagram is its caption.
+ * A diagram is centred, and the paragraph under it is its caption.
+ *
+ * Centring is what makes the pair read as a figure rather than as an image that
+ * happens to have a sentence after it, and it matters most for the narrow ones:
+ * a 400px diagram pinned to the left of an 800px column looks like a layout
+ * accident. The image is inline, so the paragraph holding it is what centres it.
  *
  * Written as a selector rather than as a class, because the alternative is a
  * `<figure>` and the markup this set can use has to render on GitHub as well as
@@ -216,6 +221,10 @@
  * GitHub the same line is italic prose under a picture, which is what a caption
  * looks like anyway.
  */
+.vp-doc p:has(> img) {
+    text-align: center;
+}
+
 .vp-doc p:has(> img) + p {
     margin-top: 8px;
     color: var(--vp-c-text-2);
