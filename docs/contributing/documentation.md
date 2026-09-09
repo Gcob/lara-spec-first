@@ -4,10 +4,10 @@ audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
     principle and what happens when a subject outgrows one file, the audience vocabulary and the directory each audience
-    owns, the front matter metadata schema and tag vocabulary, the summary every document opens with and how it differs
-    from a `covers` claim, the three rules that keep a document readable in one pass and the junior developer test that
-    calibrates them, how a diagram is built and when one earns its place, the catalogue of doc smells and the correction
-    each one calls for, and the inventory of every document.
+    owns and the voice each one is written in, the front matter metadata schema and tag vocabulary, the summary every
+    document opens with and how it differs from a `covers` claim, the three rules that keep a document readable in one
+    pass and the junior developer test that calibrates them, how a diagram is built and when one earns its place, the
+    catalogue of doc smells and the correction each one calls for, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
@@ -18,7 +18,7 @@ tags: [documentation, conventions, metadata, code-review, onboarding]
 >
 > - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
-> - The audience decides the directory, and every file declares itself in its own front matter.
+> - The audience decides the directory and the voice, and every file declares itself in its own front matter.
 > - Every file opens with a summary, and the doc smells below are how a review names what is wrong with one.
 > - Write for one pass: the result first, and no term the reader is assumed to already know.
 
@@ -133,6 +133,42 @@ The rules:
   among pages written for them.
 - **Moving a document is a rename with links to fix.** Nothing else in this file changes: the topic it owns, its
   `covers` claim and its tags travel with it.
+
+### The audience decides the voice too
+
+**A document sounds like the reader it declares.** The four voices below are not four styles chosen for variety: each
+one follows from what its reader arrived to do, and a page that reads like the wrong one is usually a page filed in the
+wrong directory.
+
+| `audience`               | Sounds like                                                                                                                                                             |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Users`                  | Second person. The reader is doing something, so name the trap before they reach it, and show code wherever there is code to show.                                      |
+| `Users and contributors` | A statement of where things stand. A row is a fact with a status on it, never a pitch, and a date beats an adjective.                                                   |
+| `Contributors`           | A rule with the reasoning under it. This reader is deciding rather than following, so an argument they can disagree with is worth more than an instruction they cannot. |
+| `AI coding agents`       | Imperative and checkable. An agent does not need persuading, so a sentence that argues is a sentence that could have been a rule.                                       |
+
+**The shape follows the reader the same way, and this set has two of them.** A page that decides opens with its summary,
+states the decision, puts the reasoning under it, and names the alternative it turned down along with why. A page that
+shows a manipulation opens with what the reader came to do, and brings the reasoning in where it is needed to make the
+next step make sense. Both put a trap at the point where it bites rather than in a warning at the end, and both close on
+[what the document does not cover](#say-what-the-document-does-not-cover).
+
+Three rules cross all four, because they are what this set is actually for:
+
+- **Say why, not only how.** A decision without its reasoning is a rule the next reader can only obey or break, never
+  argue with. This is [what the decision tunnel smell does not complain about](#the-reasoning-stays-the-chronology-goes)
+  and it is the habit worth protecting hardest.
+- **Where several paths exist, name the one to take.** Listing them level hands back a choice this repository has
+  already made, and an "it depends" with no criterion under it is not neutrality: it is a decision nobody took. Where
+  the answer does depend on something, name the something.
+- **Name the trap before the reader reaches it.** Where a thing is easy to get wrong, the page says so at the point
+  where a reader would get it wrong, not in a caveat at the bottom. `base_path()` is not `workbench/`; a formatter and
+  the build will rewrite each other forever; a POST on an addressed resource is an action rather than a creation. Each
+  of those is a paragraph that exists because somebody would otherwise have spent an afternoon on it.
+
+**What the voice is never allowed to add is enthusiasm.** A warmer register makes the temptation stronger, not weaker,
+which is why [the adjective rule](#an-adjective-that-does-no-work-does-not-go-in-a-sentence) sits where it does. Second
+person and a named trap are the whole of the warmth this set wants.
 
 ## Front matter metadata
 
@@ -250,7 +286,7 @@ the two ever differ, the example is the one that is wrong:
 >
 > - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
-> - The audience decides the directory, and every file declares itself in its own front matter.
+> - The audience decides the directory and the voice, and every file declares itself in its own front matter.
 > - Every file opens with a summary, and the doc smells below are how a review names what is wrong with one.
 > - Write for one pass: the result first, and no term the reader is assumed to already know.
 ```
@@ -572,9 +608,8 @@ Everything above is a rule. This is what it looks like from the outside when one
 a review can report a documentation problem the way it reports a code one — a finding with a correction attached, rather
 than "this file feels heavy".
 
-**A smell is a reason to look, not a verdict.** A long file that genuinely owns one subject is fine; a short one that
-owns three is not. What each row gives you is the observable sign, so that the judgment happens over something you can
-point at.
+**A smell is a reason to look, not a verdict.** A long file that owns one subject is fine; a short one that owns three
+is not. What each row gives you is the observable sign, so that the judgment happens over something you can point at.
 
 | Smell                                  | What you see                                                                                                                | What to do                                                                                                                    |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
