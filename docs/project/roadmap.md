@@ -513,4 +513,4 @@ Three properties matter, in this order:
       structure and no project's field names, and the set of pagination and rate-limit conventions in the wild is larger
       than this package should ever ship. What is owed here is a naming convention for community drivers, and a doctor
       that names the resolved driver for each feature including third-party ones.
-- [ ] Comprehensive documentation and real-world migration examples.
+- [ ] Documentation of the migration path, with examples taken from real applications.

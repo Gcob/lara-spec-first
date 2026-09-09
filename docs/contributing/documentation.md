@@ -327,6 +327,34 @@ leaves with the answer.
 The same rule holds at paragraph scale: the claim goes in the first sentence, the reasoning underneath it. That is what
 makes a bolded lead sentence worth scanning rather than decoration.
 
+### An adjective that does no work does not go in a sentence
+
+**Cut the word that asks the reader to believe something, and write the fact that produced it.** `robust`, `seamless`,
+`powerful`, `blazing`, `cutting-edge`, `comprehensive`: each one is a conclusion offered before any evidence for it, and
+the replacement is never a milder adjective. It is the behavior the adjective was standing in for.
+
+- **Write:** "the build refuses a path parameter Laravel cannot match"
+- **Not:** "a robust build pipeline"
+
+**The same goes for a sentence that talks to the reader before it starts.** "Certainly, here is how it works", "Let's
+dive in", "It's worth noting that": each is a line to get past before the first fact, and deleting it costs the reader
+nothing.
+
+**This set's own landing line is the example**, and it is the real one: the README read "mock endpoints _instantly_ with
+Faker, and _seamlessly_ bridge legacy code" until this rule was written. Those were the two words in the whole set that
+sold rather than said, and both of them decorated work that is not built. What is left names what the package does.
+
+**Argued is not the same as enthusiastic.** This repository
+[documents its reasoning on purpose](#the-reasoning-stays-the-chronology-goes), and
+[`code-generation/index.md`](../guide/code-generation/index.md) carries twenty-five `**Decision:**` blocks that stay.
+What this rule cuts is borrowed enthusiasm, never the argument: a reason is a fact about why something is the way it is,
+an adjective of this kind is a mood.
+
+The same ground is covered at more length by [`avoid-ai-writing`](https://github.com/conorbronsdon/avoid-ai-writing),
+which is a useful checklist to read and not this repository's standard. What binds here is what is written on this page,
+for the reason every rule here carries its own reasoning: a standard kept in somebody else's repository can change
+without anybody noticing it changed.
+
 ### A coined term is linked on its first use, never left bare
 
 This set invents vocabulary, and it is right to: [`drift`](../guide/glossary.md#drift),
@@ -561,6 +589,7 @@ point at.
 | **Undeclared future**                  | Behavior that does not exist yet, written in the present tense, with no phase said out loud                                 | Name the phase at the top of the section, the way the guides already do                                                       |
 | **A heading that asserts nothing**     | "Overview", "Notes", "Details", "More on this"                                                                              | Put the claim in the heading. The page outline is read as a summary, and these entries spend a line of it saying nothing      |
 | **A rule with no example**             | A convention stated in prose, with nothing showing what it looks like                                                       | Show the real thing, and say that it is the real thing, so that it cannot quietly go stale                                    |
+| **Borrowed enthusiasm**                | A brochure adjective, or a sentence that addresses the reader before it starts                                              | Cut it, and put the fact that produced it in its place                                                                        |
 | **An ordering carried by prose alone** | A section spells out three steps or more, with at least one branch or one refusal among them, and the page carries no image | Draw it, or say why it does not [earn one](#when-a-diagram-earns-its-place)                                                   |
 
 ### The reasoning stays, the chronology goes

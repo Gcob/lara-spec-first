@@ -127,6 +127,11 @@ Two traps worth knowing before you go in:
   review catches that one — see
   [the diagram rules](./docs/contributing/documentation.md#a-diagram-is-built-not-embedded).
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)** — see `CONTRIBUTING.md`.
+- **No borrowed enthusiasm, and no preamble.** An adjective that asks the reader to be impressed — `robust`, `seamless`,
+  `powerful` — is cut and replaced by the fact that produced it, and a sentence that addresses the reader before it
+  starts is deleted. This is the failure mode a generated draft has by default, so it is the one to reread your own
+  output for. The rule and its example are in
+  [`documentation.md`](./docs/contributing/documentation.md#an-adjective-that-does-no-work-does-not-go-in-a-sentence).
 - **No emojis in documentation.**
 
 ## Automated tests are required
