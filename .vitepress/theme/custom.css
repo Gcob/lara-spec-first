@@ -201,3 +201,25 @@
 .diagram-zoom-open body {
     overflow: hidden;
 }
+
+/*
+ * The paragraph under a diagram is its caption.
+ *
+ * Written as a selector rather than as a class, because the alternative is a
+ * `<figure>` and the markup this set can use has to render on GitHub as well as
+ * here. A block of raw HTML stops GitHub parsing the Markdown inside it, so an
+ * image wrapped in a figure would have to be written as an `<img>` tag, and every
+ * page would carry markup where it currently carries one line of Markdown.
+ *
+ * `:has()` is what makes the convention enough on its own: the caption is styled
+ * because it follows the image, so there is no class for an author to forget. On
+ * GitHub the same line is italic prose under a picture, which is what a caption
+ * looks like anyway.
+ */
+.vp-doc p:has(> img) + p {
+    margin-top: 8px;
+    color: var(--vp-c-text-2);
+    font-size: 14px;
+    line-height: 22px;
+    text-align: center;
+}

@@ -160,6 +160,8 @@ yet is a fact about our schedule, not a defect worth failing a pipeline over.
 
 ![How one finding is classified, and which exit code it can reach](../diagrams/finding-classification.svg)
 
+_How a finding reaches an exit code._
+
 The diamond at the top is the whole classification rule, and
 [the section below](#the-class-is-decided-by-who-can-fix-it-not-by-whether-the-document-parses) is what made it that
 question rather than whether the document parses. Of the four endings, two gate a pipeline.

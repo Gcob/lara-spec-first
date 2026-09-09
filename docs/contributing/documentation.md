@@ -407,7 +407,7 @@ fallback for a render and never the preference, because the image is pinned and 
 refuses it outright, since it compares byte for byte and the fonts a local JVM can see move the coordinates. The tool
 row is in [`stack.md`](../project/stack.md).
 
-Four rules keep a rendered diagram honest:
+Five rules keep a rendered diagram honest:
 
 - **Commit the source and the SVG, and let CI compare them.** A generated file in the tree can drift from what produced
   it. `diagrams-check` re-renders into a scratch directory and fails when the committed SVG differs, which turns that
@@ -421,6 +421,11 @@ Four rules keep a rendered diagram honest:
   one, with no way of knowing which is active, so a filled background would paint its own ground and be wrong on one of
   the two. PlantUML settles the question anyway: it has neither alpha nor opacity, so a fill is always opaque. Borders,
   labels and arrows carry every color this set uses, and the page keeps supplying the ground.
+- **Every diagram is captioned, on the line under it.** Italic, a short noun phrase naming the picture, and at most one
+  sentence after it when the name is not enough. That is a caption and not a second alt text: the alt describes the
+  image to a reader who cannot see it, the caption names it for one who can and is scanning the page for the picture
+  they remember. The site styles the paragraph immediately after an image as a caption, so the convention is the markup
+  — no class to remember, and nothing that renders as anything but italic prose on GitHub.
 - **A diagram never carries a fact alone, and neither does a color.** It complements the prose, the table and the rules
   around it; anything only the picture says is lost to a reader using a screen reader, and to every `grep`. The same
   holds one level down: a box painted amber is labelled "generated" in words, so a reader who cannot separate two hues

@@ -89,6 +89,8 @@ an operation is promised at all.
 
 ![Two independent tracks: how strong the promise is, and whether the operation is going away](../diagrams/operation-lifecycle.svg)
 
+_The two tracks of an operation's lifecycle._ They move independently, which is the whole of the design.
+
 The two tracks are drawn side by side because that is the shape the prose above argues for and the shape a single chain
 of states would get wrong.
 

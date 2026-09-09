@@ -163,6 +163,8 @@ working tree is exactly as it was.
 
 ![The ordered steps of a build, and the three points where it refuses](../../diagrams/build-order.svg)
 
+_The ordered steps of a build._ Three of them can refuse, and nothing is written before the last one.
+
 The order, with its refusals drawn where they sit. The picture also places
 [the reading pipeline](../openapi-support.md#reading-a-document) where it belongs: one step of a build rather than the
 whole of it, which is the relationship a reader arriving on either page has had to assemble for themselves.

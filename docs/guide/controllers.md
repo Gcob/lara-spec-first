@@ -154,6 +154,8 @@ the registration stays a serializable pair of strings and `route:cache` keeps wo
 
 ![What the package ships, what the build rewrites, what you own, and the types the three share](../diagrams/two-class-seam.svg)
 
+_The two-class seam, and the types the three layers share._
+
 Who rewrites each layer is the part a paragraph keeps having to restate: the package ships the base, the interfaces and
 the trait, the build owns the middle layer entirely, and the bottom one is written once by a person and never touched
 again. That is the structure; [the request path](#reads-and-where-they-stop-needing-a-line-of-code) is the same layers
@@ -211,6 +213,8 @@ scaffolds one file for one operation, extending that operation's generated paren
 writes is deliberately almost nothing: the `extends`, the comment about that one line, and the signature to override.
 
 ![The five decisions spec:make walks, from a missing extension to the build it runs at the end](../diagrams/spec-make.svg)
+
+_What `spec:make` decides, and where it stops._
 
 The whole command in one picture, and the subsections below take each branch in turn. Four of its five decisions are
 refusals, which is the shape of a command that edits the source of truth and writes a file a developer will then own:
@@ -619,6 +623,8 @@ the part that earns a developer's attention.
 ## Reads, and where they stop needing a line of code
 
 ![A GET request crossing the route, the scope middleware, your controller, its generated parent and the DTO factory](../diagrams/request-path.svg)
+
+_The path of a request, from the route to the DTO factory._
 
 One level below [the two-class seam](#two-classes-found-by-name-rather-than-by-a-scan): the same classes, in the order a
 request reaches them. Every hop after the route is a method a child may override, and the phase note names the three

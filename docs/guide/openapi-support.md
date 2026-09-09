@@ -189,6 +189,8 @@ the parser:
 
 ![One namespace holds the third-party parser, and only our own types cross out of it](../diagrams/namespace-boundaries.svg)
 
+_The namespace boundaries._
+
 The table says what each namespace owns; the picture says which way the dependency runs, which is the whole point of the
 arrangement. One box contains the third-party library, one type of thing leaves it, and the arrow back into `Parsing\`
 is the one nothing may draw.
@@ -286,6 +288,8 @@ an implementation detail** — each one is impossible before the one that preced
 after.
 
 ![The five steps of the reading pipeline, from decoding to the parser](../diagrams/reading-pipeline.svg)
+
+_The reading pipeline._ Five steps, and every one of them collects faults rather than throwing.
 
 | Step            | What it does                                                                   | Why it sits there                                                                                                                                                                                                                          |
 | --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
