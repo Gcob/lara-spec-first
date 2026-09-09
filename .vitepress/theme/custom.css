@@ -148,6 +148,11 @@
  * installed. What is here is the pointer that says an image is clickable, and the
  * overlay it opens into.
  *
+ * The selector matches the shape a diagram has and not `img`, for the reason
+ * imageZoom.ts gives at `isDiagram`: the README's badges are images too, they sit
+ * several to a paragraph inside links, and offering to enlarge one is offering
+ * the wrong thing on the site's home page.
+ *
  * The overlay takes the page's own background rather than the usual dimmed black:
  * these diagrams are transparent SVGs drawn in one grey and six hues chosen to sit
  * on the site's ground, and a black scrim behind a light theme would be the one
@@ -158,7 +163,7 @@
  * screen is how it became unreadable in the column. Scrolling a large picture is
  * the better half of that trade, and an SVG scales up without losing anything.
  */
-.vp-doc img {
+.vp-doc p > img:only-child {
     cursor: zoom-in;
     outline: 2px solid transparent;
     outline-offset: 6px;
@@ -166,8 +171,8 @@
     transition: outline-color 0.2s;
 }
 
-.vp-doc img:hover,
-.vp-doc img:focus-visible {
+.vp-doc p > img:only-child:hover,
+.vp-doc p > img:only-child:focus-visible {
     outline-color: var(--vp-c-brand-1);
 }
 

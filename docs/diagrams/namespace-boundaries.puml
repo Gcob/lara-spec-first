@@ -10,16 +10,16 @@ set separator none
 
 top to bottom direction
 
-package "Parsing\\" as Parsing #line:$shipped;text:$shipped;back:transparent {
-  component "cebe\\openapi\\\nthe third-party reader" as Cebe #line:$foreign;text:$foreign;back:transparent
+package "Parsing\\" as Parsing $shippedInk {
+  component "cebe\\openapi\\\nthe third-party reader" as Cebe $foreignInk
 }
 
-component "Contract\\\nour own types" as Contract #line:$shipped;text:$shipped;back:transparent
+component "Contract\\\nour own types" as Contract $shippedInk
 
-package "Consume Contract\\, and only it" as Consumers #line:$shipped;text:$shipped;back:transparent {
-  component "Generation\\" as Generation #line:$shipped;text:$shipped;back:transparent
-  component "Console\\" as Console #line:$shipped;text:$shipped;back:transparent
-  component "Routing\\" as Routing #line:$shipped;text:$shipped;back:transparent
+package "Consume Contract\\, and only it" as Consumers $shippedInk {
+  component "Generation\\" as Generation $shippedInk
+  component "Console\\" as Console $shippedInk
+  component "Routing\\" as Routing $shippedInk
 }
 
 Parsing -down-> Contract : produces

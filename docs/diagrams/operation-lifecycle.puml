@@ -27,7 +27,7 @@ state "An operation the document declares" as Operation {
     [*] --> current
     current --> deprecated : deprecated: true,\nwhich requires x-sunset
     deprecated --> past_sunset : the date arrives
-    state "past its sunset" as past_sunset #line:$refusal;text:$refusal;back:transparent
+    state "past its sunset" as past_sunset $refusalInk
   }
 }
 

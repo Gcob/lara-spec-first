@@ -189,9 +189,8 @@ registry that splits its documents across several files works exactly as it woul
 
 _One reference, walked._ The recursion is the diagram calling itself.
 
-One reference, and the recursion is the diagram calling itself. The two endings are the part worth the second look: the
-same walk either points the parent at a local path, or leaves upstream's bytes on disk and takes the parent's reference
-away.
+The two endings are the part worth the second look: the same walk either points the parent at a local path, or leaves
+upstream's bytes on disk and takes the parent's reference away.
 
 The allowlist applies again at every hop: a vendored document naming a host nobody allowed refuses exactly like the root
 document would, and a chain of references that closes back on a URL already being fetched raises rather than recursing

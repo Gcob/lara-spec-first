@@ -22,6 +22,7 @@ const OPEN_CLASS = 'diagram-zoom-open'
 
 let overlay: HTMLDivElement | null = null
 let overlayImage: HTMLImageElement | null = null
+let opener: HTMLImageElement | null = null
 
 function buildOverlay(): HTMLDivElement {
     const element = document.createElement('div')
@@ -29,6 +30,9 @@ function buildOverlay(): HTMLDivElement {
     element.hidden = true
     element.setAttribute('role', 'dialog')
     element.setAttribute('aria-modal', 'true')
+    // Named, because a dialog announced as an unnamed dialog tells a screen
+    // reader's user that something opened and nothing about what.
+    element.setAttribute('aria-label', 'Diagram, enlarged')
     element.tabIndex = -1
 
     overlayImage = document.createElement('img')
@@ -52,11 +56,18 @@ function open(image: HTMLImageElement): void {
 
     overlayImage.src = image.currentSrc || image.src
     overlayImage.alt = image.alt
+    opener = image
 
     overlay.hidden = false
     // The page behind must not scroll under the overlay, and the overlay itself
     // is what scrolls when a diagram is taller than the screen.
     document.documentElement.classList.add(OPEN_CLASS)
+    // `aria-modal` promises that what is behind the dialog is unreachable, and
+    // on its own it promises it to a screen reader only: Tab still walks the
+    // page under the overlay. `inert` is what makes the promise true, for the
+    // keyboard as well, and it costs one attribute against a focus trap of our
+    // own.
+    appRoot()?.setAttribute('inert', '')
     overlay.focus()
 }
 
@@ -67,10 +78,42 @@ function close(): void {
 
     overlay.hidden = true
     document.documentElement.classList.remove(OPEN_CLASS)
+    appRoot()?.removeAttribute('inert')
+
+    // Back to the image that opened it. Without this a keyboard reader who
+    // enlarges a diagram halfway down a long page lands on the body and walks
+    // the whole page again to get back to where they were.
+    opener?.focus()
+    opener = null
 }
 
+function appRoot(): HTMLElement | null {
+    return document.getElementById('app')
+}
+
+/*
+ * A diagram is an image alone in its own paragraph, which is what a Markdown
+ * image on a line of its own produces. The badges at the top of the README are
+ * the counter-example this has to exclude: they sit several to a paragraph and
+ * each one is wrapped in a link, so enlarging one would open the overlay and
+ * follow the link from the same click, and each would become a tab stop
+ * announced as a button in front of the link that actually does something.
+ *
+ * The `<a>` check is redundant against the parent test and kept anyway: it is
+ * the part that must not be lost if the paragraph test is ever relaxed.
+ */
 function isDiagram(target: EventTarget | null): target is HTMLImageElement {
-    return target instanceof HTMLImageElement && target.closest('.vp-doc') !== null
+    if (!(target instanceof HTMLImageElement) || target.closest('.vp-doc') === null) {
+        return false
+    }
+
+    if (target.closest('a') !== null) {
+        return false
+    }
+
+    const paragraph = target.parentElement
+
+    return paragraph?.tagName === 'P' && paragraph.childElementCount === 1
 }
 
 function onClick(event: MouseEvent): void {
@@ -118,7 +161,11 @@ export function useImageZoom(): void {
     onContentUpdated(() => {
         close()
 
-        document.querySelectorAll<HTMLImageElement>('.vp-doc img').forEach((image) => {
+        document.querySelectorAll<HTMLImageElement>('.vp-doc p > img:only-child').forEach((image) => {
+            if (image.closest('a') !== null) {
+                return
+            }
+
             image.tabIndex = 0
             image.setAttribute('role', 'button')
         })

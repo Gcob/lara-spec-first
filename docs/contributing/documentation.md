@@ -439,8 +439,9 @@ Five rules keep a rendered diagram honest:
 #### The palette is seven colors with one meaning each
 
 **A color says something, or a diagram does not use it.** The seven below are the whole vocabulary, they are defined
-once in [`palette.iuml`](https://github.com/Gcob/lara-spec-first/blob/main/docs/diagrams/palette.iuml), and each one
-says something this document set already argues in prose:
+once in [`palette.iuml`](https://github.com/Gcob/lara-spec-first/blob/main/docs/diagrams/palette.iuml) — an absolute
+link, because the site publishes pages and that file is not one — and each one says something this document set already
+argues in prose:
 
 | Color  | Hex       | Says                                                   |
 | ------ | --------- | ------------------------------------------------------ |
@@ -458,9 +459,23 @@ GitHub's, to within a twentieth of a ratio:
 
 | Against         | Grey | The six hues |
 | --------------- | ---- | ------------ |
-| A white page    | 3.54 | 3.45 to 3.52 |
-| The site's dark | 4.84 | 4.88 to 4.97 |
-| GitHub's dark   | 5.34 | 5.38 to 5.48 |
+| A white page    | 3.54 | 3.50 to 3.52 |
+| The site's dark | 4.84 | 4.88 to 4.91 |
+| GitHub's dark   | 5.34 | 5.38 to 5.41 |
+
+Every number there is computed from the seven values in the table above it, against those three grounds, so a check of
+an eighth color reproduces them rather than trusting them.
+
+**The floor those numbers clear is the 3:1 one, for non-text.** WCAG 1.4.11 is what a diagram's boxes, lines and arrows
+are measured against, and the palette clears it on all three grounds. The labels inside an SVG are a different question:
+they are real text at 13px, 1.4.3 asks 4.5:1 of text that size, and on a white page this whole palette — the neutral
+grey it started from included — sits at about 3.5:1. Both dark grounds clear the text floor. The light one does not, and
+the light one is the default.
+
+**That gap is knowing rather than overlooked.** The ink is one value serving two themes, so clearing 4.5:1 on a white
+page would mean a second render of every diagram, which is the cost this whole approach exists to avoid. What makes it
+survivable is the rule above: nothing is only in the picture, so a label that is hard to read is never the only place a
+fact lives. The day that stops being true, the ink is what has to move.
 
 **An eighth color is computed at that lightness, never picked because it looks right.** The property holds only while
 the set stays isoluminant, and a hue chosen by eye is the one that breaks it on the theme its author was not looking at.

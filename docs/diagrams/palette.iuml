@@ -17,7 +17,7 @@
 ' GitHub's is the grey's, to within a twentieth of a ratio. Adding a colour
 ' means computing it at that lightness, not picking one that looks nice.
 '
-' See docs/contributing/documentation.md, "The palette is six colors with one
+' See docs/contributing/documentation.md, "The palette is seven colors with one
 ' meaning each", which carries the contrast numbers and the rule for adding one.
 
 !$shipped = "478ECA"
@@ -27,6 +27,19 @@
 !$refusal = "C8706F"
 !$note = "8B8E22"
 !$neutral = "888888"
+
+' The same colours, spelled as the clause an element takes inline.
+'
+' Class and component diagrams cannot use the style classes further down: they
+' print a stereotype where an activity diagram does not, and `hide stereotype`
+' would take `<<trait>>` with it. So the colour goes on the element itself, and
+' these spell that clause once rather than eighteen times in one file. Built by
+' concatenation from the values above, so a hue still has exactly one definition.
+!$shippedInk = "#line:" + $shipped + ";text:" + $shipped + ";back:transparent"
+!$generatedInk = "#line:" + $generated + ";text:" + $generated + ";back:transparent"
+!$yoursInk = "#line:" + $yours + ";text:" + $yours + ";back:transparent"
+!$foreignInk = "#line:" + $foreign + ";text:" + $foreign + ";back:transparent"
+!$refusalInk = "#line:" + $refusal + ";text:" + $refusal + ";back:transparent"
 
 <style>
 document {

@@ -16,24 +16,24 @@ hide empty members
 ' "Generated. Rewritten..." into two nested boxes. Turned off so a label is a label.
 set separator none
 
-package "Shipped by the package" #line:$shipped;text:$shipped;back:transparent {
-  abstract class SpecController #line:$shipped;text:$shipped;back:transparent {
+package "Shipped by the package" $shippedInk {
+  abstract class SpecController $shippedInk {
     +routeAction()
     +middleware()
   }
-  interface HasModel #line:$shipped;text:$shipped;back:transparent {
+  interface HasModel $shippedInk {
     +getModelClass()
     +getQuery()
   }
-  class InteractsWithModel <<trait>> #line:$shipped;text:$shipped;back:transparent {
+  class InteractsWithModel <<trait>> $shippedInk {
     +getQuery()
   }
-  package "One per detected semantic, all empty" #line:$shipped;text:$shipped;back:transparent {
-    interface CreatesResource #line:$shipped;text:$shipped;back:transparent
-    interface ShowsResource #line:$shipped;text:$shipped;back:transparent
-    interface ListsResources #line:$shipped;text:$shipped;back:transparent
-    interface UpdatesResource #line:$shipped;text:$shipped;back:transparent
-    interface DeletesResource #line:$shipped;text:$shipped;back:transparent
+  package "One per detected semantic, all empty" $shippedInk {
+    interface CreatesResource $shippedInk
+    interface ShowsResource $shippedInk
+    interface ListsResources $shippedInk
+    interface UpdatesResource $shippedInk
+    interface DeletesResource $shippedInk
 
     ' Laid out in one row on purpose: five empty boxes let free would
     ' spread across the package and leave it mostly white space.
@@ -44,15 +44,15 @@ package "Shipped by the package" #line:$shipped;text:$shipped;back:transparent {
   }
 }
 
-package "Generated, rewritten on every build" #line:$generated;text:$generated;back:transparent {
-  class "Generated\\Controllers\\UserController" as Parent #line:$generated;text:$generated;back:transparent {
+package "Generated, rewritten on every build" $generatedInk {
+  class "Generated\\Controllers\\UserController" as Parent $generatedInk {
     +routeAction(User): UserDto
     +getModelClass(): string
   }
 }
 
-package "Yours, created once and never touched again" #line:$yours;text:$yours;back:transparent {
-  class "Controllers\\UserController" as Child #line:$yours;text:$yours;back:transparent {
+package "Yours, created once and never touched again" $yoursInk {
+  class "Controllers\\UserController" as Child $yoursInk {
     +routeAction(User): UserDto
   }
 }
