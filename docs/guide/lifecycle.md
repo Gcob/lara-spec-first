@@ -16,10 +16,10 @@ tags: [openapi, compatibility, versions, decisions, scope]
 >
 > - `x-audience` says who an operation is for. `x-lifecycle` says how strong a promise it carries.
 > - A public operation that declares no `x-lifecycle` is `beta`: unstable until somebody says otherwise.
-> - `deprecated` is OpenAPI's own key and stays out of `x-lifecycle`, which is why the package reads both.
-> - The doctor enforces the sunset rules today. `stable` is reported and not yet protected, and the protection report
+> - `deprecated` is OpenAPI's own key, so it stays out of `x-lifecycle` and the package reads both.
+> - The doctor enforces the sunset rules today. It reports `stable` without protecting it yet, and the protection report
 >   says so.
-> - **Not built yet:** the RFC 8594 `Sunset` headers the generated code will emit, in Phase 2.
+> - **Not built yet:** the RFC 8594 `Sunset` headers the generated code will send, in Phase 2.
 
 OpenAPI can say an operation is deprecated. It cannot say how strong a promise the operation carries before that, nor
 when it disappears — which is the only part a consumer can plan around. This document owns the extensions that close the

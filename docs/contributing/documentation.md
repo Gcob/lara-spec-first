@@ -262,6 +262,11 @@ The rules:
   `CONTRIBUTING.md` are actually read.
 - **Three to five bullets, one line each.** Under three, and the file probably should not be a file of its own. Over
   five, and it is a table of contents rather than a summary, which is [a smell](#doc-smells) rather than a thorough one.
+- **Written for somebody who has not read the page yet.** Name who does the thing — the package, the build, you — and
+  reach for the plain verb: reads, writes, refuses. "Both versions are read, and a documented subset is honored" has no
+  actor in it and leans on a word this set coined, which makes the one paragraph written for a reader who has read
+  nothing the one paragraph that needs the page first. The coined vocabulary belongs below, in the section that defines
+  it.
 - **Assertions, not subjects.** "Nothing at runtime ever opens a specification" tells the reader something. "The
   relationship between the runtime and the specification" sends them into the body, which is what the summary was there
   to spare them.

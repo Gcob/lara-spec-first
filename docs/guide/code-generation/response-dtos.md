@@ -15,12 +15,11 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 > **In brief**
 >
-> - **Not built yet.** No DTO and no factory is emitted today; this is the design Phase 2 will follow.
-> - The shape is generated and not yours; the behavior is yours. That tension is the whole design.
-> - A DTO is `final readonly`, so there is no abstract layer to extend. Hydration lives one level removed, in a factory.
-> - A project overrides a factory by extending it from a directory the project declares, and the generated default never
->   disappears.
-> - Two classes extending one generated factory is a hard error, not a silent pick.
+> - **Not built yet.** Nothing emits a DTO or a factory today; this is the design Phase 2 will follow.
+> - The shape is generated and the behavior is yours. That tension is the whole design.
+> - A DTO is `final readonly`, so there is nothing to extend. Building one happens a step away, in a factory.
+> - You override a factory by extending it from a directory you declare, and the generated default never disappears.
+> - Two classes extending the same generated factory is a hard error rather than a silent pick.
 
 A response schema describes a shape, and an application has to build that shape out of whatever it actually holds. This
 file owns the split that follows: the type the build owns entirely, and the class beside it that a project is meant to

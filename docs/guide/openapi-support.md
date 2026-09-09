@@ -16,11 +16,12 @@ tags: [openapi, compatibility, scope, versions, decisions]
 
 > **In brief**
 >
-> - Parsing is not honoring: 3.0 and 3.1 are both read, and a documented subset of what they allow is honored.
-> - Four rules govern every one of those decisions, and the support matrix answers construct by construct.
-> - A construct the package does not honor produces a diagnostic, never silence.
-> - A document is read in five fixed steps, and the order is the design: the cycle check cannot move.
-> - Three parser defects are recorded rather than worked around, each pinned by a permanent test case.
+> - The package reads both OpenAPI 3.0 and 3.1, and acts on a documented subset of what they allow rather than on all of
+>   it.
+> - Four rules decide every one of those calls, and the support matrix answers construct by construct.
+> - When it meets a construct it does not act on, it says so. It never stays silent.
+> - It reads a document in five fixed steps, and the order is part of the design: the cycle check cannot move.
+> - Three defects in the parser underneath are recorded rather than worked around, each pinned by a permanent test.
 
 This document is the reference for one question: **given a valid OpenAPI document, what does `lara-spec-first` actually
 do with it?**

@@ -14,11 +14,12 @@ tags: [openapi, security, decisions, scope, laravel]
 
 > **In brief**
 >
-> - **Not built yet.** `security` is reported by the doctor and not enforced. Enforcement is Phase 2.
-> - A `securitySchemes` name matches a Laravel guard by nomenclature, never by a mapping written out by hand.
-> - One built-in middleware asks one question: does the authenticated model carry the scope.
-> - The requirement is resolved into the generated route at build time, never read from the specification per request.
-> - Past the scope check, authorization is a Policy's job and the specification has no vocabulary left for it.
+> - **Not built yet.** The doctor reports `security` and nothing enforces it. Enforcement is Phase 2.
+> - A `securitySchemes` name matches a Laravel guard by the name itself, never by a mapping you write out by hand.
+> - One middleware asks one question: does the authenticated model carry the scope this operation asks for.
+> - The build writes that requirement into the generated route, so nothing reads the specification while a request is
+>   being served.
+> - Past the scope check, authorization is a Policy's job, and the specification has no vocabulary left for it.
 
 OpenAPI can say an operation requires `bearerAuth` with scope `write`. It cannot say anything about the row being
 written — whether the caller may touch _this_ record — because the specification has no vocabulary for it. This document

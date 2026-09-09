@@ -18,10 +18,10 @@ tags: [openapi, pagination, decisions, scope, laravel]
 > **In brief**
 >
 > - **Not built yet.** Phase 2, with the driver mechanism it shares with rate limiting.
-> - OpenAPI has no vocabulary for pagination, so paginated endpoints are ordinary ones until a project names a driver.
-> - One built-in driver ships, `laravel`, matching Laravel's own paginator envelope.
-> - The build emits one envelope DTO per paginated operation, beside its item DTO and its metadata DTO.
-> - An operation paginates with no Eloquent model at all, which is the case the two seams exist to prove.
+> - OpenAPI has no vocabulary for pagination, so a paginated endpoint is an ordinary one until you name a driver.
+> - One driver ships built in, `laravel`, matching Laravel's own paginator envelope.
+> - The build writes one envelope DTO per paginated operation, beside its item DTO and its metadata DTO.
+> - An operation can paginate with no Eloquent model at all, which is the case the two seams exist to prove.
 
 OpenAPI describes a paginated endpoint the same way it describes any other: some query parameters go in, some object
 comes back. It has no construct saying _this parameter is the page number_ or _this property holds the collection_ —

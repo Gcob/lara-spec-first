@@ -16,13 +16,13 @@ tags: [code-generation, openapi, security, scope, decisions]
 
 > **In brief**
 >
-> - The document the build reads is internal: `x-model` and `x-controller` describe the inside of the application, so
->   publishing it hands out your database shape and your namespace layout.
-> - A sanitized copy is emitted only when a project names a disk to put it on, and the keep list denies by default:
->   every extension not named is dropped.
-> - An operation marked `x-audience: internal` is removed from the public copy entirely, along with the schemas, path
->   items and tags nothing references once it is gone.
-> - The types a frontend consumes come from `openapi-typescript` run over that public copy, never from this build.
+> - The document the build reads is internal: `x-model` and `x-controller` describe the inside of your application, so
+>   handing it out hands out your database shape and your namespace layout.
+> - The package writes a sanitized copy only when you name a disk to put it on, and it drops every extension you did not
+>   ask it to keep.
+> - An operation marked `x-audience: internal` disappears from that copy, along with the schemas, path items and tags
+>   nothing else references once it is gone.
+> - Your frontend's types come from `openapi-typescript` run over the public copy, never from this build.
 > - **Not built yet:** all of it. Nothing publishes anything today.
 
 The build reads one document and the public reads another, and this file owns the distance between them: what is removed

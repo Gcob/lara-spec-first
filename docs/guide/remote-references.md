@@ -14,11 +14,12 @@ tags: [openapi, dependencies, decisions, scope, compatibility]
 
 > **In brief**
 >
-> - A `$ref` pointing at a URL is refused unless its host is named in the allowlist, which ships empty.
+> - A `$ref` pointing at a URL is refused unless you named its host in the allowlist, which ships empty.
 > - `spec:build --update-refs` fetches an allowed reference once and commits the copy. Every later build reads that
 >   copy, never the network.
-> - The vendored copies are committed and there is no lock file, because git is the lock.
-> - A vendored document naming a reference of its own is vendored too, with the allowlist checked again at every hop.
+> - Those copies are committed and there is no lock file, because git is the lock.
+> - A fetched document that names a reference of its own is fetched too, and the allowlist is checked again at every
+>   hop.
 
 Every other input to the build sits in the repository. A `$ref` pointing at a URL does not, and this document owns what
 the package does about that difference.

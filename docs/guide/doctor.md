@@ -14,11 +14,12 @@ tags: [openapi, compatibility, decisions, workflow, code-review]
 
 > **In brief**
 >
-> - `spec:doctor` is `nginx -t` for your contract: what the package honors, what it does not, and the routing table that
->   results.
-> - Read-only, always, and an architecture assertion says so rather than a convention nobody can check.
-> - It reports everything it found rather than the first failure, and prints the outcome on a clean run too.
-> - A document fault and a package limit never share an exit code: `0` clean, `1` a document fault, `2` a package limit.
+> - `spec:doctor` checks your contract the way `nginx -t` checks a config: what the package will do with it, what it
+>   will not, and the routes that come out.
+> - It only ever reads. An architecture test enforces that, so it is not a convention somebody can quietly break.
+> - It reports everything it found rather than stopping at the first problem, and it says so on a clean run too.
+> - It keeps a problem in your document apart from a gap in the package, down to the exit code: `0` clean, `1` your
+>   document, `2` our gap.
 > - **Not built yet:** the [baseline](./glossary.md#baseline) and driver sections, which print a `[not checked]` line
 >   instead of passing quietly.
 

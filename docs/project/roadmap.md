@@ -14,8 +14,8 @@ tags: [planning, migration, scope, openapi, testing, decisions]
 
 > **In brief**
 >
-> - A checked box is behavior with tests behind it, never a design that has been agreed on.
-> - Phase 1 runs today: a contract becomes routes and one controller per operation, answering 501 until something
+> - A checked box means behavior with tests behind it, never a design somebody agreed to.
+> - Phase 1 runs today: a contract becomes routes and one controller per operation, each answering 501 until somebody
 >   implements it.
 > - The order is Phase 1, the `0.x` tag, Phase 2, then `1.0`. Breaking-change enforcement and Phase 3 both come after
 >   that.
