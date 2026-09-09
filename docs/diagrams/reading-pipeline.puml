@@ -1,48 +1,14 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-activityDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
-
-  activity {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  circle {
-    BackgroundColor #888888
-    LineColor #888888
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-}
-</style>
-skinparam shadowing false
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
 start
 :Decode\nYAML or JSON to an array;
 :Detect\nread the OpenAPI version;
 :Shape\ncheck the document's root shape;
-:Cycles\nrefuse a reference that loops;
-:Remote references\nrefuse a host the allowlist omits;
+:Cycles\nrefuse a reference that loops; <<refusal>>
+:Remote references\nrefuse a host the allowlist omits; <<refusal>>
 :Parse\nOperationExtractor resolves the refs;
 stop
 

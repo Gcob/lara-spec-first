@@ -1,48 +1,8 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-classDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
-  class {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-
-    header {
-      BackgroundColor transparent
-      FontColor #888888
-    }
-  }
-  package {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-    FontStyle italic
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-}
-</style>
-skinparam shadowing false
 
 ' The spot circle on a class and the coloured dot on a member are drawn from
 ' PlantUML's own palette, hardcoded, and one of them paints its letter black:
@@ -56,39 +16,58 @@ hide empty members
 ' "Generated. Rewritten..." into two nested boxes. Turned off so a label is a label.
 set separator none
 
-package "Shipped by the package" {
-  abstract class SpecController {
+package "Shipped by the package" $shippedInk {
+  abstract class SpecController $shippedInk {
     +routeAction()
     +middleware()
   }
-  interface HasModel {
+  interface HasModel $shippedInk {
     +getModelClass()
     +getQuery()
   }
-  interface ShowsResource
+  class InteractsWithModel <<trait>> $shippedInk {
+    +getQuery()
+  }
+  package "One per detected semantic, all empty" $shippedInk {
+    interface CreatesResource $shippedInk
+    interface ShowsResource $shippedInk
+    interface ListsResources $shippedInk
+    interface UpdatesResource $shippedInk
+    interface DeletesResource $shippedInk
+
+    ' Laid out in one row on purpose: five empty boxes let free would
+    ' spread across the package and leave it mostly white space.
+    CreatesResource -[hidden]right- ListsResources
+    ListsResources -[hidden]right- UpdatesResource
+    UpdatesResource -[hidden]right- DeletesResource
+    DeletesResource -[hidden]right- ShowsResource
+  }
 }
 
-package "Generated, rewritten on every build" {
-  class "Generated\\Controllers\\UserController" as Parent {
+package "Generated, rewritten on every build" $generatedInk {
+  class "Generated\\Controllers\\UserController" as Parent $generatedInk {
     +routeAction(User): UserDto
     +getModelClass(): string
   }
 }
 
-package "Yours, created once and never touched again" {
-  class "Controllers\\UserController" as Child {
+package "Yours, created once and never touched again" $yoursInk {
+  class "Controllers\\UserController" as Child $yoursInk {
     +routeAction(User): UserDto
   }
 }
 
 SpecController <|-- Parent
 HasModel <|.. Parent
+InteractsWithModel <.. Parent : use
 ShowsResource <|.. Parent
 Parent <|-- Child
 
 note right of Parent
   final unless the operation
-  declares x-controller
+  declares x-controller.
+  getModelClass() is the only
+  member the build writes.
 end note
 
 note bottom of Child
@@ -96,5 +75,18 @@ note bottom of Child
   exists, and at the generated parent
   when it does not. Decided at build
   time, so route:cache keeps working.
+end note
+
+note top of ShowsResource
+  The build implements the one its
+  detection produced, and none at all
+  when it read no semantic.
+end note
+
+note as Disclosure
+  Working names, every one of them, and
+  public API from the first release on.
+  Read this to see how the pieces fit,
+  not as a settled contract.
 end note
 @enduml

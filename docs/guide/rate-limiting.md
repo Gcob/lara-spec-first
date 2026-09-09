@@ -13,12 +13,13 @@ tags: [openapi, rate-limiting, decisions, scope, laravel]
 
 # Rate Limiting
 
-> **TL;DR**
+> **In brief**
 >
 > - **Not built yet.** Phase 2, with the driver mechanism it shares with pagination.
-> - OpenAPI has no vocabulary for rate limits, so the driver is configured and never detected.
-> - Two built-in drivers read a limit: `headers` from documented response headers, `extension` from a custom `x-` key.
-> - Windows are first-class from the first release, because a dimension added later costs a major.
+> - OpenAPI has no vocabulary for rate limits, so you name the driver and the package never guesses at one.
+> - Two drivers ship built in: `headers` reads a limit from documented response headers, `extension` from a custom `x-`
+>   key.
+> - Windows are there from the first release, because adding a dimension later would cost a major version.
 > - Declare the 429 response once and `$ref` it, so that a doctor finding means a real inconsistency.
 
 OpenAPI has no construct for rate limits — no `security`-style object, no reserved keyword, nothing every tool agrees to

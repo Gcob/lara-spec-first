@@ -16,16 +16,16 @@ tags: [code-generation, openapi, decisions, laravel]
 
 # Anatomy of a Generated File
 
-> **TL;DR**
+> **In brief**
 >
-> - Every generated file carries the JSON pointer it came from, named from the project root rather than absolutely,
->   emitted in every mode.
-> - The docblock is a requirement rather than a courtesy: provenance, what the build worked out, and what runs instead
->   of this file.
-> - Nothing generated records a time. Git already answers when, and a clock would make two identical runs differ.
-> - A reference to generated code carries a comment saying what to do when that class is not there.
-> - A name comes from `operationId`, but identity is the path and the method, which is why rename detection was
->   designed, built, and removed before it shipped.
+> - Every generated file says which part of the contract it came from, as a path from the project root rather than from
+>   your disk.
+> - Its docblock is a requirement rather than a courtesy: where it came from, what the build worked out, and what runs
+>   instead of it.
+> - Nothing generated carries a time. Git already answers when, and a clock would make two identical runs differ.
+> - Wherever the code points at a generated class, a comment says what to do when that class is not there.
+> - A name comes from `operationId`, but what identifies an operation is its path and method, which is why rename
+>   detection was designed, built, and removed before it shipped.
 
 Generated code is read by people who did not write it. This file owns everything the build puts in a file to serve that
 reader, and the naming rules that decide what the file is called in the first place.

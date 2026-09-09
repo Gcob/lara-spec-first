@@ -16,13 +16,13 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 # Controllers
 
-> **TL;DR**
+> **In brief**
 >
-> - One controller per operation, carrying one method named `routeAction`.
-> - `x-controller` is the whole customization model: it names the class you will own, and the generated parent drops its
->   `final`.
+> - Each operation gets its own controller, holding one method, always called `routeAction`.
+> - `x-controller` is how you take an operation over: it names the class you will write, and the generated parent drops
+>   its `final` so you can extend it.
 > - An operation that declares no `x-controller` gets a `final` controller, which nothing can extend.
-> - `spec:make` is the only command that creates a file you will own. The build never scaffolds, it names the command.
+> - `spec:make` is the only command that creates a file you own. The build never does; it names the command instead.
 > - **Not built yet:** `x-model` and everything model-shaped, which is Phase 2.
 
 An operation needs something to answer it. This document owns what that something is: how many files it takes, what it
@@ -152,10 +152,20 @@ which has to scan configured directories precisely because nothing in the specif
 The route points at the child when it exists, and at the generated parent when it does not — resolved at build time, so
 the registration stays a serializable pair of strings and `route:cache` keeps working.
 
-![The shipped base, the generated parent and the custom child, and what each one owns](../diagrams/two-class-seam.svg)
+![What the package ships, what the build rewrites, what you own, and the types the three share](../diagrams/two-class-seam.svg)
 
-Three boxes and who rewrites each is the part a paragraph keeps having to restate: the package ships the base, the build
-owns the middle layer entirely, and the bottom one is written once by a person and never touched again.
+_The two-class seam, and the types the three layers share._
+
+Who rewrites each layer is the part a paragraph keeps having to restate: the package ships the base, the interfaces and
+the trait, the build owns the middle layer entirely, and the bottom one is written once by a person and never touched
+again. That is the structure; [the request path](#reads-and-where-they-stop-needing-a-line-of-code) is the same layers
+seen from a request arriving.
+
+**The names in it are working names, and the picture is a reading aid rather than a settled contract.** Every interface
+and trait it draws is public API surface under [rule 4](./openapi-support.md#the-four-rules) from the first release on,
+and [settling those names is still open](#the-detected-crud-semantic-is-a-marker-interface-deliberately-empty). It is
+drawn from what this document set claims today, so read it for how the pieces fit and read the section that owns a name
+before depending on it. Expect to revisit it rather than to inherit it.
 
 **The generated parent takes the same short name, inside
 [the generated namespace](./code-generation/index.md#where-generated-code-lives), and the child extends it by
@@ -201,6 +211,14 @@ scaffolds one file for one operation, extending that operation's generated paren
 **Shipped, except the insertion.** The command creates the class, refuses to overwrite one, and
 [names what it cannot scaffold](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step). What it
 writes is deliberately almost nothing: the `extends`, the comment about that one line, and the signature to override.
+
+![The five decisions spec:make walks, from a missing extension to the build it runs at the end](../diagrams/spec-make.svg)
+
+_What `spec:make` decides, and where it stops._
+
+The whole command in one picture, and the subsections below take each branch in turn. Four of its five decisions are
+refusals, which is the shape of a command that edits the source of truth and writes a file a developer will then own:
+the nominal path is short, and everything else is a reason to stop and hand the decision back.
 
 **It writes `routeAction` with the signature the parent declares, and one line in it.** Writing the method is what a
 `make` is for: the signature is the fiddly part, PHP will not let a child widen it, and copying it out of a comment is
@@ -484,7 +502,8 @@ model cannot.** That single rule decides which family an interface belongs to, s
 **Only `getModelClass()` is generated**, because it is the only part that differs per operation. `getQuery()` lives in
 the trait so its default exists in one place rather than repeated across every model-backed controller — and it stays
 the seam a project overrides most often: a global scope, eager loading, hiding soft-deleted rows are all legitimate
-query construction that never contradicts what the specification declared.
+query construction that never contradicts what the specification declared. Both, and the trait, are drawn in
+[the seam diagram](#two-classes-found-by-name-rather-than-by-a-scan) above.
 
 ### The detected CRUD semantic is a marker interface, deliberately empty
 
@@ -507,7 +526,9 @@ What the marker buys over the docblock that already states the same finding:
   it is an interface rather than an attribute.
 
 **And no interface is a signal too.** An operation the build could not read a semantic from implements none, and its
-`routeAction` throws. The declaration line therefore tells the whole story either way.
+`routeAction` throws. The declaration line therefore tells the whole story either way. All five are drawn in
+[the seam diagram](#two-classes-found-by-name-rather-than-by-a-scan), where the generated class implements exactly one
+of them.
 
 **One framing precision, because the marker could otherwise lie.** A custom child inherits it and is free to reimplement
 `routeAction` as something else entirely. So the interface documents **what the build detected in the specification**,
@@ -600,6 +621,14 @@ The third row is the common case for anything interesting: the defaults handle t
 the part that earns a developer's attention.
 
 ## Reads, and where they stop needing a line of code
+
+![A GET request crossing the route, the scope middleware, your controller, its generated parent and the DTO factory](../diagrams/request-path.svg)
+
+_The path of a request, from the route to the DTO factory._
+
+One level below [the two-class seam](#two-classes-found-by-name-rather-than-by-a-scan): the same classes, in the order a
+request reaches them. Every hop after the route is a method a child may override, and the phase note names the three
+participants that do not exist yet.
 
 A single-resource read needs no override at all. Laravel's own implicit route-model binding resolves it: **the generated
 method's parameter is type-hinted with the model class**, a build-time decision, and Laravel does the actual binding at

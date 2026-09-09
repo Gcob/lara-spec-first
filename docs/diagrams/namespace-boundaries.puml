@@ -1,0 +1,45 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
+
+
+' A period in a package name is a namespace separator to PlantUML, which splits
+' a label into two nested boxes. Turned off so a label is a label.
+set separator none
+
+top to bottom direction
+
+package "Parsing\\" as Parsing $shippedInk {
+  component "cebe\\openapi\\\nthe third-party reader" as Cebe $foreignInk
+}
+
+component "Contract\\\nour own types" as Contract $shippedInk
+
+package "Consume Contract\\, and only it" as Consumers $shippedInk {
+  component "Generation\\" as Generation $shippedInk
+  component "Console\\" as Console $shippedInk
+  component "Routing\\" as Routing $shippedInk
+}
+
+Parsing -down-> Contract : produces
+Contract -[#$refusal,dashed]-> Parsing : never
+
+Generation -up-> Contract
+Console -up-> Contract
+Routing -up-> Contract
+
+note bottom of Cebe
+  The parser is imported here and
+  nowhere else, and the assertion in
+  tests/Unit/ArchitectureTest.php
+  is what keeps it that way.
+end note
+
+note right of Contract
+  The only thing that crosses. A future
+  version cebe cannot serve brings its own
+  parser behind the same interface, and
+  the consumers never notice.
+end note
+@enduml

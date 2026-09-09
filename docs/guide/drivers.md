@@ -13,13 +13,13 @@ tags: [drivers, openapi, decisions, scope, laravel]
 
 # Drivers
 
-> **TL;DR**
+> **In brief**
 >
 > - **Not built yet.** The driver mechanism lands in Phase 2, together with the two features that need it.
-> - A driver knows where a structure lives in the document; the mapping names the fields a project calls them.
-> - That split is what makes a driver portable: it carries structure and no project's field names.
-> - A project registers its own driver from its service provider, like any other Laravel extension.
-> - Pagination and rate limiting are the two driver-based features.
+> - A driver knows where a structure sits in the document. The mapping names the fields your project calls them.
+> - That split is what makes a driver portable: it carries structure and nobody's field names.
+> - You register your own driver from a service provider, like any other Laravel extension.
+> - Pagination and rate limiting are the two features built on drivers.
 
 Some things every real API needs are things OpenAPI never gave a vocabulary to. [Rate limits](./rate-limiting.md) and
 [pagination](./pagination.md) are the two this package has met so far, and they will not be the last. This document owns

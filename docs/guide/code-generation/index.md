@@ -17,16 +17,15 @@ tags: [code-generation, openapi, scope, decisions, laravel]
 
 # Code Generation
 
-> **TL;DR**
+> **In brief**
 >
-> - `spec:build` reads the contract and emits `routes.php` plus one controller per operation, each answering 501 until
->   something implements it.
-> - A build never destroys human work: generated code and your code never share a file, so the build is always safe to
->   re-run.
-> - Nothing at runtime ever opens a specification. The provider loads one generated file and knows nothing about how it
->   was produced.
-> - Generated abstracts extended by your concrete classes is what turns a contract change into a static analysis error
->   rather than a runtime surprise.
+> - `spec:build` reads the contract and writes `routes.php` plus one controller per operation, each answering 501 until
+>   somebody implements it.
+> - A build never destroys your work: generated code and your code never share a file, so it is always safe to re-run.
+> - Nothing opens a specification while the application runs. The provider loads one generated file and knows nothing
+>   about where it came from.
+> - Your classes extend the generated ones, so a change to the contract becomes a static analysis error instead of a
+>   surprise in production.
 > - **Not built yet:** response DTOs, request validation, and the sanitized [public copy](../glossary.md#public-copy).
 
 Spec-First only pays off if the contract reaches the code. This document owns how it gets there: **one build command
@@ -160,6 +159,14 @@ nothing has settled — whose order wins, and whether each gets its own generate
 half-generated tree behind the first operation it could not handle, and half-generated output from a broken contract is
 worse than no output: it analyses, it autocompletes, and it lies. Planning first means a refusal costs nothing, and the
 working tree is exactly as it was.
+
+![The ordered steps of a build, and the three points where it refuses](../../diagrams/build-order.svg)
+
+_The ordered steps of a build._ Three of them can refuse, and nothing is written before the last one.
+
+The order, with its refusals drawn where they sit. The picture also places
+[the reading pipeline](../openapi-support.md#reading-a-document) where it belongs: one step of a build rather than the
+whole of it, which is the relationship a reader arriving on either page has had to assemble for themselves.
 
 Its properties:
 

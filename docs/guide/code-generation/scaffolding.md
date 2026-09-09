@@ -14,15 +14,16 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 # Scaffolding & Watching
 
-> **TL;DR**
+> **In brief**
 >
-> - The build never creates a class you will own. `spec:make` does, on request, and it never overwrites a file that
->   already exists.
-> - An operation nobody has implemented answers `501`, naming itself and the command that implements it, rather than a
->   `404` or a class-not-found.
-> - A scaffolded class goes where PSR-4 says it goes, and a namespace the project does not map is refused by name rather
->   than guessed at.
-> - The build names the commands to run instead of running them, and summarises while the doctor holds the full list.
+> - The build never creates a class you will own. `spec:make` does, when you ask it to, and it never overwrites a file
+>   that already exists.
+> - An operation nobody has implemented answers `501` and names both itself and the command that implements it, rather
+>   than a `404` or a class nobody can find.
+> - A scaffolded class goes where PSR-4 says it goes, and a namespace your project does not map is refused by name
+>   rather than guessed at.
+> - The build tells you which commands to run instead of running them, and keeps it short; the doctor holds the full
+>   list.
 > - **Not built yet:** `spec:watch`.
 
 Two commands produce something you are meant to edit, which is what separates them from the build. This file owns both,

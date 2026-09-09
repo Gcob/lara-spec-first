@@ -10,12 +10,12 @@ tags: [agents, workflow, testing, code-review, conventions, onboarding]
 
 # AGENTS.md
 
-> **TL;DR**
+> **In brief**
 >
 > - Every change lands in three places at once: code, documentation, and tests. A partial change is an unfinished one.
 > - When a change can be shown working in the Workbench, showing it is part of finishing it.
 > - The OpenAPI contract is the source of truth. Anything that makes PHP authoritative over it is going the wrong way.
-> - Review in priority order, and the three places is what you check before reading a line of logic.
+> - Review in priority order, and check the three places before reading a line of logic.
 > - Verify with `just check`: Pint, then Larastan, then Pest.
 
 Guidance for AI coding agents working on `lara-spec-first`.
@@ -122,6 +122,10 @@ Two traps worth knowing before you go in:
   `justfile`. Same for reviews: formatting is not a finding.
 - **Let the docs build find your dead links.** Moving or renaming a document breaks every link into it.
   `just docs-build` fails on the first one and names the file — faster and more complete than grepping for the old path.
+- **A change that moves a design moves the diagram that draws it.** `just diagrams-check` compares an SVG to its
+  PlantUML source and never to the page around it, so an image describing an older design stays green. Nothing but
+  review catches that one — see
+  [the diagram rules](./docs/contributing/documentation.md#a-diagram-is-built-not-embedded).
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)** — see `CONTRIBUTING.md`.
 - **No emojis in documentation.**
 

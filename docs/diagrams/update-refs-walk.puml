@@ -1,0 +1,46 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
+
+
+start
+:One $ref that names a URL;
+
+if (Is the host on the allowlist?) then (no)
+  :Refuse, exactly as the root\ndocument would have; <<refusal>>
+  stop
+else (yes)
+endif
+
+if (Is that URL already being fetched?) then (yes)
+  :Refuse. The chain closed on itself\ninstead of recursing forever; <<refusal>>
+  stop
+else (no)
+endif
+
+:Fetch it; <<foreign>>
+
+:Walk every $ref it names\nthe same way;
+note right
+  This diagram, one hop deeper.
+  Nothing about depth is
+  special-cased.
+end note
+
+if (Did every reference inside it resolve?) then (yes)
+  :Rewrite its own $refs to their\nlocal vendored siblings, and write it;
+  :Point the parent's $ref\nat the local path;
+  stop
+else (no)
+  :Write it exactly as the\nserver returned it; <<foreign>>
+  :Remove the parent's $ref\nrather than rewriting it; <<refusal>>
+  note right
+    Both halves, or the next build finds
+    no remote $ref left to complain about
+    and generates a contract quietly
+    missing the schema.
+  end note
+  stop
+endif
+@enduml

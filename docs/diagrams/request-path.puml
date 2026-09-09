@@ -1,0 +1,48 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
+
+hide footbox
+hide stereotype
+
+' A period in a participant name is a namespace separator to PlantUML, which
+' splits a label into two boxes. Turned off so a label is a label.
+set separator none
+
+participant "Client" as Client
+participant "routes.php\ngenerated" as Route <<generated>>
+participant "the scope middleware" as Scope <<shipped>>
+participant "Controllers\\UserController\nyours" as Child <<yours>>
+participant "Generated\\Controllers\\UserController\ngenerated" as Parent <<generated>>
+participant "UserDtoFactory\ngenerated" as Factory <<generated>>
+
+note over Scope, Factory
+  Phase 2, not shipped: the scope middleware,
+  the DTO and its factory. Today routeAction
+  throws and Laravel renders 501 until a custom
+  child answers.
+end note
+
+Client -> Route : GET /users/42
+Route -> Route : implicit binding\nresolves User 42
+Route -> Scope : does the model\nhave the scope?
+Scope --> Route : yes
+Route -> Child : routeAction(User)
+
+note over Route, Child
+  The route points at your class when its file
+  exists, and at the generated parent when it
+  does not. Decided at build time, so
+  route:cache keeps working.
+end note
+
+Child -> Parent : parent::routeAction(User)
+Parent -> Parent : respondWithSingle(User)
+Parent -> Factory : from(User)
+Factory --> Parent : UserDto
+Parent --> Child : UserDto
+Child --> Client : 200, the response schema's shape
+
+
+@enduml

@@ -14,13 +14,14 @@ tags: [openapi, compatibility, scope, versions, decisions]
 
 # OpenAPI Support
 
-> **TL;DR**
+> **In brief**
 >
-> - Parsing is not honoring: 3.0 and 3.1 are both read, and a documented subset of what they allow is honored.
-> - Four rules govern every one of those decisions, and the support matrix answers construct by construct.
-> - A construct the package does not honor produces a diagnostic, never silence.
-> - A document is read in five fixed steps, and the order is the design: the cycle check cannot move.
-> - Three parser defects are recorded rather than worked around, each pinned by a permanent test case.
+> - The package reads both OpenAPI 3.0 and 3.1, and acts on a documented subset of what they allow rather than on all of
+>   it.
+> - Four rules decide every one of those calls, and the support matrix answers construct by construct.
+> - When it meets a construct it does not act on, it says so. It never stays silent.
+> - It reads a document in five fixed steps, and the order is part of the design: the cycle check cannot move.
+> - Three defects in the parser underneath are recorded rather than worked around, each pinned by a permanent test.
 
 This document is the reference for one question: **given a valid OpenAPI document, what does `lara-spec-first` actually
 do with it?**
@@ -187,6 +188,14 @@ the parser:
 | `Console\`    | The commands.                                                          | Started |
 | `Routing\`    | What the service provider loads at boot.                               | Yes     |
 
+![One namespace holds the third-party parser, and only our own types cross out of it](../diagrams/namespace-boundaries.svg)
+
+_The namespace boundaries._
+
+The table says what each namespace owns; the picture says which way the dependency runs, which is the whole point of the
+arrangement. One box contains the third-party library, one type of thing leaves it, and the arrow back into `Parsing\`
+is the one nothing may draw.
+
 Inside `Parsing\`, `Guards\` holds the checks that can refuse to load a document — the reference cycle detector and the
 remote reference guard. It is expected to stay small by design: this doctrine sends almost every check to
 [the doctor](./doctor.md), which _reports_, and keeps here only what makes loading impossible or unsafe. Both of the
@@ -280,6 +289,8 @@ an implementation detail** — each one is impossible before the one that preced
 after.
 
 ![The five steps of the reading pipeline, from decoding to the parser](../diagrams/reading-pipeline.svg)
+
+_The reading pipeline._ Five steps, and every one of them collects faults rather than throwing.
 
 | Step            | What it does                                                                   | Why it sits there                                                                                                                                                                                                                          |
 | --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

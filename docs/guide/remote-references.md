@@ -12,13 +12,14 @@ tags: [openapi, dependencies, decisions, scope, compatibility]
 
 # Remote References
 
-> **TL;DR**
+> **In brief**
 >
-> - A `$ref` pointing at a URL is refused unless its host is named in the allowlist, which ships empty.
+> - A `$ref` pointing at a URL is refused unless you named its host in the allowlist, which ships empty.
 > - `spec:build --update-refs` fetches an allowed reference once and commits the copy. Every later build reads that
 >   copy, never the network.
-> - The vendored copies are committed and there is no lock file, because git is the lock.
-> - A vendored document naming a reference of its own is vendored too, with the allowlist checked again at every hop.
+> - Those copies are committed and there is no lock file, because git is the lock.
+> - A fetched document that names a reference of its own is fetched too, and the allowlist is checked again at every
+>   hop.
 
 Every other input to the build sits in the repository. A `$ref` pointing at a URL does not, and this document owns what
 the package does about that difference.
@@ -183,6 +184,13 @@ than two. Both are public API surface under [rule 4](./openapi-support.md#the-fo
 **Decided: followed, not refused at depth one.** A document `spec:build --update-refs` just fetched is walked the same
 way the root specification is — every `$ref` it names is checked against the allowlist and vendored in turn, so a schema
 registry that splits its documents across several files works exactly as it would if none of them were remote.
+
+![One reference, its two refusals, and the two ways the walk can end](../diagrams/update-refs-walk.svg)
+
+_One reference, walked._ The recursion is the diagram calling itself.
+
+The two endings are the part worth the second look: the same walk either points the parent at a local path, or leaves
+upstream's bytes on disk and takes the parent's reference away.
 
 The allowlist applies again at every hop: a vendored document naming a host nobody allowed refuses exactly like the root
 document would, and a chain of references that closes back on a URL already being fetched raises rather than recursing

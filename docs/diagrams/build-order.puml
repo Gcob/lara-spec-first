@@ -1,0 +1,57 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
+
+
+start
+:spec:build;
+
+if (Is every vendored reference on disk?) then (no)
+  :Stop, naming --update-refs; <<refusal>>
+  note right
+    The build never reaches
+    the network on its own.
+  end note
+  stop
+else (yes)
+endif
+
+:Read the document;
+note right
+  The five steps of the reading
+  pipeline, drawn on their own
+  in openapi-support.md.
+end note
+
+:Normalize in memory;
+
+if (Did reading collect a document fault?) then (yes)
+  :Stop before the generator.\nNothing is written; <<refusal>>
+  stop
+else (no)
+endif
+
+:Compare against the previously committed\nspecification, read from git;
+note right
+  After 1.0, not shipped:
+  this step and the refusal
+  below it.
+end note
+
+if (Does the change break a stable operation?) then (yes)
+  :Stop, naming the info.version\nbump that would allow it; <<refusal>>
+  stop
+else (no)
+endif
+
+:Plan every file in memory;
+:Write; <<generated>>
+:Prune what the contract no longer has; <<generated>>
+note right
+  Only a file carrying the marker
+  is ever removed.
+end note
+
+stop
+@enduml

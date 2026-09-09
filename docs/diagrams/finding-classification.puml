@@ -1,0 +1,38 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
+
+
+start
+:One finding;
+
+if (Who can fix it?) then (the project alone)
+  :Document fault; <<yours>>
+  :Exit 1, the hard gate; <<yours>>
+  note right
+    Per run, not per finding: a
+    document fault always wins when
+    both are present, so the harder
+    failure is never buried under
+    the softer one's count.
+  end note
+  stop
+else (us, eventually)
+  :Package limit; <<shipped>>
+
+  if (Is the support level Deferred?) then (yes)
+    :Reported, and never gates.\nOur schedule is not their defect; <<shipped>>
+    stop
+  else (no)
+  endif
+
+  if (Acknowledged in configuration?) then (yes)
+    :Reported in its own section,\nwith no effect on the exit code; <<shipped>>
+    stop
+  else (no)
+    :Exit 2, the softer signal; <<shipped>>
+    stop
+  endif
+endif
+@enduml

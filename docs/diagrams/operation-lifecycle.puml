@@ -1,41 +1,8 @@
 @startuml
 ' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
-'
-' One neutral grey on a transparent background, so a single SVG stays legible on
-' the light theme and the dark one. Nothing here picks a palette, which is what
-' lets the site own its own colors.
-<style>
-document {
-  BackgroundColor transparent
-}
-stateDiagram {
-  BackgroundColor transparent
-  LineColor #888888
-  FontColor #888888
-  FontName Helvetica
-  FontSize 13
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
 
-  state {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  note {
-    BackgroundColor transparent
-    LineColor #888888
-    FontColor #888888
-  }
-  arrow {
-    LineColor #888888
-    FontColor #888888
-  }
-  diamond {
-    BackgroundColor #888888
-    LineColor #888888
-  }
-}
-</style>
-skinparam shadowing false
 
 ' Two regions rather than one chain, because the two keys are independent: an
 ' operation is stable AND deprecated in the normal, well-behaved case.
@@ -60,7 +27,7 @@ state "An operation the document declares" as Operation {
     [*] --> current
     current --> deprecated : deprecated: true,\nwhich requires x-sunset
     deprecated --> past_sunset : the date arrives
-    state "past its sunset" as past_sunset
+    state "past its sunset" as past_sunset $refusalInk
   }
 }
 

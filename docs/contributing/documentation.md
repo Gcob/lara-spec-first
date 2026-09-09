@@ -4,7 +4,7 @@ audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
     principle and what happens when a subject outgrows one file, the audience vocabulary and the directory each audience
-    owns, the front matter metadata schema and tag vocabulary, the TL;DR every document opens with and how it differs
+    owns, the front matter metadata schema and tag vocabulary, the summary every document opens with and how it differs
     from a `covers` claim, the three rules that keep a document readable in one pass and the junior developer test that
     calibrates them, how a diagram is built and when one earns its place, the catalogue of doc smells and the correction
     each one calls for, and the inventory of every document.
@@ -14,12 +14,12 @@ tags: [documentation, conventions, metadata, code-review, onboarding]
 
 # Documentation Guide
 
-> **TL;DR**
+> **In brief**
 >
 > - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
 > - The audience decides the directory, and every file declares itself in its own front matter.
-> - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+> - Every file opens with a summary, and the doc smells below are how a review names what is wrong with one.
 > - Write for one pass: the result first, and no term the reader is assumed to already know.
 
 The rules and expectations for documentation in `lara-spec-first`. Yes, this is documentation about documentation — and
@@ -234,38 +234,42 @@ Every other Markdown document in the repository takes the full set of fields.
 
 ## Every document opens with a summary
 
-**Every Markdown document in the [inventory](#document-inventory) opens with a TL;DR**, directly under the `#` title and
-above the first section. It carries what the reader needs if they read nothing else.
+**Every Markdown document in the [inventory](#document-inventory) opens with a summary, titled "In brief"**, directly
+under the `#` title and above the first section. It carries what the reader needs if they read nothing else.
 
 It exists because of the failure this set is most exposed to. These documents argue: they record a decision and the
 reasoning that produced it, which is deliberate and is not changing. The cost is that the first thing a reader meets is
-an argument, and working out what the file actually claims takes five paragraphs. The TL;DR pays that back at the top,
+an argument, and working out what the file actually claims takes five paragraphs. The summary pays that back at the top,
 for four lines.
 
-A blockquote, three to five bullets, one line each. **This file's own TL;DR is the example** — if the two ever differ,
-the example is the one that is wrong:
+A blockquote titled **In brief**, three to five bullets, one line each. **This file's own summary is the example** — if
+the two ever differ, the example is the one that is wrong:
 
 ```markdown
-> **TL;DR**
+> **In brief**
 >
 > - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
 > - The audience decides the directory, and every file declares itself in its own front matter.
-> - Every file opens with a TL;DR, and the doc smells below are how a review names what is wrong with one.
+> - Every file opens with a summary, and the doc smells below are how a review names what is wrong with one.
 > - Write for one pass: the result first, and no term the reader is assumed to already know.
 ```
 
 The rules:
 
-- **A blockquote, never a heading.** The site builds each page's outline from its headings, so a `## TL;DR` in every
+- **A blockquote, never a heading.** The site builds each page's outline from its headings, so an `## In brief` in every
   document adds one entry of pure noise per page. A blockquote also renders on GitHub, which is where `AGENTS.md` and
   `CONTRIBUTING.md` are actually read.
 - **Three to five bullets, one line each.** Under three, and the file probably should not be a file of its own. Over
-  five, and it is a table of contents rather than a summary, which is [a smell](#doc-smells) rather than a thorough
-  TL;DR.
+  five, and it is a table of contents rather than a summary, which is [a smell](#doc-smells) rather than a thorough one.
+- **Written for somebody who has not read the page yet.** Name who does the thing — the package, the build, you — and
+  reach for the plain verb: reads, writes, refuses. "Both versions are read, and a documented subset is honored" has no
+  actor in it and leans on a word this set coined, which makes the one paragraph written for a reader who has read
+  nothing the one paragraph that needs the page first. The coined vocabulary belongs below, in the section that defines
+  it.
 - **Assertions, not subjects.** "Nothing at runtime ever opens a specification" tells the reader something. "The
-  relationship between the runtime and the specification" sends them into the body, which is what the TL;DR was there to
-  spare them.
+  relationship between the runtime and the specification" sends them into the body, which is what the summary was there
+  to spare them.
 - **Name what is not built yet.** Much of this set describes behavior that does not exist, and the phase banner that
   says so is usually further down. A closing bullet separating what runs from what is designed is what stops a reader
   planning around a feature nobody has written.
@@ -278,8 +282,8 @@ Two summaries at the top of one file is duplication, so the split has to be stat
 
 - **`covers` is written for the reader deciding whether to open the file.** It claims subjects: this is what this file
   owns. It is an index entry, and it is what makes an overlap between two files detectable.
-- **The TL;DR is written for the reader who has already opened it.** It gives answers rather than subjects: this is what
-  the file says about them.
+- **The summary is written for the reader who has already opened it.** It gives answers rather than subjects: this is
+  what the file says about them.
 
 The test: **a bullet that could be pasted into `covers` unchanged is a badly written bullet.** It named a topic where it
 owed a claim.
@@ -298,7 +302,7 @@ first task, and an agent opening one page with no memory of the others.
 
 Three questions, in order:
 
-- **Would they get the purpose from the TL;DR alone?** If the point only lands in the third section, the summary is a
+- **Would they get the purpose from the summary alone?** If the point only lands in the third section, the summary is a
   table of contents.
 - **Would they hit a term nobody defined?** This is where you find the vocabulary you assumed, and the rule below is the
   fix.
@@ -389,8 +393,12 @@ can find, not a phrase to grep for.
 ### A diagram is built, not embedded
 
 **Diagrams are PlantUML sources under `docs/diagrams/`, rendered to an SVG committed beside each one, and referenced
-from a page as an image.** Neither GitHub nor the site renders PlantUML on its own, and half the readers of this set are
-on GitHub, so a fenced `plantuml` block is a code listing to one of them and a diagram to neither.
+from a page as an image.** Their shared look — the fonts, the transparent ground and
+[the palette](#the-palette-is-seven-colors-with-one-meaning-each) — lives in
+[`palette.iuml`](https://github.com/Gcob/lara-spec-first/blob/main/docs/diagrams/palette.iuml), which every source
+includes. It is named `.iuml` rather than `.puml` because `build-diagrams.sh` renders every `*.puml` in that directory,
+and a fragment is not a diagram. Neither GitHub nor the site renders PlantUML on its own, and half the readers of this
+set are on GitHub, so a fenced `plantuml` block is a code listing to one of them and a diagram to neither.
 
 ```bash
 just diagrams          # render every docs/diagrams/*.puml to the SVG beside it
@@ -403,35 +411,132 @@ fallback for a render and never the preference, because the image is pinned and 
 refuses it outright, since it compares byte for byte and the fonts a local JVM can see move the coordinates. The tool
 row is in [`stack.md`](../project/stack.md).
 
-Three rules keep a rendered diagram honest:
+Five rules keep a rendered diagram honest:
 
 - **Commit the source and the SVG, and let CI compare them.** A generated file in the tree can drift from what produced
   it. `diagrams-check` re-renders into a scratch directory and fails when the committed SVG differs, which turns that
   drift into a red check rather than a diagram quietly describing an older design. It fails in the other direction too,
   on an SVG whose `.puml` was deleted: a picture nothing produces any more would otherwise stay green forever.
-- **One neutral grey, on a transparent background.** The SVG is one file serving a light theme and a dark one, so it
-  cannot carry a palette. `#888888` clears the contrast floor against both, and the diagram borrows the page's ground
-  rather than painting its own.
-- **A diagram never carries a fact alone.** It complements the prose, the table and the rules around it; anything only
-  the picture says is lost to a reader using a screen reader, and to every `grep`.
+- **A change that moves a design moves the diagram that draws it.** `diagrams-check` compares an SVG to its source, and
+  never the diagram to the prose around it, so an image perfectly in sync with its `.puml` can describe a design from
+  three months ago. That drift is caught in review or it is caught nowhere, and it is the only one that makes a diagram
+  worse than no diagram at all: a picture contradicting its page still reads as the authority.
+- **The ground stays transparent, and the color lives in the ink.** The SVG is one file serving a light theme and a dark
+  one, with no way of knowing which is active, so a filled background would paint its own ground and be wrong on one of
+  the two. PlantUML settles the question anyway: it has neither alpha nor opacity, so a fill is always opaque. Borders,
+  labels and arrows carry every color this set uses, and the page keeps supplying the ground.
+- **Every diagram is captioned, on the line under it.** Italic, a short noun phrase naming the picture, and at most one
+  sentence after it when the name is not enough. That is a caption and not a second alt text: the alt describes the
+  image to a reader who cannot see it, the caption names it for one who can and is scanning the page for the picture
+  they remember. The site styles the paragraph immediately after an image as a caption, so the convention is the markup
+  — no class to remember, and nothing that renders as anything but italic prose on GitHub.
+- **A diagram never carries a fact alone, and neither does a color.** It complements the prose, the table and the rules
+  around it; anything only the picture says is lost to a reader using a screen reader, and to every `grep`. The same
+  holds one level down: a box painted amber is labelled "generated" in words, so a reader who cannot separate two hues
+  loses nothing. In this set that costs close to nothing: every section already carries its prose, its table and its
+  rules, so a diagram is added beside them rather than paid for by rewriting them.
+
+#### The palette is seven colors with one meaning each
+
+**A color says something, or a diagram does not use it.** The seven below are the whole vocabulary, they are defined
+once in [`palette.iuml`](https://github.com/Gcob/lara-spec-first/blob/main/docs/diagrams/palette.iuml) — an absolute
+link, because the site publishes pages and that file is not one — and each one says something this document set already
+argues in prose:
+
+| Color  | Hex       | Says                                                   |
+| ------ | --------- | ------------------------------------------------------ |
+| Blue   | `#478ECA` | Shipped by the package                                 |
+| Amber  | `#AC8148` | Generated, and rewritten on every build                |
+| Green  | `#5A9662` | The project's own, ours to neither write nor rewrite   |
+| Violet | `#A17AB8` | Third-party, and not ours to change                    |
+| Red    | `#C8706F` | A refusal: where the package stops rather than guesses |
+| Yellow | `#8B8E22` | A note: the diagram talking about itself               |
+| Grey   | `#888888` | Everything else, which is most of every diagram        |
+
+**All seven sit at the same lightness, and that is what makes one SVG serve both themes.** Each is computed at L\* 57,
+the lightness of the grey it joins, so its contrast is the grey's on a white page, on the site's dark ground and on
+GitHub's, to within a twentieth of a ratio:
+
+| Against         | Grey | The six hues |
+| --------------- | ---- | ------------ |
+| A white page    | 3.54 | 3.50 to 3.52 |
+| The site's dark | 4.84 | 4.88 to 4.91 |
+| GitHub's dark   | 5.34 | 5.38 to 5.41 |
+
+Every number there is computed from the seven values in the table above it, against those three grounds, so a check of
+an eighth color reproduces them rather than trusting them.
+
+**The floor those numbers clear is the 3:1 one, for non-text.** WCAG 1.4.11 is what a diagram's boxes, lines and arrows
+are measured against, and the palette clears it on all three grounds. The labels inside an SVG are a different question:
+they are real text at 13px, 1.4.3 asks 4.5:1 of text that size, and on a white page this whole palette — the neutral
+grey it started from included — sits at about 3.5:1. Both dark grounds clear the text floor. The light one does not, and
+the light one is the default.
+
+**That gap is knowing rather than overlooked.** The ink is one value serving two themes, so clearing 4.5:1 on a white
+page would mean a second render of every diagram, which is the cost this whole approach exists to avoid. What makes it
+survivable is the rule above: nothing is only in the picture, so a label that is hard to read is never the only place a
+fact lives. The day that stops being true, the ink is what has to move.
+
+**An eighth color is computed at that lightness, never picked because it looks right.** The property holds only while
+the set stays isoluminant, and a hue chosen by eye is the one that breaks it on the theme its author was not looking at.
+
+**And it is checked against the hues already there, on both grounds.** Equal lightness is what makes a color readable;
+it is not what makes two colors distinguishable. The note yellow was drawn twice for that reason: the first attempt sat
+close enough to the amber that on a dark ground a note and a generated step stopped being separable at a glance. Same
+contrast, same legibility, and the wrong answer. Look at the render on both grounds before keeping a hue.
+
+**Most of a diagram stays grey.** Color marks the thing worth marking — an owner, or a refusal — and a diagram with no
+such distinction to draw is right to carry none, the way
+[`operation-lifecycle`](../guide/lifecycle.md#two-keys-one-discriminator) marks one state and leaves the rest neutral.
 
 #### When a diagram earns its place
 
 **Three steps, or an ordering the prose has to spell out.** Below that a sentence wins, and a diagram of two boxes costs
 a build step to say what a clause already said.
 
-The types worth drawing, and the ones this package has no use for, stated so that nobody draws one to fill the table:
+That threshold permits a diagram; it never asks for one. What turns it into something a review can report is the smell
+[an ordering carried by prose alone](#doc-smells), which is this rule read from the outside.
 
-| Diagram             | Shows                                            | Here                                                                             |
-| ------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------- |
-| Activity            | The steps of a workflow or an algorithm          | The reading pipeline, the order of a build                                       |
-| Sequence            | The order of calls between objects or services   | A request reaching a generated controller and its custom child                   |
-| State machine       | An entity's lifecycle and the rules that move it | An operation across `beta`, `stable`, `deprecated` and sunset                    |
-| Class               | The concepts and how they relate                 | The [two-class seam](../guide/glossary.md#two-class-seam), the `Contract\` types |
-| Component           | Module and package boundaries                    | What `Parsing\` may reach, and what `Routing\` may not                           |
-| Use case            | Who interacts with the system, and to do what    | Nothing yet. Three Artisan commands are a list, not a diagram                    |
-| Entity relationship | The tables of a relational database              | Nothing. This package has no database                                            |
-| Deployment          | The machines and containers the code runs on     | Nothing. This is a library, and the host is the consumer's                       |
+**A page may carry several diagrams, and depth is what separates them.** One image per page is not the rule, because a
+subject a page explains at two levels is badly served by a single picture drawn at either one. Open with the high-level
+view; where a later section goes a level deeper, draw that part on its own, and have each one name the other so a reader
+always knows which level they are looking at. What is never right is two diagrams at the same depth on one page: that is
+one diagram drawn twice, and the copy is what goes stale. Extending an existing diagram is the default answer there,
+adding a sibling the exception.
+
+**A diagram may draw behavior that does not exist yet, and names the phase inside the image.** This set documents a
+package ahead of its code and says so everywhere in prose, so a picture restricted to what ships today would hide the
+part a reader most needs to plan around. The [undeclared future](#doc-smells) smell applies to an image exactly as it
+does to a sentence, and the answer is the same one: say the phase out loud. A PlantUML `note` is where it goes, because
+it travels with the diagram rather than sitting in a caption a reader may not reach. **A name the repository has not
+settled is said the same way**, in the same note: a picture reads as more settled than the prose it accompanies, so a
+diagram of working names has to say that is what they are.
+
+The table below separates what is drawn from what would earn a diagram and has not been drawn yet, so that neither is
+mistaken for the other. **A row empty on both sides is a "no" with a reason**, kept so that nobody draws one to fill the
+table:
+
+| Diagram             | Shows                                            | Drawn                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Would earn one                                             |
+| ------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Activity            | The steps of a workflow or an algorithm          | [The reading pipeline](../guide/openapi-support.md#reading-a-document), [the decision tree `spec:make` walks](../guide/controllers.md#specmake-is-the-only-way-in), [the ordered steps of a build](../guide/code-generation/index.md#the-build-command-specbuild), [the walk of `--update-refs`](../guide/remote-references.md#a-vendored-document-can-itself-name-a-reference), [how the doctor classifies a finding](../guide/doctor.md#two-kinds-of-finding-never-mixed) | Nothing else                                               |
+| Sequence            | The order of calls between objects or services   | [The path of a request](../guide/controllers.md#reads-and-where-they-stop-needing-a-line-of-code)                                                                                                                                                                                                                                                                                                                                                                           | Nothing else                                               |
+| State machine       | An entity's lifecycle and the rules that move it | [An operation across `beta`, `stable`, `deprecated` and sunset](../guide/lifecycle.md#two-keys-one-discriminator)                                                                                                                                                                                                                                                                                                                                                           | Nothing else                                               |
+| Class               | The concepts and how they relate                 | The [two-class seam](../guide/controllers.md#two-classes-found-by-name-rather-than-by-a-scan)                                                                                                                                                                                                                                                                                                                                                                               | The `Contract\` types                                      |
+| Component           | Module and package boundaries                    | [The namespace boundaries](../guide/openapi-support.md#where-the-parser-sits-decided)                                                                                                                                                                                                                                                                                                                                                                                       | Nothing else                                               |
+| Use case            | Who interacts with the system, and to do what    | Nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Nothing. Three Artisan commands are a list, not a diagram  |
+| Entity relationship | The tables of a relational database              | Nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Nothing. This package has no database                      |
+| Deployment          | The machines and containers the code runs on     | Nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Nothing. This is a library, and the host is the consumer's |
+
+Six subjects clear the step threshold and still do not earn a picture, answered here rather than each time they come up:
+
+| Subject                      | Why not                                                                                                                                                                                                                                                           |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The `spec:watch` loop        | Four flat steps and no branch. Prose renders it better, and it clears the threshold by a hair                                                                                                                                                                     |
+| The driver and mapping split | A two-column opposition. The table already there is the right form                                                                                                                                                                                                |
+| The rate limiting windows    | Configuration shapes. The two PHP blocks show them better than an image would                                                                                                                                                                                     |
+| The roadmap phases           | A chronology, which this set cuts everywhere else, and it moves on every release. A diagram there would be permanently stale and would demand a render on every roadmap edit                                                                                      |
+| The pagination seams         | Four boxes, one of which extends nothing. [The table that says so](../guide/pagination.md#laravel-already-owns-the-source-agnostic-contract) is barely longer than the picture would be, and a diagram this close to the two-box floor does not earn a build step |
+| The glossary                 | An index. Nothing to order                                                                                                                                                                                                                                        |
 
 ## Doc smells
 
@@ -443,19 +548,20 @@ than "this file feels heavy".
 owns three is not. What each row gives you is the observable sign, so that the judgment happens over something you can
 point at.
 
-| Smell                              | What you see                                                                                          | What to do                                                                                                                    |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| **One file, too many subjects**    | `covers` lists subjects with nothing in common, and the title no longer describes everything under it | Split it, [one topic per file](#one-topic-one-file), and leave a link behind                                                  |
-| **The decision tunnel**            | The chronology of how a decision was reached, ahead of the decision itself                            | [Result first, reason second, history never](#the-reasoning-stays-the-chronology-goes)                                        |
-| **The wall of text**               | A paragraph past roughly ten lines with no bold, no bullet and no subheading anywhere in it           | An assertive heading, bold on the sentence that decides, bullets for the cases                                                |
-| **The sentence you read twice**    | You reached the end of it and went back to the start                                                  | Split it, and [put the result first](#write-for-one-pass)                                                                     |
-| **The stacked clause**             | More than two commas or conditions carried by one sentence                                            | One idea per sentence, or bullets when the sentence was really a list                                                         |
-| **Duplication**                    | The same reasoning justified in two files                                                             | Move it, never copy it, and leave a link. [The rule](#one-topic-one-file)                                                     |
-| **No TL;DR**                       | Five paragraphs before the reader learns what the thing is for                                        | [The summary rule above](#every-document-opens-with-a-summary)                                                                |
-| **Stale metadata**                 | A `covers` claim, a status column or a state paragraph that no longer matches the file under it       | Fix it in the change that made it stale. A `Planned` row for something already shipped is a lie the table tells on every read |
-| **Undeclared future**              | Behavior that does not exist yet, written in the present tense, with no phase said out loud           | Name the phase at the top of the section, the way the guides already do                                                       |
-| **A heading that asserts nothing** | "Overview", "Notes", "Details", "More on this"                                                        | Put the claim in the heading. The page outline is read as a summary, and these entries spend a line of it saying nothing      |
-| **A rule with no example**         | A convention stated in prose, with nothing showing what it looks like                                 | Show the real thing, and say that it is the real thing, so that it cannot quietly go stale                                    |
+| Smell                                  | What you see                                                                                                                | What to do                                                                                                                    |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **One file, too many subjects**        | `covers` lists subjects with nothing in common, and the title no longer describes everything under it                       | Split it, [one topic per file](#one-topic-one-file), and leave a link behind                                                  |
+| **The decision tunnel**                | The chronology of how a decision was reached, ahead of the decision itself                                                  | [Result first, reason second, history never](#the-reasoning-stays-the-chronology-goes)                                        |
+| **The wall of text**                   | A paragraph past roughly ten lines with no bold, no bullet and no subheading anywhere in it                                 | An assertive heading, bold on the sentence that decides, bullets for the cases                                                |
+| **The sentence you read twice**        | You reached the end of it and went back to the start                                                                        | Split it, and [put the result first](#write-for-one-pass)                                                                     |
+| **The stacked clause**                 | More than two commas or conditions carried by one sentence                                                                  | One idea per sentence, or bullets when the sentence was really a list                                                         |
+| **Duplication**                        | The same reasoning justified in two files                                                                                   | Move it, never copy it, and leave a link. [The rule](#one-topic-one-file)                                                     |
+| **No summary**                         | Five paragraphs before the reader learns what the thing is for                                                              | [The summary rule above](#every-document-opens-with-a-summary)                                                                |
+| **Stale metadata**                     | A `covers` claim, a status column or a state paragraph that no longer matches the file under it                             | Fix it in the change that made it stale. A `Planned` row for something already shipped is a lie the table tells on every read |
+| **Undeclared future**                  | Behavior that does not exist yet, written in the present tense, with no phase said out loud                                 | Name the phase at the top of the section, the way the guides already do                                                       |
+| **A heading that asserts nothing**     | "Overview", "Notes", "Details", "More on this"                                                                              | Put the claim in the heading. The page outline is read as a summary, and these entries spend a line of it saying nothing      |
+| **A rule with no example**             | A convention stated in prose, with nothing showing what it looks like                                                       | Show the real thing, and say that it is the real thing, so that it cannot quietly go stale                                    |
+| **An ordering carried by prose alone** | A section spells out three steps or more, with at least one branch or one refusal among them, and the page carries no image | Draw it, or say why it does not [earn one](#when-a-diagram-earns-its-place)                                                   |
 
 ### The reasoning stays, the chronology goes
 

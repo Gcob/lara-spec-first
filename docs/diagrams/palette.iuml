@@ -1,0 +1,242 @@
+' The shared look of every diagram in this repository. Included by each .puml
+' beside it, so a colour or a font is defined once rather than nine times.
+'
+' Not named .puml on purpose: scripts/build-diagrams.sh renders every *.puml in
+' this directory, and this file is a fragment rather than a diagram.
+'
+' THE PALETTE
+'
+' One meaning per colour, and every one of them is a meaning this document set
+' already carries in prose. Colour never says anything on its own: the box it
+' paints is labelled with the same fact, so a reader who cannot separate two
+' hues loses nothing.
+'
+' Every colour sits at the same lightness as the neutral grey it replaces
+' (L* 57), which is what lets one SVG serve a light theme and a dark one. Their
+' contrast against a white page, against the site's dark ground and against
+' GitHub's is the grey's, to within a twentieth of a ratio. Adding a colour
+' means computing it at that lightness, not picking one that looks nice.
+'
+' See docs/contributing/documentation.md, "The palette is seven colors with one
+' meaning each", which carries the contrast numbers and the rule for adding one.
+
+!$shipped = "478ECA"
+!$generated = "AC8148"
+!$yours = "5A9662"
+!$foreign = "A17AB8"
+!$refusal = "C8706F"
+!$note = "8B8E22"
+!$neutral = "888888"
+
+' The same colours, spelled as the clause an element takes inline.
+'
+' Class and component diagrams cannot use the style classes further down: they
+' print a stereotype where an activity diagram does not, and `hide stereotype`
+' would take `<<trait>>` with it. So the colour goes on the element itself, and
+' these spell that clause once rather than eighteen times in one file. Built by
+' concatenation from the values above, so a hue still has exactly one definition.
+!$shippedInk = "#line:" + $shipped + ";text:" + $shipped + ";back:transparent"
+!$generatedInk = "#line:" + $generated + ";text:" + $generated + ";back:transparent"
+!$yoursInk = "#line:" + $yours + ";text:" + $yours + ";back:transparent"
+!$foreignInk = "#line:" + $foreign + ";text:" + $foreign + ";back:transparent"
+!$refusalInk = "#line:" + $refusal + ";text:" + $refusal + ";back:transparent"
+
+<style>
+document {
+  BackgroundColor transparent
+}
+activityDiagram {
+  BackgroundColor transparent
+  LineColor #$neutral
+  FontColor #$neutral
+  FontName Helvetica
+  FontSize 13
+
+  activity {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+  diamond {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+  circle {
+    BackgroundColor #$neutral
+    LineColor #$neutral
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #$note
+    FontColor #$note
+  }
+  arrow {
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+
+  .refusal {
+    BackgroundColor transparent
+    LineColor #$refusal
+    FontColor #$refusal
+  }
+  .generated {
+    BackgroundColor transparent
+    LineColor #$generated
+    FontColor #$generated
+  }
+  .yours {
+    BackgroundColor transparent
+    LineColor #$yours
+    FontColor #$yours
+  }
+  .foreign {
+    BackgroundColor transparent
+    LineColor #$foreign
+    FontColor #$foreign
+  }
+  .shipped {
+    BackgroundColor transparent
+    LineColor #$shipped
+    FontColor #$shipped
+  }
+}
+sequenceDiagram {
+  BackgroundColor transparent
+  LineColor #$neutral
+  FontColor #$neutral
+  FontName Helvetica
+  FontSize 13
+
+  participant {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+  lifeLine {
+    BackgroundColor transparent
+    LineColor #$neutral
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #$note
+    FontColor #$note
+  }
+  arrow {
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+  group {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+  divider {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+
+  .shipped {
+    LineColor #$shipped
+    FontColor #$shipped
+  }
+  .generated {
+    LineColor #$generated
+    FontColor #$generated
+  }
+  .yours {
+    LineColor #$yours
+    FontColor #$yours
+  }
+}
+classDiagram {
+  BackgroundColor transparent
+  LineColor #$neutral
+  FontColor #$neutral
+  FontName Helvetica
+  FontSize 13
+
+  class {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+
+    header {
+      BackgroundColor transparent
+      FontColor #$neutral
+    }
+  }
+  package {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+    FontStyle italic
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #$note
+    FontColor #$note
+  }
+  arrow {
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+}
+stateDiagram {
+  BackgroundColor transparent
+  LineColor #$neutral
+  FontColor #$neutral
+  FontName Helvetica
+  FontSize 13
+
+  state {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #$note
+    FontColor #$note
+  }
+  arrow {
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+  diamond {
+    BackgroundColor #$neutral
+    LineColor #$neutral
+  }
+}
+componentDiagram {
+  BackgroundColor transparent
+  LineColor #$neutral
+  FontColor #$neutral
+  FontName Helvetica
+  FontSize 13
+
+  component {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+  package {
+    BackgroundColor transparent
+    LineColor #$neutral
+    FontColor #$neutral
+    FontStyle italic
+  }
+  note {
+    BackgroundColor transparent
+    LineColor #$note
+    FontColor #$note
+  }
+  arrow {
+    LineColor #$neutral
+    FontColor #$neutral
+  }
+}
+</style>
+skinparam shadowing false
