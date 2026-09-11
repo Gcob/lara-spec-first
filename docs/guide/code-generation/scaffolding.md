@@ -35,7 +35,9 @@ plus what the contract answers for an operation nobody has got to yet.
 
 ## Scaffolding is `spec:make`, not a build step
 
-**The build never creates a class you will own. `spec:make` does, on request.**
+**The build never creates a class you will own. `spec:make` does, on request.** Every flag it takes is in
+[the command reference](../commands.md#specmake-writes-one-class-you-own); what this section owns is why it works this
+way.
 
 **Shipped, in three forms.** `spec:make showUser` scaffolds one operation's custom controller, named by its
 `operationId`, or by its method and path for an operation that has none: `spec:make "delete /legacy"`. `--tag=Users` and

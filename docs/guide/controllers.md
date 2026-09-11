@@ -206,7 +206,8 @@ make the build's output depend on whether a previous build had run.
 
 **A custom controller is created by `spec:make` and never by the build**, which is
 [the invariant](./code-generation/index.md#a-build-never-destroys-your-work) rather than a new rule. It scaffolds one
-file for one operation, extending that operation's generated parent.
+file for one operation, extending that operation's generated parent. Its arguments and flags are in
+[the command reference](./commands.md#specmake-writes-one-class-you-own).
 
 **Shipped, except the insertion.** The command creates the class, refuses to overwrite one, and
 [names what it cannot scaffold](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step). What it

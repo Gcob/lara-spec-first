@@ -78,7 +78,8 @@ Two things to do before your second build:
    and a build that both rewrite one file undo each other forever, whatever formatter you run. See
    [your formatter and the build](./docs/guide/code-generation/index.md#your-formatter-fights-the-build).
 
-Every command, flag and exit code is in [`docs/guide/commands.md`](./docs/guide/commands.md).
+Every command, flag and exit code is in [`docs/guide/commands.md`](./docs/guide/commands.md), and what changed in each
+version is in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 

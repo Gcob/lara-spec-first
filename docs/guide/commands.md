@@ -34,7 +34,7 @@ What each one writes, and whether it can reach the network:
 | Command       | Writes                                             | Reads the network          |
 | ------------- | -------------------------------------------------- | -------------------------- |
 | `spec:build`  | The [generated tree](./glossary.md#generated-tree) | Only under `--update-refs` |
-| `spec:make`   | One controller you own, then runs `spec:build`     | Never                      |
+| `spec:make`   | The controllers you own, never a generated one     | Never                      |
 | `spec:doctor` | Nothing                                            | Never                      |
 
 **Only `spec:build` writes inside the generated tree, and only `spec:make` writes a file you own.** Neither ever does
@@ -101,18 +101,17 @@ interpret before Artisan ever sees it.
 | `--yes`          | Take the proposed `x-controller` and skip every confirmation. |
 | `--spec=`        | Read this specification instead of the configured one.        |
 
-**Name exactly one of the three forms.** Two of them together is refused rather than resolved by precedence: deciding
-that `--all` beats `--tag` would mean one mistyped invocation scaffolding a whole contract while you believed you had
-scoped it to a tag.
+**Name exactly one of the three forms.** Two together is refused rather than resolved by precedence, which is what keeps
+a mistyped invocation from scaffolding a whole contract.
 
-**`--yes` is not `--force`, and the difference is deliberate.** Laravel's generators use `--force` to mean overwrite
-what is there, and this command never overwrites a file you own. A class that already exists is reported and left alone,
-whatever flags you passed. What `--yes` answers is the questions: the `x-controller` proposal, and the bulk forms'
-confirmation.
+**`--yes` answers questions; it does not overwrite.** A class that already exists is reported and left alone, whatever
+flags you passed. The two questions it answers are the `x-controller` proposal and the bulk forms' confirmation. Why it
+is not spelled `--force`: [`controllers.md`](./controllers.md#specmake-is-the-only-way-in).
 
-**It always runs `spec:build` afterward, and exits with the build's code.** A scaffold on its own connects nothing: the
-class it just wrote extends a generated parent whose name comes from the `x-controller` the build has not read yet, so
-without the build the new file does not even load.
+**A run that created something then runs `spec:build`, and exits with the build's code.** A scaffold on its own connects
+nothing: the class it just wrote extends a generated parent whose name comes from the `x-controller` the build has not
+read yet, so without the build the new file does not even load. A bulk run you decline ends there instead, with no files
+and no build.
 
 Where the class goes, what it extends, and why scaffolding is a command rather than a flag on the build:
 [`code-generation/scaffolding.md`](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step).
@@ -169,9 +168,17 @@ ERROR  No specification at /app/openapi.yaml. Set `lara-spec-first.spec.path` in
 
 | Code | `spec:build` and `spec:make` | `spec:doctor`                                               |
 | ---- | ---------------------------- | ----------------------------------------------------------- |
-| `0`  | It did what you asked.       | Nothing gating was found.                                   |
-| `1`  | It refused, and said why.    | The document is broken.                                     |
+| `0`  | It ran to the end.           | Nothing gating was found.                                   |
+| `1`  | It refused, and said why.    | It refused, or your document is broken.                     |
 | `2`  | Not used.                    | The document is fine; this package cannot honor part of it. |
+
+**`1` means it refused, and a broken document is one reason among several.** An unset `spec.path` or an unusable setting
+is the other, on every command: the doctor emits `{"error": "…"}` under `--json` for that branch and exits `1` without
+ever having read a document.
+
+**`0` means it ran to the end, not that it created anything.** A bulk `spec:make` you decline, which is every `--tag=`
+or `--all` run under `--no-interaction` without `--yes`, exits `0` having written no files. A pipeline step gating on
+the exit code alone reads success from it.
 
 **Decide what `2` should do in your pipeline before you wire one up.** `spec:doctor || exit 1` treats it as a failure,
 which is a policy choice rather than the obvious reading of a non-zero code.

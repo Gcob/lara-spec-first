@@ -13,8 +13,8 @@ tags: [versions, conventions, planning]
 > **In brief**
 >
 > - Every released version has an entry here, newest first.
-> - The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the numbering is
->   [semantic versioning](https://semver.org/spec/v2.0.0.html).
+> - The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) plus one section of our own, `Known limits`,
+>   and the numbering is [semantic versioning](https://semver.org/spec/v2.0.0.html).
 > - A `0.x` makes no compatibility promise: what a `1.0` will freeze is
 >   [named in the roadmap](./docs/project/roadmap.md#before-10-freeze-what-a-major-would-cost) rather than left to be
 >   discovered here.
@@ -47,6 +47,9 @@ contract becomes routes and controllers, and nothing at runtime ever opens a spe
   it.
 
 ### Known limits
+
+Not a Keep a Changelog section. It is here because a release that ships a gap on purpose owes it a line, and none of the
+six standard sections says "this works, up to here".
 
 - **`security` is reported, not enforced.** A contract declaring it exits `2` on every doctor run until enforcement
   lands. See [security.md](./docs/guide/security.md).

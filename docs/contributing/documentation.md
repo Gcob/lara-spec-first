@@ -484,11 +484,13 @@ saying how two clauses relate, and leaves the reader to work it out. Pick the ma
 comma for an aside, a colon when what follows explains what came before, a full stop when the second half was a sentence
 wearing a dash.
 
-This set carried 610 of them across its Markdown, and carries fourteen now. Nothing was lost in the trade, and several
-sentences turned out to be two.
+This set carried 610 of them across its Markdown and carries a handful now. Nothing was lost in the trade, and several
+sentences turned out to be two. The count is deliberately not given: it moves every time a document is added to the
+inventory below, and a number in prose that an unrelated change can falsify is [stale metadata](#doc-smells) waiting to
+happen.
 
-**The fourteen are all one shape, and it is not prose.** A list item that opens with a bolded term or a link, with the
-dash separating it from its description:
+**Every one that is left is the same shape, and it is not prose.** A list item that opens with a bolded term or a link,
+with the dash separating it from its description:
 
 ```markdown
 - [`docs/project/stack.md`](./docs/project/stack.md) — every technology choice, its status, and its reasoning.
