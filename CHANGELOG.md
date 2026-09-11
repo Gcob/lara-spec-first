@@ -12,7 +12,8 @@ tags: [versions, conventions, planning]
 
 > **In brief**
 >
-> - Every released version has an entry here, newest first.
+> - Every released version has an entry here, newest first, patches included and
+>   [nothing ever archived](#why-this-is-one-file).
 > - The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) plus one section of our own, `Known limits`,
 >   and the numbering is [semantic versioning](https://semver.org/spec/v2.0.0.html).
 > - A `0.x` makes no compatibility promise: what a `1.0` will freeze is
@@ -57,3 +58,27 @@ six standard sections says "this works, up to here".
   today.
 - **No response DTOs, no generated validation, no pagination or rate limiting.** All of it is
   [Phase 2](./docs/project/roadmap.md#phase-2-the-generated-pipeline).
+
+## Why this is one file
+
+**Every release lands here, patch included, and nothing is ever moved out.** Both halves of that get asked, so both are
+answered here rather than re-argued each time.
+
+**A patch gets an entry because a patch is the release nobody reads before taking.** Under `0.x` a breaking change lands
+in a minor, which makes `0.1.1` the upgrade a consumer applies without thinking about it. That is exactly when it
+matters that there is something to read if there is something to know. The entry usually costs one line under `Fixed`,
+and a change with nothing to tell a consumer does not get tagged at all, so the empty entry never comes up.
+
+**Laravel and Symfony split theirs, and the reason is not the version number.** They maintain several release lines at
+once and backport fixes across them, so each branch carries its own history and earns its own file. This project
+maintains one line: Phase 1, then `0.x`, then Phase 2, then `1.0`. Splitting that would produce several files describing
+one straight line, and a link to a version's notes would break the day that version moved.
+
+**So the criterion is more than one maintained line, not more than one minor.** The day a fix is backported into `0.1.x`
+while `0.2.0` is already out, per-branch files start paying for themselves. Until then they cost a reader the one thing
+this file is for, which is not having to work out where to look.
+
+**And the split would be by major.** `CHANGELOG.md` would keep the current major and earlier ones would move under
+`docs/`. A major is already the boundary where a consumer changes worlds; a minor is a boundary for nobody. Size on its
+own is not a reason to do it: ten releases a year at twenty lines each is two hundred lines a year, and anyone who wants
+one version on its own already has its [GitHub release page](https://github.com/Gcob/lara-spec-first/releases).
