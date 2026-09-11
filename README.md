@@ -12,6 +12,11 @@
 Start with your OpenAPI contract (YML file), and let `lara-spec-first` handle the routing, validation, and skeletal
 architecture while letting your business logic live safely in standard Laravel controllers.
 
+## Documentation
+
+**[gcob.github.io/lara-spec-first](https://gcob.github.io/lara-spec-first/)** publishes every page under `docs/`, with
+search and a sidebar. It is the same content this repository carries, so each link below works from either one.
+
 ## Key Features
 
 - **Contract-Driven Routing:** Automatically register routes based on your OpenAPI specification.
