@@ -21,7 +21,9 @@ tags: [versions, conventions, planning]
 >   discovered here.
 > - `Unreleased` holds what is merged and not tagged. Cutting a tag renames that heading and opens a new one.
 
-## Unreleased
+## [Unreleased]
+
+## [0.1.0] - 2026-09-11
 
 The first release, and what [Phase 1](./docs/project/roadmap.md#phase-1-the-foundation) set out to prove: an OpenAPI
 contract becomes routes and controllers, and nothing at runtime ever opens a specification.
@@ -82,3 +84,6 @@ this file is for, which is not having to work out where to look.
 `docs/`. A major is already the boundary where a consumer changes worlds; a minor is a boundary for nobody. Size on its
 own is not a reason to do it: ten releases a year at twenty lines each is two hundred lines a year, and anyone who wants
 one version on its own already has its [GitHub release page](https://github.com/Gcob/lara-spec-first/releases).
+
+[unreleased]: https://github.com/Gcob/lara-spec-first/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Gcob/lara-spec-first/releases/tag/v0.1.0
