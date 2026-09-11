@@ -12,7 +12,7 @@ use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
  * Unresolved `$ref`, references blocked by the allowlist, and `$ref` cycles —
  * each already its own entry in `ReadOutcome::$faults` rather than the first
  * one found having stopped the rest. See
- * docs/guide/openapi-support.md#the-pipeline-does-not-throw-callers-decide.
+ * docs/guide/openapi-support.md#the-pipeline-never-throws.
  *
  * @see docs/guide/doctor.md — "What it checks"
  */

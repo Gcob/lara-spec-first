@@ -10,7 +10,7 @@ use Gcob\LaraSpecFirst\Tests\Fixtures\CustomControllers\WrittenController;
  * real autoloader rather than a stand-in: whether a file for that class can be
  * found. A mocked loader would prove the mock answers.
  *
- * @see docs/guide/controllers.md — "Two classes, found by name rather than by a scan"
+ * @see docs/guide/controllers.md — "Two classes, found by name"
  */
 
 it('finds a class the autoloader knows', function (): void {

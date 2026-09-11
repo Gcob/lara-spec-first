@@ -27,7 +27,7 @@ use function Laravel\Prompts\text;
  *
  * **The only command that writes a class a developer will own, and it does it on
  * request, once.** The build never scaffolds — that is
- * [the invariant](../../docs/guide/code-generation/index.md#the-invariant-a-build-never-destroys-human-work)
+ * [the invariant](../../docs/guide/code-generation/index.md#a-build-never-destroys-your-work)
  * rather than a preference — and a flag on the build would have made the invariant
  * conditional, which is how a hundred empty classes get committed by accident.
  *

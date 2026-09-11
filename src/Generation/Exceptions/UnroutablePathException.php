@@ -25,7 +25,7 @@ use InvalidArgumentException;
  * naming scheme forever, and the developer would still meet it the first time
  * they read a generated signature.
  *
- * @see docs/guide/openapi-support.md — "Parameter names are a naming contract, not a mapping problem"
+ * @see docs/guide/openapi-support.md — "Parameter names are a contract"
  */
 final class UnroutablePathException extends InvalidArgumentException implements SpecException
 {

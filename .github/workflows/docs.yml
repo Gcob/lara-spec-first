@@ -21,6 +21,7 @@ on:
             - "docs/diagrams/**"
             - "scripts/build-diagrams.sh"
             - "scripts/check-anchors.mjs"
+            - "scripts/check-see-references.mjs"
             - "package.json"
             - "package-lock.json"
             - ".github/workflows/docs.yml"
@@ -31,6 +32,7 @@ on:
             - "docs/diagrams/**"
             - "scripts/build-diagrams.sh"
             - "scripts/check-anchors.mjs"
+            - "scripts/check-see-references.mjs"
             - "package.json"
             - "package-lock.json"
             - ".github/workflows/docs.yml"
@@ -77,6 +79,11 @@ jobs:
             # renamed heading on the same page survives it. This reads the built
             # site and compares the ids emitted against the hrefs written.
             - run: npm run docs:check-anchors
+
+            # The same class of breakage, one layer over: a heading renamed in
+            # Markdown while a `@see` in PHP still names the old title. Nothing
+            # else looks at those, and 49 of them went stale in one pass once.
+            - run: npm run docs:check-see
 
             # Whether this run has any reason to render a diagram.
             #

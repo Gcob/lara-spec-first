@@ -52,7 +52,7 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
      *
      * @param  non-empty-list<string>  $allowed
      *
-     * @see docs/guide/lifecycle.md — "The doctor rules that follow"
+     * @see docs/guide/lifecycle.md — "What the doctor enforces"
      */
     public static function unknownExtensionValue(string $extension, string $written, string $endpoint, array $allowed): self
     {
@@ -91,7 +91,7 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
      * to it could make `App\Http\Controllers\User-Controller` into an identifier,
      * so there is nothing later to find out.
      *
-     * @see docs/guide/controllers.md — "The specification decides what is customizable"
+     * @see docs/guide/controllers.md — "The contract decides what is customizable"
      */
     public static function extensionNotAClassName(string $extension, string $written, string $endpoint): self
     {

@@ -12,8 +12,8 @@
  *
  * The default theme gives each outline entry one line and an ellipsis. That works
  * for a documentation set whose headings are labels; this one deliberately writes
- * them as assertive sentences — "The routes are one file, and the only one the
- * runtime opens" — so the ellipsis lands mid-sentence on most entries and the
+ * them as assertive sentences, "The routes are one file, and the only one the
+ * runtime opens", so the ellipsis lands mid-sentence on most entries and the
  * outline stops being readable at exactly the width it is supposed to help at.
  *
  * The box of a single-line entry stays 32px tall (20px of line plus 6px above and
@@ -52,7 +52,7 @@
  *
  * `has-sidebar` is in the selector for specificity rather than for meaning. The
  * rule this overrides is written inside a Vue `<style scoped>` block, so it ships
- * as `.VPDoc.has-aside .content-container[data-v-…]` — four things to match, where
+ * as `.VPDoc.has-aside .content-container[data-v-…]`: four things to match, where
  * the obvious override has three, and the default wins however late it is loaded.
  * A third class ties the count, and a tie goes to the stylesheet loaded last,
  * which is this one. On a page with no sidebar the rule stops applying and the
@@ -242,7 +242,7 @@
  * The summary at the top of every page is given a card of its own.
  *
  * It is written as a blockquote because that is the one form that renders on
- * GitHub as well as here — the reason is in documentation.md — and the default
+ * GitHub as well as here, the reason being in documentation.md, and the default
  * blockquote is a grey bar in the left margin, which is the same weight the site
  * gives to an aside. This block is the opposite of an aside: it is the first
  * thing on the page and the part a reader may read instead of the page.
@@ -284,4 +284,51 @@
 
 .vp-doc h1 + blockquote li::marker {
     color: var(--vp-c-text-3);
+}
+
+/*
+ * The summary gets an entry above the outline.
+ *
+ * Rendered by InBriefLink.ts into the theme's `aside-outline-before` slot, which
+ * says why it is not a heading in the Markdown. What is here is the styling that
+ * makes it read as part of the outline rather than as something bolted above it:
+ * the same size, colour and hover as an outline link, over a divider that
+ * separates it from the list of sections, because it is not one of them.
+ */
+.in-brief-link {
+    display: block;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--vp-c-divider);
+    margin-bottom: 12px;
+    color: var(--vp-c-text-2);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 20px;
+    transition: color 0.25s;
+}
+
+.in-brief-link:hover {
+    color: var(--vp-c-text-1);
+}
+
+/*
+ * The README's badges sit on one line.
+ *
+ * The theme's own reset makes every image a block, which is right for a diagram
+ * alone in its paragraph and wrong for the three badges under the title: they
+ * are inline content in a single paragraph, and stacked they read as a broken
+ * list rather than as a row of badges.
+ *
+ * Scoped to a linked image, which in this set is only ever a badge. A diagram is
+ * never wrapped in a link, so it keeps the block the reset gives it. Markdown
+ * emits the three anchors with no whitespace between them, so the gap has to
+ * come from here rather than from the source.
+ */
+.vp-doc p > a > img {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.vp-doc p > a + a > img {
+    margin-left: 6px;
 }

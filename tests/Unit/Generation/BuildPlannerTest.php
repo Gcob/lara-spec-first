@@ -123,7 +123,7 @@ it('refuses a path parameter longer than the route compiler accepts', function (
  * name legal in a route and illegal as a PHP variable would produce a file that
  * does not parse.
  *
- * @see docs/guide/controllers.md — "The signature is the contract with the child"
+ * @see docs/guide/controllers.md — "The signature is the contract"
  */
 it('refuses a path parameter that could not be a PHP variable', function (string $path): void {
     expect(fn () => planner()->plan(operations([['get', $path]])))
@@ -180,7 +180,7 @@ it('produces nothing at all when one operation is refused', function (): void {
  * The custom-controller half of planning: which class a route ends up pointing at,
  * and the two collisions that answer differently from the `operationId` one.
  *
- * @see docs/guide/controllers.md — "Two classes, found by name rather than by a scan"
+ * @see docs/guide/controllers.md — "Two classes, found by name"
  */
 
 it('points the route at the custom controller once that class exists', function (): void {

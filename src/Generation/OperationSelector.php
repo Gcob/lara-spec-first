@@ -15,7 +15,7 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\NoSuchOperationException;
  * is a grouped file, so there is nothing a bulk invocation could produce that is
  * not simply the singular form run several times.
  *
- * @see docs/guide/code-generation/scaffolding.md — "The build names the command instead of running it"
+ * @see docs/guide/code-generation/scaffolding.md — "The build names the command"
  */
 final readonly class OperationSelector
 {
@@ -105,7 +105,7 @@ final readonly class OperationSelector
      *
      * Lives here because it answers the same question from the other end: what a
      * developer could type. `spec:build` prints it to
-     * [name the commands rather than run them](../../docs/guide/code-generation/scaffolding.md#the-build-names-the-command-instead-of-running-it),
+     * [name the commands rather than run them](../../docs/guide/code-generation/scaffolding.md#the-build-names-the-command),
      * and a specification with two hundred unimplemented operations needs a
      * grouping rather than two hundred lines.
      *

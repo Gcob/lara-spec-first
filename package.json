@@ -7,7 +7,8 @@
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
     "docs:preview": "vitepress preview",
-    "docs:check-anchors": "node scripts/check-anchors.mjs"
+    "docs:check-anchors": "node scripts/check-anchors.mjs",
+    "docs:check-see": "node scripts/check-see-references.mjs"
   },
   "devDependencies": {
     "github-slugger": "^2.0.0",

@@ -49,7 +49,7 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
      * different one: these are names a developer chose, and the advice to change
      * an `operationId` would send them looking for a key neither operation has.
      *
-     * @see docs/guide/controllers.md — "Two classes, found by name rather than by a scan"
+     * @see docs/guide/controllers.md — "Two classes, found by name"
      */
     public static function parentClaimedTwice(string $shortName, string $first, string $second): self
     {
@@ -96,7 +96,7 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
      * {@see PathTemplate} refuses that where the
      * path is read, before anything asks what could be generated from it.
      *
-     * @see docs/guide/controllers.md — "One controller per operation, one method named routeAction"
+     * @see docs/guide/controllers.md — "One controller, one routeAction"
      */
     public static function parameterNotAVariable(string $identity, string $parameter): self
     {

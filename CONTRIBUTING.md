@@ -23,7 +23,7 @@ how changes get merged.
 
 ## Project status
 
-`lara-spec-first` is in **early bootstrap** — we are working through
+`lara-spec-first` is in **early bootstrap**, and we are working through
 [Phase 1 of the Roadmap](./docs/project/roadmap.md). The public API is not stable yet, and the package does not do
 anything useful for a consumer so far. The tooling below, however, is in place and works today.
 
@@ -68,7 +68,7 @@ just            # list every recipe
 ```
 
 **Read the `justfile` before running a recipe from a branch you did not write.** It executes shell commands, and so do
-`composer.json` scripts, the `Dockerfile` and `compose.yaml` — the file carries a security note explaining what to look
+`composer.json` scripts, the `Dockerfile` and `compose.yaml`. The file carries a security note explaining what to look
 for.
 
 ### Natively (if you already have PHP and Composer)
@@ -78,14 +78,14 @@ composer install
 composer test
 ```
 
-All three paths are first-class. Docker and `just` are thin wrappers that invoke the **exact same Composer scripts** —
-neither carries logic of its own. Our CI runs the suite _without_ Docker, across a matrix of PHP and Laravel versions,
-so the native path is guaranteed to keep working.
+All three paths are first-class. Docker and `just` are thin wrappers that invoke the **exact same Composer scripts**,
+and neither carries logic of its own. Our CI runs the suite _without_ Docker, across a matrix of PHP and Laravel
+versions, so the native path is guaranteed to keep working.
 
 ## The Workbench application
 
 `workbench/` holds a real Laravel application with this package already loaded, provided by `orchestra/workbench`. It is
-how you exercise the package by hand — the thing you would otherwise need a separate Laravel project for.
+how you exercise the package by hand, the thing you would otherwise need a separate Laravel project for.
 
 ```bash
 just serve
@@ -105,7 +105,7 @@ The Pest suite stays the fast feedback loop; Workbench is for the things a test 
 ### Artisan, inside it
 
 A package has no `artisan` binary of its own. Testbench provides one, and it boots this same Workbench application with
-the package loaded — so it is where `spec:build`, `spec:make`, `route:list` and `config:show` all run:
+the package loaded, so it is where `spec:build`, `spec:make`, `route:list` and `config:show` all run:
 
 ```bash
 just artisan route:list        # in the container
@@ -135,49 +135,49 @@ Then try `GET /users/me` or `POST /posts`: both answer `501`, naming the operati
 would implement it. Nothing implements them yet, and that is the honest answer while the contract describes an endpoint
 and no code does.
 
-`GET /users/42` answers `200`, because it is the one operation with a custom controller behind it —
+`GET /users/42` answers `200`, because it is the one operation with a custom controller behind it,
 `workbench/app/Http/Controllers/Users/ShowUserController.php`, extending the parent the build generated for it. Delete
 that file and rebuild, and the route falls back to the generated parent and the `501` comes back.
 
 `GET /posts` is the same seam one step earlier: `workbench/app/Http/Controllers/Posts/ListPostsController.php` is what
 `spec:make listPosts` wrote, untouched. It answers `501` because the one line in it calls the parent, so the pair is
-visible side by side — the difference between an operation that answers and one that does not is a line in a file you
+visible side by side: the difference between an operation that answers and one that does not is a line in a file you
 own.
 
 **`workbench/app/Http/Generated` is gitignored**, for the same reason any project ignores its build output, and because
-this application exists to model a real consumer one — so it is configured the way one would be. The contract is
+this application exists to model a real consumer one, so it is configured the way one would be. The contract is
 committed; what the contract produces is not.
 [`.gitignore` decides](./docs/guide/code-generation/index.md#which-generated-code-is-committed), and the cost of
-ignoring it is the `composer install` bargain the [two layers](./docs/guide/code-generation/index.md#two-layers) section
-already accepts: a fresh clone serves nothing until the build has run once.
+ignoring it is the `composer install` bargain the
+[two layers](./docs/guide/code-generation/index.md#an-interface-and-an-abstract-class) section already accepts: a fresh
+clone serves nothing until the build has run once.
 
-Which is why the build is a step of `composer build` rather than something to remember — see `workbench.build` in
+Which is why the build is a step of `composer build` rather than something to remember. See `workbench.build` in
 `testbench.yaml`. That is also the workflow a consumer has: `spec:build` belongs in whatever bootstraps their
 application.
 
 `pint.json` still excludes that tree even though git ignores it, because Pint reads the filesystem rather than the
 index. It has to: Pint and the build both want to own the formatting of a generated file, so without the exclusion they
 rewrite each other. The package emits Pint-canonical output and a test keeps it that way; excluding it is the belt to
-that braces, and the same advice the README gives consumers. Note that `exclude` only applies to a default scan —
+that braces, and the same advice the README gives consumers. Note that `exclude` only applies to a default scan:
 `pint path/to/tree` still formats it, which is how the test that checks the emitted format keeps working.
 
 Two things about this application that will otherwise surprise you:
 
 - **`base_path()` is the Testbench skeleton under `vendor/`, not `workbench/`.** That is what
   `workbench/config/lara-spec-first.php` corrects, and why the paths in it are absolute. It is the package's published
-  config file with three keys edited, loaded the way a real application loads its own `config/` directory — enabled by
+  config file with three keys edited, loaded the way a real application loads its own `config/` directory, enabled by
   `workbench.discovers.config` in `testbench.yaml`. Edit it as you would in a project: the package merges its own
   defaults beneath whatever it finds there, so you only name what differs.
 - **Generated classes live under `Workbench\App\Http\Generated`,** because that is the namespace this package's
   `autoload-dev` maps into `workbench/app/`. Anywhere else and they would not autoload at request time.
 
-### Your code must run on Laravel 12 _and_ 13
+### Your code runs on 12 and 13
 
 This package supports both. That applies to `src/`, to `tests/`, and to `workbench/` alike.
 
 **The trap:** a normal `composer install` resolves to the _newest_ supported Laravel. Anything that exists only in 13
-will pass on your machine and break for every contributor and user on 12 — silently, until CI or a bug report catches
-it.
+will pass on your machine and break for every contributor and user on 12, silently, until CI or a bug report catches it.
 
 It is not hypothetical. Workbench scaffolds its `User` model with the `#[Fillable]` and `#[Hidden]` PHP attributes,
 which were introduced in Laravel 13; on Laravel 12 those classes do not exist and the model fatals. It has been
@@ -195,7 +195,7 @@ It installs the lowest **Laravel and Testbench** this package allows, runs the f
 restores the newest. It reports failure if the downgrade or the restore itself fails, so a pass always means the lower
 bound was really exercised.
 
-The development tooling — Pint, Larastan, Pest — is deliberately left at its current version. Otherwise a minor Pint
+The development tooling, Pint, Larastan and Pest, is deliberately left at its current version. Otherwise a minor Pint
 release that changes a formatting rule would turn this red while the Laravel lower bound is perfectly healthy, and a
 failure here needs to mean one thing only: **the lower bound is broken**.
 
@@ -204,7 +204,7 @@ Two habits that prevent most of these:
 - **Never assert on framework defaults.** A test that expected the router to be empty passed on Laravel 13 and failed on
   12, because Testbench registers a different number of its own routes. Assert on what _this package_ does, not on the
   state the framework happens to start in.
-- **Check the version a symbol landed in** before using it — Laravel's release notes list what each major added. If a
+- **Check the version a symbol landed in** before using it. Laravel's release notes list what each major added. If a
   feature is 13-only, either use the form that works on both, or guard it.
 
 ## Before you open a pull request
@@ -228,8 +228,8 @@ It covers:
 Use `composer format` to apply the formatting rather than only report on them.
 
 **Markdown has its own commands**, one to format it and one to build the documentation site. Both need Node rather than
-PHP, so they run outside the container and are not part of `composer check`. Run them whenever you edit documentation —
-the commands are in [`docs/contributing/documentation.md`](./docs/contributing/documentation.md), under
+PHP, so they run outside the container and are not part of `composer check`. Run them whenever you edit documentation,
+and the commands are in [`docs/contributing/documentation.md`](./docs/contributing/documentation.md), under
 [formatting](./docs/contributing/documentation.md#formatting) and
 [the documentation site](./docs/contributing/documentation.md#the-documentation-site).
 
@@ -268,7 +268,7 @@ test: cover 3.1 nullable type arrays
 chore: bump testbench to 10.x
 ```
 
-The prefix is not decoration — it drives changelog generation and signals whether a change is a patch, a minor, or a
+The prefix is not decoration: it drives changelog generation and signals whether a change is a patch, a minor, or a
 breaking release.
 
 For your pull request:
@@ -276,7 +276,7 @@ For your pull request:
 1. Fork the repo and branch from `main` (`feat/my-feature`).
 2. Make your change, with tests.
 3. Open the PR against `main`, describing **what** changed and **why**. Link the related issue.
-4. A maintainer will review. Expect questions — they are about the code, never about you.
+4. A maintainer will review. Expect questions. They are about the code, never about you.
 
 ## Scope: what belongs in this package
 
@@ -288,15 +288,15 @@ Contributions that fit naturally:
 - Anything that eases migration for existing Laravel apps adopting the pattern route by route.
 - Better OpenAPI coverage (`$ref` resolution, `oneOf`/`anyOf`, 3.1 features).
 - Migration tooling that helps a Code-First app become Spec-First. Generating a spec from existing PHP is explicitly
-  **in scope** — but as a _one-time on-ramp_ (see [Phase 3](./docs/project/roadmap.md)), not as an ongoing workflow.
+  **in scope**, but as a _one-time on-ramp_ (see [Phase 3](./docs/project/roadmap.md)), not as an ongoing workflow.
   Tools like `Scramble` already extract specs well; we want to build on them and on making that cutover verifiable, not
   to reimplement them.
 
 Contributions that likely do **not** fit:
 
-- Keeping PHP as the permanent source of truth — anything that regenerates the spec from code on every build, or treats
-  the two as needing to stay in sync in both directions. That is Code-First, and it is the problem this package exists
-  to solve. The spec leads; the code follows.
+- Keeping PHP as the permanent source of truth, meaning anything that regenerates the spec from code on every build, or
+  treats the two as needing to stay in sync in both directions. That is Code-First, and it is the problem this package
+  exists to solve. The spec leads; the code follows.
 
 ## Code of conduct
 

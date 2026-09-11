@@ -45,7 +45,7 @@ final readonly class ParsableSpecDocument
      *                                     so far is only asked to reject a root shape its version
      *                                     forbids. A sequencing gap, not a disagreement.
      *
-     * @see docs/guide/openapi-support.md — "Handling 3.0 and 3.1: the version strategy"
+     * @see docs/guide/openapi-support.md — "Handling 3.0 and 3.1"
      */
     public function __construct(
         public string $path,

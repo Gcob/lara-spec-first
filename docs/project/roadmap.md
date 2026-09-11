@@ -53,9 +53,9 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
       cycles, remote references. `SpecDocumentReader` produces a `ParsableSpecDocument`, and nothing reaches the parser
       until all five have passed.
 - [x] **The version strategy.** One class per OpenAPI minor version behind
-      [one interface](../guide/openapi-support.md#handling-30-and-31-the-version-strategy), plus the factory that
-      dispatches on the detected version. Pinned by a conformance class that writes one contract as 3.0 and as 3.1 and
-      requires both to normalize identically.
+      [one interface](../guide/openapi-support.md#handling-30-and-31), plus the factory that dispatches on the detected
+      version. Pinned by a conformance class that writes one contract as 3.0 and as 3.1 and requires both to normalize
+      identically.
 - [x] **The parser integration.** `OperationExtractor` is the crossing point: references are resolved there and only
       there, and nothing `cebe\openapi\` returns leaves the class.
 - [x] **The `Contract\` types.** `Operation`, `HttpMethod`, `PathTemplate`, `Audience`, `Lifecycle` and
@@ -67,31 +67,31 @@ answers, honestly, with `501` until something implements it. Nothing at runtime 
       merging the package defaults deeply beneath whatever an application published, so a nested key added in a later
       release does not arrive missing.
 - [x] **The remote-reference [allowlist](../guide/glossary.md#allowlist), fetching and vendoring included.**
-      [`remote_references.allowed_hosts`](../guide/remote-references.md#the-setting) is empty by default and every
-      remote reference is refused before the parser can fetch it. Naming a host lets `spec:build --update-refs` fetch it
-      once and commit the copy under `vendor_path`; every build after that resolves the reference against the committed
-      copy, never the network.
+      [`remote_references.allowed_hosts`](../guide/remote-references.md#the-allowlist-ships-empty) is empty by default
+      and every remote reference is refused before the parser can fetch it. Naming a host lets
+      `spec:build --update-refs` fetch it once and commit the copy under `vendor_path`; every build after that resolves
+      the reference against the committed copy, never the network.
 - [x] **Route registration at boot.** The provider loads one generated `routes.php` and nothing else, skips it when the
       application's routes are cached, and stays silent when the build has not written one. The loading half only: what
       the routes point at is not generated yet.
 - [x] **`spec:build`.** Reads the configured specification, plans every file in memory, then writes: the routes and one
-      controller per operation, each explaining its own provenance and answering 501 — `final` unless `x-controller`
+      controller per operation, each explaining its own provenance and answering 501, `final` unless `x-controller`
       names a class of the project's own, in which case the route reaches that class instead once it exists. Idempotent,
       confined to the [generated tree](../guide/glossary.md#generated-tree), and it prunes what the contract no longer
       describes.
 - [x] **`spec:make`.** The only command that creates a file a project will own: one operation, a whole `--tag`, or
       `--all`, with the bulk forms listing what they would create and asking first. It offers to write `x-controller`
-      into the specification when an operation declares none — the value prefilled and editable, the edit verified on a
-      copy — never overwrites a file, and runs the build afterwards so the class it wrote has a parent to extend.
-      `--yes` takes every proposal for a developer who would rather not be asked.
+      into the specification when an operation declares none, the value prefilled and editable, the edit verified on a
+      copy, never overwrites a file, and runs the build afterwards so the class it wrote has a parent to extend. `--yes`
+      takes every proposal for a developer who would rather not be asked.
 - [x] **`spec:doctor`, in its Phase 1 form.** Read-only, always: Routing outcome and [Drift](../guide/glossary.md#drift)
       only ever plan against `BuildPlanner`, the same class `spec:build` calls, and never reach
-      `GeneratedTree::write()`. Reports the outcome as well as the problems — the resolved routing table prints even on
-      a clean run — and never mixes a [document fault](../guide/glossary.md#document-fault) with a package limit in one
-      exit code. See [the doctor](../guide/doctor.md) and its item below.
+      `GeneratedTree::write()`. Reports the outcome as well as the problems, since the resolved routing table prints
+      even on a clean run, and never mixes a [document fault](../guide/glossary.md#document-fault) with a package limit
+      in one exit code. See [the doctor](../guide/doctor.md) and its item below.
 - [x] **The architecture assertions.** The parser is contained to `Parsing\`, `Contract\` is forbidden from knowing
       anything about the layer that produced it, `Routing\` may reach neither `Parsing\` nor the YAML decoder, and
-      `Doctor\` may not write a file at all — the read-only guarantee the doctor's own docblock claims, asserted rather
+      `Doctor\` may not write a file at all, the read-only guarantee the doctor's own docblock claims, asserted rather
       than assumed, along with the direction of its dependencies. All of them are Pest `arch()` tests rather than
       conventions to remember.
 
@@ -118,35 +118,35 @@ the code, and a gap in it is loud.
 - [x] **`Routing\`: the service provider registers the generated routes.** It **does not read the spec**, at boot or
       ever, and an architecture assertion says so rather than a convention: `Routing\` may reach neither `Parsing\` nor
       the YAML decoder. One
-      [`routes.php` at the root of the generated tree](../guide/code-generation/index.md#the-routes-are-one-file-and-the-only-one-the-runtime-opens),
+      [`routes.php` at the root of the generated tree](../guide/code-generation/index.md#the-routes-are-one-file),
       loaded through Laravel's own `loadRoutesFrom()`, and a missing one is silence rather than an exception because
       `spec:build` is a command of this same package. Serializability is verified rather than hoped for, by the real
       command: a test runs `route:cache` over a generated tree, then requires the cache file it wrote and checks the
       routes come back working. **The writing half is now `spec:build`'s**, which emits that same file, so what is
-      proven here is the loading — originally against a fixture standing in for generated output, and since then against
+      proven here is the loading, originally against a fixture standing in for generated output, and since then against
       the real thing in the Workbench.
 - [x] **`spec:build`, in its Phase 1 form:** resolves the specification and emits the routes and the generated
       controllers. Idempotent (a second run against an unchanged document does not touch a file, not even its
       modification time), ordered (every file is planned in memory before any is written, so a refused document leaves
-      the working tree untouched), and it never writes outside its own directories — the
-      [invariant](../guide/code-generation/index.md#the-invariant-a-build-never-destroys-human-work) stated without a
-      clause precisely so that it can be tested as one, which it is. It also refuses what it cannot serve rather than
-      emitting it: a path parameter Laravel's router would never match, one past the compiler's 32-character ceiling, an
-      `operationId` PHP cannot carry, and two operations claiming one class name. `lara-spec-first.spec.path` names the
-      document, and stale generated files are pruned by [the marker](../guide/glossary.md#marker) they carry, so nothing
-      a human wrote inside the tree is ever removed.
+      the working tree untouched), and it never writes outside its own directories, the
+      [invariant](../guide/code-generation/index.md#a-build-never-destroys-your-work) stated without a clause precisely
+      so that it can be tested as one, which it is. It also refuses what it cannot serve rather than emitting it: a path
+      parameter Laravel's router would never match, one past the compiler's 32-character ceiling, an `operationId` PHP
+      cannot carry, and two operations claiming one class name. `lara-spec-first.spec.path` names the document, and
+      stale generated files are pruned by [the marker](../guide/glossary.md#marker) they carry, so nothing a human wrote
+      inside the tree is ever removed.
 - [x] **[The two-class seam](../guide/glossary.md#two-class-seam).** One controller per operation carrying one
       `routeAction`, over the `SpecController` base with its `middleware()` method, asserted on the classes a real build
       produces rather than on the text that emitted them. And
-      [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) itself: read into
+      [`x-controller`](../guide/controllers.md#the-contract-decides-what-is-customizable) itself: read into
       `Contract\Operation` and refused there when it is not a name PHP could carry, naming the generated parent and
       dropping its `final`, with the route pointing at the child once that class has a file the autoloader can find and
       at the parent until then. Two values reducing to one generated parent is a build error naming both, and so is one
       naming a class inside the generated tree, which would extend itself. It also settled a signature: `routeAction`
-      declares [one parameter per path parameter](../guide/controllers.md#the-signature-is-the-contract-with-the-child),
-      named as the document names them, because PHP forbids an override from adding a required parameter — a
-      parameterless parent would have made `x-controller` useless on every templated path. Found in the Workbench, where
-      a child answers `GET /users/{id}` for real while the operations around it still answer 501.
+      declares [one parameter per path parameter](../guide/controllers.md#the-signature-is-the-contract), named as the
+      document names them, because PHP forbids an override from adding a required parameter, and a parameterless parent
+      would have made `x-controller` useless on every templated path. Found in the Workbench, where a child answers
+      `GET /users/{id}` for real while the operations around it still answer 501.
 - [x] **Every generated file explains itself.** The
       [source map](../guide/code-generation/generated-file-anatomy.md#the-source-map) (the JSON pointer the file came
       from) and the
@@ -154,44 +154,44 @@ the code, and a gap in it is loud.
       (provenance, findings, navigation), emitted unconditionally and asserted by the generator's own tests. It shipped
       with the first generated file rather than after it: retrofitting a convention across a generated tree is an audit,
       writing it into the first emitter is a paragraph. What a finding can say will grow with what the build knows; the
-      norm itself is in place. Both emitters have a test class of their own, where the parts are asserted one by one —
+      norm itself is in place. Both emitters have a test class of their own, where the parts are asserted one by one:
       every finding, the pointer's `~0`/`~1` escaping, the blank line a formatter would otherwise insert, a value from
       the document that would close the comment early, a token too long for a line, and the absence of anything (a clock
-      above all) that would make two runs differ — while the command's own test asserts the complementary property over
+      above all) that would make two runs differ, while the command's own test asserts the complementary property over
       every file it writes rather than a sample of one: that the norm is there at all. The
-      [reference comment](../guide/code-generation/generated-file-anatomy.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
-      landed with them, in `routes.php`, the only generated file that references other generated code today.
+      [reference comment](../guide/code-generation/generated-file-anatomy.md#a-reference-says-what-to-do) landed with
+      them, in `routes.php`, the only generated file that references other generated code today.
 - **Rename and orphan detection: dropped, not pending.** It was designed, built against the source map above, and
-  removed before it shipped — so this is a decision recorded rather than work waiting. The premise expired when
-  [`x-controller`](../guide/controllers.md#the-specification-decides-what-is-customizable) became the only source of an
+  removed before it shipped, so this is a decision recorded rather than work waiting. The premise expired when
+  [`x-controller`](../guide/controllers.md#the-contract-decides-what-is-customizable) became the only source of an
   extendable name: every other generated class is `final`, so the only broken import the comparison could have predicted
-  follows an edit its own author just made. What it would still have caught — a custom controller left extending nothing
-  after its operation left the contract — is that author's call to make, and reading the previous build's output could
+  follows an edit its own author just made. What it would still have caught, a custom controller left extending nothing
+  after its operation left the contract, is that author's call to make, and reading the previous build's output could
   never have been a CI guarantee anyway, since whether that output exists is
   [a `.gitignore` choice](../guide/code-generation/index.md#which-generated-code-is-committed). The full reasoning is in
   [code-generation](../guide/code-generation/generated-file-anatomy.md#rename-and-orphan-detection-decided-against); the
-  [reference comment](../guide/code-generation/generated-file-anatomy.md#a-reference-to-generated-code-says-what-to-do-when-it-goes-missing)
-  a generated file carries is what does the cheap half of that job today, and
-  [the doctor](../guide/controllers.md#the-doctor-counts-two-things-not-three) is where the orphan question lands if it
-  is ever wanted.
-- [x] **`spec:make`: the only command that creates a file the developer will own.** Shipped in its three forms — a named
+  [reference comment](../guide/code-generation/generated-file-anatomy.md#a-reference-says-what-to-do) a generated file
+  carries is what does the cheap half of that job today, and
+  [the doctor](../guide/controllers.md#the-doctor-counts-two-things) is where the orphan question lands if it is ever
+  wanted.
+- [x] **`spec:make`: the only command that creates a file the developer will own.** Shipped in its three forms: a named
       operation (by `operationId`, or by method and path when it has none), a whole `--tag`, or `--all`, with the bulk
       forms listing what they would create and asking first, defaulting to no so a non-interactive run creates nothing.
       It never overwrites a file, refuses a class in a namespace the project does not map, offers the row to add for an
-      operation that declares no `x-controller`, and runs the build when it is done — without which the `extends` it
-      just wrote has no parent to reach, since that parent's name comes from the extension the build had not read. What
-      it writes is deliberately not a [publishable stub](../guide/controllers.md#specmake-is-the-only-way-in): nearly
-      every line is derived, and a template is a way to reintroduce guessing into the one file where nothing is guessed.
+      operation that declares no `x-controller`, and runs the build when it is done, without which the `extends` it just
+      wrote has no parent to reach, since that parent's name comes from the extension the build had not read. What it
+      writes is deliberately not a [publishable stub](../guide/controllers.md#specmake-is-the-only-way-in): nearly every
+      line is derived, and a template is a way to reintroduce guessing into the one file where nothing is guessed.
       `spec:build` never scaffolds and now
-      [names the commands to run](../guide/code-generation/scaffolding.md#the-build-names-the-command-instead-of-running-it)
-      instead, summarised by tag, with the atomic form named for the operations no tag reaches — and the generated 501
-      names it too. The [insertion prompt](../guide/controllers.md#specmake-is-the-only-way-in) closes the item: the
-      value is derived from the configured controller namespace and prefilled so it can be edited, the exact line is
-      named, and `--yes` takes the proposal for a developer who does not want to be asked. The edit happens on a copy
-      beside the original — so that every `$ref` resolves as it did — the copy is read back through the normal pipeline,
-      and the operations that come out must be identical to the originals but for the extension just added. Anything
-      else leaves the document untouched and prints the row instead, which is also what happens for an operation the
-      command cannot place: a flow-style mapping, a JSON file, or a Path Item that lives in another file.
+      [names the commands to run](../guide/code-generation/scaffolding.md#the-build-names-the-command) instead,
+      summarised by tag, with the atomic form named for the operations no tag reaches, and the generated 501 names it
+      too. The [insertion prompt](../guide/controllers.md#specmake-is-the-only-way-in) closes the item: the value is
+      derived from the configured controller namespace and prefilled so it can be edited, the exact line is named, and
+      `--yes` takes the proposal for a developer who does not want to be asked. The edit happens on a copy beside the
+      original, so that every `$ref` resolves as it did, the copy is read back through the normal pipeline, and the
+      operations that come out must be identical to the originals but for the extension just added. Anything else leaves
+      the document untouched and prints the row instead, which is also what happens for an operation the command cannot
+      place: a flow-style mapping, a JSON file, or a Path Item that lives in another file.
 - [x] **An unimplemented operation answers `501`.** The generated controller's `routeAction` throws an exception that
       Laravel renders as `501`, which is what reconciles the two things this documentation set said: the generated
       controller _is_ the handler position, so one controller per operation stays true. See
@@ -202,11 +202,11 @@ the code, and a gap in it is loud.
 ### Reading, reporting, refusing
 
 - [x] **Remote reference vendoring.** `spec:build --update-refs` fetches an allowed reference once, commits the copy
-      under `remote_references.vendor_path`, and rewrites the `$ref` to point at it — followed transitively, so a
+      under `remote_references.vendor_path`, and rewrites the `$ref` to point at it, followed transitively, so a
       vendored document naming a reference of its own is vendored too, the allowlist checked again at every hop.
-      [Frozen by default](../guide/code-generation/index.md#remote-references-during-a-build-frozen-by-default): every
-      other build reaches the network only when that flag says so, and a missing vendored copy is an error naming it
-      instead. See [remote references](../guide/remote-references.md).
+      [Frozen by default](../guide/code-generation/index.md#the-build-is-frozen-by-default): every other build reaches
+      the network only when that flag says so, and a missing vendored copy is an error naming it instead. See
+      [remote references](../guide/remote-references.md).
 - [x] **A conformance suite over the reading engine, organized by equivalence class.** **Not routine coverage, but a
       deliberate answer to a risk already observed.** Three defects with no symptom have now been found in the OpenAPI
       parser, on a surface no wider than paths and references: two shapes of a pure `$ref` cycle exhaust memory instead
@@ -217,70 +217,70 @@ the code, and a gap in it is loud.
 
     The suite partitions the input space rather than accumulating examples, so that coverage can be argued instead of
     hoped for: by version, with the same contract written as 3.0 and as 3.1 and required to normalize identically (the
-    version strategy's entire promise — `VersionEquivalenceTest.php`); by reference form (local, cross-file, blocked,
-    cyclic, recursive schema, and each form a Path Item reference can take — `ReferenceFormTest.php`); by the positions
-    where OpenAPI mixes data with specification (`DataSpecificationBoundaryTest.php`); by document shape (empty, no
-    paths, webhooks-only, components-only — `DocumentShapeTest.php`); and by failure class, keeping document faults,
-    package limits and parser defects distinct in the assertions the way
+    version strategy's entire promise, in `VersionEquivalenceTest.php`); by reference form (local, cross-file, blocked,
+    cyclic, recursive schema, and each form a Path Item reference can take, in `ReferenceFormTest.php`); by the
+    positions where OpenAPI mixes data with specification (`DataSpecificationBoundaryTest.php`); by document shape
+    (empty, no paths, webhooks-only, components-only, in `DocumentShapeTest.php`); and by failure class, keeping
+    document faults, package limits and parser defects distinct in the assertions the way
     [the doctor](../guide/doctor.md#two-kinds-of-finding-never-mixed) keeps them distinct in its report
     (`FailureClassTest.php`).
 
     Every defect found in the parser earns a permanent case in `KnownParserBugsTest.php`, so the list of what we know
-    about it can only grow — and it already has: writing `DataSpecificationBoundaryTest.php` against the full reading
+    about it can only grow, and it already has: writing `DataSpecificationBoundaryTest.php` against the full reading
     engine, rather than against the cycle guard alone, is what surfaced the third defect above. A `$ref` whose JSON
     pointer lands inside data the guard correctly treats as opaque (an `example`, an Example Object's `value`) reaches
     the same unrecoverable failure as an ordinary cycle, on a shape a rule about key names cannot see. Pinning it came
     first and guarding it came after, in the item below: an unrecoverable fatal cannot be asserted in the same process
     as the test runner without taking the run down with it, so `KnownParserBugsTest.php` ran it in a child process and
-    asserted the exit code and stderr — `tests/Support/extract.php`, and the "Subprocess assertions" row in
+    asserted the exit code and stderr, in `tests/Support/extract.php`, and the "Subprocess assertions" row in
     [`stack.md`](./stack.md). That child process is still there now that the defect is guarded, asserting the survival
     where it used to assert the death, because it remains the only thing that can tell the two apart. The suite ends up
     being what an adapter was wanted for regardless: **the acceptance criteria a replacement parser would have to
     meet.** An interface would only prove a substitute compiles; this proves one behaves.
 
 - [x] **The third parser defect `KnownParserBugsTest.php` pinned is guarded against.** A `$ref` whose JSON pointer
-      resolves into a key `ReferenceCycleDetector` treats as opaque — an `example`, an Example Object's `value`, an item
-      of the JSON Schema `examples` list — exhausted the parser's memory instead of raising, the same failure the cycle
-      guard exists to prevent, on a shape a rule about key names cannot see. **Of the two ways out this roadmap named,
-      only one could work:** a depth or step ceiling would never have fired, because the guard's own walk terminates
-      immediately on these documents rather than running away, so the missing edge is not a long chain but no chain at
-      all. The guard therefore follows a pointer's target into the data it lands in, and only a target: a literal `$ref`
-      inside an example stays a literal until a Reference Object aims at the position holding it, which is the one
-      moment the parser reads it as specification and therefore the one moment we must too. The conformance suite's
-      subprocess case is green, inverted rather than deleted — it now pins that these documents leave the interpreter
-      standing. **One documented boundary moved with it, and is worth naming rather than leaving to be noticed:**
-      `tests/Fixtures/schema-examples-list.yaml` is refused where it used to be accepted, since it aims a reference into
-      a JSON Schema `examples` list and only survived the parser by accident of 3.1 keywords being handed back as raw
-      arrays; the boundary it was written to protect — a `$ref` inside data is data — is unchanged and is now pinned by
-      `examples-list-is-data.yaml`, which carries the same literal with nothing pointing at it. See
+      resolves into a key `ReferenceCycleDetector` treats as opaque, an `example`, an Example Object's `value` or an
+      item of the JSON Schema `examples` list, exhausted the parser's memory instead of raising, the same failure the
+      cycle guard exists to prevent, on a shape a rule about key names cannot see. **Of the two ways out this roadmap
+      named, only one could work:** a depth or step ceiling would never have fired, because the guard's own walk
+      terminates immediately on these documents rather than running away, so the missing edge is not a long chain but no
+      chain at all. The guard therefore follows a pointer's target into the data it lands in, and only a target: a
+      literal `$ref` inside an example stays a literal until a Reference Object aims at the position holding it, which
+      is the one moment the parser reads it as specification and therefore the one moment we must too. The conformance
+      suite's subprocess case is green, inverted rather than deleted: it now pins that these documents leave the
+      interpreter standing. **One documented boundary moved with it, and is worth naming rather than leaving to be
+      noticed:** `tests/Fixtures/schema-examples-list.yaml` is refused where it used to be accepted, since it aims a
+      reference into a JSON Schema `examples` list and only survived the parser by accident of 3.1 keywords being handed
+      back as raw arrays; the boundary it was written to protect, that a `$ref` inside data is data, is unchanged and is
+      now pinned by `examples-list-is-data.yaml`, which carries the same literal with nothing pointing at it. See
       [parser caveats](../guide/openapi-support.md#parser-caveats).
 
 - [x] **The reading pipeline stops refusing at the first fault.** `SpecDocumentReader`, the guards under
       `Parsing\Guards\` and `OperationExtractor` return what they found instead of throwing: a `ReadOutcome` carrying
       every operation that could be extracted and every fault encountered, blocking or not. `spec:build` and `spec:make`
-      keep today's behavior exactly — they inspect the outcome and refuse the moment it carries a fault — but the
-      decision moves from the pipeline to its callers, which is what lets `spec:doctor` become a third caller reading
-      the same contract rather than a second, divergent code path that has to be kept in sync by hand with every future
-      check. A prerequisite for the item below, landed on its own rather than folded into it, since it changes nothing a
-      consumer of `spec:build`/`spec:make` can observe and deserves its own tests proving that. See
+      keep today's behavior exactly, inspecting the outcome and refusing the moment it carries a fault, but the decision
+      moves from the pipeline to its callers, which is what lets `spec:doctor` become a third caller reading the same
+      contract rather than a second, divergent code path that has to be kept in sync by hand with every future check. A
+      prerequisite for the item below, landed on its own rather than folded into it, since it changes nothing a consumer
+      of `spec:build`/`spec:make` can observe and deserves its own tests proving that. See
       [openapi-support.md](../guide/openapi-support.md#reading-a-document).
 - [x] **`spec:doctor`**, which is `nginx -t` for your contract: what the package will honor, what it will not, and the
       routing table that results. It belongs in this phase rather than with the Phase 2 developer experience, because it
       is what makes "the spec is the source of truth" verifiable rather than asserted. See
       [the doctor](../guide/doctor.md). Shipped in its Phase 1 form: configuration, document validity, version,
-      references, support findings, routing outcome, drift and installation — the eight sections whose inputs already
-      existed. The two that do not — baseline and drivers — still print, each with a `[not checked]` line naming what it
+      references, support findings, routing outcome, drift and installation, the eight sections whose inputs already
+      existed. The two that do not, baseline and drivers, still print, each with a `[not checked]` line naming what it
       does not diagnose, so a zero exit is never read as covering them; security and lifecycle came off that list in the
       change that built them, which is the only way an entry there is meant to be removed. Routing outcome includes
       [shadowing](../guide/glossary.md#shadowing), where an earlier templated path would match every request a later one
-      was meant to answer, literal or templated — a `GET /{owner}/{repo}` written first swallows every two-segment GET
+      was meant to answer, literal or templated. A `GET /{owner}/{repo}` written first swallows every two-segment GET
       after it, which is the shape real specifications make this mistake in; `GeneratedTree` gained a read-only `diff()`
       beside `write()` so Drift compares against the exact same logic a build would apply rather than a second
-      implementation of it. The two kinds of finding stay distinct in the exit code — `0` clean, `1` a document fault,
-      `2` a package limit with no document fault alongside it — with [`Deferred`](../guide/glossary.md#deferred)
-      excluded from both, however many of them a real document carries: a construct the roadmap has not built yet must
-      never fail a pipeline over it. `--json` ships alongside the text report in this same release rather than after it.
-      The lifecycle rules and the `security` finding are their own items below, not this one.
+      implementation of it. The two kinds of finding stay distinct in the exit code, `0` clean, `1` a document fault,
+      `2` a package limit with no document fault alongside it, with [`Deferred`](../guide/glossary.md#deferred) excluded
+      from both, however many of them a real document carries: a construct the roadmap has not built yet must never fail
+      a pipeline over it. `--json` ships alongside the text report in this same release rather than after it. The
+      lifecycle rules and the `security` finding are their own items below, not this one.
 - [x] **The lifecycle rules in the doctor.** `deprecated: true` requiring `x-sunset`, a sunset in the past, a sunset
       nothing can read, the `beta` listing, and the [protection report](../guide/glossary.md#protection-report) counting
       how many _public_ operations are actually `stable`. An unrecognized `x-lifecycle` value was already refused where
@@ -288,7 +288,7 @@ the code, and a gap in it is loud.
       sunset merely _approaching_ is reported beside the protection report rather than as a finding, with a configurable
       [horizon](../guide/glossary.md#sunset-horizon) (`lifecycle.sunset_horizon_days`, 90 days by default): every
       finding that is not `Deferred` gates the exit code, and a date crossing a horizon must never fail a pipeline on a
-      day nobody committed anything. See [the doctor rules](../guide/lifecycle.md#the-doctor-rules-that-follow).
+      day nobody committed anything. See [the doctor rules](../guide/lifecycle.md#what-the-doctor-enforces).
 - [x] **`security` is reported, not enforced, and the report says so in those words.** Enforcement is
       [Phase 2](#authorization-the-contract-can-express), and a phase that registers routes without it must not let a
       consumer mistake a documented promise for a kept one. So Phase 1 owes an operation whose contract declares
@@ -302,7 +302,7 @@ the code, and a gap in it is loud.
       rather than a side effect. The root `security` block stays [Open](../guide/openapi-support.md#the-support-matrix)
       and is named in one line rather than claimed to be understood.
 
-## Phase 2: The generated pipeline, mocks and the driver features
+## Phase 2: the generated pipeline
 
 _Goal: prove the thesis. For an ordinary CRUD endpoint, the route, the form request, the controller and the DTO are all
 derived from the contract, and the only thing a developer writes is the model and the business logic that model
@@ -323,14 +323,14 @@ and the mock server).
       only an influence is [`stack.md`](./stack.md)'s row to settle, in the same change that installs or declines it.
 - [ ] **DTO factories.** One generated per DTO, mapping by name, with a default that covers the ordinary case.
       Overridden by a class that `extends` it, found by scanning
-      [the directories a project declares](../guide/code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares)
+      [the directories a project declares](../guide/code-generation/response-dtos.md#overriding-a-factory-by-extending-it)
       and nothing else, with exactly one override per factory and a hard error naming both classes when two claim one.
 - [ ] **`x-model` and the CRUD defaults.** The `HasModel` interface with its `InteractsWithModel` trait, the
-      [empty marker interface](../guide/controllers.md#the-detected-crud-semantic-is-a-marker-interface-deliberately-empty)
-      naming the semantic the build detected, the generated create, update, delete and read bodies, and route-model
-      binding driven by the type hint `x-model` supplies. Plus the doctor check that only makes sense once writes are
-      generated: comparing a model-aware operation's validated fields against the bound model's mass-assignment rules,
-      because Eloquent drops the rest without raising.
+      [empty marker interface](../guide/controllers.md#the-crud-semantic-is-an-empty-marker) naming the semantic the
+      build detected, the generated create, update, delete and read bodies, and route-model binding driven by the type
+      hint `x-model` supplies. Plus the doctor check that only makes sense once writes are generated: comparing a
+      model-aware operation's validated fields against the bound model's mass-assignment rules, because Eloquent drops
+      the rest without raising.
 - [ ] **RFC 8594 `Sunset` headers from the generated code.** The lifecycle keys are already read and the doctor already
       enforces them; this is the third thing they buy, and it needs a response path to attach to, which is why it lands
       here rather than in Phase 1. Declared once in the spec, enforced in CI, advertised over HTTP, with nobody writing
@@ -344,12 +344,12 @@ and the mock server).
 ### Authorization the contract can express
 
 - [ ] **`security` becomes an authorization check.** The `securitySchemes` name matched to a Laravel guard
-      [by nomenclature](../guide/security.md#scheme-names-are-a-naming-contract-with-your-guards), the one `final`
-      built-in middleware asking one question, the `HasSecurityScopes` interface the authenticated model implements, and
-      the requirement resolved into the generated route at build time rather than read from the spec per request. The
-      Phase 1 "not enforced" finding is deleted in the same change, and the doctor's
-      [security section](../guide/doctor.md#what-it-checks) becomes real: a scheme with no matching guard, a scheme type
-      the middleware cannot enforce, a model missing the interface.
+      [by nomenclature](../guide/security.md#scheme-names-match-guard-names), the one `final` built-in middleware asking
+      one question, the `HasSecurityScopes` interface the authenticated model implements, and the requirement resolved
+      into the generated route at build time rather than read from the spec per request. The Phase 1 "not enforced"
+      finding is deleted in the same change, and the doctor's [security section](../guide/doctor.md#what-it-checks)
+      becomes real: a scheme with no matching guard, a scheme type the middleware cannot enforce, a model missing the
+      interface.
 - [ ] **Decide which scheme types reduce to "the model has a scope".** `apiKey`, `http bearer` and `oauth2` are the
       clear fits; `mutualTLS` and the details of `openIdConnect` may not be answerable by one middleware at all, and a
       scheme it cannot enforce is a case for
@@ -372,8 +372,8 @@ remove redundancy: nothing breaks without them.
       because a dimension added later costs a major, the normalized `reset` spelling, and the doctor finding for 429
       declarations that are not structurally identical across operations. One thing has to be decided before the adapter
       is more than an interface: whether what reads it is
-      [build-time enforcement or a runtime relay](../guide/rate-limiting.md#open-what-the-adapters-answer-actually-powers).
-      See [rate limiting](../guide/rate-limiting.md).
+      [build-time enforcement or a runtime relay](../guide/rate-limiting.md#open-what-the-answer-powers). See
+      [rate limiting](../guide/rate-limiting.md).
 
 ### Mocks and the design loop
 
@@ -424,9 +424,9 @@ every decision is already unchangeable.
 - [ ] **Ship only the config keys that do something.** Four of the six blocks in `config/lara-spec-first.php` are inert,
       and the file admits it in a comment: _a `TODO` block is inert, changing it has no effect, and nothing will tell
       you so._ That is precisely the behavior the package refuses elsewhere, where
-      [a setting that is not backed yet throws](../guide/remote-references.md#the-setting) rather than lying. A key
-      belongs in the same release as the feature behind it, so the Phase 2 blocks come out and come back with their
-      features. Removing them before publication costs nothing; adding keys later is widening, which is
+      [a setting that is not backed yet throws](../guide/remote-references.md#the-allowlist-ships-empty) rather than
+      lying. A key belongs in the same release as the feature behind it, so the Phase 2 blocks come out and come back
+      with their features. Removing them before publication costs nothing; adding keys later is widening, which is
       [minor](./stack.md#changing-anything-here).
 - [ ] **A command reference document.** [The doctor](../guide/doctor.md) already defers its usage details to one, and it
       is one of the three commands Phase 1 ships, beside `spec:build` and `spec:make`.
@@ -444,7 +444,7 @@ Everything a consumer writes code against stops being ours to change here.
       method names, the exception class names, the vendored directory and the refetch flag, the driver registration API,
       and **the generated tree's own layout**: the `routes.php` filename and its position at the root of that tree,
       which the build's writer and the runtime's reader both have to agree on, and **the marker every generated file
-      carries**, which is not decoration — it is what decides whether the build may delete a file, so changing its value
+      carries**, which is not decoration: it is what decides whether the build may delete a file, so changing its value
       orphans every tree an earlier version wrote and nothing will ever prune them again. Settling them here costs
       nothing; after `1.0`, each one costs a major.
 - [ ] **Close the support-matrix rows a stable release cannot leave `Open`.** Chiefly: whether a document containing
@@ -465,12 +465,12 @@ _Goal: a stable operation cannot break without someone deciding to break it._
 
 Deliberately not slotted into a phase: a rule that fails somebody's build has to be right before it ships, and the
 breaking-change table is large enough to deserve its own body of work rather than being smuggled into a release. See
-[lifecycle](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us).
+[lifecycle](../guide/lifecycle.md#public-operations-default-to-beta).
 
 **Which means the consequence has to be stated rather than left to be noticed:** until this lands, `x-lifecycle: stable`
 is a declaration the doctor reports on, not a rule that fails a build. That is already the position
-[`lifecycle.md`](../guide/lifecycle.md#unstable-by-default-and-what-stable-costs-us) takes, and it is why the doctor's
-protection report exists from Phase 1: protection that is off must never look like protection that passed.
+[`lifecycle.md`](../guide/lifecycle.md#public-operations-default-to-beta) takes, and it is why the doctor's protection
+report exists from Phase 1: protection that is off must never look like protection that passed.
 
 - [ ] Diff the specification against its previously committed version, read from git rather than from a separate file
       the build writes, normalizing 3.0/3.1 differences in memory before comparing. The doctor's
@@ -500,8 +500,8 @@ Three properties matter, in this order:
 - **Reliable.** You should be able to trust that the extracted spec actually describes what your API does today,
   _before_ you hand it the keys. A migration you cannot verify is not a migration.
 - **Simple.** Adoptable route by route, never a big-bang rewrite. That is the shape
-  [`spec:make --tag=`](../guide/code-generation/scaffolding.md#the-build-names-the-command-instead-of-running-it)
-  already has, which is not a coincidence: adopting tag by tag was designed for this phase.
+  [`spec:make --tag=`](../guide/code-generation/scaffolding.md#the-build-names-the-command) already has, which is not a
+  coincidence: adopting tag by tag was designed for this phase.
 - **Fast.** The boring parts should be mechanical.
 
 - [ ] Tooling to bootstrap a spec from an existing Code-First app, and to verify it against real behavior before
@@ -513,4 +513,4 @@ Three properties matter, in this order:
       structure and no project's field names, and the set of pagination and rate-limit conventions in the wild is larger
       than this package should ever ship. What is owed here is a naming convention for community drivers, and a doctor
       that names the resolved driver for each feature including third-party ones.
-- [ ] Comprehensive documentation and real-world migration examples.
+- [ ] Documentation of the migration path, with examples taken from real applications.

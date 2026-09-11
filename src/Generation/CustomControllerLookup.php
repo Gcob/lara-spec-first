@@ -26,7 +26,7 @@ use Composer\Autoload\ClassLoader;
  * the route at the parent, and the next build would move it — a build whose output
  * depends on whether a previous one ran is the one thing this package cannot be.
  *
- * @see docs/guide/controllers.md — "Two classes, found by name rather than by a scan"
+ * @see docs/guide/controllers.md — "Two classes, found by name"
  */
 final readonly class CustomControllerLookup
 {
