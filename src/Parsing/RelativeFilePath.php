@@ -17,7 +17,7 @@ namespace Gcob\LaraSpecFirst\Parsing;
  *
  * @internal Not public API — a detail of how a vendored reference is rewritten.
  *
- * @see docs/guide/remote-references.md — "How a vendored copy stays invisible to the parser"
+ * @see docs/guide/remote-references.md — "The parser never sees a URL"
  */
 final readonly class RelativeFilePath
 {

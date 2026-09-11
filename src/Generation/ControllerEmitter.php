@@ -26,7 +26,7 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
  * chance to write something plausible and wrong into an application.
  *
  * @see docs/guide/code-generation/generated-file-anatomy.md — "Every generated file explains itself"
- * @see docs/guide/controllers.md — "One controller per operation, one method named routeAction"
+ * @see docs/guide/controllers.md — "One controller, one routeAction"
  */
 final readonly class ControllerEmitter
 {
@@ -101,7 +101,7 @@ final readonly class ControllerEmitter
      * being built on top of something disposable — so the modifier follows
      * {@see NameSource} rather than a second rule that could disagree with it.
      *
-     * @see docs/guide/controllers.md — "The specification decides what is customizable"
+     * @see docs/guide/controllers.md — "The contract decides what is customizable"
      */
     private function modifier(PlannedController $planned): string
     {

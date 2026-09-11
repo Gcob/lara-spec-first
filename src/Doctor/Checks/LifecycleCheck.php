@@ -41,7 +41,7 @@ use Gcob\LaraSpecFirst\Doctor\LifecycleOutcome;
  * `public` + `stable` without an `operationId` is absent for the same kind of
  * reason: it is already {@see SupportMatrixCheck::missingOperationId()}.
  *
- * @see docs/guide/lifecycle.md — "The doctor rules that follow"
+ * @see docs/guide/lifecycle.md — "What the doctor enforces"
  */
 final readonly class LifecycleCheck
 {

@@ -238,7 +238,7 @@ final readonly class OperationExtractor
      *
      * @throws InvalidDocumentException
      *
-     * @see docs/guide/controllers.md — "The specification decides what is customizable"
+     * @see docs/guide/controllers.md — "The contract decides what is customizable"
      */
     private function controller(ParsedOperation $operation, string $endpoint): ?string
     {
@@ -266,7 +266,7 @@ final readonly class OperationExtractor
      *
      * @throws InvalidDocumentException
      *
-     * @see docs/guide/lifecycle.md — "Two keys, one discriminator"
+     * @see docs/guide/lifecycle.md — "The audience sets the default"
      */
     private function audience(ParsedOperation $operation, string $endpoint): Audience
     {
@@ -318,7 +318,7 @@ final readonly class OperationExtractor
      *
      * @throws InvalidDocumentException
      *
-     * @see docs/guide/lifecycle.md — "The doctor rules that follow"
+     * @see docs/guide/lifecycle.md — "What the doctor enforces"
      */
     private function sunset(ParsedOperation $operation, string $endpoint): ?string
     {

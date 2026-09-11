@@ -8,7 +8,7 @@ namespace Gcob\LaraSpecFirst\Contract;
  * Who an operation is promised to, and the discriminator that decides what the
  * other axis defaults to.
  *
- * @see docs/guide/lifecycle.md — "Two keys, one discriminator"
+ * @see docs/guide/lifecycle.md — "The audience sets the default"
  */
 enum Audience: string
 {

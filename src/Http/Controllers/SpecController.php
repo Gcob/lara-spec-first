@@ -28,7 +28,7 @@ use Illuminate\Routing\Controllers\HasMiddleware;
  * its own security by forgetting `parent::middleware()`, because there is
  * nothing of ours in here to preserve.
  *
- * @see docs/guide/controllers.md — "Middleware is a method, not a separate mechanism"
+ * @see docs/guide/controllers.md — "Middleware is a method"
  */
 abstract class SpecController implements HasMiddleware
 {

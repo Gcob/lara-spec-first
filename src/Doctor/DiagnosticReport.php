@@ -11,7 +11,7 @@ use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
  * problems: doctor.md is explicit that the resolved routing table is as much
  * the point as any finding, so this carries both rather than only the latter.
  *
- * @see docs/guide/doctor.md — "The contract"
+ * @see docs/guide/doctor.md — "What the doctor guarantees"
  */
 final readonly class DiagnosticReport
 {

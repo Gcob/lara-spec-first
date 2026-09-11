@@ -219,7 +219,7 @@ it('keeps the scopes a requirement asks for', function (): void {
  * kind: there is no allowed list to compare against, only whether PHP could carry
  * the name at all.
  *
- * @see docs/guide/controllers.md — "The specification decides what is customizable"
+ * @see docs/guide/controllers.md — "The contract decides what is customizable"
  */
 
 it('carries the custom controller the contract names', function (): void {

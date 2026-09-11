@@ -17,7 +17,7 @@ namespace Gcob\LaraSpecFirst\Doctor;
  * as uncovered would understate them. Carrying `$checked` is what keeps one
  * mechanism from having to say both things with one sentence.
  *
- * @see docs/guide/doctor.md — "The contract"
+ * @see docs/guide/doctor.md — "What the doctor guarantees"
  */
 final readonly class SectionNote
 {

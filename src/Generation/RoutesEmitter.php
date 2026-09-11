@@ -22,7 +22,7 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
  * in the document is what makes it win. The cost is stated plainly: reordering
  * keys in a specification can change routing behavior.
  *
- * @see docs/guide/openapi-support.md — "Route order: the spec file's order is the route order"
+ * @see docs/guide/openapi-support.md — "The spec file's order wins"
  */
 final readonly class RoutesEmitter
 {
@@ -120,7 +120,7 @@ final readonly class RoutesEmitter
      * as the exception rather than leaving a reader to infer that a
      * class-not-found on `Route` is not a build the specification can repair.
      *
-     * @see docs/guide/code-generation/generated-file-anatomy.md — "A reference to generated code says what to do when it goes missing"
+     * @see docs/guide/code-generation/generated-file-anatomy.md — "A reference says what to do"
      */
     private function missingReferenceNote(bool $custom): string
     {

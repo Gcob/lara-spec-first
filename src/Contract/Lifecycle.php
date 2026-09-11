@@ -10,7 +10,7 @@ namespace Gcob\LaraSpecFirst\Contract;
  * A binary. `deprecated` is deliberately not a value here — it is native to
  * OpenAPI, independent of this axis, and both can be true at once.
  *
- * @see docs/guide/lifecycle.md — "`deprecated` is native, and stays out of `x-lifecycle`"
+ * @see docs/guide/lifecycle.md — "`deprecated` stays out of `x-lifecycle`"
  */
 enum Lifecycle: string
 {

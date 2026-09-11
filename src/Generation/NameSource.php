@@ -22,7 +22,7 @@ namespace Gcob\LaraSpecFirst\Generation;
  * - A name derived from the method and path was chosen by nobody, and moves
  *   whenever the URL does.
  *
- * @see docs/guide/controllers.md — "The specification decides what is customizable"
+ * @see docs/guide/controllers.md — "The contract decides what is customizable"
  */
 enum NameSource: string
 {

@@ -34,7 +34,7 @@ use Symfony\Component\Process\Process;
 // in this suite that is expected to only ever grow.
 //
 // @see docs/guide/openapi-support.md#parser-caveats — the same three rows, in prose
-// @see docs/project/roadmap.md — "A conformance suite over the reading engine"
+// @see docs/project/roadmap.md — "A conformance suite over the reading engine, organized by equivalence class"
 
 it('guards against a known parser defect', function (string $fixture, string $exception, string $message): void {
     $extract = fn (): array => extractFixture($fixture);

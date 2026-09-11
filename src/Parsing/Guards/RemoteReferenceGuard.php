@@ -29,7 +29,7 @@ use Throwable;
  * before: a committed copy under `vendor_path`, fetched only when
  * `--update-refs` asks for it, and the reference rewritten to point at that
  * local copy — which is why `cebe\openapi\` never dials out. See
- * [remote-references.md](../../../docs/guide/remote-references.md#how-a-vendored-copy-stays-invisible-to-the-parser)
+ * [remote-references.md](../../../docs/guide/remote-references.md#the-parser-never-sees-a-url)
  * for the mechanism that makes the rewrite invisible to the parser.
  *
  * **A faulted reference is neutralized, never left as a network scheme

@@ -38,7 +38,7 @@ use SplFileInfo;
  * inside the tree is removed whoever made it. Nothing that holds a file is
  * touched, which is the part that matters.
  *
- * @see docs/guide/code-generation/index.md — "The invariant: a build never destroys human work"
+ * @see docs/guide/code-generation/index.md — "A build never destroys your work"
  */
 final readonly class GeneratedTree
 {

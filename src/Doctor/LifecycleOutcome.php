@@ -21,7 +21,7 @@ namespace Gcob\LaraSpecFirst\Doctor;
  * already passed, a date that cannot be read — stay findings, and live in
  * {@see Checks\LifecycleCheck::check()}.
  *
- * @see docs/guide/lifecycle.md — "The doctor rules that follow"
+ * @see docs/guide/lifecycle.md — "What the doctor enforces"
  */
 final readonly class LifecycleOutcome
 {

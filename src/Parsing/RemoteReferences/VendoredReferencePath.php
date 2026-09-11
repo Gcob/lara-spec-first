@@ -22,7 +22,7 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\RemoteReferenceException;
  *
  * @internal Not public API — a detail of how vendoring lays out its directory.
  *
- * @see docs/guide/remote-references.md — "No lock file: git is the lock"
+ * @see docs/guide/remote-references.md — "Git is the lock file"
  */
 final readonly class VendoredReferencePath
 {
