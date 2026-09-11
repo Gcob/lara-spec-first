@@ -60,7 +60,7 @@ const SECTIONS: Section[] = [
         sequence: ['roadmap', 'stack'],
     },
     {
-        text: 'Contributing',
+        text: 'Development',
         directory: 'docs/contributing',
         sequence: ['documentation'],
         also: ['CONTRIBUTING.md', 'AGENTS.md'],
@@ -268,7 +268,7 @@ export default defineConfig({
         nav: [
             { text: 'Guide', link: '/docs/guide/openapi-support' },
             { text: 'Project', link: '/docs/project/roadmap' },
-            { text: 'Contributing', link: '/docs/contributing/documentation' },
+            { text: 'Development', link: '/docs/contributing/documentation' },
         ],
 
         sidebar,

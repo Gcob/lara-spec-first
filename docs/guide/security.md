@@ -68,7 +68,7 @@ A scheme named `sanctumAuth` names a guard called `sanctumAuth` in your `config/
 between the two:
 
 ```php
-// config/auth.php — the same name, and nothing in between.
+// config/auth.php: the same name, and nothing in between.
 'guards' => [
     'sanctumAuth' => ['driver' => 'sanctum', 'provider' => 'users'],
 ],
@@ -84,10 +84,9 @@ This is less explicit than [rule 3](./openapi-support.md#the-four-rules) usually
 this document where that is a deliberate trade rather than an oversight. The alternative is a second file mapping scheme
 names to guard names, one more thing to keep in sync with both the specification and `config/auth.php`, for a
 relationship that is already a name in both places. The same reasoning already used
-[when `operationId` is absent](./code-generation/generated-file-anatomy.md#when-operationid-is-absent-derive-from-method-and-path)
-and for
-[factory overrides](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares)
-applies here too: match by name first, and only reach for configuration when nomenclature cannot carry the answer.
+[when `operationId` is absent](./code-generation/generated-file-anatomy.md#deriving-a-name-without-operationid) and for
+[factory overrides](./code-generation/response-dtos.md#overriding-a-factory-by-extending-it) applies here too: match by
+name first, and only reach for configuration when nomenclature cannot carry the answer.
 
 ## One middleware checks the scope
 
@@ -133,9 +132,9 @@ asks for: [`Partial` in the support matrix](./openapi-support.md#references-and-
 distinguishes an inherited requirement from an explicit opt-out. What was missing is what happens with it.
 
 The interface is narrower than
-[the factory override mechanism](./code-generation/response-dtos.md#overriding-a-factory-extend-it-in-a-directory-the-project-declares):
-no directory to configure, no scan, no `extends`. The model already exists in every application and is already the one
-place that knows how its own scopes work. There is nothing to discover, only an interface to implement.
+[the factory override mechanism](./code-generation/response-dtos.md#overriding-a-factory-by-extending-it): no directory
+to configure, no scan, no `extends`. The model already exists in every application and is already the one place that
+knows how its own scopes work. There is nothing to discover, only an interface to implement.
 
 ### Why the route carries the requirement
 

@@ -27,29 +27,29 @@ The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/project/r
 file, refuses what it cannot serve, and generates the PHP that serves it: `spec:build` emits the routes and one
 controller per operation, and the provider loads them at boot without opening a specification. `x-controller` is read,
 so an operation that declares one gets a parent it may extend and a route that points at the child once that class
-exists; an operation that declares none stays `final`. `spec:make` scaffolds that child on request — one operation, a
-`--tag` or `--all` — offers to write `x-controller` into the specification when it is missing, and builds afterwards;
-the build itself never scaffolds, it names the invocation. `spec:doctor` reports what the package will honor, what it
-will not, and the routing table that results, read-only always and asserted to be. There is no response DTO and no
-generated validation. The roadmap's [state section](./docs/project/roadmap.md#where-the-code-is-today) is the
-authoritative list, checked boxes meaning behavior with tests behind it.
+exists; an operation that declares none stays `final`. `spec:make` scaffolds that child on request, for one operation, a
+`--tag` or `--all`, offers to write `x-controller` into the specification when it is missing, and builds afterwards; the
+build itself never scaffolds, it names the invocation. `spec:doctor` reports what the package will honor, what it will
+not, and the routing table that results, read-only always and asserted to be. There is no response DTO and no generated
+validation. The roadmap's [state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list,
+checked boxes meaning behavior with tests behind it.
 
-Verify your work with `just check` (or `composer check`) — Pint, Larastan, then Pest.
+Verify your work with `just check` (or `composer check`): Pint, Larastan, then Pest.
 
 **Read [`docs/project/stack.md`](./docs/project/stack.md) before touching dependencies, version constraints, or CI
 config.** It holds every technology choice, its status, and the reasoning behind it.
 
 ## Every change lands in three places
 
-Code, documentation, and tests move together. A change is not finished when the code works — it is finished when all
+Code, documentation, and tests move together. A change is not finished when the code works. It is finished when all
 three are updated, in the same commit. **And when a change can be shown working in the Workbench, that is a fourth
-place** — see [below](#and-the-workbench-when-there-is-something-to-show).
+place**, see [below](#and-the-workbench-when-there-is-something-to-show).
 
-| Place             | What it answers                       | Rule                                                                                                                                   |
-| ----------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Code**          | What the package does.                | The behavior itself.                                                                                                                   |
-| **Documentation** | What it is _supposed_ to do, and why. | Docs follow the code. Never let the two contradict — see [`docs/contributing/documentation.md`](./docs/contributing/documentation.md). |
-| **Tests**         | Proof that it actually does it.       | Tests follow the code. New behavior means new tests — see [below](#automated-tests-are-required).                                      |
+| Place             | What it answers                       | Rule                                                                                                                                  |
+| ----------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Code**          | What the package does.                | The behavior itself.                                                                                                                  |
+| **Documentation** | What it is _supposed_ to do, and why. | Docs follow the code. Never let the two contradict, see [`docs/contributing/documentation.md`](./docs/contributing/documentation.md). |
+| **Tests**         | Proof that it actually does it.       | Tests follow the code. New behavior means new tests, see [below](#automated-tests-are-required).                                      |
 
 Yes, this is three times the surface area for a single behavior change. That cost is deliberate, and it is small in
 practice: writing tests and documentation is exactly the kind of work an agent does quickly and well. What it buys is
@@ -58,8 +58,8 @@ worth far more than the keystrokes:
 - **Guard rails.** Tests catch the regression a reviewer would have skimmed past. Docs catch the design drift a test
   cannot see. Neither is redundant with the other.
 - **Onboarding.** The next agent or contributor learns intent from the docs and behavior from the tests, without reading
-  the whole codebase first. In a repository worked on largely by AI, this is the memory — nothing else carries context
-  between sessions.
+  the whole codebase first. In a repository worked on largely by AI, this is the memory, and nothing else carries
+  context between sessions.
 - **Regression safety.** Every behavior that is documented and tested is a behavior that cannot quietly disappear in a
   later refactor.
 
@@ -68,19 +68,19 @@ Two rules keep this from eroding:
 - **Never trade one place for the others.** Do not ship code with "docs to follow" or "tests to follow". A partial
   change is an unfinished change, not a fast one.
 - **If a change genuinely needs no doc or test update, say so and say why.** A pure rename with no behavioral effect is
-  a fair exemption. Silence is not — an unexplained gap reads as an oversight.
+  a fair exemption. Silence is not: an unexplained gap reads as an oversight.
 
 ### And the Workbench, when there is something to show
 
 `workbench/` is a real Laravel application with this package installed, served by `composer serve`. **When a change can
-be demonstrated there, demonstrating it is part of finishing the change** — not a nice-to-have, and not something to
+be demonstrated there, demonstrating it is part of finishing the change**, not a nice-to-have, and not something to
 leave for later.
 
 The reason is that it is the closest thing this repository has to end-to-end. A unit test proves a class behaves; a
 feature test proves the package behaves inside a booted framework; the Workbench is the only place where a contract
 becomes a route that a browser actually reaches, through the same Composer autoloader, the same service provider
 discovery and the same request lifecycle a consumer will have. **Several defects in this package have only ever been
-visible there** — a docblock a consumer's formatter would rewrite, a
+visible there**: a docblock a consumer's formatter would rewrite, a
 [generated tree](./docs/guide/glossary.md#generated-tree) landing where nothing is committed, a path that resolves
 differently than it reads.
 
@@ -92,7 +92,7 @@ Concretely, for a change that adds or alters behavior a consumer can observe:
   [`workbench/openapi.yaml`](https://github.com/Gcob/lara-spec-first/blob/main/workbench/openapi.yaml), and it is
   written to be read: every operation in it exists to make one behaviour visible in the generated output rather than
   only in an assertion.
-- **Run it, and look at what came out.** Not "the tests pass" — open the generated files and read them, hit the routes
+- **Run it, and look at what came out.** Not "the tests pass". Open the generated files and read them, hit the routes
   and read the responses. A test asserts what you thought to assert; the output shows what you did not.
 - **Say what you ran and what you saw.** A claim that something works end to end is only worth the command behind it.
 
@@ -101,7 +101,7 @@ Two traps worth knowing before you go in:
 - **`base_path()` is not `workbench/`.** With `laravel: '@testbench'`, the application root is the Testbench skeleton
   under `vendor/`, so a default relative path resolves somewhere nothing is committed and `composer clear` wipes it.
   [`workbench/config/lara-spec-first.php`](https://github.com/Gcob/lara-spec-first/blob/main/workbench/config/lara-spec-first.php)
-  is where that is corrected — an ordinary config file, computing its paths from `__DIR__`, loaded because
+  is where that is corrected: an ordinary config file, computing its paths from `__DIR__`, loaded because
   `workbench.discovers.config` says so in `testbench.yaml`. It names only the keys the Workbench has to differ on: it is
   also read by the fresh application `php artisan route:cache` boots, so anything it changes changes what the package's
   own tests measure.
@@ -116,40 +116,41 @@ Two traps worth knowing before you go in:
   through the same Composer script.
 - **Public API is expensive to change.** Once the package is published, class names, config keys, and Artisan command
   signatures become a compatibility contract. Flag such changes explicitly.
-- **Never format by hand — run the tool.** Do not rewrap prose, realign table columns, or count line widths yourself: it
+- **Never format by hand; run the tool.** Do not rewrap prose, realign table columns, or count line widths yourself: it
   is slow, and the next command overwrites it anyway. Run `just format-md` after editing Markdown and `just format`
   after editing PHP. The settings live in `.editorconfig`, `.prettierrc.json` and `pint.json`; the recipes are in the
   `justfile`. Same for reviews: formatting is not a finding.
 - **Let the docs build find your dead links.** Moving or renaming a document breaks every link into it.
-  `just docs-build` fails on the first one and names the file — faster and more complete than grepping for the old path.
+  `just docs-build` fails on the first one and names the file, which is faster and more complete than grepping for the
+  old path.
 - **A change that moves a design moves the diagram that draws it.** `just diagrams-check` compares an SVG to its
   PlantUML source and never to the page around it, so an image describing an older design stays green. Nothing but
-  review catches that one — see
+  review catches that one, see
   [the diagram rules](./docs/contributing/documentation.md#a-diagram-is-built-not-embedded).
-- **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)** — see `CONTRIBUTING.md`.
-- **No borrowed enthusiasm, and no preamble.** An adjective that asks the reader to be impressed — `robust`, `seamless`,
-  `powerful` — is cut and replaced by the fact that produced it, and a sentence that addresses the reader before it
+- **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)**, see `CONTRIBUTING.md`.
+- **No borrowed enthusiasm, and no preamble.** An adjective that asks the reader to be impressed, `robust`, `seamless`
+  or `powerful`, is cut and replaced by the fact that produced it, and a sentence that addresses the reader before it
   starts is deleted. This is the failure mode a generated draft has by default, so it is the one to reread your own
   output for. The rule and its example are in
-  [`documentation.md`](./docs/contributing/documentation.md#an-adjective-that-does-no-work-does-not-go-in-a-sentence).
+  [`documentation.md`](./docs/contributing/documentation.md#an-adjective-must-do-work).
 - **No emojis in documentation.**
 
 ## Automated tests are required
 
-Tests follow the code exactly as documentation does — they are the third of the
+Tests follow the code exactly as documentation does. They are the third of the
 [three places](#every-change-lands-in-three-places) every change must land.
 
-A change that alters behavior and ships without tests is not complete, and "too small to test" is not an accepted reason
-— small changes are precisely the ones that regress unnoticed. In review, check the diff against the test suite the same
-way you check it against the docs: behavior with no test covering it is a finding.
+A change that alters behavior and ships without tests is not complete, and "too small to test" is not an accepted
+reason: small changes are precisely the ones that regress unnoticed. In review, check the diff against the test suite
+the same way you check it against the docs: behavior with no test covering it is a finding.
 
-| Level       | Scope                                                                | Notes                                                                                                                                                                                                    |
-| ----------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit        | A single class in isolation: parsing, name resolution, path mapping. | Fast, no framework boot. Should be the bulk of the suite.                                                                                                                                                |
-| Feature     | The package running inside a real Laravel application.               | Booted through the package test harness. Covers routing, controllers, mocks.                                                                                                                             |
-| Contract    | Live responses validated against the OpenAPI spec.                   | The signature test type of a Spec-First package. Guards the core promise.                                                                                                                                |
-| Regression  | A test reproducing a reported bug.                                   | Must fail before the fix and pass after it.                                                                                                                                                              |
-| Conformance | The reading engine against a partitioned input space.                | `tests/Conformance/`. Organized by equivalence class rather than by example, so coverage can be argued. Every parser defect found earns a permanent case — see the [Roadmap](./docs/project/roadmap.md). |
+| Level       | Scope                                                                | Notes                                                                                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit        | A single class in isolation: parsing, name resolution, path mapping. | Fast, no framework boot. Should be the bulk of the suite.                                                                                                                                               |
+| Feature     | The package running inside a real Laravel application.               | Booted through the package test harness. Covers routing, controllers, mocks.                                                                                                                            |
+| Contract    | Live responses validated against the OpenAPI spec.                   | The signature test type of a Spec-First package. Guards the core promise.                                                                                                                               |
+| Regression  | A test reproducing a reported bug.                                   | Must fail before the fix and pass after it.                                                                                                                                                             |
+| Conformance | The reading engine against a partitioned input space.                | `tests/Conformance/`. Organized by equivalence class rather than by example, so coverage can be argued. Every parser defect found earns a permanent case, see the [Roadmap](./docs/project/roadmap.md). |
 
 Expectations:
 
@@ -163,10 +164,10 @@ Expectations:
 
 ## Code review
 
-Review in this order. The list is a priority ranking, not a checklist to run in parallel — an incomplete change is not
+Review in this order. The list is a priority ranking, not a checklist to run in parallel. An incomplete change is not
 worth reviewing for style.
 
-1. **The three places — this is the first thing you check, before reading a line of logic.** Did the change land in
+1. **The three places, and this is the first thing you check, before reading a line of logic.** Did the change land in
    code, documentation, _and_ tests? And where the change is something a consumer could observe, was it
    [shown working in the Workbench](#and-the-workbench-when-there-is-something-to-show)? A behavior change missing its
    docs or its tests is an **incomplete change**, and you report it as such. Do not treat it as a minor follow-up, do
@@ -188,8 +189,8 @@ How to report:
 
 - **Name the file and the line.** "The docs should probably be updated" is not a finding; "`README.md:34` states PHP 8.2
   but `composer.json:12` now requires `^8.3`" is.
-- **Say which side is wrong.** A doc/code contradiction has a correct resolution — work out which one it is rather than
-  reporting the mismatch and leaving it to the author.
+- **Say which side is wrong.** A doc/code contradiction has a correct resolution, so work out which one it is rather
+  than reporting the mismatch and leaving it to the author.
 - **Never propose weakening a test** to resolve a failure. If a test is genuinely wrong, argue why.
 - **An explained exemption is acceptable.** If the author states that a change needs no doc or test update and the
   reason holds, accept it. An unexplained gap is a finding.
