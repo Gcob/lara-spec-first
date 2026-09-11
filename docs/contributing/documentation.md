@@ -869,6 +869,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 Repository root:
 
 - [`README.md`](../../README.md) — no front matter, [by design](#the-readme-carries-no-front-matter-deliberately)
+- [`CHANGELOG.md`](../../CHANGELOG.md) — `Users and contributors`
 - [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — `Contributors`
 - [`AGENTS.md`](../../AGENTS.md) — `AI coding agents`
 - [`LICENSE`](https://github.com/Gcob/lara-spec-first/blob/main/LICENSE) — MIT, plain text, no front matter

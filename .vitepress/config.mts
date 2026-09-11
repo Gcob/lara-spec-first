@@ -59,6 +59,7 @@ const SECTIONS: Section[] = [
         text: 'Project',
         directory: 'docs/project',
         sequence: ['roadmap', 'stack'],
+        also: ['CHANGELOG.md'],
     },
     {
         text: 'Development',
