@@ -231,6 +231,7 @@ grep -rl 'tags:.*versions' --include='*.md' .
 | `ci`              | Continuous integration and the build matrix                                        |
 | `code-generation` | Producing PHP from the specification, and the rules that keep it safe to re-run    |
 | `code-review`     | Review priorities and how findings are reported                                    |
+| `commands`        | The Artisan commands this package ships, and how they are invoked                  |
 | `compatibility`   | What the package honors of a standard, and the promise attached to it              |
 | `conventions`     | Commit, naming, and style conventions                                              |
 | `contributing`    | How to contribute: setup, pull requests, conduct                                   |
@@ -483,11 +484,13 @@ saying how two clauses relate, and leaves the reader to work it out. Pick the ma
 comma for an aside, a colon when what follows explains what came before, a full stop when the second half was a sentence
 wearing a dash.
 
-This set carried 610 of them across its Markdown, and carries fourteen now. Nothing was lost in the trade, and several
-sentences turned out to be two.
+This set carried 610 of them across its Markdown and carries a handful now. Nothing was lost in the trade, and several
+sentences turned out to be two. The count is deliberately not given: it moves every time a document is added to the
+inventory below, and a number in prose that an unrelated change can falsify is [stale metadata](#doc-smells) waiting to
+happen.
 
-**The fourteen are all one shape, and it is not prose.** A list item that opens with a bolded term or a link, with the
-dash separating it from its description:
+**Every one that is left is the same shape, and it is not prose.** A list item that opens with a bolded term or a link,
+with the dash separating it from its description:
 
 ```markdown
 - [`docs/project/stack.md`](./docs/project/stack.md) — every technology choice, its status, and its reasoning.
@@ -844,6 +847,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`publishing.md`](../guide/code-generation/publishing.md)
     - [`response-dtos.md`](../guide/code-generation/response-dtos.md)
     - [`scaffolding.md`](../guide/code-generation/scaffolding.md)
+- [`commands.md`](../guide/commands.md)
 - [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
 - [`drivers.md`](../guide/drivers.md)
@@ -867,6 +871,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 Repository root:
 
 - [`README.md`](../../README.md) — no front matter, [by design](#the-readme-carries-no-front-matter-deliberately)
+- [`CHANGELOG.md`](../../CHANGELOG.md) — `Users and contributors`
 - [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — `Contributors`
 - [`AGENTS.md`](../../AGENTS.md) — `AI coding agents`
 - [`LICENSE`](https://github.com/Gcob/lara-spec-first/blob/main/LICENSE) — MIT, plain text, no front matter

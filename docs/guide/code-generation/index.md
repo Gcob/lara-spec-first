@@ -150,7 +150,8 @@ change shape without asking permission. It can only be free if nobody has hand-e
 
 ## The build command: `spec:build`
 
-**Everything derived from the contract comes out of one command:**
+**Everything derived from the contract comes out of one command**, whose flags and exit codes are in
+[the command reference](../commands.md#specbuild-writes-the-generated-tree):
 
 ```bash
 php artisan spec:build
@@ -333,16 +334,24 @@ for, and it is a different command precisely so that `build` can stay this stric
 
 ### Which generated code is committed
 
-**The package does not decide which generated files are tracked. `.gitignore` does.**
+**Ignore the generated tree, the way you ignore `vendor/`.**
 
 ```gitignore
-# .gitignore: the generated tree is a project's call.
+# .gitignore: the generated tree is build output.
 app/Http/Generated/
 ```
 
-The build writes files; git decides which are tracked. That is already every consumer's mechanism for "I do not want
-this in my repository", it needs no config key, no documentation of its own, and no opinion from us. Adding a config
-option here would be inventing a second, worse `.gitignore`.
+It is build output. An idempotent build reproduces it byte for byte, so tracking it buys a diff nobody reviews and costs
+a conflict on every contract change. Two lines make it work: that one, and `php artisan spec:build` in your deploy
+beside `composer install`.
+
+**The cost is the `composer install` bargain**, and it is the reason this is a recommendation rather than a rule: a
+fresh clone does not analyse, autocomplete or run until the build has been run once. Committing the tree instead is a
+defensible answer, and the project that cannot add a build step to its deploy should take it.
+
+**The mechanism stays `.gitignore`, and there will never be a config key for it.** Git is already every consumer's
+answer to "I do not want this in my repository", and a config option here would be inventing a second, worse
+`.gitignore`.
 
 **One exception, and it is not optional: the vendored references must be committed.** There is
 [no lock file](../remote-references.md#git-is-the-lock-file): the committed copies _are_ the lock. Ignoring that
@@ -353,18 +362,18 @@ deployable. The doctor should detect it and report it as a finding rather than l
 
 **The build emits an interface plus an abstract class**, splitting the output along the line that matters:
 
-| Layer              | Carries                                                                                                | Naturally                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| **Interface**      | The contract surface: method signatures, DTO shapes, the things a change to the spec actually changes. | Committed, because this is the diff a reviewer wants, and it is small.     |
-| **Abstract class** | The mechanics that implement the interface. Predictable, derivable, and noisy in a diff.               | A candidate for ignoring, since an idempotent build reproduces it exactly. |
+| Layer              | Carries                                                                                                | Worth committing                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| **Interface**      | The contract surface: method signatures, DTO shapes, the things a change to the spec actually changes. | Arguably, because this is the diff a reviewer wants, and it is small. |
+| **Abstract class** | The mechanics that implement the interface. Predictable, derivable, and noisy in a diff.               | No, since an idempotent build reproduces it exactly.                  |
 
 It fits the [split](#the-split-makes-a-change-loud) rather than complicating it: the interface is what a human subclass
 is checked against, so the compile-time error survives even if the abstract layer never enters version control.
 
-The cost of ignoring the second layer is that a fresh clone does not analyse, autocomplete or run until the build has
-been run once, the `composer install` bargain, which this ecosystem already accepts. Which layer a given project chooses
-to ignore stays that project's call: this is still [`.gitignore`'s decision](#which-generated-code-is-committed), not a
-config key.
+**This is the one thing that could make committing part of the tree worth the trouble**, and it is why
+[the recommendation above](#which-generated-code-is-committed) is written about the tree rather than about each file in
+it. Until the split exists there is one directory and one line; once it does, a project that wants the contract surface
+under review can track the interface and ignore the rest. Still `.gitignore` deciding, still not a config key.
 
 **Open:** whether the second layer is an abstract class or a trait. An abstract class gives one inheritance slot to the
 developer and takes it; a trait leaves it free and composes, at the cost of not being able to declare abstract members

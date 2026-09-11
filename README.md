@@ -35,6 +35,54 @@ architecture while letting your business logic live safely in standard Laravel c
 
 ---
 
+## Installation
+
+PHP 8.3 or newer, Laravel 12 or 13. The [full matrix](#requirements) is below.
+
+```bash
+composer require gcob/lara-spec-first
+```
+
+The service provider is discovered automatically. Publish the configuration only when you need to change something in
+it, since the package merges its own defaults underneath whatever you publish:
+
+```bash
+php artisan vendor:publish --tag=lara-spec-first-config
+```
+
+Point it at your contract. The default is `openapi.yaml` at the root of your application, and
+`config/lara-spec-first.php` is where you change that.
+
+Then read your contract before generating from it:
+
+```bash
+php artisan spec:doctor   # reports what this package will and will not honor
+php artisan spec:build    # writes the routes and one controller per operation
+```
+
+**That order is worth keeping on a contract this package has never read, and not because building is risky.**
+`spec:build` plans every file in memory before writing any of them, so a document it refuses leaves your working tree
+exactly as it was. What it will not do is tell you everything at once: it stops at the first fault and only counts the
+rest, and it says nothing at all about the constructs it will simply not act on. Reporting both, in one pass, is the
+doctor's entire job.
+
+`spec:build` writes only inside `app/Http/Generated`, never outside it, so the first run cannot touch anything you
+wrote. Every operation answers `501` until you implement it, and the build names the command that implements each one.
+
+Two things to do before your second build:
+
+1. **Ignore the generated tree, the way you ignore `vendor/`.** Add `app/Http/Generated/` to your `.gitignore`, and
+   `php artisan spec:build` to your deploy. See
+   [which generated code is committed](./docs/guide/code-generation/index.md#which-generated-code-is-committed).
+2. **Tell your formatter to skip that tree.** Add `"exclude": ["app/Http/Generated"]` to your `pint.json`. A formatter
+   and a build that both rewrite one file undo each other forever, whatever formatter you run. See
+   [your formatter and the build](./docs/guide/code-generation/index.md#your-formatter-fights-the-build).
+
+Every command, flag and exit code is in [`docs/guide/commands.md`](./docs/guide/commands.md), and what changed in each
+version is in [`CHANGELOG.md`](./CHANGELOG.md).
+
+---
+
 ## Roadmap
 
 We are building in public! Check out our [Roadmap](./docs/project/roadmap.md) to see where the project is heading, and

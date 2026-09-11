@@ -31,6 +31,7 @@ use Illuminate\Contracts\Config\Repository;
  * a second command.
  *
  * @see docs/guide/code-generation/index.md — "The build command: spec:build"
+ * @see docs/guide/commands.md — "spec:build writes the generated tree"
  */
 final class BuildCommand extends Command
 {

@@ -44,6 +44,7 @@ const SECTIONS: Section[] = [
             'openapi-support',
             'code-generation',
             'controllers',
+            'commands',
             'doctor',
             'lifecycle',
             'security',
@@ -58,6 +59,7 @@ const SECTIONS: Section[] = [
         text: 'Project',
         directory: 'docs/project',
         sequence: ['roadmap', 'stack'],
+        also: ['CHANGELOG.md'],
     },
     {
         text: 'Development',

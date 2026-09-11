@@ -101,7 +101,7 @@ What is missing is no longer a namespace but the second half of several features
 enforced, breaking-change enforcement has no [baseline](../guide/glossary.md#baseline) to compare against, and there is
 no response DTO or generated validation. Four of the nine blocks in `config/lara-spec-first.php` are marked `TODO` in
 the file itself and are inert, which the file says out loud rather than leaving to be discovered, and which
-[the first tag removes](#the-first-tag-0x-once-phase-1-runs).
+[the first tag labels with the phase that makes them live](#the-first-tag-0x-once-phase-1-runs) rather than removing.
 
 ## Phase 1: The Foundation
 
@@ -421,15 +421,20 @@ every decision is already unchangeable.
       protection can require a check whose name survives a change to the matrix. **Making it required is a repository
       setting, not something the workflow can do for itself:** until somebody sets it under Settings > Branches, the
       suite runs on every pull request and merging a red one is still allowed.
-- [ ] **Ship only the config keys that do something.** Four of the six blocks in `config/lara-spec-first.php` are inert,
-      and the file admits it in a comment: _a `TODO` block is inert, changing it has no effect, and nothing will tell
-      you so._ That is precisely the behavior the package refuses elsewhere, where
-      [a setting that is not backed yet throws](../guide/remote-references.md#the-allowlist-ships-empty) rather than
-      lying. A key belongs in the same release as the feature behind it, so the Phase 2 blocks come out and come back
-      with their features. Removing them before publication costs nothing; adding keys later is widening, which is
-      [minor](./stack.md#changing-anything-here).
-- [ ] **A command reference document.** [The doctor](../guide/doctor.md) already defers its usage details to one, and it
-      is one of the three commands Phase 1 ships, beside `spec:build` and `spec:make`.
+- [x] **Say when every inert config key stops being inert.** Four of the nine blocks in `config/lara-spec-first.php` are
+      inert, and the file already admitted it in a comment: _a `TODO` block is inert, changing it has no effect, and
+      nothing will tell you so._ What it did not say was when that ends, which is the half a reader of a `0.x` actually
+      needs. Each inert block now names its phase, and so does the one key inside an otherwise working block that is not
+      read yet. **This reverses what this item used to ask for,** which was to remove those blocks before publishing:
+      the right answer for a release where a published key is a promise, and the wrong one here. A `0.1.0` that says out
+      loud it is unstable is allowed to show the shape it is heading toward, and showing it is most of why somebody
+      reads a `0.x` at all. What was never allowed is letting a key look live when it is not, and a phase label is what
+      separates the two. Removal moves to [the `1.0` gate](#before-10-freeze-what-a-major-would-cost).
+- [x] **A command reference document.** [`commands.md`](../guide/commands.md) owns what each of the three Phase 1
+      commands writes, every argument and flag, how all three resolve the specification, what each exit code means, and
+      what changes when no terminal is attached. [The doctor](../guide/doctor.md) deferred its usage details to it and
+      now keeps only the reasoning, which is the split the rest of the set follows: the reference says how, the guide
+      beside it says why.
 - [ ] **Publish to Packagist** as `gcob/lara-spec-first` and cut `0.1.0`. The `Planned` distribution row in
       [`stack.md`](./stack.md).
 
@@ -437,6 +442,10 @@ every decision is already unchangeable.
 
 Everything a consumer writes code against stops being ours to change here.
 
+- [ ] **Settle every config key that is still inert.** Each one either ships with the feature behind it or comes out of
+      the file. A phase label was enough for a `0.x`; at `1.0` a key a consumer can read is a key a consumer can depend
+      on, and adding one back later is widening, which is only [minor](./stack.md#changing-anything-here). This is what
+      [the first gate deferred](#the-first-tag-0x-once-phase-1-runs).
 - [ ] **Freeze the public names.** Under [rule 4](../guide/openapi-support.md#the-four-rules) every one of these becomes
       a compatibility contract, and each is currently marked open in the document that owns it: the config keys
       (generated path and namespace, the override scan, the publish block, `pagination` and `rate_limiting` and every
