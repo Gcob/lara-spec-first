@@ -122,6 +122,11 @@ docs-build:
 docs-check-anchors:
     npm run docs:check-anchors
 
+# Report a `@see docs/….md — "Heading"` in the code naming a heading no document
+# produces. Reads the sources rather than the built site, so it needs no build.
+docs-check-see:
+    npm run docs:check-see
+
 # Serve the built site exactly as it will be published.
 docs-preview:
     npm run docs:preview
