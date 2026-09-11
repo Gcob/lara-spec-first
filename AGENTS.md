@@ -43,7 +43,7 @@ config.** It holds every technology choice, its status, and the reasoning behind
 
 Code, documentation, and tests move together. A change is not finished when the code works. It is finished when all
 three are updated, in the same commit. **And when a change can be shown working in the Workbench, that is a fourth
-place**, see [below](#and-the-workbench-when-there-is-something-to-show).
+place**, see [below](#and-the-workbench-where-it-shows).
 
 | Place             | What it answers                       | Rule                                                                                                                                  |
 | ----------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -70,7 +70,7 @@ Two rules keep this from eroding:
 - **If a change genuinely needs no doc or test update, say so and say why.** A pure rename with no behavioral effect is
   a fair exemption. Silence is not: an unexplained gap reads as an oversight.
 
-### And the Workbench, when there is something to show
+### And the Workbench, where it shows
 
 `workbench/` is a real Laravel application with this package installed, served by `composer serve`. **When a change can
 be demonstrated there, demonstrating it is part of finishing the change**, not a nice-to-have, and not something to
@@ -169,10 +169,10 @@ worth reviewing for style.
 
 1. **The three places, and this is the first thing you check, before reading a line of logic.** Did the change land in
    code, documentation, _and_ tests? And where the change is something a consumer could observe, was it
-   [shown working in the Workbench](#and-the-workbench-when-there-is-something-to-show)? A behavior change missing its
-   docs or its tests is an **incomplete change**, and you report it as such. Do not treat it as a minor follow-up, do
-   not offer to "add them later", and do not approve the change on the grounds that the code itself is correct. This is
-   the highest-severity category of finding in this repository.
+   [shown working in the Workbench](#and-the-workbench-where-it-shows)? A behavior change missing its docs or its tests
+   is an **incomplete change**, and you report it as such. Do not treat it as a minor follow-up, do not offer to "add
+   them later", and do not approve the change on the grounds that the code itself is correct. This is the
+   highest-severity category of finding in this repository.
 2. **Direction of truth.** Does the change keep the OpenAPI spec authoritative over the code? Anything that makes PHP
    the source of truth is a design defect, however well written.
 3. **Correctness.** Logic, edge cases, failure paths, `$ref` resolution, behavior across OpenAPI 3.0 and 3.1.

@@ -29,6 +29,8 @@ teach.
 > point the override scan anywhere. What is written here is the design [Phase 2](../../project/roadmap.md) will follow.
 > Items marked `Open` are undecided.
 
+## The shape is ours, the behavior is yours
+
 The DTOs are how a response schema becomes a PHP type. Two properties, and the tension between them is the design:
 
 - **The shape is generated, and not yours.** Properties, types and nullability come from the response schema. A
@@ -43,7 +45,7 @@ own to grow, the same reasoning that makes
 [two-layer split](./index.md#an-interface-and-an-abstract-class) that customization elsewhere in this subject relies on:
 there is no abstract DTO to extend, because there is no DTO to extend, full stop.
 
-### Factories, not subclasses, are where behavior lives
+## Factories carry the behavior
 
 **A note on the name, before anything else.** This "factory" is the design pattern, a class whose one job is
 constructing another object, rather than Laravel's own model factories, which generate fake data for tests and carry
@@ -58,7 +60,7 @@ used [when `operationId` is absent](./generated-file-anatomy.md#deriving-a-name-
 implementation that covers the ordinary case: properties that already exist on the source, under the same name. This is
 what makes the other ninety-six DTOs in a hundred-DTO contract need nothing from a developer at all.
 
-### Overriding a factory, by extending it
+## Overriding a factory, by extending it
 
 Most response shapes need nothing beyond the default mapping. The few that do should not cost the other ninety-six. **A
 project overrides a factory by writing a class that `extends` the generated one**, with no fixed name, no fixed file and
@@ -93,7 +95,7 @@ rather than a token scan over spellings, since an `extends` clause needs the lan
 and aliases to be trustworthy, not a match on spelling; and the name of the exception thrown when two classes claim one
 factory.
 
-### What a factory's docblock carries
+## What a factory's docblock carries
 
 Factories follow the norm
 [every generated file follows](./generated-file-anatomy.md#every-generated-file-explains-itself); what is specific to

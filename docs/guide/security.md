@@ -96,16 +96,21 @@ caller: does the authenticated model have the scope or permission the matched sc
 It asks that question of the model, through an interface the package defines and your model implements:
 
 ```php
-// Shipped by the package. A working name, in the shape Phase 2 will follow.
+// Not built yet. A working name, in the shape Phase 2 will follow.
 interface HasSecurityScopes
 {
     public function hasSecurityScope(string $scheme, string $scope): bool;
 }
+```
 
-// In your own model, where the answer already lives.
-public function hasSecurityScope(string $scheme, string $scope): bool
+```php
+// app/Models/User.php, where the answer already lives.
+class User extends Authenticatable implements HasSecurityScopes
 {
-    return $this->tokenCan($scope);
+    public function hasSecurityScope(string $scheme, string $scope): bool
+    {
+        return $this->tokenCan($scope);
+    }
 }
 ```
 
@@ -150,6 +155,8 @@ a Policy already belongs.
 
 ```php
 // app/Models/Comment.php
+use Illuminate\Database\Eloquent\Attributes\UsePolicy;
+
 #[UsePolicy(CommentPolicy::class)]
 class Comment extends Model
 {

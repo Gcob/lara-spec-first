@@ -204,10 +204,11 @@ Three situations sit behind those three lines, which is why the first answer is 
   ignore the generated tree, the `composer install` bargain, stated in
   [two layers](./index.md#an-interface-and-an-abstract-class). Running it is the whole fix.
 - **The name changed in the specification.** A controller's generated name follows
-  [`x-controller`](../controllers.md#the-spec-decides-what-is-customizable) and a DTO's follows its schema name, so the
-  class moved because somebody edited one of those. Running the build writes the class under its new name, and the new
-  name is the one that edit chose. The build [does not report the change](#rename-and-orphan-detection-decided-against),
-  because the person reading this comment is the person who made it.
+  [`x-controller`](../controllers.md#the-contract-decides-what-is-customizable) and a DTO's follows its schema name, so
+  the class moved because somebody edited one of those. Running the build writes the class under its new name, and the
+  new name is the one that edit chose. The build
+  [does not report the change](#rename-and-orphan-detection-decided-against), because the person reading this comment is
+  the person who made it.
 - **It was removed outright.** Only here does the build have nothing to offer, because there is no new name to report,
   and the specification's own history is what says what happened.
 
@@ -220,7 +221,7 @@ thought to run it yet.
 **This section's original premise is gone, and saying so is the point of keeping it.** It used to read: the generated
 class name comes from `operationId`, which makes an `operationId` far more than a label, because **it is the name of the
 class a developer extends**, so renaming one in the spec renames a class in their application. That was true, and the
-[`x-controller` seam](../controllers.md#the-spec-decides-what-is-customizable) is what made it false. An extendable
+[`x-controller` seam](../controllers.md#the-contract-decides-what-is-customizable) is what made it false. An extendable
 class is named by `x-controller` and by nothing else; every other generated controller is `final`, so no import may
 depend on its name. **A name a project can depend on can now only change when the project's own author edits
 `x-controller`.**
@@ -276,11 +277,11 @@ and means something to a reader. `GET /users/{id}` becomes `GetUsersIdController
 
 **Revised, and the revision is worth naming rather than hiding.** This rule used to say the _normalized_ path, so that
 parameter names were excluded and renaming `{id}` to `{userId}` could not rename a class. What removed that cost was a
-later decision: a class with no `x-controller` [is `final`](../controllers.md#the-spec-decides-what-is-customizable), so
-nothing may extend it and no import can depend on it. Nobody can be hurt by a name nobody may reference, and what is
-left is that `GetUsersIdController` tells a reader which endpoint it serves where `GetUsersParamController` does not.
-**Identity stays normalized regardless.** That is a different question, asked for rename detection rather than for
-naming, and the two must not be conflated.
+later decision: a class with no `x-controller`
+[is `final`](../controllers.md#the-contract-decides-what-is-customizable), so nothing may extend it and no import can
+depend on it. Nobody can be hurt by a name nobody may reference, and what is left is that `GetUsersIdController` tells a
+reader which endpoint it serves where `GetUsersParamController` does not. **Identity stays normalized regardless.** That
+is a different question, asked for rename detection rather than for naming, and the two must not be conflated.
 
 The objection to raise and dismiss: deriving from the path means that reorganizing URLs renames classes. True, and
 **proportionate**, because changing a path _is_ a change to the contract. Consumers have to update their calls; you

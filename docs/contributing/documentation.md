@@ -450,8 +450,8 @@ package is designed and not built. The _input_ always exists, because the reader
 `x-lifecycle` can show three lines of YAML whether or not anything reads them yet.
 
 **The gap this closes is measured rather than felt.** Laravel's documentation carries about 16 code blocks per thousand
-words. This set carries 0.6, and five of its guides carry none at all, including one that spends two thousand words on
-three specification keys it never shows.
+words, and this set 0.8. Six of its guides carried none at all when this rule was written, `lifecycle.md` among them,
+which spent two thousand words on three specification keys without showing one. Three carry none today.
 
 **The order flips for a reader who is deciding rather than doing.** On a `Contributors` page the claim comes first and
 the example illustrates it, which is what [a rule with no example](#doc-smells) is about. The audience decides this the
@@ -483,14 +483,14 @@ saying how two clauses relate, and leaves the reader to work it out. Pick the ma
 comma for an aside, a colon when what follows explains what came before, a full stop when the second half was a sentence
 wearing a dash.
 
-This set carried 525 of them and now carries fourteen. Nothing was lost in the trade, and several sentences turned out
-to be two.
+This set carried 610 of them across its Markdown, and carries fourteen now. Nothing was lost in the trade, and several
+sentences turned out to be two.
 
 **The fourteen are all one shape, and it is not prose.** A list item that opens with a bolded term or a link, with the
 dash separating it from its description:
 
 ```markdown
-- **Vendored copies, committed** — the fetched documents, on disk, in version control.
+- [`docs/project/stack.md`](./docs/project/stack.md) — every technology choice, its status, and its reasoning.
 ```
 
 That is typography a reader scans rather than reads, and it is the only place this set uses the character.
@@ -720,10 +720,9 @@ is not. What each row gives you is the observable sign, so that the judgment hap
 ### A decision is a sentence
 
 **State what was decided; do not announce that a decision follows.** For a long time this set opened those paragraphs
-with a bolded `Decision:` prefix, seventy-one of them across the guides, and the prefix did the job a heading should do:
-it marked the claim as important without making it findable. None of it reached
-[the outline](#headings-are-short-claims), so a reader looking for what was decided about a subject had to read the page
-to find out.
+with a bolded `Decision:` prefix, sixty-nine of them across this set, and the prefix did the job a heading should do: it
+marked the claim as important without making it findable. None of it reached [the outline](#headings-are-short-claims),
+so a reader looking for what was decided about a subject had to read the page to find out.
 
 Two places carry a decision now, and both are things a reader can navigate to:
 

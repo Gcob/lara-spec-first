@@ -172,7 +172,7 @@ Two things about this application that will otherwise surprise you:
 - **Generated classes live under `Workbench\App\Http\Generated`,** because that is the namespace this package's
   `autoload-dev` maps into `workbench/app/`. Anywhere else and they would not autoload at request time.
 
-### Your code must run on Laravel 12 _and_ 13
+### Your code runs on 12 and 13
 
 This package supports both. That applies to `src/`, to `tests/`, and to `workbench/` alike.
 

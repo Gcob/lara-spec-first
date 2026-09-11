@@ -211,9 +211,9 @@ comes from; the package writes the shape it goes into.
 
 **And the `501` chain still holds.** `getPaginator()` is concrete but throws when nothing can supply a page, so the
 generated class stays instantiable and answers `501`. Since a class with no
-[`x-controller`](./controllers.md#the-spec-decides-what-is-customizable) is `final`, a paginated operation with neither
-`x-model` nor `x-controller` answers `501` permanently, which is correct, because nothing has said where its data would
-come from.
+[`x-controller`](./controllers.md#the-contract-decides-what-is-customizable) is `final`, a paginated operation with
+neither `x-model` nor `x-controller` answers `501` permanently, which is correct, because nothing has said where its
+data would come from.
 
 ### What the generated body looks like
 

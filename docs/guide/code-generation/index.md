@@ -43,7 +43,7 @@ wherever that question comes up.
 > [501](./scaffolding.md#an-unimplemented-operation-answers-501). It is idempotent, it plans before it writes, and it
 > [never writes outside its own tree](#a-build-never-destroys-your-work). The provider
 > [loads what it emitted](#the-routes-are-one-file) and reads no specification to do it. The
-> [`x-controller` seam](../controllers.md#the-spec-decides-what-is-customizable) is shipped, so an operation that
+> [`x-controller` seam](../controllers.md#the-contract-decides-what-is-customizable) is shipped, so an operation that
 > declares one gets a parent it may extend and a route pointing at the child, and
 > [`spec:make`](./scaffolding.md#scaffolding-is-specmake-not-a-build-step) scaffolds that child. Not built yet: response
 > DTOs and request validation. Rename detection was designed here and
@@ -149,6 +149,8 @@ error in the code that implements it, not a 500 in production.** It is also why 
 change shape without asking permission. It can only be free if nobody has hand-edits in it to protect.
 
 ## The build command: `spec:build`
+
+**Everything derived from the contract comes out of one command:**
 
 ```bash
 php artisan spec:build

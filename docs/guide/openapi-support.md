@@ -88,11 +88,11 @@ second axis.
 - Changing _how_ a `Supported` row behaves, the route order, the controller naming convention or the parameter mapping,
   is also **major**. Consumers have code written against it.
 
-**What it does to the exit code**, which is not a ladder, and every move on it is **major, in either direction.** Making
-a row noisier breaks pipelines that were green; making it quieter silently stops a pipeline from catching something it
-used to catch. The second is the more dangerous of the two and the easier to mistake for an improvement: `Ignored` to
-`Deferred` looks like generosity and is in fact the removal of a gate. A package whose entire promise is that a contract
-cannot drift unnoticed does not get to weaken its own detection in a minor release.
+**What it does to the exit code** is not a ladder, and every move on it is **major, in either direction.** Making a row
+noisier breaks pipelines that were green; making it quieter silently stops a pipeline from catching something it used to
+catch. The second is the more dangerous of the two and the easier to mistake for an improvement: `Ignored` to `Deferred`
+looks like generosity and is in fact the removal of a gate. A package whose entire promise is that a contract cannot
+drift unnoticed does not get to weaken its own detection in a minor release.
 
 ## Support levels
 
@@ -535,7 +535,7 @@ first release, not shipped behavior.
 | `webhooks` (3.1)                        | Open         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `x-` extensions                         | Out of scope | Preserved by the parser and readable, but the package acts on none of them, except the ones it defines itself, on the rows beneath.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The lifecycle extensions this package defines. Read with defaults resolved and an unrecognized value refused rather than silently taken as the default. The doctor's rules over them run: a deprecation with no removal date, a date passed or unreadable, the `beta` listing and the [protection report](./glossary.md#protection-report). The breaking-change enforcement `x-lifecycle` gates is [not built yet](../project/roadmap.md). Rules: [lifecycle](./lifecycle.md).                                                                                              |
-| `x-controller`                          | Supported    | Names the class of an operation's custom controller, which is also what makes that operation customizable at all: without it the generated controller is `final`. Rules: [controllers](./controllers.md#the-spec-decides-what-is-customizable).                                                                                                                                                                                                                                                                                                                             |
+| `x-controller`                          | Supported    | Names the class of an operation's custom controller, which is also what makes that operation customizable at all: without it the generated controller is `final`. Rules: [controllers](./controllers.md#the-contract-decides-what-is-customizable).                                                                                                                                                                                                                                                                                                                         |
 | `x-model`                               | Partial      | Names the Eloquent model an operation reads and writes. It supplies the generated controller's default query, its route-model-binding type hint, and the CRUD default the build emits. Rules: [controllers](./controllers.md#how-the-semantic-is-detected).                                                                                                                                                                                                                                                                                                                 |
 
 ### Paths and operations

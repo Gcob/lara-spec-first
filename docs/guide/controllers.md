@@ -35,10 +35,10 @@ assumes about your application, and where a developer's own code attaches to it.
 > points at the child once that class exists, and two values reducing to one parent is a build error naming both.
 > **`spec:make` ships whole**: its three forms, the insertion prompt below with the edit verified on a copy, and the
 > build it runs afterwards. Nothing in [Phase 1](../project/roadmap.md#phase-1-the-foundation) is left in this document.
-> [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features) carries everything
-> model-shaped: `x-model`, the CRUD defaults, `HasModel` and its trait, the marker interfaces, the DTO factory calls,
-> the pagination seams and the mass-assignment check, because a generated CRUD body has nothing to return until the DTOs
-> exist. Items marked `Open` are undecided.
+> [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline) carries everything model-shaped: `x-model`, the CRUD
+> defaults, `HasModel` and its trait, the marker interfaces, the DTO factory calls, the pagination seams and the
+> mass-assignment check, because a generated CRUD body has nothing to return until the DTOs exist. Items marked `Open`
+> are undecided.
 
 ## One controller, one `routeAction`
 
@@ -57,8 +57,8 @@ Two alternatives were considered and dropped:
 - **Grouping several operations into one controller.** A controller generated with five abstract methods needs a
   concrete subclass implementing all five before PHP will instantiate it, so you cannot ship three today and two
   tomorrow. One operation per class removes the problem entirely rather than managing it. Grouping is also what
-  `x-controller` was first considered for; [it does something else here](#the-spec-decides-what-is-customizable), and
-  nothing in this package produces a shared file.
+  `x-controller` was first considered for; [it does something else here](#the-contract-decides-what-is-customizable),
+  and nothing in this package produces a shared file.
 - **An invokable.** `routeAction` appears in the generated route registration, in stack traces, in IDE navigation, and
   in a grep for every spec-driven action at once. `__invoke` appears in none of them: it is a magic method whose name
   says nothing about what it does, and the route registration degrades from an explicit
@@ -90,7 +90,7 @@ problem from a different direction. This is a second check rather than a stricte
 refusals belong to other rules: a character the router would never match is refused for being unroutable, and one path
 naming the same parameter twice is refused where the path is read, before anything asks what could be generated from it.
 
-## The spec decides what is customizable
+## The contract decides what is customizable
 
 **It follows from the package's own name.** `lara-spec-first` means the contract leads and PHP follows, so **whether an
 operation has custom code is a fact the specification states**, not a convention this package goes looking for in the
@@ -137,9 +137,9 @@ derived name, the documentation has always called derived names disposable, and 
 intend to depend on it."
 
 The same rule generalizes past controllers: **anything whose generated name is derived rather than declared is
-`final`.** A [DTO factory](./code-generation/response-dtos.md#factories-not-subclasses-are-where-behavior-lives) named
-from a `components/schemas` entry is extendable because that name was chosen; one named from an inline, anonymous
-response schema is not.
+`final`.** A [DTO factory](./code-generation/response-dtos.md#factories-carry-the-behavior) named from a
+`components/schemas` entry is extendable because that name was chosen; one named from an inline, anonymous response
+schema is not.
 
 ### Two classes, found by name
 
@@ -268,9 +268,9 @@ guessing.
 
 **The cost also arrives at the wrong moment.** Published stubs are public API surface under
 [rule 4](./openapi-support.md#the-four-rules), and the body is exactly what
-[Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline-mocks-and-the-driver-features) changes: `x-model`, the
-CRUD defaults and the DTO factory calls all land inside `routeAction`. Publishing a stub contract now means choosing
-between breaking every published stub then, or freezing a shape this document already calls provisional.
+[Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline) changes: `x-model`, the CRUD defaults and the DTO
+factory calls all land inside `routeAction`. Publishing a stub contract now means choosing between breaking every
+published stub then, or freezing a shape this document already calls provisional.
 
 **Revisit when that body settles.** If it earns a stub then, the shape to prefer is a stub for the frame with the
 load-bearing lines inserted rather than templated, the parent, the signature and the call that keeps the `501`, so that
@@ -306,8 +306,8 @@ can disagree about one file, and the project's own `composer.json` already answe
 **And the configured namespace never renames anything.** What ends up in the document is the value the developer
 accepted, and from that moment the document decides the class name: changing `make.controllers` later changes what the
 next insertion proposes and nothing that was already inserted. That is the whole reason
-[`x-controller` is the only source of an extendable name](#the-spec-decides-what-is-customizable), stated from the other
-direction.
+[`x-controller` is the only source of an extendable name](#the-contract-decides-what-is-customizable), stated from the
+other direction.
 
 Answering no leaves a copyable block and the exact line, which is
 [the pattern this package already uses](./code-generation/scaffolding.md#the-build-names-the-command) when a human
@@ -578,8 +578,8 @@ replacement semantics overrides `update()`.
 ### The factory is not imposed
 
 The generated CRUD method calls the operation's
-[DTO factory](./code-generation/response-dtos.md#factories-not-subclasses-are-where-behavior-lives), and **the generated
-code says in a comment that keeping that call is strongly recommended.**
+[DTO factory](./code-generation/response-dtos.md#factories-carry-the-behavior), and **the generated code says in a
+comment that keeping that call is strongly recommended.**
 
 A comment rather than a constraint, and the reason is worth stating so it does not read as softness: **bypassing the
 factory does not break anything.** A child that overrides `respondWithSingle()` and builds its DTO by hand still returns

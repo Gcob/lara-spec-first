@@ -38,10 +38,10 @@ on the way out, what switches the removal on, and what this package deliberately
 not caution for its own sake: the extensions that make the build useful are precisely the ones that describe the inside
 of the application.
 
-| Extension                                                                 | What publishing it hands out                                                       |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`x-model`](../controllers.md#how-the-semantic-is-detected)               | Your Eloquent class names, so the shape of your database and its relationships.    |
-| [`x-controller`](../controllers.md#the-spec-decides-what-is-customizable) | Your application's namespace layout, and which endpoints carry hand-written logic. |
+| Extension                                                                     | What publishing it hands out                                                       |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`x-model`](../controllers.md#how-the-semantic-is-detected)                   | Your Eloquent class names, so the shape of your database and its relationships.    |
+| [`x-controller`](../controllers.md#the-contract-decides-what-is-customizable) | Your application's namespace layout, and which endpoints carry hand-written logic. |
 
 Neither means anything to a consumer of the API, and both help somebody map an application they are attacking. A
 document written for the build is simply not the same document as one written for the public, and treating them as one

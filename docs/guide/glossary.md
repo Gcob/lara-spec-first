@@ -65,11 +65,11 @@ What the package reads, and what it refuses to. [`openapi-support.md`](./openapi
 
 ### Scaffolding, publishing and DTOs
 
-| Term                                                                                                                          | In one clause                                                                                                                               |
-| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| <a id="scaffolding"></a>[Scaffolding](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step)              | `spec:make` creating one file you will own, on request, which the build itself never does.                                                  |
-| <a id="public-copy"></a>[The public copy](./code-generation/publishing.md#where-the-public-copy-goes)                         | The sanitized specification the build can emit for publication, with internal operations removed. Not built yet.                            |
-| <a id="dto-factory"></a>[A DTO factory](./code-generation/response-dtos.md#factories-not-subclasses-are-where-behavior-lives) | The generated class beside a response DTO whose one job is building it, and the seam a project overrides instead of the DTO. Not built yet. |
+| Term                                                                                                             | In one clause                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a id="scaffolding"></a>[Scaffolding](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step) | `spec:make` creating one file you will own, on request, which the build itself never does.                                                  |
+| <a id="public-copy"></a>[The public copy](./code-generation/publishing.md#where-the-public-copy-goes)            | The sanitized specification the build can emit for publication, with internal operations removed. Not built yet.                            |
+| <a id="dto-factory"></a>[A DTO factory](./code-generation/response-dtos.md#factories-carry-the-behavior)         | The generated class beside a response DTO whose one job is building it, and the seam a project overrides instead of the DTO. Not built yet. |
 
 ## Controllers
 
@@ -80,7 +80,7 @@ The controller of one operation. [`controllers.md`](./controllers.md).
 | <a id="routeaction"></a>[`routeAction`](./controllers.md#one-controller-one-routeaction)                                               | The one method every generated controller carries, and the only method a route ever points at.                                      |
 | <a id="speccontroller"></a>[`SpecController`](./controllers.md#what-the-generated-controller-contains)                                 | The single thin abstract base every generated controller extends, holding no per-operation knowledge.                               |
 | <a id="two-class-seam"></a>[The two-class seam](./controllers.md#two-classes-found-by-name)                                            | The generated parent and the custom child an operation gets when it declares `x-controller`, found by name rather than by a scan.   |
-| <a id="x-controller"></a>[`x-controller`](./controllers.md#the-spec-decides-what-is-customizable)                                      | The extension naming an operation's custom controller, and the only thing that makes a generated controller extendable.             |
+| <a id="x-controller"></a>[`x-controller`](./controllers.md#the-contract-decides-what-is-customizable)                                  | The extension naming an operation's custom controller, and the only thing that makes a generated controller extendable.             |
 | <a id="x-model"></a>[`x-model`](./controllers.md#x-model-turns-on-the-model-layer)                                                     | The extension naming an operation's Eloquent model, which is what turns on route-model binding and the CRUD defaults.               |
 | <a id="marker-interface"></a>[A marker interface](./controllers.md#the-crud-semantic-is-an-empty-marker)                               | An empty interface a generated controller implements to state the CRUD semantic the build detected, carrying no methods on purpose. |
 | <a id="hasmodel-and-interactswithmodel"></a>[`HasModel` and `InteractsWithModel`](./controllers.md#an-interface-and-a-trait-beside-it) | The interface declaring the model contract, and the trait shipping the half of it that can be written once for everyone.            |

@@ -138,7 +138,7 @@ the code, and a gap in it is loud.
 - [x] **[The two-class seam](../guide/glossary.md#two-class-seam).** One controller per operation carrying one
       `routeAction`, over the `SpecController` base with its `middleware()` method, asserted on the classes a real build
       produces rather than on the text that emitted them. And
-      [`x-controller`](../guide/controllers.md#the-spec-decides-what-is-customizable) itself: read into
+      [`x-controller`](../guide/controllers.md#the-contract-decides-what-is-customizable) itself: read into
       `Contract\Operation` and refused there when it is not a name PHP could carry, naming the generated parent and
       dropping its `final`, with the route pointing at the child once that class has a file the autoloader can find and
       at the parent until then. Two values reducing to one generated parent is a build error naming both, and so is one
@@ -163,7 +163,7 @@ the code, and a gap in it is loud.
       them, in `routes.php`, the only generated file that references other generated code today.
 - **Rename and orphan detection: dropped, not pending.** It was designed, built against the source map above, and
   removed before it shipped, so this is a decision recorded rather than work waiting. The premise expired when
-  [`x-controller`](../guide/controllers.md#the-spec-decides-what-is-customizable) became the only source of an
+  [`x-controller`](../guide/controllers.md#the-contract-decides-what-is-customizable) became the only source of an
   extendable name: every other generated class is `final`, so the only broken import the comparison could have predicted
   follows an edit its own author just made. What it would still have caught, a custom controller left extending nothing
   after its operation left the contract, is that author's call to make, and reading the previous build's output could
@@ -302,7 +302,7 @@ the code, and a gap in it is loud.
       rather than a side effect. The root `security` block stays [Open](../guide/openapi-support.md#the-support-matrix)
       and is named in one line rather than claimed to be understood.
 
-## Phase 2: The generated pipeline, mocks and the driver features
+## Phase 2: the generated pipeline
 
 _Goal: prove the thesis. For an ordinary CRUD endpoint, the route, the form request, the controller and the DTO are all
 derived from the contract, and the only thing a developer writes is the model and the business logic that model

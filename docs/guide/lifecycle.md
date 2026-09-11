@@ -185,9 +185,9 @@ wrong, so it has to be a written table rather than a judgement call:
 | Widening an enum           | Helps senders. Not breaking.                          | **Breaking.** A consumer must handle a value it has never seen. |
 | Narrowing an enum          | **Breaking.** A value that was accepted no longer is. | Not breaking.                                                   |
 
-That table is itself public API under [rule 4](./openapi-support.md#the-four-rules), since a change to what counts as
-breaking changes whose build fails, and its exhaustive form is large enough to deserve its own phase rather than being
-smuggled into the first release.
+That table is itself public API under [rule 4](./openapi-support.md#the-four-rules): a change to what counts as breaking
+changes whose build fails. Its exhaustive form is large enough to deserve its own phase rather than being smuggled into
+the first release.
 
 ### `info.version` is the escape hatch
 

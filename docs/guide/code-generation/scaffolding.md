@@ -40,9 +40,9 @@ plus what the contract answers for an operation nobody has got to yet.
 **Shipped, in three forms.** `spec:make showUser` scaffolds one operation's custom controller, named by its
 `operationId`, or by its method and path for an operation that has none: `spec:make "delete /legacy"`. `--tag=Users` and
 `--all` are loops over that, and both list the files they would create and ask before creating any. What it writes is
-the class [`x-controller`](../controllers.md#the-spec-decides-what-is-customizable) names, extending that operation's
-generated parent, in [the file PSR-4 says it belongs in](#where-your-classes-go), and then it runs the build, because
-[the `extends` has nothing to reach until it does](../controllers.md#specmake-is-the-only-way-in).
+the class [`x-controller`](../controllers.md#the-contract-decides-what-is-customizable) names, extending that
+operation's generated parent, in [the file PSR-4 says it belongs in](#where-your-classes-go), and then it runs the
+build, because [the `extends` has nothing to reach until it does](../controllers.md#specmake-is-the-only-way-in).
 
 Three refusals are worth naming, because each of them protects something this subject promised elsewhere:
 

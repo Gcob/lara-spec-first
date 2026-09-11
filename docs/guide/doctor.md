@@ -122,14 +122,25 @@ proceed past at all, an unset `spec.path` or an unusable setting, emits `{"error
 code `1`. The two are deliberately not merged: a report with every section empty would claim the document was read and
 found clean, which is the opposite of what happened. Branch on the presence of `summary`, not on the exit code.
 
+**The two sections this release does not check, from a real `--json` run:**
+
 ```json
 {
     "notes": {
-        "baseline": { "checked": false, "note": "…" },
-        "drift": { "checked": true, "note": "…" }
+        "Baseline": {
+            "checked": false,
+            "note": "not built yet — whether the previously committed specification can be read from git is not diagnosed by this release. See docs/project/roadmap.md."
+        },
+        "Drivers": {
+            "checked": false,
+            "note": "not built yet — driver names and their mappings are not diagnosed by this release. See docs/guide/drivers.md and docs/project/roadmap.md."
+        }
     }
 }
 ```
+
+**The keys are the section names as the report prints them**, title case and spaces included, so
+`notes["Document validity"]` is a real lookup and `notes.drift` is not.
 
 **`notes` says what a run did not cover**, keyed by section, each entry carrying `checked` and `note`. `checked: false`
 is a section that did not run, because its inputs were missing or this release does not implement it, and the text
