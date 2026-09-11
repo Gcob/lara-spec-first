@@ -231,6 +231,7 @@ grep -rl 'tags:.*versions' --include='*.md' .
 | `ci`              | Continuous integration and the build matrix                                        |
 | `code-generation` | Producing PHP from the specification, and the rules that keep it safe to re-run    |
 | `code-review`     | Review priorities and how findings are reported                                    |
+| `commands`        | The Artisan commands this package ships, and how they are invoked                  |
 | `compatibility`   | What the package honors of a standard, and the promise attached to it              |
 | `conventions`     | Commit, naming, and style conventions                                              |
 | `contributing`    | How to contribute: setup, pull requests, conduct                                   |
@@ -844,6 +845,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`publishing.md`](../guide/code-generation/publishing.md)
     - [`response-dtos.md`](../guide/code-generation/response-dtos.md)
     - [`scaffolding.md`](../guide/code-generation/scaffolding.md)
+- [`commands.md`](../guide/commands.md)
 - [`controllers.md`](../guide/controllers.md)
 - [`doctor.md`](../guide/doctor.md)
 - [`drivers.md`](../guide/drivers.md)

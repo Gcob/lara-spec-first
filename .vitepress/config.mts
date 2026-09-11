@@ -44,6 +44,7 @@ const SECTIONS: Section[] = [
             'openapi-support',
             'code-generation',
             'controllers',
+            'commands',
             'doctor',
             'lifecycle',
             'security',

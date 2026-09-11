@@ -39,6 +39,7 @@ use Illuminate\Contracts\Config\Repository;
  * it writes anything.
  *
  * @see docs/guide/doctor.md
+ * @see docs/guide/commands.md — "spec:doctor reports and writes nothing"
  */
 final class DoctorCommand extends Command
 {

@@ -103,24 +103,17 @@ first thing that reads a spec**, see the [Roadmap](../project/roadmap.md).
 
 Centralizing every check in one command means that command needs a way to narrow what it runs.
 
-**What each flag does, and whether it exists yet:**
+**Every flag this command takes is in [the command reference](./commands.md), the two that ship and the `--check=`
+values that do not.** What belongs here is why the unbuilt one is shaped the way it is.
 
-| Flag              | Status  | Purpose                                                                                |
-| ----------------- | ------- | -------------------------------------------------------------------------------------- |
-| `--spec`          | Shipped | Read this specification instead of the configured one.                                 |
-| `--json`          | Shipped | Machine-readable findings, for CI annotation and for tooling that consumes the report. |
-| `--check=syntax`  | Planned | Document validity only: is this valid OpenAPI.                                         |
-| `--check=honored` | Planned | Support findings only: what this package will and will not honor.                      |
+`--check=syntax` and `--check=honored` do not partition the [sections below](#what-it-checks), since drift, installation
+and the baseline check fall under neither, and inventing a value per section would turn a filter into a second command.
+**Open:** whether `--check` names sections directly rather than naming two categories.
 
-Those two values do not partition the [sections below](#what-it-checks), since drift, installation and the baseline
-check fall under neither, and inventing a value per section would turn a filter into a second command. **Open:** whether
-`--check` names sections directly rather than naming two categories.
-
-**`--json` has two shapes, and a consumer needs both.** A run that produced a report emits the full object: `spec`,
-`specFileFound`, `version`, `configuration`, `routes`, `findings`, `notes`, `summary`. A refusal the command could not
-proceed past at all, an unset `spec.path` or an unusable setting, emits `{"error": "…"}` and nothing else, with exit
-code `1`. The two are deliberately not merged: a report with every section empty would claim the document was read and
-found clean, which is the opposite of what happened. Branch on the presence of `summary`, not on the exit code.
+**A report's own keys are `spec`, `specFileFound`, `version`, `configuration`, `routes`, `findings`, `notes` and
+`summary`.** That a refusal emits a different shape entirely, and which key to branch on, is
+[in the reference](./commands.md#specdoctor-reports-and-writes-nothing). The two are deliberately not merged: a report
+with every section empty would claim the document was read and found clean, which is the opposite of what happened.
 
 **The two sections this release does not check, from a real `--json` run:**
 
@@ -245,13 +238,13 @@ Security and Lifecycle were both on it one release ago and are not now.
 
 ## Running it in CI
 
-Two things a pipeline needs told, and neither is obvious from the exit code alone.
+**What each exit code means is [in the command reference](./commands.md#exit-codes-differ-between-commands).** What
+follows is the part a reference cannot carry: which rules produce a non-zero code, and what to do about it.
 
-**`git` has to be on the `PATH` for the installation check to run.** The vendored-directory check asks
-`git check-ignore` rather than reimplementing `.gitignore` resolution, see [stack.md](../project/stack.md), and without
-a `git` executable it reports "cannot be determined", which is silence rather than a pass. A slim CI image that installs
-PHP and not git gets a report one check short. The report says so: the Installation section prints what it could not
-determine, and `--json`'s `notes` carries the same answer.
+The `git` requirement is there too, and the reason is here: the vendored-directory check asks `git check-ignore` rather
+than reimplementing `.gitignore` resolution, see [stack.md](../project/stack.md). A slim CI image that installs PHP and
+not git gets a report one check short, and the Installation section prints what it could not determine rather than
+passing quietly.
 
 **Two rules make a previously green contract go non-zero, and both are permanent by design.** They are the reason to
 read this section before wiring the command into a pipeline that already passes:
@@ -287,9 +280,9 @@ write is a recipe that fails on `2` without having decided to, which is the reas
   PHP rather than a specification, "at boot" now means "baked into what the build emitted", which narrows the question
   rather than answering it.
 
-When a command reference document exists, the usage details move there and this section keeps only the reasoning. It
-lives here for now because the doctor is what makes the [support levels](./openapi-support.md#support-levels) mean
-anything.
+The usage details now live in [the command reference](./commands.md), and this page keeps the reasoning. What stays here
+rather than moving is everything that makes the [support levels](./openapi-support.md#support-levels) mean anything:
+which findings gate, who can fix each one, and what a clean run does and does not promise.
 
 ## Acknowledged limits: the consumer's opt-out
 

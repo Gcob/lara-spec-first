@@ -430,8 +430,11 @@ every decision is already unchangeable.
       loud it is unstable is allowed to show the shape it is heading toward, and showing it is most of why somebody
       reads a `0.x` at all. What was never allowed is letting a key look live when it is not, and a phase label is what
       separates the two. Removal moves to [the `1.0` gate](#before-10-freeze-what-a-major-would-cost).
-- [ ] **A command reference document.** [The doctor](../guide/doctor.md) already defers its usage details to one, and it
-      is one of the three commands Phase 1 ships, beside `spec:build` and `spec:make`.
+- [x] **A command reference document.** [`commands.md`](../guide/commands.md) owns what each of the three Phase 1
+      commands writes, every argument and flag, how all three resolve the specification, what each exit code means, and
+      what changes when no terminal is attached. [The doctor](../guide/doctor.md) deferred its usage details to it and
+      now keeps only the reasoning, which is the split the rest of the set follows: the reference says how, the guide
+      beside it says why.
 - [ ] **Publish to Packagist** as `gcob/lara-spec-first` and cut `0.1.0`. The `Planned` distribution row in
       [`stack.md`](./stack.md).
 
