@@ -90,10 +90,50 @@ version is in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Roadmap
 
-We are building in public! Check out our [Roadmap](./docs/project/roadmap.md) to see where the project is heading, and
-[CONTRIBUTING.md](./CONTRIBUTING.md) for how to get involved.
+We are building in public. The [project board](https://github.com/users/Gcob/projects/1) is the source of truth for what
+is in flight, what is done, and in which order. This section is the shape of the whole thing, and
+[CONTRIBUTING.md](./CONTRIBUTING.md) is how to get involved.
 
-The project is in early bootstrap (Phase 1)
+**Where we are:** Phase 1 shipped as `0.1.0`. Phase 2 is in progress.
+
+### Phase 1: the foundation
+
+One operation in a specification becomes one route that answers, and everything the package will not honor is said out
+loud before anything runs. Nothing at runtime ever opens a specification.
+
+Shipped in `0.1.0`, and what each command does is in [`docs/guide/commands.md`](./docs/guide/commands.md).
+
+### Phase 2: the generated pipeline
+
+For an ordinary CRUD endpoint, the route, the form request, the controller and the DTO are all derived from the
+contract, and the only thing you write is the model and the business logic it carries. Not less typing for its own sake:
+less surface where the code and the contract can quietly disagree.
+
+It is `spec:build` and `spec:doctor` doing more rather than new commands, with two exceptions that say so (`spec:watch`
+and the mock server). It carries the generated request validation, the response DTOs and their factories, `x-model` and
+the CRUD defaults, `security` becoming a real authorization check, the Faker mocks, pagination and rate limiting, and
+the sanitized public copy of the specification.
+
+**Four configuration blocks are inert until this phase lands**, and `config/lara-spec-first.php` says which beside each
+one. Changing one has no effect today.
+
+### Phase 3: legacy bridge and ecosystem
+
+Turn an existing Code-First Laravel app into a Spec-First one. Use existing Code-First tooling once, as an on-ramp:
+extract a spec from the code you already run, then flip the direction of truth so the spec leads from there. A one-way
+door, not a permanent round trip.
+
+### Before 1.0: freeze what a major would cost
+
+Everything you write code against stops being ours to change: the config keys, the command signatures and flags, the
+controller interface and trait names, the exception class names, the driver registration API, and the generated tree's
+own layout. A `0.x` makes no compatibility promise, which is the only window in which a name can be corrected for free.
+
+### Breaking-change enforcement
+
+Deliberately outside any phase: a rule that fails somebody's build has to be right before it ships. Until it lands,
+`x-lifecycle: stable` is a declaration the doctor reports on, not a rule that fails a build, and
+[`lifecycle.md`](./docs/guide/lifecycle.md) says so in those words.
 
 ---
 
