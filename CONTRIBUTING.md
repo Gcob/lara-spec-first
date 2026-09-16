@@ -267,6 +267,14 @@ everything after that is reconstruction.
 - **The number is what makes a marker expire.** A bare `TODO` is refused, and a marker naming a closed card is drift.
   That single rule is the whole difference between this and the `TODO` comments every codebase learns to ignore.
   Enforcement lands with [#70](https://github.com/Gcob/lara-spec-first/issues/70); until then the rule is ours to keep.
+- **The audience decides what else the marker says**, the same rule
+  [`documentation.md`](./docs/contributing/documentation.md) applies to a document's voice. A marker in `src/`, `tests/`
+  or `docs/` is read by somebody working on this package, so the card number is the whole of it. A marker in something
+  this package **writes into a consumer's project** is read by somebody who has never seen our board, and a bare `#50`
+  tells them nothing: it names what they can act on first and the card second, as `TODO (phase 2, #50)`. That is not one
+  file making an exception. It is already true of `config/lara-spec-first.php`, which `vendor:publish` copies into their
+  `config/`, and of the generated tree, whose controllers already tell a reader which command implements the operation.
+  Phase 2 adds the published copy of the specification to the same list.
 - **A marker earns its place when the code is where you would need to know.** If reading the card is enough, the marker
   is noise.
 - **It is a pointer to tracked work, not a comment about what the code does.** The expectation that comment density
