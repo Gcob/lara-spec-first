@@ -258,37 +258,23 @@ A few expectations:
 
 ### Deferred work leaves a marker
 
-Keeping a pull request focused means noticing work you are not going to do. Write it down where it will be needed
-instead of doing it or forgetting it: the cheapest moment to record a conclusion is the moment you reached it, and
-everything after that is reconstruction.
+Work you notice and are not going to do gets written down where it will be needed, rather than done or forgotten.
 
-- **Leave a `TODO (#N)` at the line where a future reader would need to know**, naming the card that owns the work. The
-  same applies to a document, where an unanswered design question is written `**Open (#N):**`.
-- **The number is what makes a marker expire.** A bare `TODO` is refused, and a marker naming a closed card is drift.
-  That single rule is the whole difference between this and the `TODO` comments every codebase learns to ignore.
-  Enforcement lands with [#70](https://github.com/Gcob/lara-spec-first/issues/70); until then the rule is ours to keep.
-- **The audience decides what else the marker says**, the same rule
-  [`documentation.md`](./docs/contributing/documentation.md) applies to a document's voice. A marker in `src/`, `tests/`
-  or `docs/` is read by somebody working on this package, so the card number is the whole of it. A marker in something
-  this package **writes into a consumer's project** is read by somebody who has never seen our board, and a bare `#50`
-  tells them nothing: it names what they can act on first and the card second, as `TODO (phase 2, #50)`. That is not one
-  file making an exception. It is already true of `config/lara-spec-first.php`, which `vendor:publish` copies into their
-  `config/`, and of the generated tree, whose controllers already tell a reader which command implements the operation.
-  Phase 2 adds the published copy of the specification to the same list.
-- **A marker earns its place when the code is where you would need to know.** If reading the card is enough, the marker
-  is noise.
-- **It is a pointer to tracked work, not a comment about what the code does.** The expectation that comment density
-  matches the surrounding code does not cover it, and review must not remove it on those grounds.
-- **A marker and its card die in the same commit.** Work is not done when somebody made up their mind, it is done when
-  the marker is gone. This is the rule [`stack.md`](./docs/project/stack.md) already applies to its own Status column,
-  which moves in the change that installs the choice.
+- **Leave it at the line where a future reader needs it:** `TODO (#N)` in code, `**Open (#N):**` in a document.
+- **The number is what makes it expire.** A bare `TODO` is refused, and a marker naming a closed card is drift.
+  Enforcement lands with [#70](https://github.com/Gcob/lara-spec-first/issues/70).
+- **What this package writes into a consumer's project names their half first**, as `TODO (phase 2, #50)`.
+  `config/lara-spec-first.php`, the generated tree and Phase 2's published specification are read by people who have
+  never seen the board.
+- **Only where the code is where you would need to know.** If reading the card is enough, the marker is noise.
+- **It is a pointer to tracked work, not a comment about what the code does.** Review must not remove it as one.
+- **A marker and its card die in the same commit.**
 
 ## Commits and pull requests
 
 ### Branch names
 
-A branch name reads in three parts, `{type}/{card}/{context}`, so that it says what kind of work it is, which card owns
-it, and what it is about, in that order.
+`{type}/{card}/{context}`, the card being its number, written bare.
 
 ```
 docs/28/point-agents-at-the-board
@@ -306,14 +292,10 @@ chore/70/deferred-work-marker-check
 | `refactor/` | Refactoring with no change in behavior                      |
 | `docs/`     | Documentation only                                          |
 
-- **The middle segment is the card number**, written bare, with no `#`. It is what links the branch, the pull request
-  and the board without anybody typing the link.
-- **The last segment is English, kebab-case, short and clear.** Be brief, not cryptic.
-- **A `Decision` card branches as `docs/`.** The board has a `Decision` kind and this list has no matching type, on
-  purpose: what a decision delivers is the document that stops saying `Open`, so it is a documentation change.
-- **These are not the Conventional Commit types, and the two are easy to confuse** because this file uses both. A branch
-  says `feature/` while its commits say `feat:`; a branch says `bugfix/` or `hotfix/` while its commits say `fix:`. Same
-  intent, two vocabularies.
+- **The context is English, kebab-case, brief.**
+- **A `Decision` card branches as `docs/`**, since what it delivers is the document that stops saying `Open`.
+- **Not the Conventional Commit types:** a `feature/` branch carries `feat:` commits, a `bugfix/` or `hotfix/` branch
+  carries `fix:`.
 
 ### Commit messages
 
