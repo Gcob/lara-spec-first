@@ -127,6 +127,11 @@ Two traps worth knowing before you go in:
   PlantUML source and never to the page around it, so an image describing an older design stays green. Nothing but
   review catches that one, see
   [the diagram rules](./docs/contributing/documentation.md#a-diagram-is-built-not-embedded).
+- **The code may already name what you are about to work out.** A `TODO (#N)` in the code, or an `**Open (#N):**` in a
+  document, marks work that is known, tracked and deliberately deferred, left at the line where it matters. Read it
+  before deriving the same conclusion from four documents, and leave one yourself when you notice work belonging to
+  another card. The rule and the limit that keeps it from becoming noise are in
+  [`CONTRIBUTING.md`](./CONTRIBUTING.md#deferred-work-leaves-a-marker).
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)**, see `CONTRIBUTING.md`.
 - **No borrowed enthusiasm, and no preamble.** An adjective that asks the reader to be impressed, `robust`, `seamless`
   or `powerful`, is cut and replaced by the fact that produced it, and a sentence that addresses the reader before it

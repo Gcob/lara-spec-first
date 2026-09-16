@@ -256,6 +256,25 @@ A few expectations:
 - **Keep pull requests focused.** One concern per PR. Unrelated cleanups, however welcome in principle, make a change
   harder to review and to revert.
 
+### Deferred work leaves a marker
+
+Keeping a pull request focused means noticing work you are not going to do. Write it down where it will be needed
+instead of doing it or forgetting it: the cheapest moment to record a conclusion is the moment you reached it, and
+everything after that is reconstruction.
+
+- **Leave a `TODO (#N)` at the line where a future reader would need to know**, naming the card that owns the work. The
+  same applies to a document, where an unanswered design question is written `**Open (#N):**`.
+- **The number is what makes a marker expire.** A bare `TODO` is refused, and a marker naming a closed card is drift.
+  That single rule is the whole difference between this and the `TODO` comments every codebase learns to ignore.
+  Enforcement lands with [#70](https://github.com/Gcob/lara-spec-first/issues/70); until then the rule is ours to keep.
+- **A marker earns its place when the code is where you would need to know.** If reading the card is enough, the marker
+  is noise.
+- **It is a pointer to tracked work, not a comment about what the code does.** The expectation that comment density
+  matches the surrounding code does not cover it, and review must not remove it on those grounds.
+- **A marker and its card die in the same commit.** Work is not done when somebody made up their mind, it is done when
+  the marker is gone. This is the rule [`stack.md`](./docs/project/stack.md) already applies to its own Status column,
+  which moves in the change that installs the choice.
+
 ## Commits and pull requests
 
 We use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages:
