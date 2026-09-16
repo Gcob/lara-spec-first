@@ -132,6 +132,10 @@ Two traps worth knowing before you go in:
   before deriving the same conclusion from four documents, and leave one yourself when you notice work belonging to
   another card. The rule and the limit that keeps it from becoming noise are in
   [`CONTRIBUTING.md`](./CONTRIBUTING.md#deferred-work-leaves-a-marker).
+- **Branch names read `{type}/{card}/{context}`**, for example `docs/28/point-agents-at-the-board`. The middle segment
+  is the card number, which is what links the branch, the pull request and the board without anybody typing the link.
+  The types are in [`CONTRIBUTING.md`](./CONTRIBUTING.md#branch-names), and they are deliberately not the Conventional
+  Commit types: a `feature/` branch carries `feat:` commits.
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)**, see `CONTRIBUTING.md`.
 - **No borrowed enthusiasm, and no preamble.** An adjective that asks the reader to be impressed, `robust`, `seamless`
   or `powerful`, is cut and replaced by the fact that produced it, and a sentence that addresses the reader before it

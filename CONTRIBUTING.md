@@ -285,6 +285,38 @@ everything after that is reconstruction.
 
 ## Commits and pull requests
 
+### Branch names
+
+A branch name reads in three parts, `{type}/{card}/{context}`, so that it says what kind of work it is, which card owns
+it, and what it is about, in that order.
+
+```
+docs/28/point-agents-at-the-board
+feature/34/contract-schema
+chore/70/deferred-work-marker-check
+```
+
+| Type        | For                                                         |
+| ----------- | ----------------------------------------------------------- |
+| `feature/`  | New functionality                                           |
+| `bugfix/`   | A bug fix that is not urgent                                |
+| `hotfix/`   | An urgent production fix                                    |
+| `release/`  | Preparing a release: QA, version bump                       |
+| `chore/`    | Maintenance, dependencies, configuration, no business logic |
+| `refactor/` | Refactoring with no change in behavior                      |
+| `docs/`     | Documentation only                                          |
+
+- **The middle segment is the card number**, written bare, with no `#`. It is what links the branch, the pull request
+  and the board without anybody typing the link.
+- **The last segment is English, kebab-case, short and clear.** Be brief, not cryptic.
+- **A `Decision` card branches as `docs/`.** The board has a `Decision` kind and this list has no matching type, on
+  purpose: what a decision delivers is the document that stops saying `Open`, so it is a documentation change.
+- **These are not the Conventional Commit types, and the two are easy to confuse** because this file uses both. A branch
+  says `feature/` while its commits say `feat:`; a branch says `bugfix/` or `hotfix/` while its commits say `fix:`. Same
+  intent, two vocabularies.
+
+### Commit messages
+
 We use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages:
 
 ```
@@ -300,7 +332,7 @@ breaking release.
 
 For your pull request:
 
-1. Fork the repo and branch from `main` (`feat/my-feature`).
+1. Fork the repo and branch from `main`, named as [above](#branch-names).
 2. Make your change, with tests.
 3. Open the PR against `main`, describing **what** changed and **why**. Link the related issue.
 4. A maintainer will review. Expect questions. They are about the code, never about you.
