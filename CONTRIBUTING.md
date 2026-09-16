@@ -330,6 +330,19 @@ chore: bump testbench to 10.x
 The prefix is not decoration: it drives changelog generation and signals whether a change is a patch, a minor, or a
 breaking release.
 
+### The commit message names its card
+
+A `prepare-commit-msg` hook reads the card from the branch name and adds a `Refs: #N` trailer. Opt-in, once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+A trailer rather than a prefix, since Conventional Commits owns the start of the subject. `Refs:` rather than `Closes:`,
+since closing is the pull request's call. Nothing at all when the branch carries no card.
+
+It is a git hook. Read it before enabling it, as the [`justfile`](./justfile) header says of every hook here.
+
 For your pull request:
 
 1. Fork the repo and branch from `main`, named as [above](#branch-names).

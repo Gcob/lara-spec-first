@@ -1,0 +1,40 @@
+#!/bin/sh
+# Name the card every commit belongs to, without anybody typing it.
+#
+# The branch already carries it: `{type}/{card}/{context}`, see
+# CONTRIBUTING.md — "Branch names". This reads the middle segment and adds a
+# `Refs: #N` trailer.
+#
+# A trailer rather than a prefix, on purpose. This repository uses Conventional
+# Commits, where the subject has to start with the type, and that prefix drives
+# changelog generation. `[#34] feat: …` would break both.
+#
+# `Refs:` rather than `Closes:`, also on purpose: a card usually spans several
+# commits, and closing it is a decision the pull request makes, not every commit.
+#
+# Enable it once per clone:  git config core.hooksPath .githooks
+
+MSG_FILE=$1
+COMMIT_SOURCE=$2
+
+# Leave generated messages alone.
+case "$COMMIT_SOURCE" in
+merge | squash) exit 0 ;;
+esac
+
+# Detached HEAD has no branch to read.
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0
+
+# The card is the middle segment and only there. A number in the context, as in
+# `feature/34/openapi-3-1-support`, is not a card.
+CARD=$(printf '%s' "$BRANCH" | sed -n 's|^[a-z][a-z]*/\([0-9][0-9]*\)/.*|\1|p')
+
+# No card in the branch name, and that is a legitimate case: a commit straight
+# on `main`, or a branch that predates the convention. Say nothing rather than
+# stamping every such commit with a marker nobody asked for.
+[ -n "$CARD" ] || exit 0
+
+# `--if-exists doNothing` keeps this idempotent across amend and rebase, and
+# leaves a Refs the author wrote by hand exactly as they wrote it.
+git interpret-trailers --in-place --if-exists doNothing \
+    --trailer "Refs: #$CARD" "$MSG_FILE"

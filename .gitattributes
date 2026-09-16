@@ -31,6 +31,7 @@
 # vendor/ directory only receives what the package needs at runtime. None of it
 # affects the git repository itself.
 /.github            export-ignore
+/.githooks          export-ignore
 /.vitepress         export-ignore
 /docs               export-ignore
 /package.json       export-ignore
