@@ -23,16 +23,17 @@ Guidance for AI coding agents working on `lara-spec-first`.
 This package is **Spec-First**: the OpenAPI contract is the source of truth, and PHP follows from it. When a change
 would make the code authoritative over the spec, it is going the wrong way.
 
-The project is in **early bootstrap** (Phase 1 of the [Roadmap](./docs/project/roadmap.md)). It reads a specification
-file, refuses what it cannot serve, and generates the PHP that serves it: `spec:build` emits the routes and one
-controller per operation, and the provider loads them at boot without opening a specification. `x-controller` is read,
-so an operation that declares one gets a parent it may extend and a route that points at the child once that class
+Phase 1 shipped as `0.1.0`, and [Phase 2](./README.md#phase-2-the-generated-pipeline) is in flight. It reads a
+specification file, refuses what it cannot serve, and generates the PHP that serves it: `spec:build` emits the routes
+and one controller per operation, and the provider loads them at boot without opening a specification. `x-controller` is
+read, so an operation that declares one gets a parent it may extend and a route that points at the child once that class
 exists; an operation that declares none stays `final`. `spec:make` scaffolds that child on request, for one operation, a
 `--tag` or `--all`, offers to write `x-controller` into the specification when it is missing, and builds afterwards; the
 build itself never scaffolds, it names the invocation. `spec:doctor` reports what the package will honor, what it will
 not, and the routing table that results, read-only always and asserted to be. There is no response DTO and no generated
-validation. The roadmap's [state section](./docs/project/roadmap.md#where-the-code-is-today) is the authoritative list,
-checked boxes meaning behavior with tests behind it.
+validation. The [project board](https://github.com/users/Gcob/projects/1) is the authoritative list of what exists and
+what is in flight, and `gh issue list --repo Gcob/lara-spec-first` reads it from a session. An open card is work that is
+not done, which a checked box in a file could only claim as accurately as somebody remembered to edit it.
 
 Verify your work with `just check` (or `composer check`): Pint, Larastan, then Pest.
 
@@ -153,13 +154,13 @@ A change that alters behavior and ships without tests is not complete, and "too 
 reason: small changes are precisely the ones that regress unnoticed. In review, check the diff against the test suite
 the same way you check it against the docs: behavior with no test covering it is a finding.
 
-| Level       | Scope                                                                | Notes                                                                                                                                                                                                   |
-| ----------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit        | A single class in isolation: parsing, name resolution, path mapping. | Fast, no framework boot. Should be the bulk of the suite.                                                                                                                                               |
-| Feature     | The package running inside a real Laravel application.               | Booted through the package test harness. Covers routing, controllers, mocks.                                                                                                                            |
-| Contract    | Live responses validated against the OpenAPI spec.                   | The signature test type of a Spec-First package. Guards the core promise.                                                                                                                               |
-| Regression  | A test reproducing a reported bug.                                   | Must fail before the fix and pass after it.                                                                                                                                                             |
-| Conformance | The reading engine against a partitioned input space.                | `tests/Conformance/`. Organized by equivalence class rather than by example, so coverage can be argued. Every parser defect found earns a permanent case, see the [Roadmap](./docs/project/roadmap.md). |
+| Level       | Scope                                                                | Notes                                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit        | A single class in isolation: parsing, name resolution, path mapping. | Fast, no framework boot. Should be the bulk of the suite.                                                                                                 |
+| Feature     | The package running inside a real Laravel application.               | Booted through the package test harness. Covers routing, controllers, mocks.                                                                              |
+| Contract    | Live responses validated against the OpenAPI spec.                   | The signature test type of a Spec-First package. Guards the core promise.                                                                                 |
+| Regression  | A test reproducing a reported bug.                                   | Must fail before the fix and pass after it.                                                                                                               |
+| Conformance | The reading engine against a partitioned input space.                | `tests/Conformance/`. Organized by equivalence class rather than by example, so coverage can be argued. Every parser defect found earns a permanent case. |
 
 Expectations:
 
