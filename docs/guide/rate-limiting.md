@@ -35,8 +35,8 @@ Neither convention is something this package can discover. There is no `operatio
 thing everywhere, and guessing wrong here is worse than declaring nothing, per
 [rule 2](./openapi-support.md#the-four-rules).
 
-> **Not implemented yet.** [Phase 2](../project/roadmap.md#the-driver-features). One thing has to be settled before the
-> adapter is more than an interface, and the roadmap says so too: whether what reads it is
+> **Not implemented yet.** [Phase 2](../../README.md#phase-2-the-generated-pipeline). One thing has to be settled before
+> the adapter is more than an interface, and the roadmap says so too: whether what reads it is
 > [build-time enforcement or a runtime relay](#open-what-the-answer-powers). Items marked `Open` are undecided.
 
 ## An adapter behind one interface

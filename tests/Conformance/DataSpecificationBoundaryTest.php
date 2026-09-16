@@ -11,7 +11,7 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
 // either direction is wrong: reading data as specification refuses a valid
 // contract, and reading specification as data lets a real cycle through on
 // exactly the shape the parser cannot survive. See
-// docs/guide/openapi-support.md#reading-a-document and docs/project/roadmap.md.
+// docs/guide/openapi-support.md#reading-a-document.
 //
 // ReferenceCycleDetectorTest.php pins this same boundary against the guard in
 // isolation, key by key. What belongs here is proof that the boundary holds

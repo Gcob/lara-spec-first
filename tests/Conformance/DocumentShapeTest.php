@@ -12,8 +12,7 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 // 3.0 requires `paths`; 3.1 does not, so a document naming only `webhooks` or
 // only `components` is a legitimate zero-route contract, and a document naming
 // none of the three is not a document at all. Each cell below is a different
-// point on that line. See docs/project/roadmap.md and
-// docs/guide/openapi-support.md#reading-a-document.
+// point on that line. See docs/guide/openapi-support.md#reading-a-document.
 
 // The earliest a document can fail: `DocumentDecoder::decode()` rejects a
 // root-level list before a version is even looked for, let alone dispatched on.

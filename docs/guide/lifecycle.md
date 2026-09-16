@@ -28,7 +28,7 @@ tags: [openapi, compatibility, versions, decisions, scope]
 > **Not built yet:** [breaking-change enforcement](#public-operations-default-to-beta), so `x-lifecycle: stable` is a
 > declaration the doctor reports on rather than a rule that fails a build, and the
 > [RFC 8594 headers](#generated-code-announces-the-sunset) the generated code will emit. Both are in the
-> [Roadmap](../project/roadmap.md). Items marked `Open` are undecided.
+> [Roadmap](../../README.md#roadmap). Items marked `Open` are undecided.
 
 ## What the three keys say
 

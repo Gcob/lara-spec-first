@@ -26,8 +26,8 @@ file owns the split that follows: the type the build owns entirely, and the clas
 teach.
 
 > **None of this is behaviour yet.** The build emits no DTO and no factory today, and no configuration key exists to
-> point the override scan anywhere. What is written here is the design [Phase 2](../../project/roadmap.md) will follow.
-> Items marked `Open` are undecided.
+> point the override scan anywhere. What is written here is the design [Phase 2](../../../README.md#roadmap) will
+> follow. Items marked `Open` are undecided.
 
 ## The shape is ours, the behavior is yours
 
@@ -121,8 +121,8 @@ the cost of binding generated code to another package's API and release cycle.
 Three things a reader could reasonably expect here and will not find, each because it belongs to something else:
 
 - **The request side.** One `FormRequest` per operation, derived from the request body and parameter schemas, is
-  [its own Phase 2 item](../../project/roadmap.md) and lands before this one, since it is what supplies `$validated` to
-  everything downstream. Nothing on this page describes input.
+  [its own Phase 2 item](../../../README.md#roadmap) and lands before this one, since it is what supplies `$validated`
+  to everything downstream. Nothing on this page describes input.
 - **Checking a response against its schema at run time.** A DTO is generated from the schema, so the shape is guaranteed
   by the build rather than verified per request:
   [the runtime never opens a specification](./index.md#the-runtime-never-sees-the-spec), and a response that has drifted

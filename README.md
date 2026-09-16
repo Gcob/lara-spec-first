@@ -22,7 +22,7 @@ search and a sidebar. It is the same content this repository carries, so each li
 - **Contract-Driven Routing:** Automatically register routes based on your OpenAPI specification.
 - **Legacy Friendly:** Transitional migration path (extend generated base controllers) to adopt Spec-First route by
   route without breaking existing apps. Already Code-First? Phase 3 will bootstrap your spec from the code you already
-  run. See the [Roadmap](./docs/project/roadmap.md).
+  run. See the [Roadmap](#roadmap).
 - **Instant Mocks:** Fallback to automatic Faker-powered responses if the concrete implementation isn't written yet.
 - **Built for AI-assisted coding, and we say it out loud:** a stated goal, not a side effect. Every generated file
   explains itself: where in the contract it came from, what the build worked out while emitting it, and an `@see` at the

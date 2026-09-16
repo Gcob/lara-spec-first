@@ -22,12 +22,11 @@ tags: [openapi, security, decisions, scope, laravel]
 > - Past the scope check, authorization is a Policy's job, and the specification has no vocabulary left for it.
 
 > **Not enforced yet, and reported in those words.** Enforcement is
-> [Phase 2](../project/roadmap.md#authorization-the-contract-can-express). What
-> [Phase 1](../project/roadmap.md#reading-reporting-refusing) owes an operation that declares `security` is shipped.
-> [`spec:doctor`](./doctor.md#what-it-checks) names every one of them, individually, on every run, and says the package
-> does not apply the requirement yet. A phase that registers routes must not let a documented promise be mistaken for a
-> kept one. A contract that declares `security` therefore exits non-zero until enforcement lands. Items marked `Open`
-> are undecided.
+> [Phase 2](../../README.md#phase-2-the-generated-pipeline). What [Phase 1](../../README.md#phase-1-the-foundation) owes
+> an operation that declares `security` is shipped. [`spec:doctor`](./doctor.md#what-it-checks) names every one of them,
+> individually, on every run, and says the package does not apply the requirement yet. A phase that registers routes
+> must not let a documented promise be mistaken for a kept one. A contract that declares `security` therefore exits
+> non-zero until enforcement lands. Items marked `Open` are undecided.
 
 ## What OpenAPI cannot say
 

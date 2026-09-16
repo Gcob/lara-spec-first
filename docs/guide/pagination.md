@@ -43,8 +43,8 @@ and the honest answer is to make the project state which convention it uses rath
 wrong for most readers. Both features are therefore [driver-based](./drivers.md), and that shared mechanism, structure
 in code with names in config and a project free to write its own, is what makes stating it cheap.
 
-> **Not implemented yet.** [Phase 2](../project/roadmap.md#the-driver-features), alongside the response DTOs it needs:
-> the envelope is a generated type like any other. Items marked `Open` are undecided.
+> **Not implemented yet.** [Phase 2](../../README.md#phase-2-the-generated-pipeline), alongside the response DTOs it
+> needs: the envelope is a generated type like any other. Items marked `Open` are undecided.
 
 ## An adapter behind one interface
 
@@ -246,7 +246,7 @@ Two details the generated code must take from the specification rather than inve
 ### Parameters must be declared
 
 **The package never accepts a query parameter the contract does not declare.** A tempting shortcut is for the build to
-inject `page` and `size` validation into the [generated `FormRequest`](../project/roadmap.md) whenever an operation is
+inject `page` and `size` validation into the [generated `FormRequest`](../../README.md#roadmap) whenever an operation is
 paginated. **It is rejected**, and the reason is the direction of truth rather than effort: parameters the specification
 does not mention would be invisible to anyone reading it, and the code would have become authoritative over what the API
 accepts.
@@ -284,5 +284,5 @@ Three things a reader looking at a paginated endpoint will want, and will not fi
 - The seam name for a collection that is **not** paginated. It has the same need as `getPaginator()` and a different
   shape, items rather than a page, so it is probably a second method, generated in its place, and that is one more
   public name to settle.
-- How this interacts with [the mock server and Faker responses](../project/roadmap.md): a mocked paginated endpoint has
-  to produce a coherent envelope, not a random one, or the mock contradicts the contract it was generated from.
+- How this interacts with [the mock server and Faker responses](../../README.md#roadmap): a mocked paginated endpoint
+  has to produce a coherent envelope, not a random one, or the mock contradicts the contract it was generated from.

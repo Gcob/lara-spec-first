@@ -26,7 +26,7 @@ use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
  * its own rather than a line among the Support findings.
  *
  * Deleted in the same change that makes `security` an authorization check —
- * see docs/project/roadmap.md, "Authorization the contract can express".
+ * see #44.
  *
  * @see docs/guide/doctor.md — "What it checks"
  * @see docs/guide/security.md

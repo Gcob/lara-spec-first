@@ -34,8 +34,8 @@ assumes about your application, and where a developer's own code attaches to it.
 > whole:** `x-controller` is read, a declared controller names the generated parent and drops its `final`, the route
 > points at the child once that class exists, and two values reducing to one parent is a build error naming both.
 > **`spec:make` ships whole**: its three forms, the insertion prompt below with the edit verified on a copy, and the
-> build it runs afterwards. Nothing in [Phase 1](../project/roadmap.md#phase-1-the-foundation) is left in this document.
-> [Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline) carries everything model-shaped: `x-model`, the CRUD
+> build it runs afterwards. Nothing in [Phase 1](../../README.md#phase-1-the-foundation) is left in this document.
+> [Phase 2](../../README.md#phase-2-the-generated-pipeline) carries everything model-shaped: `x-model`, the CRUD
 > defaults, `HasModel` and its trait, the marker interfaces, the DTO factory calls, the pagination seams and the
 > mass-assignment check, because a generated CRUD body has nothing to return until the DTOs exist. Items marked `Open`
 > are undecided.
@@ -269,9 +269,9 @@ guessing.
 
 **The cost also arrives at the wrong moment.** Published stubs are public API surface under
 [rule 4](./openapi-support.md#the-four-rules), and the body is exactly what
-[Phase 2](../project/roadmap.md#phase-2-the-generated-pipeline) changes: `x-model`, the CRUD defaults and the DTO
-factory calls all land inside `routeAction`. Publishing a stub contract now means choosing between breaking every
-published stub then, or freezing a shape this document already calls provisional.
+[Phase 2](../../README.md#phase-2-the-generated-pipeline) changes: `x-model`, the CRUD defaults and the DTO factory
+calls all land inside `routeAction`. Publishing a stub contract now means choosing between breaking every published stub
+then, or freezing a shape this document already calls provisional.
 
 **Revisit when that body settles.** If it earns a stub then, the shape to prefer is a stub for the frame with the
 load-bearing lines inserted rather than templated, the parent, the signature and the call that keeps the `501`, so that
@@ -436,9 +436,9 @@ match against. The build would have nothing to write. So the DTO class is still 
 constructing it becomes entirely the custom controller's job.
 
 **Which is not the same as the package doing nothing for you.** A no-`x-model` operation still gets its route, its
-[`FormRequest`](../project/roadmap.md) derived from the request body schema, and its DTO class derived from the response
-schema, everything the specification can state on its own. What it does not get is a guess about persistence. **"No
-`x-model`" does not mean the package will not help you; it means the package will not guess at your persistence.**
+[`FormRequest`](../../README.md#roadmap) derived from the request body schema, and its DTO class derived from the
+response schema, everything the specification can state on its own. What it does not get is a guess about persistence.
+**"No `x-model`" does not mean the package will not help you; it means the package will not guess at your persistence.**
 
 That framing is the whole shape of this package, and it is worth stating once plainly: `x-model`, and
 [rate limiting](./rate-limiting.md) and [pagination](./pagination.md) beside it, are **extras that remove redundancy**.
@@ -571,7 +571,7 @@ departs from these semantics is free to declare `x-controller` and write whateve
 the escape hatch, working exactly as intended.
 
 **`PUT` and `PATCH` share `update()`.** The difference is what the request must carry, not what the controller does, so
-it lives in the [generated `FormRequest`](../project/roadmap.md): `PUT` requires the full body, `PATCH` makes fields
+it lives in the [generated `FormRequest`](../../README.md#roadmap): `PUT` requires the full body, `PATCH` makes fields
 optional. One honest caveat, because it is a real semantic gap most APIs ignore: strict `PUT` replaces the resource, so
 an absent field should return to its default, and `$model->update($validated)` does not do that. A project that needs
 replacement semantics overrides `update()`.
@@ -658,8 +658,8 @@ anything more than plain mass assignment:
 | Update   | `$model->update($validated)`, `$model` bound as above |
 | Delete   | `$model->delete()`, `$model` bound as above           |
 
-`$validated` is what the [generated `FormRequest`](../project/roadmap.md) already produced from the operation's request
-body schema, and nothing new reads the specification a second time.
+`$validated` is what the [generated `FormRequest`](../../README.md#roadmap) already produced from the operation's
+request body schema, and nothing new reads the specification a second time.
 
 **This is where the doctor earns its keep.** Mass assignment silently drops whatever a model's `$fillable` (or
 `$guarded`) does not allow, and Eloquent does not raise for it. A request body schema declaring a field the model will
@@ -745,7 +745,7 @@ Two checks specific to this document, both of which the specification cannot see
 Four things a reader arrives at a controller wanting, and finds owned elsewhere:
 
 - **Nothing here validates a request.** `$validated` arrives already produced by one generated `FormRequest` per
-  operation, which is [Phase 2](../project/roadmap.md)'s to build and the roadmap's to sequence. This document assumes
+  operation, which is [Phase 2](../../README.md#roadmap)'s to build and the roadmap's to sequence. This document assumes
   the value and never derives it.
 - **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
   teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled

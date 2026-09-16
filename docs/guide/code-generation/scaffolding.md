@@ -30,8 +30,8 @@ Two commands produce something you are meant to edit, which is what separates th
 plus what the contract answers for an operation nobody has got to yet.
 
 > **`spec:make` is shipped in its three forms**, one operation, `--tag=` and `--all`, and so is the `501` an
-> unimplemented operation answers. `spec:watch` is [Phase 2](../../project/roadmap.md) and does not exist. Items marked
-> `Open` are undecided.
+> unimplemented operation answers. `spec:watch` is [Phase 2](../../../README.md#roadmap) and does not exist. Items
+> marked `Open` are undecided.
 
 ## Scaffolding is `spec:make`, not a build step
 
@@ -88,7 +88,7 @@ The two alternatives are worse, and for reasons this subject has already committ
   blaming the consumer's application for a state the package created on purpose.
 
 `501` is the status code HTTP already has for exactly this: the server recognizes the request and has not implemented
-it. It is honest to the client, it is greppable in logs, and it is the seam the [Faker mock](../../project/roadmap.md)
+it. It is honest to the client, it is greppable in logs, and it is the seam the [Faker mock](../../../README.md#roadmap)
 plugs into in Phase 2: same route, same handler position, a better answer in the body. Nothing about the Phase 1 shape
 has to change for the mock to arrive.
 
@@ -178,7 +178,7 @@ typed them and creating files is that command's entire job: a loop over the sing
 mechanism. Two guards keep the hundred-empty-classes scenario away: bulk is never the default, and it lists what it is
 about to create and asks before doing it.
 
-Adopting tag by tag is also the shape [Phase 3](../../project/roadmap.md) wants: a migration that proceeds route by
+Adopting tag by tag is also the shape [Phase 3](../../../README.md#roadmap) wants: a migration that proceeds route by
 route rather than in one leap.
 
 ### Per-type flags belong here

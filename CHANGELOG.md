@@ -17,16 +17,15 @@ tags: [versions, conventions, planning]
 > - The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) plus one section of our own, `Known limits`,
 >   and the numbering is [semantic versioning](https://semver.org/spec/v2.0.0.html).
 > - A `0.x` makes no compatibility promise: what a `1.0` will freeze is
->   [named in the roadmap](./docs/project/roadmap.md#before-10-freeze-what-a-major-would-cost) rather than left to be
->   discovered here.
+>   [named in the roadmap](./README.md#before-10-freeze-what-a-major-would-cost) rather than left to be discovered here.
 > - `Unreleased` holds what is merged and not tagged. Cutting a tag renames that heading and opens a new one.
 
 ## [Unreleased]
 
 ## [0.1.0] - 2026-09-11
 
-The first release, and what [Phase 1](./docs/project/roadmap.md#phase-1-the-foundation) set out to prove: an OpenAPI
-contract becomes routes and controllers, and nothing at runtime ever opens a specification.
+The first release, and what [Phase 1](./README.md#phase-1-the-foundation) set out to prove: an OpenAPI contract becomes
+routes and controllers, and nothing at runtime ever opens a specification.
 
 ### Added
 
@@ -59,7 +58,7 @@ six standard sections says "this works, up to here".
 - **Four configuration blocks are inert**, and each names the phase that makes it live. Changing one has no effect
   today.
 - **No response DTOs, no generated validation, no pagination or rate limiting.** All of it is
-  [Phase 2](./docs/project/roadmap.md#phase-2-the-generated-pipeline).
+  [Phase 2](./README.md#phase-2-the-generated-pipeline).
 
 ## Why this is one file
 

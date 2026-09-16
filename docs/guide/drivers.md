@@ -31,9 +31,9 @@ convention would be wrong for most readers; a package that tried to detect all o
 [rule 2](./openapi-support.md#the-four-rules) does not allow. What is needed is neither: it is a way for a project to
 say what it does, without that answer having to be written into this package.
 
-> **Not implemented yet.** [Phase 2](../project/roadmap.md#the-driver-features), landing with the two features that need
-> it rather than ahead of them: an extension point designed with no second implementation in front of it is a guess.
-> Items marked `Open` are undecided.
+> **Not implemented yet.** [Phase 2](../../README.md#phase-2-the-generated-pipeline), landing with the two features that
+> need it rather than ahead of them: an extension point designed with no second implementation in front of it is a
+> guess. Items marked `Open` are undecided.
 
 ## A driver carries structure, not names
 
@@ -164,5 +164,5 @@ Three things a reader could expect from a word as broad as "driver", and will no
   that was refused. What is parsed, what is honored and what is rejected is
   [`openapi-support.md`](./openapi-support.md)'s matrix, and a driver never appears in it.
 - **Which feature becomes driver-based next is not decided here.** Rate limiting and pagination are the two that exist;
-  what joins them, and when, is the [Roadmap](../project/roadmap.md)'s sequencing. This document owns the mechanism, not
-  its scope.
+  what joins them, and when, is the [Roadmap](../../README.md#roadmap)'s sequencing. This document owns the mechanism,
+  not its scope.
