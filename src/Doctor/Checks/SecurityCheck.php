@@ -72,7 +72,8 @@ final readonly class SecurityCheck
                 sprintf(
                     '%s requires %s. This package reads that requirement and does not apply it yet: the route is '.
                     'registered with no authorization check behind it, so an operation your contract documents as '.
-                    'protected is served as public. Enforcement is Phase 2 — see https://github.com/Gcob/lara-spec-first/blob/main/docs/guide/security.md.',
+                    'protected is served as public. Enforcement is Phase 2. What to do with a red pipeline until then: '.
+                    'https://github.com/Gcob/lara-spec-first/blob/main/docs/guide/security.md#until-enforcement-lands-the-doctor-fails-on-purpose',
                     $operation->label(),
                     self::requirements($operation->security),
                 ),

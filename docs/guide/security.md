@@ -199,6 +199,32 @@ an AI agent to extend correctly, not reading the specification as literally as p
 OpenAPI can say and what almost every API needs shows up often enough, it is a candidate for the package to close, one
 deliberate decision at a time.
 
+## Until enforcement lands, the doctor fails on purpose
+
+A contract declaring `security` exits `2`, and every operation that declares it is named individually, on every run.
+That is deliberate rather than noisy: the finding is that an endpoint your contract documents as protected is served as
+public, and [it is never collapsed into a count](./doctor.md#acknowledging-changes-behavior-not-just-noise). It ends
+when enforcement lands.
+
+**Two things a reader looks for here and will not find, said plainly rather than left to be hunted for.** The
+[acknowledgement mechanism](./doctor.md#acknowledged-limits-the-consumers-opt-out) is a design with open questions, its
+config keys among them, and nothing reads it. Narrowing a run with `spec:doctor --check=` is
+[not built either](./commands.md#--check-narrows-a-doctor-run). Neither is a switch you can reach for today.
+
+**What does exist is `--json`, and it is enough to keep a pipeline honest.** Every finding carries its `class` and its
+`section`, so CI can fail on what you can act on while letting this one through:
+
+```bash
+# The exit code is 2 while this lasts, so read the report rather than the status.
+php artisan spec:doctor --json > doctor.json || true
+
+# Fail on everything except the security findings, which you already know about.
+jq -e '[.findings[] | select(.section != "Security")] | length == 0' doctor.json
+```
+
+That is worth preferring over silencing the command with `|| true` alone. It keeps every other check gating, and it
+starts failing again the day your contract grows a different problem, which is the property a blunt switch throws away.
+
 ## The doctor checks wiring, not rows
 
 Once a baseline is enforced by default, the doctor checks:
