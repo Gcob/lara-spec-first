@@ -1,0 +1,52 @@
+name: Bug report
+description: Something this package does that it should not, or fails to do
+labels: ['bug']
+body:
+    - type: markdown
+      attributes:
+          value: |
+              `spec:doctor --json` is the fastest thing you can give us. It reports what this package
+              honors in your contract, what it does not, and the routing table that results, and it is
+              read-only, so running it changes nothing.
+    - type: textarea
+      id: what-happened
+      attributes:
+          label: What happened
+          description: What you ran, what you expected, and what you got instead.
+      validations:
+          required: true
+    - type: textarea
+      id: doctor
+      attributes:
+          label: Output of `php artisan spec:doctor --json`
+          render: json
+      validations:
+          required: true
+    - type: input
+      id: package-version
+      attributes:
+          label: Package version
+          description: '`composer show gcob/lara-spec-first | grep versions`'
+          placeholder: 0.1.0
+      validations:
+          required: true
+    - type: input
+      id: php-version
+      attributes:
+          label: PHP version
+          placeholder: '8.3.14'
+      validations:
+          required: true
+    - type: input
+      id: laravel-version
+      attributes:
+          label: Laravel version
+          placeholder: '12.28.1'
+      validations:
+          required: true
+    - type: textarea
+      id: spec
+      attributes:
+          label: The smallest specification that reproduces it
+          description: Optional, but it is what turns a report into a test.
+          render: yaml
