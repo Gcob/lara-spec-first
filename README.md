@@ -3,6 +3,7 @@
 > A Spec-First API framework and integration layer for Laravel. Define your contracts with OpenAPI, generate stubs for
 > AI, mock endpoints with Faker, and bridge legacy code.
 
+[![Packagist](https://img.shields.io/packagist/v/gcob/lara-spec-first)](https://packagist.org/packages/gcob/lara-spec-first)
 [![Tests](https://github.com/Gcob/lara-spec-first/actions/workflows/tests.yml/badge.svg)](https://github.com/Gcob/lara-spec-first/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Documentation](https://img.shields.io/badge/docs-VitePress-brightgreen.svg)](https://gcob.github.io/lara-spec-first/)
