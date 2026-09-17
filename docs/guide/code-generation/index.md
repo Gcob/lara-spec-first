@@ -89,7 +89,7 @@ What follows from it:
 - **The boundary is the production request path, not the process.** Serving a real application's traffic never involves
   a specification. Other contexts plausibly do, and pretending otherwise now would only mean rewriting this section
   later: contract testing has to compare a live response against the contract, and a
-  [mock server](../../project/roadmap.md) is a spec-driven server by definition. Those are separate execution contexts
+  [mock server](../../../README.md#roadmap) is a spec-driven server by definition. Those are separate execution contexts
   with their own rules. **Deferred deliberately**: the contexts get enumerated when the first one is built, not guessed
   at now. Nothing about containing the parser to `Parsing\` blocks them: a mock server reads a contract through the same
   door as everything else.
@@ -132,8 +132,8 @@ is the part that matters.
 
 **Its value is public API surface**, and for a reason worth naming: changing it orphans every tree an earlier version
 wrote, and nothing will ever prune those files again. It is
-[named in the freeze list a `1.0` owes its consumers](../../project/roadmap.md#before-10-freeze-what-a-major-would-cost)
-for that reason, alongside the generated tree's layout.
+[named in the freeze list a `1.0` owes its consumers](../../../README.md#before-10-freeze-what-a-major-would-cost) for
+that reason, alongside the generated tree's layout.
 
 ## The split makes a change loud
 
@@ -520,10 +520,10 @@ regions ever read or written, and a hard failure rather than a guess when the re
   support conversation, being able to tell that a file came from an older emitter than the one installed.
 
     Not before the first tag, because there is no version to record until the package is published, and the shape is
-    worth settling near the [name freeze](../../project/roadmap.md#before-10-freeze-what-a-major-would-cost): once a
-    header line is there, tooling reads it, and its format is then as much public API as a config key. The costs to
-    weigh when it is decided: every upgrade rewrites the whole tree, which is loud for a consumer who tracks it, and a
+    worth settling near the [name freeze](../../../README.md#before-10-freeze-what-a-major-would-cost): once a header
+    line is there, tooling reads it, and its format is then as much public API as a config key. The costs to weigh when
+    it is decided: every upgrade rewrites the whole tree, which is loud for a consumer who tracks it, and a
     `git diff --exit-code` gate would fail across an upgrade for a reason that is correct but needs explaining.
 
 - **Sequencing:** routes and abstract controllers are the Phase 1 target. Response DTOs and generated validation are
-  Phase 2: the same build command doing more, not a new one. See the [Roadmap](../../project/roadmap.md).
+  Phase 2: the same build command doing more, not a new one. See the [Roadmap](../../../README.md#roadmap).

@@ -26,7 +26,7 @@ use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
  * its own rather than a line among the Support findings.
  *
  * Deleted in the same change that makes `security` an authorization check —
- * see docs/project/roadmap.md, "Authorization the contract can express".
+ * see #44.
  *
  * @see docs/guide/doctor.md — "What it checks"
  * @see docs/guide/security.md
@@ -72,7 +72,7 @@ final readonly class SecurityCheck
                 sprintf(
                     '%s requires %s. This package reads that requirement and does not apply it yet: the route is '.
                     'registered with no authorization check behind it, so an operation your contract documents as '.
-                    'protected is served as public. Enforcement is Phase 2 — see docs/guide/security.md.',
+                    'protected is served as public. Enforcement is Phase 2 — see https://github.com/Gcob/lara-spec-first/blob/main/docs/guide/security.md.',
                     $operation->label(),
                     self::requirements($operation->security),
                 ),

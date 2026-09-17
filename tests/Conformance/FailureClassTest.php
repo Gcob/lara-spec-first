@@ -22,8 +22,7 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
 // a `trace` operation and a `components.pathItems` reference throw
 // RejectedConstructException — which is exactly why the class is not something
 // `toThrow()` can prove on its own, and is asserted here in prose, fixture by
-// fixture, instead. See docs/project/roadmap.md and
-// docs/guide/openapi-support.md#parser-caveats.
+// fixture, instead. See docs/guide/openapi-support.md#parser-caveats.
 
 describe('document fault: the spec author has something to fix', function (): void {
     it('refuses two operations that address one endpoint', function (): void {

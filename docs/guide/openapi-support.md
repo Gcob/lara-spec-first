@@ -43,8 +43,8 @@ claimed to read it, because the whole promise is that the spec is the source of 
 > [version strategy](#handling-30-and-31) is the seam and is dispatched to, but so far it only rejects a root shape its
 > version forbids: normalization happens in `OperationExtractor`, and what pins the 3.0/3.1 equivalence is a conformance
 > class requiring both spellings of one contract to come out identical. `spec:doctor` ships too, reporting every level
-> below against a document without ever writing one. The full state is in the
-> [roadmap](../project/roadmap.md#where-the-code-is-today).
+> below against a document without ever writing one. The full state is on the
+> [project board](https://github.com/users/Gcob/projects/1).
 
 Seven subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below still govern all of
 them:
@@ -279,7 +279,7 @@ are one problem, is an estimate rather than an open question.
 
 **And the protection chosen instead is behavioural.** An adapter guards against swapping a dependency; what has actually
 gone wrong twice is the dependency being wrong, which an interface would not have caught either time. So the answer is a
-[conformance suite organized by equivalence class](../project/roadmap.md), which ends up serving the adapter's purpose
+[conformance suite organized by equivalence class](../../README.md#roadmap), which ends up serving the adapter's purpose
 as well, since a suite a replacement must pass is a stronger contract than an interface it must implement.
 
 ## Reading a document
@@ -412,8 +412,8 @@ reader to reconcile.** Today `OperationExtractor` produces the normalized `Contr
 version-specific part of that interpretation belongs to the strategy, which is what
 [the seam table](#what-is-shared-and-what-is-version-specific) states. Those are a sequencing gap rather than a
 disagreement: there is nothing version-specific to delegate until schema normalization exists, and that is
-[Phase 2](../project/roadmap.md#the-pipeline). Nothing downstream can tell which of the two is answering, which is the
-property the seam exists to protect in the first place.
+[Phase 2](../../README.md#phase-2-the-generated-pipeline). Nothing downstream can tell which of the two is answering,
+which is the property the seam exists to protect in the first place.
 
 ## Laravel constraints we do not fight
 
@@ -534,7 +534,7 @@ first release, not shipped behavior.
 | `security` (root)                       | Open         | Not yet decided, and the consequence is worth stating: the root block itself is not read into anything the package keeps. An operation's own `security`, absent, empty or a list, is recorded, but what an absent one actually inherits is not, so changing or removing the root `security` block silently changes what every inheriting operation requires, with nothing in `Contract\` reflecting it. The doctor says that much and no more: one line naming that the block exists and is not read, rather than a list of operations whose requirements nothing resolved. |
 | `webhooks` (3.1)                        | Open         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `x-` extensions                         | Out of scope | Preserved by the parser and readable, but the package acts on none of them, except the ones it defines itself, on the rows beneath.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The lifecycle extensions this package defines. Read with defaults resolved and an unrecognized value refused rather than silently taken as the default. The doctor's rules over them run: a deprecation with no removal date, a date passed or unreadable, the `beta` listing and the [protection report](./glossary.md#protection-report). The breaking-change enforcement `x-lifecycle` gates is [not built yet](../project/roadmap.md). Rules: [lifecycle](./lifecycle.md).                                                                                              |
+| `x-audience`, `x-lifecycle`, `x-sunset` | Partial      | The lifecycle extensions this package defines. Read with defaults resolved and an unrecognized value refused rather than silently taken as the default. The doctor's rules over them run: a deprecation with no removal date, a date passed or unreadable, the `beta` listing and the [protection report](./glossary.md#protection-report). The breaking-change enforcement `x-lifecycle` gates is [not built yet](../../README.md#roadmap). Rules: [lifecycle](./lifecycle.md).                                                                                            |
 | `x-controller`                          | Supported    | Names the class of an operation's custom controller, which is also what makes that operation customizable at all: without it the generated controller is `final`. Rules: [controllers](./controllers.md#the-contract-decides-what-is-customizable).                                                                                                                                                                                                                                                                                                                         |
 | `x-model`                               | Partial      | Names the Eloquent model an operation reads and writes. It supplies the generated controller's default query, its route-model-binding type hint, and the CRUD default the build emits. Rules: [controllers](./controllers.md#how-the-semantic-is-detected).                                                                                                                                                                                                                                                                                                                 |
 

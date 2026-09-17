@@ -58,7 +58,7 @@ const SECTIONS: Section[] = [
     {
         text: 'Project',
         directory: 'docs/project',
-        sequence: ['roadmap', 'stack'],
+        sequence: ['stack'],
         also: ['CHANGELOG.md'],
     },
     {
@@ -269,7 +269,7 @@ export default defineConfig({
     themeConfig: {
         nav: [
             { text: 'Guide', link: '/docs/guide/openapi-support' },
-            { text: 'Project', link: '/docs/project/roadmap' },
+            { text: 'Project', link: '/docs/project/stack' },
             { text: 'Development', link: '/docs/contributing/documentation' },
         ],
 

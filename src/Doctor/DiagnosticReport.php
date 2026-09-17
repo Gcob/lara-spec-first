@@ -76,11 +76,11 @@ final readonly class DiagnosticReport
         return [
             'Baseline' => SectionNote::notChecked(
                 'not built yet — whether the previously committed specification can be read from git is not '.
-                'diagnosed by this release. See docs/project/roadmap.md.'
+                'diagnosed by this release. See https://github.com/Gcob/lara-spec-first#roadmap.'
             ),
             'Drivers' => SectionNote::notChecked(
                 'not built yet — driver names and their mappings are not diagnosed by this release. See '.
-                'docs/guide/drivers.md and docs/project/roadmap.md.'
+                'https://github.com/Gcob/lara-spec-first/blob/main/docs/guide/drivers.md and https://github.com/Gcob/lara-spec-first#roadmap.'
             ),
         ];
     }

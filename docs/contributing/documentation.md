@@ -861,7 +861,6 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 `docs/project/`, for `Users and contributors`:
 
-- [`roadmap.md`](../project/roadmap.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

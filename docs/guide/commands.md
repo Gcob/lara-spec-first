@@ -261,4 +261,4 @@ doctor's sections, and what is still open about them: [`doctor.md`](./doctor.md#
   and the phase that makes them live.
 - **Anything designed but unnamed.** [The section above](#designed-and-not-built) carries `spec:watch` and the doctor's
   `--check=` because both have a settled shape. What has neither a shape nor a phase lives in
-  [the roadmap](../project/roadmap.md), not here.
+  [the roadmap](../../README.md#roadmap), not here.

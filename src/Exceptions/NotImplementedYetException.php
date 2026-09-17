@@ -15,20 +15,19 @@ use RuntimeException;
  * accepted it has told them so. Refusing loudly keeps the gap between what is
  * documented and what is built visible from the inside, not only in a roadmap.
  *
- * Every use of this is a promise with a date attached — it names the roadmap
- * item that removes it.
+ * Every use of this names the phase that removes it.
  */
 final class NotImplementedYetException extends RuntimeException implements SpecException
 {
-    public static function setting(string $key, string $whatItWillDo, string $roadmapItem): self
+    public static function setting(string $key, string $whatItWillDo, string $phase): self
     {
         return new self(sprintf(
             'The setting "%s" is not implemented yet, so this package will not pretend it took '.
-            'effect. It will %s. Until then the only supported value is the default. See "%s" in '.
-            'docs/project/roadmap.md.',
+            'effect. It will %s. Until then the only supported value is the default. It lands in '.
+            '%s. See https://github.com/Gcob/lara-spec-first#roadmap.',
             $key,
             $whatItWillDo,
-            $roadmapItem
+            $phase
         ));
     }
 }

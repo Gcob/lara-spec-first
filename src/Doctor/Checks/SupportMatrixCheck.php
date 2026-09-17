@@ -17,9 +17,8 @@ use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 
 /**
  * Every `Partial`, `Ignored` and `Rejected` construct in the document, with
- * its position — the widest section in this PR, so it is built in the four
- * lots docs/project/roadmap.md and the planning document for this PR
- * describe, rather than the whole support matrix at once:
+ * its position — the widest section of the support matrix, so it is built in
+ * the four lots below rather than all at once:
  *
  *   1. **Rejected, already detected by the reading pipeline.** `trace`, a
  *      `$ref` into `components.pathItems`, a `$dynamicRef`/`$dynamicAnchor`.
@@ -198,7 +197,7 @@ final readonly class SupportMatrixCheck
                 SupportLevel::Deferred,
                 '',
                 sprintf(
-                    '%d %s found. Recognized, support planned, not built yet — see docs/project/roadmap.md. '.
+                    '%d %s found. Recognized, support planned, not built yet. See https://github.com/Gcob/lara-spec-first#roadmap. '.
                     'This is a fact about this package\'s roadmap, not a defect in your contract.',
                     $count,
                     self::DEFERRED_LABELS[$construct],

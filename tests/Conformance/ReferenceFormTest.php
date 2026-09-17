@@ -9,7 +9,8 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\RemoteReferenceException;
 // The second equivalence class of the conformance suite: `$ref` takes several
 // forms across a document, and each one is a different code path through the
 // reading engine — a local lookup, a file read, a network guard, or the cycle
-// check that has to run before any of them. See docs/project/roadmap.md.
+// check that has to run before any of them.
+// @see AGENTS.md — "Automated tests are required"
 
 it('resolves a local $ref that reaches a schema directly', function (): void {
     expect(extractFixture('local-schema-ref.yaml'))->toHaveCount(1);
