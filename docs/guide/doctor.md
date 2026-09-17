@@ -126,7 +126,7 @@ with every section empty would claim the document was read and found clean, whic
         },
         "Drivers": {
             "checked": false,
-            "note": "not built yet — driver names and their mappings are not diagnosed by this release. See docs/guide/drivers.md and https://github.com/Gcob/lara-spec-first#roadmap."
+            "note": "not built yet — driver names and their mappings are not diagnosed by this release. See https://github.com/Gcob/lara-spec-first/blob/main/docs/guide/drivers.md and https://github.com/Gcob/lara-spec-first#roadmap."
         }
     }
 }

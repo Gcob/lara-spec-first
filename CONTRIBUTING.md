@@ -23,9 +23,9 @@ how changes get merged.
 
 ## Project status
 
-`lara-spec-first` is in **early bootstrap**, and we are working through [Phase 1 of the Roadmap](./README.md#roadmap).
-The public API is not stable yet, and the package does not do anything useful for a consumer so far. The tooling below,
-however, is in place and works today.
+`lara-spec-first` is young. Phase 1 shipped as `0.1.0` and [Phase 2](./README.md#phase-2-the-generated-pipeline) is in
+flight. The public API is not stable yet, and the package does not do anything useful for a consumer so far. The tooling
+below, however, is in place and works today.
 
 Right now, the most valuable contribution is **design feedback**. Opening an issue to challenge an architectural
 decision is worth more to us today than a pull request.
@@ -342,9 +342,9 @@ Contributions that fit naturally:
 - Anything that eases migration for existing Laravel apps adopting the pattern route by route.
 - Better OpenAPI coverage (`$ref` resolution, `oneOf`/`anyOf`, 3.1 features).
 - Migration tooling that helps a Code-First app become Spec-First. Generating a spec from existing PHP is explicitly
-  **in scope**, but as a _one-time on-ramp_ (see [Phase 3](./README.md#roadmap)), not as an ongoing workflow. Tools like
-  `Scramble` already extract specs well; we want to build on them and on making that cutover verifiable, not to
-  reimplement them.
+  **in scope**, but as a _one-time on-ramp_ (see [Phase 3](./README.md#phase-3-legacy-bridge-and-ecosystem)), not as an
+  ongoing workflow. Tools like `Scramble` already extract specs well; we want to build on them and on making that
+  cutover verifiable, not to reimplement them.
 
 Contributions that likely do **not** fit:
 

@@ -30,8 +30,8 @@ Two commands produce something you are meant to edit, which is what separates th
 plus what the contract answers for an operation nobody has got to yet.
 
 > **`spec:make` is shipped in its three forms**, one operation, `--tag=` and `--all`, and so is the `501` an
-> unimplemented operation answers. `spec:watch` is [Phase 2](../../../README.md#roadmap) and does not exist. Items
-> marked `Open` are undecided.
+> unimplemented operation answers. `spec:watch` is [Phase 2](../../../README.md#phase-2-the-generated-pipeline) and does
+> not exist. Items marked `Open` are undecided.
 
 ## Scaffolding is `spec:make`, not a build step
 
@@ -178,8 +178,8 @@ typed them and creating files is that command's entire job: a loop over the sing
 mechanism. Two guards keep the hundred-empty-classes scenario away: bulk is never the default, and it lists what it is
 about to create and asks before doing it.
 
-Adopting tag by tag is also the shape [Phase 3](../../../README.md#roadmap) wants: a migration that proceeds route by
-route rather than in one leap.
+Adopting tag by tag is also the shape [Phase 3](../../../README.md#phase-3-legacy-bridge-and-ecosystem) wants: a
+migration that proceeds route by route rather than in one leap.
 
 ### Per-type flags belong here
 

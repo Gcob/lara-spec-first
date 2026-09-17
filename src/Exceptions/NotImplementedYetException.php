@@ -15,8 +15,7 @@ use RuntimeException;
  * accepted it has told them so. Refusing loudly keeps the gap between what is
  * documented and what is built visible from the inside, not only in a roadmap.
  *
- * Every use of this is a promise with a date attached: it names the phase
- * that removes it.
+ * Every use of this names the phase that removes it.
  */
 final class NotImplementedYetException extends RuntimeException implements SpecException
 {
@@ -25,7 +24,7 @@ final class NotImplementedYetException extends RuntimeException implements SpecE
         return new self(sprintf(
             'The setting "%s" is not implemented yet, so this package will not pretend it took '.
             'effect. It will %s. Until then the only supported value is the default. It lands in '.
-            '%s, see https://github.com/Gcob/lara-spec-first#roadmap.',
+            '%s. See https://github.com/Gcob/lara-spec-first#roadmap.',
             $key,
             $whatItWillDo,
             $phase

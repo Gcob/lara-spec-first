@@ -80,7 +80,7 @@ final readonly class DiagnosticReport
             ),
             'Drivers' => SectionNote::notChecked(
                 'not built yet — driver names and their mappings are not diagnosed by this release. See '.
-                'docs/guide/drivers.md and https://github.com/Gcob/lara-spec-first#roadmap.'
+                'https://github.com/Gcob/lara-spec-first/blob/main/docs/guide/drivers.md and https://github.com/Gcob/lara-spec-first#roadmap.'
             ),
         ];
     }

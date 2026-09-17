@@ -745,8 +745,8 @@ Two checks specific to this document, both of which the specification cannot see
 Four things a reader arrives at a controller wanting, and finds owned elsewhere:
 
 - **Nothing here validates a request.** `$validated` arrives already produced by one generated `FormRequest` per
-  operation, which is [Phase 2](../../README.md#roadmap)'s to build and the roadmap's to sequence. This document assumes
-  the value and never derives it.
+  operation, which is [Phase 2](../../README.md#phase-2-the-generated-pipeline)'s to build and the roadmap's to
+  sequence. This document assumes the value and never derives it.
 - **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
   teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled
   here is only that the generated method calls the factory directly.

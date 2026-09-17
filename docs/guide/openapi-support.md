@@ -43,7 +43,8 @@ claimed to read it, because the whole promise is that the spec is the source of 
 > [version strategy](#handling-30-and-31) is the seam and is dispatched to, but so far it only rejects a root shape its
 > version forbids: normalization happens in `OperationExtractor`, and what pins the 3.0/3.1 equivalence is a conformance
 > class requiring both spellings of one contract to come out identical. `spec:doctor` ships too, reporting every level
-> below against a document without ever writing one. The full state is in the [roadmap](../../README.md#roadmap).
+> below against a document without ever writing one. The full state is on the
+> [project board](https://github.com/users/Gcob/projects/1).
 
 Seven subjects grew out of this file and own themselves now. The [four rules](#the-four-rules) below still govern all of
 them:

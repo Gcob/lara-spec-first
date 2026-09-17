@@ -29,8 +29,8 @@ The build reads one document and the public reads another, and this file owns th
 on the way out, what switches the removal on, and what this package deliberately does not emit at all.
 
 > **None of this is behaviour yet.** No sanitized copy is produced today, and no configuration key exists to ask for
-> one. What is written here is the design the emitter will follow when [Phase 2](../../../README.md#roadmap) reaches it.
-> Items marked `Open` are undecided.
+> one. What is written here is the design the emitter will follow when
+> [Phase 2](../../../README.md#phase-2-the-generated-pipeline) reaches it. Items marked `Open` are undecided.
 
 ## The specification the build reads is private
 
