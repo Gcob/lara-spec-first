@@ -14,7 +14,7 @@ assignees: ""
 
 <!-- Cards that have to land first, as #123. Delete this section when nothing blocks. -->
 
-- [ ] #
+- [ ]
 
 ## Acceptance
 
@@ -33,12 +33,14 @@ Scenario:
 
 - [ ]
 
+<!-- The lot this belongs to, if you know it. Left blank, it gets filled in at triage. -->
+
 Lot .
 
 <!--
-Two rules this form assumes, both in CONTRIBUTING.md:
+Two rules this form assumes:
 
 - Cite a file or a line as a permalink pinned to a commit, never as a bare path. A card written
   today and started in six months otherwise names a line that has moved.
-- A card means a branch, named `{type}/{card}/{context}`.
+- A card means a branch, named `{type}/{card}/{context}`, which CONTRIBUTING.md describes.
 -->
