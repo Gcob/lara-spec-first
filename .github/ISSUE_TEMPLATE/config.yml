@@ -1,0 +1,10 @@
+# Blank issues stay available on purpose: a young package wants the report more
+# than it wants the form, and the maintainer opens cards from `task.md` anyway.
+blank_issues_enabled: true
+contact_links:
+    - name: Documentation
+      url: https://gcob.github.io/lara-spec-first/
+      about: Every command, what the package honors of a specification, and why.
+    - name: What this package honors, and what it does not
+      url: https://github.com/Gcob/lara-spec-first/blob/main/docs/guide/openapi-support.md
+      about: Read this before reporting that a construct is ignored. Some are ignored on purpose.

@@ -1,0 +1,40 @@
+name: A contract we refuse but should honor
+description: Your OpenAPI document is valid and this package will not serve part of it
+labels: ['enhancement']
+body:
+    - type: markdown
+      attributes:
+          value: |
+              A different report from a bug, and it needs different evidence: the document, not the
+              stack trace. What this package honors today, and what it deliberately does not, is in
+              [`openapi-support.md`](https://github.com/Gcob/lara-spec-first/blob/main/docs/guide/openapi-support.md).
+    - type: textarea
+      id: document
+      attributes:
+          label: The smallest document that shows it
+          render: yaml
+      validations:
+          required: true
+    - type: dropdown
+      id: openapi-version
+      attributes:
+          label: OpenAPI version
+          options:
+              - 3.0.x
+              - 3.1.x
+      validations:
+          required: true
+    - type: textarea
+      id: actual
+      attributes:
+          label: What this package does with it
+          description: The refusal, the finding, or the operation that silently disappears.
+      validations:
+          required: true
+    - type: textarea
+      id: expected
+      attributes:
+          label: What it should do, and where the specification says so
+          description: A link into the OpenAPI specification carries more than an opinion does.
+      validations:
+          required: true
