@@ -123,9 +123,10 @@ for free, at the cost of binding generated code to another package's API and rel
 
 Three things a reader could reasonably expect here and will not find, each because it belongs to something else:
 
-- **The request side.** One `FormRequest` per operation, derived from the request body and parameter schemas, is
-  [its own Phase 2 item](../../../README.md#phase-2-the-generated-pipeline) and lands before this one, since it is what
-  supplies `$validated` to everything downstream. Nothing on this page describes input.
+- **The request side.** One `FormRequest` per operation, derived from the request body and parameter schemas, is its own
+  Phase 2 item, designed by [#32](https://github.com/Gcob/lara-spec-first/issues/32) and emitted by
+  [#35](https://github.com/Gcob/lara-spec-first/issues/35), and it lands before this one since it is what supplies
+  `$validated` to everything downstream. Nothing on this page describes input.
 - **Checking a response against its schema at run time.** A DTO is generated from the schema, so the shape is guaranteed
   by the build rather than verified per request:
   [the runtime never opens a specification](./index.md#the-runtime-never-sees-the-spec), and a response that has drifted

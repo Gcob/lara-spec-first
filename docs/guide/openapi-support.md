@@ -559,25 +559,32 @@ first release, not shipped behavior.
 
 ### Parameters, bodies, responses
 
-| Construct                                         | Level    | Note                                        |
-| ------------------------------------------------- | -------- | ------------------------------------------- |
-| `parameters` (`path`)                             | Partial  | Needed for routing. Validation is Phase 2.  |
-| `parameters` (`query`, `header`, `cookie`)        | Deferred | No routing effect. Phase 2 for validation.  |
-| `style`, `explode`, `allowReserved`, `deepObject` | Open     | Phase 2.                                    |
-| `requestBody`                                     | Deferred | Phase 2.                                    |
-| `responses`                                       | Deferred | Phase 2, and the input to the Faker mocker. |
-| `links`                                           | Open     |                                             |
-| Media type `encoding`                             | Open     | Phase 2.                                    |
+| Construct                                         | Level    | Note                                                                                                                                                                      |
+| ------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parameters` (`path`)                             | Partial  | Needed for routing. Validation is [#35](https://github.com/Gcob/lara-spec-first/issues/35).                                                                               |
+| `parameters` (`query`, `header`, `cookie`)        | Deferred | No routing effect. Validation is [#35](https://github.com/Gcob/lara-spec-first/issues/35).                                                                                |
+| `style`, `explode`, `allowReserved`, `deepObject` | Open     | Phase 2.                                                                                                                                                                  |
+| `requestBody`                                     | Deferred | Read by the generated validation: [#32](https://github.com/Gcob/lara-spec-first/issues/32) designs it, [#35](https://github.com/Gcob/lara-spec-first/issues/35) emits it. |
+| `responses`                                       | Deferred | Phase 2, and the input to the Faker mocker.                                                                                                                               |
+| `links`                                           | Open     |                                                                                                                                                                           |
+| Media type `encoding`                             | Open     | Phase 2.                                                                                                                                                                  |
 
 ### Schemas
 
-| Construct                                                                                                                                                     | Level | Note                                                                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core JSON Schema subset shared by 3.0 and 3.1                                                                                                                 | Open  | Phase 2 defines how far this goes.                                                                                                                                                |
-| `nullable` / `type: [..., "null"]`                                                                                                                            | Open  | Normalized by the strategy; the normal form is not chosen.                                                                                                                        |
-| `allOf`, `oneOf`, `anyOf`, `not`                                                                                                                              | Open  |                                                                                                                                                                                   |
-| `discriminator`, `xml`                                                                                                                                        | Open  |                                                                                                                                                                                   |
-| 3.1-only keywords (`const`, `prefixItems`, `$defs`, `if`/`then`/`else`, `patternProperties`, `dependentSchemas`, `unevaluatedProperties`, `contentMediaType`) | Open  | Blocked on a [parser caveat](#parser-caveats): the parser hands these back as raw arrays with unresolved `$ref`. Whatever we decide, it cannot be "read them from cebe and hope". |
+| Construct                                                                                                                                                     | Level | Note                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Core JSON Schema subset shared by 3.0 and 3.1                                                                                                                 | Open  | How far it goes is the whole question below.                                                                                                                                                                                                                                   |
+| `nullable` / `type: [..., "null"]`                                                                                                                            | Open  | Normalized by the strategy; the normal form is not chosen, and [#34](https://github.com/Gcob/lara-spec-first/issues/34) is what normalizes it.                                                                                                                                 |
+| `allOf`, `oneOf`, `anyOf`, `not`                                                                                                                              | Open  |                                                                                                                                                                                                                                                                                |
+| `discriminator`, `xml`                                                                                                                                        | Open  |                                                                                                                                                                                                                                                                                |
+| 3.1-only keywords (`const`, `prefixItems`, `$defs`, `if`/`then`/`else`, `patternProperties`, `dependentSchemas`, `unevaluatedProperties`, `contentMediaType`) | Open  | Blocked on a [parser caveat](#parser-caveats): the parser hands these back as raw arrays with unresolved `$ref`. Whatever we decide, it cannot be "read them from cebe and hope". [#34](https://github.com/Gcob/lara-spec-first/issues/34) is what refuses the dangerous form. |
+
+**Open ([#33](https://github.com/Gcob/lara-spec-first/issues/33)):** every row above, which is the whole section. Five
+rows covering roughly thirty keywords is a table that answers "is `oneOf` honored?" with silence, and silence is the one
+outcome this package does not allow itself. What is owed is a stated position per keyword: honored, refused, or
+recognized and ignored. Three of the [parser caveats](#parser-caveats) are why several cannot simply be honored: `type`
+arrives as a string or a list, `exclusiveMinimum` changes meaning per version, and the 3.1 keywords come back as raw
+arrays with their `$ref` never resolved.
 
 ### References and security
 

@@ -571,10 +571,10 @@ departs from these semantics is free to declare `x-controller` and write whateve
 the escape hatch, working exactly as intended.
 
 **`PUT` and `PATCH` share `update()`.** The difference is what the request must carry, not what the controller does, so
-it lives in the [generated `FormRequest`](../../README.md#roadmap): `PUT` requires the full body, `PATCH` makes fields
-optional. One honest caveat, because it is a real semantic gap most APIs ignore: strict `PUT` replaces the resource, so
-an absent field should return to its default, and `$model->update($validated)` does not do that. A project that needs
-replacement semantics overrides `update()`.
+it lives in the generated `FormRequest`, which [#32](https://github.com/Gcob/lara-spec-first/issues/32) designs: `PUT`
+requires the full body, `PATCH` makes fields optional. One honest caveat, because it is a real semantic gap most APIs
+ignore: strict `PUT` replaces the resource, so an absent field should return to its default, and
+`$model->update($validated)` does not do that. A project that needs replacement semantics overrides `update()`.
 
 ### The factory is not imposed
 
@@ -745,8 +745,8 @@ Two checks specific to this document, both of which the specification cannot see
 Four things a reader arrives at a controller wanting, and finds owned elsewhere:
 
 - **Nothing here validates a request.** `$validated` arrives already produced by one generated `FormRequest` per
-  operation, which is [Phase 2](../../README.md#phase-2-the-generated-pipeline)'s to build and the roadmap's to
-  sequence. This document assumes the value and never derives it.
+  operation, designed by [#32](https://github.com/Gcob/lara-spec-first/issues/32) and emitted by
+  [#35](https://github.com/Gcob/lara-spec-first/issues/35). This document assumes the value and never derives it.
 - **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
   teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled
   here is only that the generated method calls the factory directly.
