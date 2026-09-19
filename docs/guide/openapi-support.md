@@ -571,16 +571,95 @@ first release, not shipped behavior.
 
 ### Schemas
 
-**Open ([#33](https://github.com/Gcob/lara-spec-first/issues/33)):** how far the honored subset goes, and what each
-keyword's stated position is. The [parser caveats](#parser-caveats) above are why the rows below still read `Open`.
+**Nothing below is shipped behavior: Phase 1 registers routes and reads no schema.** Every row states the position taken
+for the first release, and #36 is what makes a position audible in `spec:doctor` rather than a line in this file.
 
-| Construct                                                                                                                                                     | Level | Note                                                                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core JSON Schema subset shared by 3.0 and 3.1                                                                                                                 | Open  | Phase 2 defines how far this goes.                                                                                                                                                |
-| `nullable` / `type: [..., "null"]`                                                                                                                            | Open  | Normalized by the strategy; the normal form is not chosen.                                                                                                                        |
-| `allOf`, `oneOf`, `anyOf`, `not`                                                                                                                              | Open  |                                                                                                                                                                                   |
-| `discriminator`, `xml`                                                                                                                                        | Open  |                                                                                                                                                                                   |
-| 3.1-only keywords (`const`, `prefixItems`, `$defs`, `if`/`then`/`else`, `patternProperties`, `dependentSchemas`, `unevaluatedProperties`, `contentMediaType`) | Open  | Blocked on a [parser caveat](#parser-caveats): the parser hands these back as raw arrays with unresolved `$ref`. Whatever we decide, it cannot be "read them from cebe and hope". |
+Three [parser caveats](#parser-caveats) decide most of the table, and they are why a position can be stated at all:
+
+- **A 3.1 keyword the parser does not model comes back as a raw PHP array**, and any `$ref` inside it is never resolved.
+  Rows carrying that caveat are marked **raw** below.
+- **`type` is declared a string**, and a 3.1 list passes through unvalidated, so normalizing it is our work.
+- **`exclusiveMinimum` and `exclusiveMaximum` carry two meanings under one name**, and only the version strategy ever
+  sees the raw form.
+
+**The rule the first caveat forces, stated once rather than on each of the thirteen keywords it touches: a keyword
+handed back raw is `Rejected` the moment it contains a `$ref`, and takes its stated level otherwise.** Reading an
+unresolved pointer as though it were a schema produces a value that is wrong rather than missing, which
+[rule 2](#the-four-rules) forbids and which nothing detects later, since nothing fails. #34 owns that refusal and tests
+it.
+
+**Every `Ignored` row is a non-zero exit** until the consumer
+[acknowledges it](./doctor.md#acknowledged-limits-the-consumers-opt-out). That cost is deliberate: a keyword dropped in
+silence is the failure this package exists against, and `oneOf` being common is an argument for saying so, not for
+staying quiet.
+
+#### Any type
+
+| Construct                                          | Level        | Note                                                                                                                                                                                                                       |
+| -------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`                                             | Partial      | Normalized to a list behind the [version strategy](#handling-30-and-31), so nothing downstream branches on the document version.                                                                                           |
+| `nullable` (3.0), `type: [..., "null"]` (3.1)      | Partial      | Two spellings of one idea. Which one the normal form takes is #34's to state; that it is one form is settled here.                                                                                                         |
+| `enum`                                             | Deferred     | Phase 2, as an `in` rule.                                                                                                                                                                                                  |
+| `const`                                            | Deferred     | **Raw.** 3.1's one-value `enum`, and treated as one.                                                                                                                                                                       |
+| `format`                                           | Partial      | Honored where Laravel already owns the rule: `date`, `date-time`, `email`, `uri`, `uuid`, `ipv4`, `ipv6`. Any other value is an annotation, reported once per document rather than per occurrence.                         |
+| `default`                                          | Ignored      | Nothing fills an absent field from a schema. A generated `FormRequest` that supplied one would make the validated payload differ from what the client sent, and strict `PUT` needs the opposite, which is #32's to settle. |
+| `readOnly`, `writeOnly`                            | Deferred     | Phase 2, and direction-dependent: a `readOnly` property is forbidden in a request body and expected in a response.                                                                                                         |
+| `deprecated`                                       | Partial      | No validation effect. What this package acts on is the [lifecycle](./lifecycle.md) extensions.                                                                                                                             |
+| `example`, `examples`                              | Partial      | Read for the mocker, never for validation. Both spellings can appear, and precedence between them is part of the normal form #34 defines.                                                                                  |
+| `title`, `description`, `externalDocs`, `$comment` | Out of scope | Annotations with no validation effect.                                                                                                                                                                                     |
+| `xml`                                              | Out of scope | This package emits JSON. An XML-shaped contract is not one it claims to serve.                                                                                                                                             |
+| `$ref`, `$defs`, `$anchor`, `$id`                  | —            | [References and security](#references-and-security) owns every one of these.                                                                                                                                               |
+
+#### Objects
+
+| Construct                            | Level    | Note                                                                                                                                                            |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `properties`                         | Deferred | Phase 2. The base every generated rule set is derived from.                                                                                                     |
+| `required`                           | Deferred | Phase 2, and the one place `PUT` and `PATCH` diverge: #32.                                                                                                      |
+| `additionalProperties: false`        | Deferred | Phase 2, as the difference between a rule set that forbids unknown fields and one that lets them through.                                                       |
+| `additionalProperties: <schema>`     | Ignored  | A rule for fields whose names are not known in advance, which Laravel's validator has no form for.                                                              |
+| `minProperties`, `maxProperties`     | Ignored  | No Laravel rule counts a payload's keys, and counting them inside a generated class hides a constraint where nobody reads for it.                               |
+| `dependentRequired`                  | Deferred | Phase 2: `required_with` is the same idea under another name.                                                                                                   |
+| `patternProperties`, `propertyNames` | Ignored  | **Raw.** Both constrain key names rather than values, which no Laravel rule reaches.                                                                            |
+| `dependentSchemas`                   | Ignored  | **Raw.** A conditional schema, which is `if`/`then`/`else` wearing another name, and ignored for the same reason.                                               |
+| `unevaluatedProperties`              | Ignored  | **Raw.** Its meaning depends on what every sibling keyword evaluated, so it cannot be read one keyword at a time, which is exactly how a rule set is generated. |
+
+#### Arrays
+
+| Construct                                | Level    | Note                                                                                                                                                     |
+| ---------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                                  | Deferred | Phase 2, as `array` plus the element rules under `field.*`.                                                                                              |
+| `minItems`, `maxItems`                   | Deferred | Phase 2: `min` and `max` on an array.                                                                                                                    |
+| `uniqueItems`                            | Deferred | Phase 2: `distinct`.                                                                                                                                     |
+| `prefixItems`                            | Ignored  | **Raw.** Positional tuples, which `field.0` and `field.1` could express. The caveat lands on this keyword first, and it is the case #34's scenario pins. |
+| `contains`, `minContains`, `maxContains` | Ignored  | No Laravel rule asserts that some element of an array matches a schema.                                                                                  |
+| `unevaluatedItems`                       | Ignored  | **Raw.** Same reason as `unevaluatedProperties`.                                                                                                         |
+
+#### Strings and numbers
+
+| Construct                              | Level    | Note                                                                                                                                                                                |
+| -------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `minLength`, `maxLength`               | Deferred | Phase 2. Both count characters rather than bytes, which is what Laravel's `min` and `max` already do on a string.                                                                   |
+| `pattern`                              | Partial  | Phase 2, as `regex`. JSON Schema names ECMA-262 and Laravel runs PCRE; the two agree on the subset most contracts use, and a pattern outside it is reported rather than translated. |
+| `minimum`, `maximum`                   | Deferred | Phase 2.                                                                                                                                                                            |
+| `exclusiveMinimum`, `exclusiveMaximum` | Partial  | Normalized to one spelling behind the strategy, which #34 picks. A number carries what a boolean needs a sibling to mean, and the raw form never leaves the strategy.               |
+| `multipleOf`                           | Deferred | Phase 2: `multiple_of`.                                                                                                                                                             |
+
+#### Composition and conditionals
+
+| Construct            | Level    | Note                                                                                                                                                                                      |
+| -------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allOf`              | Deferred | Phase 2. The one composition keyword with an obvious translation: the branches merge into a single rule set.                                                                              |
+| `oneOf`, `anyOf`     | Ignored  | No Laravel rule expresses "exactly one of these shapes", and generating the most permissive branch would accept a payload the contract refuses. That is a wrong value, not a missing one. |
+| `not`                | Ignored  | The same reason, with no positive form to generate from.                                                                                                                                  |
+| `discriminator`      | Ignored  | It has meaning only beside `oneOf` or `anyOf`, both ignored above.                                                                                                                        |
+| `if`, `then`, `else` | Ignored  | **Raw.** A rule set that holds for one payload and not the next is not a rule set Laravel can be handed.                                                                                  |
+
+#### Content
+
+| Construct                                              | Level   | Note                                                                                                                  |
+| ------------------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| `contentMediaType`, `contentEncoding`, `contentSchema` | Ignored | **Raw.** A string carrying an encoded document. Decoding it to validate it puts a second parser inside the validator. |
 
 ### References and security
 
