@@ -264,7 +264,8 @@ A few expectations:
 - **Match the surrounding code.** Naming, structure, and comment density should be indistinguishable from what is
   already there.
 - **Keep pull requests focused.** One concern per PR. Unrelated cleanups, however welcome in principle, make a change
-  harder to review and to revert.
+  harder to review and to revert. What makes a card, and a pull request, the right size is in
+  [`card-management.md`](./docs/contributing/card-management.md).
 
 ### Deferred work leaves a marker
 

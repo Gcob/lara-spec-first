@@ -38,7 +38,8 @@ Scenario:
 Lot .
 
 <!--
-Three rules this form assumes:
+Four rules this form assumes. Their reasoning, and what makes a card the right size,
+is in docs/contributing/card-management.md:
 
 - Cite a file or a line as a permalink pinned to a commit, never as a bare path. A card written
   today and started in six months otherwise names a line that has moved.

@@ -865,6 +865,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 `docs/contributing/`, for `Contributors`:
 
+- [`card-management.md`](./card-management.md)
 - [`documentation.md`](./documentation.md) — this file
 
 Repository root:
