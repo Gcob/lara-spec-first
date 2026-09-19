@@ -111,6 +111,10 @@ Two traps worth knowing before you go in:
 
 ## Working notes for agents
 
+- **A rule in this repository is contested by building what it discourages, never by arguing against it.** Produce the
+  artifact the rule would have prevented, look at it, and report what looking changed. The rule stands until somebody
+  has done that, and a failed attempt usually measures the attempt rather than the rule. See
+  [`documentation.md`](./docs/contributing/documentation.md#a-rule-here-is-contested-by-building-not-by-arguing).
 - **Do not invent stack decisions.** If a row in [`docs/project/stack.md`](./docs/project/stack.md) says `Undecided` or
   `Planned`, surface the choice to the user rather than silently picking one and writing it into config.
 - **Docker is a convenience, not the source of truth.** Any command runnable via Docker must be runnable natively

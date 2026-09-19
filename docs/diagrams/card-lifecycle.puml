@@ -1,0 +1,31 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
+
+' What earns this picture is not the order of the states, which one sentence
+' holds. It is the edge that runs backwards: a lot's lessons reach the next lot
+' through a document rather than through somebody's memory, and that loop is the
+' thing prose spells out worst.
+'
+' Entirely grey, on purpose. Nothing here is an owner or a refusal, which is what
+' colour is for in this set, so it carries none.
+'
+' The board columns are inside the state labels rather than in notes. A note
+' carrying a sentence drifts from the paragraph beside the image; two words in a
+' box cannot.
+set separator none
+hide empty description
+
+state "Coarse intention" as Intention
+state "Sketch\n(Backlog)" as Sketch
+state "Specification\n(Todo)" as Spec
+state "Merged" as Merged
+state "card-management.md" as Doc
+
+Intention --> Sketch : filed
+Sketch --> Spec : **the lot opens**\nthe card is rewritten
+Spec --> Merged : one card,\none pull request
+Merged --> Doc : what the lot taught
+Doc --> Spec : shapes the next\nrewrite
+@enduml

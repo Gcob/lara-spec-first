@@ -4,8 +4,9 @@ audience: Contributors
 covers: >
     How work is cut into cards and tracked: what makes a card the right size, the three tests that catch a card that is
     really a checkbox or really a lot, the failures this repository has actually made and what each one taught, the card
-    template and which sections each kind of card drops, what the board's Status, Phase and Lot fields mean and who
-    moves them, and the grouping mechanisms this project declines to use.
+    template and which sections each kind of card drops, when a card is written and what a Backlog card is worth before
+    then, how a card cites a file, what the board's Status, Phase and Lot fields mean and who moves them, and the
+    grouping mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or wondering whether something is one card or two.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -15,6 +16,8 @@ tags: [planning, conventions, workflow, scope, onboarding]
 > **In brief**
 >
 > - A card is a change that can merge into `main` on its own and leave it stable, tested and documented.
+> - Cards are cut when their lot opens: a `Backlog` card is a sketch, a `Todo` card is a specification, and moving one
+>   between them is the rewrite rather than a drag.
 > - Size is a target, not a measurement: a pull request somebody reviews in one sitting. Under roughly four files, ask
 >   whether it is a card at all; past roughly four hundred added lines, ask what else got in.
 > - Three tests, in the order they catch things: does it cost more to file than to do, does its title need "and", does
@@ -37,6 +40,35 @@ It is never "the emitter", then "its tests", then "its documentation". The
 that proposes it is asking for permission to ship something incomplete. When a change is genuinely too large, split it
 the other way: the happy path first and the edge cases second, or one command flag at a time. Both leave each half
 shippable.
+
+## Cards are cut when the lot opens, not before
+
+**A lot exists as a coarse intention from the day the phase is planned. The cards inside it are written just before that
+lot opens.** This file leans on the rule twice already, once to defer
+[#40](https://github.com/Gcob/lara-spec-first/issues/40)'s split and once to explain a card with no `Lot`, so it is
+worth stating as a rule rather than leaving as an excuse.
+
+The reason is that a card written six months early is written against a tree, a design and a set of decisions that have
+all moved by the time somebody picks it up. Lot 0 paid for that in full: its cards were written in one sitting before
+any of the work was understood, and every one of them had to be reworded mid-flight, not because the work changed but
+because the card had guessed at how the work would be described.
+
+**Which is what the `Status` column actually says: how settled a card is, not only where it sits.** A `Backlog` card is
+a sketch. It records that something is coming and roughly what, and reading it as though it were settled is the mistake
+this rule prevents. A `Todo` card is a specification: its lot has been cut, so it was rewritten against the tree as it
+stands now.
+
+**Moving a card from `Backlog` to `Todo` is that rewrite, not a drag between columns.** A sketch promoted without being
+rewritten is a specification nobody wrote, and it gets discovered mid-flight, which is exactly what Lot 0 cost. Deleting
+a sketch is the opposite overreaction: the coarse intention is worth keeping.
+[#40](https://github.com/Gcob/lara-spec-first/issues/40) is the standing example, known to be a lot rather than a card,
+and split when Lot 2 opens rather than today.
+
+![A card's five states, and the edge running back from a finished lot to the next lot's rewrite](../diagrams/card-lifecycle.svg)
+
+**A finished lot owes one thing to the next: what it taught, written down where the next lot will read it.** That place
+is [What we have actually got wrong](#what-we-have-actually-got-wrong) on this page, named with the card that produced
+the lesson. A lesson nobody wrote down is a feeling, and the next lot repeats it.
 
 ## Size is a target, not a measurement
 
@@ -113,6 +145,19 @@ So a `Docs` card with no blocker is two sections, and only a `Feature` card rout
 left empty. **A `Decision` card is done when the document stops saying `Open`**, not when somebody has made up their
 mind, which is the same rule [`stack.md`](../project/stack.md) applies to its own Status column.
 
+## A card cites a file as a permalink
+
+**A card cites a file or a line as a permalink pinned to a commit, never as a bare path.** The
+[issue form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/task.md) says so and this is why:
+a card is written against the tree as it stands today and started against the tree as it stands in six months.
+`security.md:186` is a promise that the line has not moved, and nothing keeps that promise. A permalink names the
+commit, so it answers the same question forever, and it answers the one that actually matters, which is what we were
+looking at when we wrote the card rather than what is there now.
+
+The same rule is why a card names the deferred-work marker it settles rather than describing it: the marker carries the
+card number, [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leaves-a-marker) carries the rule, and
+`just check-markers` fails when the two drift apart.
+
 The shape came out of a planning note that git does not track, so there is no link to follow and none is needed: what
 survived that argument is on this page.
 
@@ -126,9 +171,10 @@ One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Th
 | `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after            |
 | `Lot`    | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after  |
 
-`Status` is the only field that moves often. `Backlog` is work nobody intends to start this lot, `Todo` is the current
-lot, and `Ready to publish` is work that is merged and waiting on a release rather than on a reviewer, which is what
-separates it from `In review`.
+`Status` is the only field that moves often, and what each value claims about a card is
+[above](#cards-are-cut-when-the-lot-opens-not-before): `Backlog` is a sketch, `Todo` is a specification. The one a
+newcomer cannot guess is `Ready to publish`, which is work already merged and waiting on a release rather than on a
+reviewer, and that is what separates it from `In review`.
 
 **A card can legitimately carry no `Phase` either.** [#68](https://github.com/Gcob/lara-spec-first/issues/68), which
 asks how ownership gets declared in the contract, is a positioning question rather than a feature, and forcing it into a
