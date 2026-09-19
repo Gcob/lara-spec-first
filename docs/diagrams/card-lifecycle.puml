@@ -1,0 +1,39 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
+
+' What earns this picture is not the order of the states, which one sentence
+' holds. It is the edge that runs backwards: a lot's lessons reach the next lot
+' through a document rather than through somebody's memory, and that loop is the
+' thing prose spells out worst.
+'
+' The labels are deliberately nouns and short verbs. A state carrying a sentence
+' would have to be re-rendered every time that sentence is edited in the page
+' beside it, and the page is where the sentences belong.
+set separator none
+hide empty description
+
+state "Coarse intention" as Intention #line:888888;text:888888
+state "Sketch" as Sketch #line:AC8148;text:AC8148
+state "Specification" as Spec #line:5A9662;text:5A9662
+state "Merged" as Merged #line:478ECA;text:478ECA
+state "card-management.md" as Doc #line:8B8E22;text:8B8E22
+
+Intention --> Sketch : filed
+Sketch --> Spec : **the lot opens**\nthe card is rewritten
+Spec --> Merged : one card,\none pull request
+Merged --> Doc : what the lot taught
+Doc --> Spec : shapes the next\nrewrite
+
+note right of Sketch
+  Backlog. Reading one as
+  settled is the mistake
+  this page prevents.
+end note
+
+note right of Spec
+  Todo. Written against the
+  tree as it stands now.
+end note
+@enduml
