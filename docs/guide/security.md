@@ -121,10 +121,10 @@ feature has.
 `spec:build` writes the scheme, its matched guard and the scopes it asks for into the generated route registration as
 middleware parameters. Wiring the middleware onto the route is the build's job, not something you add by hand.
 
-**Open (#45):** exactly which `securitySchemes` _types_ reduce to "the model has a scope" and which do not. `apiKey`,
-`http bearer` and `oauth2` are the clear fits; `mutualTLS` and the details of `openIdConnect` may not be answerable by
-this one middleware at all. A scheme the middleware cannot enforce is a case for
-[acknowledgement](./doctor.md#acknowledged-limits-the-consumers-opt-out), not a silent pass.
+**Open ([#45](https://github.com/Gcob/lara-spec-first/issues/45)):** exactly which `securitySchemes` _types_ reduce to
+"the model has a scope" and which do not. `apiKey`, `http bearer` and `oauth2` are the clear fits; `mutualTLS` and the
+details of `openIdConnect` may not be answerable by this one middleware at all. A scheme the middleware cannot enforce
+is a case for [acknowledgement](./doctor.md#acknowledged-limits-the-consumers-opt-out), not a silent pass.
 
 ### Why the model answers
 
@@ -183,7 +183,7 @@ extensions, which is a far bigger commitment than matching a name to a guard.
 Spec-First does not mean spec-only: the contract stays authoritative for what it can express, and the application is
 still where business rules that a specification format was never designed to carry get written.
 
-## Open (#68): declaring ownership in the spec
+## Open ([#68](https://github.com/Gcob/lara-spec-first/issues/68)): declaring ownership in the spec
 
 One derogation, deliberately not solved yet. "A user may CRUD their own content" is common across enough APIs that
 leaving it to a hand-written Policy costs every project the same work. Helping with that, rather than reading the

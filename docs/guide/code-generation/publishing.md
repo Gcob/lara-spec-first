@@ -140,9 +140,9 @@ Two consequences to state rather than let anyone hit:
   is the same failure the [drift check](../doctor.md#what-it-checks) already exists for, and the published copy belongs
   in its scope.
 
-**Open (#52):** the config key names, whether the sanitized copy is emitted in the document's own format or normalized
-to JSON, and whether an operation's `summary` and `description` need a keep-or-strip decision of their own. Internal
-notes end up in those fields far more often than anyone intends.
+**Open ([#52](https://github.com/Gcob/lara-spec-first/issues/52)):** the config key names, whether the sanitized copy is
+emitted in the document's own format or normalized to JSON, and whether an operation's `summary` and `description` need
+a keep-or-strip decision of their own. Internal notes end up in those fields far more often than anyone intends.
 
 ### Types come from `openapi-typescript`
 

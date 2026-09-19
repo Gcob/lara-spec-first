@@ -8,12 +8,12 @@ declare(strict_types=1);
 |--------------------------------------------------------------------------
 |
 | Each block below is marked DONE, STARTED or TODO. A TODO block is inert:
-| changing it has no effect, and nothing will tell you so. The number beside
-| a TODO is the issue that makes it live, at
-| github.com/Gcob/lara-spec-first/issues. A phase in
+| changing it has no effect, and nothing will tell you so. A phase in
 | parentheses names the release that makes something live, whether it sits
 | beside a block's marker or beside one key inside a block that is otherwise
-| working. Nothing here is inert without saying when to come back for it.
+| working, and the number beside it is the issue doing that work:
+| github.com/Gcob/lara-spec-first/issues/50 for TODO (phase 2, #50). Nothing
+| here is inert without saying when to come back for it.
 |
 | Key names stay provisional until 1.0. The document each block cites owns the
 | reasoning; this file is only its shape.

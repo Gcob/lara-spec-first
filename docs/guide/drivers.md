@@ -97,10 +97,10 @@ That name then works in configuration exactly like a built-in one does, mapping 
 ],
 ```
 
-**Open (#48):** the registration API's actual shape. One `extend()` per driver-based feature as sketched above, one
-manager per feature resolved from the container, or a single registry taking the feature as an argument. This is public
-API surface under [rule 4](./openapi-support.md#the-four-rules) and should be decided once, for every driver-based
-feature at once, rather than per feature.
+**Open ([#48](https://github.com/Gcob/lara-spec-first/issues/48)):** the registration API's actual shape. One `extend()`
+per driver-based feature as sketched above, one manager per feature resolved from the container, or a single registry
+taking the feature as an argument. This is public API surface under [rule 4](./openapi-support.md#the-four-rules) and
+should be decided once, for every driver-based feature at once, rather than per feature.
 
 ### An interface, and an abstract class
 
@@ -126,10 +126,10 @@ for every one of them. What this package owes that ecosystem is a stable interfa
 treats a third-party driver exactly like a built-in one, which is why the registration API above is public API surface
 rather than an internal detail.
 
-**Open (#48):** whether the package documents a naming convention for community drivers, and whether
-[the doctor](./doctor.md) reports which driver is in effect for each feature, third-party ones included, in its
-configuration section. Printing the resolved driver is cheap and turns "why is nothing paginated" into a one-command
-answer.
+**Open ([#48](https://github.com/Gcob/lara-spec-first/issues/48)):** whether the package documents a naming convention
+for community drivers, and whether [the doctor](./doctor.md) reports which driver is in effect for each feature,
+third-party ones included, in its configuration section. Printing the resolved driver is cheap and turns "why is nothing
+paginated" into a one-command answer.
 
 ## Which features are driver-based
 

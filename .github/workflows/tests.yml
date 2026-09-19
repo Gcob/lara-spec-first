@@ -183,7 +183,7 @@ jobs:
               with:
                   node-version: 22
 
-            - run: node scripts/check-open-questions.mjs --online
+            - run: node scripts/check-markers.mjs --online
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

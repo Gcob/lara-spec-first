@@ -70,8 +70,9 @@ use, the shape that eventually grows a `match` statement per caller. Rather than
 [one of Laravel's own pagination contracts](#laravel-already-owns-the-source-agnostic-contract). Note that those
 contracts are deliberately **not** one hierarchy, which is what the return type there has to account for.
 
-**Open (#50):** whether the adapter needs all five accessors above once the paginator contract carries most of that
-state, or whether it narrows to the parts the specification alone knows: the parameter names and the envelope keys.
+**Open ([#50](https://github.com/Gcob/lara-spec-first/issues/50)):** whether the adapter needs all five accessors above
+once the paginator contract carries most of that state, or whether it narrows to the parts the specification alone
+knows: the parameter names and the envelope keys.
 
 ## Pagination is off by default
 

@@ -227,6 +227,15 @@ It covers:
 
 Use `composer format` to apply the formatting rather than only report on them.
 
+**One more check needs Node, so it is not part of `composer check` either:**
+
+```bash
+just check-markers
+```
+
+It fails on a deferred-work marker that names no card, which [the section above](#deferred-work-leaves-a-marker)
+describes. Pass `--online` with a token to also fail on a marker whose card has closed; CI does that for you.
+
 **Markdown has its own commands**, one to format it and one to build the documentation site. Both need Node rather than
 PHP, so they run outside the container and are not part of `composer check`. Run them whenever you edit documentation,
 and the commands are in [`docs/contributing/documentation.md`](./docs/contributing/documentation.md), under
@@ -236,8 +245,9 @@ and the commands are in [`docs/contributing/documentation.md`](./docs/contributi
 ### What CI runs on your pull request
 
 `.github/workflows/tests.yml` runs those same three commands on GitHub, across PHP 8.3 / 8.4 / 8.5 x Laravel 12 / 13,
-plus the lowest-supported-dependency run that `composer check:lowest` performs locally. Every job reports on its own, so
-a failure names the cell it belongs to.
+plus the lowest-supported-dependency run that `composer check:lowest` performs locally, and the marker check described
+[above](#deferred-work-leaves-a-marker), which runs with `--online` there and so also fails on a marker whose card has
+closed. Every job reports on its own, so a failure names the cell it belongs to.
 
 They then feed one `All checks passed` job, which is the job **meant to be marked required** on `main`. Whether it
 actually blocks a merge is a repository setting rather than anything the workflow decides: until a maintainer requires
@@ -264,7 +274,7 @@ Work you notice and are not going to do gets written down where it will be neede
 - **The number is a card in this repository**, reachable at `https://github.com/Gcob/lara-spec-first/issues/<n>`, and
   `gh issue view <n>` reads it from a terminal. The project board groups the same cards by phase and by lot.
 - **The number is what makes it expire.** A bare `TODO` is refused, and a marker naming a closed card is drift.
-  Enforcement lands with [#70](https://github.com/Gcob/lara-spec-first/issues/70).
+  `just check-markers` enforces it, and CI runs the same check with `--online` on every pull request.
 - **What this package writes into a consumer's project names their half first**, as `TODO (phase 2, #50)`.
   `config/lara-spec-first.php`, the generated tree and Phase 2's published specification are read by people who have
   never seen the board.

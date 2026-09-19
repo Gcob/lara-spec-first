@@ -211,12 +211,12 @@ is one key whose values are either field names or named groups of field names, a
 string is a field, an array is a window. **Mixing the two levels in one `mapping` is a hard error**, naming the
 offending key, rather than a guess about which level was meant.
 
-**Open (#49):** whether the reserved name `default` is configurable or fixed, and whether a driver may declare that its
-convention only ever has one window. The IETF draft's single `RateLimit-Limit` plus `RateLimit-Policy` arguably does,
-and a driver that knows this could reject a multi-window mapping as a misconfiguration rather than reading fields that
-cannot exist.
+**Open ([#49](https://github.com/Gcob/lara-spec-first/issues/49)):** whether the reserved name `default` is configurable
+or fixed, and whether a driver may declare that its convention only ever has one window. The IETF draft's single
+`RateLimit-Limit` plus `RateLimit-Policy` arguably does, and a driver that knows this could reject a multi-window
+mapping as a misconfiguration rather than reading fields that cannot exist.
 
-## Open (#49): what the answer powers
+## Open ([#49](https://github.com/Gcob/lara-spec-first/issues/49)): what the answer powers
 
 The interface only has getters, and what reads them is not yet decided. Two candidates, and they are not the same
 feature:

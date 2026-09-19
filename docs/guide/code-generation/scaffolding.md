@@ -188,8 +188,9 @@ The `make:model -mc` instinct is right; it just attaches to this command rather 
 thing that takes an operation's name, flags for what to create alongside it are natural and bounded: a test, a DTO
 subclass or a policy, because they all concern the one operation you named.
 
-**Open (#56):** which types earn a flag. The list should be short, and each entry has to be something a developer wants
-_per operation_ rather than something the build already produces for the whole contract.
+**Open ([#56](https://github.com/Gcob/lara-spec-first/issues/56)):** which types earn a flag. The list should be short,
+and each entry has to be something a developer wants _per operation_ rather than something the build already produces
+for the whole contract.
 
 ## Watching: `spec:watch`
 
