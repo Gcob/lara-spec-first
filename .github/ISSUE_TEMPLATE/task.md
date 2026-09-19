@@ -38,14 +38,15 @@ Scenario:
 Lot .
 
 <!--
-Four rules this form assumes. Their reasoning, and what makes a card the right size,
-is in docs/contributing/card-management.md:
+Four rules this form assumes. Each one's reasoning lives in the document that owns it,
+which the rule names. What makes a card the right size is in
+docs/contributing/card-management.md.
 
-- Cite a file or a line as a permalink pinned to a commit, never as a bare path. A card written
-  today and started in six months otherwise names a line that has moved.
+- Cite a file or a line as a permalink pinned to a commit, never as a bare path, which
+  docs/contributing/card-management.md explains.
 - A card means a branch, named `{type}/{card}/{context}`, which CONTRIBUTING.md describes.
-- A Decision card carries the `decision` label, and its marker lands in the same change. Labelling it
-  alone turns CI red until the marker exists.
+- A Decision card carries the `decision` label, and its marker lands in the same change. Labelling
+  it alone turns CI red until the marker exists, which CONTRIBUTING.md explains.
 - A Decision card is done when the document stops saying `Open`, not when somebody made up their
-  mind. The marker and the card die in the same commit.
+  mind, which docs/contributing/card-management.md explains.
 -->
