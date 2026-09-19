@@ -136,7 +136,7 @@ Four sections, of which two are usually absent:
 | ------------ | -------------------------------------------------------------- | ---------------------------- |
 | `Why`        | Two sentences: the problem, not the solution                   | Nobody                       |
 | `Ready when` | Card numbers that have to land first, and nothing else         | Any card that nothing blocks |
-| `Acceptance` | One to three Gherkin scenarios                                 | Every kind but `Feature`     |
+| `Acceptance` | One to three Gherkin scenarios                                 | Every card but a `Feature`   |
 | `Done when`  | Only the delta on top of the three places and `composer check` | Nobody                       |
 
 So a `Docs` card with no blocker is two sections, a `Chore` card is rarely more, and only a `Feature` card routinely
@@ -172,7 +172,7 @@ One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Fo
 | `Status` | `Backlog`, `Todo`, `In Progress`, `In review`, `Ready to publish`, `Done` | Whoever is doing the work, as it moves |
 | `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after            |
 | `Lot`    | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after  |
-| `Kind`   | `Feature`, `Docs`, `Decision`, `Chore`                                    | Set with the card, rarely after        |
+| `Kind`   | `Feature`, `Docs`, `Decision`, `Chore`                                    | Set at triage, rarely after            |
 
 `Status` is the only field that moves often, and what each value claims about a card is
 [above](#cards-are-cut-when-the-lot-opens-not-before): `Backlog` is a sketch, `Todo` is a specification. The one a
@@ -189,7 +189,7 @@ breaking-change set, which belong to no lot by design. It is a normal state, not
 when somebody decides the lot, and guessing earlier is the same guessing this file exists to stop.
 
 **`Kind` decides what a card is made of, which is why it is a field rather than a note.** The
-[template above](#the-template-and-what-each-kind-of-card-drops) drops `Acceptance` on every kind but `Feature`, and
+[template above](#the-template-and-what-each-kind-of-card-drops) drops `Acceptance` on every card but a `Feature`, and
 [`CONTRIBUTING.md`](../../CONTRIBUTING.md#branch-names) branches a `Decision` card as `docs/` because what it delivers
 is the document that stops saying `Open`. `Chore` is the one carrying no rule of its own: maintenance that is neither a
 feature nor a document, which takes whatever sections the work actually needs.

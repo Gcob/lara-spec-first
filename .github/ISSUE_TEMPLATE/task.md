@@ -18,7 +18,7 @@ assignees: ""
 
 ## Acceptance
 
-<!-- One to three scenarios. Delete this section on every kind but a Feature card. -->
+<!-- One to three scenarios. Delete this section on every card but a Feature. -->
 
 ```gherkin
 Scenario:
@@ -35,13 +35,13 @@ Scenario:
 
 <!--
 The lot and the kind, if you know them. This form cannot set a project field, since the item
-does not exist yet, so they are written here and moved onto the board: Kind and Phase at
-triage, Lot when that lot is actually cut. Once a field is set it is the answer and the line
+does not exist yet, so they are written here and triage moves them onto the board: Kind there
+and then, Lot when that lot is actually cut. Once a field is set it is the answer and the line
 below is stale text, not a second source. Leave either blank rather than guessing.
 card-management.md#the-board
 -->
 
-Lot .
+Lot:
 
 Kind:
 
