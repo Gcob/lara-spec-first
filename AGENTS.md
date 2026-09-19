@@ -212,6 +212,8 @@ Two documents govern most of what you will need. Read the one that owns your sub
 - [`docs/contributing/documentation.md`](./docs/contributing/documentation.md) — how documentation is written and
   organized, the front matter schema, the tag vocabulary, and the **inventory of every document in the repository **.
   Start there when you need to find something.
+- [`docs/contributing/card-management.md`](./docs/contributing/card-management.md) — what makes a card the right size,
+  the board's fields, and what this project declines to use. Read it before opening a card or splitting one.
 - [`docs/project/stack.md`](./docs/project/stack.md) — every technology choice, its status, and its reasoning.
 - [`docs/guide/openapi-support.md`](./docs/guide/openapi-support.md) — what the package honors of the specification and
   what it does not, and why. Read it before writing anything that reads a spec.
