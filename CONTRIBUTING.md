@@ -280,6 +280,12 @@ Work you notice and are not going to do gets written down where it will be neede
   never seen the board.
 - **Only where the code is where you would need to know.** If reading the card is enough, the marker is noise.
 - **It is a pointer to tracked work, not a comment about what the code does.** Review must not remove it as one.
+- **A card that settles an open question carries the `decision` label.** `just check-markers --online` reads it, and
+  requires every open card carrying it to be named by at least one marker. The label stands in for the board's
+  `Decision` field, which CI cannot read: that would need the `project` scope, and `GITHUB_TOKEN` does not carry it.
+- **Which means labelling a decision card and writing its marker are one change.** Label a card on its own and every
+  open pull request goes red until the marker exists, so a decision cannot be filed ahead of the document section it
+  belongs in. That is the rule below read forwards rather than a broken check.
 - **A marker and its card die in the same commit.**
 
 ## Commits and pull requests

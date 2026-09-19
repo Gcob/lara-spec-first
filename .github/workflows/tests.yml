@@ -161,7 +161,10 @@ jobs:
 
             - run: composer analyse
 
-    # Every deferred-work marker names a card, and every card it names is open.
+    # Every deferred-work marker names a card and every card it names is open,
+    # and every open card carrying the `decision` label is named by a marker. The
+    # second direction is the one that catches a card outliving the answer already
+    # written in a document.
     #
     # Here rather than in docs.yml, which carries path filters: a marker lives in
     # Markdown and in PHP alike, so a check firing only on `**.md` would miss a

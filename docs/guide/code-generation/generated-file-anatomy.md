@@ -32,8 +32,8 @@ reader, and the naming rules that decide what the file is called in the first pl
 
 > **This is shipped behaviour**, unlike most of what surrounds it: the source map, the docblock norm and the reference
 > comment landed with the first emitter and are asserted by the generators' own tests. What a finding can say will grow
-> with what the build knows. Items marked `Open` are undecided, and the number beside one is
-> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> with what the build knows. Items marked `Open` are undecided, and the number beside one links to the card that settles
+> it.
 
 ## The source map
 

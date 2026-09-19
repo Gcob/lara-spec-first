@@ -38,7 +38,7 @@ thing everywhere, and guessing wrong here is worse than declaring nothing, per
 > **Not implemented yet.** [Phase 2](../../README.md#phase-2-the-generated-pipeline). One thing has to be settled before
 > the adapter is more than an interface, and the roadmap says so too: whether what reads it is
 > [build-time enforcement or a runtime relay](#open-49-what-the-answer-powers). Items marked `Open` are undecided, and
-> the number beside one is [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> the number beside one links to the card that settles it.
 
 ## An adapter behind one interface
 

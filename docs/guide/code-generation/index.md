@@ -35,8 +35,7 @@ wherever that question comes up.
 
 > **Almost all of this is intent rather than behaviour**, and like [`openapi-support.md`](../openapi-support.md) this
 > file marks the difference per section rather than per file, so the banner does not become a little more wrong with
-> every release. Items marked `Open` are undecided, and the number beside one is
-> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> every release. Items marked `Open` are undecided, and the number beside one links to the card that settles it.
 >
 > **Shipped:** `spec:build` in its Phase 1 form, which resolves the specification and emits the routes and one
 > controller per operation, each carrying
@@ -396,6 +395,11 @@ Under `app/` because it is application code the developer will read, extend and 
 `bootstrap/`. Under `app/Http/` because that is where Laravel already puts controllers, form requests and middleware.
 Everything generated here is HTTP-layer machinery, and it belongs beside the concrete controllers that extend it rather
 than in a directory of its own invention. Configurable because no default survives contact with every project.
+
+**Open ([#58](https://github.com/Gcob/lara-spec-first/issues/58)):** whether that tree carries version directories,
+`v1/` and `v2/`, or whether the idea leaves the plan. It is written here because this is the section the answer would
+change: versioned directories change the paths and the namespaces the build emits, which puts them under
+[rule 4](../openapi-support.md#the-four-rules) exactly like the config keys. Parking the question is not answering it.
 
 **The name has a job.** It appears in every `use` statement, every stack trace and every IDE autocomplete for the
 lifetime of the project, so it should say _do not edit this_ without anyone having to look it up. `Generated` does that

@@ -45,7 +45,7 @@ in code with names in config and a project free to write its own, is what makes 
 
 > **Not implemented yet.** [Phase 2](../../README.md#phase-2-the-generated-pipeline), alongside the response DTOs it
 > needs: the envelope is a generated type like any other. Items marked `Open` are undecided, and the number beside one
-> is [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> links to the card that settles it.
 
 ## An adapter behind one interface
 

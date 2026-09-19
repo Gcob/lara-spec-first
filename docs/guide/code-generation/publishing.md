@@ -31,7 +31,7 @@ on the way out, what switches the removal on, and what this package deliberately
 > **None of this is behaviour yet.** No sanitized copy is produced today, and no configuration key exists to ask for
 > one. What is written here is the design the emitter will follow when
 > [Phase 2](../../../README.md#phase-2-the-generated-pipeline) reaches it. Items marked `Open` are undecided, and the
-> number beside one is [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> number beside one links to the card that settles it.
 
 ## The specification the build reads is private
 

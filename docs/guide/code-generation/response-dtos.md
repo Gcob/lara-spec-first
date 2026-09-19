@@ -28,7 +28,7 @@ teach.
 > **None of this is behaviour yet.** The build emits no DTO and no factory today, and no configuration key exists to
 > point the override scan anywhere. What is written here is the design
 > [Phase 2](../../../README.md#phase-2-the-generated-pipeline) will follow. Items marked `Open` are undecided, and the
-> number beside one is [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> number beside one links to the card that settles it.
 
 ## The shape is ours, the behavior is yours
 
@@ -113,9 +113,11 @@ distinguishing the default a reader is looking at from the behavior that actuall
 `spatie/laravel-data` remains a candidate for the generated shape itself, since its casting, validation and
 serialization are useful independently of who builds the object, but its own `from()`-override ergonomics are no longer
 the fit they once were: a `Data` object is not `final`, and this design deliberately does not lean on DTO-level
-inheritance for customization. **Whether we depend on it or only take the shape is undecided** and belongs in
-[`stack.md`](../../project/stack.md) once settled. A dependency buys casting, validation and serialization for free, at
-the cost of binding generated code to another package's API and release cycle.
+inheritance for customization.
+
+**Open ([#38](https://github.com/Gcob/lara-spec-first/issues/38)):** whether we depend on it or only take the shape. It
+belongs in [`stack.md`](../../project/stack.md) once settled. A dependency buys casting, validation and serialization
+for free, at the cost of binding generated code to another package's API and release cycle.
 
 ## What this document does not cover
 
