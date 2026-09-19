@@ -5,8 +5,8 @@ covers: >
     How work is cut into cards and tracked: what makes a card the right size, the three tests that catch a card that is
     really a checkbox or really a lot, the failures this repository has actually made and what each one taught, the card
     template and which sections each kind of card drops, when a card is written and what a Backlog card is worth before
-    then, how a card cites a file, what the board's Status, Phase and Lot fields mean and who moves them, and the
-    grouping mechanisms this project declines to use.
+    then, how a card cites a file, what the board's Status, Phase, Lot and Kind fields mean, who moves them and why a
+    card's body stops carrying one the moment the board does, and the grouping mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or wondering whether something is one card or two.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -24,7 +24,8 @@ tags: [planning, conventions, workflow, scope, onboarding]
 >   its body carry its own open decisions.
 > - The template is the [issue form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/task.md).
 >   This file is where its reasoning lives.
-> - `Status` moves with the work, `Phase` and `Lot` are set once at triage and rarely change.
+> - `Status` moves with the work; `Phase` and `Kind` are set at triage and `Lot` when that lot is cut. The board holds
+>   all four, and a card's body carries one only until it gets there.
 
 Three lots have been cut so far, and each one needed a review to find the same two failures: a card small enough to be a
 checkbox on another one, and a card large enough to be a lot. This file exists so that the next lot does not pay for
@@ -135,10 +136,11 @@ Four sections, of which two are usually absent:
 | ------------ | -------------------------------------------------------------- | ---------------------------- |
 | `Why`        | Two sentences: the problem, not the solution                   | Nobody                       |
 | `Ready when` | Card numbers that have to land first, and nothing else         | Any card that nothing blocks |
-| `Acceptance` | One to three Gherkin scenarios                                 | `Docs` and `Decision` cards  |
+| `Acceptance` | One to three Gherkin scenarios                                 | Every kind but `Feature`     |
 | `Done when`  | Only the delta on top of the three places and `composer check` | Nobody                       |
 
-So a `Docs` card with no blocker is two sections, and only a `Feature` card routinely carries all four.
+So a `Docs` card with no blocker is two sections, a `Chore` card is rarely more, and only a `Feature` card routinely
+carries all four.
 
 **A card carries only the delta.** Repeating the general definition of done on thirty cards is how it stops being read.
 `Ready when` replaces a ceremonial definition of ready: it holds card numbers, and it is deleted outright rather than
@@ -163,13 +165,14 @@ survived that argument is on this page.
 
 ## The board
 
-One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Three fields carry meaning.
+One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Four fields carry meaning.
 
 | Field    | Values                                                                    | Who moves it                           |
 | -------- | ------------------------------------------------------------------------- | -------------------------------------- |
 | `Status` | `Backlog`, `Todo`, `In Progress`, `In review`, `Ready to publish`, `Done` | Whoever is doing the work, as it moves |
 | `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after            |
 | `Lot`    | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after  |
+| `Kind`   | `Feature`, `Docs`, `Decision`, `Chore`                                    | Set with the card, rarely after        |
 
 `Status` is the only field that moves often, and what each value claims about a card is
 [above](#cards-are-cut-when-the-lot-opens-not-before): `Backlog` is a sketch, `Todo` is a specification. The one a
@@ -184,6 +187,22 @@ mean triage has stopped happening.
 **A card with no `Lot` is one no lot has cut yet.** That is every card past the current phase, plus the gates and the
 breaking-change set, which belong to no lot by design. It is a normal state, not a gap to fill: a card gets its `Lot`
 when somebody decides the lot, and guessing earlier is the same guessing this file exists to stop.
+
+**`Kind` decides what a card is made of, which is why it is a field rather than a note.** The
+[template above](#the-template-and-what-each-kind-of-card-drops) drops `Acceptance` on every kind but `Feature`, and
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md#branch-names) branches a `Decision` card as `docs/` because what it delivers
+is the document that stops saying `Open`. `Chore` is the one carrying no rule of its own: maintenance that is neither a
+feature nor a document, which takes whatever sections the work actually needs.
+
+**A field lives on the board, and a card's body carries it only until it gets there.** The
+[issue form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/task.md) cannot set a project
+field, because the item does not exist while somebody is filling the form in, so it asks for the lot and the kind as
+plain lines and triage moves them onto the board. From that moment the field is the answer and the line is stale text
+rather than a second source.
+
+**Which makes a body line that disagrees with its field nothing to reconcile.** It is deleted the next time the card is
+rewritten, and going hunting for it across sketches no lot has cut yet would be the same guessing
+[this file exists to stop](#cards-are-cut-when-the-lot-opens-not-before).
 
 **The `decision` label is not decoration.** A card that settles a question a document marks `Open` carries it, and
 `just check-markers --online` requires every open card carrying it to be named by at least one marker. The rule and its
