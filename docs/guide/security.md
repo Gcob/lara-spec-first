@@ -26,8 +26,8 @@ tags: [openapi, security, decisions, scope, laravel]
 > an operation that declares `security` is shipped. [`spec:doctor`](./doctor.md#what-it-checks) names every one of them,
 > individually, on every run, and says the package does not apply the requirement yet. A phase that registers routes
 > must not let a documented promise be mistaken for a kept one. A contract that declares `security` therefore exits
-> non-zero until enforcement lands. Items marked `Open` are undecided, and the number beside one is
-> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> non-zero until enforcement lands. Items marked `Open` are undecided, and the number beside one links to the card that
+> settles it.
 
 ## What OpenAPI cannot say
 

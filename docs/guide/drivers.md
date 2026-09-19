@@ -33,8 +33,7 @@ say what it does, without that answer having to be written into this package.
 
 > **Not implemented yet.** [Phase 2](../../README.md#phase-2-the-generated-pipeline), landing with the two features that
 > need it rather than ahead of them: an extension point designed with no second implementation in front of it is a
-> guess. Items marked `Open` are undecided, and the number beside one is
-> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> guess. Items marked `Open` are undecided, and the number beside one links to the card that settles it.
 
 ## A driver carries structure, not names
 

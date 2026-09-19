@@ -16,10 +16,12 @@
  *   - Online, with `--online` and a token, in CI: every number names an issue
  *     that is still open. A marker outliving its card is the drift nobody sees.
  *
- * The reverse direction — every open `Decision` card is named by at least one
- * marker — is NOT checked. `Decision` is a project-board field, and reading it
- * needs the `project` scope, which CI's `GITHUB_TOKEN` does not carry. Giving
- * those issues a `decision` label would put it within reach of the Issues API.
+ * Both directions, because only one of them catches a card that outlived the
+ * answer already written. `Decision` is a project-board field and reading it
+ * would need the `project` scope, which CI's `GITHUB_TOKEN` does not carry, so
+ * the `decision` label stands in for it: an open issue carrying that label has
+ * to be named by at least one marker. With no labelled issue the check says so
+ * rather than passing quietly, since an inert check reads like a green one.
  *
  * What counts as a `TODO`: the word followed by `:` or `(`. The word used in
  * prose, as `config/lara-spec-first.php` does when it explains its own DONE /
@@ -157,13 +159,16 @@ if (process.argv.includes('--online')) {
         )
         .join('\n')
 
+    // The same round trip answers both directions.
+    const reverse = `issues(states: OPEN, labels: ["decision"], first: 100) { nodes { number title } }`
+
     const [owner, name] = (process.env.GITHUB_REPOSITORY ?? 'Gcob/lara-spec-first').split('/')
 
     const response = await fetch('https://api.github.com/graphql', {
         method: 'POST',
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({
-            query: `query { repository(owner: "${owner}", name: "${name}") { ${aliases} } }`,
+            query: `query { repository(owner: "${owner}", name: "${name}") { ${aliases} ${reverse} } }`,
         }),
     })
 
@@ -213,7 +218,27 @@ if (process.argv.includes('--online')) {
         process.exit(1)
     }
 
-    console.log(`Every marker names an open card, across ${cards.size} cards.`)
+    const decisions = repository.issues?.nodes ?? []
+
+    if (decisions.length === 0) {
+        console.error('No open issue carries the `decision` label, so the reverse direction checked nothing.')
+        console.error('Label the decision cards, or drop this half rather than leaving it inert.')
+        process.exit(1)
+    }
+
+    const unmarked = decisions.filter((issue) => !cards.has(issue.number))
+
+    if (unmarked.length > 0) {
+        console.error('These decision cards are named by no marker:')
+        for (const issue of unmarked) console.error(`  #${issue.number} ${issue.title}`)
+        console.error('\nA decision nothing points at is one nobody meets while reading the code.')
+        process.exit(1)
+    }
+
+    console.log(
+        `Every marker names an open card, across ${cards.size} cards, ` +
+            `and each of the ${decisions.length} decision cards is named by one.`
+    )
     process.exit(0)
 }
 

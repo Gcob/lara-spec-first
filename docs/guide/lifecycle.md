@@ -28,8 +28,8 @@ tags: [openapi, compatibility, versions, decisions, scope]
 > **Not built yet:** [breaking-change enforcement](#public-operations-default-to-beta), so `x-lifecycle: stable` is a
 > declaration the doctor reports on rather than a rule that fails a build, and the
 > [RFC 8594 headers](#generated-code-announces-the-sunset) the generated code will emit. Both are in the
-> [Roadmap](../../README.md#roadmap). Items marked `Open` are undecided, and the number beside one is
-> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> [Roadmap](../../README.md#roadmap). Items marked `Open` are undecided, and the number beside one links to the card
+> that settles it.
 
 ## What the three keys say
 

@@ -31,8 +31,7 @@ plus what the contract answers for an operation nobody has got to yet.
 
 > **`spec:make` is shipped in its three forms**, one operation, `--tag=` and `--all`, and so is the `501` an
 > unimplemented operation answers. `spec:watch` is [Phase 2](../../../README.md#phase-2-the-generated-pipeline) and does
-> not exist. Items marked `Open` are undecided, and the number beside one is
-> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
+> not exist. Items marked `Open` are undecided, and the number beside one links to the card that settles it.
 
 ## Scaffolding is `spec:make`, not a build step
 
