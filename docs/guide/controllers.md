@@ -535,10 +535,10 @@ never what the class does. It is a
 [finding](./code-generation/generated-file-anatomy.md#every-generated-file-explains-itself), in the same sense the
 docblock's findings are, and it stays true no matter what a developer writes on top of it.
 
-**Open:** the names. `HasModel`, `InteractsWithModel`, `CreatesResource`, `UpdatesResource`, `DeletesResource`,
-`ShowsResource` and `ListsResources` are working names, and each is public API surface under
-[rule 4](./openapi-support.md#the-four-rules) from the first release on. Settling them before that release costs
-nothing; after it, adding a member to any of them is a breaking change.
+**Open ([#41](https://github.com/Gcob/lara-spec-first/issues/41)):** the names. `HasModel`, `InteractsWithModel`,
+`CreatesResource`, `UpdatesResource`, `DeletesResource`, `ShowsResource` and `ListsResources` are working names, and
+each is public API surface under [rule 4](./openapi-support.md#the-four-rules) from the first release on. Settling them
+before that release costs nothing; after it, adding a member to any of them is a breaking change.
 
 ### How the semantic is detected
 

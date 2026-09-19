@@ -127,6 +127,13 @@ docs-check-anchors:
 docs-check-see:
     npm run docs:check-see
 
+# Report a deferred-work marker that names no card. Reads the sources, needs no
+# build, and runs Node outside the PHP container like every other check here that
+# does. Pass `--online` to also fail on a marker whose card has closed; CI does
+# that on every pull request.
+check-markers:
+    npm run check-markers
+
 # Serve the built site exactly as it will be published.
 docs-preview:
     npm run docs:preview

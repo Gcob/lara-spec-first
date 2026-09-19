@@ -131,8 +131,8 @@ Two traps worth knowing before you go in:
 - **The code may already name what you are about to work out.** A `TODO (#N)` in the code, or an `**Open (#N):**` in a
   document, marks work that is known, tracked and deliberately deferred, left at the line where it matters. Read it
   before deriving the same conclusion from four documents, and leave one yourself when you notice work belonging to
-  another card. The rule and the limit that keeps it from becoming noise are in
-  [`CONTRIBUTING.md`](./CONTRIBUTING.md#deferred-work-leaves-a-marker).
+  another card. `gh issue view <n> --repo Gcob/lara-spec-first` resolves the number. The rule and the limit that keeps
+  it from becoming noise are in [`CONTRIBUTING.md`](./CONTRIBUTING.md#deferred-work-leaves-a-marker).
 - **Branch names read `{type}/{card}/{context}`**, for example `docs/28/point-agents-at-the-board`. The middle segment
   is the card number, which is what links the branch, the pull request and the board without anybody typing the link.
   The types are in [`CONTRIBUTING.md`](./CONTRIBUTING.md#branch-names), and they are deliberately not the Conventional

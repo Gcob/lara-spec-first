@@ -161,6 +161,32 @@ jobs:
 
             - run: composer analyse
 
+    # Every deferred-work marker names a card, and every card it names is open.
+    #
+    # Here rather than in docs.yml, which carries path filters: a marker lives in
+    # Markdown and in PHP alike, so a check firing only on `**.md` would miss a
+    # bare `// TODO:` added to a class.
+    #
+    # Node with no `npm ci`: the script has no dependencies, which is what keeps
+    # this job at seconds rather than an install.
+    markers:
+        name: Deferred-work markers
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            issues: read
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+
+            - run: node scripts/check-markers.mjs --online
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     # The one check to mark required in branch protection.
     #
     # A matrix cell's name carries its PHP and Laravel versions, so requiring the
@@ -171,7 +197,7 @@ jobs:
     checks:
         name: All checks passed
         runs-on: ubuntu-latest
-        needs: [test, lowest, static]
+        needs: [test, lowest, static, markers]
         # Without this the job is skipped when a dependency fails, and a skipped
         # required check reads as neutral rather than as a failure.
         if: always()

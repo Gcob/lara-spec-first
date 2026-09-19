@@ -38,9 +38,11 @@ Scenario:
 Lot .
 
 <!--
-Two rules this form assumes:
+Three rules this form assumes:
 
 - Cite a file or a line as a permalink pinned to a commit, never as a bare path. A card written
   today and started in six months otherwise names a line that has moved.
 - A card means a branch, named `{type}/{card}/{context}`, which CONTRIBUTING.md describes.
+- A Decision card is done when the document stops saying `Open`, not when somebody made up their
+  mind. The marker and the card die in the same commit.
 -->

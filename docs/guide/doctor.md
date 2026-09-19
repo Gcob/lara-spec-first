@@ -108,7 +108,8 @@ values that do not.** What belongs here is why the unbuilt one is shaped the way
 
 `--check=syntax` and `--check=honored` do not partition the [sections below](#what-it-checks), since drift, installation
 and the baseline check fall under neither, and inventing a value per section would turn a filter into a second command.
-**Open:** whether `--check` names sections directly rather than naming two categories.
+**Open ([#56](https://github.com/Gcob/lara-spec-first/issues/56)):** whether `--check` names sections directly rather
+than naming two categories.
 
 **A report's own keys are `spec`, `specFileFound`, `version`, `configuration`, `routes`, `findings`, `notes` and
 `summary`.** That a refusal emits a different shape entirely, and which key to branch on, is

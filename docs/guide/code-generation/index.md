@@ -35,7 +35,8 @@ wherever that question comes up.
 
 > **Almost all of this is intent rather than behaviour**, and like [`openapi-support.md`](../openapi-support.md) this
 > file marks the difference per section rather than per file, so the banner does not become a little more wrong with
-> every release. Items marked `Open` are undecided.
+> every release. Items marked `Open` are undecided, and the number beside one is
+> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 >
 > **Shipped:** `spec:build` in its Phase 1 form, which resolves the specification and emits the routes and one
 > controller per operation, each carrying
@@ -375,9 +376,10 @@ is checked against, so the compile-time error survives even if the abstract laye
 it. Until the split exists there is one directory and one line; once it does, a project that wants the contract surface
 under review can track the interface and ignore the rest. Still `.gitignore` deciding, still not a config key.
 
-**Open:** whether the second layer is an abstract class or a trait. An abstract class gives one inheritance slot to the
-developer and takes it; a trait leaves it free and composes, at the cost of not being able to declare abstract members
-quite as directly. It is a question best settled against real generated output.
+**Open ([#67](https://github.com/Gcob/lara-spec-first/issues/67)):** whether the second layer is an abstract class or a
+trait. An abstract class gives one inheritance slot to the developer and takes it; a trait leaves it free and composes,
+at the cost of not being able to declare abstract members quite as directly. It is a question best settled against real
+generated output.
 
 **And it no longer applies to DTOs, which is a reversal worth naming.** An earlier version of this document made
 response DTOs the canonical example of this split: a generated abstract declaring the shape, a human subclass overriding

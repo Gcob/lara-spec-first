@@ -11,7 +11,9 @@ declare(strict_types=1);
 | changing it has no effect, and nothing will tell you so. A phase in
 | parentheses names the release that makes something live, whether it sits
 | beside a block's marker or beside one key inside a block that is otherwise
-| working. Nothing here is inert without saying when to come back for it.
+| working, and the number beside it is the issue doing that work:
+| github.com/Gcob/lara-spec-first/issues/50 for TODO (phase 2, #50). Nothing
+| here is inert without saying when to come back for it.
 |
 | Key names stay provisional until 1.0. The document each block cites owns the
 | reasoning; this file is only its shape.
@@ -146,7 +148,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Where your own overrides are looked for — TODO (phase 2)
+    | Where your own overrides are looked for — TODO (phase 2, #40)
     |--------------------------------------------------------------------------
     |
     | A DTO factory is overridden by writing a class that extends the generated
@@ -170,7 +172,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Publishing a sanitized specification — TODO (phase 2)
+    | Publishing a sanitized specification — TODO (phase 2, #52)
     |--------------------------------------------------------------------------
     |
     | The specification this package reads is private. `x-model` gives away
@@ -208,7 +210,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Pagination — TODO (phase 2)
+    | Pagination — TODO (phase 2, #50)
     |--------------------------------------------------------------------------
     |
     | OpenAPI has no vocabulary for pagination and the community never
@@ -242,7 +244,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Rate limiting — TODO (phase 2)
+    | Rate limiting — TODO (phase 2, #51)
     |--------------------------------------------------------------------------
     |
     | Same problem as pagination, same shape of answer. Two drivers ship:

@@ -32,7 +32,8 @@ reader, and the naming rules that decide what the file is called in the first pl
 
 > **This is shipped behaviour**, unlike most of what surrounds it: the source map, the docblock norm and the reference
 > comment landed with the first emitter and are asserted by the generators' own tests. What a finding can say will grow
-> with what the build knows. Items marked `Open` are undecided.
+> with what the build knows. Items marked `Open` are undecided, and the number beside one is
+> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 
 ## The source map
 
@@ -149,8 +150,9 @@ there and carries all three parts, the same way
 [any other behavior earns a test](../../../AGENTS.md#automated-tests-are-required). A norm that only lives in prose
 erodes the first time someone adds a new kind of generated file in a hurry.
 
-**Open:** how much of this is a fixed template versus per-kind, and whether the findings section has a machine-readable
-form. The doctor already learned that lesson, since its `--json` exists because
+**Open ([#56](https://github.com/Gcob/lara-spec-first/issues/56)):** how much of this is a fixed template versus
+per-kind, and whether the findings section has a machine-readable form. The doctor already learned that lesson, since
+its `--json` exists because
 [tooling and agents should not have to parse prose](../doctor.md#what-the-doctor-guarantees), and the same argument
 plausibly applies here, against the cost of putting a data format inside a comment.
 
@@ -304,5 +306,5 @@ endpoint to someone.
 It also means promoting an operation to `stable` is the moment its name gets chosen deliberately, which is exactly when
 a derived name would otherwise harden into something nobody picked and nobody can now change without a major version.
 
-**Open:** collisions between two `operationId` values that differ only in characters PHP cannot use in an identifier,
-and whether the build refuses them outright.
+**Open ([#69](https://github.com/Gcob/lara-spec-first/issues/69)):** collisions between two `operationId` values that
+differ only in characters PHP cannot use in an identifier, and whether the build refuses them outright.
