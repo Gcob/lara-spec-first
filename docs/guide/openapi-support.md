@@ -447,8 +447,8 @@ Per the rule above, we do not work around the router. The operation is `Rejected
 **Shipped as the whole document failing**, which is the honest half of the choice below and the one that needed no new
 mechanism: `Contract\HttpMethod` has no `trace` case, so the reader refuses the document and names the path.
 
-**Open:** whether that stays absolute, or the operation alone is refused while the rest of the document still loads. The
-second is friendlier, and it needs somewhere for the refusal to be reported rather than thrown, which is
+**Open (#57):** whether that stays absolute, or the operation alone is refused while the rest of the document still
+loads. The second is friendlier, and it needs somewhere for the refusal to be reported rather than thrown, which is
 [the doctor](./doctor.md), and the reason this is still open rather than decided by what shipped.
 
 ### Parameter names are a contract
@@ -489,7 +489,7 @@ constraint of the platform, once, at build time. A build that silently converts 
 forever, and the developer still meets it the first time they read a generated signature. The 32-character ceiling is
 not negotiable either way and must be checked before the route is ever compiled.
 
-**Open:** whether that rejection is absolute or has an escape hatch for specs the consumer does not own, the case
+**Open (#57):** whether that rejection is absolute or has an escape hatch for specs the consumer does not own, the case
 [acknowledgement](./doctor.md#acknowledged-limits-the-consumers-opt-out) exists for.
 
 ### Still to discuss

@@ -26,7 +26,8 @@ tags: [openapi, security, decisions, scope, laravel]
 > an operation that declares `security` is shipped. [`spec:doctor`](./doctor.md#what-it-checks) names every one of them,
 > individually, on every run, and says the package does not apply the requirement yet. A phase that registers routes
 > must not let a documented promise be mistaken for a kept one. A contract that declares `security` therefore exits
-> non-zero until enforcement lands. Items marked `Open` are undecided.
+> non-zero until enforcement lands. Items marked `Open` are undecided, and the number beside one is
+> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 
 ## What OpenAPI cannot say
 
@@ -120,7 +121,7 @@ feature has.
 `spec:build` writes the scheme, its matched guard and the scopes it asks for into the generated route registration as
 middleware parameters. Wiring the middleware onto the route is the build's job, not something you add by hand.
 
-**Open:** exactly which `securitySchemes` _types_ reduce to "the model has a scope" and which do not. `apiKey`,
+**Open (#45):** exactly which `securitySchemes` _types_ reduce to "the model has a scope" and which do not. `apiKey`,
 `http bearer` and `oauth2` are the clear fits; `mutualTLS` and the details of `openIdConnect` may not be answerable by
 this one middleware at all. A scheme the middleware cannot enforce is a case for
 [acknowledgement](./doctor.md#acknowledged-limits-the-consumers-opt-out), not a silent pass.
@@ -182,7 +183,7 @@ extensions, which is a far bigger commitment than matching a name to a guard.
 Spec-First does not mean spec-only: the contract stays authoritative for what it can express, and the application is
 still where business rules that a specification format was never designed to carry get written.
 
-## Open: declaring ownership in the spec
+## Open (#68): declaring ownership in the spec
 
 One derogation, deliberately not solved yet. "A user may CRUD their own content" is common across enough APIs that
 leaving it to a hand-written Policy costs every project the same work. Helping with that, rather than reading the
@@ -239,5 +240,5 @@ Once a baseline is enforced by default, the doctor checks:
 
 What it does **not** do: flag operations that need row-level authorization. The specification has no way to say that
 need exists, so there is nothing in the document for the doctor to read. This document is where that boundary is written
-down instead, until [the open ownership question](#open-declaring-ownership-in-the-spec) changes what the specification
-can say.
+down instead, until [the open ownership question](#open-68-declaring-ownership-in-the-spec) changes what the
+specification can say.

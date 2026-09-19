@@ -44,7 +44,8 @@ wrong for most readers. Both features are therefore [driver-based](./drivers.md)
 in code with names in config and a project free to write its own, is what makes stating it cheap.
 
 > **Not implemented yet.** [Phase 2](../../README.md#phase-2-the-generated-pipeline), alongside the response DTOs it
-> needs: the envelope is a generated type like any other. Items marked `Open` are undecided.
+> needs: the envelope is a generated type like any other. Items marked `Open` are undecided, and the number beside one
+> is [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 
 ## An adapter behind one interface
 
@@ -69,8 +70,8 @@ use, the shape that eventually grows a `match` statement per caller. Rather than
 [one of Laravel's own pagination contracts](#laravel-already-owns-the-source-agnostic-contract). Note that those
 contracts are deliberately **not** one hierarchy, which is what the return type there has to account for.
 
-**Open:** whether the adapter needs all five accessors above once the paginator contract carries most of that state, or
-whether it narrows to the parts the specification alone knows: the parameter names and the envelope keys.
+**Open (#50):** whether the adapter needs all five accessors above once the paginator contract carries most of that
+state, or whether it narrows to the parts the specification alone knows: the parameter names and the envelope keys.
 
 ## Pagination is off by default
 

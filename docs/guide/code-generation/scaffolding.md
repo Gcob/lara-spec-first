@@ -31,7 +31,8 @@ plus what the contract answers for an operation nobody has got to yet.
 
 > **`spec:make` is shipped in its three forms**, one operation, `--tag=` and `--all`, and so is the `501` an
 > unimplemented operation answers. `spec:watch` is [Phase 2](../../../README.md#phase-2-the-generated-pipeline) and does
-> not exist. Items marked `Open` are undecided.
+> not exist. Items marked `Open` are undecided, and the number beside one is
+> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 
 ## Scaffolding is `spec:make`, not a build step
 
@@ -187,8 +188,8 @@ The `make:model -mc` instinct is right; it just attaches to this command rather 
 thing that takes an operation's name, flags for what to create alongside it are natural and bounded: a test, a DTO
 subclass or a policy, because they all concern the one operation you named.
 
-**Open:** which types earn a flag. The list should be short, and each entry has to be something a developer wants _per
-operation_ rather than something the build already produces for the whole contract.
+**Open (#56):** which types earn a flag. The list should be short, and each entry has to be something a developer wants
+_per operation_ rather than something the build already produces for the whole contract.
 
 ## Watching: `spec:watch`
 

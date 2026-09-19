@@ -37,7 +37,8 @@ thing everywhere, and guessing wrong here is worse than declaring nothing, per
 
 > **Not implemented yet.** [Phase 2](../../README.md#phase-2-the-generated-pipeline). One thing has to be settled before
 > the adapter is more than an interface, and the roadmap says so too: whether what reads it is
-> [build-time enforcement or a runtime relay](#open-what-the-answer-powers). Items marked `Open` are undecided.
+> [build-time enforcement or a runtime relay](#open-49-what-the-answer-powers). Items marked `Open` are undecided, and
+> the number beside one is [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 
 ## An adapter behind one interface
 
@@ -210,12 +211,12 @@ is one key whose values are either field names or named groups of field names, a
 string is a field, an array is a window. **Mixing the two levels in one `mapping` is a hard error**, naming the
 offending key, rather than a guess about which level was meant.
 
-**Open:** whether the reserved name `default` is configurable or fixed, and whether a driver may declare that its
+**Open (#49):** whether the reserved name `default` is configurable or fixed, and whether a driver may declare that its
 convention only ever has one window. The IETF draft's single `RateLimit-Limit` plus `RateLimit-Policy` arguably does,
 and a driver that knows this could reject a multi-window mapping as a misconfiguration rather than reading fields that
 cannot exist.
 
-## Open: what the answer powers
+## Open (#49): what the answer powers
 
 The interface only has getters, and what reads them is not yet decided. Two candidates, and they are not the same
 feature:
@@ -242,8 +243,8 @@ not a refinement on top of them.
 Three boundaries, because a document about rate limits invites all three questions:
 
 - **This package does not enforce a limit.** It reads what the contract declares about one. Whether that declaration
-  ever reaches Laravel's `throttle` middleware is [the open question above](#open-what-the-answer-powers), and until it
-  is settled, enforcement is the application's.
+  ever reaches Laravel's `throttle` middleware is [the open question above](#open-49-what-the-answer-powers), and until
+  it is settled, enforcement is the application's.
 - **Nothing here decides who the caller is.** A limit is per-something, and the package has no opinion on what that
   something is: authentication and identity are [`security.md`](./security.md)'s subject.
 - **The mechanism the driver plugs into** belongs to [`drivers.md`](./drivers.md). This page owns the two built-in

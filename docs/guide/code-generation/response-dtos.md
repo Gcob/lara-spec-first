@@ -27,7 +27,8 @@ teach.
 
 > **None of this is behaviour yet.** The build emits no DTO and no factory today, and no configuration key exists to
 > point the override scan anywhere. What is written here is the design
-> [Phase 2](../../../README.md#phase-2-the-generated-pipeline) will follow. Items marked `Open` are undecided.
+> [Phase 2](../../../README.md#phase-2-the-generated-pipeline) will follow. Items marked `Open` are undecided, and the
+> number beside one is [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 
 ## The shape is ours, the behavior is yours
 
@@ -89,11 +90,11 @@ explicit over dynamic, and the cost paid once rather than on every request. The 
 override added without rerunning the build has not taken effect yet, a case for [drift](../doctor.md#what-it-checks),
 not a new failure mode.
 
-**Open:** the config key's name, and whether it recurses into subdirectories by default; the exact mechanism for finding
-the `extends` relationship, where reflection over the classes the configured directories autoload is the leading answer,
-rather than a token scan over spellings, since an `extends` clause needs the language's own resolution of `use` imports
-and aliases to be trustworthy, not a match on spelling; and the name of the exception thrown when two classes claim one
-factory.
+**Open (#56):** the config key's name, and whether it recurses into subdirectories by default; the exact mechanism for
+finding the `extends` relationship, where reflection over the classes the configured directories autoload is the leading
+answer, rather than a token scan over spellings, since an `extends` clause needs the language's own resolution of `use`
+imports and aliases to be trustworthy, not a match on spelling; and the name of the exception thrown when two classes
+claim one factory.
 
 ## What a factory's docblock carries
 

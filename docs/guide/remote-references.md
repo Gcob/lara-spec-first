@@ -21,7 +21,8 @@ tags: [openapi, dependencies, decisions, scope, compatibility]
 > - A fetched document that names a reference of its own is fetched too, and the allowlist is checked again at every
 >   hop.
 
-> **Mostly intent, marked per section.** Items marked `Open` are undecided.
+> **Mostly intent, marked per section.** Items marked `Open` are undecided, and the number beside one is
+> [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 >
 > **Shipped:** the setting and everything it means. `lara-spec-first.remote_references.allowed_hosts` defaults to empty,
 > and every remote reference is refused before the parser can fetch it: an empty allowlist still means no remote

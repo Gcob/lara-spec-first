@@ -261,6 +261,8 @@ A few expectations:
 Work you notice and are not going to do gets written down where it will be needed, rather than done or forgotten.
 
 - **Leave it at the line where a future reader needs it:** `TODO (#N)` in code, `**Open (#N):**` in a document.
+- **The number is a card in this repository**, reachable at `https://github.com/Gcob/lara-spec-first/issues/<n>`, and
+  `gh issue view <n>` reads it from a terminal. The project board groups the same cards by phase and by lot.
 - **The number is what makes it expire.** A bare `TODO` is refused, and a marker naming a closed card is drift.
   Enforcement lands with [#70](https://github.com/Gcob/lara-spec-first/issues/70).
 - **What this package writes into a consumer's project names their half first**, as `TODO (phase 2, #50)`.

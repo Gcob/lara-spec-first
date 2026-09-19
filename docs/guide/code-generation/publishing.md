@@ -30,7 +30,8 @@ on the way out, what switches the removal on, and what this package deliberately
 
 > **None of this is behaviour yet.** No sanitized copy is produced today, and no configuration key exists to ask for
 > one. What is written here is the design the emitter will follow when
-> [Phase 2](../../../README.md#phase-2-the-generated-pipeline) reaches it. Items marked `Open` are undecided.
+> [Phase 2](../../../README.md#phase-2-the-generated-pipeline) reaches it. Items marked `Open` are undecided, and the
+> number beside one is [the card that settles it](https://github.com/Gcob/lara-spec-first/issues).
 
 ## The specification the build reads is private
 
@@ -139,9 +140,9 @@ Two consequences to state rather than let anyone hit:
   is the same failure the [drift check](../doctor.md#what-it-checks) already exists for, and the published copy belongs
   in its scope.
 
-**Open:** the config key names, whether the sanitized copy is emitted in the document's own format or normalized to
-JSON, and whether an operation's `summary` and `description` need a keep-or-strip decision of their own. Internal notes
-end up in those fields far more often than anyone intends.
+**Open (#52):** the config key names, whether the sanitized copy is emitted in the document's own format or normalized
+to JSON, and whether an operation's `summary` and `description` need a keep-or-strip decision of their own. Internal
+notes end up in those fields far more often than anyone intends.
 
 ### Types come from `openapi-typescript`
 
