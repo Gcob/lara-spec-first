@@ -571,6 +571,9 @@ first release, not shipped behavior.
 
 ### Schemas
 
+**Open ([#33](https://github.com/Gcob/lara-spec-first/issues/33)):** how far the honored subset goes, and what each
+keyword's stated position is. The [parser caveats](#parser-caveats) above are why the rows below still read `Open`.
+
 | Construct                                                                                                                                                     | Level | Note                                                                                                                                                                              |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Core JSON Schema subset shared by 3.0 and 3.1                                                                                                                 | Open  | Phase 2 defines how far this goes.                                                                                                                                                |
