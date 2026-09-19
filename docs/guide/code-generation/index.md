@@ -391,15 +391,15 @@ reads a changed position rather than a contradiction.
 
 **One config key decides, defaulting to `app/Http/Generated` and the namespace `App\Http\Generated`.**
 
-**Open ([#58](https://github.com/Gcob/lara-spec-first/issues/58)):** whether that tree carries version directories,
-`v1/` and `v2/`, or whether the idea leaves the plan. It is written here because this is the section the answer would
-change: versioned directories change the paths and the namespaces the build emits, which puts them under
-[rule 4](../openapi-support.md#the-four-rules) exactly like the config keys. Parking the question is not answering it.
-
 Under `app/` because it is application code the developer will read, extend and debug, not a build artefact hidden in
 `bootstrap/`. Under `app/Http/` because that is where Laravel already puts controllers, form requests and middleware.
 Everything generated here is HTTP-layer machinery, and it belongs beside the concrete controllers that extend it rather
 than in a directory of its own invention. Configurable because no default survives contact with every project.
+
+**Open ([#58](https://github.com/Gcob/lara-spec-first/issues/58)):** whether that tree carries version directories,
+`v1/` and `v2/`, or whether the idea leaves the plan. It is written here because this is the section the answer would
+change: versioned directories change the paths and the namespaces the build emits, which puts them under
+[rule 4](../openapi-support.md#the-four-rules) exactly like the config keys. Parking the question is not answering it.
 
 **The name has a job.** It appears in every `use` statement, every stack trace and every IDE autocomplete for the
 lifetime of the project, so it should say _do not edit this_ without anyone having to look it up. `Generated` does that

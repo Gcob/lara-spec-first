@@ -41,6 +41,10 @@ const ROOTS = ['docs', 'src', 'tests', 'config', 'workbench', 'scripts']
 // by somebody who has never seen this board, so the number alone is not enough.
 const CONSUMER_FACING = [/^config\//]
 
+// Published as a page, where a bare number is a search and a link is a click.
+// The banner in each of these files promises the link, so it is required here.
+const RENDERED = [/^docs\//]
+
 function sources() {
     const found = []
 
@@ -67,9 +71,17 @@ function sources() {
 }
 
 const OPEN_BARE = /(?:\*\*Open:\*\*|^#{2,4} Open:)/
-// The number may be written plain or as a link, since a rendered document makes
-// it one click and a source file does not.
-const OPEN_NUMBERED = /(?:\*\*Open \(\[?#(\d+)\]?|^#{2,4} Open \(\[?#(\d+)\]?)/
+// Both spellings are recognised, and the closing `):` is part of the pattern so
+// that a typo like `**Open (#58):*` is a finding rather than a match. Which
+// spelling is required depends on where the marker sits, below.
+const OPEN_LINKED = /(?:\*\*Open \(\[#(\d+)\]\([^)]+\)\):\*\*|^#{2,4} Open \(\[#(\d+)\]\([^)]+\)\):)/
+const OPEN_PLAIN = /(?:\*\*Open \(#(\d+)\):\*\*|^#{2,4} Open \(#(\d+)\):)/
+
+// Anything that opens like a marker. A line matching this and neither spelling
+// above is malformed, which without this rule would make it invisible rather
+// than wrong: the three patterns each simply fail to match, and silence is the
+// one answer this check must never give.
+const OPEN_SHAPED = /(?:\*\*Open \(|^#{2,4} Open \()/
 // A marker is parenthesised, which is what `CONTRIBUTING.md` writes. That single
 // requirement is what separates `TODO (phase 2, #50)` from `TODO: support RFC
 // #7807`, where the number belongs to a sentence rather than to the marker. The
@@ -83,15 +95,29 @@ const files = sources()
 
 for (const file of files) {
     const consumerFacing = CONSUMER_FACING.some((pattern) => pattern.test(file))
+    const rendered = RENDERED.some((pattern) => pattern.test(file))
 
     readFileSync(join(ROOT, file), 'utf8')
         .split('\n')
         .forEach((line, index) => {
             const at = `${file}:${index + 1}`
 
-            const numbered = line.match(OPEN_NUMBERED)
-            if (numbered) cards.add(Number(numbered[1] ?? numbered[2]))
-            else if (OPEN_BARE.test(line)) problems.push(`${at}  an \`Open\` marker with no card`)
+            const linked = line.match(OPEN_LINKED)
+            const plain = linked ? null : line.match(OPEN_PLAIN)
+
+            if (linked) cards.add(Number(linked[1] ?? linked[2]))
+            else if (plain) {
+                cards.add(Number(plain[1] ?? plain[2]))
+
+                if (rendered) {
+                    problems.push(
+                        `${at}  an \`Open\` marker written plain in a rendered document. ` +
+                            'Link the number, as `**Open ([#58](…/issues/58)):**`'
+                    )
+                }
+            } else if (OPEN_SHAPED.test(line)) {
+                problems.push(`${at}  an \`Open\` marker this check cannot read. Expected \`**Open (#58):**\``)
+            } else if (OPEN_BARE.test(line)) problems.push(`${at}  an \`Open\` marker with no card`)
 
             for (const [, carried, colon] of line.matchAll(TODO_MARKER)) {
                 if (colon) {
@@ -159,8 +185,16 @@ if (process.argv.includes('--online')) {
         )
         .join('\n')
 
-    // The same round trip answers both directions.
-    const reverse = `issues(states: OPEN, labels: ["decision"], first: 100) { nodes { number title } }`
+    // The same round trip answers both directions. The label is asked for on its
+    // own so that a missing one, which is a misconfiguration, reads differently
+    // from a label with nothing open under it, which is the end state this whole
+    // project is walking towards.
+    const reverse = `
+        label(name: "decision") { id }
+        issues(states: OPEN, labels: ["decision"], first: 100) {
+            nodes { number title }
+            pageInfo { hasNextPage }
+        }`
 
     const [owner, name] = (process.env.GITHUB_REPOSITORY ?? 'Gcob/lara-spec-first').split('/')
 
@@ -218,12 +252,25 @@ if (process.argv.includes('--online')) {
         process.exit(1)
     }
 
-    const decisions = repository.issues?.nodes ?? []
+    if (!repository.label) {
+        console.error('The `decision` label does not exist, so the reverse direction cannot run.')
+        console.error('Create it, or drop this half rather than leaving it inert.')
+        process.exit(1)
+    }
+
+    // A ceiling nobody sees is the failure this check exists against, so it
+    // refuses rather than silently checking the first hundred.
+    if (repository.issues.pageInfo.hasNextPage) {
+        console.error('More than 100 open decision cards, so this query truncated and checked only the first page.')
+        console.error('Paginate before trusting a green run here.')
+        process.exit(1)
+    }
+
+    const decisions = repository.issues.nodes
 
     if (decisions.length === 0) {
-        console.error('No open issue carries the `decision` label, so the reverse direction checked nothing.')
-        console.error('Label the decision cards, or drop this half rather than leaving it inert.')
-        process.exit(1)
+        console.log(`Every marker names an open card, across ${cards.size} cards. No decision card is open.`)
+        process.exit(0)
     }
 
     const unmarked = decisions.filter((issue) => !cards.has(issue.number))

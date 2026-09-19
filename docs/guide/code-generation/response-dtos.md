@@ -113,9 +113,11 @@ distinguishing the default a reader is looking at from the behavior that actuall
 `spatie/laravel-data` remains a candidate for the generated shape itself, since its casting, validation and
 serialization are useful independently of who builds the object, but its own `from()`-override ergonomics are no longer
 the fit they once were: a `Data` object is not `final`, and this design deliberately does not lean on DTO-level
-inheritance for customization. **Open ([#38](https://github.com/Gcob/lara-spec-first/issues/38)):** whether we depend on
-it or only take the shape. It belongs in [`stack.md`](../../project/stack.md) once settled. A dependency buys casting,
-validation and serialization for free, at the cost of binding generated code to another package's API and release cycle.
+inheritance for customization.
+
+**Open ([#38](https://github.com/Gcob/lara-spec-first/issues/38)):** whether we depend on it or only take the shape. It
+belongs in [`stack.md`](../../project/stack.md) once settled. A dependency buys casting, validation and serialization
+for free, at the cost of binding generated code to another package's API and release cycle.
 
 ## What this document does not cover
 
