@@ -45,9 +45,11 @@ whole sentences inside its boxes, so what it proved was that it had been drawn b
 deserve a picture. Drawn with nouns instead, the same subject earned its place. When the artifact fails, rule out your
 own hand before you conclude anything about the rule.
 
-**And measuring does not always favour the person measuring.** The same exercise left one refusal standing, on a ground
-the original argument had not led with. A rule that survives a real attempt is better documented than one nobody tested,
-so the exercise is worth running even when it changes nothing.
+**And measuring does not always favour the person measuring.** The same exercise left one refusal standing: a four-step
+loop of how a lot is prepared, executed and reviewed was refused as a diagram, and building it confirmed the refusal on
+a ground the argument had not led with. The problem was not that the rule forbids a chronology, it was that four boxes
+in a line cost a build step and a committed SVG to say what one sentence already said. A rule that survives a real
+attempt is better documented than one nobody tested, so the exercise is worth running even when it changes nothing.
 
 ## Documentation must follow the code
 
@@ -673,13 +675,13 @@ That threshold permits a diagram; it never asks for one. What turns it into some
 first time have to hold more than one relationship at once?_ A subject below the structural threshold can still earn a
 picture on that ground, because what costs a newcomer is not the number of steps, it is the number of things they have
 to keep in their head to follow the next sentence. This is the developer-experience half of the two goals
-[`README.md`](../../README.md) states out loud, and it is the half a rule about structure cannot see.
+[`README.md`](../../README.md#stack--philosophy) states out loud, and it is the half a rule about structure cannot see.
 
 **The prose still has to answer without the image.** Not a style preference. Half this set's readers are on GitHub,
-where an SVG is a picture and nothing more, and the agents [`AGENTS.md`](../../AGENTS.md) sends into these documents by
-name read the alt text and the PlantUML source rather than the drawing. A diagram carrying something the prose does not
-is a document with two halves, one of which some of its readers never receive. Draw to spare a reader the effort of
-assembling a shape, never to spare the page a paragraph.
+where an SVG is a picture and nothing more, and the agents [`AGENTS.md`](../../AGENTS.md#where-to-look) sends into these
+documents by name read the alt text and the PlantUML source rather than the drawing. A diagram carrying something the
+prose does not is a document with two halves, one of which some of its readers never receive. Draw to spare a reader the
+effort of assembling a shape, never to spare the page a paragraph.
 
 **The case this pair was written from.** [`card-management.md`](./card-management.md) draws a card's five states. It
 cleared the structural threshold on its own, but what earned it was narrower: the picture carries the `Backlog` and

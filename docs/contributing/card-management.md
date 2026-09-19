@@ -4,8 +4,9 @@ audience: Contributors
 covers: >
     How work is cut into cards and tracked: what makes a card the right size, the three tests that catch a card that is
     really a checkbox or really a lot, the failures this repository has actually made and what each one taught, the card
-    template and which sections each kind of card drops, what the board's Status, Phase and Lot fields mean and who
-    moves them, and the grouping mechanisms this project declines to use.
+    template and which sections each kind of card drops, when a card is written and what a Backlog card is worth before
+    then, how a card cites a file, what the board's Status, Phase and Lot fields mean and who moves them, and the
+    grouping mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or wondering whether something is one card or two.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -43,8 +44,9 @@ shippable.
 ## Cards are cut when the lot opens, not before
 
 **A lot exists as a coarse intention from the day the phase is planned. The cards inside it are written just before that
-lot opens.** This file leans on the rule twice already, once to defer #40's split and once to explain a card with no
-`Lot`, so it is worth stating as a rule rather than leaving as an excuse.
+lot opens.** This file leans on the rule twice already, once to defer
+[#40](https://github.com/Gcob/lara-spec-first/issues/40)'s split and once to explain a card with no `Lot`, so it is
+worth stating as a rule rather than leaving as an excuse.
 
 The reason is that a card written six months early is written against a tree, a design and a set of decisions that have
 all moved by the time somebody picks it up. Lot 0 paid for that in full: its cards were written in one sitting before
@@ -58,11 +60,11 @@ stands now.
 
 **Moving a card from `Backlog` to `Todo` is that rewrite, not a drag between columns.** A sketch promoted without being
 rewritten is a specification nobody wrote, and it gets discovered mid-flight, which is exactly what Lot 0 cost. Deleting
-a sketch is the opposite overreaction: the coarse intention is worth keeping. #40 is the standing example, known to be a
-lot rather than a card, and split when Lot 2 opens rather than today.
+a sketch is the opposite overreaction: the coarse intention is worth keeping.
+[#40](https://github.com/Gcob/lara-spec-first/issues/40) is the standing example, known to be a lot rather than a card,
+and split when Lot 2 opens rather than today.
 
-![A card's five states, from the coarse intention a lot is named with to the document a finished lot writes its
-lesson into, and the edge running back from that document to the next lot's rewrite](../diagrams/card-lifecycle.svg)
+![A card's five states, and the edge running back from a finished lot to the next lot's rewrite](../diagrams/card-lifecycle.svg)
 
 **A finished lot owes one thing to the next: what it taught, written down where the next lot will read it.** That place
 is [What we have actually got wrong](#what-we-have-actually-got-wrong) on this page, named with the card that produced
@@ -142,6 +144,8 @@ So a `Docs` card with no blocker is two sections, and only a `Feature` card rout
 `Ready when` replaces a ceremonial definition of ready: it holds card numbers, and it is deleted outright rather than
 left empty. **A `Decision` card is done when the document stops saying `Open`**, not when somebody has made up their
 mind, which is the same rule [`stack.md`](../project/stack.md) applies to its own Status column.
+
+## A card cites a file as a permalink
 
 **A card cites a file or a line as a permalink pinned to a commit, never as a bare path.** The
 [issue form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/task.md) says so and this is why:
