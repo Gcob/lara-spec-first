@@ -18,7 +18,7 @@ assignees: ""
 
 ## Acceptance
 
-<!-- Feature cards only, one to three scenarios. Delete this section on a Docs or Decision card. -->
+<!-- One to three scenarios. Delete this section on every card but a Feature. -->
 
 ```gherkin
 Scenario:
@@ -33,9 +33,17 @@ Scenario:
 
 - [ ]
 
-<!-- The lot this belongs to, if you know it. Left blank, it gets filled in at triage. -->
+<!--
+The lot and the kind, if you know them. This form cannot set a project field, since the item
+does not exist yet, so they are written here and triage moves them onto the board: Kind there
+and then, Lot when that lot is actually cut. Once a field is set it is the answer and the line
+below is stale text, not a second source. Leave either blank rather than guessing.
+card-management.md#the-board
+-->
 
-Lot .
+Lot:
+
+Kind:
 
 <!--
 Four rules this form assumes. Each names where its reasoning lives, and what makes a card
