@@ -7,7 +7,7 @@ covers: >
     template and which sections each kind of card drops, what the board's Status, Phase and Lot fields mean and who
     moves them, and the grouping mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or wondering whether something is one card or two.
-tags: [planning, conventions, scope, code-review, onboarding]
+tags: [planning, conventions, workflow, scope, onboarding]
 ---
 
 # Card Management
@@ -82,10 +82,13 @@ to ship without it.
 `extends`-based override discovery, and the factory emitter. Its split happens when Lot 2 opens rather than now: it
 blocks nothing today, and rewriting a card before its lot is cut is the same guessing this file exists to stop.
 
-**A card whose `Done when` names a file instead of a result cannot be verified by anybody who did not write it.** Lot 0
-paid for that lesson across six cards, and the template reflects it.
-`generated.namespace is read, and its config block moves from STARTED to DONE` survives a rename;
-`check-open-questions.mjs exists` did not.
+**A card whose `Done when` names a file instead of a result cannot be verified by anybody who did not write it.**
+[#70](https://github.com/Gcob/lara-spec-first/issues/70) wrote
+`scripts/check-open-questions.mjs, with two halves that fail differently`; the file was renamed to `check-markers.mjs`
+while the card was open, and the box had to be reworded before it could be ticked rather than simply ticked. The work
+had not changed. Lot 1 was written the other way round, because of what that cost:
+`generated.namespace is read, and its config block moves from STARTED to DONE` survives any rename, since it describes
+what is true rather than what is called what.
 
 ## The template, and what each kind of card drops
 
@@ -110,8 +113,8 @@ So a `Docs` card with no blocker is two sections, and only a `Feature` card rout
 left empty. **A `Decision` card is done when the document stops saying `Open`**, not when somebody has made up their
 mind, which is the same rule [`stack.md`](../project/stack.md) applies to its own Status column.
 
-The shape was worked out in a planning note of 15 September 2026, which is not tracked in git. Nothing here needs it:
-what survived the argument is on this page, and what did not is not worth a link nobody can follow.
+The shape came out of a planning note that git does not track, so there is no link to follow and none is needed: what
+survived that argument is on this page.
 
 ## The board
 
@@ -120,11 +123,21 @@ One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Th
 | Field    | Values                                                                    | Who moves it                           |
 | -------- | ------------------------------------------------------------------------- | -------------------------------------- |
 | `Status` | `Backlog`, `Todo`, `In Progress`, `In review`, `Ready to publish`, `Done` | Whoever is doing the work, as it moves |
-| `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set once when the card is filed        |
+| `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after            |
 | `Lot`    | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after  |
 
-`Status` is the only field that moves often. `Backlog` is work nobody intends to start this lot; `Todo` is the current
-lot. A card with no `Lot` is a gate or an enforcement item, which belongs to no lot by design.
+`Status` is the only field that moves often. `Backlog` is work nobody intends to start this lot, `Todo` is the current
+lot, and `Ready to publish` is work that is merged and waiting on a release rather than on a reviewer, which is what
+separates it from `In review`.
+
+**A card can legitimately carry no `Phase` either.** [#68](https://github.com/Gcob/lara-spec-first/issues/68), which
+asks how ownership gets declared in the contract, is a positioning question rather than a feature, and forcing it into a
+phase would claim a sequencing nobody has decided. One card in that state is a fact about the question; several would
+mean triage has stopped happening.
+
+**A card with no `Lot` is one no lot has cut yet.** That is every card past the current phase, plus the gates and the
+breaking-change set, which belong to no lot by design. It is a normal state, not a gap to fill: a card gets its `Lot`
+when somebody decides the lot, and guessing earlier is the same guessing this file exists to stop.
 
 **The `decision` label is not decoration.** A card that settles a question a document marks `Open` carries it, and
 `just check-markers --online` requires every open card carrying it to be named by at least one marker. The rule and its
