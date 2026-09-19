@@ -4,10 +4,11 @@ audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
     principle and what happens when a subject outgrows one file, the audience vocabulary and the directory each audience
-    owns and the voice each one is written in, the front matter metadata schema and tag vocabulary, the summary every
-    document opens with and how it differs from a `covers` claim, the three rules that keep a document readable in one
-    pass and the junior developer test that calibrates them, how a diagram is built and when one earns its place, the
-    catalogue of doc smells and the correction each one calls for, and the inventory of every document.
+    owns and the voice each one is written in, how a rule in this file is contested, the front matter metadata schema
+    and tag vocabulary, the summary every document opens with and how it differs from a `covers` claim, the three rules
+    that keep a document readable in one pass and the junior developer test that calibrates them, how a diagram is built
+    and when one earns its place, the catalogue of doc smells and the correction each one calls for, and the inventory
+    of every document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
@@ -16,6 +17,7 @@ tags: [documentation, conventions, metadata, code-review, onboarding]
 
 > **In brief**
 >
+> - A rule here is contested by building what it discourages and reporting what you saw, never by arguing.
 > - Documentation is one of the three places every change lands, and a document that contradicts the code is a defect.
 > - Every topic has exactly one owning file. Other files link to it rather than restate it.
 > - The audience decides the directory and the voice, and every file declares itself in its own front matter.
@@ -28,6 +30,24 @@ so they should not be buried inside a file addressed to agents.
 
 Documentation is one of the [three places](../../AGENTS.md#every-change-lands-in-three-places) every change must land,
 alongside the code and the tests.
+
+## A rule here is contested by building, not by arguing
+
+**A rule in this file can be wrong, and the way to say so is to produce what it discourages and report what you saw.**
+Not an argument against the rule, the artifact the rule would have prevented. Build it, look at it, and say what looking
+changed. A rule stands until somebody has done that, which is what keeps this from being a licence to skip one: the cost
+of disagreeing is the work, not the opinion.
+
+**A bad artifact measures your execution, not the idea.** The
+[card lifecycle diagram](./card-management.md#cards-are-cut-when-the-lot-opens-not-before) was refused on these rules,
+built anyway, and the first draft was rejected again after looking at it. That rejection was wrong: the draft carried
+whole sentences inside its boxes, so what it proved was that it had been drawn badly, not that the subject did not
+deserve a picture. Drawn with nouns instead, the same subject earned its place. When the artifact fails, rule out your
+own hand before you conclude anything about the rule.
+
+**And measuring does not always favour the person measuring.** The same exercise left one refusal standing, on a ground
+the original argument had not led with. A rule that survives a real attempt is better documented than one nobody tested,
+so the exercise is worth running even when it changes nothing.
 
 ## Documentation must follow the code
 
@@ -541,7 +561,7 @@ guides use it, but [`Row-level rules are a Policy's job`](../guide/security.md#r
 rule kept in the assertive voice the rest of the set writes headings in. What the rule asks for is a section a reader
 can find, not a phrase to grep for.
 
-### A diagram is built, not embedded
+## A diagram is built, not embedded
 
 **Diagrams are PlantUML sources under `docs/diagrams/`, rendered to an SVG committed beside each one, and referenced
 from a page as an image.** Their shared look, the fonts, the transparent ground and
@@ -587,7 +607,7 @@ Five rules keep a rendered diagram honest:
   loses nothing. In this set that costs close to nothing: every section already carries its prose, its table and its
   rules, so a diagram is added beside them rather than paid for by rewriting them.
 
-#### Seven colors, one meaning each
+### Seven colors, one meaning each
 
 **A color says something, or a diagram does not use it.** The seven below are the whole vocabulary, they are defined
 once in [`palette.iuml`](https://github.com/Gcob/lara-spec-first/blob/main/docs/diagrams/palette.iuml), an absolute link
@@ -641,13 +661,31 @@ distinction to draw is right to carry none, the way
 [`operation-lifecycle`](../guide/lifecycle.md#the-audience-sets-the-default) marks one state and leaves the rest
 neutral.
 
-#### When a diagram earns its place
+### When a diagram earns its place
 
 **Three steps, or an ordering the prose has to spell out.** Below that a sentence wins, and a diagram of two boxes costs
 a build step to say what a clause already said.
 
 That threshold permits a diagram; it never asks for one. What turns it into something a review can report is the smell
 [an ordering carried by prose alone](#doc-smells), which is this rule read from the outside.
+
+**That threshold measures the subject. The second question measures the reader.** _Does somebody meeting this for the
+first time have to hold more than one relationship at once?_ A subject below the structural threshold can still earn a
+picture on that ground, because what costs a newcomer is not the number of steps, it is the number of things they have
+to keep in their head to follow the next sentence. This is the developer-experience half of the two goals
+[`README.md`](../../README.md) states out loud, and it is the half a rule about structure cannot see.
+
+**The prose still has to answer without the image.** Not a style preference. Half this set's readers are on GitHub,
+where an SVG is a picture and nothing more, and the agents [`AGENTS.md`](../../AGENTS.md) sends into these documents by
+name read the alt text and the PlantUML source rather than the drawing. A diagram carrying something the prose does not
+is a document with two halves, one of which some of its readers never receive. Draw to spare a reader the effort of
+assembling a shape, never to spare the page a paragraph.
+
+**The case this pair was written from.** [`card-management.md`](./card-management.md) draws a card's five states. It
+cleared the structural threshold on its own, but what earned it was narrower: the picture carries the `Backlog` and
+`Todo` distinction faster than the paragraph written to close that exact gap, and somebody meeting the board for the
+first time is holding two states, a cycle and a document at once. The first draft of it failed for the opposite reason,
+with whole sentences inside the boxes, which is what made it a paragraph drawn badly rather than a shape.
 
 **A page may carry several diagrams, and depth is what separates them.** One image per page is not the rule, because a
 subject a page explains at two levels is badly served by a single picture drawn at either one. Open with the high-level
