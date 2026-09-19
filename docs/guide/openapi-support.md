@@ -575,6 +575,9 @@ first release, not shipped behavior.
 **Nothing below is shipped behavior: Phase 1 registers routes and reads no schema.** Every row states the position taken
 for the first release, and #36 is what makes a position audible in `spec:doctor` rather than a line in this file. A
 keyword Phase 2 will honor is `Deferred` here, since the exit code it will carry is not one this release can reach.
+**Which costs a major when Phase 2 arrives, and saying so now is the point:** a row landing on `Partial` rather than
+`Supported` gains a reachable non-zero exit, and [rule 4](#the-four-rules) makes every move on that axis major in either
+direction. `format` and `pattern` already describe a boundary, so that is their likely destination rather than a risk.
 
 Four [parser caveats](#parser-caveats) decide most of the table, and they are why a position can be stated at all:
 
@@ -596,9 +599,16 @@ detects later, since nothing fails. #34 owns that refusal and tests it.
 **It never applies to the data-carrying keywords.** `const`, `default`, `enum` and `example`, with `examples` as its 3.1
 spelling, hold data, where [a `$ref` is a value rather than a reference](#reading-a-document) and refusing it would turn
 away the valid contract that rule was written to protect. It does not reach `contentMediaType`, `contentEncoding`,
-`$comment`, `$id`, `$anchor`, `dependentRequired`, `minContains` or `maxContains` either: strings, names and integers
-cannot hide a pointer. And it does not reach `$defs`, where a reference between definitions is the normal case rather
-than a pointer buried in a constraint.
+`$comment`, `$anchor`, `dependentRequired`, `minContains` or `maxContains` either: strings, names and integers cannot
+hide a pointer.
+
+**`$defs` is exempt for a reason of kind rather than of frequency, and it carries its own refusal.** The eleven above
+are constraints: the schema inside one is read to validate an instance, so an unresolved pointer becomes a wrong answer.
+`$defs` constrains nothing; it is a container, and a reference between definitions inside it is how the keyword is used
+rather than something hiding in it. What that leaves is the other direction, and it is refused explicitly: **a reference
+aimed at a position inside a `$defs` is rejected**, because the target is a raw array and never was a Schema Object to
+point at. That is [the rule this file already states](#reading-a-document) for a reference aimed at data, applied to a
+container the parser does not model, and it closes the one path by which a schema could quietly become something else.
 
 **Why a refusal rather than the `Ignored` those rows otherwise carry.** Nothing reads an ignored keyword, so nothing
 misreads the pointer today; what is at stake is the day one of those rows moves. Refusing now is also the only direction
@@ -610,6 +620,14 @@ that stays cheap: `Rejected` to `Ignored` is a move **up** [the ladder](#the-fou
 [acknowledges it](./doctor.md#acknowledged-limits-the-consumers-opt-out). That cost is deliberate: a keyword dropped in
 silence is the failure this package exists against, and `oneOf` being common is an argument for saying so, not for
 staying quiet.
+
+**That a first run on a published contract comes back red was weighed rather than missed.** `default` and `deprecated`
+alone appear in most specifications, and with `oneOf`, `discriminator` and `minProperties` a real document trips several
+rows at once. The danger [support levels](#support-levels) names is a consumer acknowledging everything on day one and
+going deaf when real support arrives, and what defuses it here is the difference between the two quiet levels. A
+`Deferred` row is going to move, so acknowledging one buys silence over something that will change. An `Ignored` row is
+a position rather than a gap: acknowledging it goes deaf to nothing, because nothing is coming, and if one ever does
+move it moves **up** the ladder, which is a minor and which the doctor announces on the next run.
 
 #### Any type
 
@@ -627,8 +645,9 @@ staying quiet.
 | `title`, `description`, `externalDocs`        | Out of scope | Annotations with no validation effect.                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `$comment`                                    | Out of scope | **Raw.** An annotation addressed to whoever reads the document, explicitly not to tooling.                                                                                                                                                                                                                                                                                                                                                     |
 | `xml`                                         | Out of scope | This package emits JSON. An XML-shaped contract is not one it claims to serve.                                                                                                                                                                                                                                                                                                                                                                 |
-| `$defs`                                       | Ignored      | **Raw**, so the schemas it holds never become `Schema` objects, which is why a definition kept here is invisible to everything Phase 2 generates. [`components.schemas`](#references-and-security) is the container whose targets this package reads.                                                                                                                                                                                          |
-| `$id`, `$anchor`                              | Ignored      | **Raw.** `$id` rebases how relative references resolve, and this package does not follow that rebasing; what bounds the risk is that [remote references](./remote-references.md) are refused unless allowlisted.                                                                                                                                                                                                                               |
+| `$defs`                                       | Ignored      | **Raw**, so the schemas it holds never become `Schema` objects, which is why a definition kept here is invisible to everything Phase 2 generates. A definition belongs under `components.schemas`, where [a local `$ref`](#references-and-security) resolves to a modelled object.                                                                                                                                                             |
+| `$id`                                         | Rejected     | **Raw**, and it rebases how every relative `$ref` under it resolves. Ignoring it would send a reference to a target the document never named, which is a wrong resolution rather than a missing one, and that is what puts `$dynamicRef` at the same level one table below. The allowlist bounds the network case only, not a file-relative reference.                                                                                         |
+| `$anchor`                                     | Ignored      | **Raw**, and a reference aimed at one does not resolve at all rather than resolving elsewhere. A loud failure needs no refusal of its own.                                                                                                                                                                                                                                                                                                     |
 
 `$ref` itself has no row here. [References and security](#references-and-security) owns it, together with the cycle and
 remote-reference rules that come with it, and it is the one keyword in a schema whose position is stated there rather
@@ -690,7 +709,7 @@ than above.
 
 | Construct                                                            | Level     | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | -------------------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Local `$ref` within the document                                     | Supported |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Local `$ref` within the document                                     | Supported | Resolution at the document level, which is what ships today. A pointer aimed inside a [`$defs`](#schemas) is the one target the parser does not model, and refusing it is a Phase 2 position rather than current behavior: this row moves down, and that is a major, on the release that reads schemas.                                                                                                                                                                             |
 | `$ref` to another local file                                         | Supported | Multi-file specs are a Phase 1 goal.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Remote `$ref` by URL                                                 | Rejected  | [Allowlisted hosts only](./remote-references.md), and the allowlist is empty until a project declares one, which it cannot yet, so every remote reference is refused today. Refused before the parser sees it, since resolving one means fetching it.                                                                                                                                                                                                                               |
 | Recursive schema (`$ref` back to an ancestor)                        | Supported | A self-referential schema, a tree, a comment thread or nested categories, resolves. Verified: under `RESOLVE_MODE_ALL` the parser walks it on demand without limit or error; under `RESOLVE_MODE_INLINE` the inner `$ref` stays a `Reference` object.                                                                                                                                                                                                                               |
