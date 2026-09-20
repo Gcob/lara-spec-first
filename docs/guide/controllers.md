@@ -405,19 +405,20 @@ identical, so the indirection buys nothing there and is kept only for consistenc
 for:
 
 ```php
-public function routeAction(StoreUserRequest $request): UserDto
+public function routeAction(CreateUserRequest $request): UserDto
 {
-    return $this->create($request->validated());
+    return $this->create($request->data());
 }
 
-protected function create(array $validated): UserDto
+protected function create(CreateUserInputDto $data): UserDto
 {
-    return UserDtoFactory::from($this->getQuery()->create($validated));
+    return UserDtoFactory::from($this->getQuery()->create($data->toArray()));
 }
 ```
 
-A child overriding `create()` receives `array $validated` and never touches the request object or the route signature.
-`routeAction` owns the HTTP seam; the CRUD method owns the work.
+A child overriding `create()` receives the
+[generated input DTO](./code-generation/request-validation.md#the-payload-arrives-as-a-dto) and never touches the
+request object or the route signature. `routeAction` owns the HTTP seam; the CRUD method owns the work.
 
 ### `x-model` turns on the model layer
 
@@ -436,9 +437,10 @@ match against. The build would have nothing to write. So the DTO class is still 
 constructing it becomes entirely the custom controller's job.
 
 **Which is not the same as the package doing nothing for you.** A no-`x-model` operation still gets its route, its
-[`FormRequest`](../../README.md#roadmap) derived from the request body schema, and its DTO class derived from the
-response schema, everything the specification can state on its own. What it does not get is a guess about persistence.
-**"No `x-model`" does not mean the package will not help you; it means the package will not guess at your persistence.**
+[`FormRequest`](./code-generation/request-validation.md) derived from the request body and the query parameters, and its
+DTO class derived from the response schema, everything the specification can state on its own. What it does not get is a
+guess about persistence. **"No `x-model`" does not mean the package will not help you; it means the package will not
+guess at your persistence.**
 
 That framing is the whole shape of this package, and it is worth stating once plainly: `x-model`, and
 [rate limiting](./rate-limiting.md) and [pagination](./pagination.md) beside it, are **extras that remove redundancy**.
@@ -571,10 +573,13 @@ departs from these semantics is free to declare `x-controller` and write whateve
 the escape hatch, working exactly as intended.
 
 **`PUT` and `PATCH` share `update()`.** The difference is what the request must carry, not what the controller does, so
-it lives in the [generated `FormRequest`](../../README.md#roadmap): `PUT` requires the full body, `PATCH` makes fields
-optional. One honest caveat, because it is a real semantic gap most APIs ignore: strict `PUT` replaces the resource, so
-an absent field should return to its default, and `$model->update($validated)` does not do that. A project that needs
-replacement semantics overrides `update()`.
+it lives in the generated `FormRequest`, where
+[`PATCH` empties the schema's required list](./code-generation/request-validation.md#patch-empties-the-required-list)
+and `PUT` reads it as written. One honest caveat, because it is a real semantic gap most APIs ignore: strict `PUT`
+replaces the resource, so an absent field should return to its default, and `$model->update($data->toArray())` does not
+do that. **[Nothing fills it](./code-generation/request-validation.md#an-absent-field-gets-no-default)**, and the DTO
+[says which fields were absent](./code-generation/request-validation.md#an-absent-field-is-a-third-state), so a project
+that needs replacement semantics overrides `update()` with what it needs already in hand.
 
 ### The factory is not imposed
 
@@ -652,19 +657,30 @@ Query Builder, Scout, or whatever the project already uses.
 request's already-validated data, and a custom child free to override either the CRUD method or `routeAction` for
 anything more than plain mass assignment:
 
-| Detected | Generated default                                     |
-| -------- | ----------------------------------------------------- |
-| Create   | `$this->getQuery()->create($validated)`               |
-| Update   | `$model->update($validated)`, `$model` bound as above |
-| Delete   | `$model->delete()`, `$model` bound as above           |
+| Detected | Generated default                                           |
+| -------- | ----------------------------------------------------------- |
+| Create   | `$this->getQuery()->create($data->toArray())`               |
+| Update   | `$model->update($data->toArray())`, `$model` bound as above |
+| Delete   | `$model->delete()`, `$model` bound as above                 |
 
-`$validated` is what the [generated `FormRequest`](../../README.md#roadmap) already produced from the operation's
-request body schema, and nothing new reads the specification a second time.
+**The CRUD method takes the bound model first and the DTO second**, so the signatures are
+`create(CreateUserInputDto $data)`, `update(User $user, UpdateUserInputDto $data)` and `delete(User $user)`. The model
+arrives by route binding exactly as it does for a read, `routeAction` passes both, and a create has no model to pass
+because the resource does not exist yet.
+
+`$data` is the
+[DTO the generated `FormRequest` built](./code-generation/request-validation.md#the-payload-arrives-as-a-dto) from the
+operation's request body schema, and nothing new reads the specification a second time. `toArray()` carries only the
+properties the client actually sent, so a `PATCH` writes what it was given and leaves the rest alone.
+
+**One body shape takes its default from configuration rather than from `x-model` alone: one carrying a file.** An upload
+is not a column, so an operation whose request body declares a file part answers `501` until a project
+[names a disk](./uploads.md#storing-is-configured-never-guessed), and what lands in the column is a trait's to decide.
 
 **This is where the doctor earns its keep.** Mass assignment silently drops whatever a model's `$fillable` (or
 `$guarded`) does not allow, and Eloquent does not raise for it. A request body schema declaring a field the model will
 not accept is therefore invisible at the wire and only ever noticed as "why didn't this save," far from its cause. **The
-doctor compares a model-aware operation's validated fields against the bound model's mass-assignment rules**, and
+doctor compares a model-aware operation's input DTO properties against the bound model's mass-assignment rules**, and
 reports the mismatch by name, the same shape as
 [the security scheme naming contract](./security.md#scheme-names-match-guard-names): a relationship that has to hold
 between two files the specification cannot itself see across.
@@ -673,11 +689,11 @@ Anything past plain mass assignment is an ordinary override, and the child choos
 
 ```php
 // In the custom child. Override the CRUD method to keep routeAction's plumbing.
-protected function create(array $validated): OrderDto
+protected function create(CreateOrderInputDto $data): OrderDto
 {
-    app(PaymentService::class)->charge($validated);
+    app(PaymentService::class)->charge($data->amount, $data->currency);
 
-    return parent::create($validated);
+    return parent::create($data);
 }
 ```
 
@@ -744,19 +760,20 @@ Two checks specific to this document, both of which the specification cannot see
 
 Four things a reader arrives at a controller wanting, and finds owned elsewhere:
 
-- **Nothing here validates a request.** `$validated` arrives already produced by one generated `FormRequest` per
-  operation, which is [Phase 2](../../README.md#phase-2-the-generated-pipeline)'s to build and the roadmap's to
-  sequence. This document assumes the value and never derives it.
-- **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
-  teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled
-  here is only that the generated method calls the factory directly.
-- **`x-controller` decides which class answers, never whether the caller may.** Authorization is
-  [`security.md`](./security.md)'s, right down to
-  [the line where a Policy takes over](./security.md#row-level-rules-are-a-policys-job). A custom controller is not an
-  access-control mechanism, and naming one grants nobody anything.
-- **The build's own rules are stated once, in the build's own document.** What a build may write, where generated code
-  lives, and what a project commits are [`code-generation/index.md`](./code-generation/index.md)'s. This document
-  depends on all three and restates none of them.
+1. **Nothing here validates a request.** The DTO a CRUD method receives arrives already validated, built by one
+   generated `FormRequest` per operation, which is [`request-validation.md`](./code-generation/request-validation.md)'s
+   subject, down to what the request parameter does to `routeAction`'s signature. This document assumes the value and
+   never derives it.
+2. **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
+   teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled
+   here is only that the generated method calls the factory directly.
+3. **`x-controller` decides which class answers, never whether the caller may.** Authorization is
+   [`security.md`](./security.md)'s, right down to
+   [the line where a Policy takes over](./security.md#row-level-rules-are-a-policys-job). A custom controller is not an
+   access-control mechanism, and naming one grants nobody anything.
+4. **The build's own rules are stated once, in the build's own document.** What a build may write, where generated code
+   lives, and what a project commits are [`code-generation/index.md`](./code-generation/index.md)'s. This document
+   depends on all three and restates none of them.
 
 ## Open questions
 

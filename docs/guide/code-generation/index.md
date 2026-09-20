@@ -26,11 +26,12 @@ tags: [code-generation, openapi, scope, decisions, laravel]
 >   about where it came from.
 > - Your classes extend the generated ones, so a change to the contract becomes a static analysis error instead of a
 >   surprise in production.
-> - **Not built yet:** response DTOs, request validation, and the sanitized [public copy](../glossary.md#public-copy).
+> - **Not built yet:** response DTOs, [request validation](./request-validation.md), and the sanitized
+>   [public copy](../glossary.md#public-copy).
 
 Spec-First only pays off if the contract reaches the code. This document owns how it gets there: **one build command
 turns the specification into PHP, and the result is safe to regenerate at any time.** It carries what the rest of the
-subject rests on, and the build command itself; the four files beside it answer one question each, and are linked from
+subject rests on, and the build command itself; the five files beside it answer one question each, and are linked from
 wherever that question comes up.
 
 > **Almost all of this is intent rather than behaviour**, and like [`openapi-support.md`](../openapi-support.md) this
@@ -46,7 +47,7 @@ wherever that question comes up.
 > [`x-controller` seam](../controllers.md#the-contract-decides-what-is-customizable) is shipped, so an operation that
 > declares one gets a parent it may extend and a route pointing at the child, and
 > [`spec:make`](./scaffolding.md#scaffolding-is-specmake-not-a-build-step) scaffolds that child. Not built yet: response
-> DTOs and request validation. Rename detection was designed here and
+> DTOs and [request validation](./request-validation.md). Rename detection was designed here and
 > [decided against](./generated-file-anatomy.md#rename-and-orphan-detection-decided-against).
 
 What the build reads, and what it refuses to read, is a different subject and lives in

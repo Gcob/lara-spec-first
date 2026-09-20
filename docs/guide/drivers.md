@@ -65,6 +65,11 @@ So the test is one question: **is there a name that means the same thing across 
 it, and do not add a driver. Where there is not, a driver plus a mapping is the answer, and the reason it is not a
 cop-out is that there is nothing to match.
 
+**[File uploads](./uploads.md#an-upload-is-not-a-driver) are the case that failed the test, and it is worth keeping.**
+`multipart/form-data` and `format: binary` mean the same thing in every document that uses them, so the package matches
+them. What is actually unsettled there is where the file goes, which is not a question about the document, so the seam
+is a trait and a config key. A driver would have promised a document-reading extension point with nothing to read.
+
 ## Turnkey by default, yours to replace
 
 Two properties, and the tension between them is what this mechanism is for:

@@ -51,6 +51,7 @@ const SECTIONS: Section[] = [
             'drivers',
             'rate-limiting',
             'pagination',
+            'uploads',
             'remote-references',
             'glossary',
         ],

@@ -46,9 +46,15 @@ final readonly class SupportMatrixCheck
     /**
      * Constructs this PR counts for the Deferred lot, and what each label
      * counts — the query, header and cookie parameters a Path Item or an
-     * Operation Object can hold, `requestBody`, and `responses`. Every one of
-     * them is `Deferred` in docs/guide/openapi-support.md's own matrix:
-     * recognized, support planned, not built.
+     * Operation Object can hold, `requestBody`, and `responses`.
+     *
+     * **`query` is `Deferred` in docs/guide/openapi-support.md's matrix;
+     * `header` and `cookie` are `Ignored` there and are counted here anyway**,
+     * under the label `parameters`, because nothing in this package reads a
+     * parameter yet and an `Ignored` finding needs the non-zero exit only once
+     * there is behavior to be absent from. The split lands with #35, which is
+     * where a parameter first becomes a rule. Counting them apart before then
+     * would promise an exit code on a construct no generator has met.
      *
      * **Each label names the unit it counts, and the count matches it.** The
      * whole content of one of these findings is a number, so a label counting

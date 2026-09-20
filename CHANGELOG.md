@@ -22,6 +22,18 @@ tags: [versions, conventions, planning]
 
 ## [Unreleased]
 
+### Changed
+
+- **`parameters` (`header`, `cookie`) moved from `Deferred` to `Ignored`** in the
+  [support matrix](./docs/guide/openapi-support.md#parameters-bodies-responses). The package will not validate a header
+  or a cookie parameter, so the row states a position rather than a gap, and a contract declaring one will exit non-zero
+  until the consumer acknowledges it. Every move on the exit-code axis is major in either direction, which is why a docs
+  change is recorded here. The doctor still counts them beside `query` under one `Deferred` label until a parameter
+  becomes a rule, so nothing about today's output changed.
+- **`Media type encoding` and `contentMediaType` moved up to `Partial`**, both read for what makes a
+  `multipart/form-data` part a file. Moving up the ladder cannot break a contract that worked before, so this half is
+  minor.
+
 ## [0.1.0] - 2026-09-11
 
 The first release, and what [Phase 1](./README.md#phase-1-the-foundation) set out to prove: an OpenAPI contract becomes
