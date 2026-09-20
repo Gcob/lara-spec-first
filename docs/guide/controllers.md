@@ -663,6 +663,11 @@ anything more than plain mass assignment:
 | Update   | `$model->update($data->toArray())`, `$model` bound as above |
 | Delete   | `$model->delete()`, `$model` bound as above                 |
 
+**The CRUD method takes the bound model first and the DTO second**, so the signatures are
+`create(CreateUserInputDto $data)`, `update(User $user, UpdateUserInputDto $data)` and `delete(User $user)`. The model
+arrives by route binding exactly as it does for a read, `routeAction` passes both, and a create has no model to pass
+because the resource does not exist yet.
+
 `$data` is the
 [DTO the generated `FormRequest` built](./code-generation/request-validation.md#the-payload-arrives-as-a-dto) from the
 operation's request body schema, and nothing new reads the specification a second time. `toArray()` carries only the

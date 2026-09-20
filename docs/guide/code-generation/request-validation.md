@@ -495,9 +495,9 @@ every child that overrides it:
 
 ```php
 // app/Http/Generated/Controllers/UpdateUserController.php
-public function routeAction(UpdateUserRequest $request, string $id): UserDto
+public function routeAction(UpdateUserRequest $request, User $user): UserDto
 {
-    return $this->update($request->data());
+    return $this->update($user, $request->data());
 }
 ```
 

@@ -571,6 +571,13 @@ first release, not shipped behavior.
 | `links`                                           | Open     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Media type `encoding`                             | Partial  | Phase 2. `contentType` is read, as [the media types an uploaded part must match](./uploads.md#the-schema-names-the-file-part). `headers`, `style`, `explode` and `allowReserved` are not.                                                                                                                                                                                                                                                                                            |
 
+**One row above promises a gate that is not wired yet.** `header` and `cookie` are `Ignored`, whose exit code is
+non-zero, and
+[the doctor still counts them beside `query`](./code-generation/request-validation.md#one-rule-set-body-and-query) under
+one `Deferred` label, so a document declaring one exits zero today.
+[#35](https://github.com/Gcob/lara-spec-first/issues/35) is where the count splits and the column becomes true of the
+tool as well as of the position.
+
 ### Schemas
 
 **Nothing below is shipped behavior: Phase 1 registers routes and reads no schema.** Every row states the position taken
