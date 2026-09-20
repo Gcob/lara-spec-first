@@ -283,13 +283,13 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 
 **Strings and numbers, where the same two rule names do four jobs:**
 
-| Schema                                 | Laravel rule                                                                                            |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `minLength`, `maxLength`               | `min`, `max` beside `string`, which counts characters                                                   |
-| `pattern`                              | `regex:`, [inside the boundary the matrix names](../openapi-support.md#strings-and-numbers)             |
-| `minimum`, `maximum`                   | `min`, `max` beside `integer` or `numeric`                                                              |
-| `exclusiveMinimum`, `exclusiveMaximum` | `gt:`, `lt:`, read from [the one spelling #34 normalizes to](../openapi-support.md#strings-and-numbers) |
-| `multipleOf`                           | `multiple_of:`                                                                                          |
+| Schema                                 | Laravel rule                                                                                                           |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `minLength`, `maxLength`               | `min`, `max` beside `string`, which counts characters                                                                  |
+| `pattern`                              | `regex:`, [inside the boundary the matrix names](../openapi-support.md#strings-and-numbers)                            |
+| `minimum`, `maximum`                   | `min`, `max` beside `integer` or `numeric`                                                                             |
+| `exclusiveMinimum`, `exclusiveMaximum` | `gt:`, `lt:`, read from [the one spelling the normal form takes](../openapi-support.md#the-normal-form-a-schema-takes) |
+| `multipleOf`                           | `multiple_of:`                                                                                                         |
 
 **Arrays and objects, where a rule is keyed rather than named:**
 

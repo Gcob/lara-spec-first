@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing\Version;
 
+use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
@@ -46,4 +47,26 @@ interface VersionStrategy
      * @throws InvalidDocumentException
      */
     public function assertDocumentShape(array $document): void;
+
+    /**
+     * One schema node, in the form every generator reads.
+     *
+     * **The node arrives flattened, and that is what keeps the parser out of
+     * this interface.** `$keywords` maps a keyword to its value, with every
+     * nested schema already normalized into a {@see Schema} by the caller, so
+     * the signature names our own types only — which is the promise the
+     * interface's docblock above makes, and the one a future parser depends on.
+     * Walking the document, resolving its references and cutting a
+     * self-referential schema are the extractor's work; deciding what a keyword
+     * *means* at this version is this method's.
+     *
+     * Four keywords differ between the versions and no more: `type`'s shape,
+     * nullability, the two exclusive bounds, and how a file part is named.
+     * Everything else is shared, and {@see NormalizesSchemas} holds it.
+     *
+     * @param  array<string, mixed>  $keywords
+     *
+     * @see docs/guide/openapi-support.md — "The normal form a schema takes"
+     */
+    public function normalizeSchema(array $keywords): Schema;
 }
