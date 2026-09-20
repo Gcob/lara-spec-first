@@ -1,0 +1,19 @@
+# `$id` rebases how every relative reference under it resolves, and this package
+# resolves against the document and the file instead.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /amounts:
+    post:
+      operationId: createAmount
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $id: https://example.test/schemas/amount.json
+              type: object
+      responses:
+        '201':
+          description: Created

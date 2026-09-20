@@ -19,6 +19,7 @@ use DateTimeInterface;
 use DateTimeZone;
 use Exception;
 use Gcob\LaraSpecFirst\Contract\Audience;
+use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
@@ -67,6 +68,71 @@ final readonly class OperationExtractor
      *
      * @see docs/guide/openapi-support.md — "Schemas"
      */
+    /**
+     * Keywords a schema may not carry at all, each for its own reason.
+     *
+     * `$id` rebases how every relative reference under it resolves, and the four
+     * dynamic-scope keywords ask for a resolution this package does not do.
+     * Both are wrong-resolution risks rather than missing-feature ones, which is
+     * what puts them at `Rejected` while their raw neighbours sit at `Ignored`.
+     *
+     * @see docs/guide/openapi-support.md — "Schemas"
+     */
+    private const REFUSED_SCHEMA_KEYWORDS = [
+        '$id',
+        '$dynamicRef',
+        '$dynamicAnchor',
+        '$recursiveRef',
+        '$recursiveAnchor',
+    ];
+
+    /**
+     * The eleven keywords whose value *is* a schema and which the parser hands
+     * back raw, references and all.
+     *
+     * Ignored while they hold nothing but constraints, and refused the moment
+     * one of them holds a `$ref`: the parser leaves that pointer unresolved, so
+     * reading it as a schema produces a value that is wrong rather than one that
+     * is missing, and nothing downstream fails to say so.
+     *
+     * `$defs` is not here, and the omission is the matrix's rather than an
+     * oversight: it is a container rather than a constraint, so a reference
+     * between definitions inside it is how the keyword is used. What is refused
+     * is the other direction, a reference aimed *into* one.
+     *
+     * @see docs/guide/openapi-support.md — "Schemas"
+     */
+    private const SCHEMA_CARRYING_RAW_KEYWORDS = [
+        'prefixItems',
+        'contains',
+        'unevaluatedItems',
+        'patternProperties',
+        'propertyNames',
+        'dependentSchemas',
+        'unevaluatedProperties',
+        'contentSchema',
+        'if',
+        'then',
+        'else',
+    ];
+
+    /**
+     * Keys whose contents are data rather than specification, inside a schema.
+     *
+     * The same boundary {@see ReferenceCycleDetector} draws, applied one level
+     * down: a `$ref` written under one of these is a literal, and an API that
+     * itself deals in JSON Schema will have one. Refusing over it would turn
+     * away a valid contract, which for a refusal is the worst outcome available.
+     *
+     * `examples` joins the list here where the cycle detector has to tell two
+     * shapes apart by name: inside a schema it is 3.1's list of literal values
+     * and never a map of Example Objects, so its position answers the question
+     * the name cannot.
+     *
+     * @see docs/guide/openapi-support.md — "Reading a document"
+     */
+    private const DATA_KEYS = ['example', 'examples', 'default', 'enum', 'const'];
+
     private const SCHEMA_KEYWORDS = [
         'type',
         'nullable',
@@ -98,7 +164,10 @@ final readonly class OperationExtractor
 
     public function extract(ParsableSpecDocument $document): ExtractionResult
     {
-        $faults = $this->unfollowablePathItemFaults($document);
+        $faults = [
+            ...$this->unfollowablePathItemFaults($document),
+            ...$this->referencesIntoDefinitions($document->raw, ''),
+        ];
 
         try {
             $parsed = $this->parse($document);
@@ -139,7 +208,13 @@ final readonly class OperationExtractor
                         $document->strategy,
                         $this->listOf($pathItem, 'parameters'),
                     );
-                } catch (InvalidDocumentException $fault) {
+                } catch (SpecException $fault) {
+                    // Widened from InvalidDocumentException when schemas started
+                    // being read: a refused construct inside a schema is this
+                    // package's limit rather than the document's fault, so it
+                    // arrives as a different type and has to be skipped the same
+                    // way. Both are one operation failing to join the result,
+                    // and neither is a reason to stop reading the ones after it.
                     $faults[] = $fault;
 
                     continue;
@@ -328,6 +403,8 @@ final readonly class OperationExtractor
      *                                  shared schema, and a set that survived
      *                                  the first of them would report the second
      *                                  as recursion
+     *
+     * @throws RejectedConstructException
      */
     private function schema(ParsedSchema $node, VersionStrategy $strategy, array $open = []): Schema
     {
@@ -340,6 +417,8 @@ final readonly class OperationExtractor
             // where it stopped rather than descending forever.
             return Schema::recursion($this->pointerTo($node));
         }
+
+        $this->assertSchemaIsServable($node);
 
         $open[$identity] = true;
         $keywords = [];
@@ -368,6 +447,89 @@ final readonly class OperationExtractor
         }
 
         return $strategy->normalizeSchema($keywords);
+    }
+
+    /**
+     * Refuse a schema this package would otherwise read wrongly.
+     *
+     * **Every refusal here is about a wrong value rather than a missing one**,
+     * which is the line the support matrix draws between `Rejected` and
+     * `Ignored`. A keyword that simply goes unread costs a feature; one of these
+     * would produce a schema that looks complete and is not, and nothing later
+     * fails to announce it.
+     *
+     * Checked per node during the walk rather than once over the raw document,
+     * which has one consequence worth stating: a schema under
+     * `components.schemas` that no operation reaches is never examined. That is
+     * the right scope. A definition nothing references is not part of the
+     * contract this package serves, and refusing a document over it would be
+     * refusing something nobody reads.
+     *
+     * @throws RejectedConstructException
+     */
+    private function assertSchemaIsServable(ParsedSchema $node): void
+    {
+        $pointer = $this->pointerTo($node);
+
+        foreach (self::REFUSED_SCHEMA_KEYWORDS as $keyword) {
+            if (! isset($node->$keyword)) {
+                continue;
+            }
+
+            throw $keyword === '$id'
+                ? RejectedConstructException::rebasedSchemaIdentifier($pointer)
+                : RejectedConstructException::dynamicReference($keyword, $pointer);
+        }
+
+        foreach (self::SCHEMA_CARRYING_RAW_KEYWORDS as $keyword) {
+            if (! isset($node->$keyword)) {
+                continue;
+            }
+
+            $target = $this->referenceInside($node->$keyword);
+
+            if ($target !== null) {
+                throw RejectedConstructException::unresolvedReferenceInSchemaKeyword(
+                    $keyword,
+                    $pointer,
+                    $target
+                );
+            }
+        }
+    }
+
+    /**
+     * The first reference written anywhere inside a raw keyword's value, or null
+     * when it holds none.
+     *
+     * The first rather than all of them on purpose: one is enough to refuse the
+     * construct, and a document naming several has one problem rather than
+     * several. Data positions are stepped over, so the literal `$ref` an API
+     * about JSON Schema writes in an `example` is left alone.
+     */
+    private function referenceInside(mixed $value): ?string
+    {
+        if (! is_array($value)) {
+            return null;
+        }
+
+        if (isset($value['$ref']) && is_string($value['$ref'])) {
+            return $value['$ref'];
+        }
+
+        foreach ($value as $key => $child) {
+            if (in_array((string) $key, self::DATA_KEYS, true)) {
+                continue;
+            }
+
+            $found = $this->referenceInside($child);
+
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -416,6 +578,54 @@ final readonly class OperationExtractor
             if (str_starts_with($pathItem['$ref'], '#/components/pathItems/')) {
                 $faults[] = RejectedConstructException::componentPathItem((string) $path, $pathItem['$ref']);
             }
+        }
+
+        return $faults;
+    }
+
+    /**
+     * Refuse every reference aimed at a position inside a `$defs`.
+     *
+     * **Read on the raw document, for the same reason the check above is**: by
+     * the time the parser is done the reference is gone, and so is the property
+     * that carried it. Nothing distinguishes what is left from a schema that
+     * never declared the property.
+     *
+     * Document-wide rather than per schema node, which is the opposite scope
+     * from {@see self::assertSchemaIsServable()} and deliberately so: that one
+     * refuses a *schema* this package would misread, so it only has to look at
+     * the schemas the contract actually reaches, while this one refuses a
+     * *reference*, and a reference is written wherever its author put it.
+     *
+     * @param  array<array-key, mixed>  $node
+     * @return list<RejectedConstructException> one per offending reference, so a
+     *                                          document writing several is
+     *                                          reported in one pass
+     */
+    private function referencesIntoDefinitions(array $node, string $pointer): array
+    {
+        if (isset($node['$ref'])) {
+            // A Reference Object carries nothing else worth walking: 3.1 allows
+            // `summary` and `description` beside it, and neither holds a target.
+            return is_string($node['$ref']) && str_contains($node['$ref'], '/$defs/')
+                ? [RejectedConstructException::referenceIntoDefinitions('#'.$pointer, $node['$ref'])]
+                : [];
+        }
+
+        $faults = [];
+
+        foreach ($node as $key => $child) {
+            // A `$ref` under one of these is a literal, which is the boundary
+            // ReferenceCycleDetector draws and the reason a valid contract about
+            // JSON Schema is not refused here.
+            if (! is_array($child) || in_array((string) $key, self::DATA_KEYS, true)) {
+                continue;
+            }
+
+            $faults = [
+                ...$faults,
+                ...$this->referencesIntoDefinitions($child, $pointer.'/'.DocumentPointer::escape((string) $key)),
+            ];
         }
 
         return $faults;
