@@ -37,6 +37,15 @@ final readonly class Operation
      *                                   than resolved: whether a class of that name
      *                                   exists is a question for the build, and the
      *                                   contract's answer does not depend on it
+     * @param  RequestBody|null  $requestBody  what the operation accepts, or null
+     *                                         when it declares no body this
+     *                                         package can read one schema from
+     * @param  list<QueryParameter>  $queryParameters  the `query` parameters
+     *                                                 only, merged with the Path
+     *                                                 Item's and in the order
+     *                                                 they are written. The
+     *                                                 three other locations are
+     *                                                 [not carried](../../docs/guide/code-generation/request-validation.md#one-rule-set-body-and-query)
      */
     public function __construct(
         public int $index,
@@ -50,6 +59,8 @@ final readonly class Operation
         public ?string $sunset = null,
         public ?array $security = null,
         public ?string $controller = null,
+        public ?RequestBody $requestBody = null,
+        public array $queryParameters = [],
     ) {}
 
     /**

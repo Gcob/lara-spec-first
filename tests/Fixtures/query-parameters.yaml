@@ -1,0 +1,43 @@
+# Every parameter location at once, plus the Path Item merge OpenAPI defines:
+# the path declares `page` and `notify`, and the operation redeclares `notify`
+# with a different schema, which its own rule says wins.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /reports/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      - name: notify
+        in: query
+        schema:
+          type: string
+    get:
+      operationId: showReport
+      parameters:
+        - name: notify
+          in: query
+          required: true
+          schema:
+            type: boolean
+        - name: X-Tenant-Id
+          in: header
+          schema:
+            type: string
+        - name: session
+          in: cookie
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A report

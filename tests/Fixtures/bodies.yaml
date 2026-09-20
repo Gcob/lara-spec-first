@@ -1,0 +1,53 @@
+# Three bodies, each answering a different question about what reaches the
+# contract: one schema under two media types, a body the document declares with
+# nothing readable under it, and a body that is not required.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /forms:
+    post:
+      operationId: submitForm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Address'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Address'
+      responses:
+        '201':
+          description: Created
+  /pings:
+    post:
+      operationId: ping
+      requestBody:
+        content:
+          application/xml: {}
+      responses:
+        '204':
+          description: Pinged
+  /addresses:
+    post:
+      operationId: createAddress
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Address'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Address:
+      type: object
+      required:
+        - street
+      properties:
+        street:
+          type: string
