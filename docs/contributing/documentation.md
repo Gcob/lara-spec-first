@@ -499,6 +499,32 @@ would have left behind. Where there is no file to name, a bolded lead above does
 all from it, and half of this set's readers are on GitHub. Same reason [the anchor rule](#a-non-heading-anchor-is-html)
 picks the form that works on both.
 
+### An enumeration is numbered
+
+**A list the prose counts is numbered: `1.`, `2.`, `3.`, never a dash.** A lead line saying "three reasons" promises
+that the items are addressable, and a dash gives the reader nothing to address them by. "The second reason above" then
+sends them back to count bullets, and a review comment has to quote an item where it could have named one.
+
+Three lists are enumerations under this rule, and this list is the rule applied to itself:
+
+1. **The lead announces a count.** "Three reasons", "Two alternatives", "Four things a reader will not find here".
+2. **The items are ordered.** The steps of a build, the order a pipeline reads a document in, anything where the second
+   item only makes sense after the first.
+3. **Something points back into the list.** A later sentence, a table cell, another document or a pull request comment
+   naming one item needs a number for the reference to land.
+
+Everything else keeps its dashes. A set of rules nothing counts and nothing orders loses nothing by staying unordered,
+and numbering it would claim an order the reader then looks for.
+
+**Two lists stay unordered although they are counted, and both belong to a rule that already fixed their shape.** The
+[`In brief` summary](#every-document-opens-with-a-summary) is three to five bullets, because what it carries is
+assertions nothing points into, and [the inventory](#document-inventory) is a tree of filenames rather than an
+enumeration of anything.
+
+**Most of this set predates the rule and still carries counted lists under dashes.** Converting them is a sweep of its
+own rather than something to do halfway, and [`request-validation.md`](../guide/code-generation/request-validation.md)
+is the file written to the rule. What binds in the meantime is every list written or edited from here on.
+
 ### The em dash is a decision nobody made
 
 **An em dash inside a sentence is a comma, a colon or a full stop that has not been chosen yet.** It lets a writer defer
@@ -758,6 +784,7 @@ is not. What each row gives you is the observable sign, so that the judgment hap
 | **A table nobody introduced**          | A table whose first row is the first thing said about it                                                                    | Put a line above it saying what it answers                                                                                    |
 | **Borrowed enthusiasm**                | A brochure adjective, or a sentence that addresses the reader before it starts                                              | Cut it, and put the fact that produced it in its place                                                                        |
 | **The undecided dash**                 | An em dash inside a sentence                                                                                                | Choose the comma, colon or full stop it was standing in for                                                                   |
+| **A counted list under dashes**        | A lead line announcing three reasons over items nobody can cite by number                                                   | Number them, [the rule](#an-enumeration-is-numbered)                                                                          |
 | **An ordering carried by prose alone** | A section spells out three steps or more, with at least one branch or one refusal among them, and the page carries no image | Draw it, or say why it does not [earn one](#when-a-diagram-earns-its-place)                                                   |
 
 ### A decision is a sentence
@@ -885,6 +912,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 - [`code-generation/index.md`](../guide/code-generation/index.md)
     - [`generated-file-anatomy.md`](../guide/code-generation/generated-file-anatomy.md)
     - [`publishing.md`](../guide/code-generation/publishing.md)
+    - [`request-validation.md`](../guide/code-generation/request-validation.md)
     - [`response-dtos.md`](../guide/code-generation/response-dtos.md)
     - [`scaffolding.md`](../guide/code-generation/scaffolding.md)
 - [`commands.md`](../guide/commands.md)
