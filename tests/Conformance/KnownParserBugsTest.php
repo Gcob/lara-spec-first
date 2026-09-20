@@ -10,12 +10,20 @@ use Symfony\Component\Process\Process;
 // defect this package has ever found, one dataset row each, and the row never
 // leaves once it is added.
 //
-// Three are recorded so far, and all three are now caught before they can hurt
-// anything: a pure `$ref` cycle, a reference into `components.pathItems`, and a
+// Four are recorded so far, and all four are now caught before they can hurt
+// anything: a pure `$ref` cycle, a reference into `components.pathItems`, a
 // `$ref` whose JSON pointer lands inside data — an `example`, an Example
 // Object's `value` — which reached the same unrecoverable memory exhaustion as
 // the first until the cycle guard learned to follow a reference into the
-// position it actually points at.
+// position it actually points at, and a reference into a `$defs`.
+//
+// The fourth is the quietest of the four and was found the day schemas started
+// being read. `$defs` is not modelled either, so a reference aimed inside one
+// resolves to a plain array the parser cannot build a schema from: it drops the
+// property that carried the reference and records nothing. A contract declaring
+// three fields comes back with two, the build succeeds, and the generated code
+// is missing a field nobody asked it to drop. Nothing fails, which is what puts
+// it in this file rather than in a bug report.
 //
 // The third one keeps a second dataset of its own even so, and it is the reason
 // this file still spawns a child process. What it pins is not the fault, which
@@ -25,8 +33,8 @@ use Symfony\Component\Process\Process;
 // Only a child process can, so the case that once asserted a death now asserts
 // a survival, and the row never leaves.
 //
-// All three were found within days of first use, on a surface no wider than
-// paths and references, and none has a symptom on its own. An interface in
+// All of them were found within days of first reaching the surface they sit on,
+// and none has a symptom on its own. An interface in
 // front of the parser would not have caught any of them: what had gone wrong
 // every time was the dependency being wrong, not a dependency worth swapping.
 // This file is the behavioural contract instead — the acceptance criteria a
@@ -60,6 +68,11 @@ it('guards against a known parser defect', function (string $fixture, string $ex
         'example-object-value.yaml',
         CyclicReferenceException::class,
         'closes a cycle',
+    ],
+    '$defs is not modelled, so a reference into it drops the property holding it in silence' => [
+        'ref-into-defs.yaml',
+        RejectedConstructException::class,
+        'inside a `$defs`',
     ],
 ]);
 

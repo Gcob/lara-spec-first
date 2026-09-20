@@ -635,6 +635,15 @@ it('reports a document it refuses instead of throwing at the reader', function (
     'not a mapping' => ['not-a-mapping.yaml', 'not-a-mapping.yaml'],
     'a version we do not implement' => ['swagger-2.0.yaml', '2.0'],
     'a reference cycle' => ['cycle-pointer.yaml', 'closes a cycle'],
+    // The two schema refusals, here rather than only in the conformance suite
+    // because what the Acceptance scenario asks for is the second half of this
+    // assertion: the build has to say what it refused *and leave the tree
+    // alone*. The second row is the one that earns its place twice over, since
+    // that document is otherwise readable — one operation comes out of it — and
+    // a build writing "most of" a contract is the outcome this package exists
+    // against.
+    'a raw keyword hiding a reference' => ['prefix-items-hides-a-ref.yaml', 'writes `prefixItems`'],
+    'a reference into a $defs' => ['ref-into-defs.yaml', 'inside a `$defs`'],
 ]);
 
 // Refusing at the first fault is the behaviour this command has always had and
