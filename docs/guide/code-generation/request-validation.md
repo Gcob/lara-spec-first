@@ -54,14 +54,21 @@ public function rules(): array
 }
 ```
 
-**A parameter's `in` decides whether it reaches the rule set at all**, and two of the four locations do not:
+**A parameter's `in` decides whether it reaches the rule set at all**, and three of the four locations do not:
 
 | `in`     | Where its constraints land                                                                                                                   |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `query`  | The rule set, keyed by the parameter's own name.                                                                                             |
+| `query`  | The rule set, keyed by the parameter's own name, with its own `required` flag deciding presence.                                             |
 | `path`   | Nowhere. The router matches the URI, and a value it matched is [a string in the signature](../controllers.md#the-signature-is-the-contract). |
 | `header` | Nowhere, and the doctor says so.                                                                                                             |
 | `cookie` | Nowhere, and the doctor says so.                                                                                                             |
+
+**A query parameter's presence comes from its own `required` flag, not from the body's `required` list.** They are
+different keywords in different places: a Parameter Object carries `required: true` itself, so that parameter gets
+`required` and the ones without it get `sometimes`. **And the method does not touch it.**
+[`PATCH` empties the body schema's required list](#patch-empties-the-required-list) because a partial update is a
+statement about the resource's representation, and a query parameter is not part of that representation: `?notify=1` is
+as required on a `PATCH` as it is on a `PUT`.
 
 **A path parameter is the router's question, and its answer is a 404.** `/users/abc` on an operation whose `{id}` is an
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong
@@ -73,19 +80,24 @@ anyway: `FormRequest::validationData()` returns `$this->all()`, and route parame
 [support level](../openapi-support.md#support-levels) rather than a gap. Three reasons, the first of them the
 specification's own:
 
-1. **OpenAPI ignores those parameters itself.** A header parameter named `Accept`, `Content-Type` or `Authorization` is
-   to be ignored, so a generated rule over one would contradict the document it came from.
-2. **A validator produces the wrong status code.** A missing credential is a 401 and an unreadable media type is a 415,
-   and neither is something a rule set can answer with.
+1. **A validator produces the wrong status code.** A missing credential is a 401 and an unreadable media type is a 415,
+   and neither is something a rule set can answer with. A cookie is the same story one layer over.
+2. **OpenAPI ignores three of them itself**, and they are the three a rule would be most likely to meet: a header
+   parameter named `Accept`, `Content-Type` or `Authorization` is to be ignored, so a generated rule over one would
+   contradict the document it came from. It says nothing about an `X-Tenant-Id`, which is why this reason supports the
+   position rather than carrying it.
 3. **[`security.md`](../security.md) already owns it.** What an `Authorization` header has to satisfy is settled there,
    and a rule set is not where a second answer to it belongs.
 
 **Three media types are read, and one operation declares one of them.** `application/json`, `multipart/form-data` and
-`application/x-www-form-urlencoded` all arrive through `all()`, so one rule set serves them identically; what changes is
-only whether a part can be a file, which is [`uploads.md`](../uploads.md#one-operation-one-media-type)'s subject. **An
-operation declaring two of them over two different schemas is a build error**, because one `rules()` cannot hold two
-rule sets and [nothing rewrites it per request](#nothing-rewrites-the-rule-set). Two media types over one schema are not
-a conflict and produce one rule set.
+`application/x-www-form-urlencoded` all arrive through `all()`, so one rule set covers all three; what changes is only
+whether a part can be a file, which is [`uploads.md`](../uploads.md#one-operation-one-media-type)'s subject. **The rule
+set is shared, the values under it are not:** a form-encoded body carries strings only, so `notify=true` meets Laravel's
+`boolean` as the string it is where JSON's `true` arrives already typed, and a nested structure arrives flattened. A
+contract whose schema leans on a type the encoding cannot carry is served better by `application/json`. **An operation
+declaring two of them over two different schemas is a build error**, because one `rules()` cannot hold two rule sets and
+[nothing rewrites it per request](#nothing-rewrites-the-rule-set). Two media types over one schema are not a conflict
+and produce one rule set.
 
 **Any other media type is reported rather than guessed at.** A body declaring `application/xml` is a contract this
 package does not serve, and a `format: byte` string inside a JSON body is
@@ -234,37 +246,50 @@ state; what each honored one becomes is this table's.
 | `type: integer`                         | `integer`                                                                                                               |
 | `type: number`                          | `numeric`                                                                                                               |
 | `type: boolean`                         | `boolean`                                                                                                               |
-| `type: array`                           | `array`, with the element rules keyed `field.*`                                                                         |
+| `type: array`                           | `array` and `list`, with the element rules keyed `field.*`                                                              |
 | `type: object`                          | `array`, with each property keyed `field.child`. A JSON object arrives as a PHP array, and Laravel has no `object` rule |
 | `nullable`, `type: [..., "null"]`       | `nullable`                                                                                                              |
-| `enum`                                  | `in:` with the declared values                                                                                          |
-| `const`                                 | `in:` with the one value                                                                                                |
+| `enum`                                  | `Rule::in()` with the declared values                                                                                   |
+| `const`                                 | `Rule::in()` with the one value                                                                                         |
 | `format: date`                          | `date_format:Y-m-d`                                                                                                     |
 | `format: date-time`                     | `date_format:` carrying the RFC 3339 spellings                                                                          |
 | `format: email`, `uuid`, `ipv4`, `ipv6` | `email`, `uuid`, `ipv4`, `ipv6`                                                                                         |
 | `format: uri`                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                              |
 
+**`list` beside `array`, because Laravel's `array` passes for an associative one.** `{"tags": {"a": 1}}` would otherwise
+satisfy a `tags` declared `type: array`, which is a payload the contract refuses being accepted. `list` is
+`array_is_list()`, which is what a JSON array actually is, and the pair is what keeps that row honest.
+
 **`date_format` rather than `date` on both, because Laravel's `date` accepts whatever `strtotime` accepts**,
 `next tuesday` included, which is looser than anything a contract meant to say. The rule takes several formats and
-passes on the first that matches, so one of them covers RFC 3339's spellings:
+passes on the first that matches, and RFC 3339 needs six of them:
 
 ```php
-'occurred_at' => ['required', 'string', 'date_format:Y-m-d\TH:i:sp,Y-m-d\TH:i:s.vp,Y-m-d\TH:i:s.up'],
+'occurred_at' => ['required', 'string', 'date_format:Y-m-d\TH:i:sp,Y-m-d\TH:i:sP,Y-m-d\TH:i:s.vp,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.uP'],
 ```
 
-`p` rather than `P` so a literal `Z` is accepted beside a numeric offset, and the two fractional patterns because a
-producer writing milliseconds and one writing microseconds are both inside the format. Which `format` values are honored
-at all is [the matrix](../openapi-support.md#any-type)'s row.
+**Six rather than three, and the trap is worth naming because it bites silently.** `date_format` passes only when
+`$date->format($pattern)` reproduces the input exactly, and PHP's `p` prints `Z` for a zero offset where `P` prints
+`+00:00`. A pattern list built on `p` alone therefore accepts `2026-09-20T14:03:11Z` and **refuses**
+`2026-09-20T14:03:11+00:00`, which RFC 3339 allows and which plenty of producers emit. Each precision carries both
+spellings: seconds, milliseconds and microseconds, times `p` and `P`.
+
+**The lower-case form is a stated limit rather than a silent one.** RFC 3339 also permits `2026-09-20t14:03:11z`, and no
+PHP format character prints a lower-case offset, so covering it would mean literal-only patterns beside all six for a
+spelling that is vanishingly rare on the wire. A contract whose producers emit it is one this mapping does not serve,
+and saying so here is the difference between a limit and a defect.
+
+Which `format` values are honored at all is [the matrix](../openapi-support.md#any-type)'s row.
 
 **Strings and numbers, where the same two rule names do four jobs:**
 
-| Schema                                 | Laravel rule                                                                                |
-| -------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `minLength`, `maxLength`               | `min`, `max` beside `string`, which counts characters                                       |
-| `pattern`                              | `regex:`, [inside the boundary the matrix names](../openapi-support.md#strings-and-numbers) |
-| `minimum`, `maximum`                   | `min`, `max` beside `integer` or `numeric`                                                  |
-| `exclusiveMinimum`, `exclusiveMaximum` | `gt:`, `lt:`                                                                                |
-| `multipleOf`                           | `multiple_of:`                                                                              |
+| Schema                                 | Laravel rule                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `minLength`, `maxLength`               | `min`, `max` beside `string`, which counts characters                                                   |
+| `pattern`                              | `regex:`, [inside the boundary the matrix names](../openapi-support.md#strings-and-numbers)             |
+| `minimum`, `maximum`                   | `min`, `max` beside `integer` or `numeric`                                                              |
+| `exclusiveMinimum`, `exclusiveMaximum` | `gt:`, `lt:`, read from [the one spelling #34 normalizes to](../openapi-support.md#strings-and-numbers) |
+| `multipleOf`                           | `multiple_of:`                                                                                          |
 
 **Arrays and objects, where a rule is keyed rather than named:**
 
@@ -272,7 +297,7 @@ at all is [the matrix](../openapi-support.md#any-type)'s row.
 | ----------------------------------- | --------------------------------------------------------------------------------------------- |
 | `items`                             | The element rules, under `field.*`                                                            |
 | `minItems`, `maxItems`              | `min`, `max` on the array itself                                                              |
-| `uniqueItems: true`                 | `distinct` on `field.*`                                                                       |
+| `uniqueItems: true`                 | `distinct:strict` on `field.*`                                                                |
 | `properties`                        | One key per property, `field.child`, recursively                                              |
 | `additionalProperties: false`       | `array:` on a nested object's field, naming its declared keys                                 |
 | `required` under an optional object | `required_with:` naming the parent, since a key cannot be required while its object is absent |
@@ -302,9 +327,14 @@ either way; what the contract asked for and would not get is the request being r
 fields over an inner object that allows them would have the inner extras refused too, and a generated class stricter
 than the contract is worse than a missing rule: it turns away a payload the document promised to accept. So the build
 sets the attribute only when no object in the body's schema permits additional properties, and reports the root's
-`additionalProperties: false` as unhonored when one does. The attribute is a recent addition to the framework, so
-[#35](https://github.com/Gcob/lara-spec-first/issues/35) checks it against the lowest Laravel
-[`stack.md`](../../project/stack.md#supported-versions-at-a-glance) supports before the emitter relies on it.
+`additionalProperties: false` as unhonored when one does.
+
+**The attribute does not exist on the lowest Laravel this package supports, and the fallback is named rather than
+discovered.** It arrived during the 12.x line while `composer.json` declares `^12.0`, so
+[#35](https://github.com/Gcob/lara-spec-first/issues/35) has two honest ways out: an `after()` closure on the generated
+class comparing the payload's keys against the rule set's, which is what the attribute does internally and what this
+package can write for itself, or the attribute behind a version gate with that closure underneath it anyway. The closure
+is the leading answer, because one emitted shape beats two that have to stay equivalent.
 
 **A property name containing a dot is escaped as `\.`**, because Laravel reads an unescaped dot in a rule key as
 nesting. `user.name` as a literal property name would otherwise generate rules for a `name` key inside a `user` object
@@ -362,6 +392,13 @@ public function data(): CreateUserInputDto
 **`validated()` keeps returning Laravel's array.** It is the framework's own method, `validated()` and
 `validated('email')` both have callers, and a generated class that changed what they hand back would be this package
 redefining something it does not own. The DTO sits beside it, under a name of ours.
+
+**Its properties are the body schema's, and a query parameter is not one of them.** The rule set merges the two, so
+`validated()` carries both; the DTO mirrors the body and nothing else, because the body is where its name comes from.
+Without that line the naming rule below would not hold: two operations sharing one body `$ref` while declaring different
+query parameters would be feeding two different key sets into one shared type. A query parameter stays on the request,
+where `validated('page')` reads it and where [pagination](../pagination.md#parameters-must-be-declared) already looks
+for it.
 
 **No factory on this side, and the asymmetry is the point.** A
 [response DTO factory](./response-dtos.md#factories-carry-the-behavior) exists because a response is built from a model,

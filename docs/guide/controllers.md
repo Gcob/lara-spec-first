@@ -405,7 +405,7 @@ identical, so the indirection buys nothing there and is kept only for consistenc
 for:
 
 ```php
-public function routeAction(StoreUserRequest $request): UserDto
+public function routeAction(CreateUserRequest $request): UserDto
 {
     return $this->create($request->data());
 }
@@ -755,20 +755,20 @@ Two checks specific to this document, both of which the specification cannot see
 
 Four things a reader arrives at a controller wanting, and finds owned elsewhere:
 
-- **Nothing here validates a request.** The DTO a CRUD method receives arrives already validated, built by one generated
-  `FormRequest` per operation, which is [`request-validation.md`](./code-generation/request-validation.md)'s subject,
-  down to what the request parameter does to `routeAction`'s signature. This document assumes the value and never
-  derives it.
-- **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
-  teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled
-  here is only that the generated method calls the factory directly.
-- **`x-controller` decides which class answers, never whether the caller may.** Authorization is
-  [`security.md`](./security.md)'s, right down to
-  [the line where a Policy takes over](./security.md#row-level-rules-are-a-policys-job). A custom controller is not an
-  access-control mechanism, and naming one grants nobody anything.
-- **The build's own rules are stated once, in the build's own document.** What a build may write, where generated code
-  lives, and what a project commits are [`code-generation/index.md`](./code-generation/index.md)'s. This document
-  depends on all three and restates none of them.
+1. **Nothing here validates a request.** The DTO a CRUD method receives arrives already validated, built by one
+   generated `FormRequest` per operation, which is [`request-validation.md`](./code-generation/request-validation.md)'s
+   subject, down to what the request parameter does to `routeAction`'s signature. This document assumes the value and
+   never derives it.
+2. **The DTO a `routeAction` returns is not this document's.** Its shape, why it is `final readonly`, and how a project
+   teaches a factory to build it are [`response-dtos.md`](./code-generation/response-dtos.md)'s subject. What is settled
+   here is only that the generated method calls the factory directly.
+3. **`x-controller` decides which class answers, never whether the caller may.** Authorization is
+   [`security.md`](./security.md)'s, right down to
+   [the line where a Policy takes over](./security.md#row-level-rules-are-a-policys-job). A custom controller is not an
+   access-control mechanism, and naming one grants nobody anything.
+4. **The build's own rules are stated once, in the build's own document.** What a build may write, where generated code
+   lives, and what a project commits are [`code-generation/index.md`](./code-generation/index.md)'s. This document
+   depends on all three and restates none of them.
 
 ## Open questions
 

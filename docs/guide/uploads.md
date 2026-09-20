@@ -68,7 +68,7 @@ behind [the version strategy](./openapi-support.md#handling-30-and-31) like ever
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
 | `format: binary`, or `contentMediaType`                | `file`                                                                                       |
 | `encoding.<part>.contentType`, else `contentMediaType` | `mimetypes:` with the declared types, `image/*` included, since Laravel matches a wildcard   |
-| `maxLength` on a binary part                           | `max:` in kilobytes, the contract's bytes over 1024, rounded down                            |
+| `maxLength` on a binary part                           | `max:` in kilobytes, the contract's bytes over 1024, rounded down deliberately               |
 | The part is in the body root's `required` list         | `required` beside the file rules                                                             |
 | The part is not in it                                  | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable |
 | `items` whose schema is a binary part                  | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`           |
@@ -87,9 +87,25 @@ table, pick one extension per type, and turn away a valid file whose name says n
 case is verified against the framework rather than assumed: `mimetypes:image/*` matches, because Laravel compares the
 type's first segment plus `/*` beside the exact values.
 
-**Rounded down, because rounding up accepts a file the contract refused.** A `maxLength` beside a `contentEncoding` is
-reported instead of translated: it then counts the characters of an encoded string rather than the bytes of a file, and
-reading it as bytes would refuse a quarter of what the contract allows.
+**One Laravel behavior is stricter than the rule asks for, and the contract cannot turn it off.** `mimetypes` refuses
+any upload whose client-side extension is in the framework's PHP list unless `php` is one of the declared types, which
+is a security default rather than a bug. A contract declaring `text/x-php` therefore gets a rule slightly stricter than
+it wrote, and that is where the package stops: overriding a framework security default from a generated class is not
+something a specification should be able to ask for.
+
+**Rounded down, and this one is a decision rather than a translation.** Laravel sizes a file in kilobytes and a contract
+states bytes, so no rule expresses a 2500-byte ceiling exactly: `max:2` refuses the 451 bytes between 2049 and 2500 that
+the contract allowed, and `max:3` accepts 572 bytes it refused. Both directions break something, so the tie goes to the
+direction that keeps the rule doing its job, which is stopping what is too big.
+
+**That is a knowing exception to "never stricter than the contract", and it is narrow.** The principle
+[the mapping tables state](./code-generation/request-validation.md#every-constraint-maps-or-reports) is about the shape
+of a payload: never turn away a form the document describes. Here the form is accepted and the ceiling lands under a
+kilobyte away from where the contract put it, which is a rounding on one number rather than a shape refused. A contract
+that needs the byte exactly is describing something Laravel's `max` cannot count.
+
+A `maxLength` beside a `contentEncoding` is reported instead of translated: it then counts the characters of an encoded
+string rather than the bytes of a file, and reading it as bytes would refuse a quarter of what the contract allows.
 
 **Two rules Laravel has and no contract can ask for:** `image` and `dimensions`. `image` is a looser
 `mimetypes:image/*`, so emitting it beside the declared types adds a second answer rather than a stricter one, and
@@ -132,19 +148,30 @@ contract, and a build that picked one would be inventing persistence rather than
 **Configured, the generated CRUD default stores the part and mass-assigns what came back:**
 
 ```php
-// app/Http/Generated/Controllers/CreateUserController.php
-protected function create(CreateUserInputDto $data): UserDto
+// app/Http/Generated/Controllers/UpdateUserController.php
+protected function update(User $user, UpdateUserPartialInputDto $data): UserDto
 {
     $attributes = $data->toArray();
-    $attributes['avatar'] = $this->storeUpload($data->avatar, 'avatar');
 
-    return UserDtoFactory::from($this->getQuery()->create($attributes));
+    if ($data->avatar instanceof UploadedFile) {
+        $attributes['avatar'] = $this->storeUpload($data->avatar, 'avatar');
+    }
+
+    $user->update($attributes);
+
+    return UserDtoFactory::from($user);
 }
 ```
 
-**An absent part is not stored**, which falls out of
-[the DTO's third state](./code-generation/request-validation.md#an-absent-field-is-a-third-state) rather than needing a
-rule of its own: a `PATCH` that sent no avatar leaves both the file and the column alone.
+**The guard is emitted, not left to the reader.** An absent part is
+[the DTO's third state](./code-generation/request-validation.md#an-absent-field-is-a-third-state), and that sentinel is
+not an `UploadedFile`: handing it to `storeUpload()` would be a `TypeError` rather than "nothing was stored". So the
+build writes the `instanceof` check, and what falls out of the third state is the outcome, not the safety. A `PATCH`
+that sent no avatar leaves the file and the column alone because the call never happens.
+
+**A required part on a create needs no guard, and the build does not write one.** The rule set already refused a request
+without it, so the property is an `UploadedFile` by the time the method runs, and a check there would be dead code
+implying a case the validator made impossible.
 
 **Open ([#55](https://github.com/Gcob/lara-spec-first/issues/55)):** the key's name and what else sits in its block, a
 default visibility among them. It joins the configuration blocks that are inert until Phase 2, and it is public API
@@ -157,12 +184,18 @@ lands in the column.** Its default stores the file on the configured disk and re
 covers a plain `avatar` column and nothing more.
 
 ```php
-// In the custom child, for a project on a media library.
+// In the custom child. A different disk and a path per property.
 protected function storeUpload(UploadedFile $file, string $property): mixed
 {
-    return $this->model->addMedia($file)->toMediaCollection($property)->uuid;
+    return $file->store("uploads/{$property}", 's3');
 }
 ```
+
+**What this seam cannot reach is the model**, and it is worth saying before somebody tries: `storeUpload()` receives the
+file and the property name, nothing else. On a create there is no model yet, so a media library, which attaches a file
+to a row, is not a `storeUpload()` override at all: it overrides
+[the CRUD method](./controllers.md#writes-by-the-same-default), where the row exists and the file is on the DTO beside
+it.
 
 **A trait with no interface beside it, and the reason is a rule this package already applies.** An interface may only
 declare what every implementation can sign, and
