@@ -51,10 +51,19 @@ final readonly class Schema
      *                                 `example` when a document writes both,
      *                                 and a lone `example` becomes a list of one
      * @param  bool|null  $additionalProperties  false forbids unknown fields,
-     *                                           true allows them, and null is a
-     *                                           document that said nothing or
-     *                                           gave a schema this package does
-     *                                           not read
+     *                                           and null is a schema this
+     *                                           package does not read. **True
+     *                                           is two things at once**, and
+     *                                           nothing can tell them apart:
+     *                                           the parser defaults the keyword
+     *                                           to true, so a document allowing
+     *                                           unknown fields and a document
+     *                                           silent about them arrive
+     *                                           identical. Only false is a
+     *                                           constraint worth generating
+     *                                           from, which is why the matrix
+     *                                           splits these rows on the value
+     *                                           rather than on the keyword
      * @param  float|null  $exclusiveMinimum  the 3.1 spelling, always: a bound
      *                                        standing on its own rather than a
      *                                        boolean modifying a sibling. A 3.0
