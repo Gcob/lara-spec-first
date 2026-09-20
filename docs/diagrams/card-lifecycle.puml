@@ -14,6 +14,11 @@
 ' The board columns are inside the state labels rather than in notes. A note
 ' carrying a sentence drifts from the paragraph beside the image; two words in a
 ' box cannot.
+'
+' "one or more pull requests" rather than a branch in the picture. A card can ship
+' stacked, and the number is decided once, when the pull request opens, so drawing
+' the two outcomes as separate paths would give a reviewer's judgement call the
+' weight of a state. The card is still the unit; only the delivery can split.
 set separator none
 hide empty description
 
@@ -25,7 +30,7 @@ state "card-management.md" as Doc
 
 Intention --> Sketch : filed
 Sketch --> Spec : **the lot opens**\nthe card is rewritten
-Spec --> Merged : one card,\none pull request
+Spec --> Merged : one card,\none or more\npull requests
 Merged --> Doc : what the lot taught
 Doc --> Spec : shapes the next\nrewrite
 @enduml
