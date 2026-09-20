@@ -1,0 +1,30 @@
+# The same keyword, with the reference sitting in data rather than in a schema.
+# An API that itself deals in JSON Schema writes exactly this, and refusing it
+# would turn away a valid contract.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /pairs:
+    post:
+      operationId: createPair
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pair:
+                  type: array
+                  prefixItems:
+                    - type: string
+                      example:
+                        $ref: '#/components/schemas/Amount'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Amount:
+      type: integer
