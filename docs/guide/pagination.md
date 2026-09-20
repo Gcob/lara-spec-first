@@ -248,10 +248,10 @@ Two details the generated code must take from the specification rather than inve
 ### Parameters must be declared
 
 **The package never accepts a query parameter the contract does not declare.** A tempting shortcut is for the build to
-inject `page` and `size` validation into the [generated `FormRequest`](../../README.md#roadmap) whenever an operation is
-paginated. **It is rejected**, and the reason is the direction of truth rather than effort: parameters the specification
-does not mention would be invisible to anyone reading it, and the code would have become authoritative over what the API
-accepts.
+inject `page` and `size` validation into the [generated `FormRequest`](./code-generation/request-validation.md) whenever
+an operation is paginated. **It is rejected**, and the reason is the direction of truth rather than effort: parameters
+the specification does not mention would be invisible to anyone reading it, and the code would have become authoritative
+over what the API accepts.
 
 The consequence runs the other way. **A paginated response whose operation declares no pagination parameters is a
 [doctor](./doctor.md) finding**: the contract promises a page but gives a consumer no documented way to ask for one. The

@@ -65,11 +65,12 @@ What the package reads, and what it refuses to. [`openapi-support.md`](./openapi
 
 ### Scaffolding, publishing and DTOs
 
-| Term                                                                                                             | In one clause                                                                                                                               |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| <a id="scaffolding"></a>[Scaffolding](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step) | `spec:make` creating one file you will own, on request, which the build itself never does.                                                  |
-| <a id="public-copy"></a>[The public copy](./code-generation/publishing.md#where-the-public-copy-goes)            | The sanitized specification the build can emit for publication, with internal operations removed. Not built yet.                            |
-| <a id="dto-factory"></a>[A DTO factory](./code-generation/response-dtos.md#factories-carry-the-behavior)         | The generated class beside a response DTO whose one job is building it, and the seam a project overrides instead of the DTO. Not built yet. |
+| Term                                                                                                             | In one clause                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a id="scaffolding"></a>[Scaffolding](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step) | `spec:make` creating one file you will own, on request, which the build itself never does.                                                              |
+| <a id="public-copy"></a>[The public copy](./code-generation/publishing.md#where-the-public-copy-goes)            | The sanitized specification the build can emit for publication, with internal operations removed. Not built yet.                                        |
+| <a id="dto-factory"></a>[A DTO factory](./code-generation/response-dtos.md#factories-carry-the-behavior)         | The generated class beside a response DTO whose one job is building it, and the seam a project overrides instead of the DTO. Not built yet.             |
+| <a id="input-dto"></a>[An input DTO](./code-generation/request-validation.md#the-payload-arrives-as-a-dto)       | The generated type a request hands the controller, carrying the validated payload with an absent property kept distinct from a null one. Not built yet. |
 
 ## Controllers
 
