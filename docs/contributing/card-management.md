@@ -12,7 +12,7 @@ covers: >
     this project declines to use.
 read_before: >
     Opening a card, cutting a lot, wondering whether something is one card or two, or deciding what to do with work that
-    turned up while a card was already open.
+    turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
 
@@ -116,11 +116,12 @@ The third test is the hard one, because a body full of open decisions reads like
 it. One way to find them before writing the card is to be questioned about it: an agent that interrogates a design round
 by round surfaces the decisions nobody had noticed were still open, which is the same output the test is looking for.
 
-[AIHero's grilling skills](https://www.aihero.dev/) do this, `grill-with-docs` for something settleable in one session
-and `wayfinder` for a lot being cut. They are named here because they exist and they fit, not because anything depends
-on them: nothing in this repository invokes them, no command checks for them, and a card cut without one is not worse
-for it. **What does not carry over is their paper trail.** They write a `CONTEXT.md` glossary and ADRs under
-`docs/adr/`, and this project already answers both questions elsewhere, in
+[AIHero](https://www.aihero.dev/) publishes skills that do this, `grill-with-docs` for something settleable in one
+session and `wayfinder` for a lot being cut. **Those two names are search terms rather than links**, since the pages
+documenting them move and a dead link here would be worse than a name somebody can look up. They are named here because
+they exist and they fit, not because anything depends on them: nothing in this repository invokes them, no command
+checks for them, and a card cut without one is not worse for it. **What does not carry over is their paper trail.** They
+write a `CONTEXT.md` glossary and ADRs under `docs/adr/`, and this project already answers both questions elsewhere, in
 [`documentation.md`](./documentation.md#document-inventory) and in the `Open` rows of [`stack.md`](../project/stack.md).
 Taking the interview and leaving the filing is the way to use them here.
 
@@ -172,9 +173,9 @@ person doing the work is the one who can see that, and this file gives them the 
 questions is yes and the card it belongs to is not open yet, what you leave behind is a marker carrying a card number,
 at the line where a future reader needs it. The notation, the rule and the limit that keeps markers from becoming noise
 are all in [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leaves-a-marker), which is where they live because
-`just check-markers` reads this file and would flag the notation written out here as a marker of its own. **Where
-exactly the boundary sits between doing it now and leaving a marker is not yet written down**, and naming the gap is all
-this file does about it today.
+`just check-markers` reads this file and would flag the notation written out here as a marker of its own. **Whether the
+marker is worth leaving at all is answered there too**: only where the code is where somebody would need to know, since
+a marker that repeats what the card already says is noise.
 
 ## The split is decided once, when the pull request opens
 

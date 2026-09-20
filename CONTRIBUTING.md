@@ -272,8 +272,7 @@ A few expectations:
 Work you notice and are not going to do gets written down where it will be needed, rather than done or forgotten. **What
 decides which side of that line it falls on is in
 [`card-management.md`](./docs/contributing/card-management.md#when-it-stops-being-overflow)**, and the default there is
-to do it: a marker is for work that does not finish in this session, needs a decision that is not yours, or touches a
-migration or the published contract.
+to do it rather than to file it.
 
 - **Leave it at the line where a future reader needs it:** `TODO (#N)` in code, `**Open (#N):**` in a document.
 - **The number is a card in this repository**, reachable at `https://github.com/Gcob/lara-spec-first/issues/<n>`, and
@@ -350,7 +349,8 @@ It is a git hook. Read it before enabling it, as the `justfile` header says of e
 
 For your pull request:
 
-1. Fork the repo and branch from `main`, named as [above](#branch-names).
+1. Fork the repo and branch from `main`, named as [above](#branch-names), or from the pull request you are stacking on,
+   see step 3.
 2. Make your change, with tests. Work that overflows the card is done in the same branch, in its own commit, see
    [`card-management.md`](./docs/contributing/card-management.md#work-that-overflows-a-card-is-done-inside-it).
 3. Read the branch's `git log` and decide whether it ships as one pull request or
