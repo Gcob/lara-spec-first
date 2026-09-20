@@ -1,0 +1,29 @@
+# A reference aimed at a position inside a `$defs`. The parser does not model
+# that keyword, so the target is a raw array and never was a Schema Object to
+# point at.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /amounts:
+    post:
+      operationId: createAmount
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  $ref: '#/components/schemas/Money/$defs/Amount'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Money:
+      type: object
+      $defs:
+        Amount:
+          type: integer
