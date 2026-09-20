@@ -1,0 +1,21 @@
+# The same upload, written the way 3.0 spells a file part.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /avatars:
+    post:
+      operationId: uploadAvatar
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Created

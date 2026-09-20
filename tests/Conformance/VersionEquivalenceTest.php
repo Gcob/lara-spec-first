@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\QueryParameter;
+use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
@@ -34,6 +36,50 @@ it('reads the pair as the two different versions they claim to be', function ():
         ->toBe(SpecVersion::V3_1);
 });
 
+/**
+ * Every schema keyword, read back as plain data.
+ *
+ * A `Contract\Schema` is a tree, and the comparison has to reach its leaves:
+ * the version differences are concentrated there rather than in the operation
+ * around it.
+ *
+ * @return array<string, mixed>|null
+ */
+function describeSchema(?Schema $schema): ?array
+{
+    if ($schema === null) {
+        return null;
+    }
+
+    return [
+        'types' => array_map(static fn ($type): string => $type->value, $schema->types),
+        'nullable' => $schema->isNullable(),
+        'format' => $schema->format,
+        'required' => $schema->required,
+        'enum' => $schema->enum,
+        'examples' => $schema->examples,
+        'bounds' => [
+            $schema->minimum,
+            $schema->maximum,
+            $schema->exclusiveMinimum,
+            $schema->exclusiveMaximum,
+        ],
+        'lengths' => [$schema->minLength, $schema->maxLength, $schema->minItems, $schema->maxItems],
+        'pattern' => $schema->pattern,
+        'multipleOf' => $schema->multipleOf,
+        'uniqueItems' => $schema->uniqueItems,
+        'readOnly' => $schema->readOnly,
+        'writeOnly' => $schema->writeOnly,
+        'additionalProperties' => $schema->additionalProperties,
+        'isFilePart' => $schema->isFilePart,
+        'contentMediaType' => $schema->contentMediaType,
+        'recursesTo' => $schema->recursesTo,
+        'items' => describeSchema($schema->items),
+        'allOf' => array_map(describeSchema(...), $schema->allOf),
+        'properties' => array_map(describeSchema(...), $schema->properties),
+    ];
+}
+
 // Every field the extractor produces, not a sample of them — this is the test
 // that pins the version strategy's entire promise: nothing downstream, not even
 // a reviewer reading a diff, may be able to tell which version was read.
@@ -55,6 +101,20 @@ it('extracts one contract from two spellings of it', function (): void {
                 static fn (SecurityRequirement $requirement): array => $requirement->schemes,
                 $operation->security
             ),
+        'requestBody' => $operation->requestBody === null
+            ? null
+            : [
+                'required' => $operation->requestBody->required,
+                'content' => array_map(describeSchema(...), $operation->requestBody->content),
+            ],
+        'queryParameters' => array_map(
+            static fn (QueryParameter $parameter): array => [
+                'name' => $parameter->name,
+                'required' => $parameter->required,
+                'schema' => describeSchema($parameter->schema),
+            ],
+            $operation->queryParameters
+        ),
     ];
 
     expect(array_map($describe, extractEquivalenceFixture('same-contract-3.1.yaml')))
@@ -65,5 +125,5 @@ it('extracts one contract from two spellings of it', function (): void {
 // tells you the documents describe the same surface, the comparison above tells
 // you every detail of it survived the version difference.
 it('finds the same operations in both', function (string $fixture): void {
-    expect(extractEquivalenceFixture($fixture))->toHaveCount(3);
+    expect(extractEquivalenceFixture($fixture))->toHaveCount(4);
 })->with(['same-contract-3.0.yaml', 'same-contract-3.1.yaml']);

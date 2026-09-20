@@ -1,0 +1,22 @@
+# 3.1 names a file part with `contentMediaType`, having dropped the format
+# vocabulary `format: binary` belonged to. Its 3.0 twin sits beside it.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /avatars:
+    post:
+      operationId: uploadAvatar
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  contentMediaType: image/png
+      responses:
+        '201':
+          description: Created
