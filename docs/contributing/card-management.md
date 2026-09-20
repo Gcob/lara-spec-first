@@ -3,11 +3,16 @@ title: Card Management
 audience: Contributors
 covers: >
     How work is cut into cards and tracked: what makes a card the right size, the three tests that catch a card that is
-    really a checkbox or really a lot, the failures this repository has actually made and what each one taught, the card
-    template and which sections each kind of card drops, when a card is written and what a Backlog card is worth before
-    then, how a card cites a file, what the board's Status, Phase, Lot and Kind fields mean, who moves them and why a
-    card's body stops carrying one the moment the board does, and the grouping mechanisms this project declines to use.
-read_before: Opening a card, cutting a lot, or wondering whether something is one card or two.
+    really a checkbox or really a lot, the failures this repository has actually made and what each one taught, what to
+    do with work that overflows an open card and when overflow stops being overflow, when the split into several pull
+    requests is decided, what separates a card whose scope grew from one whose goal changed and where the divergence
+    gets written, the card template and which sections each kind of card drops, when a card is written and what a
+    Backlog card is worth before then, how a card cites a file, what the board's Status, Phase, Lot and Kind fields
+    mean, who moves them and why a card's body stops carrying one the moment the board does, and the grouping mechanisms
+    this project declines to use.
+read_before: >
+    Opening a card, cutting a lot, wondering whether something is one card or two, or deciding what to do with work that
+    turned up while a card was already open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
 
@@ -22,6 +27,10 @@ tags: [planning, conventions, workflow, scope, onboarding]
 >   whether it is a card at all; past roughly four hundred added lines, ask what else got in.
 > - Three tests, in the order they catch things: does it cost more to file than to do, does its title need "and", does
 >   its body carry its own open decisions.
+> - Adjacent work found while a card is open is done inside it, in its own commit, not filed as a card of its own. Clean
+>   scope protects the reviewer, so the split is decided once, when the pull request opens.
+> - A card is a hypothesis. If its title is still true the scope simply grew; if it is not, the card is rewritten. The
+>   divergence is written in the pull request, and only when the original plan was wrong.
 > - The template is the [issue form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/task.md).
 >   This file is where its reasoning lives.
 > - `Status` moves with the work; `Phase` and `Kind` are set at triage and `Lot` when that lot is cut. The board holds
@@ -100,6 +109,136 @@ on its own, and it would be wrong the week somebody lands one large refactor.
 **Does its body carry its own open decisions?** Then it is a lot, not a card. This is the one generic advice misses, and
 the one this repository keeps hitting. A card whose `Done when` cannot be verified until somebody first decides
 something is two pieces of work wearing one number.
+
+### An interview is one way to run the third test
+
+The third test is the hard one, because a body full of open decisions reads like a plan until somebody tries to verify
+it. One way to find them before writing the card is to be questioned about it: an agent that interrogates a design round
+by round surfaces the decisions nobody had noticed were still open, which is the same output the test is looking for.
+
+[AIHero's grilling skills](https://www.aihero.dev/) do this, `grill-with-docs` for something settleable in one session
+and `wayfinder` for a lot being cut. They are named here because they exist and they fit, not because anything depends
+on them: nothing in this repository invokes them, no command checks for them, and a card cut without one is not worse
+for it. **What does not carry over is their paper trail.** They write a `CONTEXT.md` glossary and ADRs under
+`docs/adr/`, and this project already answers both questions elsewhere, in
+[`documentation.md`](./documentation.md#document-inventory) and in the `Open` rows of [`stack.md`](../project/stack.md).
+Taking the interview and leaving the filing is the way to use them here.
+
+## Work that overflows a card is done inside it
+
+**A card is cut before the work starts, which means it is cut from outside the code.** It will be wrong sometimes, and
+the two ways it goes wrong are worth separating, because they have different answers.
+
+The first is adjacent work. Something small, obvious and clearly worth doing turns up while the card is open, and the
+reflex is to file it. **Do it instead.** Filing costs the writing, the rereading months later, the reload of a context
+that is loaded right now, a branch and a pull request, all to protect work that takes minutes. The context that makes
+the fix cheap is the thing the card would throw away.
+
+**Clean scope protects the reviewer, not the person writing the code.** That is the whole reason the rule can be this
+loose: the constraint this file already publishes,
+[a pull request somebody reviews in one sitting](#size-is-a-target-not-a-measurement), starts applying the moment a
+reviewer exists. So it is enforced where it bites,
+[when the pull request is opened](#the-split-is-decided-once-when-the-pull-request-opens), and nothing about it has to
+be decided while the work is moving.
+
+**The separate commit is what makes that possible, and it is the only thing asked during the work.** It costs nothing,
+it does not interrupt anything, and it keeps the overflow extractable: work buried inside a larger commit cannot be
+split out later, so the decision at the end stops existing. A commit that says `chore:` or `refactor:` on a `feature/`
+branch is already saying it is not the card, which is why no new marker is introduced here. The
+[Conventional Commit type](../../CONTRIBUTING.md#commit-messages) carries it, and a parallel vocabulary would drift from
+the one that already works.
+
+### When it stops being overflow
+
+Three questions, and they are questions rather than limits. Each one has a clear answer in the moment and no useful
+answer in the abstract, which is why none of them is a count.
+
+**Does it finish in this session?** The line is not small against large, it is **finished against started**. Started
+work asleep in a branch costs more than the card it was avoiding, because the context that justified skipping the card
+is gone by the time anybody looks at it again.
+
+**Does it need a decision you would not make alone?** A design, a public API, a breaking change. This is
+[the third test](#the-three-tests-in-the-order-they-catch-things) arriving mid-flight rather than at triage: work
+carrying its own open decisions is a lot, and noticing it late does not make it less of one.
+
+**Does it touch a migration or the published contract?** Those carry a review cost that unplanned work does not pay, and
+the compatibility surface is a contract the moment the package is published.
+
+**Nothing here is a quota.** An overflow that keeps growing is not caught by counting it, it is caught by one of the
+three questions above finally answering yes, and by the pull request getting harder to describe in a sentence. The
+person doing the work is the one who can see that, and this file gives them the questions rather than a number to obey.
+
+**Overflow that is not done is deferred work, and that rule already exists.** When the answer to any of the three
+questions is yes and the card it belongs to is not open yet, what you leave behind is a marker carrying a card number,
+at the line where a future reader needs it. The notation, the rule and the limit that keeps markers from becoming noise
+are all in [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leaves-a-marker), which is where they live because
+`just check-markers` reads this file and would flag the notation written out here as a marker of its own. **Where
+exactly the boundary sits between doing it now and leaving a marker is not yet written down**, and naming the gap is all
+this file does about it today.
+
+## The split is decided once, when the pull request opens
+
+**Read the branch's `git log` and decide there, not earlier.** By then the work is done, the overflow is visible, and
+the reviewer the split protects finally exists. This is the same reason cards are
+[cut when their lot opens](#cards-are-cut-when-the-lot-opens-not-before): the decision is cheaper and better once the
+information exists.
+
+A commit belongs in a pull request of its own when one of these is true.
+
+- **It touches a different area than the card.** A different reviewer would be the right one, and bundling it means
+  neither of them reviews their own half properly.
+- **It has to be revertable on its own.** The risk profile is not the card's, so it should not share the card's fate.
+- **It is larger than the card it grew out of.** That one is a diagnosis rather than a rule: it says the triage was
+  wrong, and the split is the smaller half of what to do about it.
+
+Otherwise it stays in the same pull request and the description says so. A reviewer reading "commits 3 and 4 also fix X,
+which the change needed" is better served than one who finds them unannounced.
+
+**Stacking pull requests on one another is available and is not required.** It is worth knowing about, because it is
+what makes the first case above cost little: branch the second pull request on the first rather than on `main`, and each
+stays reviewable on its own. Whether the bookkeeping is worth it on a given change is the author's call, and on most
+changes it is not.
+
+## A card whose scope grew, and a card whose goal changed
+
+**A card is a hypothesis, not a contract.** It was written against the tree and the understanding available before
+anybody opened the code, and finding out that it was wrong is the work succeeding, not the work going astray. This file
+already says as much about a `Backlog` sketch; the same holds for a `Todo` card once the work starts.
+
+The question that separates the two cases is whether **the title is still true**.
+
+- **It is.** The goal holds and the scope grew under it. Adjust the body and carry on. Nothing else happens, and nothing
+  about the board changes.
+- **It is not.** The card now tells two stories. Rewrite it whole, or close it and open one that says what the work
+  actually is.
+
+**The failure to avoid is the hybrid**: a card that keeps its original title and accumulates a second goal underneath.
+It reads as settled, it is not, and nobody can tell three months later which half the number refers to. Rewriting a card
+is already the ordinary move here, since
+[promoting a sketch to a specification](#cards-are-cut-when-the-lot-opens-not-before) is a rewrite rather than a drag,
+so this asks for nothing the project does not already do.
+
+### Where the divergence gets written
+
+**In the pull request description, and only when there was one.**
+
+Not in the card: the card would be a third copy of what the commits and the description already carry, and three copies
+drift. Not in the template either, for the reason
+[`Out of scope` was declined](#what-this-project-deliberately-does-not-use): a section that is always present is filled
+with "none" or with a restatement of the diff, and a template nobody completes stops being read. The card gets one line
+when it closes, not a running log.
+
+**What earns the space is why the original plan was wrong**, not a list of what else got done. The diff already carries
+the list.
+
+> The card assumed the resolver handled nested `$ref`. It did not, so commits 3 and 4 rework it, which is where the size
+> of this pull request comes from.
+
+That is worth reading. "Also touched the resolver, fixed two typos and added a test" is not: it is the diff, retyped.
+
+**And it compounds.** Written down consistently, the reasons the plan was wrong are the one record nobody keeps and
+everybody needs: where this project's estimates break. A run of them says more about what to watch for in the next lot
+than any estimate would have.
 
 ## What we have actually got wrong
 

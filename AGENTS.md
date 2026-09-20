@@ -137,6 +137,16 @@ Two traps worth knowing before you go in:
   before deriving the same conclusion from four documents, and leave one yourself when you notice work belonging to
   another card. `gh issue view <n> --repo Gcob/lara-spec-first` resolves the number. The rule and the limit that keeps
   it from becoming noise are in [`CONTRIBUTING.md`](./CONTRIBUTING.md#deferred-work-leaves-a-marker).
+- **Do not offer to open a card for work you could finish right now.** Something small and clearly worth doing that
+  turns up while a card is open is done inside that card, in its own commit, and filing it instead throws away the
+  context that made it cheap. Offer a card only when the work does not finish in this session, needs a decision that is
+  not yours to make, or touches a migration or the published contract. Whether the branch then ships as one pull request
+  or several is decided once, when the pull request is opened, and the reasoning for all of it is in
+  [`card-management.md`](./docs/contributing/card-management.md#work-that-overflows-a-card-is-done-inside-it).
+- **A card's scope growing is not a problem to report.** A card is a hypothesis written before anybody opened the code.
+  If its title is still true, adjust the body and carry on; if it is not, say so, because the card now describes work
+  nobody is doing. What belongs in the pull request description is why the original plan was wrong, not a list of what
+  else got touched, which the diff already carries.
 - **Branch names read `{type}/{card}/{context}`**, for example `docs/28/point-agents-at-the-board`. The middle segment
   is the card number, which is what links the branch, the pull request and the board without anybody typing the link.
   The types are in [`CONTRIBUTING.md`](./CONTRIBUTING.md#branch-names), and they are deliberately not the Conventional
