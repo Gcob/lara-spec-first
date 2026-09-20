@@ -10,9 +10,7 @@ covers: >
     Backlog card is worth before then, how a card cites a file, what the board's Status, Phase, Lot and Kind fields
     mean, who moves them and why a card's body stops carrying one the moment the board does, and the grouping mechanisms
     this project declines to use.
-read_before: >
-    Opening a card, cutting a lot, wondering whether something is one card or two, or deciding what to do with work that
-    turned up while one was open.
+read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
 
@@ -75,6 +73,9 @@ a sketch is the opposite overreaction: the coarse intention is worth keeping.
 and split when Lot 2 opens rather than today.
 
 ![A card's five states, and the edge running back from a finished lot to the next lot's rewrite](../diagrams/card-lifecycle.svg)
+
+_A card's five states._ The edge worth the picture is the one running backwards, from a finished lot to the next one's
+rewrite.
 
 **A finished lot owes one thing to the next: what it taught, written down where the next lot will read it.** That place
 is [What we have actually got wrong](#what-we-have-actually-got-wrong) on this page, named with the card that produced
@@ -240,6 +241,11 @@ That is worth reading. "Also touched the resolver, fixed two typos and added a t
 **And it compounds.** Written down consistently, the reasons the plan was wrong are the one record nobody keeps and
 everybody needs: where this project's estimates break. A run of them says more about what to watch for in the next lot
 than any estimate would have.
+
+![One gate carrying the three questions, the single outcome any yes leads to, and what happens to the card once it absorbs the work](../diagrams/card-in-flight.svg)
+
+_What happens to work that turns up while a card is open._ The three questions are one gate rather than a checklist: any
+single yes ends it, and none of them outranks another.
 
 ## What we have actually got wrong
 
