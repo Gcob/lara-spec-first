@@ -7,9 +7,10 @@ covers: >
     do with work that overflows an open card and when overflow stops being overflow, when the split into several pull
     requests is decided, what separates a card whose scope grew from one whose goal changed and where the divergence
     gets written, the card template and which sections each kind of card drops, when a card is written and what a
-    Backlog card is worth before then, how a card cites a file, what the board's Status, Phase, Lot and Kind fields
-    mean, who moves them and why a card's body stops carrying one the moment the board does, and the grouping mechanisms
-    this project declines to use.
+    Backlog card is worth before then, what an Acceptance scenario holds, why nothing runs it and what ten cards have
+    done with it so far, how a card cites a file, what the board's Status, Phase, Lot and Kind fields mean, who moves
+    them and why a card's body stops carrying one the moment the board does, and the grouping mechanisms this project
+    declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -292,6 +293,40 @@ carries all four.
 `Ready when` replaces a ceremonial definition of ready: it holds card numbers, and it is deleted outright rather than
 left empty. **A `Decision` card is done when the document stops saying `Open`**, not when somebody has made up their
 mind, which is the same rule [`stack.md`](../project/stack.md) applies to its own Status column.
+
+### An Acceptance scenario is a sentence nothing runs
+
+**Nothing executes these scenarios, and nothing is meant to.** There is no Behat and no Cucumber here; the test runner
+is Pest, and the tests a card ends up with are written in PHP like every other test in the tree. The fence says
+`gherkin` because it highlights, and because the three keywords force a shape a paragraph does not.
+
+**That shape is what the section is for.** `Given` is a state, `When` is one trigger, and `Then` is something somebody
+could watch happen. A card that cannot fill those three lines has usually named a topic rather than described work, and
+the difference stays invisible until somebody tries to write the scenario. "Make security work" survives a `Why`
+paragraph; it does not survive a `When`.
+
+**What follows is what ten cards have done so far, not a specification.** They are
+[#34](https://github.com/Gcob/lara-spec-first/issues/34) through
+[#44](https://github.com/Gcob/lara-spec-first/issues/44), all written in the same stretch of triage, and only one of
+them has shipped. So this is a record of a habit, and a young one, rather than a rule anybody agreed to:
+
+- **Two to three scenarios**, which is what the table above already asks for.
+- **A command running is the commonest trigger**, as in `When spec:build runs` or `When spec:doctor runs`. A request
+  being served is the other one, and [#37](https://github.com/Gcob/lara-spec-first/issues/37) shows a third shape,
+  `When the conformance suite runs`, for work whose subject is the test suite itself.
+- **The last scenario is often the one where nothing happens.** [#43](https://github.com/Gcob/lara-spec-first/issues/43)
+  ends on an operation that is not deprecated getting no header,
+  [#41](https://github.com/Gcob/lara-spec-first/issues/41) on an operation with no `x-model` still answering 501, and
+  [#44](https://github.com/Gcob/lara-spec-first/issues/44) on no specification file being opened at runtime. The scope
+  of a feature is as much where it stops as where it acts, and on those cards the negative scenario is the only place
+  that says so.
+- **`Scenario`, `Given`, `When`, `Then` and `And` are the only keywords used.** Not because the others are refused:
+  `Background`, `Examples` and tags exist to feed a runner, and nobody has yet had a reason to reach for them.
+
+**None of that is settled, and it should not read as though it were.** Ten cards is early. If a scenario reads better
+another way, write it another way; if a shape turns out to be worth asking for, it can be written down then, once there
+is enough evidence to argue from. What this section commits to is the three keywords and the fact that nothing runs
+them. The rest is what we have happened to do.
 
 ## A card cites a file as a permalink
 

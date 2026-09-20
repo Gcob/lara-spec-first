@@ -46,7 +46,7 @@ Lot:
 Kind:
 
 <!--
-Four rules this form assumes. Each names where its reasoning lives, and what makes a card
+Five rules this form assumes. Each names where its reasoning lives, and what makes a card
 the right size is in docs/contributing/card-management.md.
 
 - Cite a file or a line as a permalink pinned to a commit, never as a bare path.
@@ -58,5 +58,8 @@ the right size is in docs/contributing/card-management.md.
   CONTRIBUTING.md#deferred-work-leaves-a-marker
 - A Decision card is done when the document stops saying `Open`, not when somebody made up
   their mind. card-management.md#the-template-and-what-each-kind-of-card-drops
+- Nothing runs the scenarios above. `Given` is a state, `When` is one trigger, `Then` is
+  something you could watch happen. What other cards have done with them, none of it binding,
+  is in card-management.md#an-acceptance-scenario-is-a-sentence-nothing-runs
 
 -->
