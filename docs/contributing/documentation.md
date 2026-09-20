@@ -926,6 +926,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 - [`rate-limiting.md`](../guide/rate-limiting.md)
 - [`remote-references.md`](../guide/remote-references.md)
 - [`security.md`](../guide/security.md)
+- [`uploads.md`](../guide/uploads.md)
 
 `docs/project/`, for `Users and contributors`:
 

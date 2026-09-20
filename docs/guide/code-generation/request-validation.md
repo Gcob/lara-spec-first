@@ -7,9 +7,9 @@ covers: >
     required list emptied and why nothing fills an absent field from a schema `default`, which JSON Schema constraint
     becomes which Laravel rule and what happens to the ones that map to nothing, why nothing rewrites the rule set at
     request time, why the generated request is `final` and where the three things a developer would extend it for
-    already live, why the validated payload reaches the controller as a DTO and what an absent field is in it, what an
-    operation with nothing to validate gets, and how the request reaches `routeAction` without changing what a custom
-    child may override.
+    already live, why the validated payload reaches the controller as a DTO and what an absent field is in it, which
+    media types are read and why one operation declares one of them, what an operation with nothing to validate gets,
+    and how the request reaches `routeAction` without changing what a custom child may override.
 read_before: >
     Implementing the `FormRequest` emitter, or changing what `routeAction` declares.
 tags: [code-generation, openapi, decisions, scope, laravel]
@@ -80,10 +80,16 @@ specification's own:
 3. **[`security.md`](../security.md) already owns it.** What an `Authorization` header has to satisfy is settled there,
    and a rule set is not where a second answer to it belongs.
 
-**One media type, `application/json`.** A body declaring several has its JSON schema read and every other media type
-reported. A `multipart/form-data` part carrying `format: binary` needs `file`, `mimes` and a size in kilobytes, which is
-a mapping this document does not make, and pretending a rule set covers an upload it never looked at is the failure
-[rule 2](../openapi-support.md#the-four-rules) exists against.
+**Three media types are read, and one operation declares one of them.** `application/json`, `multipart/form-data` and
+`application/x-www-form-urlencoded` all arrive through `all()`, so one rule set serves them identically; what changes is
+only whether a part can be a file, which is [`uploads.md`](../uploads.md#one-operation-one-media-type)'s subject. **An
+operation declaring two of them over two different schemas is a build error**, because one `rules()` cannot hold two
+rule sets and [nothing rewrites it per request](#nothing-rewrites-the-rule-set). Two media types over one schema are not
+a conflict and produce one rule set.
+
+**Any other media type is reported rather than guessed at.** A body declaring `application/xml` is a contract this
+package does not serve, and a `format: byte` string inside a JSON body is
+[a string nothing decodes](../uploads.md#a-base64-part-is-a-string).
 
 ### A name declared twice is refused
 
@@ -493,7 +499,7 @@ Four things a reader arrives here wanting, each owned elsewhere:
 2. **What the validated payload is then used for.** The DTO reaches a CRUD method and a model from
    [`controllers.md`](../controllers.md#writes-by-the-same-default), and whether the model will accept the fields in it
    is the doctor's mass-assignment check.
-3. **File uploads.** A `multipart/form-data` body is reported rather than translated, and the rules an upload needs are
-   not mapped anywhere yet.
+3. **Everything a file part changes.** The rules it becomes, the disk nothing stores it on until a project names one,
+   and the trait that decides what lands in the column are [`uploads.md`](../uploads.md)'s.
 4. **The shape of what comes back.** A response schema becomes a type through [`response-dtos.md`](./response-dtos.md),
    and nothing on this page describes output.

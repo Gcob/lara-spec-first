@@ -668,6 +668,10 @@ anything more than plain mass assignment:
 operation's request body schema, and nothing new reads the specification a second time. `toArray()` carries only the
 properties the client actually sent, so a `PATCH` writes what it was given and leaves the rest alone.
 
+**One body shape takes its default from configuration rather than from `x-model` alone: one carrying a file.** An upload
+is not a column, so an operation whose request body declares a file part answers `501` until a project
+[names a disk](./uploads.md#storing-is-configured-never-guessed), and what lands in the column is a trait's to decide.
+
 **This is where the doctor earns its keep.** Mass assignment silently drops whatever a model's `$fillable` (or
 `$guarded`) does not allow, and Eloquent does not raise for it. A request body schema declaring a field the model will
 not accept is therefore invisible at the wire and only ever noticed as "why didn't this save," far from its cause. **The
