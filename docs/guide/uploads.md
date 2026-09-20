@@ -54,7 +54,7 @@ package deciding an API's wire format, and it would push every upload through ba
 [the worse path in PHP](#a-base64-part-is-a-string). `multipart/form-data` is what Laravel's whole file stack is built
 for, so the package meets the contract where the framework already is.
 
-## A part is a file when the schema says so
+## The schema names the file part
 
 **Either OpenAPI spelling names one, and they normalize to one notion.** `format: binary` in 3.0, `contentMediaType` in
 3.1, which dropped `format: binary` with the rest of JSON Schema 2020-12's format vocabulary. That difference lives

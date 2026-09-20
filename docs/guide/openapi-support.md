@@ -569,7 +569,7 @@ first release, not shipped behavior.
 | `requestBody`                                     | Deferred | Phase 2, and the other half of that rule set. Three media types are read, `application/json`, `multipart/form-data` and `application/x-www-form-urlencoded`, and [an operation declares one of them](./uploads.md#one-operation-one-media-type): two over two different schemas is a build error.                        |
 | `responses`                                       | Deferred | Phase 2, and the input to the Faker mocker.                                                                                                                                                                                                                                                                              |
 | `links`                                           | Open     |                                                                                                                                                                                                                                                                                                                          |
-| Media type `encoding`                             | Partial  | Phase 2. `contentType` is read, as [the media types an uploaded part must match](./uploads.md#a-part-is-a-file-when-the-schema-says-so). `headers`, `style`, `explode` and `allowReserved` are not.                                                                                                                      |
+| Media type `encoding`                             | Partial  | Phase 2. `contentType` is read, as [the media types an uploaded part must match](./uploads.md#the-schema-names-the-file-part). `headers`, `style`, `explode` and `allowReserved` are not.                                                                                                                                |
 
 ### Schemas
 
@@ -701,11 +701,11 @@ than above.
 
 #### Content
 
-| Construct          | Level   | Note                                                                                                                                                                                                                                                                  |
-| ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contentMediaType` | Partial | **Raw**, and it carries a string, so no pointer can hide in it. Read for one purpose: it is how 3.1 states that [a multipart part is a file](./uploads.md#a-part-is-a-file-when-the-schema-says-so), where 3.0 wrote `format: binary`. Elsewhere it is an annotation. |
-| `contentEncoding`  | Ignored | **Raw**, and it carries a string too. A `maxLength` beside one counts encoded characters rather than bytes, which is why that pair is reported rather than translated.                                                                                                |
-| `contentSchema`    | Ignored | **Raw.** A schema for a string carrying an encoded document. Decoding it to validate it puts a second parser inside the validator.                                                                                                                                    |
+| Construct          | Level   | Note                                                                                                                                                                                                                                                        |
+| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contentMediaType` | Partial | **Raw**, and it carries a string, so no pointer can hide in it. Read for one purpose: it is how 3.1 states that [a multipart part is a file](./uploads.md#the-schema-names-the-file-part), where 3.0 wrote `format: binary`. Elsewhere it is an annotation. |
+| `contentEncoding`  | Ignored | **Raw**, and it carries a string too. A `maxLength` beside one counts encoded characters rather than bytes, which is why that pair is reported rather than translated.                                                                                      |
+| `contentSchema`    | Ignored | **Raw.** A schema for a string carrying an encoded document. Decoding it to validate it puts a second parser inside the validator.                                                                                                                          |
 
 ### References and security
 
