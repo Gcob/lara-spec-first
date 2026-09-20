@@ -1,0 +1,53 @@
+@startuml
+' Rendered by scripts/build-diagrams.sh. Edit this file, never the SVG beside it.
+' The colours, the fonts and the transparent ground come from palette.iuml.
+!include palette.iuml
+
+' What earns this picture is that the three questions are one gate rather than a
+' checklist. Any single yes ends it, none of them outranks another, and there is
+' one way out, which is the thing prose spells out worst: read as three
+' paragraphs, they look like three considerations to weigh against each other.
+'
+' One diamond carrying three lines rather than three diamonds in a row, and the
+' answer on the edge rather than in the box. Three diamonds would draw an order
+' that does not exist, and would repeat the same outcome three times, which reads
+' as three different outcomes at a glance.
+'
+' The second half is here rather than in its own picture because it only ever
+' runs after the first: the title test is asked about a card that has already
+' absorbed something, and the divergence is written once, at the end, in the pull
+' request rather than in the card.
+'
+' Separate from card-lifecycle.puml on purpose. That one draws a card's states and
+' the edge a finished lot runs back to the next one; this one draws a decision
+' taken inside one of those states. Folding them together would put nine more
+' edges around the loop that diagram exists to show, and drown it.
+'
+' No actor. The person doing the work is in every box here, so drawing them adds
+' a lane and says nothing. Entirely grey for the same reason as its sibling:
+' nothing here is an owner or a refusal, which is what colour is for in this set.
+'
+' The split into one or more pull requests is deliberately absent. It is decided
+' once, later, on the branch's git log rather than on any single piece of work,
+' so it belongs to a different moment than this one.
+
+start
+:Something turns up\nwhile the card is open;
+
+if (Does it finish in this session?\nDoes it need a decision you would not make alone?\nDoes it touch a migration or the published contract?) then (any yes)
+  :A card of its own;
+  stop
+else (all no)
+endif
+
+:Done in this card,\nin its own commit;
+
+if (Is the card's title\nstill true?) then (yes)
+  :The scope grew.\nThe body is adjusted;
+else (no)
+  :The goal changed.\nThe card is rewritten,\nor closed;
+endif
+
+:Why the original plan was wrong\ngoes in the pull request;
+stop
+@enduml

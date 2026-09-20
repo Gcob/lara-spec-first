@@ -269,7 +269,10 @@ A few expectations:
 
 ### Deferred work leaves a marker
 
-Work you notice and are not going to do gets written down where it will be needed, rather than done or forgotten.
+Work you notice and are not going to do gets written down where it will be needed, rather than done or forgotten. **What
+decides which side of that line it falls on is in
+[`card-management.md`](./docs/contributing/card-management.md#when-it-stops-being-overflow)**, and the default there is
+to do it rather than to file it.
 
 - **Leave it at the line where a future reader needs it:** `TODO (#N)` in code, `**Open (#N):**` in a document.
 - **The number is a card in this repository**, reachable at `https://github.com/Gcob/lara-spec-first/issues/<n>`, and
@@ -346,10 +349,17 @@ It is a git hook. Read it before enabling it, as the `justfile` header says of e
 
 For your pull request:
 
-1. Fork the repo and branch from `main`, named as [above](#branch-names).
-2. Make your change, with tests.
-3. Open the PR against `main`, describing **what** changed and **why**. Link the related issue.
-4. A maintainer will review. Expect questions. They are about the code, never about you.
+1. Fork the repo and branch from `main`, named as [above](#branch-names), or from the pull request you are stacking on,
+   see step 3.
+2. Make your change, with tests. Work that overflows the card is done in the same branch, in its own commit, see
+   [`card-management.md`](./docs/contributing/card-management.md#work-that-overflows-a-card-is-done-inside-it).
+3. Read the branch's `git log` and decide whether it ships as one pull request or
+   [several](./docs/contributing/card-management.md#the-split-is-decided-once-when-the-pull-request-opens). A pull
+   request stacked on another one branches from that one rather than from `main`, which is the one exception to the step
+   above.
+4. Open the PR against `main`, describing **what** changed and **why**. Link the related issue. Where the work diverged
+   from the card, say **why the original plan was wrong**; where it did not, write nothing.
+5. A maintainer will review. Expect questions. They are about the code, never about you.
 
 ## Scope: what belongs in this package
 

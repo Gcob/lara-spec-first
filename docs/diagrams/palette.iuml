@@ -1,5 +1,5 @@
 ' The shared look of every diagram in this repository. Included by each .puml
-' beside it, so a colour or a font is defined once rather than nine times.
+' beside it, so a colour or a font is defined once rather than eleven times.
 '
 ' Not named .puml on purpose: scripts/build-diagrams.sh renders every *.puml in
 ' this directory, and this file is a fragment rather than a diagram.
