@@ -46,6 +46,11 @@ final readonly class Operation
      *                                                 they are written. The
      *                                                 three other locations are
      *                                                 [not carried](../../docs/guide/code-generation/request-validation.md#one-rule-set-body-and-query)
+     * @param  list<Response>  $responses  in the order the document writes them,
+     *                                     each carrying the status it answers,
+     *                                     `2XX` and `default` included. A
+     *                                     declared status with no body is
+     *                                     present and empty rather than absent
      */
     public function __construct(
         public int $index,
@@ -61,6 +66,7 @@ final readonly class Operation
         public ?string $controller = null,
         public ?RequestBody $requestBody = null,
         public array $queryParameters = [],
+        public array $responses = [],
     ) {}
 
     /**
@@ -86,6 +92,59 @@ final readonly class Operation
     public function identity(): string
     {
         return $this->method->value.' '.$this->path->normalized;
+    }
+
+    /**
+     * The same operation, with `x-controller` read as this value.
+     *
+     * **It lives here rather than beside its one caller, and the reason is a
+     * scar.** `Scaffolding\ExtensionInsertion` used to build the copy itself by
+     * naming every property, and when this class grew three of them the copy
+     * quietly stopped carrying any of them: what caught it was that the
+     * insertion check compares two whole operations with `==`, not anybody
+     * reading the constructor. Next to the properties, a new one is adjacent to
+     * the line that has to carry it, and `OperationTest` fails when it is not.
+     *
+     * @see tests/Unit/Contract/OperationTest.php — the check that this copies everything
+     */
+    public function withController(string $controller): self
+    {
+        return new self(
+            index: $this->index,
+            method: $this->method,
+            path: $this->path,
+            operationId: $this->operationId,
+            tags: $this->tags,
+            audience: $this->audience,
+            lifecycle: $this->lifecycle,
+            deprecated: $this->deprecated,
+            sunset: $this->sunset,
+            security: $this->security,
+            controller: $controller,
+            requestBody: $this->requestBody,
+            queryParameters: $this->queryParameters,
+            responses: $this->responses,
+        );
+    }
+
+    /**
+     * The response this operation declares for one status, or null.
+     *
+     * A lookup rather than an array key, because {@see Response} carries its own
+     * status: matching is exact and on the string the document wrote, so `2XX`
+     * and `default` are asked for by name like any other. Whether one of them
+     * stands in for a status nobody wrote is a question about serving a
+     * response, and this is not where it is answered.
+     */
+    public function response(string $status): ?Response
+    {
+        foreach ($this->responses as $response) {
+            if ($response->status === $status) {
+                return $response;
+            }
+        }
+
+        return null;
     }
 
     /**
