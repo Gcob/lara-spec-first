@@ -683,6 +683,14 @@ final readonly class OperationExtractor
      * way: verified end to end, the read comes back with no fault and the
      * property holding the reference simply gone. A refusal that missed the
      * container would be one that misses the shape it advertises.
+     *
+     * **Known and accepted: a segment literally named `$defs` is read as the
+     * keyword wherever it sits.** A component called `$defs`, or a property of
+     * that name, is refused although neither is the keyword. Telling them apart
+     * means knowing where a pointer lands in the document, which is a walk this
+     * check would have to grow to do, for an input nobody writes. The message
+     * names the pointer, so an author who meets it can see what was read and
+     * rename.
      */
     private function aimsIntoDefinitions(string $reference): bool
     {
