@@ -1,0 +1,30 @@
+# The caveat's own case: `prefixItems` is a keyword the parser does not model,
+# so it comes back as a plain array with the reference inside it unresolved.
+# Reading that pointer as a schema would produce a value that is wrong rather
+# than missing, and nothing later would fail.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /pairs:
+    post:
+      operationId: createPair
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pair:
+                  type: array
+                  prefixItems:
+                    - type: string
+                    - $ref: '#/components/schemas/Amount'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Amount:
+      type: integer

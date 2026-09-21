@@ -1,0 +1,10 @@
+# The file defs-in-a-file-path.yaml refers into. Its only job is to exist at a
+# path containing a `/$defs/` segment.
+openapi: 3.1.0
+info:
+  title: Shared
+  version: 1.0.0
+components:
+  schemas:
+    Amount:
+      type: integer

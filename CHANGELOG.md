@@ -33,6 +33,22 @@ tags: [versions, conventions, planning]
 - **`Media type encoding` and `contentMediaType` moved up to `Partial`**, both read for what makes a
   `multipart/form-data` part a file. Moving up the ladder cannot break a contract that worked before, so this half is
   minor.
+- **`Local $ref within the document` moved down**, which the row itself announced as "a major, on the release that reads
+  schemas". A reference aimed at a position inside a `$defs` is now refused. It used to be accepted and it never worked:
+  the parser does not model that keyword, so the target was a plain array it could not build a schema from, and the
+  property carrying the reference was dropped without a word. A contract declaring three fields came back with two.
+- **Five schema keywords moved to `Rejected`**: `$id`, `$dynamicRef`, `$dynamicAnchor`, `$recursiveRef` and
+  `$recursiveAnchor`. Each changes how a reference resolves, so ignoring one resolves a reference to a target the
+  document never named, which is a wrong value rather than a missing one.
+- **A keyword the parser hands back raw is refused when a `$ref` is inside it**: `prefixItems`, `contains`,
+  `unevaluatedItems`, `patternProperties`, `propertyNames`, `dependentSchemas`, `unevaluatedProperties`,
+  `contentSchema`, `if`, `then` and `else`. The refusal reads the value and not the keyword, so the same keyword holding
+  inline schemas is still ignored as before, and a `$ref` written inside `example`, `examples`, `default`, `enum` or
+  `const` stays the literal it is.
+
+**What this means for a contract that used to build.** All of the above turn a build that passed into one that refuses,
+which is why they are recorded together. None of them was ever served correctly: each produced a value that was wrong
+rather than one that was missing, and nothing downstream failed to say so.
 
 ## [0.1.0] - 2026-09-11
 
