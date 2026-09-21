@@ -36,6 +36,7 @@ trait NormalizesSchemas
             format: $this->format($keywords),
             properties: $this->schemaMap($keywords, 'properties'),
             required: $this->strings($keywords, 'required'),
+            dependentRequired: $this->dependentRequired($keywords),
             items: ($keywords['items'] ?? null) instanceof Schema ? $keywords['items'] : null,
             allOf: array_values(array_filter(
                 is_array($keywords['allOf'] ?? null) ? $keywords['allOf'] : [],
@@ -163,6 +164,35 @@ trait NormalizesSchemas
         }
 
         return array_key_exists('example', $keywords) ? [$keywords['example']] : [];
+    }
+
+    /**
+     * Which properties another property's presence makes required.
+     *
+     * Both halves are checked rather than trusted, and the whole entry is
+     * dropped when either is wrong: a malformed one states no constraint, and
+     * inventing half of one would state a constraint its author did not write.
+     *
+     * @param  array<string, mixed>  $keywords
+     * @return array<string, list<string>>
+     */
+    private function dependentRequired(array $keywords): array
+    {
+        $written = $keywords['dependentRequired'] ?? null;
+
+        if (! is_array($written)) {
+            return [];
+        }
+
+        $dependencies = [];
+
+        foreach ($written as $property => $names) {
+            if (is_array($names)) {
+                $dependencies[(string) $property] = array_values(array_filter($names, is_string(...)));
+            }
+        }
+
+        return $dependencies;
     }
 
     /**
