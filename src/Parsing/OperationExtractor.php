@@ -65,6 +65,12 @@ final readonly class OperationExtractor
      * `contentMediaType` — are present because they are honored despite coming
      * back as raw values.
      *
+     * `oneOf`, `anyOf` and `not` are the absences worth naming, since a reader
+     * checking this list against the matrix will look for them: the parser does
+     * model them, so no unresolved pointer can hide in one, and the matrix
+     * ignores them because no Laravel rule expresses "exactly one of these
+     * shapes".
+     *
      * @see docs/guide/openapi-support.md — "Schemas"
      */
     private const SCHEMA_KEYWORDS = [
@@ -344,10 +350,29 @@ final readonly class OperationExtractor
         $open[$identity] = true;
         $keywords = [];
 
+        // **Presence is read from the keys the document actually wrote, not
+        // from `isset()`**, and the difference is a value rather than a
+        // nicety: `isset()` is false for a keyword written as `null`, so
+        // `const: null` — a valid JSON Schema saying "this must be null" —
+        // would arrive indistinguishable from a schema that constrains
+        // nothing. `getSerializableData()` returns what was written, defaults
+        // excluded, which is also what makes an absent `additionalProperties`
+        // say nothing instead of claiming the parser's `true`.
+        $written = (array) $node->getSerializableData();
+
         foreach (self::SCHEMA_KEYWORDS as $keyword) {
-            if (isset($node->$keyword)) {
-                $keywords[$keyword] = $node->$keyword;
+            if (! array_key_exists($keyword, $written)) {
+                continue;
             }
+
+            // Read back through the parser rather than taken from the array
+            // above, because that copy has already turned every nested schema
+            // into plain data and the walk below needs the objects. The
+            // exception is the value this whole branch exists for: the parser's
+            // own accessor throws for a key it finds only among the written
+            // ones, which happens exactly when that key was written as `null`,
+            // so `isset()` being false here *is* the null.
+            $keywords[$keyword] = isset($node->$keyword) ? $node->$keyword : null;
         }
 
         foreach (['properties', 'allOf'] as $keyword) {

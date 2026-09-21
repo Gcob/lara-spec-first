@@ -84,6 +84,23 @@ final class OpenApi31Strategy implements VersionStrategy
     }
 
     /**
+     * 3.1 has `contentMediaType`, so it is read here and nowhere else.
+     *
+     * Kept beside {@see self::isFilePart()} rather than folded into it: the two
+     * ask different questions of one keyword. Whether a part is a file is one
+     * thing, and which media types it must match is
+     * [what `mimetypes:` needs](../../../docs/guide/uploads.md#the-schema-names-the-file-part).
+     *
+     * @param  array<string, mixed>  $keywords
+     */
+    protected function contentMediaType(array $keywords): ?string
+    {
+        $written = $keywords['contentMediaType'] ?? null;
+
+        return is_string($written) && $written !== '' ? $written : null;
+    }
+
+    /**
      * 3.1 names a file part with `contentMediaType`, having dropped
      * `format: binary` with the rest of the format vocabulary.
      *

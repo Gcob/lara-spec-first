@@ -117,3 +117,35 @@ it('cuts a recursive schema and names where it cut', function (): void {
     expect($children->items?->recursesTo)->toBe('#/components/schemas/Node')
         ->and($children->items?->types)->toBe([]);
 });
+
+// A keyword written with `null` as its value is written, not absent, and both
+// of these say something a generator reads: `const: null` constrains the value
+// to null, and an example of null is a declared example rather than a missing
+// one. They are here rather than in a strategy unit test because what lost them
+// was the walk deciding what to hand over, which a test working on a keyword
+// map it built itself cannot see.
+it('keeps a keyword the document wrote as null', function (): void {
+    $properties = bodySchemaOf('null-valued-keywords.yaml')->properties;
+
+    expect($properties['unset']->enum)->toBe([null])
+        ->and($properties['nickname']->examples)->toBe([null]);
+});
+
+// The other half, and the one that makes the assertion above mean something: a
+// schema that writes neither keyword is distinguishable from one that writes
+// them as null.
+it('still says nothing for a keyword the document left out', function (): void {
+    $nickname = bodySchemaOf('null-valued-keywords.yaml')->properties['nickname'];
+
+    expect($nickname->enum)->toBeNull()
+        ->and($nickname->properties)->toBe([]);
+});
+
+// An absent `additionalProperties` is not a document allowing unknown fields,
+// it is a document that said nothing. The parser defaults the keyword to true
+// and cannot tell the two apart; reading what was written rather than what the
+// parser answers is what keeps the difference.
+it('separates an unstated additionalProperties from a written one', function (): void {
+    expect(bodySchemaOf('null-valued-keywords.yaml')->additionalProperties)->toBeNull()
+        ->and(bodySchemaOf('schema-raw-keywords.yaml')->additionalProperties)->toBeNull();
+});

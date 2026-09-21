@@ -1,4 +1,6 @@
 # The same upload, written the way 3.0 spells a file part.
+#
+# See file-part-3.1.yaml for why this pair sits outside tests/Fixtures/equivalence.
 openapi: 3.0.3
 info:
   title: Fixture API

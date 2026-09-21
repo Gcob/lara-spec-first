@@ -61,6 +61,11 @@ final class OpenApi30Strategy implements VersionStrategy
     {
         $types = $this->knownTypes([$keywords['type'] ?? null]);
 
+        // DECISION: a `nullable: true` with no `type` beside it is dropped, and
+        // it is the one place a 3.0 document loses something its author wrote.
+        // The alternative is a list holding only `null`, which reads as "this
+        // must be null" — a constraint nobody wrote, and a wrong value rather
+        // than a missing one.
         if ($types !== [] && ($keywords['nullable'] ?? null) === true) {
             $types[] = SchemaType::Null;
         }

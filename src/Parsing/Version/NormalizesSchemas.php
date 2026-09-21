@@ -60,7 +60,7 @@ trait NormalizesSchemas
             readOnly: ($keywords['readOnly'] ?? null) === true,
             writeOnly: ($keywords['writeOnly'] ?? null) === true,
             isFilePart: $this->isFilePart($keywords),
-            contentMediaType: $this->string($keywords, 'contentMediaType'),
+            contentMediaType: $this->contentMediaType($keywords),
         );
     }
 
@@ -90,6 +90,21 @@ trait NormalizesSchemas
     protected function format(array $keywords): ?string
     {
         return $this->string($keywords, 'format');
+    }
+
+    /**
+     * The media type of an encoded value, where the version has the keyword.
+     *
+     * Null by default, because `contentMediaType` arrived with JSON Schema
+     * 2020-12 and 3.0 does not have it. A 3.0 document writing it anyway would
+     * otherwise be the one place the normal form's content depends on which
+     * version was read, which is the property the whole seam exists to remove.
+     *
+     * @param  array<string, mixed>  $keywords
+     */
+    protected function contentMediaType(array $keywords): ?string
+    {
+        return null;
     }
 
     /**
