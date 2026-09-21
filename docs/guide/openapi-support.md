@@ -606,7 +606,7 @@ first release, not shipped behavior.
 | `parameters` (`header`, `cookie`)                 | Ignored  | Reported and not acted on. A validator answers 422 where a missing credential is a 401 and an unreadable media type a 415, and OpenAPI itself ignores an `Accept`, `Content-Type` or `Authorization` header parameter. Rules: [request validation](./code-generation/request-validation.md#one-rule-set-body-and-query). The doctor still counts these beside `query` under one `Deferred` label, since nothing reads a parameter yet; #35 splits the count when one becomes a rule. |
 | `style`, `explode`, `allowReserved`, `deepObject` | Open     | Phase 2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `requestBody`                                     | Deferred | Phase 2, and the other half of that rule set. Three media types are read, `application/json`, `multipart/form-data` and `application/x-www-form-urlencoded`, and [an operation declares one of them](./uploads.md#one-operation-one-media-type): two over two different schemas is a build error.                                                                                                                                                                                    |
-| `responses`                                       | Deferred | Phase 2, and the input to the Faker mocker.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `responses`                                       | Deferred | Phase 2, and the input to the Faker mocker. Read per status code as the document writes it, `2XX` ranges and `default` included, and [a declared status carrying no body keeps its entry](#a-declared-status-with-no-body-is-still-a-promise).                                                                                                                                                                                                                                       |
 | `links`                                           | Open     | The one row here with no position, and [#83](https://github.com/Gcob/lara-spec-first/issues/83) is where it gets one. See the note below the table.                                                                                                                                                                                                                                                                                                                                  |
 | Media type `encoding`                             | Partial  | Phase 2. `contentType` is read, as [the media types an uploaded part must match](./uploads.md#the-schema-names-the-file-part). `headers`, `style`, `explode` and `allowReserved` are not.                                                                                                                                                                                                                                                                                            |
 
@@ -616,6 +616,21 @@ non-zero, and
 one `Deferred` label, so a document declaring one exits zero today.
 [#35](https://github.com/Gcob/lara-spec-first/issues/35) is where the count splits and the column becomes true of the
 tool as well as of the position.
+
+#### A declared status without a body is still a promise
+
+**A `204` reaches the contract with an entry of its own and no schema under it**, rather than being dropped for want of
+one. The alternative loses a distinction nothing can rebuild: a reader holding the contract could no longer tell an
+operation that answers with no body from one that never declared that status, and both would look like silence.
+
+What it costs is one empty entry per bodiless response. What it buys is that [the deprecation headers](./lifecycle.md)
+and everything else keyed by status have a status to key on.
+
+**The status is carried as the string the document wrote**, which is also why it is a property of the response rather
+than a key above it: PHP turns a numeric string key into an integer, so a map would hand `200` back as an int and `2XX`
+as a string, and a reader comparing strictly would be wrong about half the contract. Which status answers a given
+request, and whether `default` stands in for one nobody wrote, are questions about serving a response rather than about
+reading a contract.
 
 **Open ([#83](https://github.com/Gcob/lara-spec-first/issues/83)):** `links` is the one row on this page carrying
 neither a position nor a sentence, and `Open` is not one of the six levels above. It stayed answerable-later while
