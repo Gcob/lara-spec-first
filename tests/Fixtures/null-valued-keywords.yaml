@@ -1,0 +1,33 @@
+# Keywords written with `null` as their value. Both are valid JSON Schema and
+# both say something: `const: null` means "this value must be null", and an
+# example of `null` is a declared example. The parser stores them, but `isset()`
+# is false for a null value, so reading presence that way loses both.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /settings:
+    post:
+      operationId: updateSettings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                unset:
+                  const: null
+                nickname:
+                  type: [string, 'null']
+                  example: null
+                # A keyword the parser does model, written as null. It reaches
+                # the accessor through a different branch than the two above, so
+                # it is here to make the outcome deliberate rather than lucky.
+                # Not valid JSON Schema, which is the point: a document is
+                # parsed and never validated, so this arrives all the same.
+                mystery:
+                  type: null
+      responses:
+        '204':
+          description: Updated

@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing;
 
+use cebe\openapi\json\JsonPointer;
 use cebe\openapi\ReferenceContext;
+use cebe\openapi\spec\MediaType as ParsedMediaType;
 use cebe\openapi\spec\OpenApi;
 use cebe\openapi\spec\Operation as ParsedOperation;
+use cebe\openapi\spec\Parameter as ParsedParameter;
+use cebe\openapi\spec\RequestBody as ParsedRequestBody;
+use cebe\openapi\spec\Schema as ParsedSchema;
 use cebe\openapi\spec\SecurityRequirement as ParsedSecurityRequirement;
+use cebe\openapi\SpecObjectInterface;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
@@ -17,11 +23,15 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\QueryParameter;
+use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\ParserFailedException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
+use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategy;
 use Throwable;
 
 /**
@@ -46,6 +56,52 @@ use Throwable;
  */
 final readonly class OperationExtractor
 {
+    /**
+     * Every schema keyword read into the normal form, flat and in one place.
+     *
+     * The list is closed on purpose. A keyword the support matrix marks
+     * `Ignored` is absent here, so nothing can read it by accident, and the
+     * three the parser does not model — `const`, `examples` and
+     * `contentMediaType` — are present because they are honored despite coming
+     * back as raw values.
+     *
+     * `oneOf`, `anyOf` and `not` are the absences worth naming, since a reader
+     * checking this list against the matrix will look for them: the parser does
+     * model them, so no unresolved pointer can hide in one, and the matrix
+     * ignores them because no Laravel rule expresses "exactly one of these
+     * shapes".
+     *
+     * @see docs/guide/openapi-support.md — "Schemas"
+     */
+    private const SCHEMA_KEYWORDS = [
+        'type',
+        'nullable',
+        'format',
+        'properties',
+        'required',
+        'items',
+        'allOf',
+        'enum',
+        'const',
+        'additionalProperties',
+        'minLength',
+        'maxLength',
+        'pattern',
+        'minimum',
+        'maximum',
+        'exclusiveMinimum',
+        'exclusiveMaximum',
+        'multipleOf',
+        'minItems',
+        'maxItems',
+        'uniqueItems',
+        'readOnly',
+        'writeOnly',
+        'example',
+        'examples',
+        'contentMediaType',
+    ];
+
     public function extract(ParsableSpecDocument $document): ExtractionResult
     {
         $faults = $this->unfollowablePathItemFaults($document);
@@ -80,7 +136,15 @@ final readonly class OperationExtractor
                 $endpoint = $verb.' '.$path;
 
                 try {
-                    $extracted = $this->buildOperation($operation, $method, $template, $endpoint, $index);
+                    $extracted = $this->buildOperation(
+                        $operation,
+                        $method,
+                        $template,
+                        $endpoint,
+                        $index,
+                        $document->strategy,
+                        $this->listOf($pathItem, 'parameters'),
+                    );
                 } catch (InvalidDocumentException $fault) {
                     $faults[] = $fault;
 
@@ -112,6 +176,10 @@ final readonly class OperationExtractor
      * Every field the document states for one operation, or the first fault
      * that keeps it from being built at all.
      *
+     * @param  array<array-key, mixed>  $shared  the Path Item's own parameters,
+     *                                           which OpenAPI says apply to
+     *                                           every operation under it
+     *
      * @throws InvalidDocumentException
      */
     private function buildOperation(
@@ -120,6 +188,8 @@ final readonly class OperationExtractor
         PathTemplate $template,
         string $endpoint,
         int $index,
+        VersionStrategy $strategy,
+        array $shared,
     ): Operation {
         $audience = $this->audience($operation, $endpoint);
 
@@ -135,7 +205,206 @@ final readonly class OperationExtractor
             $this->sunset($operation, $endpoint),
             $this->security($operation),
             $this->controller($operation, $endpoint),
+            $this->requestBody($operation, $strategy),
+            $this->queryParameters($operation, $strategy, $shared),
         );
+    }
+
+    /**
+     * What the operation accepts as a body, one schema per media type.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
+     */
+    private function requestBody(ParsedOperation $operation, VersionStrategy $strategy): ?RequestBody
+    {
+        $body = $operation->requestBody;
+
+        if (! $body instanceof ParsedRequestBody) {
+            return null;
+        }
+
+        $content = [];
+
+        foreach ($this->listOf($body, 'content') as $mediaType => $media) {
+            if ($media instanceof ParsedMediaType && $media->schema instanceof ParsedSchema) {
+                $content[(string) $mediaType] = $this->schema($media->schema, $strategy);
+            }
+        }
+
+        // A body declaring no readable schema says nothing this package can
+        // generate from, and an empty RequestBody would read as "a body with no
+        // constraints" rather than as the silence it is.
+        return $content === [] ? null : new RequestBody($content, $body->required === true);
+    }
+
+    /**
+     * The `query` parameters, and only those.
+     *
+     * A `path` parameter is the router's question, and `header` and `cookie`
+     * are an `Ignored` support level: reporting them is the doctor's work, and
+     * carrying them here would be offering a value nothing may read.
+     *
+     * **Path Item parameters merge with the operation's, and the operation wins
+     * on a name they share.** That is OpenAPI's own rule rather than one this
+     * package invents, which is why it is a merge rather than a collision — and
+     * the parser does not apply it, so this is where it happens.
+     *
+     * @param  array<array-key, mixed>  $shared
+     * @return list<QueryParameter>
+     */
+    private function queryParameters(ParsedOperation $operation, VersionStrategy $strategy, array $shared): array
+    {
+        $parameters = [];
+
+        // The Path Item's first, so that a name it declares keeps the position
+        // it was written at even when the operation redefines it. The override
+        // replaces the value and not the order: a reader following the document
+        // finds the parameters where the document put them.
+        foreach ([...$shared, ...$this->listOf($operation, 'parameters')] as $parameter) {
+            if (! $parameter instanceof ParsedParameter || $parameter->in !== 'query') {
+                continue;
+            }
+
+            $name = $this->parameterName($parameter->name);
+
+            if ($name === null) {
+                continue;
+            }
+
+            $parameters[$name] = new QueryParameter(
+                $name,
+                $parameter->schema instanceof ParsedSchema
+                    ? $this->schema($parameter->schema, $strategy)
+                    : new Schema,
+                $parameter->required === true,
+            );
+        }
+
+        return array_values($parameters);
+    }
+
+    /**
+     * A parameter's name, or null when the document did not write a usable one.
+     *
+     * The parser's docblock types `name` as a string, and its own reader hands
+     * back whatever the document wrote — the same claim-rather-than-guarantee
+     * that {@see self::operationId()} already works around. Taken as `mixed`
+     * here so the check is real rather than a formality a static analyser can
+     * see through.
+     */
+    private function parameterName(mixed $written): ?string
+    {
+        return is_string($written) && $written !== '' ? $written : null;
+    }
+
+    /**
+     * A keyed node of the parser's model, or nothing when the document wrote
+     * something else there.
+     *
+     * **A document reaching here has been parsed, never validated**, so an
+     * attribute the parser declares a list of objects may hold whatever the
+     * author wrote — a string, a mapping, a null. The parser records an error
+     * and keeps the value; reporting it is
+     * [the doctor's work](../../docs/guide/doctor.md), and refusing to read the
+     * rest of the contract over it is not this class's call to make.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function listOf(SpecObjectInterface $node, string $attribute): array
+    {
+        $written = $node->$attribute ?? null;
+
+        return is_array($written) ? $written : [];
+    }
+
+    /**
+     * One schema, walked into the normal form and out of the parser's types.
+     *
+     * **The walk is this class's and the interpretation is the strategy's**, and
+     * the split is not arbitrary: walking means holding `cebe\openapi\` objects,
+     * which nothing outside this namespace may do, while deciding what `type` or
+     * `exclusiveMinimum` means at a version is exactly what a strategy is for.
+     * So each node is flattened here — children first, already normalized — and
+     * handed over as a plain keyword map.
+     *
+     * @param  array<int, true>  $open  the nodes this descent is inside, by
+     *                                  object identity. Passed by value rather
+     *                                  than held on the instance: two sibling
+     *                                  properties may legitimately point at one
+     *                                  shared schema, and a set that survived
+     *                                  the first of them would report the second
+     *                                  as recursion
+     */
+    private function schema(ParsedSchema $node, VersionStrategy $strategy, array $open = []): Schema
+    {
+        $identity = spl_object_id($node);
+
+        if (isset($open[$identity])) {
+            // A schema pointing back at one of its own ancestors — a tree, a
+            // comment thread, nested categories. The contract is supported and
+            // the object graph is infinite, so the walk stops here and names
+            // where it stopped rather than descending forever.
+            return Schema::recursion($this->pointerTo($node));
+        }
+
+        $open[$identity] = true;
+        $keywords = [];
+
+        // **Presence is read from the keys the document actually wrote, not
+        // from `isset()`**, and the difference is a value rather than a
+        // nicety: `isset()` is false for a keyword written as `null`, so
+        // `const: null` — a valid JSON Schema saying "this must be null" —
+        // would arrive indistinguishable from a schema that constrains
+        // nothing. `getSerializableData()` returns what was written, defaults
+        // excluded, which is also what makes an absent `additionalProperties`
+        // say nothing instead of claiming the parser's `true`.
+        $written = (array) $node->getSerializableData();
+
+        foreach (self::SCHEMA_KEYWORDS as $keyword) {
+            if (! array_key_exists($keyword, $written)) {
+                continue;
+            }
+
+            // Read back through the parser rather than taken from the array
+            // above, because that copy has already turned every nested schema
+            // into plain data and the walk below needs the objects. The
+            // exception is the value this whole branch exists for: the parser's
+            // own accessor throws for a key it finds only among the written
+            // ones, which happens exactly when that key was written as `null`,
+            // so `isset()` being false here *is* the null.
+            $keywords[$keyword] = isset($node->$keyword) ? $node->$keyword : null;
+        }
+
+        foreach (['properties', 'allOf'] as $keyword) {
+            if (! is_array($keywords[$keyword] ?? null)) {
+                continue;
+            }
+
+            $keywords[$keyword] = array_map(
+                fn (mixed $child): mixed => $child instanceof ParsedSchema
+                    ? $this->schema($child, $strategy, $open)
+                    : $child,
+                $keywords[$keyword]
+            );
+        }
+
+        if (($keywords['items'] ?? null) instanceof ParsedSchema) {
+            $keywords['items'] = $this->schema($keywords['items'], $strategy, $open);
+        }
+
+        return $strategy->normalizeSchema($keywords);
+    }
+
+    /**
+     * Where a node sits in the document, in this package's one pointer spelling.
+     *
+     * The parser knows its own position, and a node it cannot place — which is
+     * every node of a document built from an array rather than read from a file
+     * — gets the empty pointer rather than a made-up one.
+     */
+    private function pointerTo(ParsedSchema $node): string
+    {
+        return '#'.($node->getDocumentPosition()?->getPointer() ?? '');
     }
 
     /**
@@ -194,6 +463,13 @@ final readonly class OperationExtractor
     {
         try {
             $parsed = new OpenApi($document->raw);
+            // Built from an array rather than read from a file, so the parser
+            // has no document context of its own and every node would answer
+            // "I do not know where I am". `Reader` does exactly this before
+            // resolving, and without it a schema cannot name its own position —
+            // which is what a recursion marker and every pointer in a
+            // diagnostic are made of.
+            $parsed->setDocumentContext($parsed, new JsonPointer(''));
             $parsed->resolveReferences(new ReferenceContext($parsed, $document->path));
         } catch (Throwable $failure) {
             // Everything `cebe\openapi\` throws extends plain \Exception and

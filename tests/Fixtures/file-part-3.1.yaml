@@ -1,0 +1,30 @@
+# 3.1 names a file part with `contentMediaType`, having dropped the format
+# vocabulary `format: binary` belonged to. Its 3.0 twin sits beside it.
+#
+# Deliberately not part of the equivalence pair, and this is the one documented
+# exception to "nothing downstream can tell which version was read". The two
+# schemas normalize to the same `isFilePart`, which is the notion uploads.md
+# needs, but the 3.1 twin also carries `contentMediaType: image/png` and 3.0 has
+# no keyword that says it: the media types a part must match live in
+# `encoding.<part>.contentType` there. One version states something the other
+# cannot, so the pair is asserted keyword by keyword instead.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /avatars:
+    post:
+      operationId: uploadAvatar
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  contentMediaType: image/png
+      responses:
+        '201':
+          description: Created

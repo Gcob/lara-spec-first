@@ -6,6 +6,8 @@ use Gcob\LaraSpecFirst\Contract\Audience;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\QueryParameter;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
@@ -301,4 +303,68 @@ it('numbers surviving operations contiguously despite the ones skipped between t
     );
 
     expect($indexes)->toBe([0, 1]);
+});
+
+// Three of the four parameter locations do not reach the contract at all: a
+// path parameter is the router's question and PathTemplate already carries it,
+// and a header or a cookie is an Ignored support level rather than a gap.
+it('carries the query parameters and no other location', function (): void {
+    $operations = extractionFrom('query-parameters.yaml')->operations;
+
+    $names = array_map(
+        static fn (QueryParameter $parameter): string => $parameter->name,
+        $operations[0]->queryParameters
+    );
+
+    expect($names)->toBe(['page', 'notify']);
+});
+
+// OpenAPI's own merge rule, which the parser does not apply: a Path Item's
+// parameters are the operation's too, and the operation wins on a name they
+// share. It is a merge rather than a collision, so the operation's schema is
+// what survives.
+it('lets the operation win over the Path Item on a shared parameter name', function (): void {
+    $parameters = extractionFrom('query-parameters.yaml')->operations[0]->queryParameters;
+
+    expect($parameters[1]->name)->toBe('notify')
+        ->and($parameters[1]->required)->toBeTrue()
+        ->and($parameters[1]->schema->types)->toBe([SchemaType::Boolean])
+        ->and($parameters[0]->name)->toBe('page')
+        ->and($parameters[0]->required)->toBeFalse()
+        ->and($parameters[0]->schema->minimum)->toBe(1.0);
+});
+
+// Two media types over one schema are not a conflict, and the contract says so
+// by carrying both keys. Which of them a generated rule set reads, and what a
+// second *different* schema costs, is a question about generation.
+it('keeps one entry per media type a body declares', function (): void {
+    $body = extractionFrom('bodies.yaml')->operations[0]->requestBody;
+
+    expect($body?->mediaTypes())->toBe(['application/json', 'application/x-www-form-urlencoded'])
+        ->and($body?->required)->toBeTrue()
+        ->and($body?->content['application/json']->required)->toBe(['street']);
+});
+
+// A body declaring no readable schema says nothing this package can generate
+// from, and an empty RequestBody would read as "a body with no constraints"
+// rather than as the silence it is.
+it('carries no body when the document declares one with nothing readable under it', function (): void {
+    expect(extractionFrom('bodies.yaml')->operations[1]->requestBody)->toBeNull();
+});
+
+// `requestBody.required: false` is a statement about the whole payload, never
+// about a property inside it — the schema's own required list is untouched.
+it('separates an optional body from the properties it requires', function (): void {
+    $body = extractionFrom('bodies.yaml')->operations[2]->requestBody;
+
+    expect($body?->required)->toBeFalse()
+        ->and($body?->content['application/json']->required)->toBe(['street']);
+});
+
+// An operation that declares no body at all, which is most of them.
+it('carries no body when the document declares none', function (): void {
+    $operation = extractionFrom('operations.yaml')->operations[0];
+
+    expect($operation->requestBody)->toBeNull()
+        ->and($operation->queryParameters)->toBe([]);
 });
