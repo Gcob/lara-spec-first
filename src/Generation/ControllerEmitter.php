@@ -48,7 +48,7 @@ final readonly class ControllerEmitter
 
             namespace {$this->namespace}\\Controllers;
 
-            {$this->imports($planned)}
+            {$this->useStatements($planned)}
 
             {$this->docblock($planned)}
             {$this->modifier($planned)}class {$planned->name->shortName} extends SpecController
@@ -64,14 +64,32 @@ final readonly class ControllerEmitter
     }
 
     /**
-     * Every `use` the emitted file needs, in the order Pint sorts them.
-     *
-     * Sorted here rather than left to the formatter, because a consumer whose
-     * formatter has something to reorder is a formatter fighting the next
-     * build. `Illuminate\\` sorts before `Gcob\\` on neither rule, so the list is
-     * built and sorted rather than written in a fixed order.
+     * The import block as it appears in the file.
      */
-    private function imports(PlannedController $planned): string
+    private function useStatements(PlannedController $planned): string
+    {
+        return implode("\n", array_map(
+            static fn (string $class): string => 'use '.$class.';',
+            $this->imports($planned),
+        ));
+    }
+
+    /**
+     * Every `use` the emitted file needs, in the order the formatter would put
+     * them.
+     *
+     * Sorted here rather than left to a consumer's formatter, because a
+     * formatter with something to reorder is a formatter fighting the next
+     * build. **And sorted the way php-cs-fixer's `ordered_imports` sorts**,
+     * which a plain `sort()` is not: that fixer compares with `\\` replaced by
+     * a space and case folded, so `Gcob\\LaraSpecFirst\\Http` and
+     * `Gcob\\LaraSpecFirstX` land on opposite sides of where bytes would put
+     * them. The generated tree's own namespace is the consumer's to choose, so
+     * this is not a case that can be ruled out by inspection.
+     *
+     * @return list<string>
+     */
+    private function imports(PlannedController $planned): array
     {
         $imports = [
             $this->import(OperationNotImplementedException::class),
@@ -82,9 +100,12 @@ final readonly class ControllerEmitter
             $imports[] = $this->import($planned->request->fullyQualifiedName($this->namespace));
         }
 
-        sort($imports);
+        usort($imports, static fn (string $first, string $second): int => strcasecmp(
+            str_replace('\\', ' ', $first),
+            str_replace('\\', ' ', $second),
+        ));
 
-        return implode("\n", array_map(static fn (string $class): string => 'use '.$class.';', $imports));
+        return $imports;
     }
 
     /**

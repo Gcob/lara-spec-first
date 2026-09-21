@@ -90,8 +90,13 @@ final readonly class BuildPlanner
             $request = RequestName::for($operation);
 
             if ($request !== null) {
+                // Reachable without the controller check above firing, which
+                // is why it is here at all: a request's name comes from the
+                // `operationId` alone, so two operations sharing one while
+                // declaring different `x-controller` values pass that check
+                // and collide here.
                 if (isset($claimedRequests[$request->shortName])) {
-                    throw UnusableNameException::claimedTwice(
+                    throw UnusableNameException::requestClaimedTwice(
                         $request->shortName,
                         $claimedRequests[$request->shortName],
                         $label,
