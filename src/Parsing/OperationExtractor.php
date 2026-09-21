@@ -352,6 +352,16 @@ final readonly class OperationExtractor
         // its own rather than handing back as a list, so the generic reader
         // beside this one cannot see into it. Worth the special case: silently
         // finding nothing here is exactly the failure this package refuses.
+        //
+        // **What the empty list means when it is reached, said out loud because
+        // the shape is ambiguous:** an operation whose `responses` the author
+        // wrote as a string or a list comes back indistinguishable from one
+        // that declared none. It stays a silence rather than becoming a fault
+        // because the document is invalid OpenAPI either way, and saying so is
+        // [the doctor's work](../../docs/guide/doctor.md) rather than a reason
+        // to refuse the contract. What this class refuses is a value that is
+        // *wrong*; an absent response is one that is missing, and nothing
+        // generates from it yet.
         if (! $declared instanceof ParsedResponses) {
             return [];
         }

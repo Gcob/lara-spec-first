@@ -50,6 +50,16 @@ tags: [versions, conventions, planning]
 which is why they are recorded together. None of them was ever served correctly: each produced a value that was wrong
 rather than one that was missing, and nothing downstream failed to say so.
 
+### Added
+
+- **`Contract\Schema` and the types around it**: `SchemaType`, `RequestBody`, `QueryParameter` and `Response`. A schema
+  now reaches every generator normalized and free of any OpenAPI version, so nothing downstream branches on which one
+  the document declared.
+- **`Contract\Operation` gains `requestBody`, `queryParameters` and `responses`**, plus `response()` and
+  `withController()`. Nothing is frozen under `0.x`, and this is the kind of move that stops being free once it is: code
+  constructing an `Operation` positionally, or defining its own `withController` decorator around one, sees the surface
+  change.
+
 ## [0.1.0] - 2026-09-11
 
 The first release, and what [Phase 1](./README.md#phase-1-the-foundation) set out to prove: an OpenAPI contract becomes

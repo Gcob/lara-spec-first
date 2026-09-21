@@ -135,6 +135,12 @@ final readonly class Operation
      * and `default` are asked for by name like any other. Whether one of them
      * stands in for a status nobody wrote is a question about serving a
      * response, and this is not where it is answered.
+     *
+     * **A scan rather than a map, and deliberately so.** An operation declares
+     * four to six responses, so the loop costs nothing, and the map this would
+     * otherwise become is the exact mistake {@see Response} argues against: PHP
+     * turns a numeric string key into an integer, and `200` would come back as
+     * an int where `2XX` came back as a string.
      */
     public function response(string $status): ?Response
     {

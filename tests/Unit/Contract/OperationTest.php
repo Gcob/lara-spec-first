@@ -44,6 +44,24 @@ it('keeps the two apart wherever a path is templated', function (): void {
 });
 
 /**
+ * @param  class-string  $class
+ * @return list<ReflectionParameter>
+ */
+function constructorFieldsOf(string $class): array
+{
+    $constructor = (new ReflectionClass($class))->getConstructor();
+
+    // Not an expectation: a class with no constructor would make both checks
+    // above pass over nothing, which is the silent-green this file exists
+    // against.
+    if ($constructor === null) {
+        throw new RuntimeException($class.' has no constructor, so there are no fields to check.');
+    }
+
+    return $constructor->getParameters();
+}
+
+/**
  * An operation with every field set to something distinguishable.
  *
  * Nothing is left at its default on purpose: the copy check below reads the
@@ -111,21 +129,3 @@ it('leaves no field of that fixture at its default', function (): void {
         );
     }
 });
-
-/**
- * @param  class-string  $class
- * @return list<ReflectionParameter>
- */
-function constructorFieldsOf(string $class): array
-{
-    $constructor = (new ReflectionClass($class))->getConstructor();
-
-    // Not an expectation: a class with no constructor would make both checks
-    // above pass over nothing, which is the silent-green this file exists
-    // against.
-    if ($constructor === null) {
-        throw new RuntimeException($class.' has no constructor, so there are no fields to check.');
-    }
-
-    return $constructor->getParameters();
-}
