@@ -7,6 +7,7 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\QueryParameter;
+use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
@@ -367,4 +368,43 @@ it('carries no body when the document declares none', function (): void {
 
     expect($operation->requestBody)->toBeNull()
         ->and($operation->queryParameters)->toBe([]);
+});
+
+// Responses are keyed by what the document wrote, not by what this package
+// would like them to be: `2XX` ranges and `default` are statuses too, and
+// deciding which one answers a given request is a question about serving a
+// response rather than about reading a contract.
+it('carries the status the document wrote, as the string it wrote', function (): void {
+    $statuses = array_map(
+        static fn (Response $response): string => $response->status,
+        extractionFrom('responses.yaml')->operations[0]->responses
+    );
+
+    expect($statuses)->toBe(['200', '204', '4XX', 'default']);
+});
+
+// The position this card took rather than an accident of the walk: a `204` is a
+// promise, and dropping it for want of a schema would leave nothing able to
+// tell "answers with no body" from "never declared".
+it('keeps a declared status that carries no body', function (): void {
+    $operation = extractionFrom('responses.yaml')->operations[0];
+
+    expect($operation->response('204')?->content)->toBe([])
+        ->and($operation->response('204')?->mediaTypes())->toBe([])
+        ->and($operation->response('default')?->content)->toBe([]);
+});
+
+it('normalizes a response schema per media type', function (): void {
+    $ok = extractionFrom('responses.yaml')->operations[0]->response('200');
+
+    expect($ok?->mediaTypes())->toBe(['application/json', 'text/csv'])
+        ->and($ok?->content['application/json']->types)->toBe([SchemaType::Array])
+        ->and($ok?->content['application/json']->items?->properties)->toHaveKey('title')
+        ->and($ok?->content['text/csv']->types)->toBe([SchemaType::String]);
+});
+
+// A status nobody declared has no response, and asking for one says so rather
+// than handing back an empty one that would read as "declared, no body".
+it('has no response for a status the document never declared', function (): void {
+    expect(extractionFrom('responses.yaml')->operations[0]->response('418'))->toBeNull();
 });

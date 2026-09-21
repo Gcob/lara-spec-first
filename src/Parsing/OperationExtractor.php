@@ -11,6 +11,8 @@ use cebe\openapi\spec\OpenApi;
 use cebe\openapi\spec\Operation as ParsedOperation;
 use cebe\openapi\spec\Parameter as ParsedParameter;
 use cebe\openapi\spec\RequestBody as ParsedRequestBody;
+use cebe\openapi\spec\Response as ParsedResponse;
+use cebe\openapi\spec\Responses as ParsedResponses;
 use cebe\openapi\spec\Schema as ParsedSchema;
 use cebe\openapi\spec\SecurityRequirement as ParsedSecurityRequirement;
 use cebe\openapi\SpecObjectInterface;
@@ -26,6 +28,7 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
@@ -145,6 +148,7 @@ final readonly class OperationExtractor
         'format',
         'properties',
         'required',
+        'dependentRequired',
         'items',
         'allOf',
         'enum',
@@ -293,6 +297,7 @@ final readonly class OperationExtractor
             $this->controller($operation, $endpoint),
             $this->requestBody($operation, $strategy),
             $this->queryParameters($operation, $strategy, $shared),
+            $this->responses($operation, $strategy),
         );
     }
 
@@ -321,6 +326,65 @@ final readonly class OperationExtractor
         // generate from, and an empty RequestBody would read as "a body with no
         // constraints" rather than as the silence it is.
         return $content === [] ? null : new RequestBody($content, $body->required === true);
+    }
+
+    /**
+     * Every response the operation declares, keyed by status code as written.
+     *
+     * **A response with no readable schema keeps its entry.** A `204` is a
+     * promise the contract makes, and dropping it for want of a schema would
+     * leave nothing able to tell "answers with no body" from "never declared".
+     *
+     * The keys are not interpreted: `200`, the 3.1 range `2XX` and `default`
+     * arrive as the strings the document wrote. Which one answers a given
+     * request is a question about serving a response, and settling it here
+     * would bake one reader's rule into what every reader consults.
+     *
+     * @return list<Response>
+     *
+     * @throws RejectedConstructException
+     */
+    private function responses(ParsedOperation $operation, VersionStrategy $strategy): array
+    {
+        $declared = $operation->responses;
+
+        // The one attribute of an Operation the parser wraps in an object of
+        // its own rather than handing back as a list, so the generic reader
+        // beside this one cannot see into it. Worth the special case: silently
+        // finding nothing here is exactly the failure this package refuses.
+        //
+        // **What the empty list means when it is reached, said out loud because
+        // the shape is ambiguous:** an operation whose `responses` the author
+        // wrote as a string or a list comes back indistinguishable from one
+        // that declared none. It stays a silence rather than becoming a fault
+        // because the document is invalid OpenAPI either way, and saying so is
+        // [the doctor's work](../../docs/guide/doctor.md) rather than a reason
+        // to refuse the contract. What this class refuses is a value that is
+        // *wrong*; an absent response is one that is missing, and nothing
+        // generates from it yet.
+        if (! $declared instanceof ParsedResponses) {
+            return [];
+        }
+
+        $responses = [];
+
+        foreach ($declared->getResponses() as $status => $response) {
+            if (! $response instanceof ParsedResponse) {
+                continue;
+            }
+
+            $content = [];
+
+            foreach ($this->listOf($response, 'content') as $mediaType => $media) {
+                if ($media instanceof ParsedMediaType && $media->schema instanceof ParsedSchema) {
+                    $content[(string) $mediaType] = $this->schema($media->schema, $strategy);
+                }
+            }
+
+            $responses[] = new Response((string) $status, $content);
+        }
+
+        return $responses;
     }
 
     /**

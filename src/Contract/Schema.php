@@ -50,11 +50,25 @@ final readonly class Schema
      * @param  list<mixed>  $examples  3.1's list wins over 3.0's single
      *                                 `example` when a document writes both,
      *                                 and a lone `example` becomes a list of one
+     * @param  array<string, list<string>>  $dependentRequired  a property name
+     *                                                          mapped to the
+     *                                                          properties its
+     *                                                          presence makes
+     *                                                          required. Raw,
+     *                                                          and safe to
+     *                                                          carry: it holds
+     *                                                          names, so no
+     *                                                          pointer can
+     *                                                          hide in it
      * @param  bool|null  $additionalProperties  false forbids unknown fields,
      *                                           true allows them, and null is a
      *                                           document that said nothing or
      *                                           gave a schema this package does
-     *                                           not read
+     *                                           not read. The parser defaults
+     *                                           the keyword to true, so keeping
+     *                                           the three apart means reading
+     *                                           what the document wrote rather
+     *                                           than what the parser answers
      * @param  float|null  $exclusiveMinimum  the 3.1 spelling, always: a bound
      *                                        standing on its own rather than a
      *                                        boolean modifying a sibling. A 3.0
@@ -76,6 +90,7 @@ final readonly class Schema
         public ?string $format = null,
         public array $properties = [],
         public array $required = [],
+        public array $dependentRequired = [],
         public ?Schema $items = null,
         public array $allOf = [],
         public ?array $enum = null,

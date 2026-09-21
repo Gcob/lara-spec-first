@@ -188,3 +188,26 @@ it('reads additionalProperties only when it is a boolean', function (mixed $writ
     'allowed' => [true, true],
     'a schema' => [new Schema(types: [SchemaType::String]), null],
 ]);
+
+// `dependentRequired` is handed back raw, like the 3.1 keywords around it, and
+// unlike most of them it is carried: it holds property names rather than a
+// schema, so no unresolved pointer can hide in it, and #35 turns it into
+// `required_with`.
+it('carries dependentRequired, which holds names rather than a schema', function (): void {
+    $schema = (new OpenApi31Strategy)->normalizeSchema([
+        'dependentRequired' => ['card' => ['billing_address', 'postcode']],
+    ]);
+
+    expect($schema->dependentRequired)->toBe(['card' => ['billing_address', 'postcode']]);
+});
+
+// A malformed entry states no constraint, and inventing half of one would state
+// a constraint its author did not write.
+it('drops a dependentRequired entry it cannot read', function (mixed $written, array $expected): void {
+    expect((new OpenApi31Strategy)->normalizeSchema(['dependentRequired' => $written])->dependentRequired)
+        ->toBe($expected);
+})->with([
+    'not a map' => ['card', []],
+    'a dependency that is not a list' => [['card' => 'billing_address'], []],
+    'a name that is not a string' => [['card' => ['billing_address', 12]], ['card' => ['billing_address']]],
+]);

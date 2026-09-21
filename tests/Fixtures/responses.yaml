@@ -1,0 +1,39 @@
+# Every shape a response comes in: one with a schema, one with two media types,
+# one declared with no body at all, a 3.1 range, and a `default`.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /reports:
+    get:
+      operationId: listReports
+      responses:
+        '200':
+          description: The reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Report'
+            text/csv:
+              schema:
+                type: string
+        '204':
+          description: Nothing to report, and no body says so
+        '4XX':
+          description: Any client error
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: Anything else
+components:
+  schemas:
+    Report:
+      type: object
+      properties:
+        title:
+          type: string

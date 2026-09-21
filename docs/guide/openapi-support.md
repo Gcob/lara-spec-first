@@ -186,6 +186,7 @@ follows is the whole of what one of them has to know, and none of it requires kn
 | `enum`                                   | Every allowed value                                      | Check `const` as well                                           |
 | `examples`                               | A list, possibly empty                                   | Check `example` as well                                         |
 | `isFilePart`                             | Whether this is a file rather than a value               | Know that 3.0 wrote `format: binary` and 3.1 `contentMediaType` |
+| `dependentRequired`                      | A map of property name to the names it makes required    | Read it out of a keyword the parser hands back raw              |
 | A keyword the [matrix](#schemas) ignores | Nothing: there is no field for it                        | Wonder whether an empty value means unsupported or unwritten    |
 
 **Where a spelling you wrote went is the [table above](#the-differences-the-strategy-must-absorb)**, which is the same
@@ -606,8 +607,9 @@ first release, not shipped behavior.
 | `parameters` (`header`, `cookie`)                 | Ignored  | Reported and not acted on. A validator answers 422 where a missing credential is a 401 and an unreadable media type a 415, and OpenAPI itself ignores an `Accept`, `Content-Type` or `Authorization` header parameter. Rules: [request validation](./code-generation/request-validation.md#one-rule-set-body-and-query). The doctor still counts these beside `query` under one `Deferred` label, since nothing reads a parameter yet; #35 splits the count when one becomes a rule. |
 | `style`, `explode`, `allowReserved`, `deepObject` | Open     | Phase 2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `requestBody`                                     | Deferred | Phase 2, and the other half of that rule set. Three media types are read, `application/json`, `multipart/form-data` and `application/x-www-form-urlencoded`, and [an operation declares one of them](./uploads.md#one-operation-one-media-type): two over two different schemas is a build error.                                                                                                                                                                                    |
-| `responses`                                       | Deferred | Phase 2, and the input to the Faker mocker.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `links`                                           | Open     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `responses`                                       | Deferred | Phase 2, and the input to the Faker mocker. Read per status code as the document writes it, `2XX` ranges and `default` included, and [a declared status carrying no body keeps its entry](#a-declared-status-without-a-body-is-still-a-promise).                                                                                                                                                                                                                                     |
+| `responses.<code>.headers`                        | Open     | Carried by no level until [#84](https://github.com/Gcob/lara-spec-first/issues/84) picks one. See the note below the table.                                                                                                                                                                                                                                                                                                                                                          |
+| `links`                                           | Open     | The one row here with no position, and [#83](https://github.com/Gcob/lara-spec-first/issues/83) is where it gets one. See the note below the table.                                                                                                                                                                                                                                                                                                                                  |
 | Media type `encoding`                             | Partial  | Phase 2. `contentType` is read, as [the media types an uploaded part must match](./uploads.md#the-schema-names-the-file-part). `headers`, `style`, `explode` and `allowReserved` are not.                                                                                                                                                                                                                                                                                            |
 
 **One row above promises a gate that is not wired yet.** `header` and `cookie` are `Ignored`, whose exit code is
@@ -616,6 +618,30 @@ non-zero, and
 one `Deferred` label, so a document declaring one exits zero today.
 [#35](https://github.com/Gcob/lara-spec-first/issues/35) is where the count splits and the column becomes true of the
 tool as well as of the position.
+
+#### A declared status without a body is still a promise
+
+**A `204` reaches the contract with an entry of its own and no schema under it**, rather than being dropped for want of
+one. The alternative loses a distinction nothing can rebuild: a reader holding the contract could no longer tell an
+operation that answers with no body from one that never declared that status, and both would look like silence.
+
+What it costs is one empty entry per bodiless response. What it buys is that [the deprecation headers](./lifecycle.md)
+and everything else keyed by status have a status to key on.
+
+**The status is carried as the string the document wrote**, which is also why it is a property of the response rather
+than a key above it: PHP turns a numeric string key into an integer, so a map would hand `200` back as an int and `2XX`
+as a string, and a reader comparing strictly would be wrong about half the contract. Which status answers a given
+request, and whether `default` stands in for one nobody wrote, are questions about serving a response rather than about
+reading a contract.
+
+**Open ([#83](https://github.com/Gcob/lara-spec-first/issues/83)):** `links` is the one row on this page carrying
+neither a position nor a sentence, and `Open` is not one of the six levels above. It stayed answerable-later while
+nothing read a response; extraction now walks past the keyword on its way to a schema, so the row has to say something.
+
+**Open ([#84](https://github.com/Gcob/lara-spec-first/issues/84)):** the `header` parameter two rows above carries a
+level and three reasons, and none of the three transfers here. They are about a header the client sends; this is one the
+application promises to send back. And [`rate-limiting.md`](./rate-limiting.md#an-adapter-behind-one-interface) already
+ships a driver whose job is to read this keyword, so "nothing reads it" is not a position available to take.
 
 ### Schemas
 
@@ -717,17 +743,17 @@ than above.
 
 #### Objects
 
-| Construct                            | Level    | Note                                                                                                                                                                                                     |
-| ------------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `properties`                         | Deferred | Phase 2. The base every generated rule set is derived from.                                                                                                                                              |
-| `required`                           | Deferred | Phase 2, and the one place `PUT` and `PATCH` diverge: [`PATCH` empties this list](./code-generation/request-validation.md#patch-empties-the-required-list).                                              |
-| `additionalProperties: false`        | Deferred | Phase 2, as the difference between a rule set that forbids unknown fields and one that lets them through. The two rows split on the value rather than the keyword, and the doctor reports them that way. |
-| `additionalProperties: <schema>`     | Ignored  | A rule for fields whose names are not known in advance, which Laravel's validator has no form for.                                                                                                       |
-| `minProperties`, `maxProperties`     | Ignored  | No Laravel rule counts a payload's keys, and counting them inside a generated class hides a constraint where nobody reads for it.                                                                        |
-| `dependentRequired`                  | Deferred | **Raw**, though it carries only property names, so no pointer can hide in it. Phase 2: `required_with` is the same idea under another name.                                                              |
-| `patternProperties`, `propertyNames` | Ignored  | **Raw.** Both constrain key names rather than values, which no Laravel rule reaches.                                                                                                                     |
-| `dependentSchemas`                   | Ignored  | **Raw.** A conditional schema, which is `if`/`then`/`else` wearing another name, and ignored for the same reason.                                                                                        |
-| `unevaluatedProperties`              | Ignored  | **Raw.** Its meaning depends on what every sibling keyword evaluated, so it cannot be read one keyword at a time, which is exactly how a rule set is generated.                                          |
+| Construct                            | Level    | Note                                                                                                                                                                                                                                              |
+| ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `properties`                         | Deferred | Phase 2. The base every generated rule set is derived from.                                                                                                                                                                                       |
+| `required`                           | Deferred | Phase 2, and the one place `PUT` and `PATCH` diverge: [`PATCH` empties this list](./code-generation/request-validation.md#patch-empties-the-required-list).                                                                                       |
+| `additionalProperties: false`        | Deferred | Phase 2, as the difference between a rule set that forbids unknown fields and one that lets them through. The two rows split on the value rather than the keyword, and the doctor reports them that way.                                          |
+| `additionalProperties: <schema>`     | Ignored  | A rule for fields whose names are not known in advance, which Laravel's validator has no form for.                                                                                                                                                |
+| `minProperties`, `maxProperties`     | Ignored  | No Laravel rule counts a payload's keys, and counting them inside a generated class hides a constraint where nobody reads for it.                                                                                                                 |
+| `dependentRequired`                  | Deferred | **Raw**, though it carries only property names, so no pointer can hide in it, which is why the contract carries it already. Still `Deferred` because nothing generates from it yet. Phase 2: `required_with` is the same idea under another name. |
+| `patternProperties`, `propertyNames` | Ignored  | **Raw.** Both constrain key names rather than values, which no Laravel rule reaches.                                                                                                                                                              |
+| `dependentSchemas`                   | Ignored  | **Raw.** A conditional schema, which is `if`/`then`/`else` wearing another name, and ignored for the same reason.                                                                                                                                 |
+| `unevaluatedProperties`              | Ignored  | **Raw.** Its meaning depends on what every sibling keyword evaluated, so it cannot be read one keyword at a time, which is exactly how a rule set is generated.                                                                                   |
 
 #### Arrays
 
