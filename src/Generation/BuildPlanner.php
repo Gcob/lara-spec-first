@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnroutablePathException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 
@@ -49,11 +50,14 @@ final readonly class BuildPlanner
      *
      * @throws UnusableNameException a name PHP cannot carry, or two operations claiming one
      * @throws UnroutablePathException a path parameter Laravel's router cannot match
+     * @throws ConflictingInputException an operation whose input cannot become one rule set
      */
     public function plan(array $operations): BuildPlan
     {
         $planned = [];
+        $requests = [];
         $claimed = [];
+        $claimedRequests = [];
 
         foreach ($operations as $operation) {
             $this->assertRoutable($operation);
@@ -82,10 +86,32 @@ final readonly class BuildPlanner
             }
 
             $claimed[$name->shortName] = [$label, $name->customController];
+
+            $request = RequestName::for($operation);
+
+            if ($request !== null) {
+                if (isset($claimedRequests[$request->shortName])) {
+                    throw UnusableNameException::claimedTwice(
+                        $request->shortName,
+                        $claimedRequests[$request->shortName],
+                        $label,
+                    );
+                }
+
+                $claimedRequests[$request->shortName] = $label;
+                $requests[] = new PlannedRequest(
+                    $operation,
+                    $request,
+                    RuleSetBuilder::for($operation),
+                    $name->shortName,
+                );
+            }
+
             $planned[] = new PlannedController(
                 $operation,
                 $name,
                 $name->customController !== null && $this->lookup->exists($name->customController),
+                $request,
             );
         }
 
@@ -95,9 +121,15 @@ final readonly class BuildPlanner
             $planned,
         );
 
+        $formRequests = new FormRequestEmitter($this->namespace, $this->specPath);
+
+        foreach ($requests as $request) {
+            $files[] = $formRequests->emit($request);
+        }
+
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
-        return new BuildPlan($planned, $files);
+        return new BuildPlan($planned, $files, $requests);
     }
 
     /**

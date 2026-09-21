@@ -358,7 +358,11 @@ describe('the two-class seam, when the contract declares a custom controller', f
         );
 
         expect($contents)
-            ->toContain('@see \\App\\Http\\Controllers\\UserController')
+            // Backticked so Pint's `fully_qualified_strict_types` leaves it
+            // alone. Unquoted, the fixer rewrites it into an import plus a
+            // short name — and that import would carry the child's name into
+            // the parent, which shares it by design.
+            ->toContain('@see `\\App\\Http\\Controllers\\UserController`')
             ->toContain('what the route actually reaches')
             ->toContain('The route reaches the custom controller rather than this class');
     });

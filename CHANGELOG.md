@@ -50,6 +50,32 @@ tags: [versions, conventions, planning]
 which is why they are recorded together. None of them was ever served correctly: each produced a value that was wrong
 rather than one that was missing, and nothing downstream failed to say so.
 
+### Added
+
+- **`spec:build` emits one `FormRequest` per operation that states anything about its input**, into the `Requests`
+  sub-namespace of the generated tree, pruned like every other generated file. The rule set is the request body and the
+  `query` parameters merged by field name; the scalar types, nullability and presence are mapped, and every keyword the
+  build does not translate yet is named per field in the generated file's own findings rather than dropped. An operation
+  with no body and no `query` parameter gets no class, and the build says how many.
+- **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first
+  generated controller; the block said otherwise.
+
+### Changed
+
+- **`routeAction` takes the generated request as its first parameter**, on the generated parent and on every child that
+  overrides it. **This breaks every custom controller written before it** for an operation that states anything about
+  its input: the child stops compiling until it declares the parameter too. That is the split doing its job — the
+  contract gained a statement about what a client may send — and `spec:make` writes the new signature. Both sides now
+  read it from one place, so a scaffold cannot disagree with the parent it extends.
+- **`header` and `cookie` parameters moved from a shared `Deferred` count to an `Ignored` one** in `spec:doctor`, which
+  means they now exit non-zero until acknowledged. They were counted beside `query` under one `Deferred` label while
+  nothing read a parameter at all; `query` is read now, so the count splits and the level with it. `query` and
+  `requestBody` moved from `Deferred` to `Partial` in the support matrix, and the doctor no longer counts either.
+- **A fully-qualified name in a generated docblock's `@see` is written in backticks.** Pint's
+  `fully_qualified_strict_types` rewrites an unquoted one into an import plus a short name, which means the build and a
+  consumer's formatter rewriting each other forever — and for a generated controller, an import carrying the child's
+  name into a parent that shares it by design, which stops the file loading.
+
 ### Fixed
 
 - **A position naming a schema written in another file was wrong**, and it was wrong in three readings at once: a

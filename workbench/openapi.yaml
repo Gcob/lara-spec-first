@@ -66,11 +66,23 @@ paths:
         # `spec:make listPosts` wrote, untouched. It still answers 501, because the
         # one line in it calls the parent — which is what keeps a scaffold honest
         # until somebody replaces that line.
+        #
+        # It also declares a `query` parameter, which is what gives this
+        # operation a generated request — and what makes the child below
+        # declare one more parameter than it used to. A contract gaining a
+        # statement about what a client may send is exactly the change a
+        # static analysis error should be reporting.
         get:
             operationId: listPosts
             x-controller: Workbench\App\Http\Controllers\Posts\ListPostsController
             summary: Every post
             tags: [Posts]
+            parameters:
+                - { name: page, in: query, schema: { type: integer } }
+                # Read and never turned into a rule: what a missing credential
+                # deserves is a 401 and a rule set answers with a 422. The
+                # doctor counts it and exits non-zero until you acknowledge it.
+                - { name: X-Trace, in: header, schema: { type: string } }
             # Read into the contract and *not enforced* by this build. The
             # generated controller's findings say so out loud, because an endpoint
             # the contract describes as protected and that nothing protects is the
@@ -80,14 +92,44 @@ paths:
             responses:
                 '200': { description: A list of posts }
 
+        # The `POST` half of the pair below. Same schema as the `PATCH`, and
+        # the two generated requests differ in exactly one line each: this one
+        # reads the schema's `required` list, and the `PATCH` reads it as empty.
         post:
             operationId: createPost
             summary: Publish a post
             tags: [Posts]
             security:
                 - bearerAuth: [posts:write]
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NewPost'
             responses:
                 '201': { description: Created }
+
+    /posts/{postId}:
+        # The `PATCH` half. A partial update is a statement about the
+        # resource's representation, so the schema's required list is read as
+        # empty here and every property is `sometimes`. Diff the two generated
+        # files to see it, and read their Findings blocks for everything the
+        # schema states that no rule enforces yet.
+        patch:
+            operationId: updatePost
+            summary: Change part of a post
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NewPost'
+            responses:
+                '200': { description: Updated }
 
     /posts/{postId}/legacy-comments:
         # Deprecated with a sunset date. Both reach the generated file's findings,
@@ -148,6 +190,28 @@ paths:
                 '202': { description: Accepted }
 
 components:
+    schemas:
+        # One schema, two operations, two generated requests. Half of what it
+        # states is translated into a rule today and half is not, which is the
+        # point: every keyword the build could not translate is named in the
+        # generated file's Findings block rather than dropped in silence.
+        NewPost:
+            type: object
+            required: [title, body]
+            properties:
+                title:
+                    type: string
+                    maxLength: 120
+                body:
+                    type: string
+                published:
+                    type: boolean
+                readingMinutes:
+                    type: integer
+                    minimum: 1
+                summary:
+                    type: [string, 'null']
+
     securitySchemes:
         bearerAuth:
             type: http

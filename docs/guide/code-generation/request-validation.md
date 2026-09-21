@@ -19,7 +19,9 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 > **In brief**
 >
-> - **Not built yet.** Nothing emits a `FormRequest` today; this is the design Phase 2 will follow.
+> - **Partly built.** `spec:build` emits one `FormRequest` per operation with something to validate, with the four
+>   scalar types, nullability and presence mapped. Everything else the contract states is named in the generated file's
+>   own findings rather than enforced — see [what is built](#what-is-built-today).
 > - One rule set per operation, derived from the request body and the query parameters. The path's own parameters stay
 >   the router's.
 > - `PATCH` is `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema
@@ -32,10 +34,30 @@ An operation states what a client may send, and Laravel already has the class th
 owns how one becomes the other: where the rule set comes from, what a constraint with no Laravel equivalent does, and
 how the class reaches the controller that needs `$validated`.
 
-> **None of this is behavior yet.** The build emits no `FormRequest`, and no schema is read into anything the package
-> keeps. What is written here is the design [Phase 2](../../../README.md#phase-2-the-generated-pipeline) will follow,
-> and the card that builds it is [#35](https://github.com/Gcob/lara-spec-first/issues/35). Items marked `Open` are
-> undecided, and the number beside one links to the card that settles it.
+> **Part of this is behavior and part of it is design**, and the section below says which is which. Items marked `Open`
+> are undecided, and the number beside one links to the card that settles it.
+
+## What is built today
+
+`spec:build` emits one `final` `FormRequest` per operation that states anything about its input, into the `Requests`
+sub-namespace of the generated tree, and declares it as `routeAction`'s first parameter. What a rule set contains today:
+
+| Built                                                                          | Reported and not enforced                                                                       |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `string`, `integer`, `number`, `boolean`                                       | Every keyword that constrains a value: lengths, bounds, `pattern`, `format`, `enum`             |
+| `nullable`, from the type list                                                 | `array` and `object`, whose element and property rules are a pass of their own                  |
+| `required`, `present` for a nullable one, `sometimes`                          | `allOf`, `additionalProperties: false`, `dependentRequired`                                     |
+| [`PATCH` reading the required list as empty](#patch-empties-the-required-list) | [An optional body's "all or none"](#an-optional-body-all-or-none), which is `sometimes` for now |
+| A `query` parameter, with its own `required`                                   |                                                                                                 |
+
+**Everything in the right-hand column is named, per field, in the generated file's own `Findings` block**, which is the
+half that makes an incomplete rule set honest rather than misleading. Nothing is approximated by a looser rule, and
+nothing is dropped in silence: that is [the principle](#every-constraint-maps-or-reports) the rest of this page is
+about, and it is what makes each pass safe to ship on its own.
+
+**The input DTO is not built yet.** [`data()`](#the-payload-arrives-as-a-dto) and the type behind it are the last pass
+of [#35](https://github.com/Gcob/lara-spec-first/issues/35); a generated request today carries `authorize()` and
+`rules()` and nothing else.
 
 ## One rule set, body and query
 
@@ -256,6 +278,12 @@ state; what each honored one becomes is this table's.
 | `format: email`, `uuid`, `ipv4`, `ipv6` | `email`, `uuid`, `ipv4`, `ipv6`                                                                                         |
 | `format: uri`                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                              |
 
+**Laravel's `boolean` refuses the string `"true"`, and that is worth knowing before a client meets it.** It accepts `1`,
+`0`, `"1"`, `"0"`, `true` and `false`, so `?notify=true` on a parameter the contract types `boolean` answers 422. That
+is the rule meaning what Laravel says it means rather than what the name suggests, it is
+[pinned by an execution test](https://github.com/Gcob/lara-spec-first/blob/main/tests/Feature/Generation/GeneratedRequestTest.php),
+and it is not worked around: a looser rule would accept what the contract refuses.
+
 **`list` beside `array`, because Laravel's `array` passes for an associative one.** `{"tags": {"a": 1}}` would otherwise
 satisfy a `tags` declared `type: array`, which is a payload the contract refuses being accepted. `list` is
 `array_is_list()`, which is what a JSON array actually is, and the pair is what keeps that row honest.
@@ -330,11 +358,11 @@ sets the attribute only when no object in the body's schema permits additional p
 `additionalProperties: false` as unhonored when one does.
 
 **The attribute does not exist on the lowest Laravel this package supports, and the fallback is named rather than
-discovered.** It arrived during the 12.x line while `composer.json` declares `^12.0`, so
-[#35](https://github.com/Gcob/lara-spec-first/issues/35) has two honest ways out: an `after()` closure on the generated
-class comparing the payload's keys against the rule set's, which is what the attribute does internally and what this
-package can write for itself, or the attribute behind a version gate with that closure underneath it anyway. The closure
-is the leading answer, because one emitted shape beats two that have to stay equivalent.
+discovered.** It arrived during the 12.x line while `composer.json` declares `^12.0`, so there were two honest ways out:
+an `after()` closure on the generated class comparing the payload's keys against the rule set's, which is what the
+attribute does internally and what this package can write for itself, or the attribute behind a version gate with that
+closure underneath it anyway. The closure is the answer, because one emitted shape beats two that have to stay
+equivalent. Neither is emitted yet: the root's `additionalProperties: false` is reported as unenforced today.
 
 **A property name containing a dot is escaped as `\.`**, because Laravel reads an unescaped dot in a rule key as
 nesting. `user.name` as a literal property name would otherwise generate rules for a `name` key inside a `user` object
@@ -512,8 +540,11 @@ ordinary Laravel.
 **What it does to the seam is the whole cost, and it is a shape change rather than an addition.**
 [`ControllerEmitter::signature()`](https://github.com/Gcob/lara-spec-first/blob/main/src/Generation/ControllerEmitter.php)
 builds that signature from the path's parameters alone today, and a child controller has to match whatever the parent
-declares. So the request parameter is part of the two-class seam rather than something beside it, and
-[#35](https://github.com/Gcob/lara-spec-first/issues/35) is where the emitter learns it.
+declares. So the request parameter is part of the two-class seam rather than something beside it. Both sides read it
+from one place,
+[`RouteActionSignature`](https://github.com/Gcob/lara-spec-first/blob/main/src/Generation/RouteActionSignature.php):
+`spec:make` writes the child, PHP forbids an override from widening, and two derivations of one signature is how a
+scaffold becomes a fatal error at load.
 
 Two alternatives were considered and dropped:
 

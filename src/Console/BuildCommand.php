@@ -119,6 +119,8 @@ final class BuildCommand extends Command
         // generated controller can answer an operation from a CRUD default, this
         // is the line to revisit — {@see BuildPlan::routedToGeneratedParent()}
         // counts routes rather than making the claim itself.
+        $this->reportRequests($plan);
+
         $unimplemented = $plan->routedToGeneratedParent();
 
         if ($unimplemented > 0) {
@@ -132,6 +134,46 @@ final class BuildCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * What the build did about validation, in at most two lines.
+     *
+     * **An operation stating nothing about its input gets no class**, and
+     * saying so is the point rather than a caveat: a `rules()` returning an
+     * empty array enforces nothing, and a file that exists to enforce nothing
+     * is a file telling its reader something untrue. A reader who expected a
+     * request class for `DELETE /users/{id}` should learn here that there is
+     * none and why, rather than from an empty directory.
+     *
+     * **A constraint the rule set could not express is counted, never
+     * listed.** The findings themselves are in the generated file, which is
+     * where somebody asking "why is this field not enforced" already is, and
+     * reprinting a document's worth of them under a build is a wall nobody
+     * reads twice.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "Nothing to validate, no class"
+     */
+    private function reportRequests(BuildPlan $plan): void
+    {
+        $withoutRequest = $plan->withoutRequest();
+
+        if ($withoutRequest > 0) {
+            $this->components->info(sprintf(
+                '%d operation(s) state nothing to validate and get no request class.',
+                $withoutRequest,
+            ));
+        }
+
+        $unenforced = $plan->withUnenforcedConstraints();
+
+        if ($unenforced > 0) {
+            $this->components->warn(sprintf(
+                '%d generated request(s) read a constraint they do not enforce. Each one names its own '
+                    .'in the Findings block of the file.',
+                $unenforced,
+            ));
+        }
     }
 
     /**

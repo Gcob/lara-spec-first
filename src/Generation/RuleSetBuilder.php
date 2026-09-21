@@ -1,0 +1,477 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Gcob\LaraSpecFirst\Generation;
+
+use Gcob\LaraSpecFirst\Contract\HttpMethod;
+use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+
+/**
+ * One operation's request body and `query` parameters, as one Laravel rule set.
+ *
+ * **Every constraint maps or reports**, and the second half is what makes this
+ * safe to ship before the first is finished. A keyword this class does not yet
+ * translate leaves a finding naming it and the field it was written on, so a
+ * rule set that is incomplete says so in the file a reader opens. What is never
+ * emitted is a looser rule that almost matches: accepting a payload the
+ * contract refuses is a wrong answer where a report is a missing one, and only
+ * the second is recoverable.
+ *
+ * **What this pass translates**, with everything else reported: the four scalar
+ * types, nullability, and presence. The keywords that constrain a value —
+ * lengths, bounds, patterns, formats, enumerations — and the two composite
+ * shapes are named in the findings and belong to the passes after this one.
+ *
+ * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
+ */
+final readonly class RuleSetBuilder
+{
+    /**
+     * The media types a generated rule set covers.
+     *
+     * All three arrive through `all()`, so one rule set covers them and the
+     * order here is only the order a tie is broken in. What changes between
+     * them is whether a part can be a file, which is `uploads.md`'s subject.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
+     */
+    public const READ_MEDIA_TYPES = [
+        'application/json',
+        'multipart/form-data',
+        'application/x-www-form-urlencoded',
+    ];
+
+    /**
+     * Keywords this pass does not translate, by the property that carries them.
+     *
+     * The list is closed and checked per field, which is what makes a finding a
+     * measurement rather than a reminder: a keyword added to
+     * {@see Schema} and to neither list is a keyword nothing reports, and that
+     * is the silence this whole mechanism exists against.
+     *
+     * `readOnly`, `writeOnly` and `examples` are absent on purpose: the support
+     * matrix ignores them as rules rather than deferring them, so there is
+     * nothing coming for a finding to promise.
+     */
+    private const UNTRANSLATED_KEYWORDS = [
+        'format',
+        'enum',
+        'pattern',
+        'minLength',
+        'maxLength',
+        'minimum',
+        'maximum',
+        'exclusiveMinimum',
+        'exclusiveMaximum',
+        'multipleOf',
+        'minItems',
+        'maxItems',
+        'uniqueItems',
+        'items',
+        'properties',
+        'required',
+        'dependentRequired',
+        'allOf',
+        'additionalProperties',
+        'isFilePart',
+        'contentMediaType',
+        'recursesTo',
+    ];
+
+    /**
+     * @throws ConflictingInputException the body and a query parameter naming one field,
+     *                                   or two media types over two schemas
+     */
+    public static function for(Operation $operation): RuleSet
+    {
+        $rules = [];
+        $findings = [];
+
+        $body = self::bodySchema($operation, $findings);
+
+        if ($body !== null) {
+            self::bodyRules($operation, $body, $rules, $findings);
+        }
+
+        foreach ($operation->queryParameters as $parameter) {
+            $key = self::ruleKey($parameter->name);
+
+            if (isset($rules[$key])) {
+                throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
+            }
+
+            $rules[$key] = [
+                $parameter->required ? 'required' : 'sometimes',
+                ...self::valueRules($parameter->schema),
+            ];
+
+            $findings = [...$findings, ...self::untranslated($parameter->name, $parameter->schema)];
+        }
+
+        return new RuleSet($rules, $findings);
+    }
+
+    /**
+     * The one schema the rule set is built from, or null when the body states
+     * none this package reads.
+     *
+     * @param  list<string>  $findings
+     *
+     * @throws ConflictingInputException
+     */
+    private static function bodySchema(Operation $operation, array &$findings): ?Schema
+    {
+        $body = $operation->requestBody;
+
+        if ($body === null) {
+            return null;
+        }
+
+        $unread = array_values(array_diff($body->mediaTypes(), self::READ_MEDIA_TYPES));
+
+        if ($unread !== []) {
+            // Reported rather than refused: a body declaring `application/xml`
+            // is a contract this package does not serve, and refusing the whole
+            // build over it would turn away an operation whose other half is
+            // perfectly readable.
+            $findings[] = sprintf(
+                'The body declares %s, which this package does not read. Nothing in the rule set '
+                    .'comes from it.',
+                self::list($unread),
+            );
+        }
+
+        $read = array_filter(
+            $body->content,
+            static fn (string $mediaType): bool => in_array($mediaType, self::READ_MEDIA_TYPES, true),
+            ARRAY_FILTER_USE_KEY,
+        );
+
+        if ($read === []) {
+            return null;
+        }
+
+        self::assertOneSchema($operation, $read);
+
+        if (count($read) > 1) {
+            $findings[] = sprintf(
+                'The body declares %s over one schema, so one rule set covers them all.',
+                self::list(array_keys($read)),
+            );
+        }
+
+        return reset($read);
+    }
+
+    /**
+     * Refuse two media types describing two different shapes.
+     *
+     * Compared by value rather than by identity, because two media types
+     * pointing at one `$ref` are not guaranteed to reach here as one object,
+     * and two identical inline schemas are not a conflict either: what the
+     * document said is the same thing twice.
+     *
+     * @param  array<string, Schema>  $read
+     *
+     * @throws ConflictingInputException
+     */
+    private static function assertOneSchema(Operation $operation, array $read): void
+    {
+        $first = null;
+        $firstMediaType = null;
+
+        foreach ($read as $mediaType => $schema) {
+            if ($first === null) {
+                $first = $schema;
+                $firstMediaType = $mediaType;
+
+                continue;
+            }
+
+            if ($schema != $first) {
+                throw ConflictingInputException::twoMediaTypeSchemas(
+                    $operation->label(),
+                    (string) $firstMediaType,
+                    $mediaType,
+                );
+            }
+        }
+    }
+
+    /**
+     * Every rule the body's own schema produces.
+     *
+     * @param  array<string, list<string>>  $rules
+     * @param  list<string>  $findings
+     */
+    private static function bodyRules(Operation $operation, Schema $schema, array &$rules, array &$findings): void
+    {
+        $body = $operation->requestBody;
+        assert($body instanceof RequestBody);
+
+        foreach (self::rootFindings($operation, $schema, $body) as $finding) {
+            $findings[] = $finding;
+        }
+
+        $required = self::effectiveRequired($operation, $schema, $body);
+
+        foreach ($schema->properties as $name => $property) {
+            $rules[self::ruleKey((string) $name)] = [
+                self::presence((string) $name, $property, $required),
+                ...self::valueRules($property),
+            ];
+
+            $findings = [...$findings, ...self::untranslated((string) $name, $property)];
+        }
+    }
+
+    /**
+     * The required list as this rule set reads it, which is not always as the
+     * document wrote it.
+     *
+     * Two reasons empty it, and they are different statements.
+     * A `PATCH` is a partial update, so the schema's list describes a
+     * representation the client is not sending all of. An optional body may be
+     * absent entirely, and a plain `required` would then refuse a request the
+     * contract allows — which is the one direction worse than a missing rule.
+     * `required_with` is what says "all or none", and it belongs to the pass
+     * that maps the rest of the table.
+     *
+     * @return list<string>
+     */
+    private static function effectiveRequired(Operation $operation, Schema $schema, RequestBody $body): array
+    {
+        if ($operation->method === HttpMethod::Patch || ! $body->required) {
+            return [];
+        }
+
+        return $schema->required;
+    }
+
+    /**
+     * `required`, `present` or `sometimes`.
+     *
+     * `present` rather than `required` for a property that may be null, because
+     * Laravel's `required` refuses `null` and a schema requiring a nullable
+     * property is asking for the key, not for a value.
+     *
+     * @param  list<string>  $required
+     */
+    private static function presence(string $name, Schema $property, array $required): string
+    {
+        if (! in_array($name, $required, true)) {
+            return 'sometimes';
+        }
+
+        return $property->isNullable() ? 'present' : 'required';
+    }
+
+    /**
+     * What the value itself has to be, as far as this pass reads it.
+     *
+     * @return list<string>
+     */
+    private static function valueRules(Schema $schema): array
+    {
+        $rules = [];
+
+        if ($schema->isNullable()) {
+            $rules[] = 'nullable';
+        }
+
+        $type = match ($schema->soleType()) {
+            SchemaType::String => 'string',
+            SchemaType::Integer => 'integer',
+            SchemaType::Number => 'numeric',
+            SchemaType::Boolean => 'boolean',
+            default => null,
+        };
+
+        if ($type !== null) {
+            $rules[] = $type;
+        }
+
+        return $rules;
+    }
+
+    /**
+     * What one field states and this pass leaves unenforced.
+     *
+     * @return list<string>
+     */
+    private static function untranslated(string $name, Schema $schema): array
+    {
+        $findings = [];
+        $keywords = [];
+
+        foreach (self::UNTRANSLATED_KEYWORDS as $keyword) {
+            if (self::states($schema, $keyword)) {
+                $keywords[] = $keyword;
+            }
+        }
+
+        if ($keywords !== []) {
+            $findings[] = sprintf(
+                '`%s` states %s, which nothing in this rule set enforces yet.',
+                $name,
+                self::list($keywords),
+            );
+        }
+
+        $unmapped = self::unmappedType($schema);
+
+        if ($unmapped !== null) {
+            $findings[] = sprintf('`%s` %s, so no type rule is emitted for it.', $name, $unmapped);
+        }
+
+        return $findings;
+    }
+
+    /**
+     * Why a field got no type rule, or null when it got one.
+     *
+     * Three different silences, told apart because the fix differs: a shape
+     * this pass does not walk into, a union no single rule expresses, and a
+     * document that stated no type at all.
+     */
+    private static function unmappedType(Schema $schema): ?string
+    {
+        $sole = $schema->soleType();
+
+        if ($sole !== null) {
+            return match ($sole) {
+                SchemaType::Array => 'is an array, whose element rules are not emitted yet',
+                SchemaType::Object => 'is an object, whose properties are not emitted yet',
+                default => null,
+            };
+        }
+
+        $stated = array_values(array_filter(
+            $schema->types,
+            static fn (SchemaType $type): bool => $type !== SchemaType::Null,
+        ));
+
+        if (count($stated) > 1) {
+            return 'declares more than one type, which no single Laravel rule expresses';
+        }
+
+        return $schema->recursesTo === null ? 'states no type' : null;
+    }
+
+    /**
+     * What the body's own root says that this pass does not act on.
+     *
+     * @return list<string>
+     */
+    private static function rootFindings(Operation $operation, Schema $schema, RequestBody $body): array
+    {
+        $findings = [];
+
+        if ($schema->soleType() !== SchemaType::Object) {
+            $findings[] = 'The body\'s own schema is not an object, so no rule is derived from it. '
+                .'A rule key is a field name, and a body that is a bare value has none.';
+        }
+
+        if ($schema->allOf !== []) {
+            $findings[] = 'The body\'s own schema writes `allOf`, whose branches are not merged into '
+                .'the rule set yet.';
+        }
+
+        if ($schema->additionalProperties === false) {
+            $findings[] = 'The body forbids properties it did not declare, which is not enforced '
+                .'yet: an undeclared field is absent from `validated()` rather than refused.';
+        }
+
+        if (! $body->required && $schema->required !== []) {
+            $findings[] = sprintf(
+                'The body may be absent entirely while its schema requires %s. Nothing enforces '
+                    .'"all or none" yet, so every field is `sometimes`: half a body is accepted where '
+                    .'the contract refuses it.',
+                self::list($schema->required),
+            );
+        }
+
+        if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
+            $findings[] = sprintf(
+                'A `PATCH` is a partial update, so the schema\'s required list (%s) is read as '
+                    .'empty here. Every property is `sometimes`.',
+                self::list($schema->required),
+            );
+        }
+
+        if ($operation->method === HttpMethod::Put) {
+            $optional = array_values(array_diff(array_keys($schema->properties), $schema->required));
+
+            if ($optional !== []) {
+                $findings[] = sprintf(
+                    'A `PUT` whose schema leaves %s optional. Nothing fills an absent field from a '
+                        .'schema default, so a field the client omitted keeps its stored value. '
+                        .'Override `update()` on your controller for replacement semantics.',
+                    self::list($optional),
+                );
+            }
+        }
+
+        return $findings;
+    }
+
+    /**
+     * Whether the document stated a keyword, by the property that carries it.
+     *
+     * Two shapes of "nothing was written" read the same way — null and the
+     * empty array — and `false` joins them for the two flags whose absence is
+     * spelled that way, `uniqueItems` and `isFilePart`.
+     *
+     * **`additionalProperties` is the exception, and it is the whole reason
+     * this is a method.** `false` there is the statement rather than the
+     * silence, and it is the only value worth a finding: it forbids undeclared
+     * fields, which nothing enforces yet. `true` asks for nothing, so there is
+     * no rule for it to be missing, and `null` is a document that said nothing
+     * — {@see Schema} keeps all three apart on purpose.
+     */
+    private static function states(Schema $schema, string $keyword): bool
+    {
+        $value = $schema->$keyword;
+
+        if ($keyword === 'additionalProperties') {
+            return $value === false;
+        }
+
+        return $value !== null && $value !== [] && $value !== false;
+    }
+
+    /**
+     * A rule key, with the one character Laravel reads as structure escaped.
+     *
+     * `user.name` as a literal property name would otherwise generate rules for
+     * a `name` key inside a `user` object the contract never declared, which is
+     * a rule set that is wrong rather than incomplete.
+     */
+    private static function ruleKey(string $field): string
+    {
+        return str_replace('.', '\\.', $field);
+    }
+
+    /**
+     * Names in a sentence, quoted, with the separator English uses.
+     *
+     * @param  list<string>  $items
+     */
+    private static function list(array $items): string
+    {
+        $quoted = array_map(static fn (string $item): string => '`'.$item.'`', $items);
+
+        if (count($quoted) < 2) {
+            return implode('', $quoted);
+        }
+
+        $last = array_pop($quoted);
+
+        return implode(', ', $quoted).' and '.$last;
+    }
+}

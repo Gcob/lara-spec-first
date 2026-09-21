@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Scaffolding;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Generation\ControllerName;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
+use Gcob\LaraSpecFirst\Generation\RequestName;
 
 /**
  * Works out which files `spec:make` would create for a set of operations.
@@ -68,6 +69,7 @@ final readonly class ScaffoldPlanner
                 // prefix that maps two is a class this scaffold would otherwise
                 // shadow with a fresh stub in the first.
                 $this->lookup->exists($operation->controller),
+                RequestName::for($operation)?->fullyQualifiedName($this->namespace),
             );
         }
 

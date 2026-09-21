@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace Workbench\App\Http\Controllers\Posts;
 
+use Workbench\App\Http\Generated\Requests\ListPostsRequest;
+
 // The parent below is generated. If PHP cannot find it, run `php artisan spec:build`.
 // If it still fails, the specification no longer has an `x-controller` pointing here.
 class ListPostsController extends \Workbench\App\Http\Generated\Controllers\ListPostsController
 {
-    public function routeAction(): mixed
+    public function routeAction(ListPostsRequest $request): mixed
     {
         // Replace this line with your answer to `get /posts`.
-        return parent::routeAction();
+        return parent::routeAction($request);
     }
 }

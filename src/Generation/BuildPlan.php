@@ -20,11 +20,46 @@ final readonly class BuildPlan
     /**
      * @param  list<PlannedController>  $controllers  in document order
      * @param  list<GeneratedFile>  $files  every file the build intends to write
+     * @param  list<PlannedRequest>  $requests  one per operation with something
+     *                                          to validate, in the same order.
+     *                                          Fewer than the controllers, and
+     *                                          the difference is what the
+     *                                          command reports: an operation
+     *                                          stating nothing about its input
+     *                                          gets no class rather than one
+     *                                          enforcing nothing
      */
     public function __construct(
         public array $controllers,
         public array $files,
+        public array $requests = [],
     ) {}
+
+    /**
+     * How many operations state nothing a rule set could be built from.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "Nothing to validate, no class"
+     */
+    public function withoutRequest(): int
+    {
+        return count($this->controllers) - count($this->requests);
+    }
+
+    /**
+     * How many generated requests read something they could not translate.
+     *
+     * The count rather than the list, for the same reason the doctor counts a
+     * `Deferred` construct: the findings themselves are in the file the reader
+     * would open next, and reprinting them in a build summary is a wall of text
+     * nobody reads twice.
+     */
+    public function withUnenforcedConstraints(): int
+    {
+        return count(array_filter(
+            $this->requests,
+            static fn (PlannedRequest $request): bool => $request->rules->findings !== [],
+        ));
+    }
 
     /**
      * How many operations the route sends to their generated parent.
