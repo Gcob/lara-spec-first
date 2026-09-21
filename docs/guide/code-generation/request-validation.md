@@ -419,10 +419,9 @@ exactly the keys that arrived, which is
 [the strict `PUT` caveat](#an-absent-field-gets-no-default) becomes a question the controller can put to the DTO rather
 than a fact only the request object held.
 
-**Open ([#38](https://github.com/Gcob/lara-spec-first/issues/38)):** what expresses that third state.
-`spatie/laravel-data` ships an `Optional` sentinel for exactly this case, which is an argument for depending on it
-rather than only taking its shape; a sentinel of our own is the alternative, and either way it is public API surface
-from the first release.
+**The third state is [`Optional`](./dto-anatomy.md#absent-is-optional), a class this package ships**, spelled the way
+`spatie/laravel-data` spells it so the type reads the same to anyone who has used that package. It is public API surface
+from the first release that emits a DTO.
 
 ### A `PATCH` takes the partial type
 
@@ -430,8 +429,7 @@ from the first release.
 says a value may be `null`. `required`, read under the operation's method, says whether the property may be absent at
 all. Conflating the two is what turns a field the contract requires into a type that shrugs about it.
 
-**What each combination becomes**, written here with `spatie/laravel-data`'s spelling for the absent state, which
-[#38](https://github.com/Gcob/lara-spec-first/issues/38) settles:
+**What each combination becomes**, with the absent state spelled `Optional`:
 
 | The schema says                 | `POST` and `PUT`               | `PATCH`                        |
 | ------------------------------- | ------------------------------ | ------------------------------ |
