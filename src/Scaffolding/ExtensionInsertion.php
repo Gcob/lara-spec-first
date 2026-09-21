@@ -153,7 +153,7 @@ final readonly class ExtensionInsertion
 
         $expected = array_map(
             fn (Operation $original): Operation => $original->identity() === $operation->identity()
-                ? $this->withController($original, $value)
+                ? $original->withController($value)
                 : $original,
             $before,
         );
@@ -200,23 +200,6 @@ final readonly class ExtensionInsertion
         }
 
         return $outcome->operations;
-    }
-
-    private function withController(Operation $operation, string $value): Operation
-    {
-        return new Operation(
-            index: $operation->index,
-            method: $operation->method,
-            path: $operation->path,
-            operationId: $operation->operationId,
-            tags: $operation->tags,
-            audience: $operation->audience,
-            lifecycle: $operation->lifecycle,
-            deprecated: $operation->deprecated,
-            sunset: $operation->sunset,
-            security: $operation->security,
-            controller: $value,
-        );
     }
 
     /**
