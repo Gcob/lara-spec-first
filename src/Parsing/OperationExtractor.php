@@ -581,7 +581,7 @@ final readonly class OperationExtractor
             // and the one it points back at are two objects and the walk only
             // notices one level too late. Two visits to one `(file, pointer)`
             // are the same definition however many copies of it exist.
-            return Schema::recursion($walk->pointer($position));
+            return Schema::recursion($walk->pointer($position), $walk->name($position));
         }
 
         $this->assertSchemaIsServable($node, $walk->pointer($position));

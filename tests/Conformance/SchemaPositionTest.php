@@ -80,14 +80,18 @@ it('cuts an external recursive schema at the first level', function (): void {
     $children = $node->properties['children'];
 
     expect($children->items?->recursesTo)->toBe('node.yaml#/components/schemas/Node')
-        ->and($children->items?->properties)->toBe([]);
+        ->and($children->items?->properties)->toBe([])
+        // The marker knows the position, so it knows the name: a field that
+        // meant something on every node but this one would be a special case.
+        ->and($children->items?->name)->toBe('Node');
 });
 
 // The same shape in one file, which already worked and has to keep working.
 it('keeps cutting a local recursive schema where it always did', function (): void {
     $children = bodyOf('recursive-schema-in-body.yaml', 'createNode')->properties['children'];
 
-    expect($children->items?->recursesTo)->toBe('#/components/schemas/Node');
+    expect($children->items?->recursesTo)->toBe('#/components/schemas/Node')
+        ->and($children->items?->name)->toBe('Node');
 });
 
 // Class three: the name a schema carries. Decision 7 of the card #35 plan —
@@ -166,19 +170,31 @@ it('lands on the same schema the parser resolved, at every node', function (): v
     $document = Yaml::parseFile($path);
     $walk = new DocumentWalk($path, $document);
 
-    $operation = $walk->child($walk->child($walk->child($walk->root(), 'paths'), '/from-a-subdirectory'), 'post');
-    $at = $walk->child($walk->child($walk->child(
-        $walk->child($operation, 'requestBody'), 'content'), 'application/json'), 'schema');
+    $paths = $walk->child($walk->root(), 'paths');
+    $compared = 0;
 
-    $compared = compareRawAgainstResolved(
-        bodyOf('schema-names/main.yaml', 'createFromASubdirectory'),
-        $at,
-        $walk,
-    );
+    foreach (extractFixture('schema-names/main.yaml') as $operation) {
+        $template = $operation->path->template;
+        $pathItemAt = $walk->child($paths, $template);
+        $at = $walk->child($pathItemAt, $operation->method->value);
 
-    // The count is asserted so that a walk which silently stopped at the root
-    // cannot pass by comparing nothing.
-    expect($compared)->toBeGreaterThanOrEqual(3);
+        foreach ($operation->requestBody->content ?? [] as $mediaType => $schema) {
+            $compared += compareRawAgainstResolved($schema, $walk->child($walk->child($walk->child(
+                $walk->child($at, 'requestBody'), 'content'), $mediaType), 'schema'), $walk);
+        }
+
+        foreach ($operation->responses as $response) {
+            foreach ($response->content as $mediaType => $schema) {
+                $compared += compareRawAgainstResolved($schema, $walk->child($walk->child($walk->child($walk->child(
+                    $walk->child($at, 'responses'), $response->status), 'content'), $mediaType), 'schema'), $walk);
+            }
+        }
+    }
+
+    // Asserted so that a walk which silently stopped at the root cannot pass by
+    // comparing nothing. Eight bodies and a response, each at least one node
+    // deep, and the two schemas that are whole files.
+    expect($compared)->toBeGreaterThanOrEqual(15);
 });
 
 /**

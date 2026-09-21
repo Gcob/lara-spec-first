@@ -195,9 +195,11 @@ decisions read from the other side: that one answers "my document says X, what h
 holding a schema, what can I count on".
 
 **One value has no equivalent in the document, and a caller does have to know about it.** A self-referential schema is a
-supported contract and an infinite object graph, so the node that would have repeated an ancestor carries that
-ancestor's JSON Pointer in `recursesTo` and nothing else. A tree, a comment thread and nested categories all produce
-one. Truncating in silence would hand a generator a schema that is wrong rather than one that is incomplete, which
+supported contract and an infinite object graph, so the node that would have repeated an ancestor carries where that
+ancestor is written in `recursesTo`, and its `name`, and nothing else. That position is spelled like every other one, so
+an ancestor written in another file reads `node.yaml#/components/schemas/Node` rather than as a bare pointer — see
+[below](#where-a-schema-is-reported-from). A tree, a comment thread and nested categories all produce one. Truncating in
+silence would hand a generator a schema that is wrong rather than one that is incomplete, which
 [rule 2](#the-four-rules) forbids.
 
 **Both `recursesTo` and `name` are read off the same thing: where the schema is written.** That position is computed

@@ -88,12 +88,16 @@ final readonly class Schema
      *                                        `minimum` left null
      * @param  bool  $isFilePart  what `format: binary` says at 3.0 and
      *                            `contentMediaType` at 3.1, read as one notion
-     * @param  string|null  $recursesTo  the JSON Pointer of the ancestor this
-     *                                   node points back at, on the one node
+     * @param  string|null  $recursesTo  where the ancestor this node points
+     *                                   back at is written, on the one node
      *                                   where the walk had to stop. A
      *                                   self-referential schema is a supported
      *                                   contract and an infinite tree, so it is
-     *                                   cut here and named rather than walked
+     *                                   cut here and named rather than walked.
+     *                                   Spelled the way every position is: a
+     *                                   bare JSON Pointer for the root
+     *                                   document, and `path.yaml#/pointer` for
+     *                                   an ancestor written in another file
      */
     public function __construct(
         public ?string $name = null,
@@ -129,13 +133,16 @@ final readonly class Schema
      * The node a walk stops on when a schema points back at one of its own
      * ancestors.
      *
-     * It carries the pointer and nothing else on purpose: what is at the other
-     * end is the ancestor, already in hand, and copying it here would be the
-     * infinite tree this exists to avoid.
+     * It carries the position and the name and nothing else on purpose: what is
+     * at the other end is the ancestor, already in hand, and copying it here
+     * would be the infinite tree this exists to avoid. The name comes along
+     * because the position is usually a component's, so it is known here, and a
+     * field that meant something on every node but this one would be a reader's
+     * special case rather than a contract.
      */
-    public static function recursion(string $pointer): self
+    public static function recursion(string $pointer, ?string $name = null): self
     {
-        return new self(recursesTo: $pointer);
+        return new self(name: $name, recursesTo: $pointer);
     }
 
     /**

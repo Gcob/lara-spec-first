@@ -26,10 +26,15 @@ use Gcob\LaraSpecFirst\Support\Path;
  * schema's own name is unrecoverable. One wrong position, three symptoms, so
  * one correction.
  *
- * **What makes the parallel walk tractable.** Only one kind of target has to be
- * followed: a file. {@see Guards\RemoteReferenceGuard} has already rewritten
+ * **What makes the parallel walk tractable.** In practice one kind of target
+ * has to be followed: a file. {@see Guards\RemoteReferenceGuard} rewrites
  * every allowed URL into a relative path to its vendored copy before the
- * parser — or this class — sees the document. And the reference graph has
+ * parser — or this class — sees the document. It runs on the root document and
+ * on the vendored files, so the one shape it cannot reach is a URL written
+ * inside a hand-written sibling file, which the parser would fetch itself long
+ * before this walk met it. A URL reaching here anyway is read as a path,
+ * resolves to nothing, and the walk answers with the position it already had
+ * rather than with a wrong one. And the reference graph has
  * already been checked: {@see Guards\ReferenceCycleDetector} refuses pure
  * cycles and the parser refuses missing targets, so following an alias chain
  * terminates.
