@@ -58,7 +58,7 @@ final readonly class UserDto implements Arrayable, JsonSerializable
     public static function from(array $payload): self
     {
         return new self(
-            id: (int) $payload['id'],
+            id: $payload['id'],
             email: $payload['email'],
             nickname: $payload['nickname'],
             status: $payload['status'],
@@ -113,9 +113,16 @@ hard error at build time naming both, never a silent pick. The derivation itself
 [rule 4](../openapi-support.md#the-four-rules) and belongs to
 [the name freeze](../../../README.md#before-10-freeze-what-a-major-would-cost).
 
-**The scalar casts in `from()` are safe because validation has already run.** A `multipart/form-data` body delivers
-`"42"` where the schema said `integer`, and Laravel's `integer` rule accepts it; `(int)` is what lets the typed property
-accept it too, and it cannot turn a bad value into a wrong one, since a bad value never got past the rule set.
+**A request DTO casts its scalars, and a response DTO casts none.** The two sides differ on whether anything checked the
+value before `from()` saw it:
+
+- **On the request side, validation has already run.** A `multipart/form-data` body delivers `"42"` where the schema
+  said `integer`, and Laravel's `integer` rule accepts it. `(int)` is what lets the typed property accept it too, and it
+  cannot turn a bad value into a wrong one, since a bad value never got past the rule set.
+- **On the response side, nothing has.** A factory feeds `from()` from a model, where `(int) 'abc'` would be `0` and
+  `(bool) 'false'` would be `true`, silently. So the value goes in as it is, and since every generated file declares
+  `strict_types`, a value of the wrong type is a `TypeError` naming the property rather than a wrong number in a
+  response.
 
 **Not `Responsable`, deliberately.** A response's status code and headers belong to the operation, not to the shape, and
 one `$ref` schema is routinely returned by operations answering `200` and `201`. A DTO that decided its own status would
@@ -142,8 +149,14 @@ if (! $data->nickname instanceof Optional) {
 ```
 
 **The name and the `instanceof` test are `spatie/laravel-data`'s**, on purpose: a developer who has used that package
-reads the generated type without looking anything up. Which property gets `Optional` on the request side, and why a
-`PATCH` gets its own type for it, is
+reads the generated type without looking anything up.
+
+**The name collides with `Illuminate\Support\Optional`**, the class behind Laravel's `optional()` helper, exactly as
+Spatie's does. An IDE that auto-imports the wrong one makes `instanceof Optional` false on every call, with no error at
+run time. Static analysis is what catches it: Larastan, from level 4, reports an `instanceof` against a class the
+property's type can never hold as always false. The name is kept anyway, for the familiarity above: `Absent` or
+`Missing` would avoid the collision and be one more word a developer coming from Spatie has to learn. Which property
+gets `Optional` on the request side, and why a `PATCH` gets its own type for it, is
 [`request-validation.md`](./request-validation.md#an-absent-field-is-a-third-state)'s subject.
 
 **It is the one class of this package a generated DTO imports**, and that makes its name and namespace public API
@@ -161,26 +174,38 @@ reading on both sides.
 [`Contract\Schema`](../openapi-support.md#the-normal-form-a-schema-takes), so nothing below depends on which OpenAPI
 version wrote the document:
 
-| The schema says                                                              | The property is                | `from()` does                   | `toArray()` does    |
-| ---------------------------------------------------------------------------- | ------------------------------ | ------------------------------- | ------------------- |
-| `string`                                                                     | `string`                       | Reads it                        | Writes it           |
-| `integer`                                                                    | `int`                          | `(int)`                         | Writes it           |
-| `number`                                                                     | `float`                        | `(float)`                       | Writes it           |
-| `boolean`                                                                    | `bool`                         | `(bool)`                        | Writes it           |
-| `string`, `format: date-time`                                                | `CarbonImmutable`              | `CarbonImmutable::parse()`      | `toRfc3339String()` |
-| `string`, `format: date`                                                     | `CarbonImmutable`              | `CarbonImmutable::parse()`      | `toDateString()`    |
-| `enum`                                                                       | Its scalar type                | Reads it                        | Writes it           |
-| `object` with `properties`, via `$ref`                                       | The DTO named after the schema | `::from()`                      | `->toArray()`       |
-| `object` with `properties`, inline                                           | A DTO named after its parent   | `::from()`                      | `->toArray()`       |
-| `object` with no `properties`                                                | `array<string, mixed>`         | Reads it                        | Writes it           |
-| `array` with `items`                                                         | `list<T>`, in the docblock     | `array_map()` when `T` is a DTO | The same, back      |
-| A file part                                                                  | `UploadedFile`                 | Reads it                        | Never on this side  |
-| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The ancestor's DTO             | `::from()`                      | `->toArray()`       |
-| `nullable`                                                                   | `?T`                           | Keeps the `null`                | Writes the `null`   |
+| The schema says                                                              | The property is                | `from()` does                           | `toArray()` does    |
+| ---------------------------------------------------------------------------- | ------------------------------ | --------------------------------------- | ------------------- |
+| `string`                                                                     | `string`                       | Reads it                                | Writes it           |
+| `integer`                                                                    | `int`                          | `(int)`, request side only              | Writes it           |
+| `number`                                                                     | `float`                        | `(float)`, request side only            | Writes it           |
+| `boolean`                                                                    | `bool`                         | `(bool)`, request side only             | Writes it           |
+| `string`, `format: date-time`                                                | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toRfc3339String()` |
+| `string`, `format: date`                                                     | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toDateString()`    |
+| `enum`                                                                       | Its scalar type                | Reads it                                | Writes it           |
+| `object` with `properties`, via `$ref`                                       | The DTO named after the schema | `::from()`                              | `->toArray()`       |
+| `object` with `properties`, inline                                           | A DTO named after its parent   | `::from()`                              | `->toArray()`       |
+| `object` with no `properties`                                                | `array<string, mixed>`         | Reads it                                | Writes it           |
+| `array` with `items`                                                         | `list<T>`, in the docblock     | `array_map()` with `T`'s own conversion | The same, back      |
+| A file part                                                                  | `UploadedFile`                 | Reads it                                | Writes it as is     |
+| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The ancestor's DTO             | `::from()`                              | `->toArray()`       |
+| `nullable`                                                                   | `?T`                           | Checks for `null` before any conversion | Writes the `null`   |
 
-**A file part is the request side only**, and what reaches the column after it is [`uploads.md`](../uploads.md)'s. A
-schema a generator [does not honor](../openapi-support.md#schemas) never reaches this table: it has already been
-reported, by name, before any class was written.
+**A `null` is checked before anything converts it.** `CarbonImmutable::parse(null)` is the current time and `(int) null`
+is `0`, so a nullable property's conversion is wrapped rather than applied:
+
+```php
+born_on: $payload['born_on'] === null ? null : CarbonImmutable::parse($payload['born_on']),
+```
+
+**An array's items get the conversion their own type would.** `ids[]=1&ids[]=2` arrives as two strings, so a request
+DTO's `list<int>` is built with `array_map(intval(...), $payload['ids'])`, which keeps the docblock Larastan trusts true
+at run time. On the response side the items go in as they are, like any other scalar.
+
+**A file part exists on the request side only**, and `toArray()` hands the `UploadedFile` to mass assignment untouched.
+What reaches the column after that is [`uploads.md`](../uploads.md)'s. A schema a generator
+[does not honor](../openapi-support.md#schemas) never reaches this table: it has already been reported, by name, before
+any class was written.
 
 ### An enum stays a scalar
 
@@ -236,17 +261,18 @@ A generated DTO has none of that to learn. The build read the schema, so it writ
 made once, where the information is, and the request path runs its result.
 
 **Which is also why the design is not over-engineered, despite borrowing from a large package.** A DTO costs one import
-at run time, `Optional`, and does no reflection, reads no configuration and keeps no cache. Everything that makes
-`spatie/laravel-data` large sits in the rows the table above leaves behind.
+from this package at run time, `Optional`, and does no reflection, reads no configuration and keeps no cache. Everything
+that makes `spatie/laravel-data` large sits in the rows the table above leaves behind.
 
 ## Why it is not a dependency
 
 **The package does not require `spatie/laravel-data`, and no generated class extends or imports anything from it.** Four
-reasons, the first of which would settle it alone:
+reasons:
 
-1. **A `Data` object cannot be `readonly`.** `Data` carries a mutable context of its own, and PHP refuses a `readonly`
-   class that extends a class which is not. Depending on it would mean giving up the
-   [`final readonly` DTO](./response-dtos.md#the-shape-is-ours-the-behavior-is-yours) the rest of this design rests on.
+1. **A `Data` object cannot be a `readonly` class.** `Data` carries a mutable context of its own, and PHP refuses a
+   `readonly` class that extends a class which is not. Each promoted property could still be `readonly`, so immutability
+   would survive, but the class keyword would not: it is what guarantees that a property added later is `readonly` too,
+   and every other `final readonly` type in this package relies on it.
 2. **Its engine would run for nothing.** Every row the [table](#taken-from-spatielaravel-data-and-left-there) keeps is a
    line the build can write, so the dependency would ship a reflection pipeline whose only job is rediscovering the
    schema.
