@@ -21,6 +21,13 @@ paths:
                 nickname:
                   type: [string, 'null']
                   example: null
+                # A keyword the parser does model, written as null. It reaches
+                # the accessor through a different branch than the two above, so
+                # it is here to make the outcome deliberate rather than lucky.
+                # Not valid JSON Schema, which is the point: a document is
+                # parsed and never validated, so this arrives all the same.
+                mystery:
+                  type: null
       responses:
         '204':
           description: Updated

@@ -141,6 +141,18 @@ it('still says nothing for a keyword the document left out', function (): void {
         ->and($nickname->properties)->toBe([]);
 });
 
+// A modelled keyword written as null takes a third path through the parser: the
+// accessor answers from the attribute table rather than refusing, so nothing
+// throws and nothing fails. What it must not do is invent a type, which is the
+// only reason this is asserted rather than left to chance.
+it('invents nothing from a modelled keyword written as null', function (): void {
+    $mystery = bodySchemaOf('null-valued-keywords.yaml')->properties['mystery'];
+
+    expect($mystery->types)->toBe([])
+        ->and($mystery->isNullable())->toBeFalse()
+        ->and($mystery->soleType())->toBeNull();
+});
+
 // An absent `additionalProperties` is not a document allowing unknown fields,
 // it is a document that said nothing. The parser defaults the keyword to true
 // and cannot tell the two apart; reading what was written rather than what the
