@@ -910,6 +910,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 `docs/guide/`, for `Users`:
 
 - [`code-generation/index.md`](../guide/code-generation/index.md)
+    - [`dto-anatomy.md`](../guide/code-generation/dto-anatomy.md)
     - [`generated-file-anatomy.md`](../guide/code-generation/generated-file-anatomy.md)
     - [`publishing.md`](../guide/code-generation/publishing.md)
     - [`request-validation.md`](../guide/code-generation/request-validation.md)

@@ -31,7 +31,7 @@ tags: [code-generation, openapi, scope, decisions, laravel]
 
 Spec-First only pays off if the contract reaches the code. This document owns how it gets there: **one build command
 turns the specification into PHP, and the result is safe to regenerate at any time.** It carries what the rest of the
-subject rests on, and the build command itself; the five files beside it answer one question each, and are linked from
+subject rests on, and the build command itself; the six files beside it answer one question each, and are linked from
 wherever that question comes up.
 
 > **Almost all of this is intent rather than behaviour**, and like [`openapi-support.md`](../openapi-support.md) this
@@ -516,7 +516,6 @@ regions ever read or written, and a hard failure rather than a guess when the re
 - Whether fetching a _missing_ reference and refreshing a _stale_ one share one flag or take two.
 - What [watch](./scaffolding.md#watching-specwatch) takes as parameters, in particular how its rebuild cadence is
   expressed, and how the mode announces itself while it is running.
-- Whether `spatie/laravel-data` becomes a dependency or only an influence.
 - The [factory override scan](./response-dtos.md#overriding-a-factory-by-extending-it): the config key's name, whether
   it recurses by default, the exact mechanism for finding the `extends` relationship, and the name of the exception
   thrown when two classes claim one factory.

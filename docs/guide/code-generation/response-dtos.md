@@ -49,6 +49,9 @@ own to grow, the same reasoning that makes
 [two-layer split](./index.md#an-interface-and-an-abstract-class) that customization elsewhere in this subject relies on:
 there is no abstract DTO to extend, because there is no DTO to extend, full stop.
 
+**It extends nothing from `spatie/laravel-data` either.** The class borrows that package's shape and none of its engine,
+and what is inside it, the same on the request side, is [`dto-anatomy.md`](./dto-anatomy.md)'s subject.
+
 ## Factories carry the behavior
 
 **A note on the name, before anything else.** This "factory" is the design pattern, a class whose one job is
@@ -112,15 +115,6 @@ Its navigation line is the general rule applied to [the override scan](#overridi
 by `@see` at the detected class when one was. Since the generated factory
 [stays in place even when overridden](#overriding-a-factory-by-extending-it), that annotation is the only thing
 distinguishing the default a reader is looking at from the behavior that actually runs.
-
-`spatie/laravel-data` remains a candidate for the generated shape itself, since its casting, validation and
-serialization are useful independently of who builds the object, but its own `from()`-override ergonomics are no longer
-the fit they once were: a `Data` object is not `final`, and this design deliberately does not lean on DTO-level
-inheritance for customization.
-
-**Open ([#38](https://github.com/Gcob/lara-spec-first/issues/38)):** whether we depend on it or only take the shape. It
-belongs in [`stack.md`](../../project/stack.md) once settled. A dependency buys casting, validation and serialization
-for free, at the cost of binding generated code to another package's API and release cycle.
 
 ## What this document does not cover
 
