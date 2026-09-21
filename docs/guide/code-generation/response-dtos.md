@@ -16,6 +16,9 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 > **In brief**
 >
 > - **Not built yet.** Nothing emits a DTO or a factory today; this is the design Phase 2 will follow.
+> - **What it reads already exists.** A response's schema reaches the contract
+>   [normalized and version-free](../openapi-support.md#the-normal-form-a-schema-takes), per status code and per media
+>   type, so nothing here has to open a specification or know which OpenAPI version wrote it.
 > - The shape is generated and the behavior is yours. That tension is the whole design.
 > - A DTO is `final readonly`, so there is nothing to extend. Building one happens a step away, in a factory.
 > - You override a factory by extending it from a directory you declare, and the generated default never disappears.

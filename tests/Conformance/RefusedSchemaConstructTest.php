@@ -65,3 +65,11 @@ it('refuses a reference aimed at a position inside a $defs', function (): void {
     expect(fn () => extractFixture('ref-into-defs.yaml'))
         ->toThrow(RejectedConstructException::class, 'inside a `$defs`');
 });
+
+// A schema is a schema wherever the document puts it. The refusals above are
+// written against request bodies because that is where the caveat was first
+// met; this is the case that stops them from quietly being a request-side rule.
+it('refuses the same construct inside a response', function (): void {
+    expect(fn () => extractFixture('refused-in-a-response.yaml'))
+        ->toThrow(RejectedConstructException::class, 'writes `prefixItems`');
+});

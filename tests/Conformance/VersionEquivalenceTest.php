@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\QueryParameter;
+use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
@@ -107,6 +108,13 @@ it('extracts one contract from two spellings of it', function (): void {
                 'required' => $operation->requestBody->required,
                 'content' => array_map(describeSchema(...), $operation->requestBody->content),
             ],
+        'responses' => array_map(
+            static fn (Response $response): array => [
+                'status' => $response->status,
+                'content' => array_map(describeSchema(...), $response->content),
+            ],
+            $operation->responses
+        ),
         'queryParameters' => array_map(
             static fn (QueryParameter $parameter): array => [
                 'name' => $parameter->name,
