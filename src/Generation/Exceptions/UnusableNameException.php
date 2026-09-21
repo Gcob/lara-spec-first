@@ -120,4 +120,27 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
             $shortName
         ));
     }
+
+    /**
+     * Two operations whose generated requests would be one class.
+     *
+     * **Its own factory rather than the one above, because it is reachable
+     * without that one firing and the advice differs.** A request's name comes
+     * from the `operationId` alone, while a controller's may come from
+     * `x-controller` — so two operations sharing an `operationId` and
+     * declaring different custom controllers collide here and nowhere else.
+     * Telling their author that two operations cannot share one generated
+     * *controller* would send them looking at the one thing that is fine.
+     */
+    public static function requestClaimedTwice(string $shortName, string $first, string $second): self
+    {
+        return new self(sprintf(
+            'The operations "%s" and "%s" both generate the request class "%s". One rule set cannot '.
+            'serve two operations, and `x-controller` does not rename a request, so give at least '.
+            'one of them an `operationId` that does not collide.',
+            $first,
+            $second,
+            $shortName
+        ));
+    }
 }

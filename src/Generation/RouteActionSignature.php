@@ -43,13 +43,15 @@ final readonly class RouteActionSignature
     /**
      * The parameter list as PHP, ready to sit between the parentheses.
      *
-     * **It cannot be empty, and that is a constraint rather than an
-     * observation.** PHP forbids an override from adding a required parameter,
-     * so a parent declaring none would make `x-controller` useless on every
-     * templated path: a developer could only reach `{id}` through the request
-     * object. Verified rather than reasoned about — a Workbench child declaring
-     * `routeAction(string $id)` over a parameterless parent is a fatal error at
-     * load.
+     * **A templated path's parameters are never left out, and that is a
+     * constraint rather than a preference.** PHP forbids an override from
+     * adding a required parameter, so a parent that dropped them would make
+     * `x-controller` useless on every templated path: a developer could only
+     * reach `{id}` through the request object. Verified rather than reasoned
+     * about — a Workbench child declaring `routeAction(string $id)` over a
+     * parameterless parent is a fatal error at load. The list is empty only
+     * when the path is untemplated and the operation states nothing about its
+     * input, which is an operation with nothing to pass.
      *
      * `string` for a path parameter because that is what one is until something
      * says otherwise. `x-model` is what will turn one into a bound model.

@@ -677,12 +677,11 @@ first release, not shipped behavior.
 | `links`                                           | Open     | The one row here with no position, and [#83](https://github.com/Gcob/lara-spec-first/issues/83) is where it gets one. See the note below the table.                                                                                                                                                                                                                                                                                                                        |
 | Media type `encoding`                             | Partial  | Phase 2. `contentType` is read, as [the media types an uploaded part must match](./uploads.md#the-schema-names-the-file-part). `headers`, `style`, `explode` and `allowReserved` are not.                                                                                                                                                                                                                                                                                  |
 
-**One row above promises a gate that is not wired yet.** `header` and `cookie` are `Ignored`, whose exit code is
-non-zero, and
-[the doctor still counts them beside `query`](./code-generation/request-validation.md#one-rule-set-body-and-query) under
-one `Deferred` label, so a document declaring one exits zero today.
-[#35](https://github.com/Gcob/lara-spec-first/issues/35) is where the count splits and the column becomes true of the
-tool as well as of the position.
+**The `header` and `cookie` gate is wired.** They were counted beside `query` under one `Deferred` label while nothing
+in this package read a parameter at all, so a document declaring one exited zero. `query`
+[is a rule now](./code-generation/request-validation.md#one-rule-set-body-and-query), so the count split and the level
+went with it: `spec:doctor` reports the two unread locations on their own, at `Ignored`, and a document declaring one
+exits non-zero until the consumer [acknowledges it](./doctor.md#acknowledged-limits-the-consumers-opt-out).
 
 #### A declared status without a body is still a promise
 

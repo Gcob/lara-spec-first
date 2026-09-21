@@ -6,6 +6,8 @@ use Gcob\LaraSpecFirst\Contract\Exceptions\InvalidPathTemplateException;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnroutablePathException;
@@ -25,7 +27,7 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
  */
 
 /**
- * @param  list<array{0: string, 1: string, 2?: string|null, 3?: string|null}>  $rows
+ * @param  list<array{0: string, 1: string, 2?: string|null, 3?: string|null, 4?: bool}>  $rows
  * @return list<Operation>
  */
 function operations(array $rows): array
@@ -39,6 +41,12 @@ function operations(array $rows): array
             path: PathTemplate::fromString($path),
             operationId: $rows[$index][2] ?? null,
             controller: $rows[$index][3] ?? null,
+            // A fifth column, so a row can state that the operation has
+            // something to validate. Absent means it has not, which is what
+            // every row written before requests existed meant.
+            requestBody: ($rows[$index][4] ?? false) === true
+                ? new RequestBody(['application/json' => new Schema], true)
+                : null,
         );
     }
 
@@ -102,6 +110,17 @@ it('refuses two operations that claim one class name', function (): void {
 // Symfony's compiler finds placeholders with `[\w\x80-\xFF]+`, so `{user-id}` is
 // never recognized as one: it stays literal text and the endpoint answers 404
 // forever with nothing reporting it.
+// Reachable without the controller collision above firing, and the advice
+// differs: a request's name comes from the `operationId` alone, so two
+// operations sharing one while declaring different `x-controller` values pass
+// that check and collide here.
+it('refuses two operations whose generated requests would be one class', function (): void {
+    expect(fn () => planner()->plan(operations([
+        ['get', '/users', 'showUser', 'App\\Http\\Controllers\\AController', true],
+        ['post', '/accounts', 'showUser', 'App\\Http\\Controllers\\BController', true],
+    ])))->toThrow(UnusableNameException::class, 'both generate the request class "ShowUserRequest"');
+});
+
 it('refuses a path parameter Laravel would never match', function (): void {
     expect(fn () => planner()->plan(operations([['get', '/users/{user-id}']])))
         ->toThrow(UnroutablePathException::class, 'letters, digits and underscores');

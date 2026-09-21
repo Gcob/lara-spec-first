@@ -305,6 +305,42 @@ it('says why a field got no type rule at all', function (Schema $schema, string 
     'no type at all' => [new Schema, 'states no type'],
 ]);
 
+// The root goes through the same sweep its properties do. Without it a keyword
+// written on the body's own schema is read and enforced by nothing, and an
+// empty findings list makes the generated file claim the opposite.
+it('names a keyword written on the body itself', function (Schema $root, string $keyword): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $root]));
+
+    expect(implode('', $set->findings))->toContain('The body itself states `'.$keyword.'`');
+})->with([
+    'dependentRequired' => [
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['a' => new Schema(types: [SchemaType::String])],
+            dependentRequired: ['a' => ['b']],
+        ),
+        'dependentRequired',
+    ],
+    'enum' => [new Schema(types: [SchemaType::Object], enum: [['a' => 1]]), 'enum'],
+]);
+
+// Four keywords are skipped at the root because something above already speaks
+// to them, and naming one twice reads as two problems.
+it('does not name a root keyword another finding already speaks to', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['a' => new Schema(types: [SchemaType::String])],
+        additionalProperties: false,
+        allOf: [new Schema],
+    )]));
+
+    $findings = implode('', $set->findings);
+
+    expect($findings)->not->toContain('The body itself states')
+        ->and($findings)->toContain('writes `allOf`')
+        ->and($findings)->toContain('forbids properties it did not declare');
+});
+
 it('says the rule set is complete when it is', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(

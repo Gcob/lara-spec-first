@@ -7,11 +7,16 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Generation\ControllerEmitter;
 use Gcob\LaraSpecFirst\Generation\ControllerName;
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
 use Gcob\LaraSpecFirst\Generation\PlannedController;
+use Gcob\LaraSpecFirst\Generation\RequestName;
+use Symfony\Component\Process\Process;
 
 /*
  * The metadata a generated controller carries is output, so it is asserted the
@@ -469,4 +474,97 @@ describe('the two-class seam', function (): void {
     it('imports without a leading separator', function (): void {
         expect(emittedController(operationFor()))->not->toContain('use \\');
     });
+});
+
+/*
+ * The idempotence guarantee, against the real formatter.
+ *
+ * The build and a consumer's formatter rewrite each other forever if the
+ * emitted bytes are not already formatted, and the generated tree is excluded
+ * from this repository's own Pint run — which is exactly how a docblock `@see`
+ * being rewritten into an import stayed invisible until a request was emitted.
+ * A committed golden file is not excluded, so the formatter judges it on every
+ * run, and the import block is what is most at risk now that there is a third
+ * import whose namespace the consumer chooses.
+ *
+ * @see tests/Fixtures/Generated/Controllers/CreateUserController.php
+ */
+
+/**
+ * The controller the golden file is generated from: one that declares a
+ * request, since that is the case with an import to order.
+ */
+function goldenController(): string
+{
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/users'),
+        operationId: 'createUser',
+        requestBody: new RequestBody(['application/json' => new Schema(types: [SchemaType::Object])], true),
+    );
+
+    $planned = new PlannedController(
+        $operation,
+        ControllerName::for($operation),
+        false,
+        RequestName::for($operation),
+    );
+
+    return (new ControllerEmitter(
+        'Gcob\\LaraSpecFirst\\Tests\\Fixtures\\Generated',
+        'tests/Fixtures/golden.yaml',
+    ))->emit($planned)->contents;
+}
+
+it('reproduces the controller golden file byte for byte', function (): void {
+    expect(goldenController())->toBe(file_get_contents(
+        dirname(__DIR__, 2).'/Fixtures/Generated/Controllers/CreateUserController.php'
+    ));
+});
+
+it('emits a controller Pint has nothing to change in', function (): void {
+    $golden = dirname(__DIR__, 2).'/Fixtures/Generated/Controllers/CreateUserController.php';
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $golden], dirname(__DIR__, 3));
+    $pint->run();
+
+    expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
+// `ordered_imports` compares with `\` replaced by a space and case folded, so a
+// plain byte sort puts two namespaces on the wrong side of each other whenever
+// one is a prefix of the other. The generated tree's namespace is the
+// consumer's to choose, so this is not a case inspection can rule out.
+it('orders imports the way the formatter orders them', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/users'),
+        operationId: 'createUser',
+        requestBody: new RequestBody(['application/json' => new Schema(types: [SchemaType::Object])], true),
+    );
+
+    $planned = new PlannedController(
+        $operation,
+        ControllerName::for($operation),
+        false,
+        RequestName::for($operation),
+    );
+
+    // Sorts after `Gcob\LaraSpecFirst\Http\…` under the formatter's rule and
+    // before it under a byte sort, because `\` (0x5C) is above `X` and a space
+    // is below it.
+    $contents = (new ControllerEmitter('Gcob\\LaraSpecFirstX', 'openapi.yaml'))->emit($planned)->contents;
+
+    $imports = array_values(array_filter(
+        explode("\n", $contents),
+        static fn (string $line): bool => str_starts_with($line, 'use '),
+    ));
+
+    expect($imports)->toBe([
+        'use Gcob\\LaraSpecFirst\\Exceptions\\OperationNotImplementedException;',
+        'use Gcob\\LaraSpecFirst\\Http\\Controllers\\SpecController;',
+        'use Gcob\\LaraSpecFirstX\\Requests\\CreateUserRequest;',
+    ]);
 });

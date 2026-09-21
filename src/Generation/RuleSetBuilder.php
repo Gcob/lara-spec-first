@@ -110,7 +110,7 @@ final readonly class RuleSetBuilder
                 ...self::valueRules($parameter->schema),
             ];
 
-            $findings = [...$findings, ...self::untranslated($parameter->name, $parameter->schema)];
+            $findings = [...$findings, ...self::untranslated('`'.$parameter->name.'`', $parameter->schema)];
         }
 
         return new RuleSet($rules, $findings);
@@ -218,6 +218,27 @@ final readonly class RuleSetBuilder
             $findings[] = $finding;
         }
 
+        // The root goes through the same sweep its properties do. Without it a
+        // keyword written on the body's own schema — `dependentRequired` and
+        // `enum` are the two a real contract writes there — is read into the
+        // contract and enforced by nothing, with no finding saying so. Worse
+        // than a missing line: an empty findings list makes the generated file
+        // claim that nothing was left unenforced.
+        //
+        // Four keywords are skipped because something above already speaks to
+        // them: `properties` and `required` are acted on rather than dropped,
+        // and `allOf` and `additionalProperties` have a root finding of their
+        // own that says more than the generic one would.
+        $findings = [
+            ...$findings,
+            ...self::untranslated(
+                'The body itself',
+                $schema,
+                ['properties', 'required', 'allOf', 'additionalProperties'],
+                withType: false,
+            ),
+        ];
+
         $required = self::effectiveRequired($operation, $schema, $body);
 
         foreach ($schema->properties as $name => $property) {
@@ -226,7 +247,7 @@ final readonly class RuleSetBuilder
                 ...self::valueRules($property),
             ];
 
-            $findings = [...$findings, ...self::untranslated((string) $name, $property)];
+            $findings = [...$findings, ...self::untranslated('`'.$name.'`', $property)];
         }
     }
 
@@ -302,31 +323,44 @@ final readonly class RuleSetBuilder
     /**
      * What one field states and this pass leaves unenforced.
      *
+     * @param  string  $name  the subject of the sentence, already quoted the way
+     *                        it should read: a field is written in backticks
+     *                        and the body itself is not
+     * @param  list<string>  $skip  keywords another finding already speaks to,
+     *                              which is only ever the root's case: naming
+     *                              one twice reads as two problems
+     * @param  bool  $withType  whether a missing type rule is worth a line
+     *                          here. The root's own shape has a finding that
+     *                          says more than "states no type" would
      * @return list<string>
      */
-    private static function untranslated(string $name, Schema $schema): array
-    {
+    private static function untranslated(
+        string $name,
+        Schema $schema,
+        array $skip = [],
+        bool $withType = true,
+    ): array {
         $findings = [];
         $keywords = [];
 
         foreach (self::UNTRANSLATED_KEYWORDS as $keyword) {
-            if (self::states($schema, $keyword)) {
+            if (! in_array($keyword, $skip, true) && self::states($schema, $keyword)) {
                 $keywords[] = $keyword;
             }
         }
 
         if ($keywords !== []) {
             $findings[] = sprintf(
-                '`%s` states %s, which nothing in this rule set enforces yet.',
+                '%s states %s, which nothing in this rule set enforces yet.',
                 $name,
                 self::list($keywords),
             );
         }
 
-        $unmapped = self::unmappedType($schema);
+        $unmapped = $withType ? self::unmappedType($schema) : null;
 
         if ($unmapped !== null) {
-            $findings[] = sprintf('`%s` %s, so no type rule is emitted for it.', $name, $unmapped);
+            $findings[] = sprintf('%s %s, so no type rule is emitted for it.', $name, $unmapped);
         }
 
         return $findings;
