@@ -230,8 +230,10 @@ vendored parser:
 parser's resolved objects: `properties/tag`, `items`, `allOf/0`. Where the raw node holds a `$ref`, the walk follows it
 — to a pointer in the same file, to another file resolved against the directory of the document that wrote it, or to a
 whole file — and it keeps following while the target is itself a reference, so an alias lands where the schema is really
-written. Only one kind of target has to be handled, because
-[a remote reference is rewritten into a vendored file](./remote-references.md) before anything sees the document.
+written. One kind of target has to be handled in practice, because
+[a remote reference is rewritten into a vendored file](./remote-references.md) before anything sees the document — the
+exception being a URL written inside a local file maintained by hand, which
+[the parser would fetch first](./remote-references.md#the-parser-never-sees-a-url).
 
 **A position is written as a pointer alone for the root document**, exactly as it always was, and as
 `relative/path.yaml#/pointer` for a schema written anywhere else, relative to the root document so that two messages can

@@ -540,15 +540,18 @@ final readonly class OperationExtractor
      * @param  SchemaPosition  $position  where this node is written, computed by
      *                                    the raw walk rather than asked of the
      *                                    parser — see {@see DocumentWalk}
-     * @param  array<string, true>  $open  the nodes this descent is inside, by
-     *                                     written position and by object
-     *                                     identity, which is two keys for one
-     *                                     node — see the body. Passed by value
-     *                                     rather than held on the instance: two
-     *                                     sibling properties may legitimately
-     *                                     point at one shared schema, and a set
-     *                                     that survived the first of them would
-     *                                     report the second as recursion
+     * @param  array<string, array{0: string, 1: string|null}>  $open  the nodes
+     *                                                                 this descent is inside, each keyed
+     *                                                                 both by written position and by
+     *                                                                 object identity — two keys for one
+     *                                                                 node, see the body — and holding the
+     *                                                                 position and name a recursion marker
+     *                                                                 reports. Passed by value
+     *                                                                 rather than held on the instance: two
+     *                                                                 sibling properties may legitimately
+     *                                                                 point at one shared schema, and a set
+     *                                                                 that survived the first of them would
+     *                                                                 report the second as recursion
      *
      * @throws RejectedConstructException
      */
@@ -568,8 +571,9 @@ final readonly class OperationExtractor
         // message. Neither can fire before the document actually repeats
         // something, so keeping both cannot cut early.
         $keys = [$position->key(), 'object:'.spl_object_id($node)];
+        $ancestor = $open[$keys[0]] ?? $open[$keys[1]] ?? null;
 
-        if (isset($open[$keys[0]]) || isset($open[$keys[1]])) {
+        if ($ancestor !== null) {
             // A schema pointing back at one of its own ancestors — a tree, a
             // comment thread, nested categories. The contract is supported and
             // the object graph is infinite, so the walk stops here and names
@@ -581,13 +585,16 @@ final readonly class OperationExtractor
             // and the one it points back at are two objects and the walk only
             // notices one level too late. Two visits to one `(file, pointer)`
             // are the same definition however many copies of it exist.
-            return Schema::recursion($walk->pointer($position), $walk->name($position));
+            // The ancestor's own position, taken from the set rather than
+            // recomputed from this node: the two are the same position when
+            // the position key matched, and only the stored one is right when
+            // the object-identity floor is what fired.
+            return Schema::recursion(...$ancestor);
         }
 
         $this->assertSchemaIsServable($node, $walk->pointer($position));
 
-        $open[$keys[0]] = true;
-        $open[$keys[1]] = true;
+        $open[$keys[0]] = $open[$keys[1]] = [$walk->pointer($position), $walk->name($position)];
         $keywords = [];
 
         // **Presence is read from the keys the document actually wrote, not

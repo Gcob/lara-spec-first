@@ -87,6 +87,8 @@ paths:
       responses:
         '201':
           description: Created
+  /from-an-external-path-item:
+    $ref: './sub/paths.yaml#/petPathItem'
   /listed:
     # A `query` parameter is not the first one written, and one of them is
     # declared on the Path Item rather than on the operation: both are indices

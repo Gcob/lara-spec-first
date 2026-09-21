@@ -1,0 +1,37 @@
+# The naming rules read at 3.0, since `normalizeSchema()` changed signature for
+# both strategies. A position does not depend on the version by construction,
+# and this is what says so rather than leaving it to construction.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /local:
+    post:
+      operationId: createLocal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalPet'
+      responses:
+        '201':
+          description: Created
+  /external:
+    post:
+      operationId: createExternal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './schema-names/other.yaml#/components/schemas/Pet'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    LocalPet:
+      type: object
+      properties:
+        name:
+          type: string

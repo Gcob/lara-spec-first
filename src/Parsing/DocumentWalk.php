@@ -32,9 +32,11 @@ use Gcob\LaraSpecFirst\Support\Path;
  * parser — or this class — sees the document. It runs on the root document and
  * on the vendored files, so the one shape it cannot reach is a URL written
  * inside a hand-written sibling file, which the parser would fetch itself long
- * before this walk met it. A URL reaching here anyway is read as a path,
- * resolves to nothing, and the walk answers with the position it already had
- * rather than with a wrong one. And the reference graph has
+ * before this walk met it. A URL reaching here anyway is read as a path and
+ * decodes to nothing, so the position it yields names a file that does not
+ * exist — which is the right shape for a reference that cannot be resolved,
+ * and is not reachable through the supported pipeline. And the reference graph
+ * has
  * already been checked: {@see Guards\ReferenceCycleDetector} refuses pure
  * cycles and the parser refuses missing targets, so following an alias chain
  * terminates.

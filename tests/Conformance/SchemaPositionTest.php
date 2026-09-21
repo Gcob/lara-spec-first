@@ -158,6 +158,26 @@ it('names a schema reached through a query parameter', function (
     'written on the Path Item' => ['tenant', 'Tenant'],
 ]);
 
+// A Path Item may itself be a reference into another file, so the base position
+// every schema under it is computed from is not in the root document. Nothing
+// in the two cases above reaches one that way.
+it('names a schema under a Path Item written in another file', function (): void {
+    $operation = operationsById('schema-names/main.yaml')['createFromAnExternalPathItem'];
+
+    expect($operation->requestBody?->content['application/json']->name)->toBe('Pet')
+        ->and($operation->queryParameters[0]->schema->name)->toBe('Page');
+});
+
+// Position does not depend on the document version by construction — nothing in
+// the walk reads one — but `normalizeSchema()` gained the name parameter on
+// both strategies, so one 3.0 dataset says it rather than leaving it implied.
+it('names a schema the same way at 3.0', function (string $operationId, string $expected): void {
+    expect(bodyOf('schema-names-3.0.yaml', $operationId)->name)->toBe($expected);
+})->with([
+    'a local component' => ['createLocal', 'LocalPet'],
+    'a component in another file' => ['createExternal', 'Pet'],
+]);
+
 // The guard for risk 6 of the plan. The raw walk follows `$ref` itself rather
 // than asking the parser, so the two could drift — a relative path resolved
 // against a different directory, say — and the failure would be a silently

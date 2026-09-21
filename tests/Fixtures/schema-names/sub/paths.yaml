@@ -1,0 +1,19 @@
+# A Path Item written in another file, referenced from main.yaml. Its own
+# references climb out of this subdirectory, so the base position every schema
+# under it is computed from is not in the root document at all.
+petPathItem:
+  post:
+    operationId: createFromAnExternalPathItem
+    parameters:
+      - name: page
+        in: query
+        schema:
+          $ref: '../other.yaml#/components/schemas/Page'
+    requestBody:
+      content:
+        application/json:
+          schema:
+            $ref: '../other.yaml#/components/schemas/Pet'
+    responses:
+      '201':
+        description: Created
