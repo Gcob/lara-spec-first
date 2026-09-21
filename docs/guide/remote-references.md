@@ -253,8 +253,8 @@ fetch.
 the raw document alongside the parser's resolved objects, to compute
 [where each schema is written](./openapi-support.md#where-a-schema-is-reported-from), and that walk follows the `$ref`
 it finds written there. Because a URL has already become a relative path by then, it has exactly one kind of target to
-follow: a file. A vendored copy therefore names itself the way any other file does — a refusal, a recursion marker or a
-`Provenance` header points at the path under the vendor directory, which is the file a reader can actually open.
+follow: a file. A vendored copy therefore names itself the way any other file does — a refusal or a recursion marker
+about a schema inside one points at its path under the vendor directory, which is a file a reader can actually open.
 
 ## Vendoring is part of the build
 

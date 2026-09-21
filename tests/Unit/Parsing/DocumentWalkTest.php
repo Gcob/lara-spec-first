@@ -74,7 +74,9 @@ it('collapses an alias onto the position its target is written at', function ():
 it('points at a whole file with an empty pointer', function (): void {
     $walk = namesWalk();
 
-    expect($walk->pointer(bodyPositionOf($walk, '/whole-file')))->toBe('Address.yaml#');
+    // Named by its path alone: a schema that is a file has nothing to point at
+    // inside it, and a trailing `#` in a message reads as a truncated string.
+    expect($walk->pointer(bodyPositionOf($walk, '/whole-file')))->toBe('Address.yaml');
 });
 
 it('leaves an inline schema at the position it is written at', function (): void {

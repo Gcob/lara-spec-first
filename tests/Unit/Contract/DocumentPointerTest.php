@@ -23,7 +23,7 @@ it('puts the file in front of a position written outside the root document', fun
     expect(DocumentPointer::inFile('other.yaml', '/components/schemas/Pet'))
         ->toBe('other.yaml#/components/schemas/Pet')
         ->and(DocumentPointer::inFile('../shared/Pet.yaml', ''))
-        ->toBe('../shared/Pet.yaml#');
+        ->toBe('../shared/Pet.yaml');
 });
 
 it('finds the node a pointer names', function (): void {

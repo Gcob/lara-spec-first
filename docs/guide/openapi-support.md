@@ -177,18 +177,18 @@ to watch out for.
 validation, response DTOs, DTO factories, the Faker mocker, spec-driven test data, and the sanitized public copy. What
 follows is the whole of what one of them has to know, and none of it requires knowing which version was read.
 
-| Reading                                  | Always gets                                                    | Never has to                                                             |
-| ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `types`                                  | A list, possibly empty                                         | Handle a bare string, or a null                                          |
-| `isNullable()`                           | The answer, read off that list                                 | Look for a `nullable` field, which does not exist                        |
-| `soleType()`                             | The type, ignoring nullability, or null for a real union       | Filter `null` out of the list at every call site                         |
-| `exclusiveMinimum`, `exclusiveMaximum`   | A number or null                                               | Read `minimum` to work out what a boolean meant                          |
-| `enum`                                   | Every allowed value                                            | Check `const` as well                                                    |
-| `examples`                               | A list, possibly empty                                         | Check `example` as well                                                  |
-| `isFilePart`                             | Whether this is a file rather than a value                     | Know that 3.0 wrote `format: binary` and 3.1 `contentMediaType`          |
-| `dependentRequired`                      | A map of property name to the names it makes required          | Read it out of a keyword the parser hands back raw                       |
-| `name`                                   | What the document calls this schema, or null for an inline one | Work it out from the `$ref` that reached it, or from the file holding it |
-| A keyword the [matrix](#schemas) ignores | Nothing: there is no field for it                              | Wonder whether an empty value means unsupported or unwritten             |
+| Reading                                  | Always gets                                                                                                           | Never has to                                                             |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `types`                                  | A list, possibly empty                                                                                                | Handle a bare string, or a null                                          |
+| `isNullable()`                           | The answer, read off that list                                                                                        | Look for a `nullable` field, which does not exist                        |
+| `soleType()`                             | The type, ignoring nullability, or null for a real union                                                              | Filter `null` out of the list at every call site                         |
+| `exclusiveMinimum`, `exclusiveMaximum`   | A number or null                                                                                                      | Read `minimum` to work out what a boolean meant                          |
+| `enum`                                   | Every allowed value                                                                                                   | Check `const` as well                                                    |
+| `examples`                               | A list, possibly empty                                                                                                | Check `example` as well                                                  |
+| `isFilePart`                             | Whether this is a file rather than a value                                                                            | Know that 3.0 wrote `format: binary` and 3.1 `contentMediaType`          |
+| `dependentRequired`                      | A map of property name to the names it makes required                                                                 | Read it out of a keyword the parser hands back raw                       |
+| `name`                                   | What the document calls this schema, or null for an inline one, and as written rather than as a class could be called | Work it out from the `$ref` that reached it, or from the file holding it |
+| A keyword the [matrix](#schemas) ignores | Nothing: there is no field for it                                                                                     | Wonder whether an empty value means unsupported or unwritten             |
 
 **Where a spelling you wrote went is the [table above](#the-differences-the-strategy-must-absorb)**, which is the same
 decisions read from the other side: that one answers "my document says X, what happens to it", this one answers "I am
@@ -206,9 +206,10 @@ rather than asked of the parser, and a schema written in another file is the who
 
 ### Where a schema is reported from
 
-**Every position this package names is computed by walking the raw document, never taken from the parser.** A pointer
-appears in three places a consumer sees — a refusal, a recursion marker, and the `Provenance` header of a generated file
-— and a fourth reads it without printing it, since a schema's `name` is its position's last segment.
+**A schema's position is computed by walking the raw document, never taken from the parser.** Two places print one
+today, a refusal and a recursion marker, and a third reads it without printing it, since a schema's `name` is its
+position's last segment. An operation's own position is a different thing and is unaffected: it is built from the path
+template and the verb, which the document states directly.
 
 `cebe\openapi\` answers `getDocumentPosition()` with **the first site that referenced a node**, which is the right
 answer for a schema written in the document being read and the wrong one for everything else. Measured against the

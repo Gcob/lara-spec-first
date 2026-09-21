@@ -5,3 +5,7 @@ components:
       properties:
         name:
           type: string
+    Page:
+      type: integer
+    Tenant:
+      type: string

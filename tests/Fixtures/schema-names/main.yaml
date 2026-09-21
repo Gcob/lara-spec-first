@@ -87,6 +87,34 @@ paths:
       responses:
         '201':
           description: Created
+  /listed:
+    # A `query` parameter is not the first one written, and one of them is
+    # declared on the Path Item rather than on the operation: both are indices
+    # the raw walk has to take from the document rather than from the merged
+    # list the extractor reads.
+    parameters:
+      - name: tenant
+        in: query
+        schema:
+          $ref: './other.yaml#/components/schemas/Tenant'
+    get:
+      operationId: listThings
+      parameters:
+        - name: X-Trace
+          in: header
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            $ref: './other.yaml#/components/schemas/Page'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: './other.yaml#/components/schemas/Pet'
 components:
   schemas:
     LocalPet:

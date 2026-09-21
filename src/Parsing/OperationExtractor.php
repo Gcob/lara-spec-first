@@ -541,7 +541,9 @@ final readonly class OperationExtractor
      *                                    the raw walk rather than asked of the
      *                                    parser — see {@see DocumentWalk}
      * @param  array<string, true>  $open  the nodes this descent is inside, by
-     *                                     written position. Passed by value
+     *                                     written position and by object
+     *                                     identity, which is two keys for one
+     *                                     node — see the body. Passed by value
      *                                     rather than held on the instance: two
      *                                     sibling properties may legitimately
      *                                     point at one shared schema, and a set
@@ -557,9 +559,17 @@ final readonly class OperationExtractor
         SchemaPosition $position,
         array $open = [],
     ): Schema {
-        $identity = $position->key();
+        // Two keys for one node, and the pair is the point. The position is
+        // what cuts at the right level, since the parser hands back a *copy* of
+        // an externally resolved schema and object identity never repeats for
+        // one. Object identity is kept beside it as a floor: were the raw walk
+        // ever unable to follow a `$ref` the parser did follow, positions would
+        // stop repeating too, and an unbounded descent is a hang rather than a
+        // message. Neither can fire before the document actually repeats
+        // something, so keeping both cannot cut early.
+        $keys = [$position->key(), 'object:'.spl_object_id($node)];
 
-        if (isset($open[$identity])) {
+        if (isset($open[$keys[0]]) || isset($open[$keys[1]])) {
             // A schema pointing back at one of its own ancestors — a tree, a
             // comment thread, nested categories. The contract is supported and
             // the object graph is infinite, so the walk stops here and names
@@ -576,7 +586,8 @@ final readonly class OperationExtractor
 
         $this->assertSchemaIsServable($node, $walk->pointer($position));
 
-        $open[$identity] = true;
+        $open[$keys[0]] = true;
+        $open[$keys[1]] = true;
         $keywords = [];
 
         // **Presence is read from the keys the document actually wrote, not

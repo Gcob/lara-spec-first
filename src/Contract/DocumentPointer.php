@@ -52,11 +52,15 @@ final readonly class DocumentPointer
      * old answer wrong, and the walk that computes the new one is Parsing\'s:
      * this class only spells what it found.
      *
+     * **A whole file is named by its path alone**, with no `#` after it. A
+     * schema that *is* a file has nothing to point at inside it, and a message
+     * ending in a dangling `#` reads as a string that got cut off.
+     *
      * @see docs/guide/openapi-support.md — "Where a schema is reported from"
      */
     public static function inFile(string $relativePath, string $pointer): string
     {
-        return $relativePath.'#'.$pointer;
+        return $pointer === '' ? $relativePath : $relativePath.'#'.$pointer;
     }
 
     /**

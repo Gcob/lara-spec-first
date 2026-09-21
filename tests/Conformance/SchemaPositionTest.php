@@ -121,6 +121,39 @@ it('gives one name to three spellings of one schema', function (): void {
     expect(array_unique($names))->toBe(['Pet']);
 });
 
+// A body is not the only schema the extractor walks, and the other two reach
+// their position by a different route: a response through its status code, and
+// a query parameter through an index into a list the extractor merged. The
+// index is the one worth asserting rather than reading — the parameter loop was
+// split in two so that each raw index stays available, and an off-by-one there
+// names another parameter's schema instead of failing.
+it('names a schema reached through a response', function (): void {
+    $response = operationsById('schema-names/main.yaml')['listThings']->responses[0];
+
+    expect($response->status)->toBe('200')
+        ->and($response->content['application/json']->name)->toBe('Pet');
+});
+
+it('names a schema reached through a query parameter', function (
+    string $parameter,
+    string $expected,
+): void {
+    $parameters = [];
+
+    foreach (operationsById('schema-names/main.yaml')['listThings']->queryParameters as $declared) {
+        $parameters[$declared->name] = $declared;
+    }
+
+    expect($parameters[$parameter]->schema->name)->toBe($expected);
+})->with([
+    // Written second, behind a `header` parameter the extractor skips, so a
+    // position taken from the filtered list rather than from the document
+    // would land on the header's schema.
+    'written on the operation, behind a parameter that is not a query one' => ['page', 'Page'],
+    // Written on the Path Item, which is a different base position entirely.
+    'written on the Path Item' => ['tenant', 'Tenant'],
+]);
+
 // The guard for risk 6 of the plan. The raw walk follows `$ref` itself rather
 // than asking the parser, so the two could drift — a relative path resolved
 // against a different directory, say — and the failure would be a silently
