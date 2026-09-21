@@ -42,6 +42,62 @@ final readonly class DocumentPointer
     }
 
     /**
+     * A position in a file other than the root document — the one spelling
+     * this package uses when a pointer alone would name the wrong file.
+     *
+     * The root document keeps the bare `#/…` form it has always had, so no
+     * existing message changes; a schema written in another file gains the
+     * relative path in front of it, and a reader can open what the message
+     * names. Splitting a specification across files is the shape that made the
+     * old answer wrong, and the walk that computes the new one is Parsing\'s:
+     * this class only spells what it found.
+     *
+     * @see docs/guide/openapi-support.md — "Where a schema is reported from"
+     */
+    public static function inFile(string $relativePath, string $pointer): string
+    {
+        return $relativePath.'#'.$pointer;
+    }
+
+    /**
+     * The decoded node one pointer names, or null when the document has
+     * nothing there or has something that is not an object.
+     *
+     * Deliberately the plainest possible walk: it resolves a pointer against a
+     * *decoded array* and resolves nothing else on the way — a `$ref` met
+     * mid-path is not followed, because a pointer whose own path runs through
+     * a reference is a shape the parser would have to answer for.
+     *
+     * Here rather than beside either caller: the cycle detector needs it
+     * before the parser runs, and the extractor's raw walk needs it during,
+     * and a second copy of this loop is a second escaping convention waiting
+     * to disagree with {@see self::unescape()} above it.
+     *
+     * Accepts both spellings of the same pointer, `#/a/b` and `/a/b`, because
+     * the first is how this package writes one and the second is how a `$ref`
+     * fragment arrives.
+     *
+     * @param  array<string, mixed>  $document
+     * @return array<array-key, mixed>|null
+     */
+    public static function nodeAt(string $pointer, array $document): ?array
+    {
+        $node = $document;
+
+        foreach (array_slice(explode('/', $pointer), 1) as $segment) {
+            $key = self::unescape($segment);
+
+            if (! is_array($node) || ! array_key_exists($key, $node)) {
+                return null;
+            }
+
+            $node = $node[$key];
+        }
+
+        return is_array($node) ? $node : null;
+    }
+
+    /**
      * One segment, with the two characters RFC 6901 reserves escaped.
      *
      * Order matters and is not interchangeable: `~` is replaced first, so a

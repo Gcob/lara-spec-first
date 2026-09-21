@@ -177,17 +177,18 @@ to watch out for.
 validation, response DTOs, DTO factories, the Faker mocker, spec-driven test data, and the sanitized public copy. What
 follows is the whole of what one of them has to know, and none of it requires knowing which version was read.
 
-| Reading                                  | Always gets                                              | Never has to                                                    |
-| ---------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------- |
-| `types`                                  | A list, possibly empty                                   | Handle a bare string, or a null                                 |
-| `isNullable()`                           | The answer, read off that list                           | Look for a `nullable` field, which does not exist               |
-| `soleType()`                             | The type, ignoring nullability, or null for a real union | Filter `null` out of the list at every call site                |
-| `exclusiveMinimum`, `exclusiveMaximum`   | A number or null                                         | Read `minimum` to work out what a boolean meant                 |
-| `enum`                                   | Every allowed value                                      | Check `const` as well                                           |
-| `examples`                               | A list, possibly empty                                   | Check `example` as well                                         |
-| `isFilePart`                             | Whether this is a file rather than a value               | Know that 3.0 wrote `format: binary` and 3.1 `contentMediaType` |
-| `dependentRequired`                      | A map of property name to the names it makes required    | Read it out of a keyword the parser hands back raw              |
-| A keyword the [matrix](#schemas) ignores | Nothing: there is no field for it                        | Wonder whether an empty value means unsupported or unwritten    |
+| Reading                                  | Always gets                                                    | Never has to                                                             |
+| ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `types`                                  | A list, possibly empty                                         | Handle a bare string, or a null                                          |
+| `isNullable()`                           | The answer, read off that list                                 | Look for a `nullable` field, which does not exist                        |
+| `soleType()`                             | The type, ignoring nullability, or null for a real union       | Filter `null` out of the list at every call site                         |
+| `exclusiveMinimum`, `exclusiveMaximum`   | A number or null                                               | Read `minimum` to work out what a boolean meant                          |
+| `enum`                                   | Every allowed value                                            | Check `const` as well                                                    |
+| `examples`                               | A list, possibly empty                                         | Check `example` as well                                                  |
+| `isFilePart`                             | Whether this is a file rather than a value                     | Know that 3.0 wrote `format: binary` and 3.1 `contentMediaType`          |
+| `dependentRequired`                      | A map of property name to the names it makes required          | Read it out of a keyword the parser hands back raw                       |
+| `name`                                   | What the document calls this schema, or null for an inline one | Work it out from the `$ref` that reached it, or from the file holding it |
+| A keyword the [matrix](#schemas) ignores | Nothing: there is no field for it                              | Wonder whether an empty value means unsupported or unwritten             |
 
 **Where a spelling you wrote went is the [table above](#the-differences-the-strategy-must-absorb)**, which is the same
 decisions read from the other side: that one answers "my document says X, what happens to it", this one answers "I am
@@ -198,6 +199,62 @@ supported contract and an infinite object graph, so the node that would have rep
 ancestor's JSON Pointer in `recursesTo` and nothing else. A tree, a comment thread and nested categories all produce
 one. Truncating in silence would hand a generator a schema that is wrong rather than one that is incomplete, which
 [rule 2](#the-four-rules) forbids.
+
+**Both `recursesTo` and `name` are read off the same thing: where the schema is written.** That position is computed
+rather than asked of the parser, and a schema written in another file is the whole reason. See
+[below](#where-a-schema-is-reported-from).
+
+### Where a schema is reported from
+
+**Every position this package names is computed by walking the raw document, never taken from the parser.** A pointer
+appears in three places a consumer sees — a refusal, a recursion marker, and the `Provenance` header of a generated file
+— and a fourth reads it without printing it, since a schema's `name` is its position's last segment.
+
+`cebe\openapi\` answers `getDocumentPosition()` with **the first site that referenced a node**, which is the right
+answer for a schema written in the document being read and the wrong one for everything else. Measured against the
+vendored parser:
+
+| How the schema is reached                        | What the parser reports                            | Usable |
+| ------------------------------------------------ | -------------------------------------------------- | ------ |
+| `$ref` to `#/components/schemas/NewUser`         | `/components/schemas/NewUser`, the same everywhere | Yes    |
+| A nested property's own local `$ref`             | That component's position                          | Yes    |
+| A local alias of a local component               | The target, not the alias                          | Yes    |
+| A recursive local schema                         | The component's position                           | Yes    |
+| `$ref` to `./other.yaml#/components/schemas/Pet` | The first site referencing it, under `/paths`      | No     |
+| A local component aliasing an external one       | The same first site, not the component             | No     |
+
+**So the extractor keeps its own answer**, taking the same steps through the decoded arrays that it takes through the
+parser's resolved objects: `properties/tag`, `items`, `allOf/0`. Where the raw node holds a `$ref`, the walk follows it
+— to a pointer in the same file, to another file resolved against the directory of the document that wrote it, or to a
+whole file — and it keeps following while the target is itself a reference, so an alias lands where the schema is really
+written. Only one kind of target has to be handled, because
+[a remote reference is rewritten into a vendored file](./remote-references.md) before anything sees the document.
+
+**A position is written as a pointer alone for the root document**, exactly as it always was, and as
+`relative/path.yaml#/pointer` for a schema written anywhere else, relative to the root document so that two messages can
+be compared.
+
+What that corrects, all of it for multi-file contracts only:
+
+| Reading            | Before                                            | Now                                                 |
+| ------------------ | ------------------------------------------------- | --------------------------------------------------- |
+| A refusal          | A pointer into a file that has nothing at it      | `other.yaml#/components/schemas/Pet/properties/tag` |
+| A recursion marker | The wrong pointer, and the cut one level too late | The right position, cut at the first repeat         |
+| A schema's name    | Recoverable for a local component only            | Recoverable wherever the component is written       |
+
+**The late cut is the one worth explaining**, because it was a wrong value rather than a wrong label. Recursion used to
+be detected by object identity, and the parser hands back a _copy_ of a schema it resolved out of another file — so the
+node and the ancestor it points back at were two objects, and the walk descended one level further than the document
+describes. Two visits to one `(file, pointer)` are the same definition however many copies of it exist, so the detector
+compares positions instead.
+
+**A name comes from the schema a reference lands on, never from the file holding it and never from how the reference was
+spelled.** A position of exactly `/components/schemas/{Name}`, in any file, gives `{Name}`; a schema that is a whole
+file gives the file name without its extension, which is the convention multi-file specifications already use, and only
+when that reads as a PHP identifier. Everything else is unnamed, and what an inline schema should be called is a
+generator's decision rather than the contract's. The reason is that splitting a specification across files does not
+change the contract, so it must not rename a generated class, and one schema has several spellings — a relative path
+from a subdirectory, a local alias — which would otherwise become several types where the author wrote one.
 
 ### Where the parser sits: decided
 
@@ -285,6 +342,7 @@ supported range; the line numbers may not.
 | A pure `$ref` cycle exhausts memory instead of raising.                                                                              | Verified: `A: {$ref: B}` / `B: {$ref: A}` under `RESOLVE_MODE_ALL` dies in `JsonPointer.php:108` with _Allowed memory size exhausted_                                                                                                                                                                                         | The parser does carry cycle checks (`Reference.php:324,330`), but this shape recurses past them. A malformed document takes the process down rather than producing a diagnostic: the one failure mode the doctor cannot report on, because it never gets to return. **Detecting `$ref` cycles is our job, before the document reaches the parser.** An ordinary recursive _schema_ is fine; the two are [different things](#references-and-security).                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `components.pathItems` is not modelled at all.                                                                                       | Verified: `Components::attributes()` lists nine keys and `pathItems` is not among them                                                                                                                                                                                                                                        | A 3.1 document reusing a Path Item through `#/components/pathItems/…` resolves to a plain value, ends up with **no operations, and no error**, so the endpoint disappears in silence, which is the one outcome this package must never produce. Refused where it is read, naming the two forms that do work: a `$ref` to another path, and a `$ref` to another file. Both verified.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | A `$ref` whose JSON pointer lands inside data exhausts memory the same way a pure cycle does.                                        | Verified: `tests/Fixtures/ref-inside-example.yaml` and `tests/Fixtures/example-object-value.yaml`, each once accepted by `ReferenceCycleDetector` and each dying under `OperationExtractor::parse()` with _Allowed memory size exhausted_, `Reference.php:246` / `Reference.php:328` recursing without ever reaching a schema | A second way into the same failure as the row above, and the one a rule about key names cannot see: `#/components/schemas/A/example` is a legal pointer, `example` is legitimately data and is not walked, so no `$ref`-shaped node appears anywhere in the chain the guard collects. Only the parser, resolving the pointer against the already-built object tree, finds the `$ref` sitting inside that data and loops on it. **Guarded against:** the guard now [follows a reference into the position it points at](#reading-a-document), which is the one moment a literal becomes specification. Both documents raise a cycle fault today, and `tests/Conformance/KnownParserBugsTest.php` keeps its child process to pin the other half, that they no longer take the interpreter down, the same way `tests/Support/extract.php` and the "Subprocess assertions" row in [`stack.md`](../project/stack.md) describe. |
+| `getDocumentPosition()` reports the first site that referenced a node, not where it is written.                                      | Verified: a `$ref` to `./other.yaml#/components/schemas/Pet` answers with a pointer under `/paths` in the root document, and so does a local component that aliases it                                                                                                                                                        | Every position read out of it is wrong for a schema written in another file: a refusal names a pointer that file has nothing at, a recursion marker cuts a level late because the parser's copy is not the original object, and a schema's own name is unrecoverable. **Read around**: the extractor walks the raw document beside the resolved one and computes its own position. See [where a schema is reported from](#where-a-schema-is-reported-from).                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | An absent keyword is indistinguishable from one written with its default value.                                                      | `SpecBaseObject.php:361-393`, `Schema.php` `attributeDefaults()`                                                                                                                                                                                                                                                              | `__get()` falls back to `attributeDefaults()` and `hasPropertyValue()` is `protected`, so from our side an absent `additionalProperties` reads `true` exactly as an explicit `additionalProperties: true` does. The same holds for `nullable`, `exclusiveMinimum` and `exclusiveMaximum`, and for any boolean through the typed fallback. `__isset()` does not help: it returns `__get() !== null`, true for a defaulted key. **Read around**, and it is the one caveat on this page that is: extraction takes its keys from `getSerializableData()`, which returns the written properties with no defaults folded in, so an absent `additionalProperties` reaches the contract as silence rather than as the `true` the parser invents. It also recovers a keyword written as `null`, which `__isset()` reports as absent and `__get()` refuses outright.                                                                |
 
 ## What we depend on the parser for

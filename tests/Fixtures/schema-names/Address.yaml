@@ -1,0 +1,6 @@
+# A schema that is a whole file, which is how multi-file specifications
+# usually name one. The file name is the name the author chose.
+type: object
+properties:
+  street:
+    type: string

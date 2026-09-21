@@ -31,6 +31,16 @@ namespace Gcob\LaraSpecFirst\Contract;
 final readonly class Schema
 {
     /**
+     * @param  string|null  $name  the name the document gives this schema, and
+     *                             null for one written inline. A key of
+     *                             `components.schemas`, in whichever file holds
+     *                             it, or the file name of a schema that is a
+     *                             whole file — never derived from how a `$ref`
+     *                             spelled it, so splitting a specification
+     *                             across files renames nothing. What a
+     *                             generator calls the class it emits is its own
+     *                             decision; this is only what the author called
+     *                             the schema
      * @param  list<SchemaType>  $types  always a list, never a bare string, and
      *                                   empty when the document states no type.
      *                                   3.0's single string and 3.1's union
@@ -86,6 +96,7 @@ final readonly class Schema
      *                                   cut here and named rather than walked
      */
     public function __construct(
+        public ?string $name = null,
         public array $types = [],
         public ?string $format = null,
         public array $properties = [],

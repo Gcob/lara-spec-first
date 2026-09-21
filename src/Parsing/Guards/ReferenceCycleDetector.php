@@ -230,7 +230,7 @@ final readonly class ReferenceCycleDetector
                 continue;
             }
 
-            $node = self::nodeAt($target, $document);
+            $node = DocumentPointer::nodeAt($target, $document);
 
             if ($node === null || ! isset($node['$ref']) || ! is_string($node['$ref'])) {
                 continue;
@@ -248,36 +248,6 @@ final readonly class ReferenceCycleDetector
         }
 
         return $references;
-    }
-
-    /**
-     * The decoded node one pointer names, or null when the document has nothing
-     * there or has something that is not an object.
-     *
-     * Deliberately the plainest possible walk: it resolves a pointer against the
-     * *decoded array*, which is all this guard ever sees, and it resolves
-     * nothing else on the way — a `$ref` met mid-path is not followed, because
-     * a pointer whose own path runs through a reference is a shape the parser
-     * would have to answer for, not this guard.
-     *
-     * @param  array<string, mixed>  $document
-     * @return array<array-key, mixed>|null
-     */
-    private static function nodeAt(string $pointer, array $document): ?array
-    {
-        $node = $document;
-
-        foreach (array_slice(explode('/', $pointer), 1) as $segment) {
-            $key = self::unescape($segment);
-
-            if (! is_array($node) || ! array_key_exists($key, $node)) {
-                return null;
-            }
-
-            $node = $node[$key];
-        }
-
-        return is_array($node) ? $node : null;
     }
 
     /**
@@ -374,19 +344,5 @@ final readonly class ReferenceCycleDetector
     private static function escape(string $segment): string
     {
         return DocumentPointer::escape($segment);
-    }
-
-    /**
-     * The same round trip, read back, for the one place this class walks a
-     * pointer into the document instead of writing one out.
-     *
-     * Beside its counterpart rather than called through `DocumentPointer`
-     * directly at the one call site: the pair is what makes it visible that
-     * both directions of the spelling come from the same place, which is the
-     * whole point of that class owning it.
-     */
-    private static function unescape(string $segment): string
-    {
-        return DocumentPointer::unescape($segment);
     }
 }

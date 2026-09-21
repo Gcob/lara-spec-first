@@ -1,0 +1,5 @@
+# A file whose name is not a PHP identifier, so it gives no name at all.
+type: object
+properties:
+  name:
+    type: string

@@ -1,0 +1,9 @@
+# The third spelling of the same schema: a relative reference climbing out of
+# a subdirectory, which resolves against *this* file's directory.
+components:
+  schemas:
+    Wrapper:
+      type: object
+      properties:
+        pet:
+          $ref: '../other.yaml#/components/schemas/Pet'
