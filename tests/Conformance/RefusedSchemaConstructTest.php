@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
-use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
-use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Symfony\Component\Yaml\Yaml;
 
 // The equivalence class this suite was missing: a schema construct that would
@@ -24,6 +22,53 @@ use Symfony\Component\Yaml\Yaml;
 //
 // @see docs/guide/openapi-support.md — "Schemas"
 // @see AGENTS.md — "Automated tests are required"
+
+/**
+ * Read a 3.1 document whose body schema writes one raw keyword over inline
+ * schemas.
+ *
+ * Built in a temporary directory rather than kept beside the other fixtures:
+ * eleven near-identical files would bury the ten that say something, and what
+ * changes between these is one key. The read itself goes through the helper in
+ * `tests/Pest.php`, so the "throw the first fault" convention every `toThrow()`
+ * in this suite reads against has one definition rather than two.
+ *
+ * @return list<Operation>
+ */
+function extractInlineRawKeyword(string $keyword, mixed $value): array
+{
+    $document = [
+        'openapi' => '3.1.0',
+        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
+        'paths' => [
+            '/things' => [
+                'post' => [
+                    'operationId' => 'createThing',
+                    'requestBody' => [
+                        'content' => [
+                            'application/json' => [
+                                'schema' => ['type' => 'object', $keyword => $value],
+                            ],
+                        ],
+                    ],
+                    'responses' => ['201' => ['description' => 'Created']],
+                ],
+            ],
+        ],
+    ];
+
+    // Named rather than asked for: `tempnam()` creates the file it names, and
+    // appending an extension to that name leaves the original behind on every
+    // run. The rest of the suite names its own path for the same reason.
+    $path = sys_get_temp_dir().'/lsf-raw-'.bin2hex(random_bytes(6)).'.yaml';
+    file_put_contents($path, Yaml::dump($document, 10));
+
+    try {
+        return extractDocumentAt($path);
+    } finally {
+        unlink($path);
+    }
+}
 
 // Class one: a keyword whose value is a schema, handed back raw, with a
 // reference inside it the parser never resolved.
@@ -95,56 +140,15 @@ it('refuses a dynamic reference and names what was probably meant', function ():
 // Class four: a reference aimed *into* a `$defs`. The keyword itself stays
 // ignored, since a definition kept there is only invisible. Aiming at one is
 // what turns invisible into wrong.
-it('refuses a reference aimed at a position inside a $defs', function (): void {
-    expect(fn () => extractFixture('ref-into-defs.yaml'))
+it('refuses a reference aimed at a $defs', function (string $fixture): void {
+    expect(fn () => extractFixture($fixture))
         ->toThrow(RejectedConstructException::class, 'inside a `$defs`');
-});
-
-/**
- * Read a 3.1 document whose body schema writes one raw keyword over inline
- * schemas.
- *
- * Built in a temporary directory rather than kept beside the other fixtures:
- * eleven near-identical files would bury the ten that say something, and what
- * changes between these is one key. Throws the first fault the read collected,
- * which is the convention every `toThrow()` in this suite reads against.
- *
- * @return list<Operation>
- */
-function extractInlineRawKeyword(string $keyword, mixed $value): array
-{
-    $document = [
-        'openapi' => '3.1.0',
-        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
-        'paths' => [
-            '/things' => [
-                'post' => [
-                    'operationId' => 'createThing',
-                    'requestBody' => [
-                        'content' => [
-                            'application/json' => [
-                                'schema' => ['type' => 'object', $keyword => $value],
-                            ],
-                        ],
-                    ],
-                    'responses' => ['201' => ['description' => 'Created']],
-                ],
-            ],
-        ],
-    ];
-
-    $path = tempnam(sys_get_temp_dir(), 'lsf-').'.yaml';
-    file_put_contents($path, Yaml::dump($document, 10));
-
-    try {
-        $outcome = ReadOutcome::read(new SpecDocumentReader, $path);
-    } finally {
-        unlink($path);
-    }
-
-    if (! $outcome->isClean()) {
-        throw $outcome->faults[0];
-    }
-
-    return $outcome->operations;
-}
+})->with([
+    'at something inside it' => ['ref-into-defs.yaml'],
+    // The container itself, which resolves to a plain array exactly as a
+    // pointer one segment deeper does. It was accepted until the refusal
+    // learned to read the last segment too, and what it cost was a property
+    // vanishing with nothing said: the expensive shape of this bug is that
+    // nothing fails.
+    'at the container itself' => ['ref-at-the-defs-container.yaml'],
+]);

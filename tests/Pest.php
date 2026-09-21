@@ -59,7 +59,22 @@ function specFixturePath(string $name): string
  */
 function extractFixture(string $name): array
 {
-    $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath($name));
+    return extractDocumentAt(specFixturePath($name));
+}
+
+/**
+ * The same read, for a document that has no fixture file of its own.
+ *
+ * A conformance case that varies one keyword across a dozen datasets is better
+ * built in memory than committed a dozen times, and it still has to report
+ * faults the way every `toThrow()` in that suite expects. One copy of the rule
+ * lives here so the two cannot drift.
+ *
+ * @return list<Operation>
+ */
+function extractDocumentAt(string $path): array
+{
+    $outcome = ReadOutcome::read(new SpecDocumentReader, $path);
 
     if (! $outcome->isClean()) {
         throw $outcome->faults[0];

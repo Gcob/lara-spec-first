@@ -1,0 +1,32 @@
+# A reference aimed at the `$defs` container itself rather than at something
+# inside it. It resolves to a plain array exactly as a pointer one segment
+# deeper does, and it fails the same silent way: no error, and the property
+# holding the reference simply gone. `kept` is here so the loss is visible.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /amounts:
+    post:
+      operationId: createAmount
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kept:
+                  type: string
+                aimed:
+                  $ref: '#/components/schemas/Money/$defs'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Money:
+      type: object
+      $defs:
+        Amount:
+          type: integer

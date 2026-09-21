@@ -676,12 +676,23 @@ final readonly class OperationExtractor
      * happens to be named that. Refusing it would name a reason that is not the
      * one, which is a worse failure than not refusing at all: the author is
      * told to move a definition that is not where the message says it is.
+     *
+     * **The container counts as much as what is inside it**, so the test is two
+     * clauses rather than one. `#/…/Money/$defs` resolves to a plain array
+     * exactly as `#/…/Money/$defs/Amount` does, and it fails the same silent
+     * way: verified end to end, the read comes back with no fault and the
+     * property holding the reference simply gone. A refusal that missed the
+     * container would be one that misses the shape it advertises.
      */
     private function aimsIntoDefinitions(string $reference): bool
     {
         $fragment = strstr($reference, '#');
 
-        return $fragment !== false && str_contains($fragment, '/$defs/');
+        if ($fragment === false) {
+            return false;
+        }
+
+        return str_contains($fragment, '/$defs/') || str_ends_with($fragment, '/$defs');
     }
 
     /**
