@@ -407,10 +407,10 @@ lifetime of the project, so it should say _do not edit this_ without anyone havi
 in one word; a name like `Integration` says nothing about ownership, which is the only thing a reader needs from it at a
 glance.
 
-**One configurable root, with fixed sub-namespaces beneath it**, `Controllers`, `Data` and whatever follows, rather than
-a separate config key per kind of output. A team that keeps its DTOs in `App\Data` will notice the difference, and it is
-a small one: these are files nobody may edit, so where they sit matters far less than for hand-written code. What one
-root buys is worth more:
+**One configurable root, with fixed sub-namespaces beneath it**, `Controllers`, `Requests`, `Data` and whatever follows,
+rather than a separate config key per kind of output. A team that keeps its DTOs in `App\Data` will notice the
+difference, and it is a small one: these are files nobody may edit, so where they sit matters far less than for
+hand-written code. What one root buys is worth more:
 
 - **`.gitignore` is one line.** [The mechanism we chose](#which-generated-code-is-committed) works by directory, so a
   split tree means several entries, and a consumer who forgets one ends up with half a generated tree committed and half

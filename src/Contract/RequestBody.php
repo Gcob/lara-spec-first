@@ -13,7 +13,10 @@ namespace Gcob\LaraSpecFirst\Contract;
  * refusal belongs where the rule set is generated, not where the contract is
  * read. The contract's job is to say what the document states.
  *
- * TODO (#35): the refusal above, and the media type a generated request reads.
+ * `Generation\RuleSetBuilder` is where both halves of that now happen: which
+ * media types are read, and the refusal. Named rather than linked, because
+ * `Contract\` may not import `Generation\` and a docblock reference is exactly
+ * what a formatter turns into an import.
  *
  * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
  */

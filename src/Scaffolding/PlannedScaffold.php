@@ -28,6 +28,12 @@ final readonly class PlannedScaffold
      * @param  bool  $exists  whether a file is already there, which is the one
      *                        condition that makes this scaffold a no-op: a class the
      *                        developer owns is never overwritten
+     * @param  string|null  $request  the fully-qualified generated request the
+     *                                parent's `routeAction` declares, or null
+     *                                when the operation validates nothing. The
+     *                                child has to declare the same parameter or
+     *                                PHP refuses the override, so the scaffold
+     *                                cannot work it out for itself
      */
     public function __construct(
         public Operation $operation,
@@ -35,5 +41,6 @@ final readonly class PlannedScaffold
         public string $path,
         public string $parent,
         public bool $exists,
+        public ?string $request = null,
     ) {}
 }

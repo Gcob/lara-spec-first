@@ -54,6 +54,7 @@ function plannedScaffold(
     string $method = 'get',
     string $template = '/users/{id}',
     ?string $operationId = 'showUser',
+    ?string $request = null,
 ): PlannedScaffold {
     $operation = new Operation(
         index: 0,
@@ -69,6 +70,7 @@ function plannedScaffold(
         scaffoldTree().$path,
         'App\\Http\\Generated\\Controllers\\UserController',
         false,
+        $request,
     );
 }
 
@@ -160,6 +162,33 @@ describe('the file it writes', function (): void {
         expect(scaffoldOf(plannedScaffold(template: '/users')))
             ->toContain('public function routeAction(): mixed')
             ->toContain('return parent::routeAction();');
+    });
+
+    /*
+     * The generated request, which is the one parameter that is not the path's.
+     * Both sides of the seam read it from `RouteActionSignature`, because PHP
+     * forbids an override from widening: a scaffold that derived the signature
+     * its own way would write a child that is a fatal error the moment the two
+     * derivations disagree, which is exactly how this parameter arrived.
+     */
+
+    it('declares the request the parent declares, first and imported', function (): void {
+        $contents = scaffoldOf(plannedScaffold(
+            request: 'App\\Http\\Generated\\Requests\\ShowUserRequest',
+        ));
+
+        expect($contents)
+            ->toContain('use App\\Http\\Generated\\Requests\\ShowUserRequest;')
+            ->toContain('public function routeAction(ShowUserRequest $request, string $id): mixed')
+            ->toContain('return parent::routeAction($request, $id);');
+    });
+
+    it('declares nothing extra for an operation with nothing to validate', function (): void {
+        $contents = scaffoldOf(plannedScaffold());
+
+        expect($contents)
+            ->toContain('public function routeAction(string $id): mixed')
+            ->and($contents)->not->toContain('Requests');
     });
 
     it('emits PHP that parses, and the same bytes twice', function (): void {
