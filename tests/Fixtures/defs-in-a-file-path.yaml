@@ -1,0 +1,23 @@
+# A reference into a file whose directory happens to be called `$defs`. The
+# fragment points at an ordinary component, so nothing is aimed inside a `$defs`
+# keyword and the document is fine. Contrived, and the point is the message: a
+# refusal here would tell the author to move a definition that is not there.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /amounts:
+    post:
+      operationId: createAmount
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  $ref: 'schemas/$defs/shared.yaml#/components/schemas/Amount'
+      responses:
+        '201':
+          description: Created

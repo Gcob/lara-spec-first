@@ -58,23 +58,6 @@ use Throwable;
 final readonly class OperationExtractor
 {
     /**
-     * Every schema keyword read into the normal form, flat and in one place.
-     *
-     * The list is closed on purpose. A keyword the support matrix marks
-     * `Ignored` is absent here, so nothing can read it by accident, and the
-     * three the parser does not model — `const`, `examples` and
-     * `contentMediaType` — are present because they are honored despite coming
-     * back as raw values.
-     *
-     * `oneOf`, `anyOf` and `not` are the absences worth naming, since a reader
-     * checking this list against the matrix will look for them: the parser does
-     * model them, so no unresolved pointer can hide in one, and the matrix
-     * ignores them because no Laravel rule expresses "exactly one of these
-     * shapes".
-     *
-     * @see docs/guide/openapi-support.md — "Schemas"
-     */
-    /**
      * Keywords a schema may not carry at all, each for its own reason.
      *
      * `$id` rebases how every relative reference under it resolves, and the four
@@ -139,6 +122,23 @@ final readonly class OperationExtractor
      */
     private const DATA_KEYS = ['example', 'examples', 'default', 'enum', 'const'];
 
+    /**
+     * Every schema keyword read into the normal form, flat and in one place.
+     *
+     * The list is closed on purpose. A keyword the support matrix marks
+     * `Ignored` is absent here, so nothing can read it by accident, and the
+     * three the parser does not model — `const`, `examples` and
+     * `contentMediaType` — are present because they are honored despite coming
+     * back as raw values.
+     *
+     * `oneOf`, `anyOf` and `not` are the absences worth naming, since a reader
+     * checking this list against the matrix will look for them: the parser does
+     * model them, so no unresolved pointer can hide in one, and the matrix
+     * ignores them because no Laravel rule expresses "exactly one of these
+     * shapes".
+     *
+     * @see docs/guide/openapi-support.md — "Schemas"
+     */
     private const SCHEMA_KEYWORDS = [
         'type',
         'nullable',
@@ -221,6 +221,17 @@ final readonly class OperationExtractor
                     // arrives as a different type and has to be skipped the same
                     // way. Both are one operation failing to join the result,
                     // and neither is a reason to stop reading the ones after it.
+                    //
+                    // **Caught by the interface rather than by the two types
+                    // that reach it today, and the constraint that comes with
+                    // that is worth stating.** Narrowing it would let a third
+                    // type escape the pipeline, which
+                    // {@see ReadOutcome} promises never happens. So anything
+                    // thrown from buildOperation() lands in a report, and
+                    // {@see \Gcob\LaraSpecFirst\Doctor\FaultClassification::sectionOf()}
+                    // has to know its class: it raises rather than guessing, so
+                    // a new exception type thrown from here needs a row there
+                    // in the same change.
                     $faults[] = $fault;
 
                     continue;
@@ -632,7 +643,7 @@ final readonly class OperationExtractor
         if (isset($node['$ref'])) {
             // A Reference Object carries nothing else worth walking: 3.1 allows
             // `summary` and `description` beside it, and neither holds a target.
-            return is_string($node['$ref']) && str_contains($node['$ref'], '/$defs/')
+            return is_string($node['$ref']) && $this->aimsIntoDefinitions($node['$ref'])
                 ? [RejectedConstructException::referenceIntoDefinitions('#'.$pointer, $node['$ref'])]
                 : [];
         }
@@ -654,6 +665,23 @@ final readonly class OperationExtractor
         }
 
         return $faults;
+    }
+
+    /**
+     * Whether a reference points at a position inside a `$defs`.
+     *
+     * **Read on the fragment only, never on the whole reference.** A file path
+     * may legitimately contain a `$defs` segment, and
+     * `schemas/$defs/thing.yaml#/Foo` points at `Foo` in a file whose directory
+     * happens to be named that. Refusing it would name a reason that is not the
+     * one, which is a worse failure than not refusing at all: the author is
+     * told to move a definition that is not where the message says it is.
+     */
+    private function aimsIntoDefinitions(string $reference): bool
+    {
+        $fragment = strstr($reference, '#');
+
+        return $fragment !== false && str_contains($fragment, '/$defs/');
     }
 
     /**

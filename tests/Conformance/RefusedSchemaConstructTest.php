@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
+use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
+use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
+use Symfony\Component\Yaml\Yaml;
 
 // The equivalence class this suite was missing: a schema construct that would
 // be read *wrongly* rather than not at all.
@@ -43,6 +47,36 @@ it('accepts the same keyword when the reference is data', function (): void {
     expect(extractFixture('raw-keyword-holds-data.yaml'))->toHaveCount(1);
 });
 
+// Eleven keywords share the first class and one fixture covers the refusal,
+// because the mechanism is identical and eleven documents would be eleven copies
+// of one argument. The negative side is per keyword, and it has to be: what a
+// shared fixture cannot catch is one entry of SCHEMA_CARRYING_RAW_KEYWORDS
+// matching too eagerly, which would refuse a document holding nothing but
+// inline schemas.
+it('accepts a schema-carrying keyword that holds no reference', function (string $keyword, mixed $value): void {
+    expect(extractInlineRawKeyword($keyword, $value))->toHaveCount(1);
+})->with([
+    'prefixItems' => ['prefixItems', [['type' => 'string']]],
+    'contains' => ['contains', ['type' => 'string']],
+    'unevaluatedItems' => ['unevaluatedItems', ['type' => 'string']],
+    'patternProperties' => ['patternProperties', ['^x-' => ['type' => 'string']]],
+    'propertyNames' => ['propertyNames', ['type' => 'string']],
+    'dependentSchemas' => ['dependentSchemas', ['card' => ['type' => 'object']]],
+    'unevaluatedProperties' => ['unevaluatedProperties', ['type' => 'string']],
+    'contentSchema' => ['contentSchema', ['type' => 'object']],
+    'if' => ['if', ['type' => 'object']],
+    'then' => ['then', ['type' => 'object']],
+    'else' => ['else', ['type' => 'object']],
+]);
+
+// A reference whose *fragment* is ordinary and whose file path happens to carry
+// a `$defs` segment. Contrived, and what is at stake is the message rather than
+// the refusal: telling an author to move a definition that is not where the
+// message says it is would be worse than saying nothing.
+it('does not read a $defs in a file path as a $defs in a document', function (): void {
+    expect(extractFixture('defs-in-a-file-path.yaml'))->toHaveCount(1);
+});
+
 // Class two: a keyword that changes how every reference under it resolves.
 // Ignoring it would send a reference to a target the document never named.
 it('refuses a schema that rebases its own references', function (): void {
@@ -65,3 +99,52 @@ it('refuses a reference aimed at a position inside a $defs', function (): void {
     expect(fn () => extractFixture('ref-into-defs.yaml'))
         ->toThrow(RejectedConstructException::class, 'inside a `$defs`');
 });
+
+/**
+ * Read a 3.1 document whose body schema writes one raw keyword over inline
+ * schemas.
+ *
+ * Built in a temporary directory rather than kept beside the other fixtures:
+ * eleven near-identical files would bury the ten that say something, and what
+ * changes between these is one key. Throws the first fault the read collected,
+ * which is the convention every `toThrow()` in this suite reads against.
+ *
+ * @return list<Operation>
+ */
+function extractInlineRawKeyword(string $keyword, mixed $value): array
+{
+    $document = [
+        'openapi' => '3.1.0',
+        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
+        'paths' => [
+            '/things' => [
+                'post' => [
+                    'operationId' => 'createThing',
+                    'requestBody' => [
+                        'content' => [
+                            'application/json' => [
+                                'schema' => ['type' => 'object', $keyword => $value],
+                            ],
+                        ],
+                    ],
+                    'responses' => ['201' => ['description' => 'Created']],
+                ],
+            ],
+        ],
+    ];
+
+    $path = tempnam(sys_get_temp_dir(), 'lsf-').'.yaml';
+    file_put_contents($path, Yaml::dump($document, 10));
+
+    try {
+        $outcome = ReadOutcome::read(new SpecDocumentReader, $path);
+    } finally {
+        unlink($path);
+    }
+
+    if (! $outcome->isClean()) {
+        throw $outcome->faults[0];
+    }
+
+    return $outcome->operations;
+}
