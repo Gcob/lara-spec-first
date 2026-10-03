@@ -42,11 +42,24 @@ function goldenOperation(): Operation
         requestBody: new RequestBody(['application/json' => new Schema(
             types: [SchemaType::Object],
             properties: [
-                'email' => new Schema(types: [SchemaType::String], format: 'email'),
-                'age' => new Schema(types: [SchemaType::Integer]),
+                'email' => new Schema(types: [SchemaType::String], format: 'email', maxLength: 255),
+                'age' => new Schema(types: [SchemaType::Integer], minimum: 18.0),
                 'nickname' => new Schema(types: [SchemaType::String, SchemaType::Null]),
+                'role' => new Schema(types: [SchemaType::String], enum: ['admin', 'member']),
+                'tags' => new Schema(
+                    types: [SchemaType::Array],
+                    items: new Schema(types: [SchemaType::String]),
+                    uniqueItems: true,
+                ),
+                'address' => new Schema(
+                    types: [SchemaType::Object],
+                    properties: ['city' => new Schema(types: [SchemaType::String])],
+                    required: ['city'],
+                ),
+                'website' => new Schema(types: [SchemaType::String], format: 'uri'),
             ],
             required: ['email'],
+            additionalProperties: false,
         )], true),
         queryParameters: [new QueryParameter('notify', new Schema(types: [SchemaType::Boolean]))],
     );
@@ -80,10 +93,47 @@ it('emits a final class extending the framework base', function (): void {
 
 it('writes the rule set as rules() returns it', function (): void {
     expect(emittedRequest(goldenOperation()))
-        ->toContain("'email' => ['present', 'string'],")
-        ->toContain("'age' => ['sometimes', 'integer'],")
+        ->toContain("'email' => ['present', 'string', 'max:255', 'email'],")
+        ->toContain("'age' => ['sometimes', 'integer', 'min:18'],")
         ->toContain("'nickname' => ['sometimes', 'nullable', 'string'],")
+        ->toContain("'tags.*' => ['string', 'distinct:strict'],")
+        ->toContain("'address.city' => ['present_with:address', 'string'],")
         ->toContain("'notify' => ['sometimes', 'boolean'],");
+});
+
+// An array, never `in:a,b`: the string form splits on a comma inside a value.
+it('writes an enumeration as Rule::in over an array, and imports Rule', function (): void {
+    expect(emittedRequest(goldenOperation()))
+        ->toContain("'role' => ['sometimes', 'string', Rule::in(['admin', 'member'])],")
+        ->toContain('use Illuminate\\Validation\\Rule;');
+});
+
+it('imports nothing it does not use', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+        )], true),
+    );
+
+    $emitted = emittedRequest($operation, controllerShortName: 'CreateThingController');
+
+    expect($emitted)->not->toContain('use Illuminate\\Validation\\Rule;')
+        ->and($emitted)->not->toContain('use Illuminate\\Validation\\Validator;')
+        ->and($emitted)->not->toContain('function after()');
+});
+
+// A root has no field for `array:` to sit on, so a closed root becomes a check
+// on its top-level keys, read from the body rather than from the query string.
+it('closes the root with an after() check on its declared keys', function (): void {
+    expect(emittedRequest(goldenOperation()))
+        ->toContain("private const BODY_KEYS = ['email', 'age', 'nickname', 'role', 'tags', 'address', 'website'];")
+        ->toContain('public function after(): array')
+        ->toContain('$this->getInputSource()->all()');
 });
 
 // Authorization is the route's and a Policy's. A generated answer here would be
@@ -109,7 +159,7 @@ it('points at the method that declares it', function (): void {
 });
 
 it('prints every constraint it read and did not enforce', function (): void {
-    expect(emittedRequest(goldenOperation()))->toContain('`email` states `format`');
+    expect(emittedRequest(goldenOperation()))->toContain('`website` declares `format: uri`');
 });
 
 it('says so when there was nothing left unenforced', function (): void {

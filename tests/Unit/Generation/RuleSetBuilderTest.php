@@ -10,6 +10,7 @@ use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 
 /*
@@ -63,7 +64,7 @@ function operationWithInput(
  *
  * @param  array<string, Schema>  $properties
  * @param  list<string>  $required
- * @return array<string, list<string>>
+ * @return array<string, list<string|InRule>>
  */
 function rulesFor(array $properties, array $required = [], string $method = 'post'): array
 {
@@ -106,8 +107,9 @@ it('asks for a required key the way its type allows', function (SchemaType $type
             SchemaType::Integer => 'integer',
             SchemaType::Number => 'numeric',
             SchemaType::Boolean => 'boolean',
-            default => null,
-        }]))]);
+            SchemaType::Array, SchemaType::Object => 'array',
+            SchemaType::Null => null,
+        }, $type === SchemaType::Array ? 'list' : null]))]);
 })->with([
     // `""` is a string the contract allows unless it says `minLength`.
     'a string' => [SchemaType::String, 'present'],
@@ -172,7 +174,7 @@ it('keeps every other rule when a PATCH empties the required list', function ():
 
 // A plain `required` on an optional body would refuse a request the contract
 // allows, which is the one direction worse than a missing rule.
-it('does not require a property when the whole body may be absent', function (): void {
+it('does not require a lone property when the whole body may be absent', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(
             ['name' => new Schema(types: [SchemaType::String])],
@@ -181,6 +183,8 @@ it('does not require a property when the whole body may be absent', function ():
         bodyRequired: false,
     ));
 
+    // One required property has no sibling to name, and Laravel cannot tell
+    // an absent body from an empty one.
     expect($set->rules)->toBe(['name' => ['sometimes', 'string']])
         ->and(implode('', $set->findings))->toContain('may be absent entirely');
 });
@@ -272,36 +276,224 @@ it('reports a media type it does not read rather than refusing it', function ():
         ->and(implode('', $set->findings))->toContain('`application/xml`, which this package does not read');
 });
 
-// --- Every constraint maps or reports ---
+// --- Every constraint maps or reports: one case per row of the table ---
 
-it('names a keyword it does not translate, and the field it was written on', function (
-    Schema $schema,
-    string $keyword,
+/**
+ * The rules one field gets, alone in an otherwise empty object body.
+ *
+ * @return list<string|InRule>
+ */
+function fieldRules(Schema $field): array
+{
+    return rulesFor(['field' => $field])['field'];
+}
+
+it('maps each constraint to the Laravel rule that means the same thing', function (
+    Schema $field,
+    array $expected,
 ): void {
+    expect(fieldRules($field))->toEqual($expected);
+})->with([
+    // Beside `string`, `min` and `max` count characters.
+    'minLength, maxLength' => [
+        new Schema(types: [SchemaType::String], minLength: 2, maxLength: 10),
+        ['sometimes', 'string', 'min:2', 'max:10'],
+    ],
+    // Beside `integer` or `numeric`, they compare the value.
+    'minimum, maximum' => [
+        new Schema(types: [SchemaType::Integer], minimum: 1.0, maximum: 9.0),
+        ['sometimes', 'integer', 'min:1', 'max:9'],
+    ],
+    'exclusiveMinimum, exclusiveMaximum' => [
+        new Schema(types: [SchemaType::Number], exclusiveMinimum: 0.0, exclusiveMaximum: 1.5),
+        ['sometimes', 'numeric', 'gt:0', 'lt:1.5'],
+    ],
+    'multipleOf' => [
+        new Schema(types: [SchemaType::Number], multipleOf: 0.25),
+        ['sometimes', 'numeric', 'multiple_of:0.25'],
+    ],
+    'format: date' => [
+        new Schema(types: [SchemaType::String], format: 'date'),
+        ['sometimes', 'string', 'date_format:Y-m-d'],
+    ],
+    'format: date-time' => [
+        new Schema(types: [SchemaType::String], format: 'date-time'),
+        ['sometimes', 'string', 'date_format:Y-m-d\TH:i:sp,Y-m-d\TH:i:sP,Y-m-d\TH:i:s.vp,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.uP'],
+    ],
+    'format: email' => [new Schema(types: [SchemaType::String], format: 'email'), ['sometimes', 'string', 'email']],
+    'format: uuid' => [new Schema(types: [SchemaType::String], format: 'uuid'), ['sometimes', 'string', 'uuid']],
+    'format: ipv4' => [new Schema(types: [SchemaType::String], format: 'ipv4'), ['sometimes', 'string', 'ipv4']],
+    'format: ipv6' => [new Schema(types: [SchemaType::String], format: 'ipv6'), ['sometimes', 'string', 'ipv6']],
+    // `D` gives PCRE's `$` the ECMA-262 reading, and `u` counts a multibyte
+    // character as one.
+    'pattern' => [
+        new Schema(types: [SchemaType::String], pattern: '^[a-z]+/[a-z]+$'),
+        ['sometimes', 'string', 'regex:/^[a-z]+\/[a-z]+$/uD'],
+    ],
+    // An array, never `in:a,b`: a comma inside a value would split it.
+    'enum' => [
+        new Schema(types: [SchemaType::String], enum: ['a,b', 'c']),
+        ['sometimes', 'string', new InRule(['a,b', 'c'])],
+    ],
+    // `null` in the enumeration is nullability, not a value `in` compares.
+    'enum with null' => [
+        new Schema(types: [SchemaType::String], enum: ['a', null]),
+        ['sometimes', 'nullable', 'string', new InRule(['a'])],
+    ],
+    // `list` beside `array`: Laravel's `array` passes for an associative one.
+    'an array, minItems, maxItems' => [
+        new Schema(types: [SchemaType::Array], minItems: 1, maxItems: 3),
+        ['sometimes', 'array', 'list', 'min:1', 'max:3'],
+    ],
+    'an object that closes itself' => [
+        new Schema(types: [SchemaType::Object], properties: ['a' => new Schema], additionalProperties: false),
+        ['sometimes', 'array:a'],
+    ],
+]);
+
+it('keys the element rules of an array under field.*', function (): void {
+    expect(rulesFor(['tags' => new Schema(
+        types: [SchemaType::Array],
+        items: new Schema(types: [SchemaType::String], maxLength: 20),
+        uniqueItems: true,
+    )]))->toBe([
+        'tags' => ['sometimes', 'array', 'list'],
+        // `distinct:strict` rather than `distinct`: the loose comparison
+        // would call `1` and `"1"` the same element.
+        'tags.*' => ['string', 'max:20', 'distinct:strict'],
+    ]);
+});
+
+// A key cannot be required while its object is absent, so a required child
+// names its parent rather than being required outright.
+it('keys a nested object with dots, and makes its required children follow it', function (): void {
+    expect(rulesFor(['address' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'city' => new Schema(types: [SchemaType::String]),
+            'floor' => new Schema(types: [SchemaType::Integer]),
+            'note' => new Schema(types: [SchemaType::String]),
+        ],
+        required: ['city', 'floor'],
+    )], ['address']))->toBe([
+        'address' => ['present', 'array'],
+        'address.city' => ['present_with:address', 'string'],
+        'address.floor' => ['required_with:address', 'integer'],
+        'address.note' => ['sometimes', 'string'],
+    ]);
+});
+
+// Inside an array element the element exists by being in the array, so a
+// required child is asked for directly.
+it('requires an element\'s required child directly', function (): void {
+    expect(rulesFor(['lines' => new Schema(
+        types: [SchemaType::Array],
+        items: new Schema(
+            types: [SchemaType::Object],
+            properties: ['sku' => new Schema(types: [SchemaType::String])],
+            required: ['sku'],
+        ),
+    )]))->toBe([
+        'lines' => ['sometimes', 'array', 'list'],
+        'lines.*' => ['array'],
+        'lines.*.sku' => ['present', 'string'],
+    ]);
+});
+
+it('reads dependentRequired as a presence that follows its trigger', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'card' => new Schema(types: [SchemaType::String]),
+            'postcode' => new Schema(types: [SchemaType::String]),
+        ],
+        dependentRequired: ['card' => ['postcode', 'billing']],
+    )]));
+
+    expect($set->rules)->toBe([
+        'card' => ['sometimes', 'string'],
+        'postcode' => ['present_with:card', 'string'],
+        'billing' => ['present_with:card'],
+    ]);
+});
+
+// "All or none": nothing sent, nothing required; one sent, the rest required.
+it('makes an optional body all or none', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
-        content: ['application/json' => objectSchema(['field' => $schema])],
+        content: ['application/json' => objectSchema([
+            'street' => new Schema(types: [SchemaType::String]),
+            'city' => new Schema(types: [SchemaType::String]),
+            'code' => new Schema(types: [SchemaType::Integer]),
+        ], ['street', 'city', 'code'])],
+        bodyRequired: false,
     ));
 
-    expect(implode('', $set->findings))->toContain('`field` states `'.$keyword.'`');
+    expect($set->rules)->toBe([
+        'street' => ['present_with:city,code', 'string'],
+        'city' => ['present_with:street,code', 'string'],
+        'code' => ['required_with:street,city', 'integer'],
+    ]);
+});
+
+it('merges allOf into one rule set', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(allOf: [
+        objectSchema(['name' => new Schema(types: [SchemaType::String], maxLength: 50)], ['name']),
+        objectSchema(['name' => new Schema(maxLength: 20), 'age' => new Schema(types: [SchemaType::Integer])]),
+    ])]));
+
+    // The tighter bound wins, and the required list accumulates.
+    expect($set->rules)->toBe([
+        'name' => ['present', 'string', 'max:20'],
+        'age' => ['sometimes', 'integer'],
+    ]);
+});
+
+it('refuses allOf branches that cannot be said as one', function (Schema $first, Schema $second, string $what): void {
+    expect(fn () => RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => objectSchema(['field' => new Schema(allOf: [$first, $second])]),
+    ])))->toThrow(ConflictingInputException::class, $what);
 })->with([
-    'format' => [new Schema(types: [SchemaType::String], format: 'email'), 'format'],
-    'pattern' => [new Schema(types: [SchemaType::String], pattern: '^a+$'), 'pattern'],
-    'minLength' => [new Schema(types: [SchemaType::String], minLength: 1), 'minLength'],
-    'maxLength' => [new Schema(types: [SchemaType::String], maxLength: 10), 'maxLength'],
-    'minimum' => [new Schema(types: [SchemaType::Integer], minimum: 1.0), 'minimum'],
-    'maximum' => [new Schema(types: [SchemaType::Integer], maximum: 9.0), 'maximum'],
-    'exclusiveMinimum' => [new Schema(types: [SchemaType::Number], exclusiveMinimum: 0.0), 'exclusiveMinimum'],
-    'multipleOf' => [new Schema(types: [SchemaType::Number], multipleOf: 2.0), 'multipleOf'],
-    'enum' => [new Schema(types: [SchemaType::String], enum: ['a', 'b']), 'enum'],
-    'minItems' => [new Schema(types: [SchemaType::Array], minItems: 1), 'minItems'],
-    'uniqueItems' => [new Schema(types: [SchemaType::Array], uniqueItems: true), 'uniqueItems'],
-    'items' => [new Schema(types: [SchemaType::Array], items: new Schema), 'items'],
-    'properties' => [new Schema(types: [SchemaType::Object], properties: ['a' => new Schema]), 'properties'],
-    'dependentRequired' => [new Schema(dependentRequired: ['a' => ['b']]), 'dependentRequired'],
-    'allOf' => [new Schema(allOf: [new Schema]), 'allOf'],
-    'additionalProperties' => [new Schema(types: [SchemaType::Object], additionalProperties: false), 'additionalProperties'],
-    'isFilePart' => [new Schema(types: [SchemaType::String], isFilePart: true), 'isFilePart'],
-    'contentMediaType' => [new Schema(types: [SchemaType::String], contentMediaType: 'image/png'), 'contentMediaType'],
+    'two types' => [new Schema(types: [SchemaType::String]), new Schema(types: [SchemaType::Integer]), 'one branch is `string`'],
+    'two enumerations' => [new Schema(enum: ['a']), new Schema(enum: ['b']), 'share no value'],
+    'two formats' => [new Schema(format: 'email'), new Schema(format: 'uuid'), '`format`'],
+    // JSON Schema's own trap: a closed branch forbids what the other declares.
+    'a closed branch' => [
+        new Schema(types: [SchemaType::Object], properties: ['a' => new Schema], additionalProperties: false),
+        new Schema(types: [SchemaType::Object], properties: ['b' => new Schema]),
+        'additionalProperties: false',
+    ],
+]);
+
+it('closes the root to the keys it declares', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['a' => new Schema(types: [SchemaType::String])],
+        additionalProperties: false,
+    )]));
+
+    expect($set->closedKeys)->toBe(['a']);
+});
+
+it('leaves the root open when it does not close itself', function (): void {
+    expect(RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([])]))->closedKeys)
+        ->toBeNull();
+});
+
+it('reports what no Laravel rule means the same as', function (Schema $field, string $reason): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]));
+
+    expect(implode('', $set->findings))->toContain($reason);
+})->with([
+    // Laravel's `url` turns away the non-hierarchical URIs JSON Schema allows.
+    'format: uri' => [new Schema(types: [SchemaType::String], format: 'uri'), '`format: uri`'],
+    'a pattern using \d' => [new Schema(types: [SchemaType::String], pattern: '^\d+$'), 'uses `\d`'],
+    'a pattern using lookbehind' => [new Schema(types: [SchemaType::String], pattern: '(?<=a)b'), 'lookbehind'],
+    'a pattern PCRE cannot compile' => [new Schema(types: [SchemaType::String], pattern: '('), 'does not compile'],
+    // Risk 2: without a type rule Laravel reads `min` as a string length.
+    'a bound on an untyped field' => [new Schema(minimum: 1.0), '`field` states `minimum`'],
+    'a recursion marker' => [Schema::recursion('#/components/schemas/Node'), 'points back at'],
+    // Part 3's: a file part is not a rule yet.
+    'a file part' => [new Schema(types: [SchemaType::String], isFilePart: true), '`isFilePart`'],
 ]);
 
 // `true` asks for nothing, so there is no rule for it to be missing: a finding
@@ -323,48 +515,18 @@ it('says why a field got no type rule at all', function (Schema $schema, string 
 
     expect(implode('', $set->findings))->toContain($reason);
 })->with([
-    'an array' => [new Schema(types: [SchemaType::Array]), 'is an array, whose element rules'],
-    'an object' => [new Schema(types: [SchemaType::Object]), 'is an object, whose properties'],
-    // Adding `numeric` of our own would be stricter than the contract, which is
-    // the direction a missing rule is preferable to.
     'a union' => [new Schema(types: [SchemaType::String, SchemaType::Integer]), 'declares more than one type'],
     'no type at all' => [new Schema, 'states no type'],
 ]);
 
-// The root goes through the same sweep its properties do. Without it a keyword
-// written on the body's own schema is read and enforced by nothing, and an
-// empty findings list makes the generated file claim the opposite.
-it('names a keyword written on the body itself', function (Schema $root, string $keyword): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $root]));
-
-    expect(implode('', $set->findings))->toContain('The body itself states `'.$keyword.'`');
-})->with([
-    'dependentRequired' => [
-        new Schema(
-            types: [SchemaType::Object],
-            properties: ['a' => new Schema(types: [SchemaType::String])],
-            dependentRequired: ['a' => ['b']],
-        ),
-        'dependentRequired',
-    ],
-    'enum' => [new Schema(types: [SchemaType::Object], enum: [['a' => 1]]), 'enum'],
-]);
-
-// Four keywords are skipped at the root because something above already speaks
-// to them, and naming one twice reads as two problems.
-it('does not name a root keyword another finding already speaks to', function (): void {
+// The root goes through the same sweep a field does.
+it('names a keyword written on the body itself', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
         types: [SchemaType::Object],
-        properties: ['a' => new Schema(types: [SchemaType::String])],
-        additionalProperties: false,
-        allOf: [new Schema],
+        enum: [['a' => 1]],
     )]));
 
-    $findings = implode('', $set->findings);
-
-    expect($findings)->not->toContain('The body itself states')
-        ->and($findings)->toContain('writes `allOf`')
-        ->and($findings)->toContain('forbids properties it did not declare');
+    expect(implode('', $set->findings))->toContain('The body itself states `enum`');
 });
 
 // `required` naming a key `properties` does not declare is legal OpenAPI: the

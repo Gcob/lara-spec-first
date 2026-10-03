@@ -22,10 +22,14 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
  * contract refuses is a wrong answer where a report is a missing one, and only
  * the second is recoverable.
  *
- * **What this pass translates**, with everything else reported: the four scalar
- * types, nullability, and presence. The keywords that constrain a value —
- * lengths, bounds, patterns, formats, enumerations — and the two composite
- * shapes are named in the findings and belong to the passes after this one.
+ * **What it translates is the whole table** in request-validation.md: types,
+ * nullability and presence, the bounds on strings, numbers and arrays, the
+ * `format` values Laravel has a rule of the same meaning for, enumerations,
+ * patterns inside the ECMA-262 / PCRE boundary, nested objects and array
+ * elements under dotted keys, `allOf` merged, `dependentRequired` and an
+ * optional body's "all or none". What it does not — file parts, a pattern
+ * across the boundary, a `format` Laravel would read differently, a recursive
+ * schema's infinite depth — leaves a finding.
  *
  * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
  */
@@ -40,6 +44,30 @@ final readonly class RuleSetBuilder
      *
      * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
      */
+    /**
+     * The six RFC 3339 spellings `date-time` passes on, `p` and `P` at each
+     * precision, because PHP's `p` prints `Z` for a zero offset where `P`
+     * prints `+00:00` and `date_format` only passes on an exact round trip.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
+     */
+    private const DATE_TIME_FORMATS = 'date_format:Y-m-d\\TH:i:sp,Y-m-d\\TH:i:sP,Y-m-d\\TH:i:s.vp,'
+        .'Y-m-d\\TH:i:s.vP,Y-m-d\\TH:i:s.up,Y-m-d\\TH:i:s.uP';
+
+    /**
+     * The `format` values Laravel has a rule of the same meaning for, and the
+     * rule. Anything else is reported: `uri` most visibly, since Laravel's
+     * `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows.
+     */
+    private const FORMAT_RULES = [
+        'date' => 'date_format:Y-m-d',
+        'date-time' => self::DATE_TIME_FORMATS,
+        'email' => 'email',
+        'uuid' => 'uuid',
+        'ipv4' => 'ipv4',
+        'ipv6' => 'ipv6',
+    ];
+
     public const READ_MEDIA_TYPES = [
         'application/json',
         'multipart/form-data',
@@ -47,18 +75,20 @@ final readonly class RuleSetBuilder
     ];
 
     /**
-     * Keywords this pass does not translate, by the property that carries them.
+     * Every keyword a rule could come from, by the property that carries it.
      *
-     * The list is closed and checked per field, which is what makes a finding a
-     * measurement rather than a reminder: a keyword added to
-     * {@see Schema} and to neither list is a keyword nothing reports, and that
-     * is the silence this whole mechanism exists against.
+     * The list is closed and checked per field against what the walk actually
+     * acted on, which is what makes a finding a measurement rather than a
+     * reminder: a keyword stated on a field and absent from that field's
+     * handled set is named, whatever the reason it was not translated. A
+     * keyword added to {@see Schema} and not here is a keyword nothing
+     * reports, and that is the silence this mechanism exists against.
      *
      * `readOnly`, `writeOnly` and `examples` are absent on purpose: the support
      * matrix ignores them as rules rather than deferring them, so there is
      * nothing coming for a finding to promise.
      */
-    private const UNTRANSLATED_KEYWORDS = [
+    private const RULE_KEYWORDS = [
         'format',
         'enum',
         'pattern',
@@ -85,43 +115,46 @@ final readonly class RuleSetBuilder
 
     /**
      * @throws ConflictingInputException the body and a query parameter naming one field,
-     *                                   or two media types over two schemas
+     *                                   two media types over two schemas, or an
+     *                                   `allOf` whose branches disagree
      */
     public static function for(Operation $operation): RuleSet
     {
-        $rules = [];
-        $findings = [];
+        $walk = new RuleWalk($operation->label());
 
-        $body = self::bodySchema($operation, $findings);
+        $body = self::bodySchema($operation, $walk->findings);
+        $closedKeys = null;
 
         if ($body !== null) {
-            self::bodyRules($operation, $body, $rules, $findings);
+            $closedKeys = self::bodyRules($operation, $body, $walk);
         }
 
         foreach ($operation->queryParameters as $parameter) {
             $unescapable = self::unescapableKey($parameter->name);
 
             if ($unescapable !== null) {
-                $findings[] = $unescapable;
+                $walk->findings[] = $unescapable;
 
                 continue;
             }
 
             $key = self::ruleKey($parameter->name);
 
-            if (isset($rules[$key])) {
+            if (isset($walk->rules[$key])) {
                 throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
             }
 
-            $rules[$key] = [
+            self::field(
+                $walk,
+                $key,
+                '`'.$parameter->name.'`',
+                $parameter->schema,
                 $parameter->required ? self::requiredRule($parameter->schema) : 'sometimes',
-                ...self::valueRules($parameter->schema),
-            ];
-
-            $findings = [...$findings, ...self::untranslated('`'.$parameter->name.'`', $parameter->schema)];
+                insideList: false,
+            );
         }
 
-        return new RuleSet($rules, $findings);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys);
     }
 
     /**
@@ -212,93 +245,182 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Every rule the body's own schema produces.
+     * Every rule the body's own schema produces, and the top-level keys it
+     * closes the payload to, or null when it does not.
      *
-     * @param  array<string, list<string>>  $rules
-     * @param  list<string>  $findings
+     * @return list<string>|null
+     *
+     * @throws ConflictingInputException
      */
-    private static function bodyRules(Operation $operation, Schema $schema, array &$rules, array &$findings): void
+    private static function bodyRules(Operation $operation, Schema $written, RuleWalk $walk): ?array
     {
         $body = $operation->requestBody;
         assert($body instanceof RequestBody);
 
+        $schema = AllOfMerger::merge($written, $operation->label(), 'the body');
+
         foreach (self::rootFindings($operation, $schema, $body) as $finding) {
-            $findings[] = $finding;
+            $walk->findings[] = $finding;
         }
 
-        // The root goes through the same sweep its properties do. Without it a
-        // keyword written on the body's own schema — `dependentRequired` and
-        // `enum` are the two a real contract writes there — is read into the
-        // contract and enforced by nothing, with no finding saying so. Worse
-        // than a missing line: an empty findings list makes the generated file
-        // claim that nothing was left unenforced.
-        //
-        // Four keywords are skipped because something else already speaks to
-        // them. `properties` is walked below and `required` is read into each
-        // property's presence — except for a name it declares that
-        // `properties` does not, which the loop below cannot see and which
-        // gets a rule of its own. `allOf` and `additionalProperties` have a
-        // root finding that says more than the generic one would.
-        $findings = [
-            ...$findings,
-            ...self::untranslated(
+        if ($schema->soleType() !== SchemaType::Object) {
+            return null;
+        }
+
+        // The root goes through the same sweep a field does, minus what the
+        // object walk below acts on. Without it a keyword written on the
+        // body's own schema — an `enum` is the one a real contract writes there
+        // — is read and enforced by nothing, and an empty findings list makes
+        // the generated file claim the opposite.
+        $walk->findings = [
+            ...$walk->findings,
+            ...self::unhandled(
                 'The body itself',
                 $schema,
-                ['properties', 'required', 'allOf', 'additionalProperties'],
-                withType: false,
+                ['type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf'],
             ),
         ];
 
-        $required = self::effectiveRequired($operation, $schema, $body);
+        self::objectChildren(
+            $walk,
+            '',
+            $schema,
+            self::rootPresence($operation, $schema, $body),
+            insideList: false,
+        );
 
-        foreach ($schema->properties as $name => $property) {
-            $unescapable = self::unescapableKey((string) $name);
+        // The payload's root has no field for `array:` to sit on, so a closed
+        // root becomes a closure comparing its top-level keys. Only the top
+        // level: every nested object that closes itself already carries
+        // `array:` on its own key, so checking deeper here would only repeat
+        // it — and would refuse the extras of a nested object that allows them.
+        return $schema->additionalProperties === false
+            ? array_map('strval', array_keys($schema->properties))
+            : null;
+    }
 
-            if ($unescapable !== null) {
-                $findings[] = $unescapable;
-
-                continue;
-            }
-
-            $rules[self::ruleKey((string) $name)] = [
-                self::presence((string) $name, $property, $required),
-                ...self::valueRules($property),
-            ];
-
-            $findings = [...$findings, ...self::untranslated('`'.$name.'`', $property)];
+    /**
+     * How each of the root's properties is asked for, which is where the
+     * method and the body's own `required` flag meet.
+     *
+     * - A `PATCH` is a partial update, so the schema's list describes a
+     *   representation the client is not sending all of: every property is
+     *   `sometimes`.
+     * - An optional body may be absent entirely, and a plain presence rule
+     *   would then refuse a request the contract allows. What the contract
+     *   means is "all or none", and `*_with` naming the other required
+     *   properties says exactly that: nothing sent, nothing required; one sent,
+     *   the rest required.
+     * - Otherwise the schema's list is read as written.
+     *
+     * @return callable(string, Schema): string
+     */
+    private static function rootPresence(Operation $operation, Schema $schema, RequestBody $body): callable
+    {
+        if ($operation->method === HttpMethod::Patch) {
+            return static fn (string $name, Schema $property): string => 'sometimes';
         }
 
-        // A name in `required` that `properties` does not declare is legal
-        // OpenAPI and the ordinary way to say "this key must be present, any
-        // value". The loop above cannot see it, so it would otherwise be read
-        // into the contract and enforced by nothing — and with no other
-        // finding the generated file would claim that nothing was left
-        // unenforced. Presence is the whole of what the contract states about
-        // it, so presence is the whole rule — and `present` rather than
-        // `required`, because a key with no schema accepts any value, and
-        // Laravel's `required` refuses `null`, `""` and `[]`. A wildcard name
-        // is skipped and reported, on the same rule as a declared one.
-        $undeclared = array_values(array_diff($required, array_keys($schema->properties)));
+        if (! $body->required) {
+            return static function (string $name, Schema $property) use ($schema): string {
+                if (! in_array($name, $schema->required, true)) {
+                    return 'sometimes';
+                }
 
-        foreach ($undeclared as $position => $name) {
+                $siblings = array_values(array_filter(
+                    $schema->required,
+                    static fn (string $other): bool => $other !== $name && self::unescapableKey($other) === null,
+                ));
+
+                return $siblings === []
+                    ? 'sometimes'
+                    : self::withRule($property, array_map(self::ruleKey(...), $siblings));
+            };
+        }
+
+        return static fn (string $name, Schema $property): string => in_array($name, $schema->required, true)
+            ? self::requiredRule($property)
+            : 'sometimes';
+    }
+
+    /**
+     * Every property of one object, keyed under its parent, with the presence
+     * a caller decides for the required ones.
+     *
+     * @param  callable(string, Schema): string  $presence  how a named property
+     *                                                      is asked for, before
+     *                                                      `dependentRequired`
+     *
+     * @throws ConflictingInputException
+     */
+    private static function objectChildren(
+        RuleWalk $walk,
+        string $prefix,
+        Schema $schema,
+        callable $presence,
+        bool $insideList,
+    ): void {
+        $dependents = self::dependents($schema, $walk, $prefix);
+
+        foreach ($schema->properties as $name => $property) {
+            $name = (string) $name;
             $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
-                $findings[] = $unescapable;
-                unset($undeclared[$position]);
+                $walk->findings[] = $unescapable;
 
                 continue;
             }
 
-            $rules[self::ruleKey($name)] = ['present'];
+            $asked = $presence($name, $property);
+
+            if ($asked === 'sometimes' && isset($dependents[$name])) {
+                $asked = self::withRule($property, $dependents[$name]);
+            }
+
+            self::field($walk, $prefix.self::ruleKey($name), '`'.$prefix.$name.'`', $property, $asked, $insideList);
         }
 
-        $undeclared = array_values($undeclared);
+        // A name the contract requires, or makes required by
+        // `dependentRequired`, that `properties` does not declare is legal
+        // OpenAPI and the ordinary way to say "this key must be present, any
+        // value". Presence is the whole of what the contract states about it,
+        // so presence is the whole rule — and `present` rather than
+        // `required`, because Laravel's refuses `null`, `""` and `[]`.
+        $undeclared = [];
+
+        foreach ([...$schema->required, ...array_keys($dependents)] as $name) {
+            if (isset($schema->properties[$name]) || in_array($name, $undeclared, true)) {
+                continue;
+            }
+
+            $unescapable = self::unescapableKey($name);
+
+            if ($unescapable !== null) {
+                $walk->findings[] = $unescapable;
+
+                continue;
+            }
+
+            $asked = $presence($name, new Schema);
+
+            if ($asked === 'sometimes') {
+                if (! isset($dependents[$name])) {
+                    continue;
+                }
+
+                $asked = self::withRule(new Schema, $dependents[$name]);
+            }
+
+            $walk->rules[$prefix.self::ruleKey($name)] = [$asked];
+            $undeclared[] = $name;
+        }
 
         if ($undeclared !== []) {
-            $findings[] = sprintf(
-                'The body requires %s without declaring %s under `properties`, so the rule set asks '
-                    .'for the key and says nothing about the value.',
+            $walk->findings[] = sprintf(
+                '%s requires %s without declaring %s under `properties`, so the rule set asks for the '
+                    .'key and says nothing about the value.',
+                $prefix === '' ? 'The body' : '`'.rtrim($prefix, '.').'`',
                 self::list($undeclared),
                 count($undeclared) === 1 ? 'it' : 'them',
             );
@@ -306,40 +428,282 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The required list as this rule set reads it, which is not always as the
-     * document wrote it.
+     * `dependentRequired`, read the other way round: for each property it
+     * names, the keys whose presence makes it required.
      *
-     * Two reasons empty it, and they are different statements.
-     * A `PATCH` is a partial update, so the schema's list describes a
-     * representation the client is not sending all of. An optional body may be
-     * absent entirely, and a plain `required` would then refuse a request the
-     * contract allows — which is the one direction worse than a missing rule.
-     * `required_with` is what says "all or none", and it belongs to the pass
-     * that maps the rest of the table.
-     *
-     * @return list<string>
+     * @return array<string, list<string>> a dependent name => trigger rule keys
      */
-    private static function effectiveRequired(Operation $operation, Schema $schema, RequestBody $body): array
+    private static function dependents(Schema $schema, RuleWalk $walk, string $prefix): array
     {
-        if ($operation->method === HttpMethod::Patch || ! $body->required) {
-            return [];
+        $dependents = [];
+
+        foreach ($schema->dependentRequired as $trigger => $names) {
+            $unescapable = self::unescapableKey((string) $trigger);
+
+            if ($unescapable !== null) {
+                $walk->findings[] = $unescapable;
+
+                continue;
+            }
+
+            foreach ($names as $name) {
+                $dependents[$name][] = $prefix.self::ruleKey((string) $trigger);
+            }
         }
 
-        return $schema->required;
+        return $dependents;
     }
 
     /**
-     * `required`, `present` or `sometimes`.
+     * One field, every rule it produces, and a finding for everything it
+     * states that none of them carries.
      *
-     * @param  list<string>  $required
+     * @param  string  $presence  how the key itself is asked for, or the empty
+     *                            string for an array element, which exists by
+     *                            being in the array
+     *
+     * @throws ConflictingInputException
      */
-    private static function presence(string $name, Schema $property, array $required): string
-    {
-        if (! in_array($name, $required, true)) {
-            return 'sometimes';
+    private static function field(
+        RuleWalk $walk,
+        string $key,
+        string $label,
+        Schema $written,
+        string $presence,
+        bool $insideList,
+    ): void {
+        $schema = AllOfMerger::merge($written, $walk->identity, $label);
+        $rules = $presence === '' ? [] : [$presence];
+
+        if ($schema->recursesTo !== null) {
+            // A self-referential schema is a supported contract and an
+            // infinite tree, and no rule set reaches an infinite depth.
+            $walk->rules[$key] = $rules;
+            $walk->findings[] = sprintf(
+                '%s points back at `%s`, so nothing below it is validated: no rule set reaches an '
+                    .'infinite depth.',
+                $label,
+                $schema->recursesTo,
+            );
+
+            return;
         }
 
-        return self::requiredRule($property);
+        $handled = ['allOf', 'type'];
+        $enumHasNull = $schema->enum !== null && in_array(null, $schema->enum, true);
+
+        if ($schema->isNullable() || $enumHasNull) {
+            $rules[] = 'nullable';
+        }
+
+        $children = null;
+
+        switch ($schema->soleType()) {
+            case SchemaType::String:
+                $rules[] = 'string';
+                self::stringRules($schema, $label, $rules, $handled, $walk);
+                break;
+            case SchemaType::Integer:
+                $rules[] = 'integer';
+                self::numberRules($schema, $rules, $handled);
+                break;
+            case SchemaType::Number:
+                $rules[] = 'numeric';
+                self::numberRules($schema, $rules, $handled);
+                break;
+            case SchemaType::Boolean:
+                $rules[] = 'boolean';
+                break;
+            case SchemaType::Array:
+                // `list` beside `array`, because Laravel's `array` passes for
+                // an associative one, and a JSON array is a list.
+                array_push($rules, 'array', 'list');
+                self::bound($schema->minItems, 'min', $rules);
+                self::bound($schema->maxItems, 'max', $rules);
+                array_push($handled, 'minItems', 'maxItems', 'items', 'uniqueItems');
+                $children = 'items';
+                break;
+            case SchemaType::Object:
+                // A JSON object arrives as a PHP array, and `array:` with the
+                // declared keys is how a nested object refuses the ones it did
+                // not declare.
+                $rules[] = $schema->additionalProperties === false
+                    ? 'array:'.implode(',', array_map('strval', array_keys($schema->properties)))
+                    : 'array';
+                array_push($handled, 'properties', 'required', 'dependentRequired', 'additionalProperties');
+                $children = 'properties';
+                break;
+            default:
+                $unmapped = self::unmappedType($schema);
+
+                if ($unmapped !== null) {
+                    // Risk 2 of the card #35 plan: without a type rule, Laravel
+                    // reads `min` and `max` as a string length, so a bound on an
+                    // untyped field is reported rather than half-translated.
+                    $walk->findings[] = sprintf('%s %s, so no type rule is emitted for it.', $label, $unmapped);
+                }
+        }
+
+        if ($schema->enum !== null) {
+            $values = array_values(array_filter($schema->enum, static fn (mixed $value): bool => $value !== null));
+
+            if ($values !== [] && self::allScalar($values)) {
+                $rules[] = new InRule($values);
+                $handled[] = 'enum';
+            } elseif ($values === []) {
+                $handled[] = 'enum';
+            }
+        }
+
+        $walk->rules[$key] = $rules;
+
+        if ($children === 'items') {
+            if ($schema->items !== null) {
+                self::field($walk, $key.'.*', $label.'[]', $schema->items, '', insideList: true);
+            }
+
+            if ($schema->uniqueItems) {
+                $walk->rules[$key.'.*'] = [...$walk->rules[$key.'.*'] ?? [], 'distinct:strict'];
+            }
+        }
+
+        if ($children === 'properties') {
+            // Inside an array element the element exists by being in the
+            // array, so a required child is asked for directly. Anywhere else
+            // the object itself may be absent or null, and a key cannot be
+            // required while its object is not there: the child names its
+            // parent instead.
+            $inList = $insideList || str_contains($key, '*');
+
+            self::objectChildren(
+                $walk,
+                $key.'.',
+                $schema,
+                static fn (string $name, Schema $property): string => match (true) {
+                    ! in_array($name, $schema->required, true) => 'sometimes',
+                    $inList => self::requiredRule($property),
+                    default => self::withRule($property, [$key]),
+                },
+                $inList,
+            );
+        }
+
+        $walk->findings = [...$walk->findings, ...self::unhandled($label, $schema, $handled)];
+    }
+
+    /**
+     * What a string's own keywords become.
+     *
+     * @param  list<string|InRule>  $rules
+     * @param  list<string>  $handled
+     */
+    private static function stringRules(Schema $schema, string $label, array &$rules, array &$handled, RuleWalk $walk): void
+    {
+        // Beside `string`, `min` and `max` count characters, which is what
+        // `minLength` and `maxLength` count.
+        self::bound($schema->minLength, 'min', $rules);
+        self::bound($schema->maxLength, 'max', $rules);
+        array_push($handled, 'minLength', 'maxLength');
+
+        if ($schema->format !== null) {
+            $format = self::FORMAT_RULES[$schema->format] ?? null;
+
+            if ($format !== null) {
+                $rules[] = $format;
+            } else {
+                $walk->findings[] = sprintf(
+                    '%s declares `format: %s`, which no Laravel rule means the same as, so it is not enforced.',
+                    $label,
+                    $schema->format,
+                );
+            }
+
+            $handled[] = 'format';
+        }
+
+        if ($schema->pattern !== null) {
+            $translation = PatternTranslation::of($schema->pattern);
+
+            if ($translation->rule !== null) {
+                $rules[] = $translation->rule;
+            } else {
+                $walk->findings[] = sprintf(
+                    '%s declares a `pattern` that %s, so it is not enforced rather than enforced differently.',
+                    $label,
+                    $translation->reason,
+                );
+            }
+
+            $handled[] = 'pattern';
+        }
+    }
+
+    /**
+     * What an integer's or a number's own keywords become.
+     *
+     * Beside `integer` or `numeric`, `min` and `max` compare the value, and
+     * `gt` and `lt` take a number as readily as a field name.
+     *
+     * @param  list<string|InRule>  $rules
+     * @param  list<string>  $handled
+     */
+    private static function numberRules(Schema $schema, array &$rules, array &$handled): void
+    {
+        self::bound($schema->minimum, 'min', $rules);
+        self::bound($schema->maximum, 'max', $rules);
+        self::bound($schema->exclusiveMinimum, 'gt', $rules);
+        self::bound($schema->exclusiveMaximum, 'lt', $rules);
+        self::bound($schema->multipleOf, 'multiple_of', $rules);
+        array_push($handled, 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf');
+    }
+
+    /**
+     * @param  list<string|InRule>  $rules
+     */
+    private static function bound(int|float|null $value, string $rule, array &$rules): void
+    {
+        if ($value !== null) {
+            $rules[] = $rule.':'.self::number($value);
+        }
+    }
+
+    /**
+     * A number as a rule parameter: `1` rather than `1.0`, and a fraction as
+     * PHP prints one.
+     */
+    private static function number(int|float $value): string
+    {
+        if (is_float($value) && floor($value) === $value && abs($value) < 1e15) {
+            return (string) (int) $value;
+        }
+
+        return (string) $value;
+    }
+
+    /**
+     * @param  list<mixed>  $values
+     */
+    private static function allScalar(array $values): bool
+    {
+        foreach ($values as $value) {
+            if (! is_scalar($value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * `required_with` or `present_with`, for the same reason
+     * {@see self::requiredRule()} picks between `required` and `present`.
+     *
+     * @param  list<string>  $triggers  rule keys
+     */
+    private static function withRule(Schema $schema, array $triggers): string
+    {
+        return (self::requiredRule($schema) === 'required' ? 'required_with:' : 'present_with:')
+            .implode(',', $triggers);
     }
 
     /**
@@ -351,13 +715,13 @@ final readonly class RuleSetBuilder
      * the field declares, so a required string the contract lets be empty, a
      * required array it lets hold nothing, or any field that may be null would
      * answer 422 to a payload the contract accepts. `present` asks for the key
-     * and nothing else, and the type rule beside it judges the value.
+     * and nothing else, and the type rule beside it judges any value that is
+     * not blank.
      *
      * `required` is kept for the three types whose own rule refuses every
      * empty value anyway — an integer, a number, a boolean cannot be `""` or
      * `[]` — because there the two say the same thing and `required` is what
-     * a reader expects to see. The card's own scenario reads "carry a required
-     * rule", and for those it still does.
+     * a reader expects to see.
      *
      * @see docs/guide/code-generation/request-validation.md — "PATCH empties the required list"
      */
@@ -373,98 +737,34 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * What the value itself has to be, as far as this pass reads it.
+     * What one field states that none of its rules carries.
      *
+     * @param  list<string>  $handled  the keywords the walk acted on for this
+     *                                 field, whether by a rule or by a finding
+     *                                 of its own
      * @return list<string>
      */
-    private static function valueRules(Schema $schema): array
+    private static function unhandled(string $label, Schema $schema, array $handled): array
     {
-        $rules = [];
+        $keywords = array_values(array_filter(
+            self::RULE_KEYWORDS,
+            static fn (string $keyword): bool => ! in_array($keyword, $handled, true) && self::states($schema, $keyword),
+        ));
 
-        if ($schema->isNullable()) {
-            $rules[] = 'nullable';
-        }
-
-        $type = match ($schema->soleType()) {
-            SchemaType::String => 'string',
-            SchemaType::Integer => 'integer',
-            SchemaType::Number => 'numeric',
-            SchemaType::Boolean => 'boolean',
-            default => null,
-        };
-
-        if ($type !== null) {
-            $rules[] = $type;
-        }
-
-        return $rules;
+        return $keywords === []
+            ? []
+            : [sprintf('%s states %s, which nothing in this rule set enforces.', $label, self::list($keywords))];
     }
 
     /**
-     * What one field states and this pass leaves unenforced.
+     * Why a field got no type rule, or null when the reason is reported
+     * elsewhere.
      *
-     * @param  string  $name  the subject of the sentence, already quoted the way
-     *                        it should read: a field is written in backticks
-     *                        and the body itself is not
-     * @param  list<string>  $skip  keywords another finding already speaks to,
-     *                              which is only ever the root's case: naming
-     *                              one twice reads as two problems
-     * @param  bool  $withType  whether a missing type rule is worth a line
-     *                          here. The root's own shape has a finding that
-     *                          says more than "states no type" would
-     * @return list<string>
-     */
-    private static function untranslated(
-        string $name,
-        Schema $schema,
-        array $skip = [],
-        bool $withType = true,
-    ): array {
-        $findings = [];
-        $keywords = [];
-
-        foreach (self::UNTRANSLATED_KEYWORDS as $keyword) {
-            if (! in_array($keyword, $skip, true) && self::states($schema, $keyword)) {
-                $keywords[] = $keyword;
-            }
-        }
-
-        if ($keywords !== []) {
-            $findings[] = sprintf(
-                '%s states %s, which nothing in this rule set enforces yet.',
-                $name,
-                self::list($keywords),
-            );
-        }
-
-        $unmapped = $withType ? self::unmappedType($schema) : null;
-
-        if ($unmapped !== null) {
-            $findings[] = sprintf('%s %s, so no type rule is emitted for it.', $name, $unmapped);
-        }
-
-        return $findings;
-    }
-
-    /**
-     * Why a field got no type rule, or null when it got one.
-     *
-     * Three different silences, told apart because the fix differs: a shape
-     * this pass does not walk into, a union no single rule expresses, and a
-     * document that stated no type at all.
+     * Two different silences, told apart because the fix differs: a union no
+     * single rule expresses, and a document that stated no type at all.
      */
     private static function unmappedType(Schema $schema): ?string
     {
-        $sole = $schema->soleType();
-
-        if ($sole !== null) {
-            return match ($sole) {
-                SchemaType::Array => 'is an array, whose element rules are not emitted yet',
-                SchemaType::Object => 'is an object, whose properties are not emitted yet',
-                default => null,
-            };
-        }
-
         $stated = array_values(array_filter(
             $schema->types,
             static fn (SchemaType $type): bool => $type !== SchemaType::Null,
@@ -474,11 +774,12 @@ final readonly class RuleSetBuilder
             return 'declares more than one type, which no single Laravel rule expresses';
         }
 
-        return $schema->recursesTo === null ? 'states no type' : null;
+        return $stated === [] ? 'states no type' : null;
     }
 
     /**
-     * What the body's own root says that this pass does not act on.
+     * What the body's own root says that a rule set cannot act on, or that a
+     * reader would not guess from the rules.
      *
      * @return list<string>
      */
@@ -489,25 +790,8 @@ final readonly class RuleSetBuilder
         if ($schema->soleType() !== SchemaType::Object) {
             $findings[] = 'The body\'s own schema is not an object, so no rule is derived from it. '
                 .'A rule key is a field name, and a body that is a bare value has none.';
-        }
 
-        if ($schema->allOf !== []) {
-            $findings[] = 'The body\'s own schema writes `allOf`, whose branches are not merged into '
-                .'the rule set yet.';
-        }
-
-        if ($schema->additionalProperties === false) {
-            $findings[] = 'The body forbids properties it did not declare, which is not enforced '
-                .'yet: an undeclared field is absent from `validated()` rather than refused.';
-        }
-
-        if (! $body->required && $schema->required !== []) {
-            $findings[] = sprintf(
-                'The body may be absent entirely while its schema requires %s. Nothing enforces '
-                    .'"all or none" yet, so every field is `sometimes`: half a body is accepted where '
-                    .'the contract refuses it.',
-                self::list($schema->required),
-            );
+            return $findings;
         }
 
         if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
@@ -516,10 +800,17 @@ final readonly class RuleSetBuilder
                     .'empty here. Every property is `sometimes`.',
                 self::list($schema->required),
             );
+        } elseif (! $body->required && count($schema->required) === 1) {
+            $findings[] = sprintf(
+                'The body may be absent entirely while its schema requires %s. With one required '
+                    .'property there is no sibling to name, and Laravel cannot tell an absent body from '
+                    .'an empty one, so it is `sometimes`: a body sent without it is accepted.',
+                self::list($schema->required),
+            );
         }
 
         if ($operation->method === HttpMethod::Put) {
-            $optional = array_values(array_diff(array_keys($schema->properties), $schema->required));
+            $optional = array_values(array_diff(array_map('strval', array_keys($schema->properties)), $schema->required));
 
             if ($optional !== []) {
                 $findings[] = sprintf(
@@ -538,15 +829,12 @@ final readonly class RuleSetBuilder
      * Whether the document stated a keyword, by the property that carries it.
      *
      * Two shapes of "nothing was written" read the same way — null and the
-     * empty array — and `false` joins them for the two flags whose absence is
+     * empty array — and `false` joins them for the flags whose absence is
      * spelled that way, `uniqueItems` and `isFilePart`.
      *
-     * **`additionalProperties` is the exception, and it is the whole reason
-     * this is a method.** `false` there is the statement rather than the
-     * silence, and it is the only value worth a finding: it forbids undeclared
-     * fields, which nothing enforces yet. `true` asks for nothing, so there is
-     * no rule for it to be missing, and `null` is a document that said nothing
-     * — {@see Schema} keeps all three apart on purpose.
+     * **`additionalProperties` is the exception.** `false` there is the
+     * statement rather than the silence, and the only value a rule can carry:
+     * `true` asks for nothing, and `null` is a document that said nothing.
      */
     private static function states(Schema $schema, string $keyword): bool
     {
