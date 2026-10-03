@@ -91,8 +91,9 @@ public function rules(): array
 | `cookie` | Nowhere, and the doctor says so.                                                                                                             |
 
 **A query parameter's presence comes from its own `required` flag, not from the body's `required` list.** They are
-different keywords in different places: a Parameter Object carries `required: true` itself, so that parameter gets
-`required` and the ones without it get `sometimes`. **And the method does not touch it.**
+different keywords in different places: a Parameter Object carries `required: true` itself, so that parameter asks for
+its key, with [the same presence rule](#patch-empties-the-required-list) a body property gets, and the ones without it
+get `sometimes`. **And the method does not touch it.**
 [`PATCH` empties the body schema's required list](#patch-empties-the-required-list) because a partial update is a
 statement about the resource's representation, and a query parameter is not part of that representation: `?notify=1` is
 as required on a `PATCH` as it is on a `PUT`.
@@ -234,13 +235,15 @@ that is not required carries `sometimes` under either method, and its remaining 
 for the key; Laravel's asks for a non-empty value, and refuses `null`, `""`, `[]` and `{}` whatever else the field
 declares. So a required string the contract lets be empty, a required array it lets hold nothing, and any field that may
 be null would answer 422 to a payload the contract accepts. `present` asks for the key and nothing else, and the type
-rule beside it judges the value. `required` is kept for an integer, a number and a boolean, whose own type rule refuses
-every empty value anyway, so there the two say the same thing.
+rule beside it judges any value that is not blank. `required` is kept for an integer, a number and a boolean, whose own
+type rule refuses every empty value anyway, so there the two say the same thing.
 
 **One empty value is refused anyway, and not by this package.** Laravel's default `ConvertEmptyStringsToNull` middleware
 turns `""` into `null` before any rule runs, so a string that is not nullable refuses `""` over HTTP whatever presence
-rule is emitted: `string` refuses `null`. A contract that means to accept an empty string declares the field nullable,
-or the application removes that middleware from the route. Pinned by an execution test rather than worked around.
+rule is emitted: `string` refuses `null`. A contract that means to accept an empty string declares the field nullable.
+Removing the middleware is not the fix it looks like: Laravel skips every rule that is not implicit on a blank string,
+so an optional integer would then accept `""`, which the contract refuses. Pinned by an execution test rather than
+worked around.
 
 ### An absent field gets no default
 

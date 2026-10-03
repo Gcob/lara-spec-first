@@ -71,6 +71,11 @@ rather than one that was missing, and nothing downstream failed to say so.
   means they now exit non-zero until acknowledged. They were counted beside `query` under one `Deferred` label while
   nothing read a parameter at all; `query` is read now, so the count splits and the level with it. `query` and
   `requestBody` moved from `Deferred` to `Partial` in the support matrix, and the doctor no longer counts either.
+- **A path parameter named `{request}` is refused on an operation with something to validate.** The generated request is
+  declared as `$request` ahead of the path's own parameters, so the two would be one variable declared twice. A contract
+  that built at `0.1.0` with such a parameter and a body or a `query` parameter now refuses to build.
+- **A required key gets `present`, not `required`, unless it is an integer, a number or a boolean.** JSON Schema's
+  `required` asks for the key, and Laravel's refuses `null`, `""`, `[]` and `{}`, which the contract may allow.
 - **A fully-qualified name in a generated docblock's `@see` is written in backticks.** Pint's
   `fully_qualified_strict_types` rewrites an unquoted one into an import plus a short name, which means the build and a
   consumer's formatter rewriting each other forever — and for a generated controller, an import carrying the child's
