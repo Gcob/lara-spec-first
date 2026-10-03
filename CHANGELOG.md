@@ -64,6 +64,13 @@ rather than one that was missing, and nothing downstream failed to say so.
   `dependentRequired`, an optional body's "all or none", and `additionalProperties: false` at every depth. What stays
   outside the boundary is named in the generated file's findings. Most of the support matrix's schema rows moved from
   `Deferred` to `Supported`; `format`, `pattern` and `uniqueItems` to `Partial`.
+- **A file part is validated as one.** In a body that is `multipart/form-data` alone, a property the schema calls a file
+  (`format: binary` at 3.0, `contentMediaType` at 3.1) becomes `file`, `mimetypes:` from `contentMediaType`, and `max:`
+  in kilobytes from `maxLength`, rounded down. `application/octet-stream` and `*/*` add no `mimetypes`, which would
+  refuse every upload but an octet stream, and a ceiling under one kilobyte is reported rather than emitted as `max:0`.
+  A required part is `required`, so an empty upload slot is refused. Beside another media type, or in a JSON body, the
+  part is a string. `encoding.<part>.contentType` is not read yet, and every file part says so in its generated file's
+  findings ([#90](https://github.com/Gcob/lara-spec-first/issues/90)). A closed root also refuses an undeclared upload.
 - **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first
   generated controller; the block said otherwise.
 

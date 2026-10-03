@@ -131,6 +131,47 @@ paths:
             responses:
                 '200': { description: Updated }
 
+    /posts/{postId}/attachments:
+        # A multipart body, and the one place a part is a file. `cover` becomes
+        # `file`, `mimetypes:image/png` and `max:2` (2500 bytes, rounded down to
+        # whole kilobytes), `gallery` becomes an array plus the same rules under
+        # `gallery.*`, and `anything` states `application/octet-stream`, which
+        # means "any bytes" and so adds no `mimetypes`. The generated file's
+        # Findings block says that an `encoding` written beside the body is not
+        # read yet: until it is, a part's types come from `contentMediaType`.
+        post:
+            operationId: uploadAttachments
+            summary: Attach files to a post
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: true
+                content:
+                    multipart/form-data:
+                        schema:
+                            type: object
+                            required: [cover]
+                            properties:
+                                cover:
+                                    type: string
+                                    contentMediaType: image/png
+                                    maxLength: 2500
+                                gallery:
+                                    type: array
+                                    maxItems: 5
+                                    items:
+                                        type: string
+                                        contentMediaType: image/*
+                                anything:
+                                    type: string
+                                    contentMediaType: application/octet-stream
+                                caption:
+                                    type: string
+                                    maxLength: 120
+            responses:
+                '201': { description: Attached }
+
     /posts/{postId}/legacy-comments:
         # Deprecated with a sunset date. Both reach the generated file's findings,
         # and both are what the doctor will enforce once it exists: a deprecation

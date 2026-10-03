@@ -42,15 +42,16 @@ how the class reaches the controller that needs `$validated`.
 `spec:build` emits one `final` `FormRequest` per operation that states anything about its input, into the `Requests`
 sub-namespace of the generated tree, and declares it as `routeAction`'s first parameter. What a rule set contains today:
 
-| Built                                                                                                        | Reported and not enforced                                                                    |
-| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| Every row of [the mapping table](#every-constraint-maps-or-reports): types, bounds, `format`, `enum`, arrays | A `format` no Laravel rule means the same as, `uri` the most common                          |
-| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`                | A `pattern` across [the ECMA-262 / PCRE boundary](../openapi-support.md#strings-and-numbers) |
-| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | A recursive schema below the point it repeats, since no rule set reaches infinity            |
-| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A file part, which [`uploads.md`](../uploads.md) owns                                        |
-| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for        |
-| A `query` parameter, with its own `required`                                                                 | A bound on a field that states no single type                                                |
-| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                              |
+| Built                                                                                                        | Reported and not enforced                                                                      |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Every row of [the mapping table](#every-constraint-maps-or-reports): types, bounds, `format`, `enum`, arrays | A `format` no Laravel rule means the same as, `uri` the most common                            |
+| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`                | A `pattern` across [the ECMA-262 / PCRE boundary](../openapi-support.md#strings-and-numbers)   |
+| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | A recursive schema below the point it repeats, since no rule set reaches infinity              |
+| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A file part's `encoding.<part>.contentType`, which [`uploads.md`](../uploads.md) names as open |
+| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for          |
+| A `query` parameter, with its own `required`                                                                 | A bound on a field that states no single type                                                  |
+| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                                |
+| [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size |                                                                                                |
 
 **A body declared only in media types this package does not read gets no class**, the same as an operation stating
 nothing, and `spec:build` warns about it on a line of its own: unlike that operation, this one states something nobody
@@ -134,7 +135,8 @@ set is shared, the values under it are not:** a form-encoded body carries string
 contract whose schema leans on a type the encoding cannot carry is served better by `application/json`. **An operation
 declaring two of them over two different schemas is a build error**, because one `rules()` cannot hold two rule sets and
 [nothing rewrites it per request](#nothing-rewrites-the-rule-set). Two media types over one schema are not a conflict
-and produce one rule set.
+and produce one rule set. **A part is a file only when `multipart/form-data` is the body's one media type**: beside
+another, the part is read as a string, because one rule set cannot hold both a `file` and the string JSON sends.
 
 **Any other media type is reported rather than guessed at.** A body declaring `application/xml` is a contract this
 package does not serve, and a `format: byte` string inside a JSON body is
@@ -392,10 +394,10 @@ the caveat the paragraph on empty values above states: a bare `""` is turned int
 before any rule runs, and it is the `null` the type rule refuses.
 
 **The payload's root has no field for `array:` to sit on, so it gets an `after()` check instead.** The generated class
-carries the body's declared top-level keys as a constant and refuses any other key in the body, read from the body
-rather than from `all()`, so a query parameter is not mistaken for an undeclared field. Without it an undeclared field
-is simply absent from `validated()`, so it never reaches a model either way; what the contract asked for and would not
-get is the request being refused.
+carries the body's declared top-level keys as a constant and refuses any other key in the body, read from the body (the
+uploaded files of a multipart one included) rather than from `all()`, so a query parameter is not mistaken for an
+undeclared field. Without it an undeclared field is simply absent from `validated()`, so it never reaches a model either
+way; what the contract asked for and would not get is the request being refused.
 
 **Top-level keys only, and that is what lets the check run whenever the root closes itself.** Every nested object that
 closes itself already refuses its own extras through `array:` on its own key, so the root's check has nothing to add

@@ -26,10 +26,11 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
  * nullability and presence, the bounds on strings, numbers and arrays, the
  * `format` values Laravel has a rule of the same meaning for, enumerations,
  * patterns inside the ECMA-262 / PCRE boundary, nested objects and array
- * elements under dotted keys, `allOf` merged, `dependentRequired` and an
- * optional body's "all or none". What it does not — file parts, a pattern
- * across the boundary, a `format` Laravel would read differently, a recursive
- * schema's infinite depth — leaves a finding.
+ * elements under dotted keys, `allOf` merged, `dependentRequired`, an
+ * optional body's "all or none", and the file parts of a multipart body. What
+ * it does not — an `encoding` beside a file part, a pattern across the
+ * boundary, a `format` Laravel would read differently, a recursive schema's
+ * infinite depth — leaves a finding.
  *
  * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
  */
@@ -70,6 +71,12 @@ final readonly class RuleSetBuilder
     ];
 
     /**
+     * The one body media type a part can be a file in, so the one a file part
+     * is read as one for.
+     */
+    private const MULTIPART = 'multipart/form-data';
+
+    /**
      * The media types a generated rule set covers.
      *
      * All three arrive through `all()`, so one rule set covers them and the
@@ -80,7 +87,7 @@ final readonly class RuleSetBuilder
      */
     public const READ_MEDIA_TYPES = [
         'application/json',
-        'multipart/form-data',
+        self::MULTIPART,
         'application/x-www-form-urlencoded',
     ];
 
@@ -133,6 +140,8 @@ final readonly class RuleSetBuilder
         $walk = new RuleWalk($operation->label());
 
         $body = self::bodySchema($operation, $walk->findings);
+        $walk->multipart = $operation->requestBody !== null
+            && array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES)) === [self::MULTIPART];
         $closedKeys = null;
 
         if ($body !== null) {
@@ -244,7 +253,10 @@ final readonly class RuleSetBuilder
             $findings[] = sprintf(
                 'The body declares %s over one schema, so one rule set covers them all.',
                 self::list(array_keys($read)),
-            );
+            ).(isset($read[self::MULTIPART])
+                ? ' A part the schema marks as a file is then read as a string, because a JSON or form-encoded '
+                    .'body cannot carry one and no rule serves both.'
+                : '');
         }
 
         return reset($read);
@@ -543,7 +555,29 @@ final readonly class RuleSetBuilder
 
         $children = null;
 
-        switch ($schema->soleType()) {
+        $type = $schema->soleType();
+
+        // A file part is a part of a multipart body the schema says is one,
+        // and a string the moment the body can also be JSON. A schema that
+        // says both "file" and some other type is not read as a file: the
+        // other type is what the rules would answer to.
+        if ($walk->multipart && $schema->isFilePart && ($type === SchemaType::String || $schema->types === [])) {
+            // `required` rather than `present`: Laravel's `required` is the
+            // rule that means "a file was sent", and an empty upload slot is
+            // not one. A nullable part keeps `present`.
+            if ($rules !== [] && $rules[0] === 'present' && ! $schema->isNullable()) {
+                $rules[0] = 'required';
+            }
+
+            self::fileRules($schema, $label, $rules, $handled, $walk);
+            // `soleType()` never answers `Null`, so it stands for "the file
+            // rules above were the type rules" and skips the cases below.
+            $type = SchemaType::Null;
+        }
+
+        switch ($type) {
+            case SchemaType::Null:
+                break;
             case SchemaType::String:
                 $rules[] = 'string';
                 self::stringRules($schema, $label, $rules, $handled, $walk);
@@ -685,6 +719,74 @@ final readonly class RuleSetBuilder
         }
 
         $walk->findings = [...$walk->findings, ...self::unhandled($label, $schema, $handled)];
+    }
+
+    /**
+     * What a file part becomes: `file`, the types its `contentMediaType` names,
+     * and a size in kilobytes.
+     *
+     * **`file` instead of `string`**, because `string` refuses an upload, which
+     * is worse than leaving the rule out.
+     *
+     * **`mimetypes:` and only from `contentMediaType`.** `encoding.<part>.contentType`
+     * wins over it in `uploads.md`, but `RequestBody` holds one schema per media
+     * type and nothing else, so `encoding` never reaches the contract. Every
+     * file part says so, because this walk cannot tell a part with an
+     * `encoding` from one without.
+     *
+     * TODO (#90): read `encoding.<part>.contentType` once it is in the contract,
+     * and drop the finding below.
+     *
+     * **`application/octet-stream` and the any-type wildcard are not types to
+     * match.** They are how a contract says "any bytes", and `mimetypes`
+     * inspects the file's real type, so it would turn away every upload that
+     * is not literally an octet stream: a rule stricter than the contract, in
+     * the direction of refusing valid payloads.
+     *
+     * **`maxLength` is bytes, `max` is kilobytes, rounded down.** A ceiling
+     * under one kilobyte has no rule: `max:0` would refuse every file with
+     * content, which is no rounding.
+     *
+     * @param  list<string|InRule>  $rules
+     * @param  list<string>  $handled
+     *
+     * @see docs/guide/uploads.md — "The schema names the file part"
+     */
+    private static function fileRules(Schema $schema, string $label, array &$rules, array &$handled, RuleWalk $walk): void
+    {
+        $rules[] = 'file';
+        array_push($handled, 'isFilePart', 'contentMediaType', 'maxLength');
+
+        // Parameters (`; charset=...`) are not part of the type Laravel reads.
+        $mediaType = $schema->contentMediaType === null
+            ? ''
+            : strtolower(trim(explode(';', $schema->contentMediaType)[0]));
+
+        if ($mediaType !== '' && ! in_array($mediaType, ['application/octet-stream', '*/*'], true)) {
+            $rules[] = 'mimetypes:'.$mediaType;
+        }
+
+        if ($schema->maxLength !== null) {
+            $kilobytes = intdiv($schema->maxLength, 1024);
+
+            if ($kilobytes >= 1) {
+                $rules[] = 'max:'.$kilobytes;
+            } else {
+                $walk->findings[] = sprintf(
+                    '%s declares `maxLength: %d` on a file, below the one kilobyte Laravel\'s `max` can '
+                        .'express, so its size is not enforced.',
+                    $label,
+                    $schema->maxLength,
+                );
+            }
+        }
+
+        $walk->findings[] = sprintf(
+            '%s is a file part. Its types are read from `contentMediaType` alone: an '
+                .'`encoding.<part>.contentType` beside the body is not read, so a restriction written '
+                .'there is not enforced.',
+            $label,
+        );
     }
 
     /**

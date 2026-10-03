@@ -8,7 +8,8 @@ covers: >
     project configures a disk, the trait that decides what lands in the column and why it is a trait with no interface
     beside it, why an upload is not a driver, and what a base64 part inside a JSON body gets instead.
 read_before: >
-    Implementing the multipart half of the `FormRequest` emitter, or the storage seam a generated CRUD default calls.
+    Changing how the `FormRequest` emitter reads a multipart body, or implementing the storage seam a generated CRUD
+    default calls.
 tags: [openapi, code-generation, laravel, decisions, scope]
 ---
 
@@ -16,9 +17,10 @@ tags: [openapi, code-generation, laravel, decisions, scope]
 
 > **In brief**
 >
-> - **Not built yet.** Nothing reads a multipart body today; this is the design Phase 2 will follow.
-> - A part is a file when the schema says so, in either OpenAPI spelling, and it becomes `file`, `mimetypes` and a size
->   in kilobytes.
+> - **The rules half is built; storing is not.** A multipart part the schema calls a file becomes `file`, `mimetypes`
+>   and a size in kilobytes. Nothing stores anything yet: that half is the design Phase 2 will follow.
+> - A part is a file when the schema says so, in either OpenAPI spelling, **and the body is `multipart/form-data`
+>   alone**. In a JSON body it is a string.
 > - One operation declares one body media type. Two of them, carrying different shapes, is a build error naming both.
 > - Nothing stores anything until a project configures a disk. Until it does, an upload operation answers `501`.
 > - This is not a driver, and the reason is that OpenAPI already names an upload the same way in every specification.
@@ -27,9 +29,12 @@ An upload is the one body shape where the contract stops short of what the code 
 part is a file and what it may contain; it never says where the file goes. This document owns both halves: what the
 build does with the part, and what it deliberately leaves to the project.
 
-> **None of this is behavior yet.** No multipart body is read, no file rule is generated, and no configuration key names
-> a disk. What is written here is the design [Phase 2](../../README.md#phase-2-the-generated-pipeline) will follow,
-> alongside [request validation](./code-generation/request-validation.md) and the
+> **Part of this is behavior and part of it is design.** The rules a file part becomes are built and
+> [pinned by execution tests](https://github.com/Gcob/lara-spec-first/blob/main/tests/Feature/Generation/GeneratedRequestTest.php).
+> No configuration key names a disk and nothing stores a file: from
+> [Storing is configured, never guessed](#storing-is-configured-never-guessed) on, this is the design
+> [Phase 2](../../README.md#phase-2-the-generated-pipeline) will follow, alongside
+> [request validation](./code-generation/request-validation.md) and the
 > [CRUD defaults](./controllers.md#x-model-turns-on-the-model-layer) it attaches to. Items marked `Open` are undecided,
 > and the number beside one links to the card that settles it.
 
@@ -65,16 +70,39 @@ generator carries neither spelling: it carries
 
 **What a part becomes:**
 
-| The contract states                                    | Laravel rule                                                                                 |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| `format: binary`, or `contentMediaType`                | `file`                                                                                       |
-| `encoding.<part>.contentType`, else `contentMediaType` | `mimetypes:` with the declared types, `image/*` included, since Laravel matches a wildcard   |
-| `maxLength` on a binary part                           | `max:` in kilobytes, the contract's bytes over 1024, rounded down deliberately               |
-| The part is in the body root's `required` list         | `required` beside the file rules                                                             |
-| The part is not in it                                  | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable |
-| `items` whose schema is a binary part                  | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`           |
+| The contract states                            | Laravel rule                                                                                 |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `format: binary`, or `contentMediaType`        | `file`, in a body that is `multipart/form-data` alone                                        |
+| `contentMediaType`                             | `mimetypes:` with the declared type, `image/*` included, since Laravel matches a wildcard    |
+| `maxLength` on a binary part                   | `max:` in kilobytes, the contract's bytes over 1024, rounded down deliberately               |
+| The part is in the body root's `required` list | `required` beside the file rules                                                             |
+| The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable |
+| `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`           |
 
-**Presence is read the same way as for any other property.** The body root's `required` list decides it, so
+**Only `contentMediaType` is read for the types today, and `encoding` is the Open half.** OpenAPI also lets a multipart
+body state `encoding.<part>.contentType`, which wins over `contentMediaType`. `RequestBody` holds one schema per media
+type and nothing else, so `encoding` never reaches the contract, and a restriction written there is not enforced. The
+build cannot tell a part with an `encoding` from one without, so **every file part says so in its generated file's
+findings**, and the code carries a marker for the card that removes the finding.
+
+**Open ([#90](https://github.com/Gcob/lara-spec-first/issues/90)):** carrying `encoding` into the contract, so that
+`contentType` is read first and the finding goes away.
+
+**A file is a file only in a body that is `multipart/form-data` alone.** JSON carries no files, so a `format: binary`
+property in a JSON or form-encoded body is a string like any other, and the rule set says it states a keyword nothing
+enforces. The same goes when one schema is declared under `multipart/form-data` **and** another read media type: one
+rule set cannot hold both a `file` and the string a JSON body sends, and `file` would refuse every valid JSON request,
+so the part is read as a string and the body's findings say why. A contract that needs both is two operations.
+
+**`application/octet-stream` and `*/*` mean "any bytes", so they add no `mimetypes`.** `mimetypes` inspects the file's
+real type, and matching `application/octet-stream` literally refuses a PNG: measured, not assumed. Emitting it would
+turn a contract that restricts nothing into one that refuses every upload but an octet stream. A parameter on the type
+(`image/png; charset=binary`) is not part of the type Laravel reads and is dropped, and the type is lower-cased.
+
+**Presence is read the same way as for any other property, with one difference in the name.** The body root's `required`
+list decides it, and a required file part is `required` where a required string is `present`: Laravel's `required` is
+the rule that means "a file was sent", and it refuses the empty slot a form submits with no file chosen. A nullable part
+keeps `present`. So
 [a `PATCH` empties that list](./code-generation/request-validation.md#patch-empties-the-required-list) for a file part
 exactly as it does for a string, and the DTO's third state is what carries "the client sent no avatar". Nullability
 stays the schema's own axis: a rule set that added `nullable` to every optional part would be
@@ -105,8 +133,12 @@ of a payload: never turn away a form the document describes. Here the form is ac
 kilobyte away from where the contract put it, which is a rounding on one number rather than a shape refused. A contract
 that needs the byte exactly is describing something Laravel's `max` cannot count.
 
-A `maxLength` beside a `contentEncoding` is reported instead of translated: it then counts the characters of an encoded
-string rather than the bytes of a file, and reading it as bytes would refuse a quarter of what the contract allows.
+**Below one kilobyte there is no rule, and the file part says so.** `max:0` would refuse every file with content, which
+is no rounding: it is a rule that turns a ceiling into a wall. So a `maxLength` under 1024 on a file is reported in the
+findings, and the size is not enforced.
+
+A `maxLength` on a base64 string in a JSON body is a different thing: the part is a string there, and `max` counts its
+characters, which is what the contract's `maxLength` counts for an encoded string.
 
 **Two rules Laravel has and no contract can ask for:** `image` and `dimensions`. `image` is a looser
 `mimetypes:image/*`, so emitting it beside the declared types adds a second answer rather than a stricter one, and
@@ -118,7 +150,7 @@ says so rather than the build inventing it.
 already uses:
 
 ```php
-'photos' => ['present', 'array', 'min:1', 'max:5'],
+'photos' => ['present', 'array', 'list', 'min:1', 'max:5'],
 'photos.*' => ['file', 'mimetypes:image/jpeg,image/png', 'max:2048'],
 ```
 
@@ -234,8 +266,9 @@ who needs one method.
 ## A base64 part is a string
 
 **A file carried inside a JSON body is a string, validated as one, and nothing decodes it.**
-[`contentEncoding` is not acted on](./openapi-support.md#content), so `format: byte` or `contentEncoding: base64` gets
-the string rules the schema states and no `file`, no `mimetypes`, no size in kilobytes.
+[`contentEncoding` is not acted on](./openapi-support.md#content), and a part is only a file in a
+[multipart body](#the-schema-names-the-file-part), so `format: byte` or `contentEncoding: base64` in JSON gets the
+string rules the schema states and no `file`, no `mimetypes`, no size in kilobytes.
 
 **That is a position rather than a gap, and the cost of the alternative is what settles it.** Base64 inside JSON is a
 third larger on the wire, and PHP holds the whole payload in memory to decode it where a multipart upload streams to a

@@ -621,8 +621,8 @@ it('reports what no Laravel rule means the same as', function (Schema $field, st
     // Risk 2: without a type rule Laravel reads `min` as a string length.
     'a bound on an untyped field' => [new Schema(minimum: 1.0), '`field` states `minimum`'],
     'a recursion marker' => [Schema::recursion('#/components/schemas/Node'), 'points back at'],
-    // Part 3's: a file part is not a rule yet.
-    'a file part' => [new Schema(types: [SchemaType::String], isFilePart: true), '`isFilePart`'],
+    // A file part in a JSON body is a string: JSON cannot carry a file.
+    'a file part in a JSON body' => [new Schema(types: [SchemaType::String], isFilePart: true), '`isFilePart`'],
 ]);
 
 // `true` asks for nothing, so there is no rule for it to be missing: a finding
@@ -750,4 +750,141 @@ it('reports a body whose own schema is not an object', function (): void {
 
     expect($set->rules)->toBe([])
         ->and(implode('', $set->findings))->toContain('is not an object');
+});
+
+/*
+ * Part 3: what a file part becomes, as strings. `GeneratedRequestTest` is the
+ * proof that Laravel reads these the way the contract meant.
+ */
+
+/**
+ * The rules and findings of one multipart property.
+ *
+ * @param  array<int, string>  $mediaTypes
+ * @return array{0: array<string, list<string|InRule>>, 1: string}
+ */
+function filePartRules(Schema $part, bool $required = true, array $mediaTypes = ['multipart/form-data'], string $method = 'post'): array
+{
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: array_fill_keys($mediaTypes, objectSchema(['avatar' => $part], $required ? ['avatar'] : [])),
+    ));
+
+    return [$set->rules, implode("\n", $set->findings)];
+}
+
+it('reads a file part as file, not string', function (): void {
+    [$rules] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true));
+
+    expect($rules['avatar'])->toBe(['required', 'file']);
+});
+
+it('reads the types of a file part from contentMediaType', function (?string $declared, array $expected): void {
+    [$rules] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: $declared));
+
+    expect($rules['avatar'])->toBe(['required', 'file', ...$expected]);
+})->with([
+    'none' => [null, []],
+    'a type' => ['image/png', ['mimetypes:image/png']],
+    'a wildcard' => ['image/*', ['mimetypes:image/*']],
+    'parameters dropped, lower case' => ['Image/PNG; charset=binary', ['mimetypes:image/png']],
+    'any bytes' => ['application/octet-stream', []],
+    'the any-type wildcard' => ['*/*', []],
+]);
+
+it('reads a file part with no type at 3.1 as a file', function (): void {
+    [$rules] = filePartRules(new Schema(isFilePart: true, contentMediaType: 'image/png'));
+
+    expect($rules['avatar'])->toBe(['required', 'file', 'mimetypes:image/png']);
+});
+
+it('turns maxLength on a file into kilobytes, rounded down', function (int $bytes, string $rule): void {
+    [$rules] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, maxLength: $bytes));
+
+    expect($rules['avatar'])->toBe(['required', 'file', $rule]);
+})->with([
+    'exactly one kilobyte' => [1024, 'max:1'],
+    'between two and three' => [2500, 'max:2'],
+    'two kilobytes' => [2048, 'max:2'],
+]);
+
+// `max:0` would refuse every file with content, which is no rounding.
+it('reports a size ceiling below one kilobyte instead of emitting max:0', function (): void {
+    [$rules, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, maxLength: 500));
+
+    expect($rules['avatar'])->toBe(['required', 'file'])
+        ->and($findings)->toContain('`avatar` declares `maxLength: 500` on a file');
+});
+
+it('reports the minimum size of a file, which no rule carries', function (): void {
+    [, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, minLength: 10));
+
+    expect($findings)->toContain('`avatar` states `minLength`');
+});
+
+// `encoding` never reaches the contract (card #90), and the walk cannot tell a
+// part that has one from a part that has none, so every file part says so.
+it('says that encoding is not read for every file part', function (): void {
+    [, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png'));
+
+    expect($findings)->toContain('`avatar` is a file part')
+        ->toContain('`encoding.<part>.contentType` beside the body is not read');
+});
+
+it('asks for an optional file part with sometimes, and a nullable one with present', function (): void {
+    [$optional] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true), required: false);
+    [$nullable] = filePartRules(new Schema(types: [SchemaType::String, SchemaType::Null], isFilePart: true));
+
+    expect($optional['avatar'])->toBe(['sometimes', 'file'])
+        ->and($nullable['avatar'])->toBe(['present', 'nullable', 'file']);
+});
+
+it('lets a PATCH leave a file part out', function (): void {
+    [$rules] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true), method: 'patch');
+
+    expect($rules['avatar'])->toBe(['sometimes', 'file']);
+});
+
+it('puts the file rules under part.* for several files', function (): void {
+    [$rules] = filePartRules(new Schema(
+        types: [SchemaType::Array],
+        items: new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png', maxLength: 2048),
+        minItems: 1,
+        maxItems: 5,
+    ));
+
+    expect($rules['avatar'])->toBe(['present', 'array', 'list', 'min:1', 'max:5'])
+        ->and($rules['avatar.*'])->toBe(['file', 'mimetypes:image/png', 'max:2']);
+});
+
+// A file in JSON is a string, and the contract reaching it through both media
+// types gets the string, because no rule serves a file and a string at once.
+it('reads a file part as a string unless multipart is the only body', function (array $mediaTypes): void {
+    [$rules, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true), mediaTypes: $mediaTypes);
+
+    expect($rules['avatar'])->toBe(['present', 'string'])
+        ->and($findings)->toContain('`avatar` states `isFilePart`');
+})->with([
+    'JSON' => [['application/json']],
+    'a form' => [['application/x-www-form-urlencoded']],
+    'multipart and JSON' => [['multipart/form-data', 'application/json']],
+]);
+
+it('says why a mixed body reads its file parts as strings', function (): void {
+    [, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true), mediaTypes: ['multipart/form-data', 'application/json']);
+
+    expect($findings)->toContain('A part the schema marks as a file is then read as a string');
+});
+
+it('does not read a file part that states another type as one', function (): void {
+    [$rules] = filePartRules(new Schema(types: [SchemaType::Integer], isFilePart: true));
+
+    expect($rules['avatar'])->toBe(['required', 'integer']);
+});
+
+it('keeps format: byte a string', function (): void {
+    [$rules, $findings] = filePartRules(new Schema(types: [SchemaType::String], format: 'byte'));
+
+    expect($rules['avatar'])->toBe(['present', 'string'])
+        ->and($findings)->toContain('`format: byte`');
 });

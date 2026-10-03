@@ -133,9 +133,9 @@ it('closes the root with an after() check on its declared keys', function (): vo
     expect(emittedRequest(goldenOperation()))
         ->toContain("private const BODY_KEYS = ['email', 'age', 'nickname', 'role', 'tags', 'address', 'website'];")
         ->toContain('public function after(): array')
-        // The body bag, never `getInputSource()`, which answers with the query
-        // string on a `GET` or a `HEAD`.
-        ->toContain('($this->isJson() ? $this->json() : $this->request)->all()');
+        // The body bag and the uploaded files, never `getInputSource()`, which
+        // answers with the query string on a `GET` or a `HEAD`.
+        ->toContain('$this->isJson() ? $this->json()->all() : [...$this->request->all(), ...$this->files->all()]');
 });
 
 // Authorization is the route's and a Policy's. A generated answer here would be
