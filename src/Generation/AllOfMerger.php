@@ -91,6 +91,7 @@ final readonly class AllOfMerger
 
         return new Schema(
             name: $a->name ?? $b->name,
+            source: $a->name !== null ? $a->source : $b->source,
             types: self::types($a->types, $b->types, $refuse),
             format: self::same($a->format, $b->format, '`format`', $refuse),
             properties: $properties,
@@ -307,6 +308,7 @@ final readonly class AllOfMerger
             isFilePart: $schema->isFilePart,
             contentMediaType: $schema->contentMediaType,
             recursesTo: $schema->recursesTo,
+            source: $schema->source,
         );
     }
 }

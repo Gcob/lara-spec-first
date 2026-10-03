@@ -204,7 +204,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence, insideList: false);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $walk->multipart);
     }
 
     /**

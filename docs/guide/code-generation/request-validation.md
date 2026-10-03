@@ -62,9 +62,10 @@ half that makes an incomplete rule set honest rather than misleading. Nothing is
 nothing is dropped in silence: that is [the principle](#every-constraint-maps-or-reports) the rest of this page is
 about, and it is what makes each pass safe to ship on its own.
 
-**The input DTO is not built yet.** [`data()`](#the-payload-arrives-as-a-dto) and the type behind it are the last pass
-of [#35](https://github.com/Gcob/lara-spec-first/issues/35); a generated request today carries `authorize()` and
-`rules()` and nothing else.
+**The input DTO types are built, and `data()` is the last pass.** `spec:build` writes
+[the DTO](#the-payload-arrives-as-a-dto) of every body that is an object, in the `Data` sub-namespace; the method on the
+request that returns one is the last pass of [#35](https://github.com/Gcob/lara-spec-first/issues/35), so a generated
+request today carries `authorize()` and `rules()` and nothing else.
 
 ## One rule set, body and query
 
@@ -546,10 +547,14 @@ separates them: a `readOnly` property is forbidden in a request body and expecte
 property is optional for different reasons on each side. One class serving both would have to be the union of two
 shapes, which is a type describing neither.
 
-**The name comes from the schema when the schema has one.** A body written as `$ref: '#/components/schemas/NewUser'`
-takes that name, so every operation sending that shape shares one type. An inline body takes the operation's name with
-an `Input` marker, which is what keeps it from colliding with the response DTO derived from the same operation. The
-exact spellings are public API surface under [rule 4](../openapi-support.md#the-four-rules) and belong to
+**The name comes from the schema when the schema has one, and the request side always carries `Input`.** A body written
+as `$ref: '#/components/schemas/NewUser'` becomes `NewUserInputDto` and `NewUserPartialInputDto`, so every operation
+sending that shape shares one pair. An inline body takes the operation's name, `CreateUserInputDto`. The marker is there
+whether or not a `$ref` was involved, because the same `$ref: User` used in a request and in a response would otherwise
+give the two directions one name. **The name is the schema's and never the `$ref`'s or the file's**:
+`./other.yaml#/components/schemas/NewUser` is the same `NewUserInputDto`, so reorganizing a specification into files
+renames nothing, and two different schemas under one name are a build error naming where each is written. The exact
+spellings are public API surface under [rule 4](../openapi-support.md#the-four-rules) and belong to
 [the name freeze](../../../README.md#before-10-freeze-what-a-major-would-cost).
 
 ## Nothing to validate, no class

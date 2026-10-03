@@ -137,9 +137,16 @@ final readonly class BuildPlanner
             $files[] = $formRequests->emit($request);
         }
 
+        $inputDtos = (new InputDtoPlanner)->plan($requests);
+        $dtoEmitter = new InputDtoEmitter($this->namespace, $this->specPath);
+
+        foreach ($inputDtos->dtos as $dto) {
+            $files[] = $dtoEmitter->emit($dto);
+        }
+
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
-        return new BuildPlan($planned, $files, $requests, $unreadBodies);
+        return new BuildPlan($planned, $files, $requests, $unreadBodies, $inputDtos);
     }
 
     /**

@@ -1,0 +1,93 @@
+# The input DTO's whole table in one schema, written for the emitter rather
+# than for the reader: what it exercises is every row of "What each schema type
+# becomes" in dto-anatomy.md, and the golden files under
+# tests/Fixtures/Generated/Data are what this contract produces.
+#
+# Multipart on purpose. It is the body that delivers `"42"` where the schema
+# says `integer`, which is why the request side casts, and the only one whose
+# parts can be files.
+#
+# `Address` recurses into itself, so the DTO has to point at its own class
+# instead of building one.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users:
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NewUser'
+      responses:
+        '201': { description: Created }
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NewUser'
+      responses:
+        '200': { description: Updated }
+components:
+  schemas:
+    Address:
+      type: object
+      required: [street]
+      properties:
+        street: { type: string }
+        city: { type: [string, 'null'] }
+        parent: { $ref: '#/components/schemas/Address' }
+    NewUser:
+      type: object
+      required: [email, born_on, nickname, address]
+      properties:
+        email: { type: string, format: email }
+        age: { type: integer }
+        score: { type: number }
+        active: { type: boolean }
+        born_on: { type: [string, 'null'], format: date }
+        seen_at: { type: string, format: date-time }
+        status: { type: string, enum: [active, banned] }
+        level: { type: integer, enum: [1, 2] }
+        nickname: { type: [string, 'null'] }
+        address: { $ref: '#/components/schemas/Address' }
+        profile:
+          type: object
+          properties:
+            bio: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        ids:
+          type: array
+          items: { type: integer }
+        roles:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+        matrix:
+          type: array
+          items:
+            type: array
+            items: { type: integer }
+        visits:
+          type: array
+          items: { type: string, format: date-time }
+        meta: { type: object }
+        user-id: { type: string }
+        2fa: { type: boolean }
+        avatar: { type: string, contentMediaType: image/png }
+        anything: {}

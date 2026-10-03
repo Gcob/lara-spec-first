@@ -1,0 +1,53 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Gcob\LaraSpecFirst\Generation;
+
+/**
+ * One input DTO the build will write, before it is written.
+ *
+ * @internal Not public API: what {@see InputDtoPlanner} hands the emitter.
+ */
+final readonly class PlannedInputDto
+{
+    /**
+     * @param  string  $shortName  the class name, `NewUserInputDto` or
+     *                             `NewUserPartialInputDto`
+     * @param  bool  $partial  whether every property is optional
+     * @param  string  $position  where the schema it describes is written: a
+     *                            component's own position, or the operation's for
+     *                            a schema written inline
+     * @param  list<InputDtoProperty>  $properties
+     * @param  list<string>  $readers  the labels of the operations whose
+     *                                 `data()` returns this type, in document
+     *                                 order. Empty for a type no operation reads,
+     *                                 which the file says
+     * @param  string  $naming  how the name was reached, for the file's findings
+     * @param  list<string>  $findings  what the build worked out about the
+     *                                  properties that the declared types do not
+     *                                  show
+     */
+    public function __construct(
+        public string $shortName,
+        public bool $partial,
+        public string $position,
+        public array $properties,
+        public array $readers,
+        public string $naming,
+        public array $findings,
+    ) {}
+
+    /**
+     * @param  string  $namespace  the configured generated root namespace
+     */
+    public function fullyQualifiedName(string $namespace): string
+    {
+        return $namespace.'\\Data\\'.$this->shortName;
+    }
+
+    public function relativePath(): string
+    {
+        return 'Data/'.$this->shortName.'.php';
+    }
+}
