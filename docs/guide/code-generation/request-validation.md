@@ -42,13 +42,18 @@ how the class reaches the controller that needs `$validated`.
 `spec:build` emits one `final` `FormRequest` per operation that states anything about its input, into the `Requests`
 sub-namespace of the generated tree, and declares it as `routeAction`'s first parameter. What a rule set contains today:
 
-| Built                                                                          | Reported and not enforced                                                                       |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `string`, `integer`, `number`, `boolean`                                       | Every keyword that constrains a value: lengths, bounds, `pattern`, `format`, `enum`             |
-| `nullable`, from the type list                                                 | `array` and `object`, whose element and property rules are a pass of their own                  |
-| `required`, `present` for a nullable one, `sometimes`                          | `allOf`, `additionalProperties: false`, `dependentRequired`                                     |
-| [`PATCH` reading the required list as empty](#patch-empties-the-required-list) | [An optional body's "all or none"](#an-optional-body-all-or-none), which is `sometimes` for now |
-| A `query` parameter, with its own `required`                                   |                                                                                                 |
+| Built                                                                                                   | Reported and not enforced                                                                       |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `string`, `integer`, `numeric` (from `number`), `boolean`                                               | Every keyword that constrains a value: lengths, bounds, `pattern`, `format`, `enum`             |
+| `nullable`, from the type list                                                                          | `array` and `object`, whose element and property rules are a pass of their own                  |
+| `required`, `present` for a nullable one, `sometimes`                                                   | `allOf`, `additionalProperties: false`, `dependentRequired`                                     |
+| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                          | [An optional body's "all or none"](#an-optional-body-all-or-none), which is `sometimes` for now |
+| A `query` parameter, with its own `required`                                                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for           |
+| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed |                                                                                                 |
+
+**A body declared only in media types this package does not read gets no class**, the same as an operation stating
+nothing, and `spec:build` warns about it on a line of its own: unlike that operation, this one states something nobody
+validates.
 
 **Everything in the right-hand column is named, per field, in the generated file's own `Findings` block**, which is the
 half that makes an incomplete rule set honest rather than misleading. Nothing is approximated by a looser rule, and

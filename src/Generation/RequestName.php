@@ -71,14 +71,29 @@ final readonly class RequestName
     }
 
     /**
-     * Whether the contract states anything about this operation's input.
+     * Whether the contract states anything about this operation's input that
+     * a rule set can be built from.
      *
-     * A body the extractor could read no schema from is already null here, so
-     * this is the contract's own answer rather than a guess about it.
+     * A body the extractor could read no schema from is already null here. A
+     * body declared only in media types this package does not read is not
+     * null, and it counts as nothing to validate: the class would carry a
+     * `rules()` returning an empty array, which is the file this rule exists to
+     * avoid. The build reports that body on its own line instead.
      */
     public static function validatesAnything(Operation $operation): bool
     {
-        return $operation->requestBody !== null || $operation->queryParameters !== [];
+        return $operation->queryParameters !== [] || self::hasReadableBody($operation);
+    }
+
+    /**
+     * Whether the body declares at least one media type a rule set reads.
+     */
+    public static function hasReadableBody(Operation $operation): bool
+    {
+        $body = $operation->requestBody;
+
+        return $body !== null
+            && array_intersect($body->mediaTypes(), RuleSetBuilder::READ_MEDIA_TYPES) !== [];
     }
 
     /**

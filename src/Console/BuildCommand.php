@@ -156,12 +156,24 @@ final class BuildCommand extends Command
      */
     private function reportRequests(BuildPlan $plan): void
     {
-        $withoutRequest = $plan->withoutRequest();
+        $withoutRequest = $plan->withoutRequest() - $plan->unreadBodies;
 
         if ($withoutRequest > 0) {
             $this->components->info(sprintf(
                 '%d operation(s) state nothing to validate and get no request class.',
                 $withoutRequest,
+            ));
+        }
+
+        // Not folded into the line above, because it is not true of them: these
+        // operations state a body, in a media type this package does not read,
+        // so nothing validates it and the contract is not being served.
+        if ($plan->unreadBodies > 0) {
+            $this->components->warn(sprintf(
+                '%d operation(s) declare a body only in media types this package does not read, so '
+                    .'nothing validates it. Add `application/json`, `multipart/form-data` or '
+                    .'`application/x-www-form-urlencoded` to serve it.',
+                $plan->unreadBodies,
             ));
         }
 

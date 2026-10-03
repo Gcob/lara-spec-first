@@ -198,6 +198,20 @@ it('says how many operations state nothing to validate', function (): void {
     expect($output->fetch())->toContain('1 operation(s) state nothing to validate');
 });
 
+// Not folded into "states nothing", because it is not true of it: the body is
+// stated, in a media type this package does not read, so nothing validates it.
+it('warns about a body declared only in a media type it does not read', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('unread-body.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+    $printed = $output->fetch();
+
+    expect($printed)->toContain('1 operation(s) declare a body only in media types this package does not read')
+        ->and($printed)->not->toContain('state nothing to validate')
+        ->and(is_dir(buildTree().'/Requests'))->toBeFalse();
+});
+
 // Scenarios: PUT requires the full body / PATCH makes the same fields optional,
 // over one schema, in one build — which is the only way the two can be compared
 // for anything other than the emitter's own arithmetic.

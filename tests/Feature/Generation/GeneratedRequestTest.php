@@ -103,3 +103,28 @@ it('refuses the string "true" for a boolean query parameter', function (): void 
     expect($status)->toBe(422)
         ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['notify']);
 });
+
+// A key `required` names and `properties` does not declare accepts any value,
+// `null` included. `required` would refuse `null`, `""` and `[]`, answering 422
+// to payloads the contract accepts, which is why the rule is `present`.
+it('accepts any value for a required key the schema does not declare', function (mixed $value): void {
+    Route::post('/_generated/undeclared', fn (Request $request) => response()->json(
+        $request->validate(['ghost' => ['present']])
+    ));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/undeclared',
+        'POST',
+        [],
+        [],
+        [],
+        ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
+        (string) json_encode(['ghost' => $value]),
+    ));
+
+    expect($response->getStatusCode())->toBe(200);
+})->with([
+    'null' => [null],
+    'an empty string' => [''],
+    'an empty list' => [[]],
+]);

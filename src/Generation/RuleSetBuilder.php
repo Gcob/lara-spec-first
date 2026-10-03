@@ -99,6 +99,14 @@ final readonly class RuleSetBuilder
         }
 
         foreach ($operation->queryParameters as $parameter) {
+            $unescapable = self::unescapableKey($parameter->name);
+
+            if ($unescapable !== null) {
+                $findings[] = $unescapable;
+
+                continue;
+            }
+
             $key = self::ruleKey($parameter->name);
 
             if (isset($rules[$key])) {
@@ -225,10 +233,12 @@ final readonly class RuleSetBuilder
         // than a missing line: an empty findings list makes the generated file
         // claim that nothing was left unenforced.
         //
-        // Four keywords are skipped because something above already speaks to
-        // them: `properties` and `required` are acted on rather than dropped,
-        // and `allOf` and `additionalProperties` have a root finding of their
-        // own that says more than the generic one would.
+        // Four keywords are skipped because something else already speaks to
+        // them. `properties` is walked below and `required` is read into each
+        // property's presence — except for a name it declares that
+        // `properties` does not, which the loop below cannot see and which
+        // gets a rule of its own. `allOf` and `additionalProperties` have a
+        // root finding that says more than the generic one would.
         $findings = [
             ...$findings,
             ...self::untranslated(
@@ -242,12 +252,56 @@ final readonly class RuleSetBuilder
         $required = self::effectiveRequired($operation, $schema, $body);
 
         foreach ($schema->properties as $name => $property) {
+            $unescapable = self::unescapableKey((string) $name);
+
+            if ($unescapable !== null) {
+                $findings[] = $unescapable;
+
+                continue;
+            }
+
             $rules[self::ruleKey((string) $name)] = [
                 self::presence((string) $name, $property, $required),
                 ...self::valueRules($property),
             ];
 
             $findings = [...$findings, ...self::untranslated('`'.$name.'`', $property)];
+        }
+
+        // A name in `required` that `properties` does not declare is legal
+        // OpenAPI and the ordinary way to say "this key must be present, any
+        // value". The loop above cannot see it, so it would otherwise be read
+        // into the contract and enforced by nothing — and with no other
+        // finding the generated file would claim that nothing was left
+        // unenforced. Presence is the whole of what the contract states about
+        // it, so presence is the whole rule — and `present` rather than
+        // `required`, because a key with no schema accepts any value, and
+        // Laravel's `required` refuses `null`, `""` and `[]`. A wildcard name
+        // is skipped and reported, on the same rule as a declared one.
+        $undeclared = array_values(array_diff($required, array_keys($schema->properties)));
+
+        foreach ($undeclared as $position => $name) {
+            $unescapable = self::unescapableKey($name);
+
+            if ($unescapable !== null) {
+                $findings[] = $unescapable;
+                unset($undeclared[$position]);
+
+                continue;
+            }
+
+            $rules[self::ruleKey($name)] = ['present'];
+        }
+
+        $undeclared = array_values($undeclared);
+
+        if ($undeclared !== []) {
+            $findings[] = sprintf(
+                'The body requires %s without declaring %s under `properties`, so the rule set asks '
+                    .'for the key and says nothing about the value.',
+                self::list($undeclared),
+                count($undeclared) === 1 ? 'it' : 'them',
+            );
         }
     }
 
@@ -480,15 +534,42 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * A rule key, with the one character Laravel reads as structure escaped.
+     * A rule key, with the structural character Laravel lets a key escape
+     * escaped.
      *
-     * `user.name` as a literal property name would otherwise generate rules for
-     * a `name` key inside a `user` object the contract never declared, which is
-     * a rule set that is wrong rather than incomplete.
+     * `user.name` as a literal property name would otherwise generate rules
+     * for a `name` key inside a `user` object the contract never declared,
+     * which is a rule set that is wrong rather than incomplete.
+     *
+     * **`.` is the one Laravel offers an escape for, and not the only one it
+     * reads.** `*` is the validator's wildcard in a rule key and has no
+     * escape, so a field named with one is reported by
+     * {@see self::unescapableKey()} rather than quietly mis-keyed.
      */
     private static function ruleKey(string $field): string
     {
         return str_replace('.', '\\.', $field);
+    }
+
+    /**
+     * A finding for a field name Laravel would read as structure and offers no
+     * way to escape, or null for the ordinary case.
+     *
+     * Reported rather than refused, on the rule the whole class follows: the
+     * rule set is short by a field rather than wrong about one, and a build
+     * that turned away a valid contract over a rare spelling would be the
+     * worse answer.
+     */
+    private static function unescapableKey(string $field): ?string
+    {
+        return str_contains($field, '*')
+            ? sprintf(
+                '`%s` carries a `*`, which Laravel reads as a wildcard in a rule key and offers no '
+                    .'escape for. Its rules would apply to keys the contract never declared, so none '
+                    .'are emitted for it.',
+                $field,
+            )
+            : null;
     }
 
     /**

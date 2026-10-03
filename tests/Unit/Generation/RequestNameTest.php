@@ -76,6 +76,20 @@ it('gives a name to an operation whose only input is a query parameter', functio
     expect(RequestName::for($operation)?->shortName)->toBe('ListUsersRequest');
 });
 
+// A body declared only in a media type no rule set reads would make a class
+// whose `rules()` returns an empty array. The build reports it instead.
+it('gives no name to an operation whose body no rule set reads', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/users'),
+        operationId: 'createUser',
+        requestBody: new RequestBody(['application/xml' => new Schema], true),
+    );
+
+    expect(RequestName::for($operation))->toBeNull();
+});
+
 // Checked before the suffix, because appending it would produce the valid,
 // meaningless `Request` — which every other such operation also becomes.
 it('refuses an operationId that leaves nothing behind', function (): void {
