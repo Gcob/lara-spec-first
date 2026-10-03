@@ -99,10 +99,13 @@ get `sometimes`. **And the method does not touch it.**
 statement about the resource's representation, and a query parameter is not part of that representation: `?notify=1` is
 as required on a `PATCH` as it is on a `PUT`.
 
-**An array or object query parameter gets its presence rule and nothing else.** A query string is not JSON: OpenAPI's
-default serialization of an array is `?tag=a&tag=b`, of which PHP keeps only the last value, and `explode: false` sends
-`?tag=a,b` as one string. `style` and `explode` are not read, so the value reaching the validator is not the shape the
-schema describes, and every rule about that shape would refuse a valid request. The generated file says so.
+**An array query parameter gets its presence rule and nothing else, and an object query parameter gets nothing.** A
+query string is not JSON: OpenAPI's default serialization of an array is `?tag=a&tag=b`, of which PHP keeps only the
+last value, and `explode: false` sends `?tag=a,b` as one string. `style` and `explode` are not read, so the value
+reaching the validator is not the shape the schema describes, and every rule about that shape would refuse a valid
+request. An object is worse off still: the default style sends one key per property, `?status=a`, and never the
+parameter's own name, so even its presence would refuse a valid request, and it is `sometimes` whatever its `required`
+flag. The generated file says so in both cases.
 
 **A path parameter is the router's question, and its answer is a 404.** `/users/abc` on an operation whose `{id}` is an
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong
@@ -376,9 +379,9 @@ which is Laravel's own notation for nested input and what `validated()` hands ba
 [hands it a DTO](#the-payload-arrives-as-a-dto) whose properties are the schema's, nested objects included, so
 `address.city` is a rule key and `$data->address->city` is how the value is read.
 
-**`_with` follows the same choice as `present`.** `required_with` refuses an empty value the way `required` does, so a
-required key that follows another gets `present_with`, and keeps `required_with` only for an integer, a number or a
-boolean.
+**`_with` is always `present_with`.** `required_with` refuses an empty value the way `required` does, and it also fires
+only when the trigger is non-blank, so a body sent as `{"note": null}` would require nothing while the contract says any
+key sent makes the rest required. The dependent's own type rule still refuses a blank value of its own.
 
 **The payload's root has no field for `array:` to sit on, so it gets an `after()` check instead.** The generated class
 carries the body's declared top-level keys as a constant and refuses any other key in the body, read from the body

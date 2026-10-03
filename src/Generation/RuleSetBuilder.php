@@ -149,18 +149,34 @@ final readonly class RuleSetBuilder
 
             // A query string is not JSON. OpenAPI's default serialization of
             // an array is `?tag=a&tag=b`, of which PHP keeps only the last, and
-            // `explode: false` sends `?tag=a,b` as one string; an object is
-            // serialized the same ways. `style` and `explode` are not read, so
-            // the value reaching the validator is not the shape the schema
-            // describes, and every rule about that shape would refuse a valid
-            // request. Presence is what can be said, and the rest is reported.
-            if (in_array($merged->soleType(), [SchemaType::Array, SchemaType::Object], true)) {
+            // `explode: false` sends `?tag=a,b` as one string. `style` and
+            // `explode` are not read, so the value reaching the validator is
+            // not the shape the schema describes, and every rule about that
+            // shape would refuse a valid request. An array's own name is always
+            // sent, so its presence is enforced and the rest reported.
+            //
+            // An object's is not: the default `form` style with `explode` sends
+            // one key per property — `?status=a` — and the parameter's name
+            // never appears, so even presence would refuse a valid request.
+            // It is `sometimes` whatever its `required` flag, and said so.
+            if ($merged->soleType() === SchemaType::Array) {
                 $walk->rules[$key] = [$presence];
                 $walk->findings[] = sprintf(
-                    '`%s` is a `query` parameter typed `%s`. Its `style` and `explode` serialization is not '
-                        .'read, and PHP does not parse it into that shape, so only its presence is enforced.',
+                    '`%s` is a `query` parameter typed `array`. Its `style` and `explode` serialization is '
+                        .'not read, and PHP does not parse it into that shape, so only its presence is enforced.',
                     $parameter->name,
-                    $merged->soleType()->value,
+                );
+
+                continue;
+            }
+
+            if ($merged->soleType() === SchemaType::Object) {
+                $walk->rules[$key] = ['sometimes'];
+                $walk->findings[] = sprintf(
+                    '`%s` is a `query` parameter typed `object`. Its default serialization sends one key per '
+                        .'property and never its own name, and `style` and `explode` are not read, so nothing '
+                        .'about it is enforced, not even its presence.',
+                    $parameter->name,
                 );
 
                 continue;
@@ -828,15 +844,19 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * `required_with` or `present_with`, for the same reason
-     * {@see self::requiredRule()} picks between `required` and `present`.
+     * `present_with`, naming the keys whose presence makes this one required.
      *
      * @param  list<string>  $triggers  rule keys
      */
     private static function withRule(Schema $schema, array $triggers): string
     {
-        return (self::requiredRule($schema) === 'required' ? 'required_with:' : 'present_with:')
-            .implode(',', $triggers);
+        // Always `present_with`, even for the three types `required` is kept
+        // for. The difference is in the trigger, not the dependent:
+        // `required_with` fires only when the trigger is non-blank, so a body
+        // sent as `{"note": null}` would not require anything, while the
+        // contract says any key sent makes the rest required. The dependent's
+        // own type rule still refuses a blank value of its own.
+        return 'present_with:'.implode(',', $triggers);
     }
 
     /**

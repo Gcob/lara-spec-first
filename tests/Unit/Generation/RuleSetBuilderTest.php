@@ -236,8 +236,21 @@ it('enforces only the presence of an array or object query parameter', function 
     ));
 
     expect($set->rules)->toBe(['tag' => ['present']])
-        ->and(implode('', $set->findings))->toContain('`style` and `explode` serialization is not read');
-})->with([SchemaType::Array, SchemaType::Object]);
+        ->and(implode('', $set->findings))->toContain('serialization is not read');
+})->with([SchemaType::Array]);
+
+// The default `form` style with `explode` sends an object as one key per
+// property, `?status=a`, and never the parameter's own name, so even its
+// presence would refuse a valid request.
+it('enforces nothing about an object query parameter, not even its presence', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('filter', new Schema(types: [SchemaType::Object]), required: true)],
+    ));
+
+    expect($set->rules)->toBe(['filter' => ['sometimes']])
+        ->and(implode('', $set->findings))->toContain('not even its presence');
+});
 
 it('merges the body and the query into one rule set, body first', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
@@ -461,7 +474,9 @@ it('makes an optional body all or none', function (): void {
     expect($set->rules)->toBe([
         'street' => ['present_with:city,code', 'string'],
         'city' => ['present_with:street,code', 'string'],
-        'code' => ['required_with:street,city', 'integer'],
+        // `present_with` even for an integer: `required_with` fires only on a
+        // non-blank trigger, so `{"street": null}` would require nothing.
+        'code' => ['present_with:street,city', 'integer'],
     ]);
 });
 
