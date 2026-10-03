@@ -316,6 +316,8 @@ chore/70/deferred-work-marker-check
 
 - **The context is English, kebab-case, brief.**
 - **A `Decision` card branches as `docs/`**, since what it delivers is the document that stops saying `Open`.
+- **A lot's lesson branches as `docs/` too, on its lot card's number**, as in `docs/{lot card}/lot-N-lesson`, since a
+  [lot card](./docs/contributing/card-management.md#a-lot-has-a-card-of-its-own) is a card like any other.
 - **Not the Conventional Commit types:** a `feature/` branch carries `feat:` commits, a `bugfix/` or `hotfix/` branch
   carries `fix:`.
 
