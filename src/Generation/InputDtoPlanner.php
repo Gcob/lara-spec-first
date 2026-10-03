@@ -43,9 +43,22 @@ use Illuminate\Support\Str;
 final class InputDtoPlanner
 {
     /**
-     * @var array<string, array{partial: bool, schema: Schema, position: string, naming: string, properties: list<InputDtoProperty>, readers: list<string>, findings: list<string>}>
+     * @var array<string, array{partial: bool, multipart: bool, schema: Schema, position: string, naming: string, properties: list<InputDtoProperty>, findings: list<string>}>
      */
     private array $registry = [];
+
+    /**
+     * The operations that read each DTO, by DTO and in document order, and the
+     * request each is read through.
+     *
+     * @var array<string, list<string>>
+     */
+    private array $readers = [];
+
+    /**
+     * @var array<string, list<string>>
+     */
+    private array $requests = [];
 
     /**
      * @var array<string, string>
@@ -77,9 +90,10 @@ final class InputDtoPlanner
                 $entry['partial'],
                 $entry['position'],
                 $entry['properties'],
-                $entry['readers'],
+                $this->readers[$shortName] ?? [],
                 $entry['naming'],
                 $entry['findings'],
+                $this->requests[$shortName] ?? [],
             );
         }
 
@@ -87,7 +101,7 @@ final class InputDtoPlanner
     }
 
     /**
-     * The two types of one operation's body, and the one its `data()` reads.
+     * The two types of one operation's body, and the one its `dto()` reads.
      *
      * @throws UnusableNameException
      * @throws ConflictingInputException
@@ -149,7 +163,8 @@ final class InputDtoPlanner
         // absent entirely: there every property may be missing.
         $reads = $operation->method === HttpMethod::Patch || ! $body->required ? $partial : $full;
 
-        $this->registry[$reads]['readers'][] = $this->identity;
+        $this->readers[$reads][] = $this->identity;
+        $this->requests[$reads][] = $request->name->shortName;
         $this->readBy[$this->identity] = $reads;
     }
 
@@ -184,16 +199,23 @@ final class InputDtoPlanner
                 throw UnusableNameException::inputDtoClaimedTwice($shortName, $existing['position'], $position);
             }
 
+            // One schema, two bodies: a part that is a file in a multipart body
+            // is a string in any other, so a schema with a file part in it
+            // needs a type for each and has only the one name.
+            if ($existing['multipart'] !== $this->multipart && self::hasFilePart($merged)) {
+                throw UnusableNameException::inputDtoServesFilesAndStrings($shortName, $position);
+            }
+
             return $shortName;
         }
 
         $this->registry[$shortName] = [
             'partial' => $partial,
+            'multipart' => $this->multipart,
             'schema' => $merged,
             'position' => $position,
             'naming' => $naming,
             'properties' => [],
-            'readers' => [],
             'findings' => [],
         ];
 
@@ -424,6 +446,27 @@ final class InputDtoPlanner
         }
 
         return $studly;
+    }
+
+    /**
+     * Whether a file part is written anywhere in a schema, a nested one and an
+     * `allOf` branch included.
+     *
+     * A recursion marker has nothing under it, so it ends the walk.
+     */
+    private static function hasFilePart(Schema $schema): bool
+    {
+        if ($schema->isFilePart) {
+            return true;
+        }
+
+        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
+            if (self::hasFilePart($child)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

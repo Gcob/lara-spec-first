@@ -263,8 +263,41 @@ final readonly class InputDtoEmitter
         return GeneratedDocblock::render(
             [CommentText::safe($this->specPath), CommentText::safe($dto->position)],
             $this->findings($dto),
-            ['@implements Arrayable<string, mixed>'],
+            $this->navigation($dto),
         );
+    }
+
+    /**
+     * Where to go from here: the type's own interface, then each request whose
+     * `dto()` builds it.
+     *
+     * **Backticks, and they are load-bearing**, for the reason the request's own
+     * navigation gives: Pint rewrites a bare fully-qualified name in a docblock
+     * into an import, and an import of a class this file never mentions in code
+     * is one the build and a formatter would rewrite against each other.
+     *
+     * @return non-empty-list<string>
+     */
+    private function navigation(PlannedInputDto $dto): array
+    {
+        $lines = ['@implements Arrayable<string, mixed>'];
+
+        // Between two different annotations, which `phpdoc_separation` would
+        // otherwise insert for us in a consumer's formatter.
+        if ($dto->requests !== []) {
+            $lines[] = '';
+        }
+
+        foreach ($dto->requests as $request) {
+            $lines[] = sprintf(
+                '@see `\\%s\\Requests\\%s::dto()`',
+                CommentText::safe($this->namespace),
+                CommentText::safe($request),
+            );
+            $lines[] = '     — builds this type from the validated payload';
+        }
+
+        return $lines;
     }
 
     /**

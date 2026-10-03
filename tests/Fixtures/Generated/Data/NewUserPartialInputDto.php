@@ -38,6 +38,9 @@ use JsonSerializable;
  * Navigation
  *
  *   @implements Arrayable<string, mixed>
+ *
+ *   @see `\Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\UpdateUserRequest::dto()`
+ *        — builds this type from the validated payload
  */
 final readonly class NewUserPartialInputDto implements Arrayable, JsonSerializable
 {

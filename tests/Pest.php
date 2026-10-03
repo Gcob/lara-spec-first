@@ -2,7 +2,18 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\QueryParameter;
+use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Generation\InputDtoPlan;
+use Gcob\LaraSpecFirst\Generation\InputDtoPlanner;
+use Gcob\LaraSpecFirst\Generation\PlannedRequest;
+use Gcob\LaraSpecFirst\Generation\RequestName;
+use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Tests\TestCase;
@@ -81,4 +92,76 @@ function extractDocumentAt(string $path): array
     }
 
     return $outcome->operations;
+}
+
+/**
+ * The operation the golden request is generated from, and the one most cases of
+ * the request and the DTO emitters use: enough shapes to exercise presence,
+ * nullability and a finding. Here rather than in either test because both read it.
+ */
+function goldenOperation(): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/users'),
+        operationId: 'createUser',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'email' => new Schema(types: [SchemaType::String], format: 'email', maxLength: 255),
+                'age' => new Schema(types: [SchemaType::Integer], minimum: 18.0),
+                'nickname' => new Schema(types: [SchemaType::String, SchemaType::Null]),
+                'role' => new Schema(types: [SchemaType::String], enum: ['admin', 'member']),
+                'tags' => new Schema(
+                    types: [SchemaType::Array],
+                    items: new Schema(types: [SchemaType::String]),
+                    uniqueItems: true,
+                ),
+                'address' => new Schema(
+                    types: [SchemaType::Object],
+                    properties: ['city' => new Schema(types: [SchemaType::String])],
+                    required: ['city'],
+                ),
+                'website' => new Schema(types: [SchemaType::String], format: 'uri'),
+            ],
+            required: ['email'],
+            additionalProperties: false,
+        )], true),
+        queryParameters: [new QueryParameter('notify', new Schema(types: [SchemaType::Boolean]))],
+    );
+}
+
+/**
+ * The requests of these operations, each knowing the input DTO its `dto()`
+ * returns, and the plan of every DTO.
+ *
+ * What the build does in two steps: plan the DTOs from the requests, then tell
+ * each request which one is its own. An operation with nothing to validate has
+ * no request and is left out, as it is in a build.
+ *
+ * @param  list<Operation>  $operations
+ * @return array{requests: list<PlannedRequest>, plan: InputDtoPlan}
+ */
+function plannedRequests(array $operations, string $controllerShortName = 'Controller'): array
+{
+    $requests = [];
+
+    foreach ($operations as $operation) {
+        $name = RequestName::for($operation);
+
+        if ($name !== null) {
+            $requests[] = new PlannedRequest($operation, $name, RuleSetBuilder::for($operation), $controllerShortName);
+        }
+    }
+
+    $plan = (new InputDtoPlanner)->plan($requests);
+
+    return [
+        'requests' => array_map(
+            static fn (PlannedRequest $request): PlannedRequest => $request->withDto($plan->readBy[$request->operation->label()] ?? null),
+            $requests,
+        ),
+        'plan' => $plan,
+    ];
 }

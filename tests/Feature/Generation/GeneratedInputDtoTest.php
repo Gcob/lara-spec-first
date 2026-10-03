@@ -7,7 +7,11 @@ use Gcob\LaraSpecFirst\Data\Optional;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\AddressInputDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\NewUserInputDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\NewUserPartialInputDto;
+use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\UpdateUserRequest;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Route;
 
 /*
  * A generated DTO, run.
@@ -160,4 +164,87 @@ it('imports the package\'s Optional and not Laravel\'s', function (): void {
 
     expect($source)->toContain('use Gcob\\LaraSpecFirst\\Data\\Optional;')
         ->and($source)->not->toContain('Illuminate\\Support\\Optional');
+});
+
+/*
+ * The whole path, through Laravel: a PATCH reaches the generated request, its
+ * rule set validates, `dto()` hands back the partial DTO, and `toArray()` is
+ * what a controller would pass to `$model->update()`.
+ *
+ * The class under test is the committed golden `UpdateUserRequest`, which is
+ * what the build writes for the PATCH of `tests/Fixtures/input-dto-golden.yaml`.
+ */
+
+/**
+ * One PATCH, as JSON, through the real kernel.
+ *
+ * @param  array<string, mixed>  $payload
+ * @return array{0: int, 1: array<string, mixed>}
+ */
+function patchUser(array $payload): array
+{
+    Route::patch('/_generated/users/{id}', function (UpdateUserRequest $request, string $id) {
+        $data = $request->dto();
+
+        return response()->json([
+            'type' => $data::class,
+            'array' => $data->toArray(),
+            'validated' => array_keys($request->validated()),
+        ]);
+    });
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/users/1',
+        'PATCH',
+        [],
+        [],
+        [],
+        ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
+        (string) json_encode($payload),
+    ));
+
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), $decoded];
+}
+
+// The data loss `request-validation.md` names: a DTO whose absent properties
+// arrived as `null` would have `update()` write nulls over stored columns.
+it('does not write a null over a column the PATCH did not send', function (): void {
+    [$status, $body] = patchUser(['email' => 'ada@example.test']);
+
+    expect($status)->toBe(200)
+        ->and($body['type'])->toBe(NewUserPartialInputDto::class)
+        ->and($body['array'])->toBe(['email' => 'ada@example.test']);
+});
+
+it('writes a null the PATCH sent on purpose', function (): void {
+    [$status, $body] = patchUser(['nickname' => null]);
+
+    expect($status)->toBe(200)
+        ->and($body['array'])->toBe(['nickname' => null]);
+});
+
+it('casts what the rule set accepted', function (): void {
+    [$status, $body] = patchUser(['age' => '42', 'level' => '2', 'ids' => ['1', '2']]);
+
+    expect($status)->toBe(200)
+        ->and($body['array'])->toBe(['age' => 42, 'level' => 2, 'ids' => [1, 2]]);
+});
+
+// The DTO sits beside `validated()` and does not replace it.
+it('leaves validated() returning the array of what was sent', function (): void {
+    [, $body] = patchUser(['email' => 'ada@example.test', 'age' => 30]);
+
+    expect($body['validated'])->toBe(['email', 'age']);
+});
+
+// A payload the rule set refuses never becomes a DTO, which is what makes the
+// casts safe: a bad value never gets as far as `from()`.
+it('refuses what the rule set refuses before any DTO exists', function (): void {
+    [$status, $body] = patchUser(['age' => 'forty']);
+
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['age']);
 });

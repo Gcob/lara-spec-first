@@ -62,10 +62,9 @@ half that makes an incomplete rule set honest rather than misleading. Nothing is
 nothing is dropped in silence: that is [the principle](#every-constraint-maps-or-reports) the rest of this page is
 about, and it is what makes each pass safe to ship on its own.
 
-**The input DTO types are built, and `data()` is the last pass.** `spec:build` writes
-[the DTO](#the-payload-arrives-as-a-dto) of every body that is an object, in the `Data` sub-namespace; the method on the
-request that returns one is the last pass of [#35](https://github.com/Gcob/lara-spec-first/issues/35), so a generated
-request today carries `authorize()` and `rules()` and nothing else.
+**The input DTO is built.** `spec:build` writes [the DTO](#the-payload-arrives-as-a-dto) of every body that is an
+object, in the `Data` sub-namespace, and the request returns it from `dto()`. A request whose operation has no body, or
+whose body is not an object, has no `dto()`: its `query` parameters are read with `validated('name')`.
 
 ## One rule set, body and query
 
@@ -456,18 +455,26 @@ trimming, casting or renaming before it can satisfy the contract is normalized t
 
 ## The payload arrives as a DTO
 
-**The generated request carries a `data()` method returning a `final readonly` DTO built from the validated payload.**
+**The generated request carries a `dto()` method returning a `final readonly` DTO built from the validated payload.**
 The rule set says what a client may send; the DTO is that same statement as PHP types, so a controller reads
 `$data->email` where it would have read `$validated['email']`, with the shape, the nullability and the autocompletion
 the contract already described.
 
 ```php
 // app/Http/Generated/Requests/CreateUserRequest.php
-public function data(): CreateUserInputDto
+public function dto(): CreateUserInputDto
 {
     return CreateUserInputDto::from($this->validated());
 }
 ```
+
+**It is `dto()` and not `data()`, which is what an earlier version of this page called it, and the framework is why.**
+`Illuminate\Http\Request` already declares `data($key = null, $default = null)`, a protected method that `string()`,
+`integer()`, `boolean()` and the rest of the typed accessors read through. A public `data(): CreateUserInputDto` on a
+generated request is a fatal error at load, because a declaration has to be compatible with the one it overrides, and a
+compatible one would change what every typed accessor returns. Found by running the generated class rather than by
+reading it, so the test that pins it asserts the two facts the name rests on: `FormRequest` has a `data()`, and has no
+`dto()`. A future Laravel that adds one fails that test rather than a consumer's boot.
 
 **`validated()` keeps returning Laravel's array.** It is the framework's own method, `validated()` and
 `validated('email')` both have callers, and a generated class that changed what they hand back would be this package
@@ -579,7 +586,7 @@ every child that overrides it:
 // app/Http/Generated/Controllers/UpdateUserController.php
 public function routeAction(UpdateUserRequest $request, User $user): UserDto
 {
-    return $this->update($user, $request->data());
+    return $this->update($user, $request->dto());
 }
 ```
 
