@@ -144,14 +144,29 @@ final readonly class RuleSetBuilder
                 throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
             }
 
-            self::field(
-                $walk,
-                $key,
-                '`'.$parameter->name.'`',
-                $parameter->schema,
-                $parameter->required ? self::requiredRule($parameter->schema) : 'sometimes',
-                insideList: false,
-            );
+            $presence = $parameter->required ? self::requiredRule($parameter->schema) : 'sometimes';
+            $merged = AllOfMerger::merge($parameter->schema, $operation->label(), '`'.$parameter->name.'`');
+
+            // A query string is not JSON. OpenAPI's default serialization of
+            // an array is `?tag=a&tag=b`, of which PHP keeps only the last, and
+            // `explode: false` sends `?tag=a,b` as one string; an object is
+            // serialized the same ways. `style` and `explode` are not read, so
+            // the value reaching the validator is not the shape the schema
+            // describes, and every rule about that shape would refuse a valid
+            // request. Presence is what can be said, and the rest is reported.
+            if (in_array($merged->soleType(), [SchemaType::Array, SchemaType::Object], true)) {
+                $walk->rules[$key] = [$presence];
+                $walk->findings[] = sprintf(
+                    '`%s` is a `query` parameter typed `%s`. Its `style` and `explode` serialization is not '
+                        .'read, and PHP does not parse it into that shape, so only its presence is enforced.',
+                    $parameter->name,
+                    $merged->soleType()->value,
+                );
+
+                continue;
+            }
+
+            self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence, insideList: false);
         }
 
         return new RuleSet($walk->rules, $walk->findings, $closedKeys);

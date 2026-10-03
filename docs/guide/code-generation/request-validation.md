@@ -99,6 +99,11 @@ get `sometimes`. **And the method does not touch it.**
 statement about the resource's representation, and a query parameter is not part of that representation: `?notify=1` is
 as required on a `PATCH` as it is on a `PUT`.
 
+**An array or object query parameter gets its presence rule and nothing else.** A query string is not JSON: OpenAPI's
+default serialization of an array is `?tag=a&tag=b`, of which PHP keeps only the last value, and `explode: false` sends
+`?tag=a,b` as one string. `style` and `explode` are not read, so the value reaching the validator is not the shape the
+schema describes, and every rule about that shape would refuse a valid request. The generated file says so.
+
 **A path parameter is the router's question, and its answer is a 404.** `/users/abc` on an operation whose `{id}` is an
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong
 answer at the wrong layer. What refuses it instead is route model binding, once

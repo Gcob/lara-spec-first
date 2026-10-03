@@ -226,6 +226,19 @@ it('leaves a required query parameter required on a PATCH', function (): void {
     ]);
 });
 
+// A query string is not JSON: `?tag=a&tag=b` keeps only the last value in PHP,
+// and `explode: false` arrives as one string. Every rule about the shape would
+// refuse a valid request, so only presence is enforced and the rest reported.
+it('enforces only the presence of an array or object query parameter', function (SchemaType $type): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('tag', new Schema(types: [$type], items: new Schema(types: [SchemaType::String])), required: true)],
+    ));
+
+    expect($set->rules)->toBe(['tag' => ['present']])
+        ->and(implode('', $set->findings))->toContain('`style` and `explode` serialization is not read');
+})->with([SchemaType::Array, SchemaType::Object]);
+
 it('merges the body and the query into one rule set, body first', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['email' => new Schema(types: [SchemaType::String])])],

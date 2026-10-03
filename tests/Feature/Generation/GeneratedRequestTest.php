@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
@@ -439,3 +440,33 @@ it('refuses a top-level key the body does not declare', function (): void {
     expect($status)->toBe(422)
         ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['extra']);
 });
+
+// The serializations OpenAPI writes for an array query parameter, through a
+// real request: none is refused, because no rule about the shape is emitted.
+it('accepts an array query parameter in the serializations OpenAPI writes', function (string $query): void {
+    $rules = RuleSetBuilder::for(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/_generated/tags'),
+        operationId: 'tags',
+        queryParameters: [new QueryParameter(
+            'tag',
+            new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])),
+            required: true,
+        )],
+    ))->rules;
+
+    Route::get('/_generated/tags', fn (Request $request) => response()->json($request->validate($rules)));
+
+    $status = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/tags'.$query,
+        'GET',
+        server: ['HTTP_ACCEPT' => 'application/json'],
+    ))->getStatusCode();
+
+    expect($status)->toBe(200);
+})->with([
+    'form, exploded' => ['?tag=a&tag=b'],
+    'form, not exploded' => ['?tag=a,b'],
+    'one value' => ['?tag=a'],
+]);
