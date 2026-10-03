@@ -470,3 +470,39 @@ it('accepts an array query parameter in the serializations OpenAPI writes', func
     'form, not exploded' => ['?tag=a,b'],
     'one value' => ['?tag=a'],
 ]);
+
+it('accepts a required object query parameter sent the default way', function (): void {
+    $rules = RuleSetBuilder::for(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/_generated/filter'),
+        operationId: 'filter',
+        queryParameters: [new QueryParameter(
+            'filter',
+            new Schema(types: [SchemaType::Object], properties: ['status' => new Schema(types: [SchemaType::String])]),
+            required: true,
+        )],
+    ))->rules;
+
+    Route::get('/_generated/filter', fn (Request $request) => response()->json($request->validate($rules)));
+
+    $status = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/filter?status=a',
+        'GET',
+        server: ['HTTP_ACCEPT' => 'application/json'],
+    ))->getStatusCode();
+
+    expect($status)->toBe(200);
+});
+
+// `present_with` rather than `required_with` even for an integer: the latter
+// fires only on a non-blank trigger, so a body of blank keys required nothing.
+it('requires the rest of an optional body when a key is sent blank', function (): void {
+    $body = new Schema(
+        types: [SchemaType::Object],
+        properties: ['qty' => new Schema(types: [SchemaType::Integer]), 'note' => new Schema(types: [SchemaType::String, SchemaType::Null])],
+        required: ['qty'],
+    );
+
+    expect(statusForBuiltRules($body, ['note' => null], bodyRequired: false))->toBe(422);
+});
