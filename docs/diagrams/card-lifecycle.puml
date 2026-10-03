@@ -19,17 +19,26 @@
 ' stacked, and the number is decided once, when the pull request opens, so drawing
 ' the two outcomes as separate paths would give a reviewer's judgement call the
 ' weight of a state. The card is still the unit; only the delivery can split.
+'
+' The first state is the lot's own card rather than a card of the lot. It is
+' drawn because a lot exists before its cards, and a card's sketch is filed
+' against it; its own path to Todo is the re-questioning the page describes, and
+' drawing it as a second track would double the picture for one sentence.
+'
+' The edge into Todo names what the rewrite empties, three short phrases rather
+' than a sentence: what the card assumed, what it did not know, and what it left
+' open.
 set separator none
 hide empty description
 
-state "Coarse intention" as Intention
+state "Lot card\n(Backlog)" as LotCard
 state "Sketch\n(Backlog)" as Sketch
 state "Specification\n(Todo)" as Spec
 state "Merged" as Merged
 state "card-management.md" as Doc
 
-Intention --> Sketch : filed
-Sketch --> Spec : **the lot opens**\nthe card is rewritten
+LotCard --> Sketch : filed
+Sketch --> Spec : **the lot opens**\nassumptions checked\ndiscoveries made\ndecisions settled
 Spec --> Merged : one card,\none or more\npull requests
 Merged --> Doc : what the lot taught
 Doc --> Spec : shapes the next\nrewrite
