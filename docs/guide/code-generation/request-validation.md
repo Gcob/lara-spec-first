@@ -303,7 +303,7 @@ state; what each honored one becomes is this table's.
 | `enum`                                  | `Rule::in()` with the declared values                                                                                   |
 | `const`                                 | `Rule::in()` with the one value                                                                                         |
 | `format: date`                          | `date_format:Y-m-d`                                                                                                     |
-| `format: date-time`                     | `date_format:` carrying the RFC 3339 spellings                                                                          |
+| `format: date-time`                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                     |
 | `format: email`, `uuid`, `ipv4`, `ipv6` | `email`, `uuid`, `ipv4`, `ipv6`                                                                                         |
 | `format: uri`                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                              |
 
@@ -317,28 +317,34 @@ and it is not worked around: a looser rule would accept what the contract refuse
 satisfy a `tags` declared `type: array`, which is a payload the contract refuses being accepted. `list` is
 `array_is_list()`, which is what a JSON array actually is, and the pair is what keeps that row honest.
 
-**`date_format` rather than `date` on both, because Laravel's `date` accepts whatever `strtotime` accepts**,
-`next tuesday` included, which is looser than anything a contract meant to say. The rule takes several formats and
-passes on the first that matches, and RFC 3339 needs six of them:
+**`date-time` is a grammar first and `date` second, because neither is enough alone.** Laravel's `date` accepts whatever
+`strtotime` accepts, `next tuesday` included, which is looser than anything a contract meant to say. The `regex:` in
+front of it holds the RFC 3339 shape, and `date` behind it adds the one thing a grammar cannot see, a calendar that
+exists:
 
 ```php
-'occurred_at' => ['present', 'string', 'date_format:Y-m-d\TH:i:sp,Y-m-d\TH:i:sP,Y-m-d\TH:i:s.vp,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.uP'],
+'occurred_at' => ['present', 'string', 'regex:/^[0-9]{4}-(0[1-9]|1[0-2])-…(\.[0-9]+)?([Zz]|[+-]…)$/D', 'date'],
 ```
 
-**Six rather than three, and the trap is worth naming because it bites silently.** `date_format` passes only when
-`$date->format($pattern)` reproduces the input exactly, and PHP's `p` prints `Z` for a zero offset where `P` prints
-`+00:00`. A pattern list built on `p` alone therefore accepts `2026-09-20T14:03:11Z` and **refuses**
-`2026-09-20T14:03:11+00:00`, which RFC 3339 allows and which plenty of producers emit. Each precision carries both
-spellings: seconds, milliseconds and microseconds, times `p` and `P`.
+**Not `date_format`, and the reason is the fraction.** `date_format` passes only when `$date->format($pattern)`
+reproduces the input exactly, and PHP has no variable-width fraction. Six patterns (`p` and `P` at whole seconds,
+milliseconds and microseconds, because `p` prints `Z` for a zero offset where `P` prints `+00:00`) covered a fraction of
+0, 3 or 6 digits. RFC 3339 allows any length, and the clients that matter send them: Go's `RFC3339Nano` writes up to
+nine digits with the trailing zeros trimmed, and .NET's round-trip format writes seven. Both answered 422 on a valid
+payload, so the rule is a pattern, which `\.[0-9]+` makes variable-width.
 
-**The lower-case form is a stated limit rather than a silent one.** RFC 3339 also permits `2026-09-20t14:03:11z`, and no
-PHP format character prints a lower-case offset, so covering it would mean literal-only patterns beside all six for a
-spelling that is vanishingly rare on the wire. A contract whose producers emit it is one this mapping does not serve,
-and saying so here is the difference between a limit and a defect.
+**What the pattern is careful about:**
 
-**So is a fraction of any other length.** The six patterns cover whole seconds, milliseconds and microseconds;
-`2026-09-20T14:03:11.5Z`, with one digit, is RFC 3339 and is refused, as are two, four, five and seven to nine. PHP's
-format characters have no variable-width fraction, and a pattern per width is a list nobody would read.
+- **`[0-9]`, not `\d`, and no `u` modifier.** Under `u`, PCRE's `\d` matches digits of other scripts. Every character of
+  an RFC 3339 timestamp is ASCII, so the classes are too.
+- **`D`**, so `$` does not match before a trailing newline, the same reason `pattern` carries it.
+- **Hours below 24, minutes and seconds below 60, and the leap second `60`.** `date` alone would roll `24:00:00Z` over
+  to the next day, so the grammar refuses it. The offset's hour is bound the same way, `+24:00` is refused.
+- **`T` and `Z` in either case**, and `-00:00`, which RFC 3339 allows.
+
+`2026-02-30T00:00:00Z` matches the grammar and is refused by `date`, which is the division of labour. An execution test
+sends the payloads from each producer above, those refusals, and a trailing newline at the validator, since over HTTP
+Laravel's `TrimStrings` removes it first.
 
 Which `format` values are honored at all is [the matrix](../openapi-support.md#any-type)'s row.
 
@@ -381,7 +387,9 @@ which is Laravel's own notation for nested input and what `validated()` hands ba
 
 **`_with` is always `present_with`.** `required_with` refuses an empty value the way `required` does, and it also fires
 only when the trigger is non-blank, so a body sent as `{"note": null}` would require nothing while the contract says any
-key sent makes the rest required. The dependent's own type rule still refuses a blank value of its own.
+key sent makes the rest required. Over HTTP the dependent's own type rule still refuses a blank value of its own, with
+the caveat the paragraph on empty values above states: a bare `""` is turned into `null` by `ConvertEmptyStringsToNull`
+before any rule runs, and it is the `null` the type rule refuses.
 
 **The payload's root has no field for `array:` to sit on, so it gets an `after()` check instead.** The generated class
 carries the body's declared top-level keys as a constant and refuses any other key in the body, read from the body

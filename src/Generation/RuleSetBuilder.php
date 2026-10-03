@@ -36,14 +36,24 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 final readonly class RuleSetBuilder
 {
     /**
-     * The six RFC 3339 spellings `date-time` passes on, `p` and `P` at each
-     * precision, because PHP's `p` prints `Z` for a zero offset where `P`
-     * prints `+00:00` and `date_format` only passes on an exact round trip.
+     * RFC 3339's `date-time` grammar, as a pattern: a fraction of any length,
+     * `T` and `Z` in either case, an offset with hours below 24.
+     *
+     * **A pattern rather than `date_format`**, because `date_format` passes
+     * only on an exact round trip through one of PHP's format strings, and
+     * PHP has no variable-width fraction: six patterns covered 0, 3 and 6
+     * digits and refused the 7 .NET writes and the 9 Go does. ASCII classes
+     * and no `u`, since every character here is ASCII, and `D` so a trailing
+     * newline is refused. Laravel's `date` beside it is what refuses a
+     * February 30th, which a grammar cannot see. Measured on the validator:
+     * fractions of 1, 3, 5, 7 and 9 digits pass, as do lower case and
+     * `-00:00`; `02-30`, `24:00:00`, `+24:00`, a missing offset and a
+     * trailing newline are refused.
      *
      * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
      */
-    private const DATE_TIME_FORMATS = 'date_format:Y-m-d\\TH:i:sp,Y-m-d\\TH:i:sP,Y-m-d\\TH:i:s.vp,'
-        .'Y-m-d\\TH:i:s.vP,Y-m-d\\TH:i:s.up,Y-m-d\\TH:i:s.uP';
+    private const DATE_TIME_PATTERN = 'regex:/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[Tt]'
+        .'([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$/D';
 
     /**
      * The `format` values Laravel has a rule of the same meaning for, and the
@@ -51,12 +61,12 @@ final readonly class RuleSetBuilder
      * `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows.
      */
     private const FORMAT_RULES = [
-        'date' => 'date_format:Y-m-d',
-        'date-time' => self::DATE_TIME_FORMATS,
-        'email' => 'email',
-        'uuid' => 'uuid',
-        'ipv4' => 'ipv4',
-        'ipv6' => 'ipv6',
+        'date' => ['date_format:Y-m-d'],
+        'date-time' => [self::DATE_TIME_PATTERN, 'date'],
+        'email' => ['email'],
+        'uuid' => ['uuid'],
+        'ipv4' => ['ipv4'],
+        'ipv6' => ['ipv6'],
     ];
 
     /**
@@ -367,7 +377,7 @@ final readonly class RuleSetBuilder
 
                 return $siblings === []
                     ? 'sometimes'
-                    : self::withRule($property, array_map(self::ruleKey(...), $siblings));
+                    : self::withRule(array_map(self::ruleKey(...), $siblings));
             };
         }
 
@@ -408,7 +418,7 @@ final readonly class RuleSetBuilder
             $asked = $presence($name, $property);
 
             if ($asked === 'sometimes' && isset($dependents[$name])) {
-                $asked = self::withRule($property, $dependents[$name]);
+                $asked = self::withRule($dependents[$name]);
             }
 
             self::field($walk, $prefix.self::ruleKey($name), '`'.$prefix.$name.'`', $property, $asked, $insideList);
@@ -442,7 +452,7 @@ final readonly class RuleSetBuilder
                     continue;
                 }
 
-                $asked = self::withRule(new Schema, $dependents[$name]);
+                $asked = self::withRule($dependents[$name]);
             }
 
             $walk->rules[$prefix.self::ruleKey($name)] = [$asked];
@@ -695,7 +705,7 @@ final readonly class RuleSetBuilder
             $format = self::FORMAT_RULES[$schema->format] ?? null;
 
             if ($format !== null) {
-                $rules[] = $format;
+                array_push($rules, ...$format);
             } else {
                 $walk->findings[] = sprintf(
                     '%s declares `format: %s`, which no Laravel rule means the same as, so it is not enforced.',
@@ -848,14 +858,13 @@ final readonly class RuleSetBuilder
      *
      * @param  list<string>  $triggers  rule keys
      */
-    private static function withRule(Schema $schema, array $triggers): string
+    private static function withRule(array $triggers): string
     {
         // Always `present_with`, even for the three types `required` is kept
         // for. The difference is in the trigger, not the dependent:
         // `required_with` fires only when the trigger is non-blank, so a body
         // sent as `{"note": null}` would not require anything, while the
-        // contract says any key sent makes the rest required. The dependent's
-        // own type rule still refuses a blank value of its own.
+        // contract says any key sent makes the rest required.
         return 'present_with:'.implode(',', $triggers);
     }
 

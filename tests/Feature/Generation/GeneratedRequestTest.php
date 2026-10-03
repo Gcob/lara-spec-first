@@ -219,27 +219,62 @@ function oneField(Schema $field, bool $required = true): Schema
     );
 }
 
-// Six spellings rather than three: PHP's `p` prints `Z` for a zero offset
-// where `P` prints `+00:00`, and `date_format` passes only on an exact round
-// trip, so each precision needs both.
+// RFC 3339 allows a fraction of any length: JavaScript writes 3 digits, Python
+// 6, .NET 7, and Go up to 9 with the trailing zeros trimmed. The grammar is a
+// regex because `date_format` has no variable-width fraction.
 it('accepts every RFC 3339 spelling of a date-time', function (string $value): void {
     expect(statusForBuiltRules(oneField(new Schema(types: [SchemaType::String], format: 'date-time')), ['field' => $value]))
         ->toBe(200);
 })->with([
-    '2026-09-20T14:03:11Z',
-    '2026-09-20T14:03:11+00:00',
-    '2026-09-20T14:03:11.123Z',
-    '2026-09-20T14:03:11.123-04:00',
-    '2026-09-20T14:03:11.123456Z',
-    '2026-09-20T14:03:11.123456+02:00',
+    'whole seconds, Z' => '2026-09-20T14:03:11Z',
+    'whole seconds, zero offset' => '2026-09-20T14:03:11+00:00',
+    'negative zero offset' => '2026-09-20T14:03:11-00:00',
+    'JavaScript, 3 digits' => '2026-10-03T13:52:51.123Z',
+    'an offset after 3 digits' => '2026-09-20T14:03:11.123-04:00',
+    'Python, 6 digits' => '2026-10-03T13:52:51.123456Z',
+    '.NET round trip, 7 digits' => '2026-10-03T13:52:51.1234567Z',
+    'Go, 9 digits' => '2026-10-03T13:52:51.123456789Z',
+    'Go, a trimmed fraction of 5 digits' => '2026-10-03T13:52:51.12345Z',
+    'one digit and an offset' => '2026-10-03T13:52:51.5+02:00',
+    'lower case t and z' => '2026-09-20t14:03:11z',
+    'a leap second' => '2016-12-31T23:59:60Z',
 ]);
 
-// Laravel's `date` accepts whatever `strtotime` accepts, which is why the rule
-// is `date_format` and never `date`.
+// Laravel's `date` alone accepts whatever `strtotime` accepts, so the grammar
+// comes first and `date` only adds the calendar: it is what refuses a 30th of
+// February, which a grammar cannot see.
 it('refuses what is not an RFC 3339 date-time', function (string $value): void {
     expect(statusForBuiltRules(oneField(new Schema(types: [SchemaType::String], format: 'date-time')), ['field' => $value]))
         ->toBe(422);
-})->with(['next tuesday', '2026-09-20', '2026-09-20 14:03:11']);
+})->with([
+    'a phrase' => 'next tuesday',
+    'a date alone' => '2026-09-20',
+    'a space instead of T' => '2026-09-20 14:03:11',
+    'a missing offset' => '2026-09-20T14:03:11',
+    'an offset hour of 24' => '2026-09-20T14:03:11+24:00',
+    'a 30th of February' => '2026-02-30T00:00:00Z',
+    'an hour of 24' => '2026-09-20T24:00:00Z',
+    'a minute of 60' => '2026-09-20T14:60:00Z',
+    'a second of 61' => '2026-09-20T14:03:61Z',
+    'a dot with no digit' => '2026-09-20T14:03:11.Z',
+]);
+
+// `D`, as for `pattern`: asked of the validator directly, because over HTTP
+// `TrimStrings` removes the newline before any rule sees it.
+it('refuses a date-time with a trailing newline', function (): void {
+    $rules = RuleSetBuilder::for(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/_generated/date-time'),
+        operationId: 'dateTime',
+        requestBody: new RequestBody(['application/json' => oneField(
+            new Schema(types: [SchemaType::String], format: 'date-time'),
+        )], true),
+    ))->rules;
+
+    expect(validator(['field' => "2026-09-20T14:03:11Z\n"], $rules)->passes())->toBeFalse()
+        ->and(validator(['field' => '2026-09-20T14:03:11Z'], $rules)->passes())->toBeTrue();
+});
 
 it('reads a date as Y-m-d and nothing looser', function (string $value, int $status): void {
     expect(statusForBuiltRules(oneField(new Schema(types: [SchemaType::String], format: 'date')), ['field' => $value]))
