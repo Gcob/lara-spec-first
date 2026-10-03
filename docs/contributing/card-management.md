@@ -6,11 +6,11 @@ covers: >
     really a checkbox or really a lot, the failures this repository has actually made and what each one taught, what to
     do with work that overflows an open card and when overflow stops being overflow, when the split into several pull
     requests is decided, what separates a card whose scope grew from one whose goal changed and where the divergence
-    gets written, the card template and which sections each kind of card drops, when a card is written and what a
-    Backlog card is worth before then, what an Acceptance scenario holds, why nothing runs it and what ten cards have
-    done with it so far, how a card cites a file, what the board's Status, Phase, Lot and Kind fields mean, who moves
-    them and why a card's body stops carrying one the moment the board does, and the grouping mechanisms this project
-    declines to use.
+    gets written, the card template and which sections each kind of card drops, what a Todo card may no longer leave
+    open and where its settled decisions are written, when a card is written and what a Backlog card is worth before
+    then, what an Acceptance scenario holds, why nothing runs it and what ten cards have done with it so far, how a card
+    cites a file, what the board's Status, Phase, Lot and Kind fields mean, who moves them and why a card's body stops
+    carrying one the moment the board does, and the grouping mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -20,12 +20,14 @@ tags: [planning, conventions, workflow, scope, onboarding]
 > **In brief**
 >
 > - A card is a change that can merge into `main` on its own and leave it stable, tested and documented.
-> - Cards are cut when their lot opens: a `Backlog` card is a sketch, a `Todo` card is a specification, and moving one
->   between them is the rewrite rather than a drag.
+> - A lot exists before its cards, and its cards are cut when it opens: a `Backlog` card is a sketch, a `Todo` card is a
+>   specification, and moving one between them is the rewrite rather than a drag.
+> - A `Todo` card has nothing left open: no assumption, no discovery, no open decision. What was settled is written in
+>   its `Decisions`, and that is what makes it ready for an agent.
 > - Size is a target, not a measurement: a pull request somebody reviews in one sitting. Under roughly four files, ask
 >   whether it is a card at all; past roughly four hundred added lines, ask what else got in.
 > - Three tests, in the order they catch things: does it cost more to file than to do, does its title need "and", does
->   its body carry its own open decisions.
+>   one of its decisions take work to settle. A decision that only needs an answer is settled before `Todo` instead.
 > - Adjacent work found while a card is open is done inside it, in its own commit, not filed as a card of its own. Clean
 >   scope protects the reviewer, so the split is decided once, when the pull request opens.
 > - A card is a hypothesis. If its title is still true the scope simply grew; if it is not, the card is rewritten. The
@@ -108,15 +110,23 @@ on its own, and it would be wrong the week somebody lands one large refactor.
 
 **Does its title need "and"?** Then each verb is probably its own card.
 
-**Does its body carry its own open decisions?** Then it is a lot, not a card. This is the one generic advice misses, and
-the one this repository keeps hitting. A card whose `Done when` cannot be verified until somebody first decides
-something is two pieces of work wearing one number.
+**Does one of its decisions take work to settle?** Then it is a lot, not a card. This is the one generic advice misses,
+and the one this repository keeps hitting. A card whose `Done when` cannot be verified until somebody first researches,
+tries or writes something down is two pieces of work wearing one number, and the first piece is a `Decision` card the
+second waits on in `Ready when`.
+
+**A decision that only needs an answer does not make a lot.** Somebody who can decide says which, and the answer goes
+into the card's [`Decisions`](#a-todo-card-has-nothing-left-open) before it reaches `Todo`. The test is what settling it
+costs, not how important it is: a public API choice somebody can make in a sentence is an answer, and a naming question
+nobody can answer before somebody has tried both names is work.
 
 ### An interview is one way to run the third test
 
 The third test is the hard one, because a body full of open decisions reads like a plan until somebody tries to verify
 it. One way to find them before writing the card is to be questioned about it: an agent that interrogates a design round
 by round surfaces the decisions nobody had noticed were still open, which is the same output the test is looking for.
+**And that output has a place on the card**: every question answered in the interview is a line in `Decisions`, and
+every one that turns out to need work is a `Decision` card of its own.
 
 [AIHero](https://www.aihero.dev/) publishes skills that do this, `grill-with-docs` for something settleable in one
 session and `wayfinder` for a lot being cut. **Those two names are search terms rather than links**, since the pages
@@ -160,9 +170,11 @@ answer in the abstract, which is why none of them is a count.
 work asleep in a branch costs more than the card it was avoiding, because the context that justified skipping the card
 is gone by the time anybody looks at it again.
 
-**Does it need a decision you would not make alone?** A design, a public API, a breaking change. This is
-[the third test](#the-three-tests-in-the-order-they-catch-things) arriving mid-flight rather than at triage: work
-carrying its own open decisions is a lot, and noticing it late does not make it less of one.
+**Does it need a decision you would not make alone?** A design, a public API, a breaking change, none of which the
+card's `Decisions` settled. This is [the third test](#the-three-tests-in-the-order-they-catch-things) arriving
+mid-flight rather than at triage: a decision that takes work to settle makes the work a lot, and noticing it late does
+not make it less of one. One that only needs an answer still needs it before anybody codes against it, which is the job
+of a card reaching `Todo`, not of the card already open.
 
 **Does it touch a migration or the published contract?** Those carry a review cost that unplanned work does not pay, and
 the compatibility surface is a contract the moment the package is published.
@@ -277,22 +289,60 @@ what is true rather than what is called what.
 offers when somebody opens an issue. This file carries its reasoning; the form carries its shape. When the two disagree,
 the form is what people actually fill in, so fix the form first and then say why here.
 
-Four sections, of which two are usually absent:
+Eight sections, of which two only ever appear on a `Backlog` card and most of the rest are absent on any given one:
 
-| Section      | Carries                                                        | Dropped by                   |
-| ------------ | -------------------------------------------------------------- | ---------------------------- |
-| `Why`        | Two sentences: the problem, not the solution                   | Nobody                       |
-| `Ready when` | Card numbers that have to land first, and nothing else         | Any card that nothing blocks |
-| `Acceptance` | One to three Gherkin scenarios                                 | Every card but a `Feature`   |
-| `Done when`  | Only the delta on top of the three places and `composer check` | Nobody                       |
+| Section         | Carries                                                                  | Dropped by                        |
+| --------------- | ------------------------------------------------------------------------ | --------------------------------- |
+| `Why`           | Two sentences: the problem, not the solution                             | Nobody                            |
+| `Ready when`    | Card numbers that have to land first, and nothing else                   | Any card that nothing blocks      |
+| `Assumptions`   | What is believed and could be checked by reading the code or the docs    | Every card, on reaching `Todo`    |
+| `Discovery`     | What is known not to be known, and needs research or a trial to find out | Every card, on reaching `Todo`    |
+| `Decisions`     | Settled decisions and their reasons, boundaries included                 | Any card that settled nothing     |
+| `Where to look` | Permalinks, and no prose                                                 | Any card with nothing to point at |
+| `Acceptance`    | One to three Gherkin scenarios                                           | Every card but a `Feature`        |
+| `Done when`     | Only the delta on top of the three places and `composer check`           | Nobody                            |
 
-So a `Docs` card with no blocker is two sections, a `Chore` card is rarely more, and only a `Feature` card routinely
-carries all four.
+So a `Todo` `Docs` card with no blocker and nothing to settle is two sections, a `Chore` card is rarely more, and only a
+`Feature` card routinely carries six.
 
 **A card carries only the delta.** Repeating the general definition of done on thirty cards is how it stops being read.
 `Ready when` replaces a ceremonial definition of ready: it holds card numbers, and it is deleted outright rather than
 left empty. **A `Decision` card is done when the document stops saying `Open`**, not when somebody has made up their
 mind, which is the same rule [`stack.md`](../project/stack.md) applies to its own Status column.
+
+### A `Todo` card has nothing left open
+
+**A `Todo` card carries no assumption, no discovery and no open decision. That is the whole definition of a card ready
+for an agent**, and it is why no status was added for it: the column already says it. Rewriting a sketch into a
+specification is emptying the first two sections and settling what they turned up.
+
+- **An assumption is checked, by reading.** It becomes a decision, a link under `Where to look`, or it disappears
+  because it was wrong.
+- **A discovery is done, by trying.** It becomes a decision when an answer is enough, or a `Decision` card this one
+  waits on in `Ready when` when it takes work, which is
+  [the third test](#the-three-tests-in-the-order-they-catch-things). The line between the two sections is that one: an
+  assumption is settled by reading the code or the docs, a discovery by research or a trial.
+- **`Decisions` holds settled decisions only.** A question still open there is the open decision the third test is
+  about, filed under a heading that says it is not one.
+- **A boundary is a decision.** What the card does not do is written there, with the card that does it. That is where a
+  boundary goes now, and it is still not an `Out of scope` section, for the reason
+  [below](#what-this-project-deliberately-does-not-use).
+- **A decision that outlives the card goes into the documentation**, in the file that owns its topic, and the card
+  points at it under `Where to look`. A card closes; the reason the package refuses something does not.
+- **`Where to look` is permalinks and nothing else.** A sentence beside a link is a second description of what the link
+  already shows, and the two drift. Why a permalink rather than a path is
+  [further down](#a-card-cites-a-file-as-a-permalink).
+
+**The `Decision` kind and the `Decisions` section are not the same thing.** A decision that takes work to settle becomes
+a card of kind `Decision`, which delivers a document that stops saying `Open`. A decision that only needs an answer
+becomes one line in the `Decisions` section of the card it settles. The first is work; the second is an answer written
+down.
+
+**And the card is checked again when the work starts.** A `Todo` card was rewritten against the tree as it stood then,
+and other cards have merged since. Whoever starts it, a person or an agent, checks its `Decisions` and its
+`Where to look` against the tree as it stands now. A decision that no longer holds stops the work and goes back to
+whoever settled it: deciding it again on the way is the open decision the third test exists to catch, arriving where
+nobody will review it.
 
 ### An Acceptance scenario is a sentence nothing runs
 
@@ -403,8 +453,13 @@ above answers the question an estimate was being asked to answer.
 
 **No `Out of scope` section in the template.** It was considered and declined: it overlaps `Ready when` and the
 [one-topic-one-file](./documentation.md#one-topic-one-file) rule, it would be filled on maybe three cards in ten, and a
-fifth section nobody completes is how a template turns back into the wall of text it replaced. When a boundary genuinely
-needs stating, it is a sentence in `Why`, where it reads as reasoning rather than as paperwork.
+section nobody completes is how a template turns back into the wall of text it replaced. When a boundary genuinely needs
+stating, it is a line in [`Decisions`](#a-todo-card-has-nothing-left-open) naming the card that does the work, where it
+reads as something settled rather than as paperwork.
+
+**No `Risk` section, on a card or on a lot.** It was considered and deferred rather than declined: before `1.0` nobody
+depends on the package, so a risk is a guess about consumers that do not exist yet, and a section filled with guesses is
+the paperwork the rest of this template avoids. It comes back the day one would carry something a reviewer needs.
 
 ## Every link has to survive a clone
 

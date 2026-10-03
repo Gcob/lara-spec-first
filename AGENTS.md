@@ -143,6 +143,10 @@ Two traps worth knowing before you go in:
   not yours to make, or touches a migration or the published contract. Whether the branch then ships as one pull request
   or several is decided once, when the pull request is opened, and the reasoning for all of it is in
   [`card-management.md`](./docs/contributing/card-management.md#work-that-overflows-a-card-is-done-inside-it).
+- **Before coding a card, check it against the tree.** Its `Decisions` are settled and its `Where to look` points at
+  what it leans on, but both were written before other cards merged. Read them, check that they still hold in the code
+  as it stands, and if a decision no longer does, stop and hand it back rather than deciding it again yourself. Why, in
+  [`card-management.md`](./docs/contributing/card-management.md#a-todo-card-has-nothing-left-open).
 - **A card's scope growing is not a problem to report.** A card is a hypothesis written before anybody opened the code.
   If its title is still true, adjust the body and carry on; if it is not, say so, because the card now describes work
   nobody is doing. What belongs in the pull request description is why the original plan was wrong, not a list of what
