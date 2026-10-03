@@ -97,7 +97,7 @@ it('writes the rule set as rules() returns it', function (): void {
         ->toContain("'age' => ['sometimes', 'integer', 'min:18'],")
         ->toContain("'nickname' => ['sometimes', 'nullable', 'string'],")
         ->toContain("'tags.*' => ['string', 'distinct:strict'],")
-        ->toContain("'address.city' => ['present_with:address', 'string'],")
+        ->toContain("'address' => ['sometimes', 'array', 'required_array_keys:city'],")
         ->toContain("'notify' => ['sometimes', 'boolean'],");
 });
 

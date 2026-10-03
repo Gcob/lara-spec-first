@@ -335,10 +335,25 @@ it('maps each constraint to the Laravel rule that means the same thing', functio
         new Schema(types: [SchemaType::String], enum: ['a,b', 'c']),
         ['sometimes', 'string', new InRule(['a,b', 'c'])],
     ],
-    // `null` in the enumeration is nullability, not a value `in` compares.
-    'enum with null' => [
-        new Schema(types: [SchemaType::String], enum: ['a', null]),
+    // A value has to satisfy the type list and the enumeration at once, so
+    // `null` is allowed only when both allow it.
+    'enum with null, type allowing null' => [
+        new Schema(types: [SchemaType::String, SchemaType::Null], enum: ['a', null]),
         ['sometimes', 'nullable', 'string', new InRule(['a'])],
+    ],
+    'enum with null, type refusing it' => [
+        new Schema(types: [SchemaType::String], enum: ['a', null]),
+        ['sometimes', 'string', new InRule(['a'])],
+    ],
+    'type allowing null, enum refusing it' => [
+        new Schema(types: [SchemaType::String, SchemaType::Null], enum: ['a']),
+        ['sometimes', 'string', new InRule(['a'])],
+    ],
+    // `Rule::in` compares as strings; every allowed value being a string is the
+    // contract saying the field is one.
+    'an untyped enumeration of strings' => [
+        new Schema(enum: ['1', '2']),
+        ['sometimes', 'string', new InRule(['1', '2'])],
     ],
     // `list` beside `array`: Laravel's `array` passes for an associative one.
     'an array, minItems, maxItems' => [
@@ -364,9 +379,11 @@ it('keys the element rules of an array under field.*', function (): void {
     ]);
 });
 
-// A key cannot be required while its object is absent, so a required child
-// names its parent rather than being required outright.
-it('keys a nested object with dots, and makes its required children follow it', function (): void {
+// JSON Schema's `required` asks for keys on the object itself, and so does
+// `required_array_keys`. On the parent rather than on each child, so a nullable
+// object may be `null`: a child's rule would fire on the parent's key whatever
+// its value.
+it('keys a nested object with dots, and asks the object for its required keys', function (): void {
     expect(rulesFor(['address' => new Schema(
         types: [SchemaType::Object],
         properties: [
@@ -376,16 +393,16 @@ it('keys a nested object with dots, and makes its required children follow it', 
         ],
         required: ['city', 'floor'],
     )], ['address']))->toBe([
-        'address' => ['present', 'array'],
-        'address.city' => ['present_with:address', 'string'],
-        'address.floor' => ['required_with:address', 'integer'],
+        'address' => ['present', 'array', 'required_array_keys:city,floor'],
+        'address.city' => ['sometimes', 'string'],
+        'address.floor' => ['sometimes', 'integer'],
         'address.note' => ['sometimes', 'string'],
     ]);
 });
 
-// Inside an array element the element exists by being in the array, so a
-// required child is asked for directly.
-it('requires an element\'s required child directly', function (): void {
+// The same for an array element, which keeps `[null]` acceptable when the
+// element may be null.
+it('asks an array element for its required keys', function (): void {
     expect(rulesFor(['lines' => new Schema(
         types: [SchemaType::Array],
         items: new Schema(
@@ -395,8 +412,8 @@ it('requires an element\'s required child directly', function (): void {
         ),
     )]))->toBe([
         'lines' => ['sometimes', 'array', 'list'],
-        'lines.*' => ['array'],
-        'lines.*.sku' => ['present', 'string'],
+        'lines.*' => ['array', 'required_array_keys:sku'],
+        'lines.*.sku' => ['sometimes', 'string'],
     ]);
 });
 

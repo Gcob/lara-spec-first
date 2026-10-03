@@ -36,15 +36,6 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 final readonly class RuleSetBuilder
 {
     /**
-     * The media types a generated rule set covers.
-     *
-     * All three arrive through `all()`, so one rule set covers them and the
-     * order here is only the order a tie is broken in. What changes between
-     * them is whether a part can be a file, which is `uploads.md`'s subject.
-     *
-     * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
-     */
-    /**
      * The six RFC 3339 spellings `date-time` passes on, `p` and `P` at each
      * precision, because PHP's `p` prints `Z` for a zero offset where `P`
      * prints `+00:00` and `date_format` only passes on an exact round trip.
@@ -68,6 +59,15 @@ final readonly class RuleSetBuilder
         'ipv6' => 'ipv6',
     ];
 
+    /**
+     * The media types a generated rule set covers.
+     *
+     * All three arrive through `all()`, so one rule set covers them and the
+     * order here is only the order a tie is broken in. What changes between
+     * them is whether a part can be a file, which is `uploads.md`'s subject.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
+     */
     public const READ_MEDIA_TYPES = [
         'application/json',
         'multipart/form-data',
@@ -308,9 +308,11 @@ final readonly class RuleSetBuilder
      *   `sometimes`.
      * - An optional body may be absent entirely, and a plain presence rule
      *   would then refuse a request the contract allows. What the contract
-     *   means is "all or none", and `*_with` naming the other required
-     *   properties says exactly that: nothing sent, nothing required; one sent,
-     *   the rest required.
+     *   means is "a body or none", and `*_with` naming every other key the
+     *   body may carry says exactly that: nothing sent, nothing required; any
+     *   key sent — a required one or an optional one — and the required ones
+     *   follow. Naming only the required siblings would accept a body made of
+     *   optional keys alone, which the contract refuses.
      * - Otherwise the schema's list is read as written.
      *
      * @return callable(string, Schema): string
@@ -328,7 +330,7 @@ final readonly class RuleSetBuilder
                 }
 
                 $siblings = array_values(array_filter(
-                    $schema->required,
+                    array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required]),
                     static fn (string $other): bool => $other !== $name && self::unescapableKey($other) === null,
                 ));
 
@@ -490,9 +492,11 @@ final readonly class RuleSetBuilder
         }
 
         $handled = ['allOf', 'type'];
-        $enumHasNull = $schema->enum !== null && in_array(null, $schema->enum, true);
-
-        if ($schema->isNullable() || $enumHasNull) {
+        // A value has to satisfy the type list and the enumeration at once,
+        // so `null` is allowed only when both allow it: `type: [string, null]`
+        // with `enum: [a]` refuses it, and so does `type: string` with
+        // `enum: [a, null]`. A field stating neither constrains nothing.
+        if (self::allowsNull($schema) && ($schema->types !== [] || $schema->enum !== null)) {
             $rules[] = 'nullable';
         }
 
@@ -530,6 +534,37 @@ final readonly class RuleSetBuilder
                 $rules[] = $schema->additionalProperties === false
                     ? 'array:'.implode(',', array_map('strval', array_keys($schema->properties)))
                     : 'array';
+
+                // JSON Schema's `required` asks for keys, and so does
+                // `required_array_keys`, on the object itself. Putting it on
+                // the parent rather than a `present_with` on each child is what
+                // lets a nullable object be `null`: a child's rule would fire
+                // on the parent's key being present whatever its value, while
+                // `nullable` on the parent skips this one.
+                $requiredKeys = [];
+
+                foreach ($schema->required as $name) {
+                    if (str_contains($name, ',')) {
+                        // The rule's parameters are comma-separated, so this
+                        // name would become two keys the contract never named.
+                        $walk->findings[] = sprintf(
+                            '%s requires `%s`, whose comma Laravel would read as two key names, so its '
+                                .'presence is not enforced.',
+                            $label,
+                            $name,
+                        );
+
+                        continue;
+                    }
+
+                    if (self::unescapableKey($name) === null) {
+                        $requiredKeys[] = $name;
+                    }
+                }
+
+                if ($requiredKeys !== []) {
+                    $rules[] = 'required_array_keys:'.implode(',', $requiredKeys);
+                }
                 array_push($handled, 'properties', 'required', 'dependentRequired', 'additionalProperties');
                 $children = 'properties';
                 break;
@@ -546,6 +581,13 @@ final readonly class RuleSetBuilder
 
         if ($schema->enum !== null) {
             $values = array_values(array_filter($schema->enum, static fn (mixed $value): bool => $value !== null));
+
+            // `Rule::in` compares as strings, so an untyped enumeration of
+            // strings would accept the integer `1` for `"1"`. Every allowed
+            // value being a string is the contract saying the field is one.
+            if ($schema->types === [] && $values !== [] && array_filter($values, is_string(...)) === $values) {
+                $rules[] = 'string';
+            }
 
             if ($values !== [] && self::allScalar($values)) {
                 $rules[] = new InRule($values);
@@ -568,23 +610,15 @@ final readonly class RuleSetBuilder
         }
 
         if ($children === 'properties') {
-            // Inside an array element the element exists by being in the
-            // array, so a required child is asked for directly. Anywhere else
-            // the object itself may be absent or null, and a key cannot be
-            // required while its object is not there: the child names its
-            // parent instead.
-            $inList = $insideList || str_contains($key, '*');
-
+            // The required keys are the parent's `required_array_keys`, so a
+            // child's own presence rule is `sometimes` either way: its value is
+            // judged when it is sent, and its key when its object is.
             self::objectChildren(
                 $walk,
                 $key.'.',
                 $schema,
-                static fn (string $name, Schema $property): string => match (true) {
-                    ! in_array($name, $schema->required, true) => 'sometimes',
-                    $inList => self::requiredRule($property),
-                    default => self::withRule($property, [$key]),
-                },
-                $inList,
+                static fn (string $name, Schema $property): string => 'sometimes',
+                $insideList || str_contains($key, '*'),
             );
         }
 
@@ -681,6 +715,15 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * Whether `null` satisfies both the type list and the enumeration.
+     */
+    private static function allowsNull(Schema $schema): bool
+    {
+        return ($schema->types === [] || $schema->isNullable())
+            && ($schema->enum === null || in_array(null, $schema->enum, true));
+    }
+
+    /**
      * @param  list<mixed>  $values
      */
     private static function allScalar(array $values): bool
@@ -727,7 +770,7 @@ final readonly class RuleSetBuilder
      */
     private static function requiredRule(Schema $schema): string
     {
-        if ($schema->isNullable()) {
+        if (self::allowsNull($schema) && $schema->types !== []) {
             return 'present';
         }
 

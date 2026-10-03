@@ -62,8 +62,8 @@ final class CreateUserRequest extends FormRequest
             'role' => ['sometimes', 'string', Rule::in(['admin', 'member'])],
             'tags' => ['sometimes', 'array', 'list'],
             'tags.*' => ['string', 'distinct:strict'],
-            'address' => ['sometimes', 'array'],
-            'address.city' => ['present_with:address', 'string'],
+            'address' => ['sometimes', 'array', 'required_array_keys:city'],
+            'address.city' => ['sometimes', 'string'],
             'website' => ['sometimes', 'string'],
             'notify' => ['sometimes', 'boolean'],
         ];
