@@ -28,11 +28,17 @@ final readonly class BuildPlan
      *                                          stating nothing about its input
      *                                          gets no class rather than one
      *                                          enforcing nothing
+     * @param  int  $unreadBodies  operations among those without a request
+     *                             whose body is declared only in media types
+     *                             this package does not read. Counted apart,
+     *                             because "states nothing" is not true of them:
+     *                             they state something this package cannot serve
      */
     public function __construct(
         public array $controllers,
         public array $files,
         public array $requests = [],
+        public int $unreadBodies = 0,
     ) {}
 
     /**

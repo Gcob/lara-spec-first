@@ -341,6 +341,41 @@ it('does not name a root keyword another finding already speaks to', function ()
         ->and($findings)->toContain('forbids properties it did not declare');
 });
 
+// `required` naming a key `properties` does not declare is legal OpenAPI: the
+// key must be present, any value. Presence is the whole of what the contract
+// states about it, so presence is the whole rule, and a finding says why the
+// rule set knows nothing else about it.
+it('requires a key the schema requires without declaring it', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(
+            ['title' => new Schema(types: [SchemaType::String])],
+            ['title', 'ghost'],
+        )],
+    ));
+
+    expect($set->rules)->toBe([
+        'title' => ['required', 'string'],
+        'ghost' => ['present'],
+    ])->and(implode('', $set->findings))->toContain('requires `ghost` without declaring it');
+});
+
+// `*` is the validator's wildcard in a rule key and has no escape, so a rule
+// keyed with one would apply to keys the contract never declared. Short by a
+// field rather than wrong about one.
+it('reports a field name Laravel would read as a wildcard', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema([
+            'a*b' => new Schema(types: [SchemaType::String]),
+            'plain' => new Schema(types: [SchemaType::String]),
+        ])],
+        query: [new QueryParameter('page*', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect(array_keys($set->rules))->toBe(['plain'])
+        ->and(implode('', $set->findings))->toContain('`a*b` carries a `*`')
+        ->and(implode('', $set->findings))->toContain('`page*` carries a `*`');
+});
+
 it('says the rule set is complete when it is', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(

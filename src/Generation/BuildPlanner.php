@@ -58,6 +58,7 @@ final readonly class BuildPlanner
         $requests = [];
         $claimed = [];
         $claimedRequests = [];
+        $unreadBodies = 0;
 
         foreach ($operations as $operation) {
             $this->assertRoutable($operation);
@@ -88,6 +89,10 @@ final readonly class BuildPlanner
             $claimed[$name->shortName] = [$label, $name->customController];
 
             $request = RequestName::for($operation);
+
+            if ($request === null && $operation->requestBody !== null) {
+                $unreadBodies++;
+            }
 
             if ($request !== null) {
                 // Reachable without the controller check above firing, which
@@ -134,7 +139,7 @@ final readonly class BuildPlanner
 
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
-        return new BuildPlan($planned, $files, $requests);
+        return new BuildPlan($planned, $files, $requests, $unreadBodies);
     }
 
     /**
