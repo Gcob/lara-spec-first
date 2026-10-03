@@ -283,6 +283,25 @@ it('accepts an optional body whole or absent, and refuses half of one', function
     'all' => [['street' => 'Main', 'city' => 'Montréal'], 200],
 ]);
 
+// "A body or none": a body made only of an optional key is still a body, and
+// the required ones follow it. Naming only the required siblings accepted it.
+it('refuses an optional body made of optional keys alone', function (array $payload, int $status): void {
+    $body = new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'street' => new Schema(types: [SchemaType::String]),
+            'note' => new Schema(types: [SchemaType::String]),
+        ],
+        required: ['street'],
+    );
+
+    expect(statusForBuiltRules($body, $payload, bodyRequired: false))->toBe($status);
+})->with([
+    'nothing' => [[], 200],
+    'an optional key alone' => [['note' => 'x'], 422],
+    'both' => [['street' => 'Main', 'note' => 'x'], 200],
+]);
+
 it('requires a nested object\'s required child only when the object is sent', function (array $payload, int $status): void {
     $field = new Schema(
         types: [SchemaType::Object],
@@ -295,6 +314,36 @@ it('requires a nested object\'s required child only when the object is sent', fu
     'no object' => [[], 200],
     'an object without it' => [['field' => ['other' => 1]], 422],
     'an object with it' => [['field' => ['city' => 'Québec']], 200],
+]);
+
+it('lets a nullable object with required keys be null', function (): void {
+    $field = new Schema(
+        types: [SchemaType::Object, SchemaType::Null],
+        properties: ['city' => new Schema(types: [SchemaType::String])],
+        required: ['city'],
+    );
+
+    expect(statusForBuiltRules(oneField($field, required: false), ['field' => null]))->toBe(200)
+        ->and(statusForBuiltRules(oneField($field, required: false), ['field' => ['x' => 1]]))->toBe(422);
+});
+
+it('lets a list of nullable objects hold null', function (): void {
+    $field = new Schema(types: [SchemaType::Array], items: new Schema(
+        types: [SchemaType::Object, SchemaType::Null],
+        properties: ['sku' => new Schema(types: [SchemaType::String])],
+        required: ['sku'],
+    ));
+
+    expect(statusForBuiltRules(oneField($field), ['field' => [null, ['sku' => 'A']]]))->toBe(200)
+        ->and(statusForBuiltRules(oneField($field), ['field' => [['x' => 1]]]))->toBe(422);
+});
+
+it('allows null only when both the type list and the enumeration do', function (Schema $field, int $status): void {
+    expect(statusForBuiltRules(oneField($field), ['field' => null]))->toBe($status);
+})->with([
+    'both' => [new Schema(types: [SchemaType::String, SchemaType::Null], enum: ['a', null]), 200],
+    'the enumeration alone' => [new Schema(types: [SchemaType::String], enum: ['a', null]), 422],
+    'the type alone' => [new Schema(types: [SchemaType::String, SchemaType::Null], enum: ['a']), 422],
 ]);
 
 it('closes a nested object to the keys it declares', function (): void {

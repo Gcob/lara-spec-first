@@ -150,13 +150,15 @@ rule, not one this package invents, and it is a merge rather than a collision.
 
 **`requestBody.required: false` means the whole payload may be absent, and never that a required property became
 optional.** So the rule set has to accept nothing and refuse half of something, and `present_with` says exactly that:
-each field in the required list names the others.
+each field in the required list names every other key the body may carry, optional ones included. Naming only the
+required ones would accept a body made of an optional key alone, which is a body, and one the contract refuses.
 
 ```php
-// A requestBody that is not required, whose schema requires street, city and code.
-'street' => ['present_with:city,code', 'string'],
-'city' => ['present_with:street,code', 'string'],
-'code' => ['present_with:street,city', 'string'],
+// A requestBody that is not required, whose schema requires street, city and code, and declares note too.
+'street' => ['present_with:city,code,note', 'string'],
+'city' => ['present_with:street,code,note', 'string'],
+'code' => ['present_with:street,city,note', 'string'],
+'note' => ['sometimes', 'string'],
 ```
 
 **What those three rules do, case by case:**
@@ -325,6 +327,10 @@ PHP format character prints a lower-case offset, so covering it would mean liter
 spelling that is vanishingly rare on the wire. A contract whose producers emit it is one this mapping does not serve,
 and saying so here is the difference between a limit and a defect.
 
+**So is a fraction of any other length.** The six patterns cover whole seconds, milliseconds and microseconds;
+`2026-09-20T14:03:11.5Z`, with one digit, is RFC 3339 and is refused, as are two, four, five and seven to nine. PHP's
+format characters have no variable-width fraction, and a pattern per width is a list nobody would read.
+
 Which `format` values are honored at all is [the matrix](../openapi-support.md#any-type)'s row.
 
 **Strings and numbers, where the same two rule names do four jobs:**
@@ -339,26 +345,25 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 
 **Arrays and objects, where a rule is keyed rather than named:**
 
-| Schema                              | Laravel rule                                                                                 |
-| ----------------------------------- | -------------------------------------------------------------------------------------------- |
-| `items`                             | The element rules, under `field.*`                                                           |
-| `minItems`, `maxItems`              | `min`, `max` on the array itself                                                             |
-| `uniqueItems: true`                 | `distinct:strict` on `field.*`                                                               |
-| `properties`                        | One key per property, `field.child`, recursively                                             |
-| `additionalProperties: false`       | `array:` on a nested object's field, naming its declared keys                                |
-| `required` under an optional object | `present_with:` naming the parent, since a key cannot be required while its object is absent |
-| `required` inside an array element  | The presence rule itself: the element exists by being in the array                           |
-| `dependentRequired`                 | `present_with:` naming the properties that trigger it                                        |
-| `allOf`                             | Its branches merged into one schema first; two that cannot be said as one are refused        |
+| Schema                        | Laravel rule                                                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                       | The element rules, under `field.*`                                                                                                     |
+| `minItems`, `maxItems`        | `min`, `max` on the array itself                                                                                                       |
+| `uniqueItems: true`           | `distinct:strict` on `field.*`, which reads `1` and `1.0` as two elements, and two objects whose keys come in a different order as two |
+| `properties`                  | One key per property, `field.child`, recursively                                                                                       |
+| `additionalProperties: false` | `array:` on a nested object's field, naming its declared keys                                                                          |
+| `required` on a nested object | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                  |
+| `dependentRequired`           | `present_with:` naming the properties that trigger it                                                                                  |
+| `allOf`                       | Its branches merged into one schema first; two that cannot be said as one are refused                                                  |
 
 **A nested object is validated as an array, keyed with dots.** One rule key per property, however deep the schema goes,
 which is Laravel's own notation for nested input and what `validated()` hands back:
 
 ```php
-'address' => ['present', 'array:street,city,postal_code'],
-'address.street' => ['present_with:address', 'string'],
-'address.city' => ['present_with:address', 'string'],
-'address.postal_code' => ['sometimes', 'string', 'regex:/^[A-Z]\d[A-Z] ?\d[A-Z]\d$/'],
+'address' => ['present', 'array:street,city,postal_code', 'required_array_keys:street,city'],
+'address.street' => ['sometimes', 'string'],
+'address.city' => ['sometimes', 'string'],
+'address.postal_code' => ['sometimes', 'string', 'regex:/^[A-Z][0-9][A-Z] ?[0-9][A-Z][0-9]$/uD'],
 ```
 
 **The dots stop at the validator.** What a controller reads is not that array: the generated request
