@@ -344,7 +344,12 @@ it('maps each constraint to the Laravel rule that means the same thing', functio
     ],
     'format: date-time' => [
         new Schema(types: [SchemaType::String], format: 'date-time'),
-        ['sometimes', 'string', 'date_format:Y-m-d\TH:i:sp,Y-m-d\TH:i:sP,Y-m-d\TH:i:s.vp,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.uP'],
+        [
+            'sometimes',
+            'string',
+            'regex:/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$/D',
+            'date',
+        ],
     ],
     'format: email' => [new Schema(types: [SchemaType::String], format: 'email'), ['sometimes', 'string', 'email']],
     'format: uuid' => [new Schema(types: [SchemaType::String], format: 'uuid'), ['sometimes', 'string', 'uuid']],
