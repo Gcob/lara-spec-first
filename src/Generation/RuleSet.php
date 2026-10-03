@@ -20,17 +20,44 @@ namespace Gcob\LaraSpecFirst\Generation;
 final readonly class RuleSet
 {
     /**
-     * @param  array<string, list<string>>  $rules  one entry per rule key, in the
-     *                                              order the document writes the
-     *                                              fields: the body's first, then
-     *                                              the query parameters
+     * @param  array<string, list<string|InRule>>  $rules  one entry per rule key,
+     *                                                     in the order the
+     *                                                     document writes the
+     *                                                     fields: the body's
+     *                                                     first, then the query
+     *                                                     parameters
      * @param  list<string>  $findings  what the build read and did not act on,
      *                                  one line each
+     * @param  list<string>|null  $closedKeys  the body's top-level property
+     *                                         names when its schema forbids
+     *                                         any other, and null when it
+     *                                         does not. A root has no field
+     *                                         for `array:` to sit on, so the
+     *                                         emitter turns these into an
+     *                                         `after()` check
      */
     public function __construct(
         public array $rules = [],
         public array $findings = [],
+        public ?array $closedKeys = null,
     ) {}
+
+    /**
+     * Whether any rule is an enumeration, which is what decides whether the
+     * emitted file imports `Rule`.
+     */
+    public function usesInRule(): bool
+    {
+        foreach ($this->rules as $rules) {
+            foreach ($rules as $rule) {
+                if ($rule instanceof InRule) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 
     public function isEmpty(): bool
     {

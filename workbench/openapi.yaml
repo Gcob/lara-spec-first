@@ -191,13 +191,14 @@ paths:
 
 components:
     schemas:
-        # One schema, two operations, two generated requests. Half of what it
-        # states is translated into a rule today and half is not, which is the
-        # point: every keyword the build could not translate is named in the
-        # generated file's Findings block rather than dropped in silence.
+        # One schema, two operations, two generated requests. Every keyword
+        # below becomes a rule, except the two marked: those are named in the
+        # generated file's Findings block rather than enforced, because no
+        # Laravel rule means the same thing.
         NewPost:
             type: object
             required: [title, body]
+            additionalProperties: false
             properties:
                 title:
                     type: string
@@ -211,6 +212,38 @@ components:
                     minimum: 1
                 summary:
                     type: [string, 'null']
+                status:
+                    type: string
+                    enum: [draft, review, live]
+                publishAt:
+                    type: string
+                    format: date-time
+                slug:
+                    type: string
+                    pattern: '^[a-z0-9-]+$'
+                # Reported: `\d` reads as a Unicode class in PCRE under `u`.
+                isbn:
+                    type: string
+                    pattern: '^\d{13}$'
+                # Reported: Laravel's `url` refuses a `urn:` JSON Schema allows.
+                canonical:
+                    type: string
+                    format: uri
+                tags:
+                    type: array
+                    maxItems: 5
+                    uniqueItems: true
+                    items:
+                        type: string
+                author:
+                    type: object
+                    required: [name]
+                    properties:
+                        name:
+                            type: string
+                        email:
+                            type: string
+                            format: email
 
     securitySchemes:
         bearerAuth:
