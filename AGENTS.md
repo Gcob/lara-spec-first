@@ -34,7 +34,7 @@ not, and the routing table that results, read-only always and asserted to be. Va
 one `FormRequest` per operation that states anything about its input and declares it as `routeAction`'s first parameter,
 with the whole mapping table applied and whatever no Laravel rule means the same as named in the generated file's own
 findings rather than dropped. It also emits one input DTO pair per request body, `NewUserInputDto` and
-`NewUserPartialInputDto`, which the request does not return yet. There is no response DTO. The
+`NewUserPartialInputDto`, and the request returns the one its method reads from `dto()`. There is no response DTO. The
 [project board](https://github.com/users/Gcob/projects/1) is the authoritative list of what exists and what is in
 flight, and `gh issue list --repo Gcob/lara-spec-first` reads it from a session. An open card is work that is not done,
 which a checked box in a file could only claim as accurately as somebody remembered to edit it.

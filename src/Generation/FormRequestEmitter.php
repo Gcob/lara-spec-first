@@ -64,7 +64,7 @@ final readonly class FormRequestEmitter
 
             namespace {$this->namespace}\\Requests;
 
-            {$this->useStatements($planned->rules)}
+            {$this->useStatements($planned)}
 
             {$this->docblock($planned)}
             final class {$planned->name->shortName} extends FormRequest
@@ -83,7 +83,7 @@ final readonly class FormRequestEmitter
             {$this->rules($planned->rules)}
                     ];
                 }
-            {$this->after($planned->rules)}}
+            {$this->dto($planned)}{$this->after($planned->rules)}}
 
             PHP,
         );
@@ -95,8 +95,9 @@ final readonly class FormRequestEmitter
      * something a consumer's formatter removes, and a formatter with something
      * to remove is a formatter fighting the next build.
      */
-    private function useStatements(RuleSet $set): string
+    private function useStatements(PlannedRequest $planned): string
     {
+        $set = $planned->rules;
         $imports = [$this->import(self::BASE_CLASS)];
 
         if ($set->usesInRule()) {
@@ -105,6 +106,10 @@ final readonly class FormRequestEmitter
 
         if ($set->closedKeys !== null) {
             $imports[] = $this->import(self::VALIDATOR_CLASS);
+        }
+
+        if ($planned->dto !== null) {
+            $imports[] = $this->import($this->namespace.'\\Data\\'.$planned->dto);
         }
 
         // Ordered the way php-cs-fixer's `ordered_imports` orders them, for the
@@ -130,6 +135,30 @@ final readonly class FormRequestEmitter
             "    /**\n     * The only top-level keys the contract's body declares, and the only ones it allows.\n     */\n"
                 ."    private const BODY_KEYS = [%s];\n\n",
             implode(', ', array_map($this->literal(...), $set->closedKeys)),
+        );
+    }
+
+    /**
+     * `dto()`, or nothing for a request whose body is not an object.
+     *
+     * **`validated()` keeps returning Laravel's array**: it is the framework's
+     * own method and has callers, so the DTO sits beside it under a name of
+     * ours. The DTO's properties are the body schema's, and a query parameter is
+     * not one of them: `validated()` carries both, and `from()` reads only what
+     * the body declares, so `validated('page')` is still where a query
+     * parameter is read.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "The payload arrives as a DTO"
+     */
+    private function dto(PlannedRequest $planned): string
+    {
+        if ($planned->dto === null) {
+            return '';
+        }
+
+        return sprintf(
+            "\n    public function dto(): %1\$s\n    {\n        return %1\$s::from(\$this->validated());\n    }\n",
+            $planned->dto,
         );
     }
 
@@ -278,6 +307,15 @@ final readonly class FormRequestEmitter
                 .'before this class does.',
         ];
 
+        if ($planned->dto !== null) {
+            $findings[] = sprintf(
+                '`dto()` returns the body as `%s`, built from `validated()`, which keeps returning '
+                    .'Laravel\'s array. A `query` parameter is not a property of it: read one with '
+                    .'`validated(\'name\')`.',
+                CommentText::safe($planned->dto),
+            );
+        }
+
         if ($planned->rules->findings === []) {
             $findings[] = 'Every constraint the contract states is in the rule set above. Nothing '
                 .'was read and left unenforced.';
@@ -300,6 +338,15 @@ final readonly class FormRequestEmitter
      */
     private function navigation(PlannedRequest $planned): array
     {
+        $dto = $planned->dto === null ? [] : [
+            sprintf(
+                '@see `\\%s\\Data\\%s`',
+                CommentText::safe($this->namespace),
+                CommentText::safe($planned->dto),
+            ),
+            '     — what `dto()` returns',
+        ];
+
         return [
             // Written as two fixed lines rather than wrapped, the way the
             // controller's own navigation block writes its longest annotation.
@@ -322,6 +369,7 @@ final readonly class FormRequestEmitter
             ),
             '     — the method that declares this class, and what makes Laravel run it',
             '@see '.GeneratedRoutesLocator::FILE.' — the route that reaches that method',
+            ...$dto,
         ];
     }
 }

@@ -20,12 +20,25 @@ use Gcob\LaraSpecFirst\Contract\Operation;
  */
 final readonly class PlannedRequest
 {
+    /**
+     * @param  string|null  $dto  the short name of the input DTO `dto()` returns,
+     *                            or null when the body is not an object and the
+     *                            request has no `dto()`. Known only once every
+     *                            DTO has been planned, so a request is built
+     *                            without it and given it by {@see self::withDto()}
+     */
     public function __construct(
         public Operation $operation,
         public RequestName $name,
         public RuleSet $rules,
         public string $controllerShortName,
+        public ?string $dto = null,
     ) {}
+
+    public function withDto(?string $dto): self
+    {
+        return new self($this->operation, $this->name, $this->rules, $this->controllerShortName, $dto);
+    }
 
     /**
      * @param  string  $namespace  the configured generated root namespace

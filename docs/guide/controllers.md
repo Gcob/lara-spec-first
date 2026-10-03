@@ -409,7 +409,7 @@ for:
 ```php
 public function routeAction(CreateUserRequest $request): UserDto
 {
-    return $this->create($request->data());
+    return $this->create($request->dto());
 }
 
 protected function create(CreateUserInputDto $data): UserDto

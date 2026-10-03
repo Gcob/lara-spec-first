@@ -75,8 +75,12 @@ rather than one that was missing, and nothing downstream failed to say so.
   sub-namespace: a promoted constructor, `from()`, `toArray()`, `Arrayable` and `JsonSerializable`. Each body gets a
   full type and a `Partial` one, `NewUserInputDto` and `NewUserPartialInputDto`, named after the schema and never after
   the `$ref` or the file that holds it. A property the client may leave out is `Optional|T`, so `toArray()` never writes
-  a `null` over a field that was not sent. Two different schemas under one name are a build error. The request does not
-  return one yet.
+  a `null` over a field that was not sent. Two different schemas under one name are a build error, and so is one schema
+  with a file part sent as multipart by one operation and as another media type by another.
+- **A generated request has a `dto()` method** returning the input DTO built from `validated()`: the full type for a
+  `POST` and a `PUT`, the partial one for a `PATCH` and for a body that may be absent. It is `dto()` and not `data()`
+  because `Illuminate\Http\Request` owns a protected `data()` that its typed accessors read through. `validated()` is
+  untouched, and a request with no object body has no `dto()`.
 - **`Gcob\LaraSpecFirst\Data\Optional`** is public API: the one class of this package a generated DTO imports.
 - **`Contract\Schema` carries `source`**, where a named schema is written, beside its `name`.
 - **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first

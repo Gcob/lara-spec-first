@@ -3,11 +3,7 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
-use Gcob\LaraSpecFirst\Generation\InputDtoPlanner;
 use Gcob\LaraSpecFirst\Generation\PlannedInputDto;
-use Gcob\LaraSpecFirst\Generation\PlannedRequest;
-use Gcob\LaraSpecFirst\Generation\RequestName;
-use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Symfony\Component\Process\Process;
 
 /*
@@ -30,17 +26,14 @@ use Symfony\Component\Process\Process;
  */
 function goldenDtos(): array
 {
-    $requests = array_map(static function ($operation): PlannedRequest {
-        $name = RequestName::for($operation);
-        assert($name !== null);
-
-        return new PlannedRequest($operation, $name, RuleSetBuilder::for($operation), 'Controller');
-    }, extractFixture('input-dto-golden.yaml'));
-
     $dtos = [];
 
-    foreach ((new InputDtoPlanner)->plan($requests)->dtos as $dto) {
-        $dtos[$dto->shortName] = $dto;
+    // The two contracts the golden files come from: the YAML one with the whole
+    // type table, and the in-memory operation the golden request is built from.
+    foreach ([extractFixture('input-dto-golden.yaml'), [goldenOperation()]] as $operations) {
+        foreach (plannedRequests($operations)['plan']->dtos as $dto) {
+            $dtos[$dto->shortName] = $dto;
+        }
     }
 
     return $dtos;
@@ -186,6 +179,13 @@ it('carries the provenance of the schema it describes', function (): void {
         ->toContain('Read by `post /users`.');
 });
 
+it('points at the request whose dto() builds it', function (): void {
+    expect(emittedDto('NewUserInputDto'))
+        ->toContain('@see `\\App\\Http\\Generated\\Requests\\CreateUserRequest::dto()`')
+        ->and(emittedDto('NewUserPartialInputDto'))
+        ->toContain('@see `\\App\\Http\\Generated\\Requests\\UpdateUserRequest::dto()`');
+});
+
 it('says where an inline schema is written and how it got its name', function (): void {
     expect(emittedDto('NewUserProfileInputDto'))
         ->toContain('#/components/schemas/NewUser/properties/profile')
@@ -223,13 +223,16 @@ dataset('golden dtos', [
     'AddressInputDto',
     'NewUserProfileInputDto',
     'NewUserRolesItemInputDto',
+    'CreateUserInputDto',
+    'CreateUserPartialInputDto',
+    'CreateUserAddressInputDto',
 ]);
 
 it('reproduces the golden file byte for byte', function (string $name): void {
     $emitted = emittedDto(
         $name,
         namespace: 'Gcob\\LaraSpecFirst\\Tests\\Fixtures\\Generated',
-        specPath: 'tests/Fixtures/input-dto-golden.yaml',
+        specPath: str_starts_with($name, 'CreateUser') ? 'tests/Fixtures/golden.yaml' : 'tests/Fixtures/input-dto-golden.yaml',
     );
 
     expect($emitted)->toBe(file_get_contents(dirname(__DIR__, 2).'/Fixtures/Generated/Data/'.$name.'.php'));

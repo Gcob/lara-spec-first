@@ -215,4 +215,20 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
             $property
         ));
     }
+
+    /**
+     * One schema read as a multipart body by one operation and as something
+     * else by another, with a file part in it.
+     */
+    public static function inputDtoServesFilesAndStrings(string $shortName, string $position): self
+    {
+        return new self(sprintf(
+            'The schema written at "%s" is sent as `multipart/form-data` by one operation and as '.
+            'another media type by another, and it has a file part. That part is an `UploadedFile` '.
+            'in the first and a string in the second, so the one input DTO "%s" cannot be both. '.
+            'Give the multipart operation a schema of its own.',
+            $position,
+            $shortName
+        ));
+    }
 }
