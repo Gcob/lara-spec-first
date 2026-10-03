@@ -96,9 +96,32 @@ it('reads nullability off the type list', function (): void {
 
 // --- Presence, which is where the method and the body's own required flag meet ---
 
-it('requires a property the schema requires', function (): void {
-    expect(rulesFor(['name' => new Schema(types: [SchemaType::String])], ['name']))
-        ->toBe(['name' => ['required', 'string']]);
+// JSON Schema's `required` asks for the key; Laravel's refuses `null`, `""`,
+// `[]` and `{}`. So `required` is kept only where the type rule refuses every
+// empty value anyway, and every other type asks for the key with `present`.
+it('asks for a required key the way its type allows', function (SchemaType $type, string $rule): void {
+    expect(rulesFor(['field' => new Schema(types: [$type])], ['field']))
+        ->toBe(['field' => array_values(array_filter([$rule, match ($type) {
+            SchemaType::String => 'string',
+            SchemaType::Integer => 'integer',
+            SchemaType::Number => 'numeric',
+            SchemaType::Boolean => 'boolean',
+            default => null,
+        }]))]);
+})->with([
+    // `""` is a string the contract allows unless it says `minLength`.
+    'a string' => [SchemaType::String, 'present'],
+    // `[]` and `{}` are values the contract allows unless it says otherwise.
+    'an array' => [SchemaType::Array, 'present'],
+    'an object' => [SchemaType::Object, 'present'],
+    // The type rule refuses every empty value here, so the two rules agree.
+    'an integer' => [SchemaType::Integer, 'required'],
+    'a number' => [SchemaType::Number, 'required'],
+    'a boolean' => [SchemaType::Boolean, 'required'],
+]);
+
+it('asks only for the key when a required property states no type', function (): void {
+    expect(rulesFor(['field' => new Schema], ['field']))->toBe(['field' => ['present']]);
 });
 
 // Laravel's `required` refuses `null`, and a schema requiring a nullable
@@ -118,7 +141,8 @@ it('leaves a property the schema does not require optional', function (): void {
 // Scenario: PUT requires the full body / PATCH makes the same fields optional.
 it('reads the required list on a PUT and reads it as empty on a PATCH', function (
     string $method,
-    string $presence,
+    string $stringPresence,
+    string $booleanPresence,
 ): void {
     $properties = [
         'title' => new Schema(types: [SchemaType::String]),
@@ -127,13 +151,13 @@ it('reads the required list on a PUT and reads it as empty on a PATCH', function
     ];
 
     expect(rulesFor($properties, ['title', 'body', 'published'], $method))->toBe([
-        'title' => [$presence, 'string'],
-        'body' => [$presence, 'string'],
-        'published' => [$presence, 'boolean'],
+        'title' => [$stringPresence, 'string'],
+        'body' => [$stringPresence, 'string'],
+        'published' => [$booleanPresence, 'boolean'],
     ]);
 })->with([
-    'put' => ['put', 'required'],
-    'patch' => ['patch', 'sometimes'],
+    'put' => ['put', 'present', 'required'],
+    'patch' => ['patch', 'sometimes', 'sometimes'],
 ]);
 
 // "And every other constraint from the schema survives" — the scenario's second
@@ -174,7 +198,9 @@ it('keys a query parameter by its own name and its own required flag', function 
 
     expect($set->rules)->toBe([
         'page' => ['sometimes', 'integer'],
-        'tenant' => ['required', 'string'],
+        // `present` for the same reason a body string gets it: `?tenant=` is
+        // a string the contract allows.
+        'tenant' => ['present', 'string'],
     ]);
 });
 
@@ -354,7 +380,7 @@ it('requires a key the schema requires without declaring it', function (): void 
     ));
 
     expect($set->rules)->toBe([
-        'title' => ['required', 'string'],
+        'title' => ['present', 'string'],
         'ghost' => ['present'],
     ])->and(implode('', $set->findings))->toContain('requires `ghost` without declaring it');
 });
@@ -374,6 +400,19 @@ it('reports a field name Laravel would read as a wildcard', function (): void {
     expect(array_keys($set->rules))->toBe(['plain'])
         ->and(implode('', $set->findings))->toContain('`a*b` carries a `*`')
         ->and(implode('', $set->findings))->toContain('`page*` carries a `*`');
+});
+
+// The same report for a name `required` lists without declaring it: a key
+// carrying `*` would be a wildcard that never fires, so no rule is emitted.
+it('reports an undeclared required name Laravel would read as a wildcard', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        ['plain' => new Schema(types: [SchemaType::String])],
+        ['plain', 'a*b'],
+    )]));
+
+    expect(array_keys($set->rules))->toBe(['plain'])
+        ->and(implode('', $set->findings))->toContain('`a*b` carries a `*`')
+        ->and(implode('', $set->findings))->not->toContain('requires `a*b`');
 });
 
 it('says the rule set is complete when it is', function (): void {

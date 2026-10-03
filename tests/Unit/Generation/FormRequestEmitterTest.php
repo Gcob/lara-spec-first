@@ -80,7 +80,7 @@ it('emits a final class extending the framework base', function (): void {
 
 it('writes the rule set as rules() returns it', function (): void {
     expect(emittedRequest(goldenOperation()))
-        ->toContain("'email' => ['required', 'string'],")
+        ->toContain("'email' => ['present', 'string'],")
         ->toContain("'age' => ['sometimes', 'integer'],")
         ->toContain("'nickname' => ['sometimes', 'nullable', 'string'],")
         ->toContain("'notify' => ['sometimes', 'boolean'],");
