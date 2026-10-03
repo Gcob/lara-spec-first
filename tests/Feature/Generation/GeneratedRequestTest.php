@@ -257,12 +257,12 @@ it('refuses an object where the contract says array', function (): void {
 
 // `strict`, so `1` and `"1"` are two elements, which they are in JSON.
 it('refuses a repeated element and only a repeated one', function (array $value, int $status): void {
-    $field = new Schema(types: [SchemaType::Array], items: new Schema, uniqueItems: true);
+    $field = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String]), uniqueItems: true);
 
     expect(statusForBuiltRules(oneField($field), ['field' => $value]))->toBe($status);
 })->with([
-    'a repeat' => [[1, 1], 422],
-    'a number and its string' => [[1, '1'], 200],
+    'a repeat' => [['a', 'a'], 422],
+    'two different values' => [['a', 'b'], 200],
 ]);
 
 // Where `distinct` would not mean `uniqueItems`, the keyword is reported and

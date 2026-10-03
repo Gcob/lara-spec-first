@@ -621,7 +621,7 @@ final readonly class RuleSetBuilder
             }
 
             if ($schema->uniqueItems) {
-                $uniqueness = self::uniquenessRule($key, $schema);
+                $uniqueness = self::uniquenessRule($key, $schema, $walk, $label);
 
                 if ($uniqueness !== null) {
                     $walk->rules[$key.'.*'] = [...$walk->rules[$key.'.*'] ?? [], $uniqueness];
@@ -743,18 +743,25 @@ final readonly class RuleSetBuilder
      * every element of the outer list, so `[{tags: [a]}, {tags: [a]}]` is
      * refused although each list is unique. And on elements that are objects
      * or arrays it flattens them with dots and never compares the elements
-     * themselves, so `[{a: 1}, {a: 1}]` passes. A null leaves the keyword to
-     * the sweep, which reports it.
+     * themselves, so `[{a: 1}, {a: 1}]` passes. It also lets two nulls
+     * through. A null leaves the keyword to the sweep, which reports it.
      */
-    private static function uniquenessRule(string $key, Schema $schema): ?string
+    private static function uniquenessRule(string $key, Schema $schema, RuleWalk $walk, string $label): ?string
     {
-        if (str_contains($key, '*')) {
+        if (str_contains($key, '*') || $schema->items === null) {
             return null;
         }
 
-        $element = $schema->items?->soleType();
+        // Merged first: `items: {allOf: [...]}` is the 3.0 way of wrapping a
+        // `$ref`, and its type is only known once the branches are folded.
+        $items = AllOfMerger::merge($schema->items, $walk->identity, $label.'[]');
 
-        return $element === SchemaType::Object || $element === SchemaType::Array ? null : 'distinct:strict';
+        // Only a typed scalar that may not be null. An untyped element may be
+        // an object `distinct` cannot compare, and `distinct` lets two nulls
+        // through, so both are reported rather than half-enforced.
+        $scalar = in_array($items->soleType(), [SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean], true);
+
+        return $scalar && ! $items->isNullable() ? 'distinct:strict' : null;
     }
 
     /**
