@@ -43,7 +43,7 @@ use Illuminate\Support\Str;
 final class InputDtoPlanner
 {
     /**
-     * @var array<string, array{partial: bool, multipart: bool, schema: Schema, position: string, naming: string, properties: list<InputDtoProperty>, findings: list<string>}>
+     * @var array<string, array{partial: bool, named: bool, multipart: bool, schema: Schema, position: string, naming: string, properties: list<InputDtoProperty>, findings: list<string>}>
      */
     private array $registry = [];
 
@@ -156,8 +156,9 @@ final class InputDtoPlanner
             );
         }
 
-        $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $naming);
-        $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $naming);
+        $named = $name !== null;
+        $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $naming, $named, root: true);
+        $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $naming, $named, root: true);
 
         // The `PATCH` reads the partial type, and so does a body that may be
         // absent entirely: there every property may be missing.
@@ -188,14 +189,23 @@ final class InputDtoPlanner
         string $position,
         string $base,
         string $naming,
+        bool $named,
+        bool $root = false,
     ): string {
         if (isset($this->registry[$shortName])) {
             $existing = $this->registry[$shortName];
 
-            // Compared by value: two operations pointing at one `$ref` do not
-            // reach here as one object, and what matters is whether the author
-            // wrote one schema or two.
-            if ($existing['partial'] !== $partial || $existing['schema'] != $merged) {
+            // A named schema is identified by where it is written, and an inline one
+            // by what it says. By position because the merged value depends on how
+            // deep the walk expanded it and on what a 3.0 `$ref` wrapper carries
+            // beside it (an `example`, a `readOnly`), so one component reached two
+            // ways would be refused as two. By value, serialized rather than loosely
+            // compared, because `[0]` and `[false]` are `==`.
+            $same = $named && $existing['named']
+                ? $existing['position'] === $position
+                : ! $named && ! $existing['named'] && serialize($existing['schema']) === serialize($merged);
+
+            if ($existing['partial'] !== $partial || ! $same) {
                 throw UnusableNameException::inputDtoClaimedTwice($shortName, $existing['position'], $position);
             }
 
@@ -211,6 +221,7 @@ final class InputDtoPlanner
 
         $this->registry[$shortName] = [
             'partial' => $partial,
+            'named' => $named,
             'multipart' => $this->multipart,
             'schema' => $merged,
             'position' => $position,
@@ -229,7 +240,7 @@ final class InputDtoPlanner
             // escape, so the rule set emits nothing for such a key and the
             // validated payload never carries it. A required property reading
             // `$payload[$key]` would then fail on every request.
-            if (str_contains($key, '*')) {
+            if (RuleSetBuilder::unescapableKey($key) !== null) {
                 $this->registry[$shortName]['findings'][] = sprintf(
                     '`%s` carries a `*`, which the request cannot validate, so it never reaches the '
                         .'payload and this type has no property for it.',
@@ -263,12 +274,14 @@ final class InputDtoPlanner
                 $shortName,
             );
 
-            $properties[] = new InputDtoProperty(
-                $key,
-                $name,
-                $type,
-                $partial || ! in_array($key, $merged->required, true),
-            );
+            // A nested object's required key that Laravel cannot name in
+            // `required_array_keys` is not enforced by the rules, so a request can
+            // reach `from()` without it: it is optional here for that reason.
+            $optional = $partial
+                || ! in_array($key, $merged->required, true)
+                || (! $root && RuleSetBuilder::breaksKeyList($key));
+
+            $properties[] = new InputDtoProperty($key, $name, $type, $optional);
         }
 
         $this->registry[$shortName]['properties'] = $properties;
@@ -291,21 +304,20 @@ final class InputDtoPlanner
     {
         $schema = AllOfMerger::merge($written, $this->identity, '`'.$segment.'`');
 
+        // A recursive node is the shape of its ancestor, and no rule set reaches an
+        // infinite depth, so the rules validate nothing below it. A DTO built from
+        // it would be built from input nothing checked: a `parent: "oops"` would be
+        // a `TypeError` in `from()` and a 500 where the request owed a 422. So it
+        // is read as it arrived, `mixed`, and the file says why.
         if ($schema->recursesTo !== null) {
-            if ($schema->name === null) {
-                $this->registry[$owner]['findings'][] = sprintf(
-                    '`%s` points back at `%s`, a schema with no name to give a class, so it is `mixed`.',
-                    $segment,
-                    $schema->recursesTo,
-                );
-
-                return new InputDtoType(InputDtoType::MIXED);
-            }
-
-            return new InputDtoType(
-                InputDtoType::DTO,
-                class: $this->className($schema->name, $schema->recursesTo).'InputDto',
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
+                    .'`mixed` rather than built into a DTO from input nothing checked.',
+                $segment,
+                $schema->recursesTo,
             );
+
+            return new InputDtoType(InputDtoType::MIXED);
         }
 
         $enum = $schema->enum;
@@ -317,7 +329,7 @@ final class InputDtoPlanner
         $literals = count($literals) === count($values) ? $literals : [];
         $type = $schema->soleType();
 
-        if ($this->multipart && $schema->isFilePart && ($type === SchemaType::String || $schema->types === [])) {
+        if (RuleSetBuilder::isFile($schema, $this->multipart)) {
             return new InputDtoType(InputDtoType::FILE, $nullable);
         }
 
@@ -406,7 +418,7 @@ final class InputDtoPlanner
             );
         }
 
-        $class = $this->register($ownBase.'InputDto', false, $written, $merged, $position, $ownBase, $naming);
+        $class = $this->register($ownBase.'InputDto', false, $written, $merged, $position, $ownBase, $naming, $name !== null);
 
         return new InputDtoType(InputDtoType::DTO, $nullable, class: $class);
     }
@@ -439,7 +451,10 @@ final class InputDtoPlanner
      */
     private function className(string $schemaName, string $position): string
     {
-        $studly = Str::studly($schemaName);
+        // Not an identifier character is dropped, so `MyApp.Models.NewUser` is
+        // `MyAppModelsNewUser`. Two names that derive one class are refused when
+        // they meet, as two different schemas under one name are.
+        $studly = (string) preg_replace('/[^A-Za-z0-9_]/', '', Str::studly($schemaName));
 
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $studly) !== 1) {
             throw UnusableNameException::schemaNameUnusable($schemaName, $position);

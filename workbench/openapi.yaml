@@ -140,8 +140,8 @@ paths:
 
     /posts/{postId}/attachments:
         # A multipart body, and the one place a part is a file. `cover` becomes
-        # `file`, `mimetypes:image/png` and `max:2` (2500 bytes, rounded down to
-        # whole kilobytes), `gallery` becomes an array plus the same rules under
+        # `file`, `mimetypes:image/png` and `max:2.44140625` (2500 bytes, exact),
+        # `gallery` becomes an array plus the same rules under
         # `gallery.*`, and `anything` states `application/octet-stream`, which
         # means "any bytes" and so adds no `mimetypes`. The generated file's
         # Findings block says that an `encoding` written beside the body is not

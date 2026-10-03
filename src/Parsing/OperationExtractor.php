@@ -170,6 +170,7 @@ final readonly class OperationExtractor
         'example',
         'examples',
         'contentMediaType',
+        'contentEncoding',
     ];
 
     public function extract(ParsableSpecDocument $document): ExtractionResult

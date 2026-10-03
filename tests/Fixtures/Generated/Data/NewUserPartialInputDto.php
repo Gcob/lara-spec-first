@@ -136,7 +136,7 @@ final readonly class NewUserPartialInputDto implements Arrayable, JsonSerializab
         }
 
         if (! $this->seen_at instanceof Optional) {
-            $array['seen_at'] = $this->seen_at->toRfc3339String();
+            $array['seen_at'] = $this->seen_at->format('Y-m-d\TH:i:s.uP');
         }
 
         if (! $this->status instanceof Optional) {
@@ -176,7 +176,7 @@ final readonly class NewUserPartialInputDto implements Arrayable, JsonSerializab
         }
 
         if (! $this->visits instanceof Optional) {
-            $array['visits'] = array_map(static fn (CarbonImmutable $item): string => $item->toRfc3339String(), $this->visits);
+            $array['visits'] = array_map(static fn (CarbonImmutable $item): string => $item->format('Y-m-d\TH:i:s.uP'), $this->visits);
         }
 
         if (! $this->meta instanceof Optional) {

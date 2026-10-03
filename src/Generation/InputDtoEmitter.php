@@ -320,7 +320,8 @@ final readonly class InputDtoEmitter
                 ? 'No operation reads this type. It is generated beside the full one for every body, so '
                     .'that adding or removing a `required` property never creates or deletes a name '
                     .'somebody has already imported.'
-                : 'No operation reads this type directly: it is the type of a property of another DTO.')
+                : 'No operation reads this type directly: it is the type of a property of another DTO, or '
+                    .'the full type of a body that only a `PATCH` or an optional body sends.')
             : 'Read by '.implode(', ', array_map(
                 static fn (string $label): string => '`'.CommentText::safe($label).'`',
                 $dto->readers,

@@ -104,12 +104,20 @@ final class OpenApi31Strategy implements VersionStrategy
      * 3.1 names a file part with `contentMediaType`, having dropped
      * `format: binary` with the rest of the format vocabulary.
      *
+     * **Not when `contentEncoding` is beside it.** `type: string`,
+     * `contentEncoding: base64` and a `contentMediaType` is how 3.1 writes a
+     * file carried as text, which is a string with a description of what it
+     * decodes to, and `file` would refuse the very text the contract describes.
+     * That is `uploads.md`'s "a base64 part is a string", read here at the one
+     * place a 3.1 document can say it.
+     *
      * @param  array<string, mixed>  $keywords
      *
      * @see docs/guide/uploads.md — "The schema names the file part"
      */
     protected function isFilePart(array $keywords): bool
     {
-        return is_string($keywords['contentMediaType'] ?? null);
+        return is_string($keywords['contentMediaType'] ?? null)
+            && ! is_string($keywords['contentEncoding'] ?? null);
     }
 }

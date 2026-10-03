@@ -23,7 +23,8 @@ use JsonSerializable;
  * Findings
  *   - Class name derived from its parent's name and the property `profile`, because the object is
  *     written inline and has no name of its own.
- *   - No operation reads this type directly: it is the type of a property of another DTO.
+ *   - No operation reads this type directly: it is the type of a property of another DTO, or the
+ *     full type of a body that only a `PATCH` or an optional body sends.
  *
  * Navigation
  *

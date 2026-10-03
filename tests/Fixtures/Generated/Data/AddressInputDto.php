@@ -23,7 +23,10 @@ use JsonSerializable;
  * Findings
  *   - Class name taken from the schema `Address`, written at `#/components/schemas/Address`. Every
  *     operation reaching that schema shares this type.
- *   - No operation reads this type directly: it is the type of a property of another DTO.
+ *   - No operation reads this type directly: it is the type of a property of another DTO, or the
+ *     full type of a body that only a `PATCH` or an optional body sends.
+ *   - `parent` points back at `#/components/schemas/Address`, and the request validates nothing
+ *     below that point, so it is `mixed` rather than built into a DTO from input nothing checked.
  *
  * Navigation
  *
@@ -31,10 +34,13 @@ use JsonSerializable;
  */
 final readonly class AddressInputDto implements Arrayable, JsonSerializable
 {
+    /**
+     * @param  Optional|mixed  $parent
+     */
     public function __construct(
         public string $street,
         public Optional|string|null $city,
-        public Optional|AddressInputDto $parent,
+        public mixed $parent,
     ) {}
 
     /**
@@ -45,7 +51,7 @@ final readonly class AddressInputDto implements Arrayable, JsonSerializable
         return new self(
             street: $payload['street'],
             city: array_key_exists('city', $payload) ? $payload['city'] : new Optional,
-            parent: array_key_exists('parent', $payload) ? AddressInputDto::from($payload['parent']) : new Optional,
+            parent: array_key_exists('parent', $payload) ? $payload['parent'] : new Optional,
         );
     }
 
@@ -63,7 +69,7 @@ final readonly class AddressInputDto implements Arrayable, JsonSerializable
         }
 
         if (! $this->parent instanceof Optional) {
-            $array['parent'] = $this->parent->toArray();
+            $array['parent'] = $this->parent;
         }
 
         return $array;

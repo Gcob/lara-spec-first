@@ -792,29 +792,35 @@ it('reads the types of a file part from contentMediaType', function (?string $de
     'the any-type wildcard' => ['*/*', []],
 ]);
 
+// A query string carries no file, so a parameter is never read as one, whatever the
+// body of the same operation is.
+it('does not read a query parameter as a file in a multipart operation', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['multipart/form-data' => objectSchema(['a' => new Schema(types: [SchemaType::String])])],
+        query: [new QueryParameter('f', new Schema(types: [SchemaType::String], isFilePart: true))],
+    ));
+
+    expect($set->rules['f'])->toBe(['sometimes', 'string']);
+});
+
 it('reads a file part with no type at 3.1 as a file', function (): void {
     [$rules] = filePartRules(new Schema(isFilePart: true, contentMediaType: 'image/png'));
 
     expect($rules['avatar'])->toBe(['required', 'file', 'mimetypes:image/png']);
 });
 
-it('turns maxLength on a file into kilobytes, rounded down', function (int $bytes, string $rule): void {
+// Laravel's `max` takes a decimal, so a byte ceiling is exact: 2500 bytes over
+// 1024 is `2.44140625`, which has a finite expansion whatever the count.
+it('turns maxLength on a file into an exact decimal of kilobytes', function (int $bytes, string $rule): void {
     [$rules] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, maxLength: $bytes));
 
     expect($rules['avatar'])->toBe(['required', 'file', $rule]);
 })->with([
     'exactly one kilobyte' => [1024, 'max:1'],
-    'between two and three' => [2500, 'max:2'],
     'two kilobytes' => [2048, 'max:2'],
+    'between two and three' => [2500, 'max:2.44140625'],
+    'under a kilobyte' => [500, 'max:0.48828125'],
 ]);
-
-// `max:0` would refuse every file with content, which is no rounding.
-it('reports a size ceiling below one kilobyte instead of emitting max:0', function (): void {
-    [$rules, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, maxLength: 500));
-
-    expect($rules['avatar'])->toBe(['required', 'file'])
-        ->and($findings)->toContain('`avatar` declares `maxLength: 500` on a file');
-});
 
 it('reports the minimum size of a file, which no rule carries', function (): void {
     [, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, minLength: 10));

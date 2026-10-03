@@ -244,7 +244,9 @@ final readonly class InputDtoType
     private function write(string $value): string
     {
         return match ($this->kind) {
-            self::DATE_TIME => $value.'->toRfc3339String()',
+            // Microseconds, which is the most Carbon holds: `toRfc3339String()` drops
+            // the fraction, and a request may carry one on any date-time it sends.
+            self::DATE_TIME => $value.'->format(\'Y-m-d\\TH:i:s.uP\')',
             self::DATE => $value.'->toDateString()',
             self::DTO => $value.'->toArray()',
             self::LIST => $this->writeList($value),

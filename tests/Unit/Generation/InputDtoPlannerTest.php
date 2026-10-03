@@ -322,32 +322,26 @@ it('types a file part as a file only in a multipart body', function (array $medi
     'multipart and JSON' => [['multipart/form-data', 'application/json'], InputDtoType::STRING],
 ]);
 
-it('points a recursive node at the DTO it recurses into', function (): void {
+// The rules validate nothing below a recursion, so the DTO does not build one from
+// it: input nothing checked would be a `TypeError` in `from()`, and a 500.
+it('reads a recursive node as mixed and says so', function (?string $name): void {
     $node = new Schema(
         name: 'Node',
         source: '#/components/schemas/Node',
         types: [SchemaType::Object],
-        properties: ['next' => Schema::recursion('#/components/schemas/Node', 'Node')],
+        properties: ['next' => Schema::recursion('#/components/schemas/Node', $name)],
     );
     $plan = planDtos([dtoOperation('doThing', ['application/json' => $node])]);
-
-    $next = dtoNamed($plan, 'NodeInputDto')->properties[0];
-
-    expect($next->type->kind)->toBe(InputDtoType::DTO)
-        ->and($next->type->class)->toBe('NodeInputDto')
-        // Nothing generated twice: one full type and one partial.
-        ->and(dtoNames($plan->dtos))->toBe(['NodeInputDto', 'NodePartialInputDto']);
-});
-
-it('types a recursive node with no name as mixed and says so', function (): void {
-    $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(
-        ['next' => Schema::recursion('#/paths/~1x/post')],
-    )])]);
-    $dto = dtoNamed($plan, 'DoThingInputDto');
+    $dto = dtoNamed($plan, 'NodeInputDto');
 
     expect($dto->properties[0]->type->kind)->toBe(InputDtoType::MIXED)
-        ->and(implode("\n", $dto->findings))->toContain('points back at `#/paths/~1x/post`');
-});
+        ->and(implode("\n", $dto->findings))->toContain('`next` points back at `#/components/schemas/Node`')
+        // Nothing generated twice: one full type and one partial.
+        ->and(dtoNames($plan->dtos))->toBe(['NodeInputDto', 'NodePartialInputDto']);
+})->with([
+    'a named ancestor' => ['Node'],
+    'an ancestor with no name' => [null],
+]);
 
 // Decision 2 of the card #35 plan: a schema no single rule expresses is read as it
 // came, and the finding sends the reader to the request's.
@@ -423,4 +417,105 @@ it('reads the first media type a rule set reads, in the position it reports', fu
 
     expect(dtoNamed($plan, 'DoThingInputDto')->position)
         ->toBe('#/paths/~1things/post/requestBody/content/multipart~1form-data/schema');
+});
+
+// One component reached two ways is one schema, and the 3.0 way of writing a `$ref`
+// beside an `example` is the second way. Compared by value, the wrapper's `example`
+// made them two and the build refused a contract it had always accepted.
+it('shares one DTO between a $ref and the same $ref wrapped in an allOf', function (): void {
+    $user = dtoSchema(['a' => dtoString()], name: 'User', source: '#/components/schemas/User');
+    $wrapped = new Schema(allOf: [$user], examples: [['a' => 'x']]);
+    $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema([
+        'owner' => $user,
+        'reviewer' => $wrapped,
+    ])])]);
+
+    expect(dtoNames($plan->dtos))->toContain('UserInputDto')
+        ->and(array_count_values(dtoNames($plan->dtos))['UserInputDto'])->toBe(1);
+});
+
+// The same component, expanded to a different depth by where the walk entered it.
+it('shares one DTO between two operations that reach one recursive pair', function (): void {
+    $author = dtoSchema(['name' => dtoString()], name: 'Author', source: '#/components/schemas/Author');
+    $book = dtoSchema(['title' => dtoString(), 'author' => $author], name: 'Book', source: '#/components/schemas/Book');
+    $authorWithBooks = dtoSchema(
+        ['name' => dtoString(), 'books' => new Schema(types: [SchemaType::Array], items: Schema::recursion('#/components/schemas/Book', 'Book'))],
+        name: 'Author',
+        source: '#/components/schemas/Author',
+    );
+
+    $plan = planDtos([
+        dtoOperation('createBook', ['application/json' => $book]),
+        dtoOperation('createAuthor', ['application/json' => $authorWithBooks], path: '/authors'),
+    ]);
+
+    expect(dtoNames($plan->dtos))->toContain('AuthorInputDto');
+});
+
+// A name with dots is what Swashbuckle writes with full names, and Java's fully
+// qualified names: the characters a class name cannot carry are dropped.
+it('derives a class name from a component name with dots', function (): void {
+    $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(
+        ['a' => dtoString()],
+        name: 'MyApp.Models.NewUser',
+        source: '#/components/schemas/MyApp.Models.NewUser',
+    )])]);
+
+    expect(dtoNames($plan->dtos))->toBe(['MyAppModelsNewUserInputDto', 'MyAppModelsNewUserPartialInputDto']);
+});
+
+// A schema with a file part, sent as multipart by one operation and as another media
+// type by the other: a part is a file in one and a string in the other.
+it('refuses one schema with a file part sent as multipart and as JSON', function (string $first, string $second): void {
+    $file = new Schema(types: [SchemaType::String], isFilePart: true);
+    $schema = dtoSchema(['avatar' => $file], name: 'Upload', source: '#/components/schemas/Upload');
+
+    expect(fn () => planDtos([
+        dtoOperation('first', [$first => $schema]),
+        dtoOperation('second', [$second => $schema], path: '/other'),
+    ]))->toThrow(UnusableNameException::class, 'is sent as `multipart/form-data` by one operation and as another media type');
+})->with([
+    'multipart then JSON' => ['multipart/form-data', 'application/json'],
+    'JSON then multipart' => ['application/json', 'multipart/form-data'],
+]);
+
+it('refuses it through a nested schema too', function (): void {
+    $upload = dtoSchema(['avatar' => new Schema(types: [SchemaType::String], isFilePart: true)], name: 'Upload', source: '#/components/schemas/Upload');
+    $outer = dtoSchema(['upload' => $upload]);
+
+    expect(fn () => planDtos([
+        dtoOperation('first', ['multipart/form-data' => $outer]),
+        dtoOperation('second', ['application/json' => $outer], path: '/other'),
+    ]))->toThrow(UnusableNameException::class);
+});
+
+// Nothing in the DTO depends on the media type when there is no file part.
+it('shares one DTO between a multipart and a JSON operation when there is no file part', function (): void {
+    $schema = dtoSchema(['a' => dtoString()], name: 'Plain', source: '#/components/schemas/Plain');
+    $plan = planDtos([
+        dtoOperation('first', ['multipart/form-data' => $schema]),
+        dtoOperation('second', ['application/json' => $schema], path: '/other'),
+    ]);
+
+    expect(dtoNames($plan->dtos))->toBe(['PlainInputDto', 'PlainPartialInputDto']);
+});
+
+// A nested object's required key Laravel cannot name in `required_array_keys` is
+// not enforced by the rules, so a request can reach `from()` without it.
+it('makes a nested required key optional when the rules cannot enforce it', function (): void {
+    $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(['address' => dtoSchema(
+        ['user.name' => dtoString(), 'city' => dtoString()],
+        ['user.name', 'city'],
+    )], ['address'])])]);
+
+    $optional = static fn ($property): bool => $property->optional;
+
+    expect(array_map($optional, dtoNamed($plan, 'DoThingAddressInputDto')->properties))->toBe([true, false]);
+});
+
+// The same key on the body's root is enforced, with the dot escaped.
+it('keeps a root required key with a dot required', function (): void {
+    $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(['user.name' => dtoString()], ['user.name'])])]);
+
+    expect(dtoNamed($plan, 'DoThingInputDto')->properties[0]->optional)->toBeFalse();
 });

@@ -66,9 +66,9 @@ rather than one that was missing, and nothing downstream failed to say so.
   `Deferred` to `Supported`; `format`, `pattern` and `uniqueItems` to `Partial`.
 - **A file part is validated as one.** In a body that is `multipart/form-data` alone, a property the schema calls a file
   (`format: binary` at 3.0, `contentMediaType` at 3.1) becomes `file`, `mimetypes:` from `contentMediaType`, and `max:`
-  in kilobytes from `maxLength`, rounded down. `application/octet-stream` and `*/*` add no `mimetypes`, which would
-  refuse every upload but an octet stream, and a ceiling under one kilobyte is reported rather than emitted as `max:0`.
-  A required part is `required`, so an empty upload slot is refused. Beside another media type, or in a JSON body, the
+  in kilobytes from `maxLength`, as an exact decimal (`max:2.44140625` is 2500 bytes, which Laravel's `max` takes).
+  `application/octet-stream` and `*/*` add no `mimetypes`, which would refuse every upload but an octet stream. A
+  required part is `required`, so an empty upload slot is refused. Beside another media type, or in a JSON body, the
   part is a string. `encoding.<part>.contentType` is not read yet, and every file part says so in its generated file's
   findings ([#90](https://github.com/Gcob/lara-spec-first/issues/90)). A closed root also refuses an undeclared upload.
 - **`spec:build` writes the input DTOs.** One `final readonly` class per request body that is an object, in the `Data`
@@ -81,6 +81,9 @@ rather than one that was missing, and nothing downstream failed to say so.
   `POST` and a `PUT`, the partial one for a `PATCH` and for a body that may be absent. It is `dto()` and not `data()`
   because `Illuminate\Http\Request` owns a protected `data()` that its typed accessors read through. `validated()` is
   untouched, and a request with no object body has no `dto()`.
+- **A node that recurses is `mixed` on the DTO**, since no rule validates anything below it. A `date-time` is written
+  back by `toArray()` with its fraction (microseconds), a component name with dots derives its class name by dropping
+  them, and two operations reaching one named schema share its DTO whatever a 3.0 `$ref` wrapper carries beside it.
 - **`Gcob\LaraSpecFirst\Data\Optional`** is public API: the one class of this package a generated DTO imports.
 - **`Contract\Schema` carries `source`**, where a named schema is written, beside its `name`.
 - **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first

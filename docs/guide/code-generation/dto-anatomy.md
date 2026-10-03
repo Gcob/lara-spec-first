@@ -186,23 +186,28 @@ reading on both sides.
 [`Contract\Schema`](../openapi-support.md#the-normal-form-a-schema-takes), so nothing below depends on which OpenAPI
 version wrote the document:
 
-| The schema says                                                              | The property is                | `from()` does                           | `toArray()` does    |
-| ---------------------------------------------------------------------------- | ------------------------------ | --------------------------------------- | ------------------- |
-| `string`                                                                     | `string`                       | Reads it                                | Writes it           |
-| `integer`                                                                    | `int`                          | `(int)`, request side only              | Writes it           |
-| `number`                                                                     | `float`                        | `(float)`, request side only            | Writes it           |
-| `boolean`                                                                    | `bool`                         | `(bool)`, request side only             | Writes it           |
-| `string`, `format: date-time`                                                | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toRfc3339String()` |
-| `string`, `format: date`                                                     | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toDateString()`    |
-| `enum`                                                                       | Its scalar type                | Reads it, or casts it as its type does  | Writes it           |
-| `object` with `properties`, via `$ref`                                       | The DTO named after the schema | `::from()`                              | `->toArray()`       |
-| `object` with `properties`, inline                                           | A DTO named after its parent   | `::from()`                              | `->toArray()`       |
-| `object` with no `properties`                                                | `array<string, mixed>`         | Reads it                                | Writes it           |
-| `array` with `items`                                                         | `list<T>`, in the docblock     | `array_map()` with `T`'s own conversion | The same, back      |
-| A file part                                                                  | `UploadedFile`                 | Reads it                                | Writes it as is     |
-| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The ancestor's DTO             | `::from()`                              | `->toArray()`       |
-| `nullable`                                                                   | `?T`                           | Checks for `null` before any conversion | Writes the `null`   |
-| No single type, or none at all                                               | `mixed`                        | Reads it                                | Writes it           |
+| The schema says                                                              | The property is                | `from()` does                           | `toArray()` does  |
+| ---------------------------------------------------------------------------- | ------------------------------ | --------------------------------------- | ----------------- |
+| `string`                                                                     | `string`                       | Reads it                                | Writes it         |
+| `integer`                                                                    | `int`                          | `(int)`, request side only              | Writes it         |
+| `number`                                                                     | `float`                        | `(float)`, request side only            | Writes it         |
+| `boolean`                                                                    | `bool`                         | `(bool)`, request side only             | Writes it         |
+| `string`, `format: date-time`                                                | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `format()`, below |
+| `string`, `format: date`                                                     | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toDateString()`  |
+| `enum`                                                                       | Its scalar type                | Reads it, or casts it as its type does  | Writes it         |
+| `object` with `properties`, via `$ref`                                       | The DTO named after the schema | `::from()`                              | `->toArray()`     |
+| `object` with `properties`, inline                                           | A DTO named after its parent   | `::from()`                              | `->toArray()`     |
+| `object` with no `properties`                                                | `array<string, mixed>`         | Reads it                                | Writes it         |
+| `array` with `items`                                                         | `list<T>`, in the docblock     | `array_map()` with `T`'s own conversion | The same, back    |
+| A file part                                                                  | `UploadedFile`                 | Reads it                                | Writes it as is   |
+| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | `mixed`                        | Reads it                                | Writes it         |
+| `nullable`                                                                   | `?T`                           | Checks for `null` before any conversion | Writes the `null` |
+| No single type, or none at all                                               | `mixed`                        | Reads it                                | Writes it         |
+
+**A node that recurses is `mixed` too, and the reason is that nothing validated it.** No rule set reaches an infinite
+depth, so the rules stop at the point a schema repeats its ancestor: `address.parent` has no rule beyond `sometimes`.
+Building the ancestor's DTO from it would build a typed object from input nothing checked, and a `parent: "oops"` would
+be a `TypeError` in `from()` and a 500 where the request owed a 422. The value reaches the controller as it arrived.
 
 **A property whose schema states no single type is `mixed`, and says so.** A `oneOf`, a union of two types or a schema
 with no `type` never reaches a rule that names one, so the DTO reads the value as it came and the file's findings send
@@ -213,6 +218,11 @@ the reader to the request's, which says what was not enforced. An optional `mixe
 Larastan and never `1|2`, so a docblock saying otherwise would be a claim the line beside it contradicts. The cast is
 what lets a multipart body's `"1"` into an `int`, and the rule set has already refused every value outside the
 enumeration. A string enumeration is read as it came, so its literal union is true and stays.
+
+**A `date-time` is written back with its fraction.** `toRfc3339String()` drops it, and the request rule set accepts a
+fraction of any length (Go sends up to nine digits, .NET seven), so a `toArray()` built on it would lose the sub-second
+part of a value on the way to mass assignment. The request side writes `format('Y-m-d\TH:i:s.uP')`, which keeps what
+Carbon holds, microseconds. The response side is #39's to decide.
 
 **A `null` is checked before anything converts it.** `CarbonImmutable::parse(null)` is the current time and `(int) null`
 is `0`, so a nullable property's conversion is wrapped rather than applied:

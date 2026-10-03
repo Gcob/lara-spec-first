@@ -193,8 +193,9 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     {
         return new self(sprintf(
             'The schema "%s", written at "%s", would generate a DTO class name that is not a usable '.
-            'PHP identifier. A DTO takes its name from the schema it describes, so rename the schema '.
-            'to something that starts with a letter once it is turned into a class name.',
+            'PHP identifier. A DTO takes its name from the schema it describes, with every character '.
+            'that is not a letter, a digit or an underscore dropped, so rename the schema to something '.
+            'that still starts with a letter or an underscore after that.',
             $name,
             $position
         ));
