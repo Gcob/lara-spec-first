@@ -8,10 +8,11 @@ covers: >
     requests is decided, what separates a card whose scope grew from one whose goal changed and where the divergence
     gets written, the card template and which sections each kind of card drops, what a Todo card may no longer leave
     open and where its settled decisions are written, what a lot's own card carries and why it never lists its cards,
-    what a finished lot owes the next one, when a card is written and what a Backlog card is worth before then, what an
-    Acceptance scenario holds, why nothing runs it and what ten cards have done with it so far, how a card cites a file,
-    what the board's Status, Phase, Lot and Kind fields mean, who moves them and why a card's body stops carrying one
-    the moment the board does, and the grouping mechanisms this project declines to use.
+    what a finished lot owes the next one, the path from a lot's sketch to a card an agent can take and when two cards
+    may be worked on at once, when a card is written and what a Backlog card is worth before then, what an Acceptance
+    scenario holds, why nothing runs it and what ten cards have done with it so far, how a card cites a file, what the
+    board's Status, Phase, Lot and Kind fields mean, who moves them and why a card's body stops carrying one the moment
+    the board does, and the grouping mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -81,10 +82,42 @@ a sketch is the opposite overreaction: the intention it records is worth keeping
 [#40](https://github.com/Gcob/lara-spec-first/issues/40) is the standing example, known to be a lot rather than a card,
 and split when Lot 2 opens rather than today.
 
-![A card's five states, and the edge running back from a finished lot to the next lot's rewrite](../diagrams/card-lifecycle.svg)
+![A lot card, a card's way from sketch to merge, and the edge running back from a finished lot to the next lot's rewrite](../diagrams/card-lifecycle.svg)
 
-_A card's five states._ The edge worth the picture is the one running backwards, from a finished lot to the next one's
-rewrite.
+_From the lot card to a merged card._ The edge worth the picture is the one running backwards, from a finished lot to
+the next one's rewrite.
+
+### From a sketch to a card an agent can take
+
+**Two levels, the lot and then each of its cards, and the same three verbs at both.** Assumptions are checked,
+discoveries are made, decisions are settled. What comes out at the end is a `Todo` card that
+[has nothing left open](#a-todo-card-has-nothing-left-open), so that whoever codes it never has to come back with a
+question.
+
+1. **The lot opens.** Its lot card is questioned again, emptied of assumptions and discoveries, and moved to `Todo`. Its
+   cards are cut against it, plus a `Decision` card for each discovery that takes work.
+2. **A card is prepared.** Its assumptions are checked against the code, each one ending as a permalink under
+   `Where to look`, a decision, or nothing. Its discoveries are made, by research or by a trial.
+3. **Its open decisions are settled.** By whoever owns them, and written in its `Decisions`. Checking a fact can be
+   handed to anybody; deciding cannot.
+4. **It moves to `Todo`.** Nothing is left open, which is the only thing the column claims.
+5. **It is coded.** Whoever starts it [checks it again](#a-todo-card-has-nothing-left-open) against the tree and reads
+   its lot card, then works without coming back unless a decision has stopped holding.
+
+None of these steps needs a particular tool or a particular kind of worker. A person can do all five, and an agent can
+do the second and the fifth; the third stays with whoever owns the decision.
+
+**One card at a time is the default.** Working on several at once is decided case by case, when it is safe and when it
+is worth it, and it is not a rule in either direction. It is safe when two conditions hold:
+
+- **Everything in the card's `Ready when` is merged.** A card whose blocker is still open is checked against a tree that
+  is about to change under it.
+- **It shares no file with a card already in progress.** Two branches editing the same file meet in a conflict, and the
+  second card's `Decisions` were checked against code the first one is rewriting.
+
+When either is in doubt, the cards go one after the other. Preparing a card while another one is being coded is the same
+question: its assumptions are only as good as the tree they were checked against, which is why step five checks them
+again.
 
 ### A finished lot owes one thing to the next
 
