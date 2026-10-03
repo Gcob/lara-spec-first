@@ -28,6 +28,12 @@ final class RuleWalk
     public array $findings = [];
 
     /**
+     * Whether `multipart/form-data` is the only media type the rule set is
+     * read from, which is the one body a part can be a file in.
+     */
+    public bool $multipart = false;
+
+    /**
      * @param  string  $identity  the operation's label, for a refusal's message
      */
     public function __construct(

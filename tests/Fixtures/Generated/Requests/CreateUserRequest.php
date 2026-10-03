@@ -76,7 +76,9 @@ final class CreateUserRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                foreach (array_keys(($this->isJson() ? $this->json() : $this->request)->all()) as $key) {
+                $body = $this->isJson() ? $this->json()->all() : [...$this->request->all(), ...$this->files->all()];
+
+                foreach (array_keys($body) as $key) {
                     if (! in_array((string) $key, self::BODY_KEYS, true)) {
                         $validator->errors()->add((string) $key, 'The '.$key.' field is not part of this contract.');
                     }

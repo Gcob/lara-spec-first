@@ -14,6 +14,7 @@ use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
 
@@ -115,6 +116,26 @@ it('refuses the string "true" for a boolean query parameter', function (): void 
 });
 
 /**
+ * The rules as the validator takes them.
+ *
+ * The emitter writes an `InRule` as `Rule::in([...])`; the validator needs the
+ * framework's object, so the same translation happens here.
+ *
+ * @param  array<string, list<string|InRule>>  $built
+ * @return array<string, list<mixed>>
+ */
+function frameworkRules(array $built): array
+{
+    return array_map(
+        static fn (array $list): array => array_map(
+            static fn (string|InRule $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
+            $list,
+        ),
+        $built,
+    );
+}
+
+/**
  * Send one JSON payload at a route validated by exactly what `RuleSetBuilder`
  * emits for a body schema — the builder's output, not a hand-written copy of
  * it, so a regression in the builder fails here.
@@ -131,15 +152,7 @@ function statusForBuiltRules(Schema $body, array $payload, bool $bodyRequired = 
         requestBody: new RequestBody(['application/json' => $body], $bodyRequired),
     ))->rules;
 
-    // The emitter writes an `InRule` as `Rule::in([...])`; the validator
-    // needs the framework's object, so the same translation happens here.
-    $rules = array_map(
-        static fn (array $list): array => array_map(
-            static fn (string|InRule $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
-            $list,
-        ),
-        $built,
-    );
+    $rules = frameworkRules($built);
 
     Route::post('/_generated/built', fn (Request $request) => response()->json($request->validate($rules)));
 
@@ -540,4 +553,163 @@ it('requires the rest of an optional body when a key is sent blank', function ()
     );
 
     expect(statusForBuiltRules($body, ['note' => null], bodyRequired: false))->toBe(422);
+});
+
+/*
+ * Part 3: a file part, against the framework.
+ *
+ * A multipart request carries the uploads as files, and `Request::validate()`
+ * reads them through `all()` beside the text fields, which is the path a
+ * generated `FormRequest` takes. `UploadedFile::fake()` reports the media type
+ * it is given, which is what `mimetypes` reads.
+ */
+
+/**
+ * One multipart request through rules the builder emits for `$body`.
+ *
+ * @param  array<string, mixed>  $files  uploads, by part name
+ * @param  array<string, mixed>  $fields  text parts, by name
+ * @param  list<string>  $mediaTypes  the media types the body declares
+ */
+function statusForUpload(Schema $body, array $files, array $fields = [], array $mediaTypes = ['multipart/form-data'], HttpMethod $method = HttpMethod::Post): int
+{
+    $built = RuleSetBuilder::for(new Operation(
+        index: 0,
+        method: $method,
+        path: PathTemplate::fromString('/_generated/upload'),
+        operationId: 'upload',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), true),
+    ))->rules;
+
+    $rules = frameworkRules($built);
+
+    // The keys only: a validated upload is an object and does not encode.
+    Route::post('/_generated/upload', fn (Request $request) => response()->json(array_keys($request->validate($rules))));
+
+    return app(HttpKernel::class)->handle(Request::create(
+        '/_generated/upload',
+        'POST',
+        $fields,
+        [],
+        $files,
+        ['HTTP_ACCEPT' => 'application/json'],
+    ))->getStatusCode();
+}
+
+function filePart(?string $contentMediaType = null, ?int $maxLength = null, bool $nullable = false): Schema
+{
+    return new Schema(
+        types: $nullable ? [SchemaType::String, SchemaType::Null] : [SchemaType::String],
+        maxLength: $maxLength,
+        isFilePart: true,
+        contentMediaType: $contentMediaType,
+    );
+}
+
+// `string` would refuse the upload, which is worse than no rule at all.
+it('accepts an upload for a file part and refuses a string in its place', function (): void {
+    $body = oneField(filePart());
+
+    expect(statusForUpload($body, ['field' => UploadedFile::fake()->create('a.bin', 1)]))->toBe(200)
+        ->and(statusForUpload($body, [], ['field' => 'not a file']))->toBe(422);
+});
+
+it('requires a required file part, and an empty upload slot is not one', function (): void {
+    $body = oneField(filePart());
+
+    expect(statusForUpload($body, []))->toBe(422)
+        ->and(statusForUpload($body, [], ['field' => '']))->toBe(422);
+});
+
+it('lets an optional file part be absent', function (): void {
+    expect(statusForUpload(oneField(filePart(), required: false), []))->toBe(200);
+});
+
+// A `PATCH` empties the required list for a file part as for any other.
+it('lets a PATCH leave a file part out', function (): void {
+    expect(statusForUpload(oneField(filePart()), [], method: HttpMethod::Patch))->toBe(200);
+});
+
+it('reads the media type from contentMediaType', function (string $declared, string $sent, int $status): void {
+    expect(statusForUpload(oneField(filePart($declared)), ['field' => UploadedFile::fake()->create('a', 1, $sent)]))
+        ->toBe($status);
+})->with([
+    'the exact type' => ['image/png', 'image/png', 200],
+    'another type' => ['image/png', 'image/jpeg', 422],
+    'a wildcard subtype' => ['image/*', 'image/webp', 200],
+    'a wildcard that does not match' => ['image/*', 'application/pdf', 422],
+    'a parameter is not part of the type' => ['image/png; charset=binary', 'image/png', 200],
+    'upper case' => ['Image/PNG', 'image/png', 200],
+]);
+
+// `mimetypes` inspects the file's real type, so matching `application/octet-stream`
+// literally would refuse every upload that is not one. Measured here rather than
+// assumed: the rule alone refuses a PNG.
+it('does not read application/octet-stream as a type to match', function (): void {
+    $png = UploadedFile::fake()->create('a.png', 1, 'image/png');
+
+    expect(validator(['field' => $png], ['field' => ['file', 'mimetypes:application/octet-stream']])->passes())->toBeFalse()
+        ->and(statusForUpload(oneField(filePart('application/octet-stream')), ['field' => $png]))->toBe(200)
+        ->and(statusForUpload(oneField(filePart('*/*')), ['field' => $png]))->toBe(200);
+});
+
+// Laravel sizes a file in kilobytes of 1024 bytes and a contract states bytes:
+// the ceiling is rounded down, so 2500 bytes becomes `max:2`.
+it('rounds a size ceiling down to whole kilobytes', function (int $kilobytes, int $status): void {
+    expect(statusForUpload(oneField(filePart(maxLength: 2500)), ['field' => UploadedFile::fake()->create('a', $kilobytes)]))
+        ->toBe($status);
+})->with([
+    'one kilobyte' => [1, 200],
+    'exactly the rounded ceiling' => [2, 200],
+    'over it' => [3, 422],
+]);
+
+it('lets a file part be null when the schema says so', function (): void {
+    $body = oneField(filePart(nullable: true));
+
+    expect(statusForUpload($body, [], ['field' => null]))->toBe(200)
+        ->and(statusForUpload($body, []))->toBe(422);
+});
+
+it('reads several files as an array and its elements', function (int $count, int $status): void {
+    $body = oneField(new Schema(
+        types: [SchemaType::Array],
+        items: filePart('image/png'),
+        minItems: 1,
+        maxItems: 2,
+    ));
+    $files = array_map(static fn (int $i): UploadedFile => UploadedFile::fake()->create("a{$i}.png", 1, 'image/png'), range(1, max($count, 1)));
+
+    expect(statusForUpload($body, $count === 0 ? [] : ['field' => $files]))->toBe($status);
+})->with([
+    'none' => [0, 422],
+    'one' => [1, 200],
+    'two' => [2, 200],
+    'too many' => [3, 422],
+]);
+
+it('refuses a wrong type among several files', function (): void {
+    $body = oneField(new Schema(types: [SchemaType::Array], items: filePart('image/png')));
+
+    expect(statusForUpload($body, ['field' => [
+        UploadedFile::fake()->create('a.png', 1, 'image/png'),
+        UploadedFile::fake()->create('b.pdf', 1, 'application/pdf'),
+    ]]))->toBe(422);
+});
+
+// A file in a JSON body is a string, because JSON cannot carry one.
+it('reads a file part in a JSON body as a string', function (): void {
+    expect(statusForBuiltRules(oneField(filePart()), ['field' => 'aGVsbG8=']))->toBe(200);
+});
+
+it('reads a file part as a string when the body is also JSON', function (): void {
+    expect(statusForUpload(oneField(filePart()), [], ['field' => 'aGVsbG8='], ['multipart/form-data', 'application/json']))
+        ->toBe(200);
+});
+
+// `format: byte` is a base64 string, and nothing decodes it.
+it('keeps a base64 string a string', function (): void {
+    $body = oneField(new Schema(types: [SchemaType::String], format: 'byte'));
+
+    expect(statusForBuiltRules($body, ['field' => 'aGVsbG8=']))->toBe(200);
 });
