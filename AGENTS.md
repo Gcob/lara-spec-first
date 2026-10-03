@@ -145,12 +145,17 @@ Two traps worth knowing before you go in:
   [`card-management.md`](./docs/contributing/card-management.md#work-that-overflows-a-card-is-done-inside-it).
 - **Before coding a card, read its lot card.** A card does not name it: the board does, as the one item of `Kind` `Lot`
   carrying the card's `Lot`. `just card-context <n>` prints the card and then that lot card, read-only through `gh`.
-    - **No `Lot` on the card**, as on a gate or a breaking-change card: it prints the card alone, and the card is
-      enough.
+    - **No `Lot`, on a gate or a breaking-change card:** it prints the card alone, and the card is enough. Those phases
+      belong to no lot by design.
     - **Exactly one lot card found:** it prints both. The lot card's `Decisions` and `Where to look` hold for this card
       too.
-    - **Zero, or more than one:** it fails and prints neither. Stop and hand it back. Never guess which lot card
-      applies, or work without one.
+    - **The number is a lot card itself:** it prints it alone.
+    - **Anything else**, a card with no `Lot` in any other phase, or a lot with zero lot cards or more than one: it
+      fails and prints nothing. Stop and hand it back. Never guess which lot card applies, or work without one.
+
+    **No access to the board means the same stop.** The command needs `gh` signed in with the `project` scope, which a
+    cloud session or CI usually does not have. Without it, a card that has a lot cannot be started: hand it back rather
+    than reading the card alone. That is deliberate, since any other way to find the lot card would be a guess.
 
     Where this sits in the path from a sketch to a card you can take is in
     [`card-management.md`](./docs/contributing/card-management.md#from-a-sketch-to-a-card-an-agent-can-take).

@@ -449,7 +449,7 @@ survived that argument is on this page.
 [lot form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/lot.md) and titled
 `Lot N: <theme>`.** It carries what holds for every card of the lot, so that each card carries only what is its own: the
 reason the lot exists, the decisions all its cards share, and the code and documents all of them lean on. Its `Phase`
-and `Lot` fields are filled as on any card, `Lot` from the day it is opened, since there is no lot left to decide.
+and `Lot` fields are filled as on any card, `Lot` from the day it is created, since there is no lot left to decide.
 
 | Section         | Carries                                                                  | Present           |
 | --------------- | ------------------------------------------------------------------------ | ----------------- |
@@ -462,13 +462,14 @@ and `Lot` fields are filled as on any card, `Lot` from the day it is opened, sin
 
 **No `Scope` section.** What the lot ships is what its cards ship, and a second list would drift from them.
 
-**Its status follows the lot, not a card.**
+**Its status follows the lot, not a card, and nobody works on a lot card directly**, so each move belongs to whoever
+does the work that causes it.
 
 - **`Backlog`:** a sketch, written when the phase is planned and with assumptions nobody has checked. That is expected.
 - **`Todo`:** the lot has been [opened](#cards-are-cut-when-the-lot-opens-not-before). It was questioned again,
-  `Assumptions` and `Discovery` are empty, and its cards are cut.
-- **`In Progress`:** one of its cards has started.
-- **`Done`:** the box in its `Done when` is ticked.
+  `Assumptions` and `Discovery` are empty, and its cards are cut. Whoever opened the lot moves it.
+- **`In Progress`:** one of its cards has started. Whoever starts that first card moves it.
+- **`Done`:** the box in its `Done when` is ticked. Whoever writes the lesson, or says there is none, moves it.
 
 **An assumption and a discovery are told apart by what settles them.** An assumption is checked by reading the code or
 the docs. A discovery needs research or a trial. When the lot opens, each assumption becomes a decision, a link under
@@ -489,12 +490,12 @@ lot card is opened for them.
 
 One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Four fields carry meaning.
 
-| Field    | Values                                                                    | Who moves it                           |
-| -------- | ------------------------------------------------------------------------- | -------------------------------------- |
-| `Status` | `Backlog`, `Todo`, `In Progress`, `In review`, `Ready to publish`, `Done` | Whoever is doing the work, as it moves |
-| `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after            |
-| `Lot`    | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after  |
-| `Kind`   | `Feature`, `Docs`, `Decision`, `Chore`, `Lot`                             | Set at triage, rarely after            |
+| Field    | Values                                                                    | Who moves it                                                             |
+| -------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `Status` | `Backlog`, `Todo`, `In Progress`, `In review`, `Ready to publish`, `Done` | Whoever is doing the work, as it moves                                   |
+| `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after                                              |
+| `Lot`    | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after; on a lot card, when it is created |
+| `Kind`   | `Feature`, `Docs`, `Decision`, `Chore`, `Lot`                             | Set at triage, rarely after                                              |
 
 `Status` is the only field that moves often, and what each value claims about a card is
 [above](#cards-are-cut-when-the-lot-opens-not-before): `Backlog` is a sketch, `Todo` is a specification. The one a
@@ -506,7 +507,8 @@ asks how ownership gets declared in the contract, is a positioning question rath
 phase would claim a sequencing nobody has decided. One card in that state is a fact about the question; several would
 mean triage has stopped happening.
 
-**A card with no `Lot` is one no lot has cut yet.** That is every card past the current phase, plus the gates and the
+**A card with no `Lot` is one no lot has cut yet.** A lot card is the exception, carrying its `Lot` from the day it is
+created, since it is the lot. Any other card without one is either past the current phase, or a gate or part of the
 breaking-change set, which belong to no lot by design and so get no lot card either. It is a normal state, not a gap to
 fill: a card gets its `Lot` when somebody decides the lot, and guessing earlier is the same guessing this file exists to
 stop.

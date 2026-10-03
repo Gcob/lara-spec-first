@@ -6,14 +6,18 @@
  * lot card. `AGENTS.md` asks an agent to read both before coding, and this is
  * the command it points at rather than a query copied into prose.
  *
- * Three outcomes, as `AGENTS.md` lists them under "Before coding a card, read
+ * Four outcomes, as `AGENTS.md` lists them under "Before coding a card, read
  * its lot card":
  *
- *   - The card has no `Lot`, as a gate or a breaking-change card: the card is
- *     printed alone, and that is enough.
+ *   - The card has no `Lot` and its `Phase` is a gate or the breaking-change
+ *     set, which belong to no lot by design: the card is printed alone, and
+ *     that is enough.
  *   - Exactly one lot card carries its `Lot`: both are printed, card first.
- *   - Zero, or more than one: nothing is printed and the exit code is non-zero.
- *     Guessing which lot card applies is the one thing this must never do.
+ *   - The number is a lot card itself: it is printed alone, since it is the lot.
+ *   - Anything else stops: no `Lot` outside a gate or the breaking-change set,
+ *     or zero lot cards, or more than one. Nothing is printed and the exit code
+ *     is non-zero. Guessing which lot card applies, or that none does, is the
+ *     one thing this must never do.
  *
  * Reads the board through `gh`, since a project field needs the `project`
  * scope and `gh` is where a local session already has it. Read-only always.
@@ -25,6 +29,10 @@ import { execFileSync } from 'node:child_process'
 
 const OWNER = 'Gcob'
 const PROJECT = '1'
+
+// The phases whose cards belong to no lot by design. A card with no `Lot` in
+// any other phase is one nobody has placed yet, not one that needs no lot card.
+const LOTLESS_PHASES = ['Gate 0.x', 'Gate 1.0', 'BC enforcement']
 
 // `gh project item-list` returns 30 items unless told otherwise, and says
 // nothing when it stops. The ceiling is raised, and checked below against the
@@ -81,12 +89,18 @@ if (card.kind === 'Lot') {
 }
 
 if (!card.lot) {
+    if (!LOTLESS_PHASES.includes(card.phase)) {
+        fail(`#${number} has no Lot, and its Phase, ${card.phase ?? 'none'}, is not one that belongs to no lot by design.`)
+    }
+
     print('Card', card)
-    console.log('This card belongs to no lot, so the card is enough.')
+    console.log(`This card is in ${card.phase}, which belongs to no lot, so the card is enough.`)
     process.exit(0)
 }
 
-const lotCards = board.items.filter((item) => item.kind === 'Lot' && item.lot === card.lot)
+const lotCards = board.items.filter(
+    (item) => item.content.type === 'Issue' && item.kind === 'Lot' && item.lot === card.lot
+)
 
 if (lotCards.length !== 1) {
     const found = lotCards.map((item) => `#${item.content.number}`).join(', ')
