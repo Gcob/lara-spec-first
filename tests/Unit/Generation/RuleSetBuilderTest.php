@@ -543,6 +543,21 @@ it('reports uniqueItems where distinct would not mean it', function (Schema $fie
         items: new Schema(types: [SchemaType::Object]),
         uniqueItems: true,
     )],
+    // The 3.0 idiom of wrapping a `$ref` in `allOf`: the type is only known
+    // once the branches are merged.
+    'object elements behind allOf' => [new Schema(
+        types: [SchemaType::Array],
+        items: new Schema(allOf: [new Schema(types: [SchemaType::Object])]),
+        uniqueItems: true,
+    )],
+    'untyped elements' => [new Schema(types: [SchemaType::Array], items: new Schema, uniqueItems: true)],
+    'no items at all' => [new Schema(types: [SchemaType::Array], uniqueItems: true)],
+    // `distinct` lets two nulls through.
+    'nullable scalar elements' => [new Schema(
+        types: [SchemaType::Array],
+        items: new Schema(types: [SchemaType::String, SchemaType::Null]),
+        uniqueItems: true,
+    )],
 ]);
 
 it('closes the root to the keys it declares', function (): void {
