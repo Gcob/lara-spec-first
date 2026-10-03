@@ -346,16 +346,16 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 
 **Arrays and objects, where a rule is keyed rather than named:**
 
-| Schema                        | Laravel rule                                                                                                                           |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `items`                       | The element rules, under `field.*`                                                                                                     |
-| `minItems`, `maxItems`        | `min`, `max` on the array itself                                                                                                       |
-| `uniqueItems: true`           | `distinct:strict` on `field.*`, which reads `1` and `1.0` as two elements, and two objects whose keys come in a different order as two |
-| `properties`                  | One key per property, `field.child`, recursively                                                                                       |
-| `additionalProperties: false` | `array:` on a nested object's field, naming its declared keys                                                                          |
-| `required` on a nested object | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                  |
-| `dependentRequired`           | `present_with:` naming the properties that trigger it                                                                                  |
-| `allOf`                       | Its branches merged into one schema first; two that cannot be said as one are refused                                                  |
+| Schema                        | Laravel rule                                                                                                                                                                                                                                                                                 |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                       | The element rules, under `field.*`                                                                                                                                                                                                                                                           |
+| `minItems`, `maxItems`        | `min`, `max` on the array itself                                                                                                                                                                                                                                                             |
+| `uniqueItems: true`           | `distinct:strict` on `field.*` for scalar elements of an array that is not itself an element. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, and it never compares object or array elements themselves. Even on scalars it reads `1` and `1.0` as two |
+| `properties`                  | One key per property, `field.child`, recursively                                                                                                                                                                                                                                             |
+| `additionalProperties: false` | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                |
+| `required` on a nested object | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                        |
+| `dependentRequired`           | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                        |
+| `allOf`                       | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                        |
 
 **A nested object is validated as an array, keyed with dots.** One rule key per property, however deep the schema goes,
 which is Laravel's own notation for nested input and what `validated()` hands back:
