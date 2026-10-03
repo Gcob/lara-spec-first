@@ -134,6 +134,16 @@ docs-check-see:
 check-markers:
     npm run check-markers
 
+# What an agent reads before coding a card, as AGENTS.md asks: the card, then the
+# lot card carrying the same `Lot` on the board. Read-only, through `gh`, which
+# is where a local session already has the `project` scope CI does not. Fails
+# rather than guessing when a card's lot has no lot card, or more than one.
+# Silent so that the output is the two bodies and nothing npm adds around them.
+
+# Print a card and its lot card: `just card-context 36`
+card-context card:
+    @npm run --silent card-context -- {{card}}
+
 # Serve the built site exactly as it will be published.
 docs-preview:
     npm run docs:preview

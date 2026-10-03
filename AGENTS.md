@@ -143,11 +143,14 @@ Two traps worth knowing before you go in:
   not yours to make, or touches a migration or the published contract. Whether the branch then ships as one pull request
   or several is decided once, when the pull request is opened, and the reasoning for all of it is in
   [`card-management.md`](./docs/contributing/card-management.md#work-that-overflows-a-card-is-done-inside-it).
-- **Before coding a card, read its lot card.** A card does not name it: the board does. Read the card's `Lot` field,
-  then look for the board item of `Kind` `Lot` carrying the same `Lot`.
-    - **No `Lot` on the card**, as on a gate or a breaking-change card: the card is enough.
-    - **Exactly one lot card found:** read it. Its `Decisions` and `Where to look` hold for this card too.
-    - **Zero, or more than one:** stop and hand it back. Never guess which lot card applies, or work without one.
+- **Before coding a card, read its lot card.** A card does not name it: the board does, as the one item of `Kind` `Lot`
+  carrying the card's `Lot`. `just card-context <n>` prints the card and then that lot card, read-only through `gh`.
+    - **No `Lot` on the card**, as on a gate or a breaking-change card: it prints the card alone, and the card is
+      enough.
+    - **Exactly one lot card found:** it prints both. The lot card's `Decisions` and `Where to look` hold for this card
+      too.
+    - **Zero, or more than one:** it fails and prints neither. Stop and hand it back. Never guess which lot card
+      applies, or work without one.
 
     Where this sits in the path from a sketch to a card you can take is in
     [`card-management.md`](./docs/contributing/card-management.md#from-a-sketch-to-a-card-an-agent-can-take).
