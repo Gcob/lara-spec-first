@@ -169,8 +169,9 @@ required ones would accept a body made of an optional key alone, which is a body
 | `street` alone   | Refused. `city` and `code` both see `street`, and both become required         |
 | All three        | Validated against the rest of their rules, exactly as a required body would be |
 
-With one required property there is nothing to name, and it becomes `sometimes`. With none, every field was already
-`sometimes` and an absent body was already valid.
+When the body declares one key and requires it, there is nothing else to name, and it becomes `sometimes`: Laravel
+cannot tell an absent body from `{}`, so `{}` is accepted, and the generated file says so. With nothing required, every
+field was already `sometimes` and an absent body was already valid.
 
 **The cost is noise, and it is bounded.** Eight required properties mean eight rules naming seven siblings each, in a
 file nobody edits by hand. Nothing else in the rule set grows that way, and an optional body that requires properties is
@@ -393,6 +394,12 @@ in the body allows additional properties at all.
 **A property name containing a dot is escaped as `\.`**, because Laravel reads an unescaped dot in a rule key as
 nesting. `user.name` as a literal property name would otherwise generate rules for a `name` key inside a `user` object
 the contract never declared, which is a rule set that is wrong rather than incomplete.
+
+**A rule that lists key names cannot carry one with a dot or a comma**, and the two such rules here are `array:` and
+`required_array_keys:`. The comma splits the list, and Laravel has already read the data's dots as nesting by the time
+the rule runs, so the name would match nothing and refuse every valid payload. Such a name keeps its own rule key,
+escaped; what the parent cannot say about it — that it is required, or that nothing else is allowed — is reported in the
+generated file's findings.
 
 **A constraint that maps to nothing is named per operation by `spec:doctor`**, which is
 [#36](https://github.com/Gcob/lara-spec-first/issues/36)'s to build, and by the generated file's own findings for the

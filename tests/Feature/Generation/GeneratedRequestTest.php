@@ -316,6 +316,19 @@ it('requires a nested object\'s required child only when the object is sent', fu
     'an object with it' => [['field' => ['city' => 'Québec']], 200],
 ]);
 
+// A dotted property name inside a nested object: the rule set no longer
+// refuses the valid payload it did when the name went into a key list.
+it('accepts a nested object whose property name carries a dot', function (): void {
+    $field = new Schema(
+        types: [SchemaType::Object],
+        properties: ['a.b' => new Schema(types: [SchemaType::String])],
+        required: ['a.b'],
+        additionalProperties: false,
+    );
+
+    expect(statusForBuiltRules(oneField($field), ['field' => ['a.b' => 'x']]))->toBe(200);
+});
+
 it('lets a nullable object with required keys be null', function (): void {
     $field = new Schema(
         types: [SchemaType::Object, SchemaType::Null],

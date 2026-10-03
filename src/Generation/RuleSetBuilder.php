@@ -531,9 +531,23 @@ final readonly class RuleSetBuilder
                 // A JSON object arrives as a PHP array, and `array:` with the
                 // declared keys is how a nested object refuses the ones it did
                 // not declare.
-                $rules[] = $schema->additionalProperties === false
-                    ? 'array:'.implode(',', array_map('strval', array_keys($schema->properties)))
-                    : 'array';
+                $declared = array_map('strval', array_keys($schema->properties));
+                $structural = array_values(array_filter($declared, self::breaksKeyList(...)));
+
+                if ($schema->additionalProperties === false && $structural !== []) {
+                    // `array:` names keys as a comma list compared against
+                    // keys Laravel has already split on dots, so a name with
+                    // either would refuse every valid payload.
+                    $rules[] = 'array';
+                    $walk->findings[] = sprintf(
+                        '%s forbids undeclared keys, but declares %s, which Laravel cannot name in `array:`, '
+                            .'so undeclared keys are not refused.',
+                        $label,
+                        self::list($structural),
+                    );
+                } else {
+                    $rules[] = $schema->additionalProperties === false ? 'array:'.implode(',', $declared) : 'array';
+                }
 
                 // JSON Schema's `required` asks for keys, and so does
                 // `required_array_keys`, on the object itself. Putting it on
@@ -544,11 +558,12 @@ final readonly class RuleSetBuilder
                 $requiredKeys = [];
 
                 foreach ($schema->required as $name) {
-                    if (str_contains($name, ',')) {
-                        // The rule's parameters are comma-separated, so this
-                        // name would become two keys the contract never named.
+                    if (self::breaksKeyList($name)) {
+                        // The rule's parameters are comma-separated and the
+                        // data's keys are split on dots before it runs, so
+                        // either character makes this name match nothing.
                         $walk->findings[] = sprintf(
-                            '%s requires `%s`, whose comma Laravel would read as two key names, so its '
+                            '%s requires `%s`, which Laravel cannot name in `required_array_keys`, so its '
                                 .'presence is not enforced.',
                             $label,
                             $name,
@@ -569,7 +584,7 @@ final readonly class RuleSetBuilder
                 $children = 'properties';
                 break;
             default:
-                $unmapped = self::unmappedType($schema);
+                $unmapped = self::isStringEnumeration($schema) ? null : self::unmappedType($schema);
 
                 if ($unmapped !== null) {
                     // Risk 2 of the card #35 plan: without a type rule, Laravel
@@ -585,14 +600,15 @@ final readonly class RuleSetBuilder
             // `Rule::in` compares as strings, so an untyped enumeration of
             // strings would accept the integer `1` for `"1"`. Every allowed
             // value being a string is the contract saying the field is one.
-            if ($schema->types === [] && $values !== [] && array_filter($values, is_string(...)) === $values) {
+            if (self::isStringEnumeration($schema)) {
                 $rules[] = 'string';
             }
 
+            // An enumeration of `null` alone allows nothing but `null`, which
+            // no Laravel rule says exactly, so it is left for the sweep below
+            // to report rather than read as "anything".
             if ($values !== [] && self::allScalar($values)) {
                 $rules[] = new InRule($values);
-                $handled[] = 'enum';
-            } elseif ($values === []) {
                 $handled[] = 'enum';
             }
         }
@@ -715,12 +731,37 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * Whether a key name cannot appear in a rule's list of key names: a comma
+     * splits the list, and a dot is read as nesting before the rule sees the
+     * data.
+     */
+    private static function breaksKeyList(string $name): bool
+    {
+        return str_contains($name, ',') || str_contains($name, '.');
+    }
+
+    /**
      * Whether `null` satisfies both the type list and the enumeration.
      */
     private static function allowsNull(Schema $schema): bool
     {
         return ($schema->types === [] || $schema->isNullable())
             && ($schema->enum === null || in_array(null, $schema->enum, true));
+    }
+
+    /**
+     * Whether the field states no type and every allowed value is a string,
+     * which is the contract saying the field is one.
+     */
+    private static function isStringEnumeration(Schema $schema): bool
+    {
+        if ($schema->types !== [] || $schema->enum === null) {
+            return false;
+        }
+
+        $values = array_values(array_filter($schema->enum, static fn (mixed $value): bool => $value !== null));
+
+        return $values !== [] && array_filter($values, is_string(...)) === $values;
     }
 
     /**
@@ -843,11 +884,14 @@ final readonly class RuleSetBuilder
                     .'empty here. Every property is `sometimes`.',
                 self::list($schema->required),
             );
-        } elseif (! $body->required && count($schema->required) === 1) {
+        } elseif (
+            ! $body->required
+            && count(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required])) === 1
+        ) {
             $findings[] = sprintf(
-                'The body may be absent entirely while its schema requires %s. With one required '
-                    .'property there is no sibling to name, and Laravel cannot tell an absent body from '
-                    .'an empty one, so it is `sometimes`: a body sent without it is accepted.',
+                'The body may be absent entirely while its schema requires %s and declares nothing '
+                    .'else. There is no other key to name, and Laravel cannot tell an absent body from an '
+                    .'empty one, so it is `sometimes`: a body sent as `{}` is accepted.',
                 self::list($schema->required),
             );
         }
