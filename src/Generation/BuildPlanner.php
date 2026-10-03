@@ -58,7 +58,7 @@ final readonly class BuildPlanner
         $requests = [];
         $claimed = [];
         $claimedRequests = [];
-        $unreadBodies = 0;
+        $unreadBodies = [];
 
         foreach ($operations as $operation) {
             $this->assertRoutable($operation);
@@ -91,7 +91,7 @@ final readonly class BuildPlanner
             $request = RequestName::for($operation);
 
             if ($request === null && $operation->requestBody !== null) {
-                $unreadBodies++;
+                $unreadBodies[] = $label;
             }
 
             if ($request !== null) {
@@ -196,6 +196,15 @@ final readonly class BuildPlanner
             // legal in a route, fatal as a parameter name.
             if (preg_match('/^[A-Za-z_]\w*$/', $parameter) !== 1 || $parameter === 'this') {
                 throw UnusableNameException::parameterNotAVariable($operation->label(), $parameter);
+            }
+
+            // Legal on its own and fatal beside the generated request, which
+            // `routeAction` declares under this name ahead of the path's own.
+            if (
+                $parameter === RouteActionSignature::REQUEST_PARAMETER
+                && RequestName::validatesAnything($operation)
+            ) {
+                throw UnusableNameException::parameterShadowsRequest($operation->label());
             }
         }
     }

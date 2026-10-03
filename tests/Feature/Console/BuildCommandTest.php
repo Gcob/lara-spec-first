@@ -208,6 +208,8 @@ it('warns about a body declared only in a media type it does not read', function
     $printed = $output->fetch();
 
     expect($printed)->toContain('1 operation(s) declare a body only in media types this package does not read')
+        // Named, because no generated file exists for a reader to find it in.
+        ->and($printed)->toContain('post /imports')
         ->and($printed)->not->toContain('state nothing to validate')
         ->and(is_dir(buildTree().'/Requests'))->toBeFalse();
 });
@@ -222,7 +224,7 @@ it('reads the required list on a PUT and reads it as empty on a PATCH', function
     $put = (string) file_get_contents(buildTree().'/Requests/ReplacePostRequest.php');
     $patch = (string) file_get_contents(buildTree().'/Requests/UpdatePostRequest.php');
 
-    expect($put)->toContain("'title' => ['required', 'string'],")
+    expect($put)->toContain("'title' => ['present', 'string'],")
         ->and($put)->toContain("'published' => ['required', 'boolean'],")
         ->and($patch)->toContain("'title' => ['sometimes', 'string'],")
         // Every other constraint survives the emptied list: the type rules are

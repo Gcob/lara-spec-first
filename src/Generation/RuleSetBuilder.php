@@ -114,7 +114,7 @@ final readonly class RuleSetBuilder
             }
 
             $rules[$key] = [
-                $parameter->required ? 'required' : 'sometimes',
+                $parameter->required ? self::requiredRule($parameter->schema) : 'sometimes',
                 ...self::valueRules($parameter->schema),
             ];
 
@@ -331,10 +331,6 @@ final readonly class RuleSetBuilder
     /**
      * `required`, `present` or `sometimes`.
      *
-     * `present` rather than `required` for a property that may be null, because
-     * Laravel's `required` refuses `null` and a schema requiring a nullable
-     * property is asking for the key, not for a value.
-     *
      * @param  list<string>  $required
      */
     private static function presence(string $name, Schema $property, array $required): string
@@ -343,7 +339,37 @@ final readonly class RuleSetBuilder
             return 'sometimes';
         }
 
-        return $property->isNullable() ? 'present' : 'required';
+        return self::requiredRule($property);
+    }
+
+    /**
+     * The rule a key the contract requires gets, which is not always Laravel's
+     * `required`.
+     *
+     * **JSON Schema's `required` asks for the key; Laravel's asks for a
+     * non-empty value.** It refuses `null`, `""`, `[]` and `{}` whatever else
+     * the field declares, so a required string the contract lets be empty, a
+     * required array it lets hold nothing, or any field that may be null would
+     * answer 422 to a payload the contract accepts. `present` asks for the key
+     * and nothing else, and the type rule beside it judges the value.
+     *
+     * `required` is kept for the three types whose own rule refuses every
+     * empty value anyway — an integer, a number, a boolean cannot be `""` or
+     * `[]` — because there the two say the same thing and `required` is what
+     * a reader expects to see. The card's own scenario reads "carry a required
+     * rule", and for those it still does.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "PATCH empties the required list"
+     */
+    private static function requiredRule(Schema $schema): string
+    {
+        if ($schema->isNullable()) {
+            return 'present';
+        }
+
+        return in_array($schema->soleType(), [SchemaType::Integer, SchemaType::Number, SchemaType::Boolean], true)
+            ? 'required'
+            : 'present';
     }
 
     /**

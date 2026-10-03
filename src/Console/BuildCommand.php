@@ -156,7 +156,7 @@ final class BuildCommand extends Command
      */
     private function reportRequests(BuildPlan $plan): void
     {
-        $withoutRequest = $plan->withoutRequest() - $plan->unreadBodies;
+        $withoutRequest = $plan->withoutRequest() - count($plan->unreadBodies);
 
         if ($withoutRequest > 0) {
             $this->components->info(sprintf(
@@ -168,13 +168,20 @@ final class BuildCommand extends Command
         // Not folded into the line above, because it is not true of them: these
         // operations state a body, in a media type this package does not read,
         // so nothing validates it and the contract is not being served.
-        if ($plan->unreadBodies > 0) {
+        if ($plan->unreadBodies !== []) {
             $this->components->warn(sprintf(
                 '%d operation(s) declare a body only in media types this package does not read, so '
                     .'nothing validates it. Add `application/json`, `multipart/form-data` or '
                     .'`application/x-www-form-urlencoded` to serve it.',
-                $plan->unreadBodies,
+                count($plan->unreadBodies),
             ));
+
+            // Named, unlike the counts above: there is no generated file for a
+            // reader to open and find them in, so this line is the only place
+            // they appear. And a contract rarely has more than a handful.
+            foreach ($plan->unreadBodies as $label) {
+                $this->line('  '.$label);
+            }
         }
 
         $unenforced = $plan->withUnenforcedConstraints();

@@ -121,6 +121,22 @@ it('refuses two operations whose generated requests would be one class', functio
     ])))->toThrow(UnusableNameException::class, 'both generate the request class "ShowUserRequest"');
 });
 
+// `routeAction` declares the generated request as `$request` ahead of the
+// path's own parameters, so `{request}` beside it would be one variable
+// declared twice, which PHP refuses at compile time.
+it('refuses a path parameter named like the generated request', function (): void {
+    expect(fn () => planner()->plan(operations([
+        ['patch', '/requests/{request}', 'updateRequest', null, true],
+    ])))->toThrow(UnusableNameException::class, 'path parameter `{request}`');
+});
+
+// Only beside a request: an operation with nothing to validate declares no
+// `$request`, and the name is free.
+it('accepts a path parameter named request when nothing is validated', function (): void {
+    expect(planner()->plan(operations([['get', '/requests/{request}', 'showRequest']]))->controllers)
+        ->toHaveCount(1);
+});
+
 it('refuses a path parameter Laravel would never match', function (): void {
     expect(fn () => planner()->plan(operations([['get', '/users/{user-id}']])))
         ->toThrow(UnroutablePathException::class, 'letters, digits and underscores');

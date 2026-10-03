@@ -109,6 +109,23 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
         ));
     }
 
+    /**
+     * A path parameter named like the generated request's own parameter.
+     *
+     * `routeAction` declares the request as `$request` ahead of the path's
+     * parameters, so `{request}` on an operation with something to validate
+     * would declare one variable twice, which PHP refuses at compile time.
+     */
+    public static function parameterShadowsRequest(string $identity): self
+    {
+        return new self(sprintf(
+            'The operation "%s" has the path parameter `{request}`, and it also states something to '.
+            'validate. The generated `routeAction` declares that request as `$request`, so the two '.
+            'would be one variable declared twice. Rename the path parameter in the specification.',
+            $identity
+        ));
+    }
+
     public static function claimedTwice(string $shortName, string $first, string $second): self
     {
         return new self(sprintf(
