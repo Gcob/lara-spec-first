@@ -71,6 +71,14 @@ rather than one that was missing, and nothing downstream failed to say so.
   A required part is `required`, so an empty upload slot is refused. Beside another media type, or in a JSON body, the
   part is a string. `encoding.<part>.contentType` is not read yet, and every file part says so in its generated file's
   findings ([#90](https://github.com/Gcob/lara-spec-first/issues/90)). A closed root also refuses an undeclared upload.
+- **`spec:build` writes the input DTOs.** One `final readonly` class per request body that is an object, in the `Data`
+  sub-namespace: a promoted constructor, `from()`, `toArray()`, `Arrayable` and `JsonSerializable`. Each body gets a
+  full type and a `Partial` one, `NewUserInputDto` and `NewUserPartialInputDto`, named after the schema and never after
+  the `$ref` or the file that holds it. A property the client may leave out is `Optional|T`, so `toArray()` never writes
+  a `null` over a field that was not sent. Two different schemas under one name are a build error. The request does not
+  return one yet.
+- **`Gcob\LaraSpecFirst\Data\Optional`** is public API: the one class of this package a generated DTO imports.
+- **`Contract\Schema` carries `source`**, where a named schema is written, beside its `name`.
 - **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first
   generated controller; the block said otherwise.
 

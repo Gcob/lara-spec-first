@@ -34,12 +34,15 @@ final readonly class BuildPlan
      *                                      this package does not read. Counted apart,
      *                                      because "states nothing" is not true of them:
      *                                      they state something this package cannot serve
+     * @param  InputDtoPlan  $inputDtos  every input DTO, and the one each
+     *                                   operation's request hands back
      */
     public function __construct(
         public array $controllers,
         public array $files,
         public array $requests = [],
         public array $unreadBodies = [],
+        public InputDtoPlan $inputDtos = new InputDtoPlan,
     ) {}
 
     /**

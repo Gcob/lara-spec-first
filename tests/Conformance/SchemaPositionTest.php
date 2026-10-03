@@ -112,6 +112,34 @@ it('names a schema after the component it resolves to', function (
     'a schema written inline' => ['createInline', null],
 ]);
 
+// The position travels with the name, because a name says what the author called
+// the schema and a generator also has to say where it is written. Spelled the way
+// every position is: a bare pointer for the root document, a relative path in
+// front of it for another file.
+it('carries where a named schema is written', function (
+    string $operationId,
+    ?string $expected,
+): void {
+    expect(bodyOf('schema-names/main.yaml', $operationId)->source)->toBe($expected);
+})->with([
+    'a local component' => ['createLocal', '#/components/schemas/LocalPet'],
+    'a component in another file' => ['createExternal', 'other.yaml#/components/schemas/Pet'],
+    'a local alias reports its target, not itself' => ['createThroughAlias', 'other.yaml#/components/schemas/Pet'],
+    'a component in a subdirectory' => ['createFromASubdirectory', 'sub/wrapper.yaml#/components/schemas/Wrapper'],
+    'a schema that is a whole file' => ['createWholeFile', 'Address.yaml'],
+    'a file whose name is no identifier' => ['createUnnameableFile', null],
+    'a schema written inline' => ['createInline', null],
+]);
+
+// Set exactly when the name is, so one is never read without the other.
+it('has a source exactly when it has a name', function (): void {
+    foreach (['createLocal', 'createExternal', 'createWholeFile', 'createUnnameableFile', 'createInline'] as $id) {
+        $schema = bodyOf('schema-names/main.yaml', $id);
+
+        expect($schema->source === null)->toBe($schema->name === null);
+    }
+});
+
 // The claim the three rows above only imply together, asserted on its own
 // because it is the one decision 7 exists for: splitting a specification into
 // files, or writing a reference a different way, renames nothing.

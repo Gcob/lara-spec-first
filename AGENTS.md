@@ -30,10 +30,11 @@ read, so an operation that declares one gets a parent it may extend and a route 
 exists; an operation that declares none stays `final`. `spec:make` scaffolds that child on request, for one operation, a
 `--tag` or `--all`, offers to write `x-controller` into the specification when it is missing, and builds afterwards; the
 build itself never scaffolds, it names the invocation. `spec:doctor` reports what the package will honor, what it will
-not, and the routing table that results, read-only always and asserted to be. Validation has started: `spec:build` emits
+not, and the routing table that results, read-only always and asserted to be. Validation is built: `spec:build` emits
 one `FormRequest` per operation that states anything about its input and declares it as `routeAction`'s first parameter,
-with the scalar types, nullability and presence mapped and everything else the contract states named in the generated
-file's own findings rather than dropped. There is no response DTO and no input DTO yet. The
+with the whole mapping table applied and whatever no Laravel rule means the same as named in the generated file's own
+findings rather than dropped. It also emits one input DTO pair per request body, `NewUserInputDto` and
+`NewUserPartialInputDto`, which the request does not return yet. There is no response DTO. The
 [project board](https://github.com/users/Gcob/projects/1) is the authoritative list of what exists and what is in
 flight, and `gh issue list --repo Gcob/lara-spec-first` reads it from a session. An open card is work that is not done,
 which a checked box in a file could only claim as accurately as somebody remembered to edit it.
