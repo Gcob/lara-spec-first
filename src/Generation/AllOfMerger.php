@@ -70,8 +70,16 @@ final readonly class AllOfMerger
         $properties = $a->properties;
 
         foreach ($b->properties as $name => $property) {
+            // Each side merged first: a property written in two branches may
+            // carry an `allOf` of its own, and combining the two unmerged
+            // would drop it, with every constraint inside it.
             $properties[$name] = isset($properties[$name])
-                ? self::combine($properties[$name], $property, $identity, $where.'.'.$name)
+                ? self::combine(
+                    self::merge($properties[$name], $identity, $where.'.'.$name),
+                    self::merge($property, $identity, $where.'.'.$name),
+                    $identity,
+                    $where.'.'.$name,
+                )
                 : $property;
         }
 
@@ -89,7 +97,12 @@ final readonly class AllOfMerger
             required: array_values(array_unique([...$a->required, ...$b->required])),
             dependentRequired: $dependentRequired,
             items: match (true) {
-                $a->items !== null && $b->items !== null => self::combine($a->items, $b->items, $identity, $where.'.*'),
+                $a->items !== null && $b->items !== null => self::combine(
+                    self::merge($a->items, $identity, $where.'.*'),
+                    self::merge($b->items, $identity, $where.'.*'),
+                    $identity,
+                    $where.'.*',
+                ),
                 default => $a->items ?? $b->items,
             },
             enum: self::enum($a->enum, $b->enum, $refuse),
@@ -158,7 +171,27 @@ final readonly class AllOfMerger
             return $a === [] ? $b : $a;
         }
 
-        $shared = array_values(array_filter($a, static fn (SchemaType $type): bool => in_array($type, $b, true)));
+        // An integer is a number, so `integer` beside `number` is the
+        // integer, not a contradiction: each side is widened with the integer
+        // its `number` already allows, and the widening is taken back where
+        // both sides said `number`, so it is not written twice.
+        $widen = static fn (array $types): array => in_array(SchemaType::Number, $types, true)
+            ? [...$types, SchemaType::Integer]
+            : $types;
+        $wideB = $widen($b);
+        $shared = [];
+
+        foreach ($widen($a) as $type) {
+            if (in_array($type, $wideB, true) && ! in_array($type, $shared, true)) {
+                $shared[] = $type;
+            }
+        }
+
+        $bothSaidInteger = in_array(SchemaType::Integer, $a, true) && in_array(SchemaType::Integer, $b, true);
+
+        if (in_array(SchemaType::Number, $shared, true) && ! $bothSaidInteger) {
+            $shared = array_values(array_filter($shared, static fn (SchemaType $type): bool => $type !== SchemaType::Integer));
+        }
 
         if ($shared === []) {
             throw $refuse(sprintf(

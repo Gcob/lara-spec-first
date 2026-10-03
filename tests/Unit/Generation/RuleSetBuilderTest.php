@@ -481,6 +481,51 @@ it('refuses allOf branches that cannot be said as one', function (Schema $first,
     ],
 ]);
 
+// Each side of a property written in two branches is merged first, so an
+// `allOf` nested inside it survives the outer merge.
+it('keeps a nested allOf when two branches declare the same property', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(allOf: [
+        objectSchema(['code' => new Schema(types: [SchemaType::String])]),
+        objectSchema(['code' => new Schema(allOf: [new Schema(maxLength: 3)])]),
+    ])]));
+
+    expect($set->rules['code'])->toBe(['sometimes', 'string', 'max:3']);
+});
+
+// An integer is a number, so the two branches agree on the integer.
+it('merges integer and number into integer', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'n' => new Schema(allOf: [new Schema(types: [SchemaType::Number]), new Schema(types: [SchemaType::Integer])]),
+    ])]));
+
+    expect($set->rules['n'])->toBe(['sometimes', 'integer']);
+});
+
+// A dot is read as nesting before a key-list rule sees the data, and a comma
+// splits the list, so such a name is reported rather than matching nothing.
+it('reports a nested key name Laravel cannot list', function (string $name): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['n' => new Schema(
+        types: [SchemaType::Object],
+        properties: [$name => new Schema(types: [SchemaType::String])],
+        required: [$name],
+        additionalProperties: false,
+    )])]));
+
+    expect($set->rules['n'])->toBe(['sometimes', 'array'])
+        ->and(implode('', $set->findings))->toContain('cannot name in `required_array_keys`')
+        ->and(implode('', $set->findings))->toContain('cannot name in `array:`');
+})->with(['a dot' => ['a.b'], 'a comma' => ['a,b']]);
+
+// `null` alone is a value no Laravel rule allows exactly, so it is reported
+// rather than read as "anything".
+it('reports an enumeration of null alone', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'field' => new Schema(enum: [null]),
+    ])]));
+
+    expect(implode('', $set->findings))->toContain('`field` states `enum`');
+});
+
 it('closes the root to the keys it declares', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
         types: [SchemaType::Object],
