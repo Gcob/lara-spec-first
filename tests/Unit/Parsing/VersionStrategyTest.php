@@ -139,6 +139,17 @@ it('leaves a 3.1 exclusive bound where the document wrote it', function (): void
         ->and($schema->maximum)->toBe(10.0);
 });
 
+// `contentEncoding` beside `contentMediaType` is how 3.1 writes a file carried as
+// text: a string, which `file` would refuse the very text of.
+it('does not read a 3.1 part with a contentEncoding as a file', function (): void {
+    $strategy = new OpenApi31Strategy;
+
+    expect($strategy->normalizeSchema(['type' => 'string', 'contentMediaType' => 'image/png', 'contentEncoding' => 'base64'])->isFilePart)
+        ->toBeFalse()
+        ->and($strategy->normalizeSchema(['type' => 'string', 'contentMediaType' => 'image/png'])->isFilePart)
+        ->toBeTrue();
+});
+
 it('names a file part from the spelling its version has', function (): void {
     expect((new OpenApi30Strategy)->normalizeSchema(['type' => 'string', 'format' => 'binary'])->isFilePart)
         ->toBeTrue()

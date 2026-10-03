@@ -156,7 +156,7 @@ final readonly class BuildPlanner
 
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
-        return new BuildPlan($planned, $files, $requests, $unreadBodies, $inputDtos);
+        return new BuildPlan($planned, $files, $requests, $unreadBodies);
     }
 
     /**

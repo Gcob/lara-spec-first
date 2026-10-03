@@ -130,10 +130,10 @@ it('converts a list by what its elements are', function (): void {
 it('writes the contract\'s keys back out', function (): void {
     expect(emittedDto('NewUserInputDto'))
         ->toContain("'born_on' => \$this->born_on?->toDateString(),")
-        ->toContain("\$array['seen_at'] = \$this->seen_at->toRfc3339String();")
+        ->toContain("\$array['seen_at'] = \$this->seen_at->format('Y-m-d\\TH:i:s.uP');")
         ->toContain("'address' => \$this->address->toArray(),")
         ->toContain('array_map(static fn (NewUserRolesItemInputDto $item): array => $item->toArray(), $this->roles)')
-        ->toContain('array_map(static fn (CarbonImmutable $item): string => $item->toRfc3339String(), $this->visits)');
+        ->toContain("array_map(static fn (CarbonImmutable \$item): string => \$item->format('Y-m-d\\TH:i:s.uP'), \$this->visits)");
 });
 
 // The reason the type exists: an absent property must not be written back as a
@@ -165,10 +165,14 @@ it('makes every property of the partial type optional', function (): void {
         ->not->toContain('AddressPartialInputDto');
 });
 
-it('points a recursive node at its own class', function (): void {
+// The rules validate nothing below a recursion, so a DTO built from it would be built
+// from input nothing checked: `parent: "oops"` would be a `TypeError` and a 500.
+it('reads a recursive node as it arrived instead of building a DTO from it', function (): void {
     expect(emittedDto('AddressInputDto'))
-        ->toContain('public Optional|AddressInputDto $parent,')
-        ->toContain("parent: array_key_exists('parent', \$payload) ? AddressInputDto::from(\$payload['parent']) : new Optional,");
+        ->toContain('public mixed $parent,')
+        ->toContain("parent: array_key_exists('parent', \$payload) ? \$payload['parent'] : new Optional,")
+        ->toContain('`parent` points back at `#/components/schemas/Address`')
+        ->and(emittedDto('AddressInputDto'))->not->toContain('AddressInputDto::from');
 });
 
 it('carries the provenance of the schema it describes', function (): void {
@@ -194,7 +198,7 @@ it('says where an inline schema is written and how it got its name', function ()
 
 it('says so when no operation reads a type directly', function (): void {
     expect(emittedDto('AddressInputDto'))
-        ->toContain('No operation reads this type directly: it is the type of a property of another DTO.');
+        ->toContain('No operation reads this type directly: it is the type of a property of another DTO');
 });
 
 // The partial type is generated for every body, so one that nothing reads says so
@@ -202,7 +206,8 @@ it('says so when no operation reads a type directly', function (): void {
 it('says so when no operation reads the partial type', function (): void {
     $dtos = goldenDtos();
 
-    expect($dtos['NewUserPartialInputDto']->readers)->toBe(['patch /users/{id}'])
+    expect(emittedDto('CreateUserPartialInputDto'))->toContain('No operation reads this type. It is generated beside the full one for every body')
+        ->and($dtos['NewUserPartialInputDto']->readers)->toBe(['patch /users/{id}'])
         ->and($dtos['NewUserInputDto']->readers)->toBe(['post /users']);
 });
 

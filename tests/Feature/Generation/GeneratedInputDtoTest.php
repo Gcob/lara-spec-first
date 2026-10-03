@@ -75,6 +75,14 @@ it('keeps a null date null instead of turning it into now', function (): void {
     expect($dto->born_on)->toBeNull();
 });
 
+// The rule set accepts a fraction of any length, and `toRfc3339String()` would drop it
+// on the way to mass assignment. Carbon holds microseconds, and so does `toArray()`.
+it('keeps the fraction of a date-time on the way back out', function (): void {
+    $dto = NewUserInputDto::from(multipartPayload(['seen_at' => '2026-10-03T13:52:51.123456789Z']));
+
+    expect($dto->toArray()['seen_at'])->toBe('2026-10-03T13:52:51.123456+00:00');
+});
+
 it('parses the dates the rule set accepted', function (): void {
     $dto = NewUserInputDto::from(multipartPayload([
         'born_on' => '1990-01-02',
@@ -88,7 +96,7 @@ it('parses the dates the rule set accepted', function (): void {
         ->and($dto->visits)->toHaveCount(1);
 });
 
-it('builds nested DTOs, a recursive one included', function (): void {
+it('builds nested DTOs, and keeps a recursive node as it arrived', function (): void {
     $dto = NewUserInputDto::from(multipartPayload([
         'address' => ['street' => '1 Main St', 'parent' => ['street' => '2 Side St']],
         'profile' => ['bio' => 'Hello'],
@@ -96,8 +104,7 @@ it('builds nested DTOs, a recursive one included', function (): void {
     ]));
 
     expect($dto->address)->toBeInstanceOf(AddressInputDto::class)
-        ->and($dto->address->parent)->toBeInstanceOf(AddressInputDto::class)
-        ->and($dto->address->parent instanceof AddressInputDto ? $dto->address->parent->street : null)->toBe('2 Side St')
+        ->and($dto->address->parent)->toBe(['street' => '2 Side St'])
         ->and($dto->roles)->toHaveCount(2);
 });
 
@@ -140,10 +147,10 @@ it('writes the contract\'s keys back out, the way the contract spells them', fun
         'born_on' => '1990-01-02',
         'nickname' => null,
         'address' => ['street' => '1 Main St'],
-        'seen_at' => '2026-10-03T13:52:51+00:00',
+        'seen_at' => '2026-10-03T13:52:51.000000+00:00',
         'ids' => [1],
         'roles' => [['name' => 'admin']],
-        'visits' => ['2026-10-03T13:52:51+00:00'],
+        'visits' => ['2026-10-03T13:52:51.000000+00:00'],
         'user-id' => 'u1',
         '2fa' => true,
     ]);
@@ -247,4 +254,14 @@ it('refuses what the rule set refuses before any DTO exists', function (): void 
 
     expect($status)->toBe(422)
         ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['age']);
+});
+
+// The rules stop at a recursion, so this passes validation. A DTO built from it
+// would be a `TypeError` in `from()` and a 500 where the request owed an answer:
+// the node is `mixed` and reaches the controller as it arrived.
+it('lets an unvalidated recursive node through without a 500', function (): void {
+    [$status, $body] = patchUser(['address' => ['street' => 'x', 'parent' => 'oops']]);
+
+    expect($status)->toBe(200)
+        ->and($body['array'])->toBe(['address' => ['street' => 'x', 'parent' => 'oops']]);
 });

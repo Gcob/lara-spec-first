@@ -42,14 +42,6 @@ final readonly class PlannedInputDto
         public array $requests = [],
     ) {}
 
-    /**
-     * @param  string  $namespace  the configured generated root namespace
-     */
-    public function fullyQualifiedName(string $namespace): string
-    {
-        return $namespace.'\\Data\\'.$this->shortName;
-    }
-
     public function relativePath(): string
     {
         return 'Data/'.$this->shortName.'.php';
