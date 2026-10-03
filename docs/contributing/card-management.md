@@ -7,10 +7,11 @@ covers: >
     do with work that overflows an open card and when overflow stops being overflow, when the split into several pull
     requests is decided, what separates a card whose scope grew from one whose goal changed and where the divergence
     gets written, the card template and which sections each kind of card drops, what a Todo card may no longer leave
-    open and where its settled decisions are written, when a card is written and what a Backlog card is worth before
-    then, what an Acceptance scenario holds, why nothing runs it and what ten cards have done with it so far, how a card
-    cites a file, what the board's Status, Phase, Lot and Kind fields mean, who moves them and why a card's body stops
-    carrying one the moment the board does, and the grouping mechanisms this project declines to use.
+    open and where its settled decisions are written, what a lot's own card carries and why it never lists its cards,
+    what a finished lot owes the next one, when a card is written and what a Backlog card is worth before then, what an
+    Acceptance scenario holds, why nothing runs it and what ten cards have done with it so far, how a card cites a file,
+    what the board's Status, Phase, Lot and Kind fields mean, who moves them and why a card's body stops carrying one
+    the moment the board does, and the grouping mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -20,8 +21,8 @@ tags: [planning, conventions, workflow, scope, onboarding]
 > **In brief**
 >
 > - A card is a change that can merge into `main` on its own and leave it stable, tested and documented.
-> - A lot exists before its cards, and its cards are cut when it opens: a `Backlog` card is a sketch, a `Todo` card is a
->   specification, and moving one between them is the rewrite rather than a drag.
+> - A lot exists before its cards, as a lot card in `Backlog`, and its cards are cut when it opens: a `Backlog` card is
+>   a sketch, a `Todo` card is a specification, and moving one between them is the rewrite rather than a drag.
 > - A `Todo` card has nothing left open: no assumption, no discovery, no open decision. What was settled is written in
 >   its `Decisions`, and that is what makes it ready for an agent.
 > - Size is a target, not a measurement: a pull request somebody reviews in one sitting. Under roughly four files, ask
@@ -54,10 +55,10 @@ shippable.
 
 ## Cards are cut when the lot opens, not before
 
-**A lot exists as a coarse intention from the day the phase is planned. The cards inside it are written just before that
-lot opens.** This file leans on the rule twice already, once to defer
-[#40](https://github.com/Gcob/lara-spec-first/issues/40)'s split and once to explain a card with no `Lot`, so it is
-worth stating as a rule rather than leaving as an excuse.
+**A lot exists from the day the phase is planned, as a [card of its own](#a-lot-has-a-card-of-its-own) sitting in
+`Backlog`. The cards inside it are written just before that lot opens.** This file leans on the rule twice already, once
+to defer [#40](https://github.com/Gcob/lara-spec-first/issues/40)'s split and once to explain a card with no `Lot`, so
+it is worth stating as a rule rather than leaving as an excuse.
 
 The reason is that a card written six months early is written against a tree, a design and a set of decisions that have
 all moved by the time somebody picks it up. Lot 0 paid for that in full: its cards were written in one sitting before
@@ -69,9 +70,14 @@ a sketch. It records that something is coming and roughly what, and reading it a
 this rule prevents. A `Todo` card is a specification: its lot has been cut, so it was rewritten against the tree as it
 stands now.
 
+**Opening a lot starts with its own card, not with its cards.** The lot card was sketched as early as any other, so it
+is questioned again first: what it assumed is checked, what it did not know is found out or turned into a `Decision`
+card, and whatever has gone stale since it was written is corrected. Only then does it move to `Todo` and are its cards
+cut, against decisions that hold today rather than the day the phase was planned.
+
 **Moving a card from `Backlog` to `Todo` is that rewrite, not a drag between columns.** A sketch promoted without being
 rewritten is a specification nobody wrote, and it gets discovered mid-flight, which is exactly what Lot 0 cost. Deleting
-a sketch is the opposite overreaction: the coarse intention is worth keeping.
+a sketch is the opposite overreaction: the intention it records is worth keeping.
 [#40](https://github.com/Gcob/lara-spec-first/issues/40) is the standing example, known to be a lot rather than a card,
 and split when Lot 2 opens rather than today.
 
@@ -80,9 +86,19 @@ and split when Lot 2 opens rather than today.
 _A card's five states._ The edge worth the picture is the one running backwards, from a finished lot to the next one's
 rewrite.
 
-**A finished lot owes one thing to the next: what it taught, written down where the next lot will read it.** That place
-is [What we have actually got wrong](#what-we-have-actually-got-wrong) on this page, named with the card that produced
-the lesson. A lesson nobody wrote down is a feeling, and the next lot repeats it.
+### A finished lot owes one thing to the next
+
+**What it taught, written down where the next lot will read it.** That place is
+[What we have actually got wrong](#what-we-have-actually-got-wrong) on this page, named with the card that produced the
+lesson. A lesson nobody wrote down is a feeling, and the next lot repeats it.
+
+**The lesson also says what the card template learned.** The template changes one lot at a time: whatever a lot found
+missing, redundant or misleading in its cards is adjusted before the next lot opens, so each lot is cut with what the
+previous one taught rather than with what everybody remembers of it.
+
+**It is the one box in the lot card's `Done when`, and it is ticked either way.** Either the lesson is written, or the
+lot card says plainly that nothing was learned. Silence is the only answer that does not close it. The lesson lands on a
+branch carrying the lot card's number, as `docs/{lot card}/lot-N-lesson`, the same way any other card branches.
 
 ## Size is a target, not a measurement
 
@@ -394,6 +410,48 @@ card number, [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leaves-a-ma
 The shape came out of a planning note that git does not track, so there is no link to follow and none is needed: what
 survived that argument is on this page.
 
+## A lot has a card of its own
+
+**A lot is an issue, of `Kind` `Lot`, opened from the
+[lot form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/lot.md) and titled
+`Lot N: <theme>`.** It carries what holds for every card of the lot, so that each card carries only what is its own: the
+reason the lot exists, the decisions all its cards share, and the code and documents all of them lean on. Its `Phase`
+and `Lot` fields are filled as on any card, `Lot` from the day it is opened, since there is no lot left to decide.
+
+| Section         | Carries                                                                  | Present           |
+| --------------- | ------------------------------------------------------------------------ | ----------------- |
+| `Why`           | What the lot is for, not the list of its cards                           | Always            |
+| `Assumptions`   | What is believed and could be checked by reading the code or the docs    | In `Backlog` only |
+| `Discovery`     | What is known not to be known, and needs research or a trial to find out | In `Backlog` only |
+| `Decisions`     | Settled decisions that hold for every card of the lot                    | Always            |
+| `Where to look` | Permalinks, and no prose                                                 | Always            |
+| `Done when`     | [One fixed box](#a-finished-lot-owes-one-thing-to-the-next): the lesson  | Always            |
+
+**No `Scope` section.** What the lot ships is what its cards ship, and a second list would drift from them.
+
+**Its status follows the lot, not a card.**
+
+- **`Backlog`:** a sketch, written when the phase is planned and with assumptions nobody has checked. That is expected.
+- **`Todo`:** the lot has been [opened](#cards-are-cut-when-the-lot-opens-not-before). It was questioned again,
+  `Assumptions` and `Discovery` are empty, and its cards are cut.
+- **`In Progress`:** one of its cards has started.
+- **`Done`:** the box in its `Done when` is ticked.
+
+**An assumption and a discovery are told apart by what settles them.** An assumption is checked by reading the code or
+the docs. A discovery needs research or a trial. When the lot opens, each assumption becomes a decision, a link under
+`Where to look`, or disappears; each discovery becomes a decision when questioning the lot again is enough to settle it,
+or a `Decision` card of the lot that the cards depending on it wait on in `Ready when`. That is
+[the third test](#the-three-tests-in-the-order-they-catch-things) applied to a lot rather than to a card, and the same
+two sections work the same way on a [`Backlog` card](#a-todo-card-has-nothing-left-open).
+
+**The lot card never lists its cards.** The `Lot` field says which cards belong to a lot, and it is the only thing that
+does: a list in the body would be a second answer to the same question, and it would be wrong the first time somebody
+cut a card or moved one. For the same reason the cards are not its GitHub sub-issues, and a card does not name its lot
+card either.
+
+**Only a lot has one.** The gates and the breaking-change set belong to no lot by design, as [below](#the-board), so no
+lot card is opened for them.
+
 ## The board
 
 One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Four fields carry meaning.
@@ -403,7 +461,7 @@ One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Fo
 | `Status` | `Backlog`, `Todo`, `In Progress`, `In review`, `Ready to publish`, `Done` | Whoever is doing the work, as it moves |
 | `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after            |
 | `Lot`    | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after  |
-| `Kind`   | `Feature`, `Docs`, `Decision`, `Chore`                                    | Set at triage, rarely after            |
+| `Kind`   | `Feature`, `Docs`, `Decision`, `Chore`, `Lot`                             | Set at triage, rarely after            |
 
 `Status` is the only field that moves often, and what each value claims about a card is
 [above](#cards-are-cut-when-the-lot-opens-not-before): `Backlog` is a sketch, `Todo` is a specification. The one a
@@ -416,14 +474,16 @@ phase would claim a sequencing nobody has decided. One card in that state is a f
 mean triage has stopped happening.
 
 **A card with no `Lot` is one no lot has cut yet.** That is every card past the current phase, plus the gates and the
-breaking-change set, which belong to no lot by design. It is a normal state, not a gap to fill: a card gets its `Lot`
-when somebody decides the lot, and guessing earlier is the same guessing this file exists to stop.
+breaking-change set, which belong to no lot by design and so get no lot card either. It is a normal state, not a gap to
+fill: a card gets its `Lot` when somebody decides the lot, and guessing earlier is the same guessing this file exists to
+stop.
 
 **`Kind` decides what a card is made of, which is why it is a field rather than a note.** The
 [template above](#the-template-and-what-each-kind-of-card-drops) drops `Acceptance` on every card but a `Feature`, and
 [`CONTRIBUTING.md`](../../CONTRIBUTING.md#branch-names) branches a `Decision` card as `docs/` because what it delivers
 is the document that stops saying `Open`. `Chore` is the one carrying no rule of its own: maintenance that is neither a
-feature nor a document, which takes whatever sections the work actually needs.
+feature nor a document, which takes whatever sections the work actually needs. `Lot` is not work at all but
+[a lot's own card](#a-lot-has-a-card-of-its-own), with a form of its own.
 
 **A field lives on the board, and a card's body carries it only until it gets there.** The
 [issue form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/task.md) cannot set a project
@@ -444,6 +504,10 @@ consequence are in [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leave
 **No epics, and no card broken into GitHub sub-issues.** `Phase` and `Lot` already group cards, and a second grouping
 mechanism drifts from the first. The board's `Parent issue` and `Sub-issues progress` fields stay unused, named here
 because their presence otherwise reads as an invitation.
+
+**A [lot card](#a-lot-has-a-card-of-its-own) is not that epic.** It carries what a lot's cards share, and nothing about
+which cards those are: membership stays on the `Lot` field, so there is still one grouping mechanism and nothing to
+drift from it.
 
 This is not a rule about checkboxes. A markdown `- [ ]` inside `Ready when` or `Done when` is the normal way a card
 lists what it owes. What is refused is promoting those lines into cards of their own.

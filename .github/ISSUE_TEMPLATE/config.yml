@@ -1,5 +1,6 @@
 # Blank issues stay available on purpose: a young package wants the report more
-# than it wants the form, and the maintainer opens cards from `task.md` anyway.
+# than it wants the form, and the maintainer opens cards from `task.md`, and lots
+# from `lot.md`, anyway.
 blank_issues_enabled: true
 contact_links:
     - name: Documentation
