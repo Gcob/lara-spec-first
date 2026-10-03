@@ -821,14 +821,14 @@ than above.
 
 #### Arrays
 
-| Construct                                | Level     | Note                                                                                                                                                            |
-| ---------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `items`                                  | Supported | `array` and `list`, with the element rules under `field.*`.                                                                                                     |
-| `minItems`, `maxItems`                   | Supported | `min` and `max` on the array.                                                                                                                                   |
-| `uniqueItems`                            | Supported | `distinct:strict` on `field.*`, so `1` and `"1"` are two elements.                                                                                              |
-| `prefixItems`                            | Ignored   | **Raw.** Positional tuples, which `field.0` and `field.1` could express. The caveat lands on this keyword first, and it is the case the conformance suite pins. |
-| `contains`, `minContains`, `maxContains` | Ignored   | **Raw.** No Laravel rule asserts that some element of an array matches a schema. Only `contains` carries a schema; the two counters carry integers.             |
-| `unevaluatedItems`                       | Ignored   | **Raw.** Same reason as `unevaluatedProperties`.                                                                                                                |
+| Construct                                | Level     | Note                                                                                                                                                                                                                                                                          |
+| ---------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                                  | Supported | `array` and `list`, with the element rules under `field.*`.                                                                                                                                                                                                                   |
+| `minItems`, `maxItems`                   | Supported | `min` and `max` on the array.                                                                                                                                                                                                                                                 |
+| `uniqueItems`                            | Partial   | `distinct:strict` on `field.*`, so `1` and `"1"` are two elements, for scalar elements of an array that is not itself an element. Reported otherwise, since Laravel's `distinct` compares across the outer list under a wildcard and never compares object or array elements. |
+| `prefixItems`                            | Ignored   | **Raw.** Positional tuples, which `field.0` and `field.1` could express. The caveat lands on this keyword first, and it is the case the conformance suite pins.                                                                                                               |
+| `contains`, `minContains`, `maxContains` | Ignored   | **Raw.** No Laravel rule asserts that some element of an array matches a schema. Only `contains` carries a schema; the two counters carry integers.                                                                                                                           |
+| `unevaluatedItems`                       | Ignored   | **Raw.** Same reason as `unevaluatedProperties`.                                                                                                                                                                                                                              |
 
 #### Strings and numbers
 

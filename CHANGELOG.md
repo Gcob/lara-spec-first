@@ -63,7 +63,7 @@ rather than one that was missing, and nothing downstream failed to say so.
   their element rules under `field.*`, nested objects under dotted keys, `allOf` merged, `dependentRequired`, an
   optional body's "all or none", and `additionalProperties: false` at every depth. What stays outside the boundary is
   named in the generated file's findings. Most of the support matrix's schema rows moved from `Deferred` to `Supported`;
-  `format` and `pattern` to `Partial`.
+  `format`, `pattern` and `uniqueItems` to `Partial`.
 - **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first
   generated controller; the block said otherwise.
 

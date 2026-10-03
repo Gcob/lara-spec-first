@@ -265,6 +265,17 @@ it('refuses a repeated element and only a repeated one', function (array $value,
     'a number and its string' => [[1, '1'], 200],
 ]);
 
+// Where `distinct` would not mean `uniqueItems`, the keyword is reported and
+// no rule is emitted: the valid payload it used to refuse now passes.
+it('accepts a repeat across two lists that are each unique', function (): void {
+    $field = new Schema(types: [SchemaType::Array], items: new Schema(
+        types: [SchemaType::Object],
+        properties: ['tags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String]), uniqueItems: true)],
+    ));
+
+    expect(statusForBuiltRules(oneField($field), ['field' => [['tags' => ['a']], ['tags' => ['a']]]]))->toBe(200);
+});
+
 // "All or none", the one mapping the design measured case by case.
 it('accepts an optional body whole or absent, and refuses half of one', function (array $payload, int $status): void {
     $body = new Schema(

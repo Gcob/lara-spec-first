@@ -524,7 +524,7 @@ final readonly class RuleSetBuilder
                 array_push($rules, 'array', 'list');
                 self::bound($schema->minItems, 'min', $rules);
                 self::bound($schema->maxItems, 'max', $rules);
-                array_push($handled, 'minItems', 'maxItems', 'items', 'uniqueItems');
+                array_push($handled, 'minItems', 'maxItems', 'items');
                 $children = 'items';
                 break;
             case SchemaType::Object:
@@ -621,7 +621,12 @@ final readonly class RuleSetBuilder
             }
 
             if ($schema->uniqueItems) {
-                $walk->rules[$key.'.*'] = [...$walk->rules[$key.'.*'] ?? [], 'distinct:strict'];
+                $uniqueness = self::uniquenessRule($key, $schema);
+
+                if ($uniqueness !== null) {
+                    $walk->rules[$key.'.*'] = [...$walk->rules[$key.'.*'] ?? [], $uniqueness];
+                    $handled[] = 'uniqueItems';
+                }
             }
         }
 
@@ -728,6 +733,28 @@ final readonly class RuleSetBuilder
         }
 
         return (string) $value;
+    }
+
+    /**
+     * `distinct:strict`, or null where it would not mean `uniqueItems`.
+     *
+     * Two shapes break it, both measured on Laravel's validator. Under a
+     * wildcard, `distinct` turns every `*` into a pattern and compares across
+     * every element of the outer list, so `[{tags: [a]}, {tags: [a]}]` is
+     * refused although each list is unique. And on elements that are objects
+     * or arrays it flattens them with dots and never compares the elements
+     * themselves, so `[{a: 1}, {a: 1}]` passes. A null leaves the keyword to
+     * the sweep, which reports it.
+     */
+    private static function uniquenessRule(string $key, Schema $schema): ?string
+    {
+        if (str_contains($key, '*')) {
+            return null;
+        }
+
+        $element = $schema->items?->soleType();
+
+        return $element === SchemaType::Object || $element === SchemaType::Array ? null : 'distinct:strict';
     }
 
     /**

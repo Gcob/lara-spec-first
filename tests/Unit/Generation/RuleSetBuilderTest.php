@@ -526,6 +526,25 @@ it('reports an enumeration of null alone', function (): void {
     expect(implode('', $set->findings))->toContain('`field` states `enum`');
 });
 
+// `distinct` compares across the whole outer list under a wildcard, and never
+// compares object or array elements themselves, so both shapes are reported.
+it('reports uniqueItems where distinct would not mean it', function (Schema $field): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]));
+
+    expect(json_encode($set->rules))->not->toContain('distinct')
+        ->and(implode('', $set->findings))->toContain('`uniqueItems`');
+})->with([
+    'an array under another array' => [new Schema(
+        types: [SchemaType::Array],
+        items: new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String]), uniqueItems: true),
+    )],
+    'object elements' => [new Schema(
+        types: [SchemaType::Array],
+        items: new Schema(types: [SchemaType::Object]),
+        uniqueItems: true,
+    )],
+]);
+
 it('closes the root to the keys it declares', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
         types: [SchemaType::Object],
