@@ -87,6 +87,33 @@ paths:
       responses:
         '201':
           description: Created
+  # The spelling a bundler writes, since `{` may not appear raw in a URI fragment:
+  # the parser decodes it, so the raw walk has to as well, or this schema is `Pet`
+  # on one road and nothing on the other.
+  /pets/{id}:
+    put:
+      operationId: replacePet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './other.yaml#/components/schemas/Pet'
+      responses:
+        '200':
+          description: OK
+  /encoded:
+    post:
+      operationId: createThroughEncodedReference
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1pets~1%7Bid%7D/put/requestBody/content/application~1json/schema'
+      responses:
+        '201':
+          description: Created
   /from-an-external-path-item:
     $ref: './sub/paths.yaml#/petPathItem'
   /listed:

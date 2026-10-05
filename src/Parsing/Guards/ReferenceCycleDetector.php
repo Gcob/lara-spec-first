@@ -129,7 +129,7 @@ final readonly class ReferenceCycleDetector
             // A Reference Object carries nothing else worth walking: 3.1 allows
             // `summary` and `description` beside it, and neither can hold a ref.
             return str_starts_with($node['$ref'], '#/')
-                ? ['#'.$pointer => $node['$ref']]
+                ? ['#'.$pointer => '#'.DocumentPointer::fragment(substr($node['$ref'], 1))]
                 : [];
         }
 

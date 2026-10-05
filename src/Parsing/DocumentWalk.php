@@ -222,6 +222,7 @@ final class DocumentWalk
     private function follow(SchemaPosition $from, string $reference): SchemaPosition
     {
         [$file, $fragment] = array_pad(explode('#', $reference, 2), 2, '');
+        $fragment = DocumentPointer::fragment($fragment);
 
         if ($file === '') {
             return new SchemaPosition($from->file, $fragment);

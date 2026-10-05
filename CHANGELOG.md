@@ -60,7 +60,10 @@ rather than one that was missing, and nothing downstream failed to say so.
   [walks the raw document itself](./docs/guide/openapi-support.md#where-a-schema-is-reported-from). **Every message
   about a schema written outside the root document changes**, from a bare `#/paths/…` pointer to
   `other.yaml#/components/schemas/…`. They were wrong before, so this is a correction rather than a break, but a
-  consumer matching on those strings will see it. Nothing changes for a single-file specification.
+  consumer matching on those strings will see it. For a schema written in the root document, the reported pointer is now
+  always where it is written, which it was not when `components` was read after `paths`. A percent-encoded `$ref`
+  fragment (`%7B` for `{`, as a bundler writes it) is read the way the parser reads it, so one schema is one name on
+  every road to it.
 
 ### Added
 

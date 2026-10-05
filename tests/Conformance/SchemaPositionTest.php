@@ -110,6 +110,9 @@ it('names a schema after the component it resolves to', function (
     'a schema that is a whole file' => ['createWholeFile', 'Address'],
     'a file whose name is no identifier' => ['createUnnameableFile', null],
     'a schema written inline' => ['createInline', null],
+    // The same schema reached by the road a bundler writes: `%7B` for `{`.
+    'a schema reached through a percent-encoded pointer' => ['createThroughEncodedReference', 'Pet'],
+    'the schema that encoded pointer lands on' => ['replacePet', 'Pet'],
 ]);
 
 // The claim the three rows above only imply together, asserted on its own
@@ -123,6 +126,17 @@ it('gives one name to three spellings of one schema', function (): void {
     ];
 
     expect(array_unique($names))->toBe(['Pet']);
+});
+
+// The parser percent-decodes a `$ref` fragment, so a walk that read it as written
+// found nothing at `%7Bid%7D` while the parser found the schema: one schema, two
+// names, and two DTOs once something is generated from it.
+it('gives one name to a schema reached through a percent-encoded pointer', function (): void {
+    $direct = bodyOf('schema-names/main.yaml', 'replacePet');
+    $encoded = bodyOf('schema-names/main.yaml', 'createThroughEncodedReference');
+
+    expect($direct->name)->toBe('Pet')
+        ->and($encoded->name)->toBe('Pet');
 });
 
 // A body is not the only schema the extractor walks, and the other two reach

@@ -102,6 +102,21 @@ final readonly class DocumentPointer
     }
 
     /**
+     * A `$ref` fragment as the parser reads it, which is percent-decoded.
+     *
+     * `cebe\openapi\` runs the fragment through `rawurldecode()` before it
+     * resolves it, and a bundler such as Redocly or swagger-cli writes
+     * `#/paths/~1pets~1%7Bid%7D/...` because `{` may not appear raw in a URI
+     * fragment. A walk that read the fragment as written would find nothing at
+     * that pointer while the parser found the schema, and the two would give one
+     * schema two positions. Here, and nowhere else, so both walkers agree.
+     */
+    public static function fragment(string $written): string
+    {
+        return rawurldecode($written);
+    }
+
+    /**
      * One segment, with the two characters RFC 6901 reserves escaped.
      *
      * Order matters and is not interchangeable: `~` is replaced first, so a

@@ -208,10 +208,12 @@ rather than asked of the parser, and a schema written in another file is the who
 
 ### Where a schema is reported from
 
-**A schema's position is computed by walking the raw document, never taken from the parser.** Two places print one
-today, a refusal and a recursion marker, and a third reads it without printing it, since a schema's `name` is its
-position's last segment. An operation's own position is a different thing and is unaffected: it is built from the path
-template and the verb, which the document states directly.
+**A schema's position is computed by walking the raw document, never taken from the parser.** A `$ref` fragment is read
+the way the parser reads it, percent-decoded, so the `#/paths/~1pets~1%7Bid%7D/...` a bundler writes lands on the same
+node on both roads. Two places print one today, a refusal and a recursion marker, and a third reads it without printing
+it, since a schema's `name` is read off its position: a component's key, or the file name of a schema that is a whole
+file. An operation's own position is a different thing and is unaffected: it is built from the path template and the
+verb, which the document states directly.
 
 `cebe\openapi\` answers `getDocumentPosition()` with **the first site that referenced a node**, which is the right
 answer for a schema written in the document being read and the wrong one for everything else. Measured against the
