@@ -83,7 +83,8 @@ rather than one that was missing, and nothing downstream failed to say so.
   untouched, and a request with no object body has no `dto()`.
 - **A node that recurses is `mixed` on the DTO**, since no rule validates anything below it. A `date-time` is written
   back by `toArray()` with its fraction (microseconds), a component name with dots derives its class name by dropping
-  them, and two operations reaching one named schema share its DTO whatever a 3.0 `$ref` wrapper carries beside it.
+  them, and two operations reaching one named schema share its DTO, a 3.0 `$ref` wrapper carrying only an `example` or a
+  `readOnly` beside it included. A wrapper that adds `required` or `properties` is a schema of its own.
 - **A schema in a recursive pair (`Author` and `Book`) is `mixed` where it is nested**, a required key Laravel cannot
   name is optional in the DTO, an enumeration value that could close a docblock is not written there, and a closed root
   keeps a declared integer key such as `"2024"`.
