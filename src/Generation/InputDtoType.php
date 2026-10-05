@@ -94,7 +94,7 @@ final readonly class InputDtoType
      */
     public function doc(): ?string
     {
-        if ($this->literals !== []) {
+        if ($this->literals !== [] && self::safeInDocblock($this->literals)) {
             return implode('|', array_map(
                 static fn (string|int|float|bool $value): string => var_export($value, true),
                 $this->literals,
@@ -106,6 +106,30 @@ final readonly class InputDtoType
             self::MAP => 'array<string, mixed>',
             default => null,
         };
+    }
+
+    /**
+     * Whether every enumeration value can be written inside a docblock.
+     *
+     * **An enumeration value is data from the specification, and a docblock is
+     * code.** A string holding the sequence that closes a comment would end the
+     * docblock early and turn what follows into statements, and a newline would
+     * break the line. Such a value is not written: the property keeps its scalar
+     * type and loses only the literal union, which is a hint and not a rule.
+     *
+     * @see docs/guide/code-generation/index.md — "A specification is untrusted data"
+     *
+     * @param  list<string|int|float|bool>  $literals
+     */
+    private static function safeInDocblock(array $literals): bool
+    {
+        foreach ($literals as $literal) {
+            if (is_string($literal) && preg_match('~\*/|[\x00-\x1f\x7f]~', $literal) === 1) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -235,7 +259,7 @@ final readonly class InputDtoType
 
         return sprintf(
             'static fn (%s $item): %s => %s',
-            $this->kind === self::LIST ? 'array' : 'mixed',
+            $this->kind === self::LIST && ! $this->nullable ? 'array' : 'mixed',
             ($this->nullable ? '?' : '').$this->native(),
             $this->from('$item'),
         );

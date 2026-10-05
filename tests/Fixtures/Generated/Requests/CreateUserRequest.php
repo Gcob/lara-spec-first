@@ -87,7 +87,7 @@ final class CreateUserRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                $body = $this->isJson() ? $this->json()->all() : [...$this->request->all(), ...$this->files->all()];
+                $body = $this->isJson() ? $this->json()->all() : $this->request->all() + $this->files->all();
 
                 foreach (array_keys($body) as $key) {
                     if (! in_array((string) $key, self::BODY_KEYS, true)) {

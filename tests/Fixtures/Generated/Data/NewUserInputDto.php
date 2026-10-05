@@ -47,7 +47,7 @@ final readonly class NewUserInputDto implements Arrayable, JsonSerializable
      * @param  Optional|list<string>  $tags
      * @param  Optional|list<int>  $ids
      * @param  Optional|list<NewUserRolesItemInputDto>  $roles
-     * @param  Optional|list<list<int>>  $matrix
+     * @param  Optional|list<list<int>|null>  $matrix
      * @param  Optional|list<CarbonImmutable>  $visits
      * @param  Optional|array<string, mixed>  $meta
      * @param  Optional|mixed  $anything
@@ -96,7 +96,7 @@ final readonly class NewUserInputDto implements Arrayable, JsonSerializable
             tags: array_key_exists('tags', $payload) ? $payload['tags'] : new Optional,
             ids: array_key_exists('ids', $payload) ? array_values(array_map(intval(...), $payload['ids'])) : new Optional,
             roles: array_key_exists('roles', $payload) ? array_values(array_map(NewUserRolesItemInputDto::from(...), $payload['roles'])) : new Optional,
-            matrix: array_key_exists('matrix', $payload) ? array_values(array_map(static fn (array $item): array => array_values(array_map(intval(...), $item)), $payload['matrix'])) : new Optional,
+            matrix: array_key_exists('matrix', $payload) ? (array_values(array_map(static fn (mixed $item): ?array => $item === null ? null : array_values(array_map(intval(...), $item)), $payload['matrix']))) : new Optional,
             visits: array_key_exists('visits', $payload) ? array_values(array_map(CarbonImmutable::parse(...), $payload['visits'])) : new Optional,
             meta: array_key_exists('meta', $payload) ? $payload['meta'] : new Optional,
             user_id: array_key_exists('user-id', $payload) ? $payload['user-id'] : new Optional,

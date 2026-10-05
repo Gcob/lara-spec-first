@@ -81,7 +81,7 @@ components:
         matrix:
           type: array
           items:
-            type: array
+            type: [array, 'null']
             items: { type: integer }
         visits:
           type: array

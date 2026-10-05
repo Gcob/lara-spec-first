@@ -209,6 +209,17 @@ depth, so the rules stop at the point a schema repeats its ancestor: `address.pa
 Building the ancestor's DTO from it would build a typed object from input nothing checked, and a `parent: "oops"` would
 be a `TypeError` in `from()` and a 500 where the request owed a 422. The value reaches the controller as it arrived.
 
+**A schema in a recursive pair is `mixed` where it is nested.** `Author` holds `Book`s and `Book` holds an `Author`:
+each is expanded to a different depth depending on where the build enters it, and so are the rules that validate it. One
+class cannot match both, because the operation that reached it from the other side would hand `from()` input nothing
+checked. A schema that only repeats itself (`Address` holding an `Address`) is the same shape everywhere and stays a
+DTO. A key the rules cannot name when its object is nested (a required `user.name`) is optional in the DTO, so that a
+schema's shape does not depend on which operation reached it first.
+
+**An enumeration value is written in the docblock only when it is safe to.** A value is data from the specification and
+a docblock is code: a string holding the sequence that closes a comment would end it early. Such a value costs the
+property its literal union and nothing else.
+
 **A property whose schema states no single type is `mixed`, and says so.** A `oneOf`, a union of two types or a schema
 with no `type` never reaches a rule that names one, so the DTO reads the value as it came and the file's findings send
 the reader to the request's, which says what was not enforced. An optional `mixed` is declared `mixed` and written
