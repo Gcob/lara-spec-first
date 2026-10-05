@@ -131,10 +131,27 @@ final readonly class BuildPlanner
             $planned,
         );
 
+        // The DTOs are planned from the requests, and each request then learns
+        // which one its `dto()` returns: the two refer to each other, so one
+        // of them has to be built first and given the other afterwards.
+        $inputDtos = (new InputDtoPlanner)->plan($requests);
+        $requests = array_map(
+            static fn (PlannedRequest $request): PlannedRequest => $request->withDto(
+                $inputDtos->readBy[$request->operation->label()] ?? null,
+            ),
+            $requests,
+        );
+
         $formRequests = new FormRequestEmitter($this->namespace, $this->specPath);
 
         foreach ($requests as $request) {
             $files[] = $formRequests->emit($request);
+        }
+
+        $dtoEmitter = new InputDtoEmitter($this->namespace, $this->specPath);
+
+        foreach ($inputDtos->dtos as $dto) {
+            $files[] = $dtoEmitter->emit($dto);
         }
 
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);

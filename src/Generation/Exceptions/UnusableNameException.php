@@ -160,4 +160,76 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
             $shortName
         ));
     }
+
+    /**
+     * Two different schemas that would generate one input DTO class.
+     *
+     * **Named by position, because the schema's name is the one thing they
+     * share.** `Pet` in two files, or a component `Pet` beside a file `Pet.yaml`,
+     * is the contract saying two things under one name, and the DTO's name comes
+     * from the name alone: whichever won would silently be the other's type.
+     * An inline schema's position is the operation's, which is what a reader
+     * edits to resolve it.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "Two directions, two types"
+     */
+    public static function inputDtoClaimedTwice(string $shortName, string $first, string $second): self
+    {
+        return new self(sprintf(
+            'The schemas written at "%s" and at "%s" both generate the input DTO "%s", and the two '.
+            'are not the same schema. A DTO is named after the schema it describes, so two '.
+            'different ones cannot share a name: rename one of the components, or give an inline '.
+            'schema a component name of its own.',
+            $first,
+            $second,
+            $shortName
+        ));
+    }
+
+    /**
+     * A schema name that leaves no class name behind.
+     */
+    public static function schemaNameUnusable(string $name, string $position): self
+    {
+        return new self(sprintf(
+            'The schema "%s", written at "%s", would generate a DTO class name that is not a usable '.
+            'PHP identifier. A DTO takes its name from the schema it describes, with every character '.
+            'that is not a letter, a digit or an underscore dropped, so rename the schema to something '.
+            'that still starts with a letter or an underscore after that.',
+            $name,
+            $position
+        ));
+    }
+
+    /**
+     * Two keys of one schema that derive one property name.
+     */
+    public static function propertyClaimedTwice(string $dto, string $property, string $first, string $second): self
+    {
+        return new self(sprintf(
+            'The keys "%s" and "%s" of the schema behind the input DTO "%s" both derive the property '.
+            'name "$%s". A key that is not a PHP identifier gets a derived name, and two keys '.
+            'cannot share one, so rename one of them in the specification.',
+            $first,
+            $second,
+            $dto,
+            $property
+        ));
+    }
+
+    /**
+     * One schema read as a multipart body by one operation and as something
+     * else by another, with a file part in it.
+     */
+    public static function inputDtoServesFilesAndStrings(string $shortName, string $position): self
+    {
+        return new self(sprintf(
+            'The schema written at "%s" is sent as `multipart/form-data` by one operation and as '.
+            'another media type by another, and it has a file part. That part is an `UploadedFile` '.
+            'in the first and a string in the second, so the one input DTO "%s" cannot be both. '.
+            'Give the multipart operation a schema of its own.',
+            $position,
+            $shortName
+        ));
+    }
 }

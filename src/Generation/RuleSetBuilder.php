@@ -148,6 +148,11 @@ final readonly class RuleSetBuilder
             $closedKeys = self::bodyRules($operation, $body, $walk);
         }
 
+        // A query string carries no file, so the parameters below are never read
+        // as one, whatever the body is.
+        $multipart = $walk->multipart;
+        $walk->multipart = false;
+
         foreach ($operation->queryParameters as $parameter) {
             $unescapable = self::unescapableKey($parameter->name);
 
@@ -204,7 +209,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence, insideList: false);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart);
     }
 
     /**
@@ -561,7 +566,7 @@ final readonly class RuleSetBuilder
         // and a string the moment the body can also be JSON. A schema that
         // says both "file" and some other type is not read as a file: the
         // other type is what the rules would answer to.
-        if ($walk->multipart && $schema->isFilePart && ($type === SchemaType::String || $schema->types === [])) {
+        if (self::isFile($schema, $walk->multipart)) {
             // `required` rather than `present`: Laravel's `required` is the
             // rule that means "a file was sent", and an empty upload slot is
             // not one. A nullable part keeps `present`.
@@ -722,6 +727,20 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * Whether a schema is read as a file: the schema says so, the body is
+     * `multipart/form-data` alone, and the schema does not also say it is some
+     * other type, since the other type is what its rules would answer to.
+     *
+     * @internal Public so the input DTO asks the question the rules did.
+     */
+    public static function isFile(Schema $schema, bool $multipart): bool
+    {
+        return $multipart
+            && $schema->isFilePart
+            && ($schema->soleType() === SchemaType::String || $schema->types === []);
+    }
+
+    /**
      * What a file part becomes: `file`, the types its `contentMediaType` names,
      * and a size in kilobytes.
      *
@@ -743,9 +762,8 @@ final readonly class RuleSetBuilder
      * is not literally an octet stream: a rule stricter than the contract, in
      * the direction of refusing valid payloads.
      *
-     * **`maxLength` is bytes, `max` is kilobytes, rounded down.** A ceiling
-     * under one kilobyte has no rule: `max:0` would refuse every file with
-     * content, which is no rounding.
+     * **`maxLength` is bytes and `max` is kilobytes, and the ceiling is exact.**
+     * Laravel's `max` takes a decimal, so 2500 bytes is `max:2.44140625`.
      *
      * @param  list<string|InRule>  $rules
      * @param  list<string>  $handled
@@ -766,19 +784,11 @@ final readonly class RuleSetBuilder
             $rules[] = 'mimetypes:'.$mediaType;
         }
 
+        // A decimal, because Laravel's `max` compares with a `BigNumber` and takes
+        // one: `max:2.44140625` is 2500 bytes exactly. A byte count over 1024 always
+        // has a finite decimal expansion, so the ceiling is exact to the byte.
         if ($schema->maxLength !== null) {
-            $kilobytes = intdiv($schema->maxLength, 1024);
-
-            if ($kilobytes >= 1) {
-                $rules[] = 'max:'.$kilobytes;
-            } else {
-                $walk->findings[] = sprintf(
-                    '%s declares `maxLength: %d` on a file, below the one kilobyte Laravel\'s `max` can '
-                        .'express, so its size is not enforced.',
-                    $label,
-                    $schema->maxLength,
-                );
-            }
+            $rules[] = 'max:'.self::number($schema->maxLength / 1024);
         }
 
         $walk->findings[] = sprintf(
@@ -911,8 +921,11 @@ final readonly class RuleSetBuilder
      * Whether a key name cannot appear in a rule's list of key names: a comma
      * splits the list, and a dot is read as nesting before the rule sees the
      * data.
+     *
+     * @internal Public so the input DTO asks the question the rules did, and the
+     *           two cannot drift apart.
      */
-    private static function breaksKeyList(string $name): bool
+    public static function breaksKeyList(string $name): bool
     {
         return str_contains($name, ',') || str_contains($name, '.');
     }
@@ -1140,8 +1153,10 @@ final readonly class RuleSetBuilder
      * rule set is short by a field rather than wrong about one, and a build
      * that turned away a valid contract over a rare spelling would be the
      * worse answer.
+     *
+     * @internal Public for the reason {@see self::breaksKeyList()} gives.
      */
-    private static function unescapableKey(string $field): ?string
+    public static function unescapableKey(string $field): ?string
     {
         return str_contains($field, '*')
             ? sprintf(

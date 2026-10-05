@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Generation;
 
+use Gcob\LaraSpecFirst\Contract\Schema;
+
 /**
  * What one operation's `rules()` returns, and what the build could not put in
  * it.
@@ -35,11 +37,21 @@ final readonly class RuleSet
      *                                         for `array:` to sit on, so the
      *                                         emitter turns these into an
      *                                         `after()` check
+     * @param  Schema|null  $body  the body schema the rules were built from, as
+     *                             written, so the input DTO is derived from the
+     *                             same statement and cannot disagree about which
+     *                             media type was read
+     * @param  bool  $multipart  whether `multipart/form-data` is the only media
+     *                           type read, which is the one body a part can be a
+     *                           file in. The DTO asks the same question the
+     *                           rules did, and takes the answer from here
      */
     public function __construct(
         public array $rules = [],
         public array $findings = [],
         public ?array $closedKeys = null,
+        public ?Schema $body = null,
+        public bool $multipart = false,
     ) {}
 
     /**

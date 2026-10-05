@@ -15,7 +15,8 @@ tags: [code-generation, openapi, decisions, dependencies, laravel]
 
 > **In brief**
 >
-> - **Not built yet.** Nothing emits a DTO today; this is the shape Phase 2 will follow on both sides.
+> - **The request side is built.** `spec:build` writes one input DTO per request body, in the `Data` sub-namespace. The
+>   response side is the shape [#39](https://github.com/Gcob/lara-spec-first/issues/39) will follow.
 > - A DTO is a constructor, a `from()` and a `toArray()`, and the build writes all three in full.
 > - A field the client did not send is `Optional`, a class of this package, and `toArray()` leaves it out.
 > - The shape is borrowed from `spatie/laravel-data`. Its engine is not, because the build already knows what that
@@ -27,10 +28,11 @@ A DTO is the contract's shape as a PHP type.
 one, and [`response-dtos.md`](./response-dtos.md) owns why a response is built from one and who builds it. This file
 owns what is inside the class, which is the same on both sides.
 
-> **None of this is behavior yet.** The build emits no DTO. The request side lands with
-> [#35](https://github.com/Gcob/lara-spec-first/issues/35) and the response side with
-> [#39](https://github.com/Gcob/lara-spec-first/issues/39). Items marked `Open` are undecided, and the number beside one
-> links to the card that settles it.
+> **Part of this is behavior and part of it is design.** The request side is built, by
+> [#35](https://github.com/Gcob/lara-spec-first/issues/35): every row below marked "request side" is what the build
+> writes today. The response side lands with [#39](https://github.com/Gcob/lara-spec-first/issues/39), and what is said
+> about it is the design that card will follow. Items marked `Open` are undecided, and the number beside one links to
+> the card that settles it.
 
 ## One class, three members
 
@@ -106,6 +108,16 @@ What each member is for:
    `jsonSerialize()` returns the same array, so a DTO returned from a controller becomes a JSON response through
    Laravel's own router with nothing registered.
 
+**A DTO is named after the schema it describes, with `Input` on the request side, and never after the `$ref` that
+reached it or the file that holds it.** `#/components/schemas/NewUser` gives `NewUserInputDto` and
+`NewUserPartialInputDto`, and `./other.yaml#/components/schemas/NewUser` gives the same two names, because splitting a
+specification across files does not change the contract and must not rename a class a controller imports. A body written
+inline takes its operation's name, `CreateUserInputDto`, and an object nested inline takes its parent's name and its
+property's, `CreateUserAddressInputDto`, with `Item` added for an element of an array. **Two different schemas that give
+one name are a build error naming where each is written**, and so is a component name that is not a class name once it
+is turned into one. Where a schema is written goes in the file's `Provenance`, which is where a DTO that came from
+another file says so.
+
 **A property is named exactly like the contract's key** when the key is a valid PHP identifier, so `created_at` in the
 specification is `$created_at` in the class and one `grep` finds both. A key that is not an identifier (`user-id`,
 `2fa`) gets a derived name, and `from()` and `toArray()` keep the key as written. Two keys deriving the same name are a
@@ -174,22 +186,56 @@ reading on both sides.
 [`Contract\Schema`](../openapi-support.md#the-normal-form-a-schema-takes), so nothing below depends on which OpenAPI
 version wrote the document:
 
-| The schema says                                                              | The property is                | `from()` does                           | `toArray()` does    |
-| ---------------------------------------------------------------------------- | ------------------------------ | --------------------------------------- | ------------------- |
-| `string`                                                                     | `string`                       | Reads it                                | Writes it           |
-| `integer`                                                                    | `int`                          | `(int)`, request side only              | Writes it           |
-| `number`                                                                     | `float`                        | `(float)`, request side only            | Writes it           |
-| `boolean`                                                                    | `bool`                         | `(bool)`, request side only             | Writes it           |
-| `string`, `format: date-time`                                                | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toRfc3339String()` |
-| `string`, `format: date`                                                     | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toDateString()`    |
-| `enum`                                                                       | Its scalar type                | Reads it                                | Writes it           |
-| `object` with `properties`, via `$ref`                                       | The DTO named after the schema | `::from()`                              | `->toArray()`       |
-| `object` with `properties`, inline                                           | A DTO named after its parent   | `::from()`                              | `->toArray()`       |
-| `object` with no `properties`                                                | `array<string, mixed>`         | Reads it                                | Writes it           |
-| `array` with `items`                                                         | `list<T>`, in the docblock     | `array_map()` with `T`'s own conversion | The same, back      |
-| A file part                                                                  | `UploadedFile`                 | Reads it                                | Writes it as is     |
-| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The ancestor's DTO             | `::from()`                              | `->toArray()`       |
-| `nullable`                                                                   | `?T`                           | Checks for `null` before any conversion | Writes the `null`   |
+| The schema says                                                              | The property is                | `from()` does                           | `toArray()` does  |
+| ---------------------------------------------------------------------------- | ------------------------------ | --------------------------------------- | ----------------- |
+| `string`                                                                     | `string`                       | Reads it                                | Writes it         |
+| `integer`                                                                    | `int`                          | `(int)`, request side only              | Writes it         |
+| `number`                                                                     | `float`                        | `(float)`, request side only            | Writes it         |
+| `boolean`                                                                    | `bool`                         | `(bool)`, request side only             | Writes it         |
+| `string`, `format: date-time`                                                | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `format()`, below |
+| `string`, `format: date`                                                     | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toDateString()`  |
+| `enum`                                                                       | Its scalar type                | Reads it, or casts it as its type does  | Writes it         |
+| `object` with `properties`, via `$ref`                                       | The DTO named after the schema | `::from()`                              | `->toArray()`     |
+| `object` with `properties`, inline                                           | A DTO named after its parent   | `::from()`                              | `->toArray()`     |
+| `object` with no `properties`                                                | `array<string, mixed>`         | Reads it                                | Writes it         |
+| `array` with `items`                                                         | `list<T>`, in the docblock     | `array_map()` with `T`'s own conversion | The same, back    |
+| A file part                                                                  | `UploadedFile`                 | Reads it                                | Writes it as is   |
+| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | `mixed`                        | Reads it                                | Writes it         |
+| `nullable`                                                                   | `?T`                           | Checks for `null` before any conversion | Writes the `null` |
+| No single type, or none at all                                               | `mixed`                        | Reads it                                | Writes it         |
+
+**A node that recurses is `mixed` too, and the reason is that nothing validated it.** No rule set reaches an infinite
+depth, so the rules stop at the point a schema repeats its ancestor: `address.parent` has no rule beyond `sometimes`.
+Building the ancestor's DTO from it would build a typed object from input nothing checked, and a `parent: "oops"` would
+be a `TypeError` in `from()` and a 500 where the request owed a 422. The value reaches the controller as it arrived.
+
+**A schema in a recursive pair is `mixed` where it is nested.** `Author` holds `Book`s and `Book` holds an `Author`:
+each is expanded to a different depth depending on where the build enters it, and so are the rules that validate it. One
+class cannot match both, because the operation that reached it from the other side would hand `from()` input nothing
+checked. A schema that only repeats itself (`Address` holding an `Address`) is the same shape everywhere and stays a
+DTO. A key the rules cannot name when its object is nested (a required `user.name`) is optional in the DTO, so that a
+schema's shape does not depend on which operation reached it first, and the file's findings say so for each such key.
+
+**An enumeration value is written in the docblock only when it is safe to.** A value is data from the specification and
+a docblock is code: a string holding the sequence that closes a comment would end it early. Such a value costs the
+property its literal union and nothing else.
+
+**A property whose schema states no single type is `mixed`, and says so.** A `oneOf`, a union of two types or a schema
+with no `type` never reaches a rule that names one, so the DTO reads the value as it came and the file's findings send
+the reader to the request's, which says what was not enforced. An optional `mixed` is declared `mixed` and written
+`Optional|mixed` in its docblock, since PHP refuses `mixed` inside a union.
+
+**An enumeration that is cast keeps its scalar type and no literal union.** `(int) $payload['level']` is an `int` to
+Larastan and never `1|2`, so a docblock saying otherwise would be a claim the line beside it contradicts. The cast is
+what lets a multipart body's `"1"` into an `int`, and the rule set has already refused every value outside the
+enumeration. The allowed values are still written, in words, in the description of the `@param` (`one of 1, 2`), so a
+person or a tool reading the class sees the domain at once. A string enumeration is read as it came, so its literal
+union is true and stays.
+
+**A `date-time` is written back with its fraction.** `toRfc3339String()` drops it, and the request rule set accepts a
+fraction of any length (Go sends up to nine digits, .NET seven), so a `toArray()` built on it would lose the sub-second
+part of a value on the way to mass assignment. The request side writes `format('Y-m-d\TH:i:s.uP')`, which keeps what
+Carbon holds, microseconds. The response side is #39's to decide.
 
 **A `null` is checked before anything converts it.** `CarbonImmutable::parse(null)` is the current time and `(int) null`
 is `0`, so a nullable property's conversion is wrapped rather than applied:

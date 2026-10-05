@@ -116,8 +116,15 @@ paths:
         # empty here and every property is `sometimes`. Diff the two generated
         # files to see it, and read their Findings blocks for everything the
         # schema states that no rule enforces yet.
+        #
+        # It also names a controller, so the generated parent is extendable and
+        # `workbench/app/Http/Controllers/Posts/UpdatePostController.php` answers
+        # for real: it reads `$request->dto()`, the partial input DTO, and says
+        # which properties the client sent, which is the question a `PATCH` has
+        # to answer without writing a `null` over a stored column.
         patch:
             operationId: updatePost
+            x-controller: Workbench\App\Http\Controllers\Posts\UpdatePostController
             summary: Change part of a post
             tags: [Posts]
             parameters:
@@ -133,8 +140,8 @@ paths:
 
     /posts/{postId}/attachments:
         # A multipart body, and the one place a part is a file. `cover` becomes
-        # `file`, `mimetypes:image/png` and `max:2` (2500 bytes, rounded down to
-        # whole kilobytes), `gallery` becomes an array plus the same rules under
+        # `file`, `mimetypes:image/png` and `max:2.44140625` (2500 bytes, exact),
+        # `gallery` becomes an array plus the same rules under
         # `gallery.*`, and `anything` states `application/octet-stream`, which
         # means "any bytes" and so adds no `mimetypes`. The generated file's
         # Findings block says that an `encoding` written beside the body is not

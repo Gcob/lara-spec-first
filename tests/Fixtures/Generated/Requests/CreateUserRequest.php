@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests;
 
+use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\CreateUserInputDto;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -29,6 +30,9 @@ use Illuminate\Validation\Validator;
  *   - Messages and attribute names come from `lang/en/validation.php`, which Laravel already reads
  *     per field and per rule. Normalize a payload in `middleware()`, which runs before this class
  *     does.
+ *   - `dto()` returns the body as `CreateUserInputDto`, built from `validated()`, which keeps
+ *     returning Laravel's array. A `query` parameter is not a property of it: read one with
+ *     `validated('name')`.
  *   - `website` declares `format: uri`, which no Laravel rule means the same as, so it is not
  *     enforced.
  *
@@ -37,6 +41,8 @@ use Illuminate\Validation\Validator;
  *   @see `\Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Controllers\CreateUserController::routeAction()`
  *        — the method that declares this class, and what makes Laravel run it
  *   @see routes.php — the route that reaches that method
+ *   @see `\Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\CreateUserInputDto`
+ *        — what `dto()` returns
  */
 final class CreateUserRequest extends FormRequest
 {
@@ -69,6 +75,11 @@ final class CreateUserRequest extends FormRequest
         ];
     }
 
+    public function dto(): CreateUserInputDto
+    {
+        return CreateUserInputDto::from($this->validated());
+    }
+
     /**
      * @return list<callable(Validator): void>
      */
@@ -76,7 +87,7 @@ final class CreateUserRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                $body = $this->isJson() ? $this->json()->all() : [...$this->request->all(), ...$this->files->all()];
+                $body = $this->isJson() ? $this->json()->all() : $this->request->all() + $this->files->all();
 
                 foreach (array_keys($body) as $key) {
                     if (! in_array((string) $key, self::BODY_KEYS, true)) {

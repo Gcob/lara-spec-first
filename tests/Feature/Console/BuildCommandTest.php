@@ -182,10 +182,44 @@ it('emits a request for every operation with something to validate, and no other
             'Controllers/DeletePostController.php',
             'Controllers/ReplacePostController.php',
             'Controllers/UpdatePostController.php',
+            // One schema under a `PUT` and a `PATCH`: one full type and one
+            // partial type, shared by both rather than one pair each.
+            'Data/PostInputDto.php',
+            'Data/PostPartialInputDto.php',
             'Requests/ReplacePostRequest.php',
             'Requests/UpdatePostRequest.php',
             GeneratedRoutesLocator::FILE,
         ]);
+});
+
+// The DTO is named after the schema, and each method reads the type its rule
+// set describes: the `PUT` the full one, the `PATCH` the partial one.
+it('names an input DTO after its schema and says which operation reads it', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));
+    build();
+
+    $full = (string) file_get_contents(buildTree().'/Data/PostInputDto.php');
+    $partial = (string) file_get_contents(buildTree().'/Data/PostPartialInputDto.php');
+
+    expect($full)->toContain('final readonly class PostInputDto implements Arrayable, JsonSerializable')
+        ->and($full)->toContain('public string $title,')
+        ->and($full)->toContain('Read by `put /posts/{id}`.')
+        ->and($partial)->toContain('public Optional|string $title,')
+        ->and($partial)->toContain('Read by `patch /posts/{id}`.');
+});
+
+// The Gherkin's fourth scenario, for the other half of the output: a DTO is a
+// file like any other, so removing the operation removes it.
+it('prunes an input DTO whose operation left the contract', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));
+    build();
+
+    expect(is_file(buildTree().'/Data/PostInputDto.php'))->toBeTrue();
+
+    config()->set('lara-spec-first.spec.path', specFixturePath('operations.yaml'));
+    build();
+
+    expect(is_dir(buildTree().'/Data'))->toBeFalse();
 });
 
 // "And the build says so rather than emitting an empty class."

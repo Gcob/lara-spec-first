@@ -97,6 +97,18 @@ final readonly class RequestName
     }
 
     /**
+     * The name without its `Request` suffix, which is what an input DTO derived
+     * from the same operation is named after.
+     *
+     * One derivation for both, so `CreateUserRequest` and `CreateUserInputDto`
+     * cannot drift apart: they answer one endpoint and read as the same word.
+     */
+    public function stem(): string
+    {
+        return substr($this->shortName, 0, -strlen('Request'));
+    }
+
+    /**
      * @param  string  $namespace  the configured generated root namespace
      */
     public function fullyQualifiedName(string $namespace): string

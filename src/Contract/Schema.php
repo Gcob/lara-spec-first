@@ -41,6 +41,17 @@ final readonly class Schema
      *                             generator calls the class it emits is its own
      *                             decision; this is only what the author called
      *                             the schema
+     * @param  string|null  $source  where the schema this one names is written,
+     *                               spelled the way every position is: a bare
+     *                               JSON Pointer for the root document, and
+     *                               `path.yaml#/pointer` for another file. Set
+     *                               exactly when `name` is, and null for a
+     *                               schema written inline, whose position is
+     *                               its operation's. A recursion marker has a
+     *                               name and no source: `recursesTo` is its
+     *                               position Two schemas of one name
+     *                               written in two places are two schemas, and
+     *                               this is what tells a generator which two
      * @param  list<SchemaType>  $types  always a list, never a bare string, and
      *                                   empty when the document states no type.
      *                                   3.0's single string and 3.1's union
@@ -127,6 +138,7 @@ final readonly class Schema
         public bool $isFilePart = false,
         public ?string $contentMediaType = null,
         public ?string $recursesTo = null,
+        public ?string $source = null,
     ) {}
 
     /**

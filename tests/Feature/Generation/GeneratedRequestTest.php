@@ -480,6 +480,22 @@ it('reads an exclusive bound as a strict comparison', function (float|int $value
     'above it, not a multiple' => [1.2, 422],
 ]);
 
+// The files are a bag of their own, so a closed root that read only the form bag
+// would let an undeclared upload through.
+it('refuses an undeclared upload on a closed root', function (): void {
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/users',
+        'POST',
+        ['email' => 'someone@example.test'],
+        [],
+        ['extra' => UploadedFile::fake()->create('a.bin', 1)],
+        ['HTTP_ACCEPT' => 'application/json'],
+    ));
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and(array_keys((array) (json_decode((string) $response->getContent(), true)['errors'] ?? [])))->toBe(['extra']);
+});
+
 // The closed root, through the emitted class itself: an undeclared top-level
 // key is refused, and the query string is not the body.
 it('refuses a top-level key the body does not declare', function (): void {
@@ -653,15 +669,17 @@ it('does not read application/octet-stream as a type to match', function (): voi
         ->and(statusForUpload(oneField(filePart('*/*')), ['field' => $png]))->toBe(200);
 });
 
-// Laravel sizes a file in kilobytes of 1024 bytes and a contract states bytes:
-// the ceiling is rounded down, so 2500 bytes becomes `max:2`.
-it('rounds a size ceiling down to whole kilobytes', function (int $kilobytes, int $status): void {
-    expect(statusForUpload(oneField(filePart(maxLength: 2500)), ['field' => UploadedFile::fake()->create('a', $kilobytes)]))
-        ->toBe($status);
+// Laravel sizes a file in kilobytes of 1024 bytes and takes a decimal ceiling, so
+// 2500 bytes is `max:2.44140625` and the contract's number is exact to the byte.
+it('enforces a size ceiling to the byte', function (int $bytes, int $maxLength, int $status): void {
+    $upload = UploadedFile::fake()->createWithContent('a.bin', str_repeat('x', $bytes));
+
+    expect(statusForUpload(oneField(filePart(maxLength: $maxLength)), ['field' => $upload]))->toBe($status);
 })->with([
-    'one kilobyte' => [1, 200],
-    'exactly the rounded ceiling' => [2, 200],
-    'over it' => [3, 422],
+    'at the ceiling' => [2500, 2500, 200],
+    'one byte over' => [2501, 2500, 422],
+    'under a kilobyte, at the ceiling' => [500, 500, 200],
+    'under a kilobyte, one byte over' => [501, 500, 422],
 ]);
 
 it('lets a file part be null when the schema says so', function (): void {

@@ -74,7 +74,7 @@ generator carries neither spelling: it carries
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `format: binary`, or `contentMediaType`        | `file`, in a body that is `multipart/form-data` alone                                        |
 | `contentMediaType`                             | `mimetypes:` with the declared type, `image/*` included, since Laravel matches a wildcard    |
-| `maxLength` on a binary part                   | `max:` in kilobytes, the contract's bytes over 1024, rounded down deliberately               |
+| `maxLength` on a binary part                   | `max:` in kilobytes, the contract's bytes over 1024, as the exact decimal                    |
 | The part is in the body root's `required` list | `required` beside the file rules                                                             |
 | The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable |
 | `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`           |
@@ -93,6 +93,11 @@ property in a JSON or form-encoded body is a string like any other, and the rule
 enforces. The same goes when one schema is declared under `multipart/form-data` **and** another read media type: one
 rule set cannot hold both a `file` and the string a JSON body sends, and `file` would refuse every valid JSON request,
 so the part is read as a string and the body's findings say why. A contract that needs both is two operations.
+
+**One schema sent both ways is refused when it has a file part.** A part is an `UploadedFile` in the multipart operation
+and a string in the other, so the one input DTO that schema names cannot serve both: the build stops and names where the
+schema is written. The fix is a schema of its own for the multipart operation. A schema with no file part in it is not
+affected, since nothing in its DTO depends on the media type.
 
 **`application/octet-stream` and `*/*` mean "any bytes", so they add no `mimetypes`.** `mimetypes` inspects the file's
 real type, and matching `application/octet-stream` literally refuses a PNG: measured, not assumed. Emitting it would
@@ -122,20 +127,12 @@ is a security default rather than a bug. A contract declaring `text/x-php` there
 it wrote, and that is where the package stops: overriding a framework security default from a generated class is not
 something a specification should be able to ask for.
 
-**Rounded down, and this one is a decision rather than a translation.** Laravel sizes a file in kilobytes and a contract
-states bytes, so no rule expresses a 2500-byte ceiling exactly: `max:2` refuses the 451 bytes between 2049 and 2500 that
-the contract allowed, and `max:3` accepts 572 bytes it refused. Both directions break something, so the tie goes to the
-direction that keeps the rule doing its job, which is stopping what is too big.
-
-**That is a knowing exception to "never stricter than the contract", and it is narrow.** The principle
-[the mapping tables state](./code-generation/request-validation.md#every-constraint-maps-or-reports) is about the shape
-of a payload: never turn away a form the document describes. Here the form is accepted and the ceiling lands under a
-kilobyte away from where the contract put it, which is a rounding on one number rather than a shape refused. A contract
-that needs the byte exactly is describing something Laravel's `max` cannot count.
-
-**Below one kilobyte there is no rule, and the file part says so.** `max:0` would refuse every file with content, which
-is no rounding: it is a rule that turns a ceiling into a wall. So a `maxLength` under 1024 on a file is reported in the
-findings, and the size is not enforced.
+**The ceiling is exact, because Laravel's `max` takes a decimal.** It sizes a file in kilobytes and a contract states
+bytes, and an earlier version of this page concluded that no rule could say 2500 bytes, so it rounded down. Measured
+against the validator with real uploads, that was wrong: `max` compares with a `BigNumber`, so `max:2.44140625` accepts
+a 2500-byte file and refuses one of 2501. A byte count over 1024 always has a finite decimal expansion, so every ceiling
+is exact to the byte, one under a kilobyte included (`maxLength: 500` is `max:0.48828125`). Nothing is rounded and
+nothing is reported.
 
 A `maxLength` on a base64 string in a JSON body is a different thing: the part is a string there, and `max` counts its
 characters, which is what the contract's `maxLength` counts for an encoded string.
