@@ -42,14 +42,15 @@ how the class reaches the controller that needs `$validated`.
 `spec:build` emits one `final` `FormRequest` per operation that states anything about its input, into the `Requests`
 sub-namespace of the generated tree, and declares it as `routeAction`'s first parameter. What a rule set contains today:
 
-| Built                                                                                                   | Reported and not enforced                                                                       |
-| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `string`, `integer`, `numeric` (from `number`), `boolean`                                               | Every keyword that constrains a value: lengths, bounds, `pattern`, `format`, `enum`             |
-| `nullable`, from the type list                                                                          | `array` and `object`, whose element and property rules are a pass of their own                  |
-| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`           | `allOf`, `additionalProperties: false`, `dependentRequired`                                     |
-| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                          | [An optional body's "all or none"](#an-optional-body-all-or-none), which is `sometimes` for now |
-| A `query` parameter, with its own `required`                                                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for           |
-| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed |                                                                                                 |
+| Built                                                                                                        | Reported and not enforced                                                                    |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Every row of [the mapping table](#every-constraint-maps-or-reports): types, bounds, `format`, `enum`, arrays | A `format` no Laravel rule means the same as, `uri` the most common                          |
+| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`                | A `pattern` across [the ECMA-262 / PCRE boundary](../openapi-support.md#strings-and-numbers) |
+| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | A recursive schema below the point it repeats, since no rule set reaches infinity            |
+| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A file part, which [`uploads.md`](../uploads.md) owns                                        |
+| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for        |
+| A `query` parameter, with its own `required`                                                                 | A bound on a field that states no single type                                                |
+| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                              |
 
 **A body declared only in media types this package does not read gets no class**, the same as an operation stating
 nothing, and `spec:build` warns about it on a line of its own: unlike that operation, this one states something nobody
@@ -97,6 +98,14 @@ get `sometimes`. **And the method does not touch it.**
 [`PATCH` empties the body schema's required list](#patch-empties-the-required-list) because a partial update is a
 statement about the resource's representation, and a query parameter is not part of that representation: `?notify=1` is
 as required on a `PATCH` as it is on a `PUT`.
+
+**An array query parameter gets its presence rule and nothing else, and an object query parameter gets nothing.** A
+query string is not JSON: OpenAPI's default serialization of an array is `?tag=a&tag=b`, of which PHP keeps only the
+last value, and `explode: false` sends `?tag=a,b` as one string. `style` and `explode` are not read, so the value
+reaching the validator is not the shape the schema describes, and every rule about that shape would refuse a valid
+request. An object is worse off still: the default style sends one key per property, `?status=a`, and never the
+parameter's own name, so even its presence would refuse a valid request, and it is `sometimes` whatever its `required`
+flag. The generated file says so in both cases.
 
 **A path parameter is the router's question, and its answer is a 404.** `/users/abc` on an operation whose `{id}` is an
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong
@@ -148,14 +157,16 @@ rule, not one this package invents, and it is a merge rather than a collision.
 ### An optional body, all or none
 
 **`requestBody.required: false` means the whole payload may be absent, and never that a required property became
-optional.** So the rule set has to accept nothing and refuse half of something, and `required_with` says exactly that:
-each field in the required list names the others.
+optional.** So the rule set has to accept nothing and refuse half of something, and `present_with` says exactly that:
+each field in the required list names every other key the body may carry, optional ones included. Naming only the
+required ones would accept a body made of an optional key alone, which is a body, and one the contract refuses.
 
 ```php
-// A requestBody that is not required, whose schema requires street, city and code.
-'street' => ['required_with:city,code', 'string'],
-'city' => ['required_with:street,code', 'string'],
-'code' => ['required_with:street,city', 'string'],
+// A requestBody that is not required, whose schema requires street, city and code, and declares note too.
+'street' => ['present_with:city,code,note', 'string'],
+'city' => ['present_with:street,code,note', 'string'],
+'code' => ['present_with:street,city,note', 'string'],
+'note' => ['sometimes', 'string'],
 ```
 
 **What those three rules do, case by case:**
@@ -166,8 +177,9 @@ each field in the required list names the others.
 | `street` alone   | Refused. `city` and `code` both see `street`, and both become required         |
 | All three        | Validated against the rest of their rules, exactly as a required body would be |
 
-With one required property there is nothing to name, and it becomes `sometimes`. With none, every field was already
-`sometimes` and an absent body was already valid.
+When the body declares one key and requires it, there is nothing else to name, and it becomes `sometimes`: Laravel
+cannot tell an absent body from `{}`, so `{}` is accepted, and the generated file says so. With nothing required, every
+field was already `sometimes` and an absent body was already valid.
 
 **The cost is noise, and it is bounded.** Eight required properties mean eight rules naming seven siblings each, in a
 file nobody edits by hand. Nothing else in the rule set grows that way, and an optional body that requires properties is
@@ -178,8 +190,8 @@ return no rules when `$this->all()` is empty reads better on the page, and it gi
 
 1. **The query string is in `$this->all()`.** [Query parameters share the rule set](#one-rule-set-body-and-query), so
    `POST /addresses?dry_run=1` with no body stops looking empty, the body's required fields fire, and a request the
-   contract allows answers 422. `required_with` asks about the sibling fields instead, which is the question the
-   contract asked.
+   contract allows answers 422. `present_with` asks about the sibling fields instead, which is the question the contract
+   asked.
 2. **`rules()` stops being the whole answer**, which [nothing is allowed to do here](#nothing-rewrites-the-rule-set),
    whatever the hook it is done through.
 
@@ -291,7 +303,7 @@ state; what each honored one becomes is this table's.
 | `enum`                                  | `Rule::in()` with the declared values                                                                                   |
 | `const`                                 | `Rule::in()` with the one value                                                                                         |
 | `format: date`                          | `date_format:Y-m-d`                                                                                                     |
-| `format: date-time`                     | `date_format:` carrying the RFC 3339 spellings                                                                          |
+| `format: date-time`                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                     |
 | `format: email`, `uuid`, `ipv4`, `ipv6` | `email`, `uuid`, `ipv4`, `ipv6`                                                                                         |
 | `format: uri`                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                              |
 
@@ -305,24 +317,34 @@ and it is not worked around: a looser rule would accept what the contract refuse
 satisfy a `tags` declared `type: array`, which is a payload the contract refuses being accepted. `list` is
 `array_is_list()`, which is what a JSON array actually is, and the pair is what keeps that row honest.
 
-**`date_format` rather than `date` on both, because Laravel's `date` accepts whatever `strtotime` accepts**,
-`next tuesday` included, which is looser than anything a contract meant to say. The rule takes several formats and
-passes on the first that matches, and RFC 3339 needs six of them:
+**`date-time` is a grammar first and `date` second, because neither is enough alone.** Laravel's `date` accepts whatever
+`strtotime` accepts, `next tuesday` included, which is looser than anything a contract meant to say. The `regex:` in
+front of it holds the RFC 3339 shape, and `date` behind it adds the one thing a grammar cannot see, a calendar that
+exists:
 
 ```php
-'occurred_at' => ['present', 'string', 'date_format:Y-m-d\TH:i:sp,Y-m-d\TH:i:sP,Y-m-d\TH:i:s.vp,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.uP'],
+'occurred_at' => ['present', 'string', 'regex:/^[0-9]{4}-(0[1-9]|1[0-2])-…(\.[0-9]+)?([Zz]|[+-]…)$/D', 'date'],
 ```
 
-**Six rather than three, and the trap is worth naming because it bites silently.** `date_format` passes only when
-`$date->format($pattern)` reproduces the input exactly, and PHP's `p` prints `Z` for a zero offset where `P` prints
-`+00:00`. A pattern list built on `p` alone therefore accepts `2026-09-20T14:03:11Z` and **refuses**
-`2026-09-20T14:03:11+00:00`, which RFC 3339 allows and which plenty of producers emit. Each precision carries both
-spellings: seconds, milliseconds and microseconds, times `p` and `P`.
+**Not `date_format`, and the reason is the fraction.** `date_format` passes only when `$date->format($pattern)`
+reproduces the input exactly, and PHP has no variable-width fraction. Six patterns (`p` and `P` at whole seconds,
+milliseconds and microseconds, because `p` prints `Z` for a zero offset where `P` prints `+00:00`) covered a fraction of
+0, 3 or 6 digits. RFC 3339 allows any length, and the clients that matter send them: Go's `RFC3339Nano` writes up to
+nine digits with the trailing zeros trimmed, and .NET's round-trip format writes seven. Both answered 422 on a valid
+payload, so the rule is a pattern, which `\.[0-9]+` makes variable-width.
 
-**The lower-case form is a stated limit rather than a silent one.** RFC 3339 also permits `2026-09-20t14:03:11z`, and no
-PHP format character prints a lower-case offset, so covering it would mean literal-only patterns beside all six for a
-spelling that is vanishingly rare on the wire. A contract whose producers emit it is one this mapping does not serve,
-and saying so here is the difference between a limit and a defect.
+**What the pattern is careful about:**
+
+- **`[0-9]`, not `\d`, and no `u` modifier.** Under `u`, PCRE's `\d` matches digits of other scripts. Every character of
+  an RFC 3339 timestamp is ASCII, so the classes are too.
+- **`D`**, so `$` does not match before a trailing newline, the same reason `pattern` carries it.
+- **Hours below 24, minutes and seconds below 60, and the leap second `60`.** `date` alone would roll `24:00:00Z` over
+  to the next day, so the grammar refuses it. The offset's hour is bound the same way, `+24:00` is refused.
+- **`T` and `Z` in either case**, and `-00:00`, which RFC 3339 allows.
+
+`2026-02-30T00:00:00Z` matches the grammar and is refused by `date`, which is the division of labour. An execution test
+sends the payloads from each producer above, those refusals, and a trailing newline at the validator, since over HTTP
+Laravel's `TrimStrings` removes it first.
 
 Which `format` values are honored at all is [the matrix](../openapi-support.md#any-type)'s row.
 
@@ -338,52 +360,62 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 
 **Arrays and objects, where a rule is keyed rather than named:**
 
-| Schema                              | Laravel rule                                                                                  |
-| ----------------------------------- | --------------------------------------------------------------------------------------------- |
-| `items`                             | The element rules, under `field.*`                                                            |
-| `minItems`, `maxItems`              | `min`, `max` on the array itself                                                              |
-| `uniqueItems: true`                 | `distinct:strict` on `field.*`                                                                |
-| `properties`                        | One key per property, `field.child`, recursively                                              |
-| `additionalProperties: false`       | `array:` on a nested object's field, naming its declared keys                                 |
-| `required` under an optional object | `required_with:` naming the parent, since a key cannot be required while its object is absent |
-| `dependentRequired`                 | `required_with:` naming the properties that trigger it                                        |
+| Schema                        | Laravel rule                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                       | The element rules, under `field.*`                                                                                                                                                                                                                                                                   |
+| `minItems`, `maxItems`        | `min`, `max` on the array itself                                                                                                                                                                                                                                                                     |
+| `uniqueItems: true`           | `distinct:strict` on `field.*` when the elements are a typed scalar that may not be null, in an array that is not itself an element. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through |
+| `properties`                  | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                     |
+| `additionalProperties: false` | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                        |
+| `required` on a nested object | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                |
+| `dependentRequired`           | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                |
+| `allOf`                       | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                |
 
 **A nested object is validated as an array, keyed with dots.** One rule key per property, however deep the schema goes,
 which is Laravel's own notation for nested input and what `validated()` hands back:
 
 ```php
-'address' => ['present', 'array:street,city,postal_code'],
-'address.street' => ['required_with:address', 'string'],
-'address.city' => ['required_with:address', 'string'],
-'address.postal_code' => ['sometimes', 'string', 'regex:/^[A-Z]\d[A-Z] ?\d[A-Z]\d$/'],
+'address' => ['present', 'array:street,city,postal_code', 'required_array_keys:street,city'],
+'address.street' => ['sometimes', 'string'],
+'address.city' => ['sometimes', 'string'],
+'address.postal_code' => ['sometimes', 'string', 'regex:/^[A-Z][0-9][A-Z] ?[0-9][A-Z][0-9]$/uD'],
 ```
 
 **The dots stop at the validator.** What a controller reads is not that array: the generated request
 [hands it a DTO](#the-payload-arrives-as-a-dto) whose properties are the schema's, nested objects included, so
 `address.city` is a rule key and `$data->address->city` is how the value is read.
 
-**The payload's root takes an attribute rather than a rule**, because `array:` needs a field to sit on and the root is
-not one. Laravel ships `#[FailOnUnknownFields]` for it: every input key the rule set did not name becomes an error,
-nested keys included, read from the body rather than from `all()`, which is the right scope for a keyword that talks
-about the body's object. Without it an undeclared field is simply absent from `validated()`, so it never reaches a model
-either way; what the contract asked for and would not get is the request being refused.
+**`_with` is always `present_with`.** `required_with` refuses an empty value the way `required` does, and it also fires
+only when the trigger is non-blank, so a body sent as `{"note": null}` would require nothing while the contract says any
+key sent makes the rest required. Over HTTP the dependent's own type rule still refuses a blank value of its own, with
+the caveat the paragraph on empty values above states: a bare `""` is turned into `null` by `ConvertEmptyStringsToNull`
+before any rule runs, and it is the `null` the type rule refuses.
 
-**The attribute measures every depth at once, and that bounds where the build may use it.** A root forbidding unknown
-fields over an inner object that allows them would have the inner extras refused too, and a generated class stricter
-than the contract is worse than a missing rule: it turns away a payload the document promised to accept. So the build
-sets the attribute only when no object in the body's schema permits additional properties, and reports the root's
-`additionalProperties: false` as unhonored when one does.
+**The payload's root has no field for `array:` to sit on, so it gets an `after()` check instead.** The generated class
+carries the body's declared top-level keys as a constant and refuses any other key in the body, read from the body
+rather than from `all()`, so a query parameter is not mistaken for an undeclared field. Without it an undeclared field
+is simply absent from `validated()`, so it never reaches a model either way; what the contract asked for and would not
+get is the request being refused.
 
-**The attribute does not exist on the lowest Laravel this package supports, and the fallback is named rather than
-discovered.** It arrived during the 12.x line while `composer.json` declares `^12.0`, so there were two honest ways out:
-an `after()` closure on the generated class comparing the payload's keys against the rule set's, which is what the
-attribute does internally and what this package can write for itself, or the attribute behind a version gate with that
-closure underneath it anyway. The closure is the answer, because one emitted shape beats two that have to stay
-equivalent. Neither is emitted yet: the root's `additionalProperties: false` is reported as unenforced today.
+**Top-level keys only, and that is what lets the check run whenever the root closes itself.** Every nested object that
+closes itself already refuses its own extras through `array:` on its own key, so the root's check has nothing to add
+below the first level — and checking deeper would refuse the extras of a nested object that allows them, which a
+generated class stricter than the contract must never do.
+
+**Laravel's `#[FailOnUnknownFields]` was the other candidate, and it lost twice.** It does not exist on the lowest
+Laravel this package supports, so it would have needed a version gate with this check underneath it anyway — two emitted
+shapes that have to stay equivalent. And it measures every depth at once, so it could only have been used when no object
+in the body allows additional properties at all.
 
 **A property name containing a dot is escaped as `\.`**, because Laravel reads an unescaped dot in a rule key as
 nesting. `user.name` as a literal property name would otherwise generate rules for a `name` key inside a `user` object
 the contract never declared, which is a rule set that is wrong rather than incomplete.
+
+**A rule that lists key names cannot carry one with a dot or a comma**, and the two such rules here are `array:` and
+`required_array_keys:`. The comma splits the list, and Laravel has already read the data's dots as nesting by the time
+the rule runs, so the name would match nothing and refuse every valid payload. Such a name keeps its own rule key,
+escaped; what the parent cannot say about it — that it is required, or that nothing else is allowed — is reported in the
+generated file's findings.
 
 **A constraint that maps to nothing is named per operation by `spec:doctor`**, which is
 [#36](https://github.com/Gcob/lara-spec-first/issues/36)'s to build, and by the generated file's own findings for the

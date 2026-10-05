@@ -57,6 +57,13 @@ rather than one that was missing, and nothing downstream failed to say so.
   `query` parameters merged by field name; the scalar types, nullability and presence are mapped, and every keyword the
   build does not translate yet is named per field in the generated file's own findings rather than dropped. An operation
   with no body and no `query` parameter gets no class, and the build says how many.
+- **The whole mapping table is built.** String and number bounds, `multipleOf`, the `format` values Laravel has a rule
+  of the same meaning for (`date`, `date-time` as the RFC 3339 grammar, a fraction of any length included, `email`,
+  `uuid`, `ipv4`, `ipv6`), `enum` and `const` as `Rule::in()` over an array, `pattern` as `regex:` inside the ECMA-262 /
+  PCRE boundary, arrays with their element rules under `field.*`, nested objects under dotted keys, `allOf` merged,
+  `dependentRequired`, an optional body's "all or none", and `additionalProperties: false` at every depth. What stays
+  outside the boundary is named in the generated file's findings. Most of the support matrix's schema rows moved from
+  `Deferred` to `Supported`; `format`, `pattern` and `uniqueItems` to `Partial`.
 - **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first
   generated controller; the block said otherwise.
 

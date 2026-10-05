@@ -39,6 +39,15 @@ final readonly class FormRequestEmitter
      */
     private const BASE_CLASS = 'Illuminate\\Foundation\\Http\\FormRequest';
 
+    /**
+     * The two other framework classes a generated request may name, written
+     * rather than imported for the reason {@see self::BASE_CLASS} gives:
+     * `illuminate/validation` is not a dependency of this package either.
+     */
+    private const RULE_CLASS = 'Illuminate\\Validation\\Rule';
+
+    private const VALIDATOR_CLASS = 'Illuminate\\Validation\\Validator';
+
     public function __construct(
         private string $namespace,
         private string $specPath,
@@ -55,18 +64,18 @@ final readonly class FormRequestEmitter
 
             namespace {$this->namespace}\\Requests;
 
-            use {$this->import(self::BASE_CLASS)};
+            {$this->useStatements($planned->rules)}
 
             {$this->docblock($planned)}
             final class {$planned->name->shortName} extends FormRequest
             {
-                public function authorize(): bool
+            {$this->closedKeysConstant($planned->rules)}    public function authorize(): bool
                 {
                     return true;
                 }
 
                 /**
-                 * @return array<string, list<string>>
+                 * @return array<string, list<mixed>>
                  */
                 public function rules(): array
                 {
@@ -74,10 +83,97 @@ final readonly class FormRequestEmitter
             {$this->rules($planned->rules)}
                     ];
                 }
-            }
+            {$this->after($planned->rules)}}
 
             PHP,
         );
+    }
+
+    /**
+     * The import block: the base class always, and `Rule` and `Validator` only
+     * when a rule or the closed-root check uses them — an unused import is
+     * something a consumer's formatter removes, and a formatter with something
+     * to remove is a formatter fighting the next build.
+     */
+    private function useStatements(RuleSet $set): string
+    {
+        $imports = [$this->import(self::BASE_CLASS)];
+
+        if ($set->usesInRule()) {
+            $imports[] = $this->import(self::RULE_CLASS);
+        }
+
+        if ($set->closedKeys !== null) {
+            $imports[] = $this->import(self::VALIDATOR_CLASS);
+        }
+
+        // Ordered the way php-cs-fixer's `ordered_imports` orders them, for the
+        // reason ControllerEmitter gives at length.
+        usort($imports, static fn (string $first, string $second): int => strcasecmp(
+            str_replace('\\', ' ', $first),
+            str_replace('\\', ' ', $second),
+        ));
+
+        return implode("\n", array_map(static fn (string $class): string => 'use '.$class.';', $imports));
+    }
+
+    /**
+     * The constant the closed-root check reads, or nothing.
+     */
+    private function closedKeysConstant(RuleSet $set): string
+    {
+        if ($set->closedKeys === null) {
+            return '';
+        }
+
+        return sprintf(
+            "    /**\n     * The only top-level keys the contract's body declares, and the only ones it allows.\n     */\n"
+                ."    private const BODY_KEYS = [%s];\n\n",
+            implode(', ', array_map($this->literal(...), $set->closedKeys)),
+        );
+    }
+
+    /**
+     * The closed-root check, or nothing.
+     *
+     * **A closure, and one emitted shape.** Laravel's `#[FailOnUnknownFields]`
+     * does this from 12.x on, but not on the lowest Laravel this package
+     * supports, and an attribute behind a version gate with this closure
+     * underneath it anyway would be two shapes that have to stay equivalent.
+     *
+     * **Top-level keys only, read from the body rather than from `all()`** —
+     * the JSON bag, or the form bag otherwise, and never `getInputSource()`,
+     * which answers with the query string on a `GET` or a `HEAD`.
+     * The query string is not the body, and a nested object that closes
+     * itself already refuses its own extras through `array:` — so checking
+     * deeper here would repeat that, and would refuse the extras of a nested
+     * object that allows them.
+     */
+    private function after(RuleSet $set): string
+    {
+        if ($set->closedKeys === null) {
+            return '';
+        }
+
+        return <<<'PHP'
+
+                /**
+                 * @return list<callable(Validator): void>
+                 */
+                public function after(): array
+                {
+                    return [
+                        function (Validator $validator): void {
+                            foreach (array_keys(($this->isJson() ? $this->json() : $this->request)->all()) as $key) {
+                                if (! in_array((string) $key, self::BODY_KEYS, true)) {
+                                    $validator->errors()->add((string) $key, 'The '.$key.' field is not part of this contract.');
+                                }
+                            }
+                        },
+                    ];
+                }
+
+            PHP;
     }
 
     /**
@@ -96,7 +192,7 @@ final readonly class FormRequestEmitter
             $lines[] = sprintf(
                 '            %s => [%s],',
                 $this->literal($key),
-                implode(', ', array_map($this->literal(...), $rules)),
+                implode(', ', array_map($this->rule(...), $rules)),
             );
         }
 
@@ -109,6 +205,23 @@ final readonly class FormRequestEmitter
     private function literal(string $value): string
     {
         return var_export($value, true);
+    }
+
+    /**
+     * One rule as PHP: a string literal, or `Rule::in()` over the values an
+     * enumeration allows — never `in:a,b`, which splits on a comma inside a
+     * value.
+     */
+    private function rule(string|InRule $rule): string
+    {
+        if (is_string($rule)) {
+            return $this->literal($rule);
+        }
+
+        return 'Rule::in(['.implode(', ', array_map(
+            static fn (string|int|float|bool $value): string => var_export($value, true),
+            $rule->values,
+        )).'])';
     }
 
     /**

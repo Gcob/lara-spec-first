@@ -191,8 +191,8 @@ it('reads additionalProperties only when it is a boolean', function (mixed $writ
 
 // `dependentRequired` is handed back raw, like the 3.1 keywords around it, and
 // unlike most of them it is carried: it holds property names rather than a
-// schema, so no unresolved pointer can hide in it, and #35 turns it into
-// `required_with`.
+// schema, so no unresolved pointer can hide in it, and the generated rule set
+// turns it into `present_with`.
 it('carries dependentRequired, which holds names rather than a schema', function (): void {
     $schema = (new OpenApi31Strategy)->normalizeSchema([
         'dependentRequired' => ['card' => ['billing_address', 'postcode']],
