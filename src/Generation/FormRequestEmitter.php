@@ -142,8 +142,10 @@ final readonly class FormRequestEmitter
      * underneath it anyway would be two shapes that have to stay equivalent.
      *
      * **Top-level keys only, read from the body rather than from `all()`** —
-     * the JSON bag, or the form bag otherwise, and never `getInputSource()`,
-     * which answers with the query string on a `GET` or a `HEAD`.
+     * the JSON bag, or the form bag and the uploaded files otherwise, and never
+     * `getInputSource()`, which answers with the query string on a `GET` or a
+     * `HEAD`. The files are a bag of their own, so a closed root that left them
+     * out would let an undeclared upload through.
      * The query string is not the body, and a nested object that closes
      * itself already refuses its own extras through `array:` — so checking
      * deeper here would repeat that, and would refuse the extras of a nested
@@ -164,7 +166,9 @@ final readonly class FormRequestEmitter
                 {
                     return [
                         function (Validator $validator): void {
-                            foreach (array_keys(($this->isJson() ? $this->json() : $this->request)->all()) as $key) {
+                            $body = $this->isJson() ? $this->json()->all() : [...$this->request->all(), ...$this->files->all()];
+
+                            foreach (array_keys($body) as $key) {
                                 if (! in_array((string) $key, self::BODY_KEYS, true)) {
                                     $validator->errors()->add((string) $key, 'The '.$key.' field is not part of this contract.');
                                 }
