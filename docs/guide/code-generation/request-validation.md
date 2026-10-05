@@ -19,7 +19,9 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 > **In brief**
 >
-> - **Not built yet.** Nothing emits a `FormRequest` today; this is the design Phase 2 will follow.
+> - **Partly built.** `spec:build` emits one `FormRequest` per operation with something to validate, with the four
+>   scalar types, nullability and presence mapped. Everything else the contract states is named in the generated file's
+>   own findings rather than enforced — see [what is built](#what-is-built-today).
 > - One rule set per operation, derived from the request body and the query parameters. The path's own parameters stay
 >   the router's.
 > - `PATCH` is `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema
@@ -32,10 +34,35 @@ An operation states what a client may send, and Laravel already has the class th
 owns how one becomes the other: where the rule set comes from, what a constraint with no Laravel equivalent does, and
 how the class reaches the controller that needs `$validated`.
 
-> **None of this is behavior yet.** The build emits no `FormRequest`, and no schema is read into anything the package
-> keeps. What is written here is the design [Phase 2](../../../README.md#phase-2-the-generated-pipeline) will follow,
-> and the card that builds it is [#35](https://github.com/Gcob/lara-spec-first/issues/35). Items marked `Open` are
-> undecided, and the number beside one links to the card that settles it.
+> **Part of this is behavior and part of it is design**, and the section below says which is which. Items marked `Open`
+> are undecided, and the number beside one links to the card that settles it.
+
+## What is built today
+
+`spec:build` emits one `final` `FormRequest` per operation that states anything about its input, into the `Requests`
+sub-namespace of the generated tree, and declares it as `routeAction`'s first parameter. What a rule set contains today:
+
+| Built                                                                                                   | Reported and not enforced                                                                       |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `string`, `integer`, `numeric` (from `number`), `boolean`                                               | Every keyword that constrains a value: lengths, bounds, `pattern`, `format`, `enum`             |
+| `nullable`, from the type list                                                                          | `array` and `object`, whose element and property rules are a pass of their own                  |
+| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`           | `allOf`, `additionalProperties: false`, `dependentRequired`                                     |
+| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                          | [An optional body's "all or none"](#an-optional-body-all-or-none), which is `sometimes` for now |
+| A `query` parameter, with its own `required`                                                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for           |
+| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed |                                                                                                 |
+
+**A body declared only in media types this package does not read gets no class**, the same as an operation stating
+nothing, and `spec:build` warns about it on a line of its own: unlike that operation, this one states something nobody
+validates.
+
+**Everything in the right-hand column is named, per field, in the generated file's own `Findings` block**, which is the
+half that makes an incomplete rule set honest rather than misleading. Nothing is approximated by a looser rule, and
+nothing is dropped in silence: that is [the principle](#every-constraint-maps-or-reports) the rest of this page is
+about, and it is what makes each pass safe to ship on its own.
+
+**The input DTO is not built yet.** [`data()`](#the-payload-arrives-as-a-dto) and the type behind it are the last pass
+of [#35](https://github.com/Gcob/lara-spec-first/issues/35); a generated request today carries `authorize()` and
+`rules()` and nothing else.
 
 ## One rule set, body and query
 
@@ -47,7 +74,7 @@ name into one `rules()` array.** One class, one array, one `$validated` for ever
 public function rules(): array
 {
     return [
-        'email' => ['required', 'string', 'email', 'max:255'],
+        'email' => ['present', 'string', 'email', 'max:255'],
         'age' => ['sometimes', 'integer', 'min:18'],
         'notify' => ['sometimes', 'boolean'],   // ?notify=1, a query parameter
     ];
@@ -64,8 +91,9 @@ public function rules(): array
 | `cookie` | Nowhere, and the doctor says so.                                                                                                             |
 
 **A query parameter's presence comes from its own `required` flag, not from the body's `required` list.** They are
-different keywords in different places: a Parameter Object carries `required: true` itself, so that parameter gets
-`required` and the ones without it get `sometimes`. **And the method does not touch it.**
+different keywords in different places: a Parameter Object carries `required: true` itself, so that parameter asks for
+its key, with [the same presence rule](#patch-empties-the-required-list) a body property gets, and the ones without it
+get `sometimes`. **And the method does not touch it.**
 [`PATCH` empties the body schema's required list](#patch-empties-the-required-list) because a partial update is a
 statement about the resource's representation, and a query parameter is not part of that representation: `?notify=1` is
 as required on a `PATCH` as it is on a `PUT`.
@@ -197,14 +225,25 @@ that is not required carries `sometimes` under either method, and its remaining 
 
 **What each half of a schema becomes under the two methods:**
 
-| Declared            | `PUT`                                                | `PATCH`                   |
-| ------------------- | ---------------------------------------------------- | ------------------------- |
-| In `required`       | `required`, or `present` if nullable                 | `sometimes`               |
-| Not in `required`   | `sometimes`                                          | `sometimes`               |
-| Every other keyword | [Mapped as below](#every-constraint-maps-or-reports) | The same rules, unchanged |
+| Declared            | `PUT`                                                                               | `PATCH`                   |
+| ------------------- | ----------------------------------------------------------------------------------- | ------------------------- |
+| In `required`       | `present`, or `required` for an integer, a number or a boolean that is not nullable | `sometimes`               |
+| Not in `required`   | `sometimes`                                                                         | `sometimes`               |
+| Every other keyword | [Mapped as below](#every-constraint-maps-or-reports)                                | The same rules, unchanged |
 
-`present` rather than `required` for a property that may be null, because Laravel's `required` refuses `null` and a
-schema requiring a nullable property is asking for the key, not for a value.
+**`present` rather than `required`, because the two keywords do not mean the same thing.** JSON Schema's `required` asks
+for the key; Laravel's asks for a non-empty value, and refuses `null`, `""`, `[]` and `{}` whatever else the field
+declares. So a required string the contract lets be empty, a required array it lets hold nothing, and any field that may
+be null would answer 422 to a payload the contract accepts. `present` asks for the key and nothing else, and the type
+rule beside it judges any value that is not blank. `required` is kept for an integer, a number and a boolean, whose own
+type rule refuses every empty value anyway, so there the two say the same thing.
+
+**One empty value is refused anyway, and not by this package.** Laravel's default `ConvertEmptyStringsToNull` middleware
+turns `""` into `null` before any rule runs, so a string that is not nullable refuses `""` over HTTP whatever presence
+rule is emitted: `string` refuses `null`. A contract that means to accept an empty string declares the field nullable.
+Removing the middleware is not the fix it looks like: Laravel skips every rule that is not implicit on a blank string,
+so an optional integer would then accept `""`, which the contract refuses. Pinned by an execution test rather than
+worked around.
 
 ### An absent field gets no default
 
@@ -256,6 +295,12 @@ state; what each honored one becomes is this table's.
 | `format: email`, `uuid`, `ipv4`, `ipv6` | `email`, `uuid`, `ipv4`, `ipv6`                                                                                         |
 | `format: uri`                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                              |
 
+**Laravel's `boolean` refuses the string `"true"`, and that is worth knowing before a client meets it.** It accepts `1`,
+`0`, `"1"`, `"0"`, `true` and `false`, so `?notify=true` on a parameter the contract types `boolean` answers 422. That
+is the rule meaning what Laravel says it means rather than what the name suggests, it is
+[pinned by an execution test](https://github.com/Gcob/lara-spec-first/blob/main/tests/Feature/Generation/GeneratedRequestTest.php),
+and it is not worked around: a looser rule would accept what the contract refuses.
+
 **`list` beside `array`, because Laravel's `array` passes for an associative one.** `{"tags": {"a": 1}}` would otherwise
 satisfy a `tags` declared `type: array`, which is a payload the contract refuses being accepted. `list` is
 `array_is_list()`, which is what a JSON array actually is, and the pair is what keeps that row honest.
@@ -265,7 +310,7 @@ satisfy a `tags` declared `type: array`, which is a payload the contract refuses
 passes on the first that matches, and RFC 3339 needs six of them:
 
 ```php
-'occurred_at' => ['required', 'string', 'date_format:Y-m-d\TH:i:sp,Y-m-d\TH:i:sP,Y-m-d\TH:i:s.vp,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.uP'],
+'occurred_at' => ['present', 'string', 'date_format:Y-m-d\TH:i:sp,Y-m-d\TH:i:sP,Y-m-d\TH:i:s.vp,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.uP'],
 ```
 
 **Six rather than three, and the trap is worth naming because it bites silently.** `date_format` passes only when
@@ -307,7 +352,7 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 which is Laravel's own notation for nested input and what `validated()` hands back:
 
 ```php
-'address' => ['required', 'array:street,city,postal_code'],
+'address' => ['present', 'array:street,city,postal_code'],
 'address.street' => ['required_with:address', 'string'],
 'address.city' => ['required_with:address', 'string'],
 'address.postal_code' => ['sometimes', 'string', 'regex:/^[A-Z]\d[A-Z] ?\d[A-Z]\d$/'],
@@ -330,11 +375,11 @@ sets the attribute only when no object in the body's schema permits additional p
 `additionalProperties: false` as unhonored when one does.
 
 **The attribute does not exist on the lowest Laravel this package supports, and the fallback is named rather than
-discovered.** It arrived during the 12.x line while `composer.json` declares `^12.0`, so
-[#35](https://github.com/Gcob/lara-spec-first/issues/35) has two honest ways out: an `after()` closure on the generated
-class comparing the payload's keys against the rule set's, which is what the attribute does internally and what this
-package can write for itself, or the attribute behind a version gate with that closure underneath it anyway. The closure
-is the leading answer, because one emitted shape beats two that have to stay equivalent.
+discovered.** It arrived during the 12.x line while `composer.json` declares `^12.0`, so there were two honest ways out:
+an `after()` closure on the generated class comparing the payload's keys against the rule set's, which is what the
+attribute does internally and what this package can write for itself, or the attribute behind a version gate with that
+closure underneath it anyway. The closure is the answer, because one emitted shape beats two that have to stay
+equivalent. Neither is emitted yet: the root's `additionalProperties: false` is reported as unenforced today.
 
 **A property name containing a dot is escaped as `\.`**, because Laravel reads an unescaped dot in a rule key as
 nesting. `user.name` as a literal property name would otherwise generate rules for a `name` key inside a `user` object
@@ -509,11 +554,17 @@ see.
 container and fills the rest from the route's own parameters, so either order works and only one of them reads like
 ordinary Laravel.
 
-**What it does to the seam is the whole cost, and it is a shape change rather than an addition.**
-[`ControllerEmitter::signature()`](https://github.com/Gcob/lara-spec-first/blob/main/src/Generation/ControllerEmitter.php)
-builds that signature from the path's parameters alone today, and a child controller has to match whatever the parent
-declares. So the request parameter is part of the two-class seam rather than something beside it, and
-[#35](https://github.com/Gcob/lara-spec-first/issues/35) is where the emitter learns it.
+**What it does to the seam is the whole cost, and it is a shape change rather than an addition.** Before this package
+emitted a request, the signature was the path's parameters alone, and a child controller has to match whatever the
+parent declares. So the request parameter is part of the two-class seam rather than something beside it. Both sides read
+it from one place,
+[`RouteActionSignature`](https://github.com/Gcob/lara-spec-first/blob/main/src/Generation/RouteActionSignature.php):
+`spec:make` writes the child, PHP forbids an override from widening, and two derivations of one signature is how a
+scaffold becomes a fatal error at load.
+
+**A path parameter named `{request}` is refused on an operation with something to validate.** The request is declared as
+`$request` ahead of the path's own parameters, so the two would be one variable declared twice, which PHP refuses at
+compile time. On an operation with nothing to validate the name is free.
 
 Two alternatives were considered and dropped:
 

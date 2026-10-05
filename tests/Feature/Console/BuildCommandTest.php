@@ -164,6 +164,118 @@ it('names a controller from the operationId, or from the method and path', funct
 });
 
 /*
+ * The four scenarios card #35 states, run through the command rather than
+ * through the emitter: what is under test here is the *plan* — which operations
+ * get a request class, which do not, and what the build says about it.
+ *
+ * @see docs/guide/code-generation/request-validation.md — "Nothing to validate, no class"
+ */
+
+// Scenario: an operation with no request body. `deletePost` declares neither a
+// body nor a query parameter, so it gets no class rather than one whose
+// `rules()` returns an empty array.
+it('emits a request for every operation with something to validate, and no others', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));
+
+    expect(build())->toBe(0)
+        ->and(treeContents(buildTree()))->toBe([
+            'Controllers/DeletePostController.php',
+            'Controllers/ReplacePostController.php',
+            'Controllers/UpdatePostController.php',
+            'Requests/ReplacePostRequest.php',
+            'Requests/UpdatePostRequest.php',
+            GeneratedRoutesLocator::FILE,
+        ]);
+});
+
+// "And the build says so rather than emitting an empty class."
+it('says how many operations state nothing to validate', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+
+    expect($output->fetch())->toContain('1 operation(s) state nothing to validate');
+});
+
+// Not folded into "states nothing", because it is not true of it: the body is
+// stated, in a media type this package does not read, so nothing validates it.
+it('warns about a body declared only in a media type it does not read', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('unread-body.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+    $printed = $output->fetch();
+
+    expect($printed)->toContain('1 operation(s) declare a body only in media types this package does not read')
+        // Named, because no generated file exists for a reader to find it in.
+        ->and($printed)->toContain('post /imports')
+        ->and($printed)->not->toContain('state nothing to validate')
+        ->and(is_dir(buildTree().'/Requests'))->toBeFalse();
+});
+
+// Scenarios: PUT requires the full body / PATCH makes the same fields optional,
+// over one schema, in one build — which is the only way the two can be compared
+// for anything other than the emitter's own arithmetic.
+it('reads the required list on a PUT and reads it as empty on a PATCH', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));
+    build();
+
+    $put = (string) file_get_contents(buildTree().'/Requests/ReplacePostRequest.php');
+    $patch = (string) file_get_contents(buildTree().'/Requests/UpdatePostRequest.php');
+
+    expect($put)->toContain("'title' => ['present', 'string'],")
+        ->and($put)->toContain("'published' => ['required', 'boolean'],")
+        ->and($patch)->toContain("'title' => ['sometimes', 'string'],")
+        // Every other constraint survives the emptied list: the type rules are
+        // the same on both sides, which is what says the `PATCH` reads the
+        // schema rather than a reduced copy of it.
+        ->and($patch)->toContain("'published' => ['sometimes', 'boolean'],");
+});
+
+// Scenario: a removed operation is pruned. The tree writer deletes anything it
+// did not plan, and a request is a file like any other — asserted rather than
+// assumed, because "like any other" is exactly the claim a new output directory
+// could quietly break.
+it('prunes a request whose operation left the contract', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));
+    build();
+
+    expect(is_file(buildTree().'/Requests/ReplacePostRequest.php'))->toBeTrue();
+
+    config()->set('lara-spec-first.spec.path', specFixturePath('operations.yaml'));
+    build();
+
+    expect(is_file(buildTree().'/Requests/ReplacePostRequest.php'))->toBeFalse()
+        ->and(is_dir(buildTree().'/Requests'))->toBeFalse();
+});
+
+// The signature is the seam: a generated parent declaring a request and a child
+// that never heard about it is a fatal error at load, which is the change being
+// loud rather than a defect.
+it('declares the request as routeAction\'s first parameter', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));
+    build();
+
+    $controller = (string) file_get_contents(buildTree().'/Controllers/UpdatePostController.php');
+
+    expect($controller)->toContain('routeAction(UpdatePostRequest $request, string $id): mixed')
+        ->and($controller)->toContain('\\Requests\\UpdatePostRequest;');
+});
+
+// An operation with nothing to validate declares no request at all, which is
+// what keeps `DELETE /users/{id}` from importing a class that does not exist.
+it('leaves routeAction alone for an operation with nothing to validate', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));
+    build();
+
+    $controller = (string) file_get_contents(buildTree().'/Controllers/DeletePostController.php');
+
+    expect($controller)->toContain('routeAction(string $id): mixed')
+        ->and($controller)->not->toContain('Requests\\');
+});
+
+/*
  * The adversarial half. `hostile-paths.yaml` is entirely valid OpenAPI and
  * entirely hostile to a generator that builds PHP by concatenating strings: a
  * document is data, a generated file is code, and the boundary between them is

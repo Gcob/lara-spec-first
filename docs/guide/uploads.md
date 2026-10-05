@@ -118,7 +118,7 @@ says so rather than the build inventing it.
 already uses:
 
 ```php
-'photos' => ['required', 'array', 'min:1', 'max:5'],
+'photos' => ['present', 'array', 'min:1', 'max:5'],
 'photos.*' => ['file', 'mimetypes:image/jpeg,image/png', 'max:2048'],
 ```
 

@@ -21,11 +21,20 @@ final readonly class PlannedController
     /**
      * @param  bool  $customControllerExists  whether a file for {@see ControllerName::$customController}
      *                                        can be found, resolved once per build
+     * @param  RequestName|null  $request  the generated request `routeAction`
+     *                                     declares, or null for an operation
+     *                                     with nothing to validate. Part of the
+     *                                     pairing for the same reason the name
+     *                                     is: the controller declares it, a
+     *                                     scaffolded child has to match the
+     *                                     declaration, and deriving it twice is
+     *                                     two chances to derive it differently
      */
     public function __construct(
         public Operation $operation,
         public ControllerName $name,
         public bool $customControllerExists = false,
+        public ?RequestName $request = null,
     ) {}
 
     /**

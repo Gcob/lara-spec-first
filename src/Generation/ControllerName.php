@@ -6,7 +6,6 @@ namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
-use Illuminate\Support\Str;
 
 /**
  * The class name a generated controller takes, and where it came from.
@@ -70,20 +69,20 @@ final readonly class ControllerName
 
         if ($declared === null) {
             return new self(
-                self::assertUsable(self::derive($operation), $operation),
+                self::assertUsable(DerivedName::fromMethodAndPath($operation).'Controller', $operation),
                 NameSource::Derived,
                 null,
             );
         }
 
-        $studly = Str::studly($declared);
+        $studly = DerivedName::fromOperationId($declared);
 
         // Checked before the suffix, because appending it would hide the problem
         // rather than surface it: an `operationId` of `---` studlies to nothing
         // and would produce the perfectly valid, perfectly meaningless class name
         // `Controller` — which also collides with every other operation whose id
         // does the same.
-        if ($studly === '') {
+        if ($studly === null) {
             throw UnusableNameException::emptyOperationId($operation->label(), $declared);
         }
 
@@ -110,21 +109,6 @@ final readonly class ControllerName
         $separator = strrpos($class, '\\');
 
         return $separator === false ? $class : substr($class, $separator + 1);
-    }
-
-    /**
-     * The method and the path, in the order a reader scans them.
-     */
-    private static function derive(Operation $operation): string
-    {
-        $segments = array_filter(explode('/', $operation->path->template), static fn (string $s): bool => $s !== '');
-
-        $studly = array_map(
-            static fn (string $segment): string => Str::studly(trim($segment, '{}')),
-            $segments,
-        );
-
-        return Str::studly($operation->method->value).implode('', $studly).'Controller';
     }
 
     /**

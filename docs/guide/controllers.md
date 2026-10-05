@@ -86,9 +86,11 @@ parent says `mixed`, but not the parameters, which is ordinary PHP variance rath
 
 **And a path parameter that cannot be a PHP variable is refused, naming it.** `{2fa}` is a legal route parameter and
 `$2fa` is not a variable, so the build says so rather than emitting a file that will not parse; `{this}` is the same
-problem from a different direction. This is a second check rather than a stricter first one, because the neighbouring
-refusals belong to other rules: a character the router would never match is refused for being unroutable, and one path
-naming the same parameter twice is refused where the path is read, before anything asks what could be generated from it.
+problem from a different direction, and so is `{request}` on an operation with something to validate, since the
+generated request is already declared as `$request` beside it. This is a second check rather than a stricter first one,
+because the neighbouring refusals belong to other rules: a character the router would never match is refused for being
+unroutable, and one path naming the same parameter twice is refused where the path is read, before anything asks what
+could be generated from it.
 
 ## The contract decides what is customizable
 

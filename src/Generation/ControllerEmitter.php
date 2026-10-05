@@ -48,13 +48,12 @@ final readonly class ControllerEmitter
 
             namespace {$this->namespace}\\Controllers;
 
-            use {$this->import(OperationNotImplementedException::class)};
-            use {$this->import(SpecController::class)};
+            {$this->useStatements($planned)}
 
             {$this->docblock($planned)}
             {$this->modifier($planned)}class {$planned->name->shortName} extends SpecController
             {
-                public function routeAction({$this->signature($operation)}): mixed
+                public function routeAction({$this->signature($planned)}): mixed
                 {
                     throw OperationNotImplementedException::operation({$this->literal($operation->label())}, {$this->name($operation)});
                 }
@@ -65,32 +64,61 @@ final readonly class ControllerEmitter
     }
 
     /**
-     * The parameters `routeAction` declares: the path's own, named as the
-     * specification names them.
-     *
-     * **This is the signature a child has to match, which is why it cannot be
-     * empty.** PHP forbids an override from adding a required parameter, so a
-     * parent declaring none would make `x-controller` useless on every templated
-     * path — a developer could only reach `{id}` through the request object,
-     * which is the opposite of what a generated seam is for. Verified rather than
-     * reasoned about: a Workbench child declaring `routeAction(string $id)` over a
-     * parameterless parent is a fatal error at load.
-     *
-     * **Named, because Laravel matches route parameters to method parameters by
-     * name** rather than by position. The specification's spelling is therefore
-     * load-bearing here in a way it is not anywhere else, and renaming `{id}` to
-     * `{userId}` changes this signature — which a child overriding it must follow.
-     *
-     * `string` because that is what a route parameter is until something says
-     * otherwise. `x-model` is what will turn one into a bound model, and the
-     * parent will declare that type when it does.
+     * The import block as it appears in the file.
      */
-    private function signature(Operation $operation): string
+    private function useStatements(PlannedController $planned): string
     {
-        return implode(', ', array_map(
-            static fn (string $parameter): string => 'string $'.$parameter,
-            $operation->path->parameterNames,
+        return implode("\n", array_map(
+            static fn (string $class): string => 'use '.$class.';',
+            $this->imports($planned),
         ));
+    }
+
+    /**
+     * Every `use` the emitted file needs, in the order the formatter would put
+     * them.
+     *
+     * Sorted here rather than left to a consumer's formatter, because a
+     * formatter with something to reorder is a formatter fighting the next
+     * build. **And sorted the way php-cs-fixer's `ordered_imports` sorts**,
+     * which a plain `sort()` is not: that fixer compares with `\\` replaced by
+     * a space and case folded, so `Gcob\\LaraSpecFirst\\Http` and
+     * `Gcob\\LaraSpecFirstX` land on opposite sides of where bytes would put
+     * them. The generated tree's own namespace is the consumer's to choose, so
+     * this is not a case that can be ruled out by inspection.
+     *
+     * @return list<string>
+     */
+    private function imports(PlannedController $planned): array
+    {
+        $imports = [
+            $this->import(OperationNotImplementedException::class),
+            $this->import(SpecController::class),
+        ];
+
+        if ($planned->request !== null) {
+            $imports[] = $this->import($planned->request->fullyQualifiedName($this->namespace));
+        }
+
+        usort($imports, static fn (string $first, string $second): int => strcasecmp(
+            str_replace('\\', ' ', $first),
+            str_replace('\\', ' ', $second),
+        ));
+
+        return $imports;
+    }
+
+    /**
+     * What `routeAction` declares, from the one place both sides read it.
+     *
+     * @see RouteActionSignature for why it cannot be empty, and why the request comes first
+     */
+    private function signature(PlannedController $planned): string
+    {
+        return RouteActionSignature::declaration(
+            $planned->operation,
+            $planned->request?->shortName,
+        );
     }
 
     /**
@@ -142,49 +170,14 @@ final readonly class ControllerEmitter
 
     private function docblock(PlannedController $planned): string
     {
-        $lines = [
-            '/**',
-            ' * '.GeneratedFile::MARKER.'. DO NOT EDIT.',
-            ' *',
-            ' * Rewritten from scratch on every `php artisan spec:build`, so an edit here is gone on',
-            ' * the next run. That is the design rather than a caveat: the generated side has to be',
-            ' * free to change shape, and it can only be free if nobody has hand-edits in it to',
-            ' * protect.',
-            ' *',
-            ' * Provenance',
-            ' *   '.CommentText::safe($this->specPath),
-            ' *   '.CommentText::safe($this->pointer($planned->operation)),
-            ' *',
-            ' * Findings',
-        ];
-
-        foreach ($this->findings($planned) as $finding) {
-            foreach (CommentText::wrap(CommentText::safe($finding)) as $position => $line) {
-                $lines[] = $position === 0 ? ' *   - '.$line : ' *     '.$line;
-            }
-        }
-
-        $lines[] = ' *';
-        $lines[] = ' * Navigation';
-        // The blank line before the annotation is not decoration. `phpdoc_separation`,
-        // which ships in Pint's Laravel preset and in php-cs-fixer's defaults, inserts
-        // one here — so emitting it means a consumer's formatter finds nothing to change.
-        // Without it the formatter and the build rewrite each other forever, and the
-        // idempotence this package promises would hold only for projects that format
-        // nothing.
-        $lines[] = ' *';
-
-        foreach ($this->navigation($planned) as $line) {
-            // A blank line inside the block is ` *` and never ` *   `: trailing
-            // whitespace in a comment is something `no_trailing_whitespace_in_comment`
-            // strips, and a formatter that has something to strip is a formatter
-            // fighting the next build.
-            $lines[] = $line === '' ? ' *' : ' *   '.$line;
-        }
-
-        $lines[] = ' */';
-
-        return implode("\n", $lines);
+        return GeneratedDocblock::render(
+            [
+                CommentText::safe($this->specPath),
+                CommentText::safe($this->pointer($planned->operation)),
+            ],
+            $this->findings($planned),
+            $this->navigation($planned),
+        );
     }
 
     /**
@@ -238,7 +231,14 @@ final readonly class ControllerEmitter
 
         if ($planned->customControllerExists) {
             return [
-                '@see \\'.CommentText::safe($custom).' — the class that extends this one, and',
+                // Backticked for the reason {@see FormRequestEmitter} states
+                // at length: Pint rewrites a bare fully-qualified name in a
+                // docblock into an import plus a short name, and here that
+                // import would carry the *child's* name into the parent — two
+                // classes that share a short name by design, so the file would
+                // stop loading. It survived this long only because the
+                // collision is what stopped the fixer.
+                '@see `\\'.CommentText::safe($custom).'` — the class that extends this one, and',
                 '     what the route actually reaches',
                 '@see '.GeneratedRoutesLocator::FILE.' — that route',
             ];
