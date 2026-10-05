@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\HttpMethod;
+use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\PlannedInputDto;
 use Symfony\Component\Process\Process;
@@ -97,7 +103,7 @@ it('writes a list as list<T> in the docblock', function (): void {
         ->toContain('@param  Optional|list<string>  $tags')
         ->toContain('@param  Optional|list<int>  $ids')
         ->toContain('@param  Optional|list<NewUserRolesItemInputDto>  $roles')
-        ->toContain('@param  Optional|list<list<int>>  $matrix')
+        ->toContain('@param  Optional|list<list<int>|null>  $matrix')
         ->toContain('@param  Optional|list<CarbonImmutable>  $visits')
         ->toContain('@param  Optional|array<string, mixed>  $meta');
 });
@@ -122,7 +128,7 @@ it('converts a list by what its elements are', function (): void {
         ->toContain("array_values(array_map(intval(...), \$payload['ids']))")
         ->toContain("array_values(array_map(NewUserRolesItemInputDto::from(...), \$payload['roles']))")
         ->toContain("array_values(array_map(CarbonImmutable::parse(...), \$payload['visits']))")
-        ->toContain('array_values(array_map(static fn (array $item): array => array_values(array_map(intval(...), $item)), $payload[\'matrix\']))')
+        ->toContain('array_values(array_map(static fn (mixed $item): ?array => $item === null ? null : array_values(array_map(intval(...), $item)), $payload[\'matrix\']))')
         // Strings go in as they are, and so do files.
         ->toContain("tags: array_key_exists('tags', \$payload) ? \$payload['tags'] : new Optional,");
 });
@@ -267,4 +273,39 @@ it('emits bytes Pint has nothing to change in', function (): void {
     $pint->run();
 
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
+// An enumeration value is data from the specification and a docblock is code: a
+// string holding the sequence that closes a comment would end the docblock and
+// turn what follows into statements, and the file would load and run it.
+it('never writes an enumeration value that could close a docblock', function (string $value): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['kind' => new Schema(types: [SchemaType::String], enum: ['safe', $value])],
+        )], true),
+    );
+    $plan = plannedRequests([$operation])['plan'];
+    $emitted = (new InputDtoEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($plan->dtos[0])->contents;
+
+    expect($emitted)->not->toContain('__destruct')
+        ->and($emitted)->toContain('public Optional|string $kind,');
+
+    $file = tempnam(sys_get_temp_dir(), 'dto');
+    file_put_contents($file, $emitted);
+    exec('php -l '.escapeshellarg($file).' 2>&1', $output, $status);
+    unlink($file);
+
+    expect($status)->toBe(0);
+})->with([
+    'a comment terminator' => ["*/ public function __destruct() { echo 'x'; } /*"],
+    'a newline' => ["a\n * @var __destruct"],
+]);
+
+it('keeps the literal union for an enumeration that is safe to write', function (): void {
+    expect(emittedDto('NewUserInputDto'))->toContain("'active'|'banned'");
 });

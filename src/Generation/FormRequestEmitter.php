@@ -174,7 +174,8 @@ final readonly class FormRequestEmitter
      * the JSON bag, or the form bag and the uploaded files otherwise, and never
      * `getInputSource()`, which answers with the query string on a `GET` or a
      * `HEAD`. The files are a bag of their own, so a closed root that left them
-     * out would let an undeclared upload through.
+     * out would let an undeclared upload through. Joined with `+` and not with a
+     * spread, which renumbers an integer key and would refuse a declared `"2024"`.
      * The query string is not the body, and a nested object that closes
      * itself already refuses its own extras through `array:` — so checking
      * deeper here would repeat that, and would refuse the extras of a nested
@@ -195,7 +196,7 @@ final readonly class FormRequestEmitter
                 {
                     return [
                         function (Validator $validator): void {
-                            $body = $this->isJson() ? $this->json()->all() : [...$this->request->all(), ...$this->files->all()];
+                            $body = $this->isJson() ? $this->json()->all() : $this->request->all() + $this->files->all();
 
                             foreach (array_keys($body) as $key) {
                                 if (! in_array((string) $key, self::BODY_KEYS, true)) {

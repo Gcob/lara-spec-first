@@ -513,9 +513,59 @@ it('makes a nested required key optional when the rules cannot enforce it', func
     expect(array_map($optional, dtoNamed($plan, 'DoThingAddressInputDto')->properties))->toBe([true, false]);
 });
 
-// The same key on the body's root is enforced, with the dot escaped.
-it('keeps a root required key with a dot required', function (): void {
-    $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(['user.name' => dtoString()], ['user.name'])])]);
+// Shared by every operation that reaches the schema, so the shape cannot depend on
+// whether the root or a nested use came first: the key is optional in both.
+it('gives a schema one shape whichever operation reaches it first', function (bool $rootFirst): void {
+    $shared = dtoSchema(['user.name' => dtoString()], ['user.name'], 'Shared', '#/components/schemas/Shared');
+    $asRoot = dtoOperation('asRoot', ['application/json' => $shared]);
+    $nested = dtoOperation('nested', ['application/json' => dtoSchema(['shared' => $shared], ['shared'])], path: '/other');
 
-    expect(dtoNamed($plan, 'DoThingInputDto')->properties[0]->optional)->toBeFalse();
-});
+    $plan = planDtos($rootFirst ? [$asRoot, $nested] : [$nested, $asRoot]);
+
+    expect(dtoNamed($plan, 'SharedInputDto')->properties[0]->optional)->toBeTrue();
+})->with(['the root first' => [true], 'the nested use first' => [false]]);
+
+/**
+ * `Author` and `Book` refer to each other, which is the shape of most real contracts.
+ *
+ * @return array{0: Schema, 1: Schema}
+ */
+function authorAndBookWrittenFrom(string $entry): array
+{
+    $bookMarker = Schema::recursion('#/components/schemas/Book', 'Book');
+    $authorMarker = Schema::recursion('#/components/schemas/Author', 'Author');
+
+    $book = fn (Schema $author): Schema => dtoSchema(['title' => dtoString(), 'author' => $author], name: 'Book', source: '#/components/schemas/Book');
+    $author = fn (Schema $books): Schema => dtoSchema(
+        ['name' => dtoString(), 'books' => new Schema(types: [SchemaType::Array], items: $books)],
+        name: 'Author',
+        source: '#/components/schemas/Author',
+    );
+
+    return $entry === 'author'
+        ? [$author($book($authorMarker)), $book($author($bookMarker))]
+        : [$book($author($bookMarker)), $author($book($authorMarker))];
+}
+
+// A schema in a recursive pair is expanded to a depth that depends on where the walk
+// entered it, and so are the rules that validated it. One class cannot be right for
+// both, so the nested use is `mixed` and the answer is the same in either order.
+it('reads a schema of a recursive pair as mixed where it is nested, in either order', function (string $first): void {
+    [$fromAuthors, $fromBooks] = authorAndBookWrittenFrom('author');
+    $authors = dtoOperation('createAuthor', ['application/json' => $fromAuthors], path: '/authors');
+    $books = dtoOperation('createBook', ['application/json' => $fromBooks], path: '/books');
+
+    $plan = planDtos($first === 'authors' ? [$authors, $books] : [$books, $authors]);
+
+    $kinds = static fn (string $class): array => array_map(
+        static fn ($property): string => $property->type->kind,
+        dtoNamed($plan, $class)->properties,
+    );
+
+    expect(dtoNames($plan->dtos))->toContain('AuthorInputDto')->toContain('BookInputDto')
+        // `books` is a list of mixed, `author` is mixed: neither is built from input
+        // that only one of the two operations validates.
+        ->and($kinds('AuthorInputDto'))->toBe([InputDtoType::STRING, InputDtoType::LIST])
+        ->and(dtoNamed($plan, 'AuthorInputDto')->properties[1]->type->item?->kind)->toBe(InputDtoType::MIXED)
+        ->and($kinds('BookInputDto'))->toBe([InputDtoType::STRING, InputDtoType::MIXED]);
+})->with(['authors first' => ['authors'], 'books first' => ['books']]);

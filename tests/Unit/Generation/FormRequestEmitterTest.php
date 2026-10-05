@@ -163,7 +163,7 @@ it('closes the root with an after() check on its declared keys', function (): vo
         ->toContain('public function after(): array')
         // The body bag and the uploaded files, never `getInputSource()`, which
         // answers with the query string on a `GET` or a `HEAD`.
-        ->toContain('$this->isJson() ? $this->json()->all() : [...$this->request->all(), ...$this->files->all()]');
+        ->toContain('$this->isJson() ? $this->json()->all() : $this->request->all() + $this->files->all()');
 });
 
 // Authorization is the route's and a Policy's. A generated answer here would be
@@ -247,4 +247,15 @@ it('emits bytes Pint has nothing to change in', function (): void {
     $pint->run();
 
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
+// The closed root reads the form bag and the files with `+`, which keeps an integer
+// key a spread would renumber: a property named "2024" is a valid payload.
+it('joins the form bag and the files without renumbering integer keys', function (): void {
+    $emitted = emittedRequest(goldenOperation());
+
+    expect($emitted)->toContain('$this->request->all() + $this->files->all()')
+        ->and($emitted)->not->toContain('...$this->files');
+    expect([2024 => 'a'] + [])->toBe([2024 => 'a'])
+        ->and([...[2024 => 'a'], ...[]])->toBe([0 => 'a']);
 });

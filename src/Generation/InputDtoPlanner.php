@@ -157,8 +157,8 @@ final class InputDtoPlanner
         }
 
         $named = $name !== null;
-        $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $naming, $named, root: true);
-        $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $naming, $named, root: true);
+        $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $naming, $named);
+        $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $naming, $named);
 
         // The `PATCH` reads the partial type, and so does a body that may be
         // absent entirely: there every property may be missing.
@@ -190,7 +190,6 @@ final class InputDtoPlanner
         string $base,
         string $naming,
         bool $named,
-        bool $root = false,
     ): string {
         if (isset($this->registry[$shortName])) {
             $existing = $this->registry[$shortName];
@@ -274,12 +273,14 @@ final class InputDtoPlanner
                 $shortName,
             );
 
-            // A nested object's required key that Laravel cannot name in
-            // `required_array_keys` is not enforced by the rules, so a request can
-            // reach `from()` without it: it is optional here for that reason.
+            // A required key Laravel cannot name in `required_array_keys` is not
+            // enforced when its object is nested, so a request can reach `from()`
+            // without it. The DTO is shared by every operation that reaches the
+            // schema, whether as a body or inside another, so its shape cannot
+            // depend on which came first: the key is optional in both.
             $optional = $partial
                 || ! in_array($key, $merged->required, true)
-                || (! $root && RuleSetBuilder::breaksKeyList($key));
+                || RuleSetBuilder::breaksKeyList($key);
 
             $properties[] = new InputDtoProperty($key, $name, $type, $optional);
         }
@@ -364,7 +365,7 @@ final class InputDtoPlanner
             case SchemaType::Object:
                 return $schema->properties === []
                     ? new InputDtoType(InputDtoType::MAP, $nullable)
-                    : $this->nested($written, $schema, $base, $segment, $pointer, $nullable);
+                    : $this->nested($written, $schema, $base, $segment, $pointer, $nullable, $owner);
         }
 
         // No single type: an untyped enumeration of one kind of value says
@@ -396,10 +397,27 @@ final class InputDtoPlanner
      * @throws UnusableNameException
      * @throws ConflictingInputException
      */
-    private function nested(Schema $written, Schema $merged, string $base, string $segment, string $pointer, bool $nullable): InputDtoType
+    private function nested(Schema $written, Schema $merged, string $base, string $segment, string $pointer, bool $nullable, string $owner): InputDtoType
     {
         [$name, $source] = $this->nameOf($written, $merged);
         $position = $source ?? $pointer;
+
+        // A schema in a recursive pair is expanded to a different depth depending
+        // on where the walk entered, so its shape, and the rules that validated it,
+        // depend on the operation that reached it first. One class cannot be right
+        // for both: the request that reached it from the other side would hand
+        // `from()` input nothing checked. It is read as it arrived instead.
+        if ($name !== null && self::dependsOnEntry($merged, $source)) {
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` is the schema `%s`, which refers back to a schema outside itself, so what the request '
+                    .'validates below it depends on where the request starts. It is `mixed` rather than a DTO '
+                    .'that would be right for one operation and wrong for another.',
+                $segment,
+                $name,
+            );
+
+            return new InputDtoType(InputDtoType::MIXED);
+        }
 
         if ($name === null) {
             $ownBase = $base.self::studly($segment);
@@ -461,6 +479,46 @@ final class InputDtoPlanner
         }
 
         return $studly;
+    }
+
+    /**
+     * Whether a schema's expansion depends on where the walk entered it: it holds
+     * a recursion marker aimed at a schema that is not itself, or inside it.
+     *
+     * A marker back at the schema itself, or at one written inside it, is cut at
+     * the same place whichever way the schema is reached, so `Address` containing
+     * an `Address` is the same shape everywhere. One aimed at a schema above it,
+     * `Author` inside `Book` inside `Author`, is cut where the entry happened to
+     * be.
+     */
+    private static function dependsOnEntry(Schema $schema, ?string $source): bool
+    {
+        $inside = $source === null ? [] : [$source];
+        $targets = [];
+        self::collect($schema, $inside, $targets);
+
+        return array_diff($targets, $inside) !== [];
+    }
+
+    /**
+     * @param  list<string>  $inside  the positions of the named schemas written in the tree
+     * @param  list<string>  $targets  where each recursion marker in it points
+     */
+    private static function collect(Schema $schema, array &$inside, array &$targets): void
+    {
+        if ($schema->recursesTo !== null) {
+            $targets[] = $schema->recursesTo;
+
+            return;
+        }
+
+        if ($schema->source !== null) {
+            $inside[] = $schema->source;
+        }
+
+        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
+            self::collect($child, $inside, $targets);
+        }
     }
 
     /**
