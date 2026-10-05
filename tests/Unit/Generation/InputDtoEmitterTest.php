@@ -94,8 +94,10 @@ it('declares each schema type as the table says', function (string $declaration)
 
 it('writes an enumeration as a literal union in the docblock', function (): void {
     expect(emittedDto('NewUserInputDto'))->toContain("@param  Optional|'active'|'banned'  \$status")
-        // Not for an integer enumeration: it is cast, and a cast is an `int`.
-        ->and(emittedDto('NewUserInputDto'))->not->toContain('1|2');
+        // Not a union for an integer enumeration, which is cast and so an `int`: its
+        // values are said in words, for whoever opens the class.
+        ->and(emittedDto('NewUserInputDto'))->not->toContain('1|2')
+        ->and(emittedDto('NewUserInputDto'))->toContain('@param  Optional|int  $level  one of 1, 2');
 });
 
 it('writes a list as list<T> in the docblock', function (): void {

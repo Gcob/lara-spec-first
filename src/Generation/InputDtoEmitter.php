@@ -121,7 +121,8 @@ final readonly class InputDtoEmitter
             $doc = $this->doc($property);
 
             if ($doc !== null) {
-                $docs[] = sprintf('     * @param  %s  $%s', $doc, $property->name);
+                $values = $property->type->allowedValues();
+                $docs[] = sprintf('     * @param  %s  $%s', $doc, $property->name).($values === null ? '' : '  '.$values);
             }
         }
 
@@ -172,6 +173,10 @@ final readonly class InputDtoEmitter
     {
         $type = $property->type;
         $doc = $type->doc();
+
+        if ($doc === null && $type->allowedValues() !== null) {
+            $doc = $type->native();
+        }
 
         if ($doc === null && ! ($property->optional && $type->native() === InputDtoType::MIXED)) {
             return null;

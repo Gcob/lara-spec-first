@@ -378,7 +378,7 @@ it('does not name a composition after one of its branches', function (): void {
 
 // An enumeration that is cast is an `int`, and one that is read is a literal
 // union: the docblock must be a claim the code beside it can keep.
-it('keeps a literal union for a string enumeration only', function (): void {
+it('keeps the values of every enumeration, and a literal union for a string one only', function (): void {
     $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema([
         'status' => new Schema(types: [SchemaType::String], enum: ['a', 'b']),
         'level' => new Schema(types: [SchemaType::Integer], enum: [1, 2]),
@@ -391,7 +391,7 @@ it('keeps a literal union for a string enumeration only', function (): void {
         dtoNamed($plan, 'DoThingInputDto')->properties,
     );
 
-    expect($literals)->toBe([['a', 'b'], [], ['x', 'y'], []])
+    expect($literals)->toBe([['a', 'b'], [1, 2], ['x', 'y'], [1, 2]])
         ->and(array_map(
             static fn ($property): string => $property->type->native(),
             dtoNamed($plan, 'DoThingInputDto')->properties,
@@ -590,3 +590,12 @@ it('does not share the class of a $ref with a wrapper that adds a required key',
     expect($optional('UserInputDto'))->toBe([false, true])
         ->and(dtoNames($plan->dtos))->toContain('StrictInputDto');
 })->with(['the wrapper first' => [true], 'the plain $ref first' => [false]]);
+
+// Optional by necessity, and the file says why: whoever reads the DTO would otherwise
+// wonder why a required key is not required.
+it('says why a required key with a dot is optional', function (): void {
+    $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(['user.name' => dtoString()], ['user.name'])])]);
+
+    expect(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))
+        ->toContain('`user.name` is required by the schema, but its name has a `.` or a `,`');
+});
