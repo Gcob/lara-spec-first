@@ -1,0 +1,11 @@
+components:
+  schemas:
+    Pet:
+      type: object
+      properties:
+        name:
+          type: string
+    Page:
+      type: integer
+    Tenant:
+      type: string

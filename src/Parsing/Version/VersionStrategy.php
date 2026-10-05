@@ -64,9 +64,16 @@ interface VersionStrategy
      * nullability, the two exclusive bounds, and how a file part is named.
      * Everything else is shared, and {@see NormalizesSchemas} holds it.
      *
+     * **The name is the caller's to supply**, for the same reason: what a
+     * schema is called comes from *where* it is written, and only the walk
+     * knows that. It is passed through rather than read, so a strategy never
+     * has to know one file from another.
+     *
      * @param  array<string, mixed>  $keywords
+     * @param  string|null  $name  what the document calls this schema, null for
+     *                             one written inline
      *
      * @see docs/guide/openapi-support.md — "The normal form a schema takes"
      */
-    public function normalizeSchema(array $keywords): Schema;
+    public function normalizeSchema(array $keywords, ?string $name = null): Schema;
 }

@@ -1,0 +1,13 @@
+# Referenced by main.yaml. The inner reference is local to *this* file, which
+# is what the raw walk has to resolve against rather than against the root.
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        name:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'

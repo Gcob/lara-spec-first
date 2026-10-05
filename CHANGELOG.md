@@ -50,8 +50,26 @@ tags: [versions, conventions, planning]
 which is why they are recorded together. None of them was ever served correctly: each produced a value that was wrong
 rather than one that was missing, and nothing downstream failed to say so.
 
+### Fixed
+
+- **A position naming a schema written in another file was wrong**, and it was wrong in three readings at once: a
+  refusal named a pointer into the root document, which has nothing at it and does not name the offending file; a
+  recursion marker cut one level too late, because the parser hands back a _copy_ of an externally resolved node and the
+  walk compared object identity; and a schema's own name was unrecoverable. One cause, `getDocumentPosition()` reporting
+  the first site that referenced a node, so one correction: the extractor now
+  [walks the raw document itself](./docs/guide/openapi-support.md#where-a-schema-is-reported-from). **Every message
+  about a schema written outside the root document changes**, from a bare `#/paths/…` pointer to
+  `other.yaml#/components/schemas/…`. They were wrong before, so this is a correction rather than a break, but a
+  consumer matching on those strings will see it. For a schema written in the root document, the reported pointer is now
+  always where it is written, which it was not when `components` was read after `paths`. A percent-encoded `$ref`
+  fragment (`%7B` for `{`, as a bundler writes it) is read the way the parser reads it, so one schema is one name on
+  every road to it.
+
 ### Added
 
+- **`Contract\Schema` gains `name`**, what the document calls a schema: a key of `components.schemas` in whichever file
+  holds it, or the file name of a schema that is a whole file. Never derived from how the `$ref` reaching it was
+  spelled, so splitting a specification across files renames nothing. Null for a schema written inline.
 - **`Contract\Schema` and the types around it**: `SchemaType`, `RequestBody`, `QueryParameter` and `Response`. A schema
   now reaches every generator normalized and free of any OpenAPI version, so nothing downstream branches on which one
   the document declared.

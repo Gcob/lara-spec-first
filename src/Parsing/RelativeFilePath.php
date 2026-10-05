@@ -15,9 +15,16 @@ namespace Gcob\LaraSpecFirst\Parsing;
  * reference against — the same rule that already lets a local, multi-file
  * specification work today.
  *
- * @internal Not public API — a detail of how a vendored reference is rewritten.
+ * **Two callers, one question.** Vendoring writes the rewritten reference with
+ * it, and {@see DocumentWalk} spells a position with it — the second relative
+ * to the root document rather than to the referencing one, since a message
+ * naming two files should give a reader one directory to resolve them against.
+ *
+ * @internal Not public API — a detail of how a reference is rewritten, and of
+ *           how a position outside the root document is spelled.
  *
  * @see docs/guide/remote-references.md — "The parser never sees a URL"
+ * @see docs/guide/openapi-support.md — "Where a schema is reported from"
  */
 final readonly class RelativeFilePath
 {

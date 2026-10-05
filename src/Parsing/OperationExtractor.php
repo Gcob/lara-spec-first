@@ -187,12 +187,20 @@ final readonly class OperationExtractor
             return new ExtractionResult([], [...$faults, $fault]);
         }
 
+        // The parallel descent through the raw document, alongside the one
+        // through the parser's resolved graph below. One instance per
+        // extraction: it caches every external file it decodes, and nothing
+        // about this document may survive into the next.
+        $walk = new DocumentWalk($document->path, $document->raw);
+        $paths = $walk->child($walk->root(), 'paths');
+
         $operations = [];
         $seen = [];
         $index = 0;
 
         foreach ($parsed->paths ?? [] as $path => $pathItem) {
             $template = PathTemplate::fromString((string) $path);
+            $pathItemAt = $walk->child($paths, (string) $path);
 
             /** @var array<string, ParsedOperation> $operationsAtPath */
             $operationsAtPath = $pathItem->getOperations();
@@ -217,6 +225,8 @@ final readonly class OperationExtractor
                         $index,
                         $document->strategy,
                         $this->listOf($pathItem, 'parameters'),
+                        $walk,
+                        $pathItemAt,
                     );
                 } catch (SpecException $fault) {
                     // Widened from InvalidDocumentException when schemas started
@@ -269,6 +279,10 @@ final readonly class OperationExtractor
      * @param  array<array-key, mixed>  $shared  the Path Item's own parameters,
      *                                           which OpenAPI says apply to
      *                                           every operation under it
+     * @param  SchemaPosition  $pathItemAt  where the Path Item is written, which
+     *                                      is not always under `/paths` in the
+     *                                      root document: a Path Item may itself
+     *                                      be a reference into another file
      *
      * @throws InvalidDocumentException
      */
@@ -280,8 +294,11 @@ final readonly class OperationExtractor
         int $index,
         VersionStrategy $strategy,
         array $shared,
+        DocumentWalk $walk,
+        SchemaPosition $pathItemAt,
     ): Operation {
         $audience = $this->audience($operation, $endpoint);
+        $at = $walk->child($pathItemAt, $method->value);
 
         return new Operation(
             $index,
@@ -295,9 +312,9 @@ final readonly class OperationExtractor
             $this->sunset($operation, $endpoint),
             $this->security($operation),
             $this->controller($operation, $endpoint),
-            $this->requestBody($operation, $strategy),
-            $this->queryParameters($operation, $strategy, $shared),
-            $this->responses($operation, $strategy),
+            $this->requestBody($operation, $strategy, $walk, $at),
+            $this->queryParameters($operation, $strategy, $shared, $walk, $at, $pathItemAt),
+            $this->responses($operation, $strategy, $walk, $at),
         );
     }
 
@@ -306,8 +323,12 @@ final readonly class OperationExtractor
      *
      * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
      */
-    private function requestBody(ParsedOperation $operation, VersionStrategy $strategy): ?RequestBody
-    {
+    private function requestBody(
+        ParsedOperation $operation,
+        VersionStrategy $strategy,
+        DocumentWalk $walk,
+        SchemaPosition $at,
+    ): ?RequestBody {
         $body = $operation->requestBody;
 
         if (! $body instanceof ParsedRequestBody) {
@@ -315,10 +336,16 @@ final readonly class OperationExtractor
         }
 
         $content = [];
+        $contentAt = $walk->child($walk->child($at, 'requestBody'), 'content');
 
         foreach ($this->listOf($body, 'content') as $mediaType => $media) {
             if ($media instanceof ParsedMediaType && $media->schema instanceof ParsedSchema) {
-                $content[(string) $mediaType] = $this->schema($media->schema, $strategy);
+                $content[(string) $mediaType] = $this->schema(
+                    $media->schema,
+                    $strategy,
+                    $walk,
+                    $walk->child($walk->child($contentAt, (string) $mediaType), 'schema'),
+                );
             }
         }
 
@@ -344,8 +371,12 @@ final readonly class OperationExtractor
      *
      * @throws RejectedConstructException
      */
-    private function responses(ParsedOperation $operation, VersionStrategy $strategy): array
-    {
+    private function responses(
+        ParsedOperation $operation,
+        VersionStrategy $strategy,
+        DocumentWalk $walk,
+        SchemaPosition $at,
+    ): array {
         $declared = $operation->responses;
 
         // The one attribute of an Operation the parser wraps in an object of
@@ -367,6 +398,7 @@ final readonly class OperationExtractor
         }
 
         $responses = [];
+        $responsesAt = $walk->child($at, 'responses');
 
         foreach ($declared->getResponses() as $status => $response) {
             if (! $response instanceof ParsedResponse) {
@@ -374,10 +406,16 @@ final readonly class OperationExtractor
             }
 
             $content = [];
+            $contentAt = $walk->child($walk->child($responsesAt, (string) $status), 'content');
 
             foreach ($this->listOf($response, 'content') as $mediaType => $media) {
                 if ($media instanceof ParsedMediaType && $media->schema instanceof ParsedSchema) {
-                    $content[(string) $mediaType] = $this->schema($media->schema, $strategy);
+                    $content[(string) $mediaType] = $this->schema(
+                        $media->schema,
+                        $strategy,
+                        $walk,
+                        $walk->child($walk->child($contentAt, (string) $mediaType), 'schema'),
+                    );
                 }
             }
 
@@ -402,32 +440,54 @@ final readonly class OperationExtractor
      * @param  array<array-key, mixed>  $shared
      * @return list<QueryParameter>
      */
-    private function queryParameters(ParsedOperation $operation, VersionStrategy $strategy, array $shared): array
-    {
+    private function queryParameters(
+        ParsedOperation $operation,
+        VersionStrategy $strategy,
+        array $shared,
+        DocumentWalk $walk,
+        SchemaPosition $at,
+        SchemaPosition $pathItemAt,
+    ): array {
         $parameters = [];
 
         // The Path Item's first, so that a name it declares keeps the position
         // it was written at even when the operation redefines it. The override
         // replaces the value and not the order: a reader following the document
         // finds the parameters where the document put them.
-        foreach ([...$shared, ...$this->listOf($operation, 'parameters')] as $parameter) {
-            if (! $parameter instanceof ParsedParameter || $parameter->in !== 'query') {
-                continue;
+        //
+        // Walked as two lists rather than one concatenation, which the raw
+        // position is what forces: the two are written at different places in
+        // the document, and a merged list has lost which one each came from.
+        $declared = [
+            [$shared, $walk->child($pathItemAt, 'parameters')],
+            [$this->listOf($operation, 'parameters'), $walk->child($at, 'parameters')],
+        ];
+
+        foreach ($declared as [$list, $listAt]) {
+            foreach ($list as $index => $parameter) {
+                if (! $parameter instanceof ParsedParameter || $parameter->in !== 'query') {
+                    continue;
+                }
+
+                $name = $this->parameterName($parameter->name);
+
+                if ($name === null) {
+                    continue;
+                }
+
+                $parameters[$name] = new QueryParameter(
+                    $name,
+                    $parameter->schema instanceof ParsedSchema
+                        ? $this->schema(
+                            $parameter->schema,
+                            $strategy,
+                            $walk,
+                            $walk->child($walk->child($listAt, (string) $index), 'schema'),
+                        )
+                        : new Schema,
+                    $parameter->required === true,
+                );
             }
-
-            $name = $this->parameterName($parameter->name);
-
-            if ($name === null) {
-                continue;
-            }
-
-            $parameters[$name] = new QueryParameter(
-                $name,
-                $parameter->schema instanceof ParsedSchema
-                    ? $this->schema($parameter->schema, $strategy)
-                    : new Schema,
-                $parameter->required === true,
-            );
         }
 
         return array_values($parameters);
@@ -477,31 +537,64 @@ final readonly class OperationExtractor
      * So each node is flattened here — children first, already normalized — and
      * handed over as a plain keyword map.
      *
-     * @param  array<int, true>  $open  the nodes this descent is inside, by
-     *                                  object identity. Passed by value rather
-     *                                  than held on the instance: two sibling
-     *                                  properties may legitimately point at one
-     *                                  shared schema, and a set that survived
-     *                                  the first of them would report the second
-     *                                  as recursion
+     * @param  SchemaPosition  $position  where this node is written, computed by
+     *                                    the raw walk rather than asked of the
+     *                                    parser — see {@see DocumentWalk}
+     * @param  array<string, array{0: string, 1: string|null}>  $open  the nodes
+     *                                                                 this descent is inside, each keyed
+     *                                                                 both by written position and by
+     *                                                                 object identity — two keys for one
+     *                                                                 node, see the body — and holding the
+     *                                                                 position and name a recursion marker
+     *                                                                 reports. Passed by value
+     *                                                                 rather than held on the instance: two
+     *                                                                 sibling properties may legitimately
+     *                                                                 point at one shared schema, and a set
+     *                                                                 that survived the first of them would
+     *                                                                 report the second as recursion
      *
      * @throws RejectedConstructException
      */
-    private function schema(ParsedSchema $node, VersionStrategy $strategy, array $open = []): Schema
-    {
-        $identity = spl_object_id($node);
+    private function schema(
+        ParsedSchema $node,
+        VersionStrategy $strategy,
+        DocumentWalk $walk,
+        SchemaPosition $position,
+        array $open = [],
+    ): Schema {
+        // Two keys for one node, and the pair is the point. The position is
+        // what cuts at the right level, since the parser hands back a *copy* of
+        // an externally resolved schema and object identity never repeats for
+        // one. Object identity is kept beside it as a floor: were the raw walk
+        // ever unable to follow a `$ref` the parser did follow, positions would
+        // stop repeating too, and an unbounded descent is a hang rather than a
+        // message. Neither can fire before the document actually repeats
+        // something, so keeping both cannot cut early.
+        $keys = [$position->key(), 'object:'.spl_object_id($node)];
+        $ancestor = $open[$keys[0]] ?? $open[$keys[1]] ?? null;
 
-        if (isset($open[$identity])) {
+        if ($ancestor !== null) {
             // A schema pointing back at one of its own ancestors — a tree, a
             // comment thread, nested categories. The contract is supported and
             // the object graph is infinite, so the walk stops here and names
             // where it stopped rather than descending forever.
-            return Schema::recursion($this->pointerTo($node));
+            //
+            // **Keyed by written position rather than by object identity**, and
+            // that is the fix rather than a preference: the parser hands back a
+            // *copy* of a schema resolved out of another file, so the first node
+            // and the one it points back at are two objects and the walk only
+            // notices one level too late. Two visits to one `(file, pointer)`
+            // are the same definition however many copies of it exist.
+            // The ancestor's own position, taken from the set rather than
+            // recomputed from this node: the two are the same position when
+            // the position key matched, and only the stored one is right when
+            // the object-identity floor is what fired.
+            return Schema::recursion(...$ancestor);
         }
 
-        $this->assertSchemaIsServable($node);
+        $this->assertSchemaIsServable($node, $walk->pointer($position));
 
-        $open[$identity] = true;
+        $open[$keys[0]] = $open[$keys[1]] = [$walk->pointer($position), $walk->name($position)];
         $keywords = [];
 
         // **Presence is read from the keys the document actually wrote, not
@@ -534,19 +627,33 @@ final readonly class OperationExtractor
                 continue;
             }
 
-            $keywords[$keyword] = array_map(
-                fn (mixed $child): mixed => $child instanceof ParsedSchema
-                    ? $this->schema($child, $strategy, $open)
-                    : $child,
-                $keywords[$keyword]
-            );
+            $keywordAt = $walk->child($position, $keyword);
+            $walked = [];
+
+            // A loop rather than `array_map`, because the key is now part of
+            // the work: it names the step the raw walk takes beside this one,
+            // and the two-array form of `array_map` renumbers what it returns —
+            // which would rename every property of every object schema.
+            foreach ($keywords[$keyword] as $key => $child) {
+                $walked[$key] = $child instanceof ParsedSchema
+                    ? $this->schema($child, $strategy, $walk, $walk->child($keywordAt, $key), $open)
+                    : $child;
+            }
+
+            $keywords[$keyword] = $walked;
         }
 
         if (($keywords['items'] ?? null) instanceof ParsedSchema) {
-            $keywords['items'] = $this->schema($keywords['items'], $strategy, $open);
+            $keywords['items'] = $this->schema(
+                $keywords['items'],
+                $strategy,
+                $walk,
+                $walk->child($position, 'items'),
+                $open
+            );
         }
 
-        return $strategy->normalizeSchema($keywords);
+        return $strategy->normalizeSchema($keywords, $walk->name($position));
     }
 
     /**
@@ -567,10 +674,8 @@ final readonly class OperationExtractor
      *
      * @throws RejectedConstructException
      */
-    private function assertSchemaIsServable(ParsedSchema $node): void
+    private function assertSchemaIsServable(ParsedSchema $node, string $pointer): void
     {
-        $pointer = $this->pointerTo($node);
-
         foreach (self::REFUSED_SCHEMA_KEYWORDS as $keyword) {
             if (! isset($node->$keyword)) {
                 continue;
@@ -630,18 +735,6 @@ final readonly class OperationExtractor
         }
 
         return null;
-    }
-
-    /**
-     * Where a node sits in the document, in this package's one pointer spelling.
-     *
-     * The parser knows its own position, and a node it cannot place — which is
-     * every node of a document built from an array rather than read from a file
-     * — gets the empty pointer rather than a made-up one.
-     */
-    private function pointerTo(ParsedSchema $node): string
-    {
-        return '#'.($node->getDocumentPosition()?->getPointer() ?? '');
     }
 
     /**

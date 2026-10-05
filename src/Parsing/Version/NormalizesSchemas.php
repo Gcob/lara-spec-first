@@ -26,12 +26,13 @@ trait NormalizesSchemas
      *                                          {@see Schema} a nested node was
      *                                          already normalized into
      */
-    public function normalizeSchema(array $keywords): Schema
+    public function normalizeSchema(array $keywords, ?string $name = null): Schema
     {
         [$exclusiveMinimum, $minimum] = $this->exclusiveBound($keywords, 'Minimum');
         [$exclusiveMaximum, $maximum] = $this->exclusiveBound($keywords, 'Maximum');
 
         return new Schema(
+            name: $name,
             types: $this->types($keywords),
             format: $this->format($keywords),
             properties: $this->schemaMap($keywords, 'properties'),

@@ -1,0 +1,20 @@
+# The recursion marker of card #34, for a schema written in another file. The
+# walk has to cut at the first `children`, not the second: the parser hands
+# back a copy of a resolved external node, so an identity check sees two
+# objects where the document wrote one definition.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /nodes:
+    post:
+      operationId: createNode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './node.yaml#/components/schemas/Node'
+      responses:
+        '201':
+          description: Created

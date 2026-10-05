@@ -1,0 +1,10 @@
+# Referenced by main.yaml. Not a document of its own: a bag of components, the
+# usual shape of a file a multi-file specification splits its schemas into.
+components:
+  schemas:
+    Pet:
+      type: object
+      properties:
+        tag:
+          $id: 'https://example.test/schemas/tag'
+          type: string

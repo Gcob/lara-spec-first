@@ -1,0 +1,20 @@
+# The refusal of card #34 that named the wrong file. The offending `$id` is
+# written in other.yaml, and the message has to say so: before the raw walk,
+# the parser reported the first site that referenced the schema, a pointer into
+# this file that has nothing at it.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /pets:
+    post:
+      operationId: createPet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './other.yaml#/components/schemas/Pet'
+      responses:
+        '201':
+          description: Created

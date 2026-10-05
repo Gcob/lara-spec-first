@@ -1,0 +1,155 @@
+# Every way a schema can and cannot get a name, in one contract, because the
+# point is that they agree: decision 7 of the card #35 plan says a name comes
+# from the schema the reference lands on and never from how the reference was
+# spelled, so three spellings of one schema have to give one name.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /local:
+    post:
+      operationId: createLocal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalPet'
+      responses:
+        '201':
+          description: Created
+  /external:
+    post:
+      operationId: createExternal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './other.yaml#/components/schemas/Pet'
+      responses:
+        '201':
+          description: Created
+  /alias:
+    post:
+      operationId: createThroughAlias
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AliasOfPet'
+      responses:
+        '201':
+          description: Created
+  /from-a-subdirectory:
+    post:
+      operationId: createFromASubdirectory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './sub/wrapper.yaml#/components/schemas/Wrapper'
+      responses:
+        '201':
+          description: Created
+  /whole-file:
+    post:
+      operationId: createWholeFile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './Address.yaml'
+      responses:
+        '201':
+          description: Created
+  /unnameable-file:
+    post:
+      operationId: createUnnameableFile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './pet-v2.yaml'
+      responses:
+        '201':
+          description: Created
+  /inline:
+    post:
+      operationId: createInline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Created
+  # The spelling a bundler writes, since `{` may not appear raw in a URI fragment:
+  # the parser decodes it, so the raw walk has to as well, or this schema is `Pet`
+  # on one road and nothing on the other.
+  /pets/{id}:
+    put:
+      operationId: replacePet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './other.yaml#/components/schemas/Pet'
+      responses:
+        '200':
+          description: OK
+  /encoded:
+    post:
+      operationId: createThroughEncodedReference
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1pets~1%7Bid%7D/put/requestBody/content/application~1json/schema'
+      responses:
+        '201':
+          description: Created
+  /from-an-external-path-item:
+    $ref: './sub/paths.yaml#/petPathItem'
+  /listed:
+    # A `query` parameter is not the first one written, and one of them is
+    # declared on the Path Item rather than on the operation: both are indices
+    # the raw walk has to take from the document rather than from the merged
+    # list the extractor reads.
+    parameters:
+      - name: tenant
+        in: query
+        schema:
+          $ref: './other.yaml#/components/schemas/Tenant'
+    get:
+      operationId: listThings
+      parameters:
+        - name: X-Trace
+          in: header
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            $ref: './other.yaml#/components/schemas/Page'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: './other.yaml#/components/schemas/Pet'
+components:
+  schemas:
+    LocalPet:
+      type: object
+      properties:
+        name:
+          type: string
+    AliasOfPet:
+      $ref: './other.yaml#/components/schemas/Pet'

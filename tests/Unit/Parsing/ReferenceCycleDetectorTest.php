@@ -33,6 +33,17 @@ it('rejects a reference to itself', function (): void {
     expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
 });
 
+// A bundler writes `{` as `%7B` in a fragment, and the parser decodes it. A guard that
+// compared the target as written never found the node, so a cycle closing through
+// such a pointer went unseen and reached the parser, which runs out of memory.
+it('rejects a cycle that closes through a percent-encoded pointer', function (): void {
+    $document = ['paths' => ['/pets/{id}' => ['get' => ['responses' => ['200' => [
+        '$ref' => '#/paths/~1pets~1%7Bid%7D/get/responses/200',
+    ]]]]]];
+
+    expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
+});
+
 it('rejects a longer cycle', function (): void {
     $document = ['components' => ['schemas' => [
         'A' => ['$ref' => '#/components/schemas/B'],

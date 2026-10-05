@@ -249,6 +249,15 @@ root specification or a vendored file that named another vendored file, the resu
 local, multi-file specification. The parser was never taught about vendoring; it simply never encounters anything to
 fetch.
 
+**Nothing else in the package was taught about vendoring either, and one reader depends on that.** The extractor walks
+the raw document alongside the parser's resolved objects, to compute
+[where each schema is written](./openapi-support.md#where-a-schema-is-reported-from), and that walk follows the `$ref`
+it finds written there. Because a URL has already become a relative path by then, it has, in practice, one kind of
+target to follow: a file. The exception is the shape this whole document exists against and cannot reach — a URL written
+inside a local sibling file the author maintains by hand, which the parser would fetch itself before anything else saw
+it. A vendored copy therefore names itself the way any other file does — a refusal or a recursion marker about a schema
+inside one points at its path under the vendor directory, which is a file a reader can actually open.
+
 ## Vendoring is part of the build
 
 Vendoring makes the _inputs_ local. Turning those inputs into routes, controllers and validation is a separate job, and
