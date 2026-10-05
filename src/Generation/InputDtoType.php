@@ -94,7 +94,7 @@ final readonly class InputDtoType
      */
     public function doc(): ?string
     {
-        if ($this->literals !== [] && self::safeInDocblock($this->literals)) {
+        if ($this->kind === self::STRING && $this->literals !== [] && self::safeInDocblock($this->literals)) {
             return implode('|', array_map(
                 static fn (string|int|float|bool $value): string => var_export($value, true),
                 $this->literals,
@@ -106,6 +106,27 @@ final readonly class InputDtoType
             self::MAP => 'array<string, mixed>',
             default => null,
         };
+    }
+
+    /**
+     * The values an enumeration allows, in words, for a type that is cast.
+     *
+     * An `int` is what Larastan sees after `(int) $payload['level']`, never `1|2`,
+     * so the literal union would be a claim the line beside it contradicts. The
+     * domain still has to be readable by whoever opens the class, so it is said
+     * in the description of the `@param` instead. Null for a type that says it
+     * in its union, and for a value that is not safe to write.
+     */
+    public function allowedValues(): ?string
+    {
+        if ($this->kind === self::STRING || $this->literals === [] || ! self::safeInDocblock($this->literals)) {
+            return null;
+        }
+
+        return 'one of '.implode(', ', array_map(
+            static fn (string|int|float|bool $value): string => var_export($value, true),
+            $this->literals,
+        ));
     }
 
     /**

@@ -46,6 +46,7 @@ final readonly class NewUserPartialInputDto implements Arrayable, JsonSerializab
 {
     /**
      * @param  Optional|'active'|'banned'  $status
+     * @param  Optional|int  $level  one of 1, 2
      * @param  Optional|list<string>  $tags
      * @param  Optional|list<int>  $ids
      * @param  Optional|list<NewUserRolesItemInputDto>  $roles

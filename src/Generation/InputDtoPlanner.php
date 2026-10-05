@@ -282,6 +282,15 @@ final class InputDtoPlanner
                 || ! in_array($key, $merged->required, true)
                 || RuleSetBuilder::breaksKeyList($key);
 
+            if (! $partial && $optional && in_array($key, $merged->required, true)) {
+                $this->registry[$shortName]['findings'][] = sprintf(
+                    '`%s` is required by the schema, but its name has a `.` or a `,`, which Laravel cannot '
+                        .'name in `required_array_keys` when the object is nested, so the property is `Optional` '
+                        .'here whatever the rules say at the root.',
+                    $key,
+                );
+            }
+
             $properties[] = new InputDtoProperty($key, $name, $type, $optional);
         }
 
@@ -345,17 +354,16 @@ final class InputDtoPlanner
                 }
 
                 return new InputDtoType(InputDtoType::STRING, $nullable, literals: $literals);
-                // No literal union for the three that are cast: `(int) $payload['x']`
-                // is an `int` to Larastan, never `1|2`, so the docblock would be a
-                // claim the code beside it contradicts. The cast is what lets a
-                // multipart body's `"1"` into an `int`, and the rule set has already
-                // refused every value outside the enumeration.
+                // The three that are cast keep their values but not a literal union:
+                // `(int) $payload['x']` is an `int` to Larastan, never `1|2`, so the
+                // union would be a claim the code beside it contradicts. The values
+                // are written in the `@param` description instead.
             case SchemaType::Integer:
-                return new InputDtoType(InputDtoType::INT, $nullable);
+                return new InputDtoType(InputDtoType::INT, $nullable, literals: $literals);
             case SchemaType::Number:
-                return new InputDtoType(InputDtoType::FLOAT, $nullable);
+                return new InputDtoType(InputDtoType::FLOAT, $nullable, literals: $literals);
             case SchemaType::Boolean:
-                return new InputDtoType(InputDtoType::BOOL, $nullable);
+                return new InputDtoType(InputDtoType::BOOL, $nullable, literals: $literals);
             case SchemaType::Array:
                 $item = $schema->items === null
                     ? new InputDtoType(InputDtoType::MIXED)
@@ -374,7 +382,7 @@ final class InputDtoPlanner
         $kind = $values === [] ? null : self::enumKind($values);
 
         if ($kind !== null && $type === null && $schema->types === []) {
-            return new InputDtoType($kind, $nullable, literals: $kind === InputDtoType::STRING ? $literals : []);
+            return new InputDtoType($kind, $nullable, literals: $literals);
         }
 
         $stated = array_filter($schema->types, static fn (SchemaType $stated): bool => $stated !== SchemaType::Null);

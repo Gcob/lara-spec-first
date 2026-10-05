@@ -214,7 +214,7 @@ each is expanded to a different depth depending on where the build enters it, an
 class cannot match both, because the operation that reached it from the other side would hand `from()` input nothing
 checked. A schema that only repeats itself (`Address` holding an `Address`) is the same shape everywhere and stays a
 DTO. A key the rules cannot name when its object is nested (a required `user.name`) is optional in the DTO, so that a
-schema's shape does not depend on which operation reached it first.
+schema's shape does not depend on which operation reached it first, and the file's findings say so for each such key.
 
 **An enumeration value is written in the docblock only when it is safe to.** A value is data from the specification and
 a docblock is code: a string holding the sequence that closes a comment would end it early. Such a value costs the
@@ -228,7 +228,9 @@ the reader to the request's, which says what was not enforced. An optional `mixe
 **An enumeration that is cast keeps its scalar type and no literal union.** `(int) $payload['level']` is an `int` to
 Larastan and never `1|2`, so a docblock saying otherwise would be a claim the line beside it contradicts. The cast is
 what lets a multipart body's `"1"` into an `int`, and the rule set has already refused every value outside the
-enumeration. A string enumeration is read as it came, so its literal union is true and stays.
+enumeration. The allowed values are still written, in words, in the description of the `@param` (`one of 1, 2`), so a
+person or a tool reading the class sees the domain at once. A string enumeration is read as it came, so its literal
+union is true and stays.
 
 **A `date-time` is written back with its fraction.** `toRfc3339String()` drops it, and the request rule set accepts a
 fraction of any length (Go sends up to nine digits, .NET seven), so a `toArray()` built on it would lose the sub-second
