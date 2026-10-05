@@ -449,6 +449,12 @@ final class InputDtoPlanner
      * name that DTO after its property and give the same schema two classes.
      * More than one branch is a composition and has no single name.
      *
+     * **Only when the wrapper adds no shape of its own.** An `example`, a
+     * `description` or a `readOnly` beside the `$ref` change nothing a DTO
+     * holds. A `required`, a `properties` or an `additionalProperties` do: the
+     * wrapper is then a different schema from the one it points at, and sharing
+     * the branch's class by position would give one class two shapes.
+     *
      * @return array{0: string|null, 1: string|null}
      */
     private function nameOf(Schema $written, Schema $merged): array
@@ -457,7 +463,15 @@ final class InputDtoPlanner
             return [$written->name, $written->source];
         }
 
-        return count($written->allOf) === 1 && $merged->name !== null
+        $addsShape = $written->properties !== []
+            || $written->required !== []
+            || $written->dependentRequired !== []
+            || $written->additionalProperties !== null
+            || $written->types !== []
+            || $written->items !== null
+            || $written->enum !== null;
+
+        return count($written->allOf) === 1 && $merged->name !== null && ! $addsShape
             ? [$merged->name, $merged->source]
             : [null, null];
     }

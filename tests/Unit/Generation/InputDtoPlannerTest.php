@@ -569,3 +569,24 @@ it('reads a schema of a recursive pair as mixed where it is nested, in either or
         ->and(dtoNamed($plan, 'AuthorInputDto')->properties[1]->type->item?->kind)->toBe(InputDtoType::MIXED)
         ->and($kinds('BookInputDto'))->toBe([InputDtoType::STRING, InputDtoType::MIXED]);
 })->with(['authors first' => ['authors'], 'books first' => ['books']]);
+
+// A wrapper that adds `required` is a different schema from the one it points at.
+// Named after the branch and shared by position, it gave one class two shapes, and
+// the one built first decided: a `$payload['nickname']` read with no guard on a
+// request that never had to send it.
+it('does not share the class of a $ref with a wrapper that adds a required key', function (bool $wrapperFirst): void {
+    $user = dtoSchema(['name' => dtoString(), 'nickname' => dtoString()], ['name'], 'User', '#/components/schemas/User');
+    $wrapper = new Schema(allOf: [$user], required: ['nickname']);
+    $plain = dtoOperation('plain', ['application/json' => $user]);
+    $strict = dtoOperation('strict', ['application/json' => $wrapper], path: '/strict');
+
+    $plan = planDtos($wrapperFirst ? [$strict, $plain] : [$plain, $strict]);
+
+    $optional = static fn (string $class): array => array_map(
+        static fn ($property): bool => $property->optional,
+        dtoNamed($plan, $class)->properties,
+    );
+
+    expect($optional('UserInputDto'))->toBe([false, true])
+        ->and(dtoNames($plan->dtos))->toContain('StrictInputDto');
+})->with(['the wrapper first' => [true], 'the plain $ref first' => [false]]);
