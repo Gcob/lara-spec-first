@@ -7,9 +7,10 @@ covers: >
     required list emptied and why nothing fills an absent field from a schema `default`, which JSON Schema constraint
     becomes which Laravel rule and what happens to the ones that map to nothing, why nothing rewrites the rule set at
     request time, why the generated request is `final` and where the three things a developer would extend it for
-    already live, why the validated payload reaches the controller as a DTO and what an absent field is in it, which
-    media types are read and why one operation declares one of them, what an operation with nothing to validate gets,
-    and how the request reaches `routeAction` without changing what a custom child may override.
+    already live, why the validated payload reaches the controller as a DTO and what an absent field is in it, where
+    each field is read from (the body for a body field, the query string for a declared `query` parameter), which media
+    types are read and why one operation declares one of them, what an operation with nothing to validate gets, and how
+    the request reaches `routeAction` without changing what a custom child may override.
 read_before: >
     Implementing the `FormRequest` emitter, or changing what `routeAction` declares.
 tags: [code-generation, openapi, decisions, scope, laravel]
@@ -24,6 +25,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 >   own findings rather than enforced — see [what is built](#what-is-built-today).
 > - One rule set per operation, derived from the request body and the query parameters. The path's own parameters stay
 >   the router's.
+> - A body field is read from the body and a `query` parameter from the query string, never from each other: the request
+>   overrides `validationData()` so the URL cannot satisfy a body field, nor the body a query parameter.
 > - `PATCH` is `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema
 >   `default`.
 > - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one.
@@ -112,7 +115,8 @@ flag. The generated file says so in both cases.
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong
 answer at the wrong layer. What refuses it instead is route model binding, once
 [`x-model`](../controllers.md#x-model-turns-on-the-model-layer) names what `{id}` binds to. Laravel settles the question
-anyway: `FormRequest::validationData()` returns `$this->all()`, and route parameters are not in it.
+anyway: the data a request validates has never held route parameters, and
+[the generated one](#each-field-is-read-from-where-the-contract-put-it) does not either.
 
 **A header or a cookie parameter is reported and not acted on**, which is an `Ignored`
 [support level](../openapi-support.md#support-levels) rather than a gap. Three reasons, the first of them the
@@ -128,7 +132,7 @@ specification's own:
    and a rule set is not where a second answer to it belongs.
 
 **Three media types are read, and one operation declares one of them.** `application/json`, `multipart/form-data` and
-`application/x-www-form-urlencoded` all arrive through `all()`, so one rule set covers all three; what changes is only
+`application/x-www-form-urlencoded` are all read from the body, so one rule set covers all three; what changes is only
 whether a part can be a file, which is [`uploads.md`](../uploads.md#one-operation-one-media-type)'s subject. **The rule
 set is shared, the values under it are not:** a form-encoded body carries strings only, so `notify=true` meets Laravel's
 `boolean` as the string it is where JSON's `true` arrives already typed, and a nested structure arrives flattened. A
@@ -142,15 +146,53 @@ another, the part is read as a string, because one rule set cannot hold both a `
 package does not serve, and a `format: byte` string inside a JSON body is
 [a string nothing decodes](../uploads.md#a-base64-part-is-a-string).
 
+### Each field is read from where the contract put it
+
+**A body field is read from the body and a `query` parameter from the query string, and neither is ever read from the
+other.** Laravel validates `$this->all()`, which is the body with the query string merged in, and that answered the
+wrong question in both directions. `POST /users?email=x@example.test` with a body of `{}` passed a contract that
+requires `email` in the body, and a required `query` parameter was satisfied by a body key of the same name. The
+generated request overrides `validationData()` so the rules see what the contract described:
+
+```php
+public function validationData(): array
+{
+    $query = array_flip(self::QUERY_KEYS);
+
+    return array_diff_key($this->bodyInput(), $query) + array_intersect_key($this->query->all(), $query);
+}
+```
+
+**`QUERY_KEYS` is the declared `query` parameters, by name, and it is the only thing taken from the query string.**
+Every other key comes from the body, and a body key that happens to carry a declared query name is dropped, so it can
+neither satisfy that parameter nor be refused for being the wrong type. Which source a key has is no more a runtime
+choice than `rules()` is: the build already knows, and writes it down as a constant. An operation with no body reads
+only the query string, an operation with no `query` parameter reads only the body, and `rules()` is the same array in
+every case.
+
+**The body is the JSON bag when the request is JSON and the form bag otherwise, with the uploaded files merged in the
+way Laravel merges them.** It is never `input()` or `getInputSource()`, which answer with the query string on a `GET` or
+a `HEAD`. Keeping the uploads as Laravel's own `Illuminate\Http\UploadedFile` is what lets a `file` rule judge one and
+`dto()` receive one. The keys are combined with `array_diff_key()`, `array_replace_recursive()` and `+`, never a spread,
+which renumbers an integer key: a property named `"2024"` is a valid payload.
+
+**A value now arrives typed the way its source types it.** A JSON integer reaches `validated()` as an integer, and a
+form-encoded or query value as the string it was sent as. Before, `?age=31` supplying a body field that the body left
+out put the string `"31"` into `validated()` and into the DTO built from it.
+
+**The closed-root check reads the same body**, through the same method, so what it refuses and what the rules validate
+cannot disagree about what the body is.
+
 ### A name declared twice is refused
 
 **A field named by both the request body and a query parameter is refused, naming the field and both positions.** Not a
 precedence rule, because there is no reading under which one of them is right.
 
-The reason is in the framework rather than in the contract. `Request::all()` is the input source unioned with the query
-string, and the input source wins, so a body property and a query parameter of one name arrive as one value with the
-query string's copy dropped in silence. One key cannot carry two constraint sets either, so the build would be choosing
-which half of the contract to enforce. It refuses instead, the same shape as
+The reason is in the rule set rather than in the request.
+[A key has one source](#each-field-is-read-from-where-the-contract-put-it) now, but `rules()` holds one entry per name
+and `validated()` one value per name, so a body property and a query parameter of one name would still be two constraint
+sets competing for one key, and the build would be choosing which half of the contract to enforce. It refuses instead,
+the same shape as
 [two `x-controller` values reducing to one parent](../controllers.md#the-contract-decides-what-is-customizable).
 
 **Path-item parameters merge with the operation's, and the operation wins on a name they share.** That is OpenAPI's own
@@ -188,12 +230,12 @@ file nobody edits by hand. Nothing else in the rule set grows that way, and an o
 a shape most contracts never write.
 
 **Emptying the rule set at request time was considered and dropped.** A trait overriding `getValidatorInstance()` to
-return no rules when `$this->all()` is empty reads better on the page, and it gives up two things:
+return no rules when `$this->validationData()` is empty reads better on the page, and it gives up two things:
 
-1. **The query string is in `$this->all()`.** [Query parameters share the rule set](#one-rule-set-body-and-query), so
-   `POST /addresses?dry_run=1` with no body stops looking empty, the body's required fields fire, and a request the
-   contract allows answers 422. `present_with` asks about the sibling fields instead, which is the question the contract
-   asked.
+1. **The declared query parameters are in the validated data.**
+   [Query parameters share the rule set](#one-rule-set-body-and-query), so `POST /addresses?dry_run=1` with no body
+   stops looking empty, the body's required fields fire, and a request the contract allows answers 422. `present_with`
+   asks about the sibling fields instead, which is the question the contract asked.
 2. **`rules()` stops being the whole answer**, which [nothing is allowed to do here](#nothing-rewrites-the-rule-set),
    whatever the hook it is done through.
 
@@ -395,9 +437,10 @@ before any rule runs, and it is the `null` the type rule refuses.
 
 **The payload's root has no field for `array:` to sit on, so it gets an `after()` check instead.** The generated class
 carries the body's declared top-level keys as a constant and refuses any other key in the body, read from the body (the
-uploaded files of a multipart one included) rather than from `all()`, so a query parameter is not mistaken for an
-undeclared field. Without it an undeclared field is simply absent from `validated()`, so it never reaches a model either
-way; what the contract asked for and would not get is the request being refused.
+uploaded files of a multipart one included) by the
+[same method the rules' data comes from](#each-field-is-read-from-where-the-contract-put-it), so a query parameter is
+not mistaken for an undeclared field. Without it an undeclared field is simply absent from `validated()`, so it never
+reaches a model either way; what the contract asked for and would not get is the request being refused.
 
 **Top-level keys only, and that is what lets the check run whenever the root closes itself.** Every nested object that
 closes itself already refuses its own extras through `array:` on its own key, so the root's check has nothing to add

@@ -10,6 +10,7 @@ use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\FormRequestEmitter;
+use Gcob\LaraSpecFirst\Generation\PlannedRequest;
 use Illuminate\Foundation\Http\FormRequest;
 use Symfony\Component\Process\Process;
 
@@ -161,9 +162,74 @@ it('closes the root with an after() check on its declared keys', function (): vo
     expect(emittedRequest(goldenOperation()))
         ->toContain("private const BODY_KEYS = ['email', 'age', 'nickname', 'role', 'tags', 'address', 'website'];")
         ->toContain('public function after(): array')
-        // The body bag and the uploaded files, never `getInputSource()`, which
-        // answers with the query string on a `GET` or a `HEAD`.
-        ->toContain('$this->isJson() ? $this->json()->all() : $this->request->all() + $this->files->all()');
+        // The same reader `validationData()` uses, so the two cannot disagree
+        // about what the body is.
+        ->toContain('foreach (array_keys($this->bodyInput()) as $key)');
+});
+
+/**
+ * A `GET` whose only input is one query parameter.
+ */
+function queryOnlyOperation(): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/users'),
+        operationId: 'listUsers',
+        queryParameters: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    );
+}
+
+/**
+ * A `POST` with an open body and no query parameter.
+ */
+function bodyOnlyOperation(): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+        )], true),
+    );
+}
+
+// Laravel's `validationData()` is `all()`, the body with the query string merged
+// in. The generated one reads each key from the one place the contract put it.
+it('reads the body keys from the body and the declared query keys from the query string', function (): void {
+    expect(emittedRequest(goldenOperation()))
+        ->toContain("private const QUERY_KEYS = ['notify'];")
+        ->toContain('public function validationData(): array')
+        ->toContain('$query = array_flip(self::QUERY_KEYS);')
+        ->toContain('return array_diff_key($this->bodyInput(), $query) + array_intersect_key($this->query->all(), $query);')
+        // The body bag and the uploads, never `getInputSource()` or `input()`,
+        // which answer with the query string on a `GET` or a `HEAD`.
+        ->toContain('$body = $this->isJson() ? $this->json()->all() : $this->request->all();')
+        ->toContain('return array_replace_recursive($body, $this->allFiles(), $body);')
+        ->and(emittedRequest(goldenOperation()))->not->toContain('getInputSource')
+        ->and(emittedRequest(goldenOperation()))->not->toContain('$this->all()')
+        ->and(emittedRequest(goldenOperation()))->not->toContain('->input(');
+});
+
+it('reads only the body when the operation declares no query parameter', function (): void {
+    expect(emittedRequest(bodyOnlyOperation()))
+        ->toContain('return $this->bodyInput();')
+        ->and(emittedRequest(bodyOnlyOperation()))->not->toContain('QUERY_KEYS')
+        ->and(emittedRequest(bodyOnlyOperation()))->not->toContain('array_intersect_key');
+});
+
+it('reads only the declared query keys when the operation has no body', function (): void {
+    $emitted = emittedRequest(queryOnlyOperation());
+
+    expect($emitted)
+        ->toContain("private const QUERY_KEYS = ['page'];")
+        ->toContain('return array_intersect_key($this->query->all(), array_flip(self::QUERY_KEYS));')
+        ->and($emitted)->not->toContain('bodyInput')
+        ->and($emitted)->not->toContain('isJson');
 });
 
 // Authorization is the route's and a Policy's. A generated answer here would be
@@ -249,13 +315,33 @@ it('emits bytes Pint has nothing to change in', function (): void {
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
 });
 
-// The closed root reads the form bag and the files with `+`, which keeps an integer
-// key a spread would renumber: a property named "2024" is a valid payload.
-it('joins the form bag and the files without renumbering integer keys', function (): void {
+// An integer key survives: a property named "2024" is a valid payload, and a
+// spread renumbers it to 0. `array_diff_key()`, `+` and `array_replace_recursive()`
+// all keep the key.
+it('joins the body and the query string without renumbering integer keys', function (): void {
     $emitted = emittedRequest(goldenOperation());
 
-    expect($emitted)->toContain('$this->request->all() + $this->files->all()')
-        ->and($emitted)->not->toContain('...$this->files');
-    expect([2024 => 'a'] + [])->toBe([2024 => 'a'])
+    expect($emitted)->not->toContain('...$')
+        ->and($emitted)->not->toContain('array_merge');
+    expect(array_diff_key([2024 => 'a', 'b' => 'c'], ['b' => 0]) + [])->toBe([2024 => 'a'])
+        ->and(array_replace_recursive([2024 => 'a'], [], [2024 => 'a']))->toBe([2024 => 'a'])
         ->and([...[2024 => 'a'], ...[]])->toBe([0 => 'a']);
+});
+
+// The PATCH golden, from the YAML contract: no query parameter and an open body, so
+// it reads the body alone. Pinned beside the other so the shape it takes is read.
+it('reproduces the PATCH golden file byte for byte', function (): void {
+    $requests = plannedRequests(extractFixture('input-dto-golden.yaml'), 'UpdateUserController')['requests'];
+    $request = array_values(array_filter(
+        $requests,
+        static fn (PlannedRequest $planned): bool => $planned->name->shortName === 'UpdateUserRequest',
+    ))[0];
+
+    $emitted = (new FormRequestEmitter('Gcob\\LaraSpecFirst\\Tests\\Fixtures\\Generated', 'tests/Fixtures/input-dto-golden.yaml'))
+        ->emit($request)
+        ->contents;
+
+    expect($emitted)->toBe(file_get_contents(
+        dirname(__DIR__, 2).'/Fixtures/Generated/Requests/UpdateUserRequest.php'
+    ));
 });

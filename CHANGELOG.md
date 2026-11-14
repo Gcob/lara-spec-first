@@ -128,6 +128,14 @@ rather than one that was missing, and nothing downstream failed to say so.
   always where it is written, which it was not when `components` was read after `paths`. A percent-encoded `$ref`
   fragment (`%7B` for `{`, as a bundler writes it) is read the way the parser reads it, so one schema is one name on
   every road to it.
+- **A generated request read the body and the query string as one**, through Laravel's `validationData()`, which is
+  `all()`. `POST /users?email=x@example.test` with a body of `{}` passed a contract that requires `email` in the body,
+  and a required `query` parameter was satisfied by a body key of the same name. A body integer arrived in `validated()`
+  and in `dto()` as the string `"31"` whenever the URL supplied it. Each generated request now overrides
+  `validationData()`: body fields come from the body (the JSON bag, or the form bag, with the uploads) and only the
+  declared `query` parameters come from the query string, kept as a `QUERY_KEYS` constant. `rules()` is unchanged. **A
+  request that used to pass because the wrong source supplied a field now answers 422**, which is the contract's own
+  answer, and the build re-emits every request class.
 
 ### Added
 

@@ -9,10 +9,12 @@ use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Generation\FormRequestEmitter;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
@@ -730,4 +732,222 @@ it('keeps a base64 string a string', function (): void {
     $body = oneField(new Schema(types: [SchemaType::String], format: 'byte'));
 
     expect(statusForBuiltRules($body, ['field' => 'aGVsbG8=']))->toBe(200);
+});
+
+/*
+ * Where each field is read from. A generated request validates the body for the
+ * keys the body declares and the query string for the keys a `query` parameter
+ * declares, so a value supplied in the wrong place is absent, not misread.
+ *
+ * The class under test is the golden `CreateUserRequest` where it is enough, and
+ * a class the emitter writes during the test where the case needs a shape the
+ * golden does not have (a required query parameter, a file part, a bodyless GET).
+ */
+
+/**
+ * Write the request the emitter produces for `$operation`, load it, and name it.
+ *
+ * Emitted rather than copied, so the class under test is what a build writes.
+ * Each call gets a namespace of its own, since a class cannot be declared twice.
+ *
+ * @return class-string<FormRequest>
+ */
+function emittedRequestClass(Operation $operation): string
+{
+    static $count = 0;
+
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Emitted\\Run'.++$count;
+    $planned = plannedRequests([$operation])['requests'][0];
+    $path = (string) tempnam(sys_get_temp_dir(), 'lsf-request-');
+
+    file_put_contents($path, (new FormRequestEmitter($namespace, 'tests/emitted.yaml'))->emit($planned)->contents);
+    require $path;
+    unlink($path);
+
+    /** @var class-string<FormRequest> $class */
+    $class = $namespace.'\\Requests\\'.$planned->name->shortName;
+
+    return $class;
+}
+
+/**
+ * One request through the real kernel to a route that answers with what the
+ * generated request validated, files reduced to their class name.
+ *
+ * @param  class-string<FormRequest>  $class
+ * @param  array<string, mixed>  $parameters  form fields, for a request that is not JSON
+ * @param  array<string, mixed>  $files
+ * @param  array<string, mixed>|null  $json  the body, for a JSON request
+ * @return array{0: int, 1: array<string, mixed>}
+ */
+function sendThroughEmitted(string $class, string $method, string $query = '', ?array $json = null, array $parameters = [], array $files = []): array
+{
+    Route::match([$method], '/_generated/emitted', fn () => response()->json(array_map(
+        static fn (mixed $value): mixed => $value instanceof UploadedFile ? UploadedFile::class : $value,
+        app($class)->validated(),
+    )));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/emitted'.$query,
+        $method,
+        $parameters,
+        [],
+        $files,
+        ['HTTP_ACCEPT' => 'application/json'] + ($json === null ? [] : ['CONTENT_TYPE' => 'application/json']),
+        $json === null ? null : (string) json_encode($json),
+    ));
+
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), $decoded];
+}
+
+/**
+ * A `POST` whose body names `name` and whose query string names a required `limit`.
+ */
+function postWithRequiredQuery(): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+            required: ['name'],
+        )], true),
+        queryParameters: [new QueryParameter('limit', new Schema(types: [SchemaType::Integer]), required: true)],
+    );
+}
+
+// The probe: the body is `{}`, and the URL carries what the body must. Laravel's
+// `all()` merged the two and the contract's required field was satisfied by the
+// query string.
+it('refuses a required body field that was supplied in the query string', function (): void {
+    [$status, $body] = sendGeneratedRequest([], '?email=x@example.test&age=31');
+
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['email']);
+});
+
+it('does not read an optional body field from the query string', function (): void {
+    expect(sendGeneratedRequest(['email' => 'someone@example.test'], '?age=31'))
+        ->toBe([200, ['email' => 'someone@example.test']]);
+});
+
+it('hands an integer body field to validated() as an integer', function (): void {
+    [$status, $body] = sendGeneratedRequest(['email' => 'someone@example.test', 'age' => 31]);
+
+    expect($status)->toBe(200)
+        ->and($body['age'])->toBe(31);
+});
+
+it('reads a form-encoded body', function (): void {
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/users',
+        'POST',
+        ['email' => 'someone@example.test', 'age' => '30'],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json'],
+    ));
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and(json_decode((string) $response->getContent(), true))->toBe(['email' => 'someone@example.test', 'age' => '30']);
+});
+
+it('refuses a form-encoded body that leaves a required field to the query string', function (): void {
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/users?email=x@example.test',
+        'POST',
+        ['age' => '30'],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json'],
+    ));
+
+    expect($response->getStatusCode())->toBe(422);
+});
+
+// The reverse: a declared `query` parameter is the query string's, and a body key
+// of the same name does not satisfy it.
+it('refuses a required query parameter that was supplied in the body', function (): void {
+    $class = emittedRequestClass(postWithRequiredQuery());
+
+    [$status, $body] = sendThroughEmitted($class, 'POST', json: ['name' => 'Ada', 'limit' => 3]);
+
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['limit']);
+});
+
+it('reads a required query parameter from the query string beside a JSON body', function (): void {
+    $class = emittedRequestClass(postWithRequiredQuery());
+
+    expect(sendThroughEmitted($class, 'POST', '?limit=3', json: ['name' => 'Ada']))
+        ->toBe([200, ['name' => 'Ada', 'limit' => '3']]);
+});
+
+// The body wins nothing on a name the query declares: it is not read at all.
+it('ignores a body key carrying the name of a declared query parameter', function (): void {
+    $class = emittedRequestClass(postWithRequiredQuery());
+
+    expect(sendThroughEmitted($class, 'POST', '?limit=3', json: ['name' => 'Ada', 'limit' => 'not a number']))
+        ->toBe([200, ['name' => 'Ada', 'limit' => '3']]);
+});
+
+// A property named "2024" is an integer key in PHP, and a spread would renumber
+// it. Asked of `validationData()` itself, since only a key a rule names comes back
+// from `validated()`.
+it('keeps an integer-like body key beside a query parameter', function (): void {
+    $class = emittedRequestClass(postWithRequiredQuery());
+
+    $request = $class::create(
+        '/_generated/emitted?limit=3',
+        'POST',
+        server: ['CONTENT_TYPE' => 'application/json'],
+        content: (string) json_encode(['2024' => 'a', 'name' => 'Ada']),
+    );
+
+    expect($request->validationData())->toBe([2024 => 'a', 'name' => 'Ada', 'limit' => '3']);
+});
+
+it('validates a GET from its query parameters alone', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listThings',
+        queryParameters: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]), required: true)],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', '?page=2'))->toBe([200, ['page' => '2']])
+        ->and(sendThroughEmitted($class, 'GET')[0])->toBe(422);
+});
+
+// What reaches the validator is the body's uploads, not a copy of them: a file
+// rule and `dto()` still see `Illuminate\Http\UploadedFile`.
+it('hands an upload to the file rules and to validated() as an uploaded file', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/avatars'),
+        operationId: 'uploadAvatar',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'title' => new Schema(types: [SchemaType::String]),
+                'avatar' => filePart('image/png'),
+            ],
+            required: ['title', 'avatar'],
+        )], true),
+        queryParameters: [new QueryParameter('limit', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    $png = UploadedFile::fake()->create('a.png', 1, 'image/png');
+
+    expect(sendThroughEmitted($class, 'POST', '?limit=3', parameters: ['title' => 'Me'], files: ['avatar' => $png]))
+        ->toBe([200, ['title' => 'Me', 'avatar' => UploadedFile::class, 'limit' => '3']])
+        ->and(sendThroughEmitted($class, 'POST', '?title=Me', files: ['avatar' => $png])[0])->toBe(422);
 });

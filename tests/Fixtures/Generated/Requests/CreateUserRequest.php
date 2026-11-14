@@ -51,6 +51,11 @@ final class CreateUserRequest extends FormRequest
      */
     private const BODY_KEYS = ['email', 'age', 'nickname', 'role', 'tags', 'address', 'website'];
 
+    /**
+     * The `query` parameters the contract declares, the only keys read from the query string.
+     */
+    private const QUERY_KEYS = ['notify'];
+
     public function authorize(): bool
     {
         return true;
@@ -75,6 +80,31 @@ final class CreateUserRequest extends FormRequest
         ];
     }
 
+    /**
+     * The data the rules judge: the body's keys come from the body and the `query`
+     * parameters from the query string, where Laravel would have merged the two.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function validationData(): array
+    {
+        $query = array_flip(self::QUERY_KEYS);
+
+        return array_diff_key($this->bodyInput(), $query) + array_intersect_key($this->query->all(), $query);
+    }
+
+    /**
+     * The body and its uploads, and never the query string.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function bodyInput(): array
+    {
+        $body = $this->isJson() ? $this->json()->all() : $this->request->all();
+
+        return array_replace_recursive($body, $this->allFiles(), $body);
+    }
+
     public function dto(): CreateUserInputDto
     {
         return CreateUserInputDto::from($this->validated());
@@ -87,9 +117,7 @@ final class CreateUserRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                $body = $this->isJson() ? $this->json()->all() : $this->request->all() + $this->files->all();
-
-                foreach (array_keys($body) as $key) {
+                foreach (array_keys($this->bodyInput()) as $key) {
                     if (! in_array((string) $key, self::BODY_KEYS, true)) {
                         $validator->errors()->add((string) $key, 'The '.$key.' field is not part of this contract.');
                     }

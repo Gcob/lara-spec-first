@@ -45,6 +45,12 @@ final readonly class RuleSet
      *                           type read, which is the one body a part can be a
      *                           file in. The DTO asks the same question the
      *                           rules did, and takes the answer from here
+     * @param  list<string>  $queryKeys  the names of the `query` parameters that
+     *                                   have a rule, as written in the document.
+     *                                   The emitted request reads exactly these
+     *                                   from the query string and everything else
+     *                                   from the body, so each rule key has one
+     *                                   source
      */
     public function __construct(
         public array $rules = [],
@@ -52,6 +58,7 @@ final readonly class RuleSet
         public ?array $closedKeys = null,
         public ?Schema $body = null,
         public bool $multipart = false,
+        public array $queryKeys = [],
     ) {}
 
     /**

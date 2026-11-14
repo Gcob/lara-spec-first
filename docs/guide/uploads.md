@@ -51,8 +51,8 @@ against. The build refuses instead, the same shape as
 [a field named twice](./code-generation/request-validation.md#a-name-declared-twice-is-refused).
 
 **Two media types pointing at one schema are not a conflict.** `application/json` and
-`application/x-www-form-urlencoded` over the same `$ref` produce one rule set that serves both, because `all()` carries
-them identically. What the build refuses is two shapes, not two spellings of one.
+`application/x-www-form-urlencoded` over the same `$ref` produce one rule set that serves both, because the generated
+request reads the body of either the same way. What the build refuses is two shapes, not two spellings of one.
 
 **And the media type stays the author's choice, not ours.** Refusing everything but `application/json` would be this
 package deciding an API's wire format, and it would push every upload through base64, which is
@@ -161,8 +161,9 @@ over it with `nullable` would accept a payload the contract does not describe, a
 answers to.
 
 **The validated part reaches the controller as an `UploadedFile`**, on the
-[input DTO](./code-generation/request-validation.md#the-payload-arrives-as-a-dto) like every other property, because
-`Request::all()` carries files and `validated()` hands them back with everything else.
+[input DTO](./code-generation/request-validation.md#the-payload-arrives-as-a-dto) like every other property, because the
+data the generated request validates carries the uploads as `Illuminate\Http\UploadedFile`, and `validated()` hands them
+back with everything else.
 
 ## Storing is configured, never guessed
 

@@ -97,6 +97,29 @@ final class UpdateUserRequest extends FormRequest
         ];
     }
 
+    /**
+     * The data the rules judge: the body's keys come from the body and the `query`
+     * parameters from the query string, where Laravel would have merged the two.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function validationData(): array
+    {
+        return $this->bodyInput();
+    }
+
+    /**
+     * The body and its uploads, and never the query string.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function bodyInput(): array
+    {
+        $body = $this->isJson() ? $this->json()->all() : $this->request->all();
+
+        return array_replace_recursive($body, $this->allFiles(), $body);
+    }
+
     public function dto(): NewUserPartialInputDto
     {
         return NewUserPartialInputDto::from($this->validated());

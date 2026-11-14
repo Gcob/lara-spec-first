@@ -69,7 +69,7 @@ final readonly class FormRequestEmitter
             {$this->docblock($planned)}
             final class {$planned->name->shortName} extends FormRequest
             {
-            {$this->closedKeysConstant($planned->rules)}    public function authorize(): bool
+            {$this->keyConstants($planned->rules)}    public function authorize(): bool
                 {
                     return true;
                 }
@@ -83,7 +83,7 @@ final readonly class FormRequestEmitter
             {$this->rules($planned->rules)}
                     ];
                 }
-            {$this->dto($planned)}{$this->after($planned->rules)}}
+            {$this->validationData($planned->rules)}{$this->dto($planned)}{$this->after($planned->rules)}}
 
             PHP,
         );
@@ -123,19 +123,109 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * The constant the closed-root check reads, or nothing.
+     * The constants the generated class reads its keys from, or nothing.
+     *
+     * `BODY_KEYS` is the closed-root check's, and `QUERY_KEYS` is what
+     * `validationData()` takes from the query string. Both are names as the
+     * document writes them, which is how PHP's own bags key them.
      */
-    private function closedKeysConstant(RuleSet $set): string
+    private function keyConstants(RuleSet $set): string
     {
-        if ($set->closedKeys === null) {
-            return '';
+        $constants = '';
+
+        if ($set->closedKeys !== null) {
+            $constants .= sprintf(
+                "    /**\n     * The only top-level keys the contract's body declares, and the only ones it allows.\n     */\n"
+                    ."    private const BODY_KEYS = [%s];\n\n",
+                implode(', ', array_map($this->literal(...), $set->closedKeys)),
+            );
         }
 
-        return sprintf(
-            "    /**\n     * The only top-level keys the contract's body declares, and the only ones it allows.\n     */\n"
-                ."    private const BODY_KEYS = [%s];\n\n",
-            implode(', ', array_map($this->literal(...), $set->closedKeys)),
-        );
+        if ($set->queryKeys !== []) {
+            $constants .= sprintf(
+                "    /**\n     * The `query` parameters the contract declares, the only keys read from the query string.\n     */\n"
+                    ."    private const QUERY_KEYS = [%s];\n\n",
+                implode(', ', array_map($this->literal(...), $set->queryKeys)),
+            );
+        }
+
+        return $constants;
+    }
+
+    /**
+     * `validationData()`, and the body reader it shares with the closed-root check.
+     *
+     * **Laravel validates `$this->all()`, which is the body with the query string
+     * merged in**, and a rule key has one source in the contract. So a required
+     * body field supplied in the URL passed, a `query` parameter was satisfied by a
+     * body key of the same name, and a body integer sent as `?age=31` reached
+     * `validated()` as the string `"31"`. The build already refuses one name
+     * declared in both places, so each key can be read from the one place it
+     * belongs to: the body's keys from the body, and the declared `query`
+     * parameters, by name, from the query string.
+     *
+     * **The body is read from the body, never through `input()` or
+     * `getInputSource()`**, which answer with the query string on a `GET` or a
+     * `HEAD`. The uploads are merged the way Laravel's own `all()` merges them, with
+     * the text field winning on a shared name, so a file rule still judges an
+     * `Illuminate\Http\UploadedFile` and `dto()` still receives one. `array_diff_key()`
+     * and `+` keep an integer key where a spread would renumber it: a property
+     * named `"2024"` is a valid payload.
+     *
+     * **`rules()` is untouched**: this changes the data the rules judge, and the
+     * rule set stays exactly what the contract says.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "Each field is read from where the contract put it"
+     */
+    private function validationData(RuleSet $set): string
+    {
+        $hasBody = $set->body !== null;
+        $hasQuery = $set->queryKeys !== [];
+
+        $statements = match (true) {
+            $hasBody && $hasQuery => [
+                '        $query = array_flip(self::QUERY_KEYS);',
+                '',
+                '        return array_diff_key($this->bodyInput(), $query) + array_intersect_key($this->query->all(), $query);',
+            ],
+            $hasBody => ['        return $this->bodyInput();'],
+            $hasQuery => ['        return array_intersect_key($this->query->all(), array_flip(self::QUERY_KEYS));'],
+            default => ['        return [];'],
+        };
+
+        $lines = [
+            '',
+            '    /**',
+            '     * The data the rules judge: the body\'s keys come from the body and the `query`',
+            '     * parameters from the query string, where Laravel would have merged the two.',
+            '     *',
+            '     * @return array<array-key, mixed>',
+            '     */',
+            '    public function validationData(): array',
+            '    {',
+            ...$statements,
+            '    }',
+        ];
+
+        if ($hasBody) {
+            array_push(
+                $lines,
+                '',
+                '    /**',
+                '     * The body and its uploads, and never the query string.',
+                '     *',
+                '     * @return array<array-key, mixed>',
+                '     */',
+                '    private function bodyInput(): array',
+                '    {',
+                '        $body = $this->isJson() ? $this->json()->all() : $this->request->all();',
+                '',
+                '        return array_replace_recursive($body, $this->allFiles(), $body);',
+                '    }',
+            );
+        }
+
+        return implode("\n", $lines)."\n";
     }
 
     /**
@@ -170,13 +260,12 @@ final readonly class FormRequestEmitter
      * supports, and an attribute behind a version gate with this closure
      * underneath it anyway would be two shapes that have to stay equivalent.
      *
-     * **Top-level keys only, read from the body rather than from `all()`** —
-     * the JSON bag, or the form bag and the uploaded files otherwise, and never
-     * `getInputSource()`, which answers with the query string on a `GET` or a
-     * `HEAD`. The files are a bag of their own, so a closed root that left them
-     * out would let an undeclared upload through. Joined with `+` and not with a
-     * spread, which renumbers an integer key and would refuse a declared `"2024"`.
-     * The query string is not the body, and a nested object that closes
+     * **Top-level keys only, read from the body rather than from `all()`**, by
+     * the same `bodyInput()` `validationData()` reads: the JSON bag, or the form
+     * bag, and the uploaded files either way, never `getInputSource()`, which
+     * answers with the query string on a `GET` or a `HEAD`. The files are a bag of
+     * their own, so a closed root that left them out would let an undeclared upload
+     * through. The query string is not the body, and a nested object that closes
      * itself already refuses its own extras through `array:` — so checking
      * deeper here would repeat that, and would refuse the extras of a nested
      * object that allows them.
@@ -196,9 +285,7 @@ final readonly class FormRequestEmitter
                 {
                     return [
                         function (Validator $validator): void {
-                            $body = $this->isJson() ? $this->json()->all() : $this->request->all() + $this->files->all();
-
-                            foreach (array_keys($body) as $key) {
+                            foreach (array_keys($this->bodyInput()) as $key) {
                                 if (! in_array((string) $key, self::BODY_KEYS, true)) {
                                     $validator->errors()->add((string) $key, 'The '.$key.' field is not part of this contract.');
                                 }

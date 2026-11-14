@@ -261,6 +261,28 @@ it('merges the body and the query into one rule set, body first', function (): v
     expect(array_keys($set->rules))->toBe(['email', 'notify']);
 });
 
+// The emitted request reads exactly these names from the query string, so the list
+// is the parameters that have a rule, as the document writes them.
+it('names the query parameters that have a rule', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['email' => new Schema(types: [SchemaType::String])])],
+        query: [
+            new QueryParameter('notify', new Schema(types: [SchemaType::Boolean])),
+            new QueryParameter('tag', new Schema(types: [SchemaType::Array]), required: true),
+            new QueryParameter('filter', new Schema(types: [SchemaType::Object])),
+            new QueryParameter('page*', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect($set->queryKeys)->toBe(['notify', 'tag', 'filter']);
+});
+
+it('names no query parameter for an operation that declares none', function (): void {
+    expect(RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['email' => new Schema(types: [SchemaType::String])])],
+    ))->queryKeys)->toBe([]);
+});
+
 // --- What is refused rather than guessed at ---
 
 it('refuses a name declared by both the body and a query parameter', function (): void {

@@ -152,6 +152,7 @@ final readonly class RuleSetBuilder
         // as one, whatever the body is.
         $multipart = $walk->multipart;
         $walk->multipart = false;
+        $queryKeys = [];
 
         foreach ($operation->queryParameters as $parameter) {
             $unescapable = self::unescapableKey($parameter->name);
@@ -167,6 +168,8 @@ final readonly class RuleSetBuilder
             if (isset($walk->rules[$key])) {
                 throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
             }
+
+            $queryKeys[] = $parameter->name;
 
             $presence = $parameter->required ? self::requiredRule($parameter->schema) : 'sometimes';
             $merged = AllOfMerger::merge($parameter->schema, $operation->label(), '`'.$parameter->name.'`');
@@ -209,7 +212,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence, insideList: false);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys);
     }
 
     /**
