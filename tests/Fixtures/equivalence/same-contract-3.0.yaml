@@ -61,6 +61,27 @@ paths:
       responses:
         '204':
           description: Gone
+  /avatars:
+    post:
+      operationId: uploadAvatar
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                caption:
+                  type: string
+            # The Encoding Object reads the same in both versions.
+            encoding:
+              avatar:
+                contentType: image/png, image/jpeg
+      responses:
+        '201':
+          description: Created
 components:
   schemas:
     User:

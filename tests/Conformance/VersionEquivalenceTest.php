@@ -107,6 +107,7 @@ it('extracts one contract from two spellings of it', function (): void {
             : [
                 'required' => $operation->requestBody->required,
                 'content' => array_map(describeSchema(...), $operation->requestBody->content),
+                'encoding' => $operation->requestBody->encoding,
             ],
         'responses' => array_map(
             static fn (Response $response): array => [
@@ -133,5 +134,5 @@ it('extracts one contract from two spellings of it', function (): void {
 // tells you the documents describe the same surface, the comparison above tells
 // you every detail of it survived the version difference.
 it('finds the same operations in both', function (string $fixture): void {
-    expect(extractEquivalenceFixture($fixture))->toHaveCount(4);
+    expect(extractEquivalenceFixture($fixture))->toHaveCount(5);
 })->with(['same-contract-3.0.yaml', 'same-contract-3.1.yaml']);

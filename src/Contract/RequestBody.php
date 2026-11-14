@@ -24,10 +24,16 @@ final readonly class RequestBody
      * @param  array<string, Schema>  $content  keyed by media type, in the order the document writes them
      * @param  bool  $required  whether the whole payload may be absent, which is never the same question as whether a
      *                          property inside it is required
+     * @param  array<string, array<string, string>>  $encoding  media type, then part name, then the `contentType` the
+     *                                                          document wrote for that part, as written. A part that
+     *                                                          writes none has no entry: the parser's invented default
+     *                                                          is not what the author said. Splitting the list and
+     *                                                          normalizing each type is the reader's job
      */
     public function __construct(
         public array $content,
         public bool $required = false,
+        public array $encoding = [],
     ) {}
 
     /**
@@ -38,5 +44,13 @@ final readonly class RequestBody
     public function mediaTypes(): array
     {
         return array_keys($this->content);
+    }
+
+    /**
+     * The `contentType` the document wrote for one part of one media type, as written, or null when it wrote none.
+     */
+    public function contentType(string $mediaType, string $part): ?string
+    {
+        return $this->encoding[$mediaType][$part] ?? null;
     }
 }

@@ -424,3 +424,30 @@ it('normalizes a response schema per media type', function (): void {
 it('has no response for a status the document never declared', function (): void {
     expect(extractionFrom('responses.yaml')->operations[0]->response('418'))->toBeNull();
 });
+
+// The parser invents a contentType for a part the author left bare (a binary is
+// `application/octet-stream`, a primitive `text/plain`), and only for an inline
+// schema. The contract carries what the document wrote and nothing else, so the
+// next reader can tell "the author named a type" from "the parser filled in".
+it('reads encoding contentType from the raw document', function (): void {
+    $body = extractionFrom('encoding.yaml')->operations[0]->requestBody;
+
+    expect($body?->encoding)->toBe(['multipart/form-data' => ['avatar' => 'image/png, image/jpeg']])
+        ->and($body?->contentType('multipart/form-data', 'avatar'))->toBe('image/png, image/jpeg')
+        ->and($body?->contentType('multipart/form-data', 'caption'))->toBeNull()
+        ->and($body?->contentType('multipart/form-data', 'document'))->toBeNull()
+        ->and($body?->contentType('multipart/form-data', 'absent'))->toBeNull()
+        ->and($body?->contentType('application/json', 'avatar'))->toBeNull();
+});
+
+it('carries no encoding for a body that writes none', function (): void {
+    expect(extractionFrom('encoding.yaml')->operations[2]->requestBody?->encoding)->toBe([]);
+});
+
+it('reads an inline and a referenced body with the same encoding', function (): void {
+    $operations = extractionFrom('encoding.yaml')->operations;
+
+    expect($operations[1]->requestBody?->encoding)
+        ->toBe($operations[0]->requestBody?->encoding)
+        ->toBe(['multipart/form-data' => ['avatar' => 'image/png, image/jpeg']]);
+});
