@@ -1580,9 +1580,11 @@ final readonly class RuleSetBuilder
         }
 
         $dependedOn = [];
+        $dependent = [];
 
         foreach ($schema->dependentRequired as $trigger => $names) {
             array_push($dependedOn, (string) $trigger, ...array_map('strval', $names));
+            array_push($dependent, ...array_map('strval', $names));
         }
 
         $names = array_values(array_filter(
@@ -1611,7 +1613,7 @@ final readonly class RuleSetBuilder
                 }
 
                 $path = $paths[$name];
-                $asked = in_array($name, $schema->required, true) || in_array($name, $dependedOn, true);
+                $asked = in_array($name, $schema->required, true) || in_array($name, $dependent, true);
 
                 $walk->unchecked[$name] = 'the body is also JSON, and one rule set cannot hold both the name the contract writes and the one PHP gives it';
                 $walk->findings[] = sprintf(
@@ -1620,7 +1622,12 @@ final readonly class RuleSetBuilder
                         .'so its value is not checked there.%3$s',
                     $name,
                     $path === null ? 'under no name' : 'as `'.self::pathKey($path).'`',
-                    $asked ? ' A presence rule would refuse every form client, so it is not asked for.' : '',
+                    $asked
+                        ? ' The contract requires it, and a presence rule keyed by the JSON name would refuse every '
+                            .'form client, so it is not asked for from a JSON client either: one rule set serves both '
+                            .'and `rules()` does not branch on the media type, so a JSON body that leaves it out is '
+                            .'accepted, which the contract refuses.'
+                        : '',
                 );
 
                 if ($path !== null) {

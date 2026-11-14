@@ -157,11 +157,13 @@ error before this finding is reached; it is the bracketed case that gets here in
 **A body that is JSON and a form at once keeps the rule for the name the contract writes, and a form client's value is
 not checked.** A JSON client sends `user.name` exactly, and a rule keyed by it is right for that client. A form client
 sends it as `user.name` too, which PHP delivers as `user_name`, and no one rule set holds both keys without refusing one
-of the two clients. The value a form client sends is not checked, and **a required name is not asked for**: a presence
-rule keyed by the JSON name would answer 422 to every form client, which is stricter than the contract and the one thing
-the principle forbids here without a reason. The generated file says where a form client's value arrives and that it is
-not checked there, and the matching DTO property is `Optional`: the payload cannot be promised to carry it. This is the
-one report path for a name PHP rewrites; a contract that needs it checked is better served by one media type.
+of the two clients. The value a form client sends is not checked, and **a required name is not asked for, from either
+client**: a presence rule keyed by the JSON name would answer 422 to every form client, which is stricter than the
+contract and the one thing the principle forbids here without a reason. The same rule set serves the JSON client, and
+`rules()` does not branch on the media type, so a JSON body that leaves the name out is accepted, which the contract
+refuses. The generated file says that, and where a form client's value arrives and that it is not checked there, and the
+matching DTO property is `Optional`: the payload cannot be promised to carry it. This is the one report path for a name
+PHP rewrites; a contract that needs it checked is better served by one media type.
 
 **A path parameter is the router's question, and its answer is a 404.** `/users/abc` on an operation whose `{id}` is an
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong

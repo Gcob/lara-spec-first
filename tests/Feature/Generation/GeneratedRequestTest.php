@@ -1243,6 +1243,8 @@ it('checks a JSON client on the name the contract writes and lets a form client 
 
     expect(sendThroughEmitted($class, 'POST', json: ['user.name' => 'ada', 'a b' => 1, 'plain' => 'x'])[0])->toBe(200)
         ->and(sendThroughEmitted($class, 'POST', json: ['user.name' => 5, 'plain' => 'x'])[0])->toBe(422)
+        // The one rule set does not ask for a rewritten required name from a JSON client either, and the file says so.
+        ->and(sendThroughEmitted($class, 'POST', json: ['plain' => 'x'])[0])->toBe(200)
         ->and(sendThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x'])[0])->toBe(200)
         ->and(dtoThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x']))
         ->toBe([200, ['plain' => 'x']]);

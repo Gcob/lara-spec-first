@@ -1320,7 +1320,9 @@ it('keeps the type of the JSON name when the body is also a form, and says where
         ->toContain('`user.name` is a property of a body that is JSON and a form at once')
         ->toContain('A form client sends it as `user.name`, which PHP delivers as `user_name`')
         ->toContain('not checked there')
-        ->toContain('not asked for');
+        // The JSON client loses it too: one rule set serves both, and `rules()` does not branch on the media type.
+        ->toContain('not asked for from a JSON client either')
+        ->toContain('a JSON body that leaves it out is accepted, which the contract refuses');
 });
 
 it('names a delivered path in the finding of a mixed body', function (): void {
