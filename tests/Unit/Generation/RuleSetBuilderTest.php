@@ -916,3 +916,73 @@ it('keeps format: byte a string', function (): void {
     expect($rules['avatar'])->toBe(['present', 'string'])
         ->and($findings)->toContain('`format: byte`');
 });
+
+/*
+ * `readOnly` on a request.
+ *
+ * OpenAPI: `required` on a `readOnly` property applies to responses only, so a
+ * request that leaves it out is a valid one.
+ */
+
+it('asks for no presence on a readOnly property the schema requires', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        [
+            'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+            'name' => new Schema(types: [SchemaType::String]),
+        ],
+        ['id', 'name'],
+    )]));
+
+    expect($set->rules)->toBe([
+        'id' => ['sometimes', 'integer'],
+        'name' => ['present', 'string'],
+    ])->and(implode("\n", $set->findings))->toContain('`id` is `readOnly` and required')
+        ->and(implode("\n", $set->findings))->toContain('responses only');
+});
+
+it('keeps the other rules of a readOnly property, and still reads its allOf', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        ['id' => new Schema(allOf: [new Schema(types: [SchemaType::String], minLength: 3, readOnly: true)])],
+        ['id'],
+    )]));
+
+    expect($set->rules)->toBe(['id' => ['sometimes', 'string', 'min:3']]);
+});
+
+it('asks a nested object for no readOnly key', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        ['address' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+                'city' => new Schema(types: [SchemaType::String]),
+            ],
+            required: ['id', 'city'],
+        )],
+    )]));
+
+    expect($set->rules['address'])->toBe(['sometimes', 'array', 'required_array_keys:city'])
+        ->and(implode("\n", $set->findings))->toContain('`address.id` is `readOnly` and required');
+});
+
+it('does not make a readOnly property required through dependentRequired either', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'card' => new Schema(types: [SchemaType::String]),
+            'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+        ],
+        dependentRequired: ['card' => ['id']],
+    )]));
+
+    expect($set->rules['id'])->toBe(['sometimes', 'integer']);
+});
+
+it('says nothing about a readOnly property that is not required', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        ['id' => new Schema(types: [SchemaType::Integer], readOnly: true)],
+    )]));
+
+    expect($set->rules)->toBe(['id' => ['sometimes', 'integer']])
+        ->and($set->findings)->toBe([]);
+});

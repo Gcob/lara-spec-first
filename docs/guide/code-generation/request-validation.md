@@ -287,6 +287,11 @@ that is not required carries `sometimes` under either method, and its remaining 
 | Not in `required`   | `sometimes`                                                                         | `sometimes`               |
 | Every other keyword | [Mapped as below](#every-constraint-maps-or-reports)                                | The same rules, unchanged |
 
+**A `readOnly` property is never asked for, whatever the list says.** OpenAPI reads `required` on a `readOnly` property
+as a promise about responses, so `POST /users` without an `id` is valid. The property gets `sometimes` under every
+method, at any depth, and a finding names it. Sent anyway, it is judged by its other rules, since a request that carries
+it is not one the contract forbids.
+
 **`present` rather than `required`, because the two keywords do not mean the same thing.** JSON Schema's `required` asks
 for the key; Laravel's asks for a non-empty value, and refuses `null`, `""`, `[]` and `{}` whatever else the field
 declares. So a required string the contract lets be empty, a required array it lets hold nothing, and any field that may
@@ -593,9 +598,9 @@ may be absent.
 ### Two directions, two types
 
 **A request DTO and a response DTO stay separate classes even when one schema produced both**, and the contract is what
-separates them: a `readOnly` property is forbidden in a request body and expected in a response, and an optional
-property is optional for different reasons on each side. One class serving both would have to be the union of two
-shapes, which is a type describing neither.
+separates them: a `readOnly` property is not something a request has to carry and is expected in a response, and an
+optional property is optional for different reasons on each side. One class serving both would have to be the union of
+two shapes, which is a type describing neither.
 
 **The name comes from the schema when the schema has one, and the request side always carries `Input`.** A body written
 as `$ref: '#/components/schemas/NewUser'` becomes `NewUserInputDto` and `NewUserPartialInputDto`, so every operation

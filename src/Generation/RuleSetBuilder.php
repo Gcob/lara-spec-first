@@ -101,9 +101,11 @@ final readonly class RuleSetBuilder
      * keyword added to {@see Schema} and not here is a keyword nothing
      * reports, and that is the silence this mechanism exists against.
      *
-     * `readOnly`, `writeOnly` and `examples` are absent on purpose: the support
-     * matrix ignores them as rules rather than deferring them, so there is
-     * nothing coming for a finding to promise.
+     * `writeOnly` and `examples` are absent on purpose: the support matrix
+     * ignores them as rules rather than deferring them, so there is nothing
+     * coming for a finding to promise. `readOnly` is read, and absent for a
+     * different reason: it changes the presence of a required property
+     * rather than adding a rule, and says so in its own finding.
      */
     private const RULE_KEYWORDS = [
         'format',
@@ -441,6 +443,14 @@ final readonly class RuleSetBuilder
                 $asked = self::withRule($dependents[$name]);
             }
 
+            // A request never has to carry what only a response does: OpenAPI
+            // reads `required` on a `readOnly` property as a promise about
+            // responses. Its other rules still judge it when it is sent.
+            if ($asked !== 'sometimes' && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`')) {
+                $walk->findings[] = self::readOnlyFinding('`'.$prefix.$name.'`');
+                $asked = 'sometimes';
+            }
+
             self::field($walk, $prefix.self::ruleKey($name), '`'.$prefix.$name.'`', $property, $asked, $insideList);
         }
 
@@ -655,6 +665,12 @@ final readonly class RuleSetBuilder
                         continue;
                     }
 
+                    if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
+                        $walk->findings[] = self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`');
+
+                        continue;
+                    }
+
                     if (self::unescapableKey($name) === null) {
                         $requiredKeys[] = $name;
                     }
@@ -727,6 +743,26 @@ final readonly class RuleSetBuilder
         }
 
         $walk->findings = [...$walk->findings, ...self::unhandled($label, $schema, $handled)];
+    }
+
+    /**
+     * Whether a property is `readOnly`, once its `allOf` is folded.
+     *
+     * @throws ConflictingInputException
+     */
+    private static function isReadOnly(Schema $property, RuleWalk $walk, string $label): bool
+    {
+        return AllOfMerger::merge($property, $walk->identity, $label)->readOnly;
+    }
+
+    private static function readOnlyFinding(string $label): string
+    {
+        return sprintf(
+            '%s is `readOnly` and required. OpenAPI applies `required` on a `readOnly` property to '
+                .'responses only, so a request does not have to carry it and no presence rule is emitted. '
+                .'Its other rules judge it when it is sent.',
+            $label,
+        );
     }
 
     /**

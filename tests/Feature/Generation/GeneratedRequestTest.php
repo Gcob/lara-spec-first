@@ -951,3 +951,21 @@ it('hands an upload to the file rules and to validated() as an uploaded file', f
         ->toBe([200, ['title' => 'Me', 'avatar' => UploadedFile::class, 'limit' => '3']])
         ->and(sendThroughEmitted($class, 'POST', '?title=Me', files: ['avatar' => $png])[0])->toBe(422);
 });
+
+// OpenAPI: `required` on a `readOnly` property applies to responses only, so a
+// create that leaves `id` out is valid. Sent, `id` is still judged by its type.
+it('accepts a request without a required readOnly property, and still judges it when sent', function (): void {
+    $body = new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+            'name' => new Schema(types: [SchemaType::String]),
+        ],
+        required: ['id', 'name'],
+    );
+
+    expect(statusForBuiltRules($body, ['name' => 'Ada']))->toBe(200)
+        ->and(statusForBuiltRules($body, ['id' => 7, 'name' => 'Ada']))->toBe(200)
+        ->and(statusForBuiltRules($body, ['id' => 'x', 'name' => 'Ada']))->toBe(422)
+        ->and(statusForBuiltRules($body, ['id' => 7]))->toBe(422);
+});
