@@ -18,31 +18,24 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\UnsupportedVersionException;
 use LogicException;
 
 /**
- * Where a fault the reading pipeline collected belongs in the doctor's
- * report: which section names it, whether it is the spec author's to fix or
- * this package's, and — for a package limit — which support level it
- * corresponds to in docs/guide/openapi-support.md.
+ * Where a fault the reading pipeline collected belongs in the doctor's report: which section names it, whether it is
+ * the spec author's to fix or this package's, and — for a package limit — which support level it corresponds to in
+ * docs/guide/openapi-support.md.
  *
- * **One place this mapping is made, deliberately.** Every section that turns
- * a `SpecException` into a `Finding` — References, Document validity, and the
- * `Rejected` half of Support findings — reads {@see self::sectionOf()} rather
- * than repeating its own `match` on the exception's class, which is what
- * three separate lists could otherwise drift out of sync on the day a
- * tenth — well, eleventh — exception is added.
+ * **One place this mapping is made, deliberately.** Every section that turns a `SpecException` into a `Finding` —
+ * References, Document validity, and the `Rejected` half of Support findings — reads {@see self::sectionOf()} rather
+ * than repeating its own `match` on the exception's class, which is what three separate lists could otherwise drift out
+ * of sync on the day a tenth — well, eleventh — exception is added.
  *
- * **Both `match`es end in a `default` arm that throws, on purpose.** An
- * exception neither method recognizes raises `LogicException` naming the class
- * and the method rather than silently landing in the wrong section, or in none
- * at all — a loud failure in a test that pins every case beats a finding that
- * quietly never appears anywhere in a report, which is exactly the outcome rule
- * 2 exists to forbid. A `default` naming what it did not know beats
- * `UnhandledMatchError` for the same reason the messages in
- * `Parsing\Exceptions\` are written the way they are: the failure is read by a
- * person.
+ * **Both `match`es end in a `default` arm that throws, on purpose.** An exception neither method recognizes raises
+ * `LogicException` naming the class and the method rather than silently landing in the wrong section, or in none at all
+ * — a loud failure in a test that pins every case beats a finding that quietly never appears anywhere in a report,
+ * which is exactly the outcome rule 2 exists to forbid. A `default` naming what it did not know beats
+ * `UnhandledMatchError` for the same reason the messages in `Parsing\Exceptions\` are written the way they are: the
+ * failure is read by a person.
  *
- * The rule behind every `classOf()` branch: a document fault is one only its
- * author can fix — the document itself is broken, whatever this package
- * decided to build. Everything else is a stance *this* package takes on an
+ * The rule behind every `classOf()` branch: a document fault is one only its author can fix — the document itself is
+ * broken, whatever this package decided to build. Everything else is a stance *this* package takes on an
  * otherwise-correct document, which is what makes it a package limit.
  */
 final readonly class FaultClassification

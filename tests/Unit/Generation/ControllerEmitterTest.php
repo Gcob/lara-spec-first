@@ -35,8 +35,8 @@ use Symfony\Component\Process\Process;
 /**
  * The PHP of one operation's controller.
  *
- * The spec path is passed as the build passes it — already relative to the
- * project root — because that is the only form a generated file may carry.
+ * The spec path is passed as the build passes it — already relative to the project root — because that is the only form
+ * a generated file may carry.
  */
 function emittedController(
     Operation $operation,
@@ -88,8 +88,7 @@ function operationFor(
 }
 
 /**
- * The docblock alone, so an assertion about it cannot be satisfied by the code
- * below it.
+ * The docblock alone, so an assertion about it cannot be satisfied by the code below it.
  */
 function emittedDocblock(string $contents): string
 {
@@ -491,8 +490,8 @@ describe('the two-class seam', function (): void {
  */
 
 /**
- * The controller the golden file is generated from: one that declares a
- * request, since that is the case with an import to order.
+ * The controller the golden file is generated from: one that declares a request, since that is the case with an import
+ * to order.
  */
 function goldenController(): string
 {

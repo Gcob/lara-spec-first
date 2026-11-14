@@ -14,9 +14,8 @@ use Illuminate\Http\Client\Factory;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * A fresh scratch directory per test run, following the same shape
- * `GeneratedTreeTest` uses: a static so Pest's closure-per-test binding does
- * not lose it, cleaned up before and after the whole file.
+ * A fresh scratch directory per test run, following the same shape `GeneratedTreeTest` uses: a static so Pest's
+ * closure-per-test binding does not lose it, cleaned up before and after the whole file.
  */
 function vendorRoot(): string
 {
@@ -26,8 +25,8 @@ function vendorRoot(): string
 }
 
 /**
- * The directory the "referencing document" is pretended to live in — distinct
- * from the vendor root, since a rewritten `$ref` has to be relative to it.
+ * The directory the "referencing document" is pretended to live in — distinct from the vendor root, since a rewritten
+ * `$ref` has to be relative to it.
  */
 function specDir(): string
 {
@@ -49,13 +48,11 @@ afterAll(function (): void {
 });
 
 /**
- * A guard wired to a faked HTTP factory, so no test in this file ever reaches
- * a real network — `RemoteReferenceFetcher` wraps the same `Factory` instance
- * `Http::fake()` would, just without needing a booted application.
+ * A guard wired to a faked HTTP factory, so no test in this file ever reaches a real network — `RemoteReferenceFetcher`
+ * wraps the same `Factory` instance `Http::fake()` would, just without needing a booted application.
  *
  * @param  list<string>  $allowedHosts
- * @param  ?array<string, mixed>  $fakes  url pattern => response body (a string
- *                                        is returned as-is; an array is dumped
+ * @param  ?array<string, mixed>  $fakes  url pattern => response body (a string is returned as-is; an array is dumped
  *                                        as YAML first)
  */
 function guardWith(array $allowedHosts, ?array $fakes = null): RemoteReferenceGuard

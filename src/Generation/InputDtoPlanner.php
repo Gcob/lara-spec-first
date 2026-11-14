@@ -13,27 +13,23 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Illuminate\Support\Str;
 
 /**
- * Works out every input DTO of a build: its name, its properties, and which
- * operation reads it.
+ * Works out every input DTO of a build: its name, its properties, and which operation reads it.
  *
- * **A DTO is named after the schema it describes, never after the `$ref` that
- * reached it or the file that holds it.** `#/components/schemas/Pet` and
- * `./other.yaml#/components/schemas/Pet` are one `PetInputDto`, because splitting
- * a specification across files does not change the contract and must not rename
- * a class a custom controller imports. Two operations sending one `$ref` share
- * one type for the same reason. Two schemas that are *not* the same and give the
+ * **A DTO is named after the schema it describes, never after the `$ref` that reached it or the file that holds it.**
+ * `#/components/schemas/Pet` and `./other.yaml#/components/schemas/Pet` are one `PetInputDto`, because splitting a
+ * specification across files does not change the contract and must not rename a class a custom controller imports. Two
+ * operations sending one `$ref` share one type for the same reason. Two schemas that are *not* the same and give the
  * same name are refused, naming both positions.
  *
- * **The request side always carries `Input`**, `$ref` or not, so a schema used
- * both ways does not collide with its response DTO (#39).
+ * **The request side always carries `Input`**, `$ref` or not, so a schema used both ways does not collide with its
+ * response DTO (#39).
  *
- * **Two types per body, always.** The full one and the `Partial`, even when they
- * are identical, because a class that exists only under a condition is a class a
- * developer has to check for before importing. Only the body's root has a
+ * **Two types per body, always.** The full one and the `Partial`, even when they are identical, because a class that
+ * exists only under a condition is a class a developer has to check for before importing. Only the body's root has a
  * partial: a nested object inside a `PATCH` stays complete.
  *
- * **Built before it is written.** One planner per build, so that a refusal costs
- * nothing: no file exists yet when two schemas turn out to share a name.
+ * **Built before it is written.** One planner per build, so that a refusal costs nothing: no file exists yet when two
+ * schemas turn out to share a name.
  *
  * @internal Not public API.
  *
@@ -48,8 +44,7 @@ final class InputDtoPlanner
     private array $registry = [];
 
     /**
-     * The operations that read each DTO, by DTO and in document order, and the
-     * request each is read through.
+     * The operations that read each DTO, by DTO and in document order, and the request each is read through.
      *
      * @var array<string, list<string>>
      */
@@ -72,8 +67,8 @@ final class InputDtoPlanner
     /**
      * @param  list<PlannedRequest>  $requests  in document order
      *
-     * @throws UnusableNameException two schemas under one name, a name that is not a class
-     *                               name, or two keys under one property name
+     * @throws UnusableNameException two schemas under one name, a name that is not a class name, or two keys under one
+     *                               property name
      * @throws ConflictingInputException an `allOf` whose branches disagree
      */
     public function plan(array $requests): InputDtoPlan
@@ -174,15 +169,13 @@ final class InputDtoPlanner
     }
 
     /**
-     * Put one DTO in the registry and build its properties, or recognize it as
-     * one already there.
+     * Put one DTO in the registry and build its properties, or recognize it as one already there.
      *
-     * Registered *before* its properties are built, so a node that recurses
-     * back to it finds it instead of building it again.
+     * Registered *before* its properties are built, so a node that recurses back to it finds it instead of building it
+     * again.
      *
-     * @param  array<string, string>  $unchecked  the body's top-level names the request cannot
-     *                                            check when a form sends them, by the reason.
-     *                                            Only a root has any
+     * @param  array<string, string>  $unchecked  the body's top-level names the request cannot check when a form sends
+     *                                            them, by the reason. Only a root has any
      * @return string the short name
      *
      * @throws UnusableNameException
@@ -393,8 +386,8 @@ final class InputDtoPlanner
     /**
      * What one property of a schema becomes.
      *
-     * @param  string  $base  the parent's name without its `InputDto`, which an
-     *                        inline nested object takes its own name from
+     * @param  string  $base  the parent's name without its `InputDto`, which an inline nested object takes its own name
+     *                        from
      * @param  string  $segment  the property the schema is the value of
      * @param  string  $owner  the DTO the property belongs to, for its findings
      *
@@ -545,16 +538,14 @@ final class InputDtoPlanner
     /**
      * The name the author gave a schema, and where it is written.
      *
-     * A 3.0 `$ref` with a sibling keyword is written as an `allOf` of one
-     * branch, so the name lives on the branch: reading only the wrapper would
-     * name that DTO after its property and give the same schema two classes.
-     * More than one branch is a composition and has no single name.
+     * A 3.0 `$ref` with a sibling keyword is written as an `allOf` of one branch, so the name lives on the branch:
+     * reading only the wrapper would name that DTO after its property and give the same schema two classes. More than
+     * one branch is a composition and has no single name.
      *
-     * **Only when the wrapper adds no shape of its own.** An `example`, a
-     * `description` or a `readOnly` beside the `$ref` change nothing a DTO
-     * holds. A `required`, a `properties` or an `additionalProperties` do: the
-     * wrapper is then a different schema from the one it points at, and sharing
-     * the branch's class by position would give one class two shapes.
+     * **Only when the wrapper adds no shape of its own.** An `example`, a `description` or a `readOnly` beside the
+     * `$ref` change nothing a DTO holds. A `required`, a `properties` or an `additionalProperties` do: the wrapper is
+     * then a different schema from the one it points at, and sharing the branch's class by position would give one
+     * class two shapes.
      *
      * @return array{0: string|null, 1: string|null}
      */
@@ -597,14 +588,12 @@ final class InputDtoPlanner
     }
 
     /**
-     * Whether a schema's expansion depends on where the walk entered it: it holds
-     * a recursion marker aimed at a schema that is not itself, or inside it.
+     * Whether a schema's expansion depends on where the walk entered it: it holds a recursion marker aimed at a schema
+     * that is not itself, or inside it.
      *
-     * A marker back at the schema itself, or at one written inside it, is cut at
-     * the same place whichever way the schema is reached, so `Address` containing
-     * an `Address` is the same shape everywhere. One aimed at a schema above it,
-     * `Author` inside `Book` inside `Author`, is cut where the entry happened to
-     * be.
+     * A marker back at the schema itself, or at one written inside it, is cut at the same place whichever way the
+     * schema is reached, so `Address` containing an `Address` is the same shape everywhere. One aimed at a schema above
+     * it, `Author` inside `Book` inside `Author`, is cut where the entry happened to be.
      */
     private static function dependsOnEntry(Schema $schema, ?string $source): bool
     {
@@ -637,8 +626,7 @@ final class InputDtoPlanner
     }
 
     /**
-     * Whether a file part is written anywhere in a schema, a nested one and an
-     * `allOf` branch included.
+     * Whether a file part is written anywhere in a schema, a nested one and an `allOf` branch included.
      *
      * A recursion marker has nothing under it, so it ends the walk.
      */
@@ -658,8 +646,7 @@ final class InputDtoPlanner
     }
 
     /**
-     * A position with one step more: a pointer takes it as it is, and a whole
-     * file, which has no `#` yet, gains one.
+     * A position with one step more: a pointer takes it as it is, and a whole file, which has no `#` yet, gains one.
      */
     private static function within(string $position, string $step): string
     {
@@ -674,8 +661,7 @@ final class InputDtoPlanner
     }
 
     /**
-     * The PHP property a contract key becomes: the key when it is an
-     * identifier, and a derived name when it is not.
+     * The PHP property a contract key becomes: the key when it is an identifier, and a derived name when it is not.
      */
     private static function propertyName(string $key): string
     {

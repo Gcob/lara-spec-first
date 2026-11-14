@@ -260,12 +260,11 @@ it('lands on the same schema the parser resolved, at every node', function (): v
 });
 
 /**
- * Assert that the raw schema written at a computed position says what the
- * resolved schema beside it says, and do it again for every child.
+ * Assert that the raw schema written at a computed position says what the resolved schema beside it says, and do it
+ * again for every child.
  *
- * Compared on the two properties a reader can check without reimplementing
- * normalization: the type, and the set of property names. A position pointing
- * at the wrong node in a contract of distinct schemas fails one or the other.
+ * Compared on the two properties a reader can check without reimplementing normalization: the type, and the set of
+ * property names. A position pointing at the wrong node in a contract of distinct schemas fails one or the other.
  *
  * @return int how many nodes were compared
  */

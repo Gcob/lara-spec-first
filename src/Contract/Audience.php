@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Contract;
 
 /**
- * Who an operation is promised to, and the discriminator that decides what the
- * other axis defaults to.
+ * Who an operation is promised to, and the discriminator that decides what the other axis defaults to.
  *
  * @see docs/guide/lifecycle.md — "The audience sets the default"
  */
@@ -24,8 +23,8 @@ enum Audience: string
     }
 
     /**
-     * The promise an operation of this audience carries when `x-lifecycle` is
-     * absent. Null is the absence of a claim, not a prohibition.
+     * The promise an operation of this audience carries when `x-lifecycle` is absent. Null is the absence of a claim,
+     * not a prohibition.
      */
     public function defaultLifecycle(): ?Lifecycle
     {

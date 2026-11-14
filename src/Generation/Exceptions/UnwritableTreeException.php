@@ -10,17 +10,14 @@ use RuntimeException;
 /**
  * The build could not write where it was told to.
  *
- * A `RuntimeException` where its neighbour {@see EscapedTreeException} is a
- * `LogicException`, and the split is whose problem it is: that one can only be
- * our own bug, this one is the environment — a directory owned by another user, a
+ * A `RuntimeException` where its neighbour {@see EscapedTreeException} is a `LogicException`, and the split is whose
+ * problem it is: that one can only be our own bug, this one is the environment — a directory owned by another user, a
  * read-only mount, a full disk.
  *
- * **It exists because the alternative was silence.** PHP's `mkdir` and
- * `file_put_contents` report failure by returning `false` and emitting a warning,
- * and a build that ignores both counts a file as written that is not on disk. It
- * then reports success, exits zero, and leaves an application whose routes file
- * describes a contract nothing serves. That is precisely the shape of failure this
- * package exists to prevent, so a write it cannot perform has to stop the build.
+ * **It exists because the alternative was silence.** PHP's `mkdir` and `file_put_contents` report failure by returning
+ * `false` and emitting a warning, and a build that ignores both counts a file as written that is not on disk. It then
+ * reports success, exits zero, and leaves an application whose routes file describes a contract nothing serves. That is
+ * precisely the shape of failure this package exists to prevent, so a write it cannot perform has to stop the build.
  *
  * @see docs/guide/code-generation/index.md — "The build command: spec:build"
  */

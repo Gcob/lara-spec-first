@@ -5,25 +5,19 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Generation;
 
 /**
- * The PHP type one schema becomes on an input DTO, and how a value converts to
- * and from it.
+ * The PHP type one schema becomes on an input DTO, and how a value converts to and from it.
  *
- * **The table in `dto-anatomy.md`, as code.** One schema type is one PHP type and
- * the mapping is fixed, so this class answers the four questions an emitter has
- * about a property without ever reading a schema: what is it declared as, what
- * does the docblock add, how does `from()` build it, and how does `toArray()`
- * write it back.
+ * **The table in `dto-anatomy.md`, as code.** One schema type is one PHP type and the mapping is fixed, so this class
+ * answers the four questions an emitter has about a property without ever reading a schema: what is it declared as,
+ * what does the docblock add, how does `from()` build it, and how does `toArray()` write it back.
  *
- * **The request side casts, and the reason is that validation has already run.**
- * A multipart body delivers `"42"` where the schema said `integer`, and Laravel's
- * `integer` rule accepts it, so `(int)` is what lets the typed property accept it
- * too. It cannot turn a bad value into a wrong one, because a bad value never got
- * past the rule set. That is also why this is request-side only: a response DTO
- * has no such guarantee and casts nothing.
+ * **The request side casts, and the reason is that validation has already run.** A multipart body delivers `"42"` where
+ * the schema said `integer`, and Laravel's `integer` rule accepts it, so `(int)` is what lets the typed property accept
+ * it too. It cannot turn a bad value into a wrong one, because a bad value never got past the rule set. That is also
+ * why this is request-side only: a response DTO has no such guarantee and casts nothing.
  *
- * **Every expression takes the value as a PHP expression.** A nullable value is
- * checked for `null` before anything converts it, because
- * `CarbonImmutable::parse(null)` is the current time and `(int) null` is `0`.
+ * **Every expression takes the value as a PHP expression.** A nullable value is checked for `null` before anything
+ * converts it, because `CarbonImmutable::parse(null)` is the current time and `(int) null` is `0`.
  *
  * @internal Not public API: the arithmetic of one emitter.
  *
@@ -62,9 +56,8 @@ final readonly class InputDtoType
      * @param  string  $kind  one of the constants above
      * @param  string|null  $class  the short name of the DTO, for `DTO`
      * @param  self|null  $item  the element type, for `LIST`
-     * @param  list<string|int|float|bool>  $literals  the values an enumeration
-     *                                                 allows, written in the
-     *                                                 docblock as a literal union
+     * @param  list<string|int|float|bool>  $literals  the values an enumeration allows, written in the docblock as a
+     *                                                 literal union
      */
     public function __construct(
         public string $kind,
@@ -89,8 +82,7 @@ final readonly class InputDtoType
     }
 
     /**
-     * What the docblock says where the declared type says less, or null where
-     * it says all of it.
+     * What the docblock says where the declared type says less, or null where it says all of it.
      */
     public function doc(): ?string
     {
@@ -111,11 +103,10 @@ final readonly class InputDtoType
     /**
      * The values an enumeration allows, in words, for a type that is cast.
      *
-     * An `int` is what Larastan sees after `(int) $payload['level']`, never `1|2`,
-     * so the literal union would be a claim the line beside it contradicts. The
-     * domain still has to be readable by whoever opens the class, so it is said
-     * in the description of the `@param` instead. Null for a type that says it
-     * in its union, and for a value that is not safe to write.
+     * An `int` is what Larastan sees after `(int) $payload['level']`, never `1|2`, so the literal union would be a
+     * claim the line beside it contradicts. The domain still has to be readable by whoever opens the class, so it is
+     * said in the description of the `@param` instead. Null for a type that says it in its union, and for a value that
+     * is not safe to write.
      */
     public function allowedValues(): ?string
     {
@@ -132,11 +123,10 @@ final readonly class InputDtoType
     /**
      * Whether every enumeration value can be written inside a docblock.
      *
-     * **An enumeration value is data from the specification, and a docblock is
-     * code.** A string holding the sequence that closes a comment would end the
-     * docblock early and turn what follows into statements, and a newline would
-     * break the line. Such a value is not written: the property keeps its scalar
-     * type and loses only the literal union, which is a hint and not a rule.
+     * **An enumeration value is data from the specification, and a docblock is code.** A string holding the sequence
+     * that closes a comment would end the docblock early and turn what follows into statements, and a newline would
+     * break the line. Such a value is not written: the property keeps its scalar type and loses only the literal union,
+     * which is a hint and not a rule.
      *
      * @see docs/guide/code-generation/index.md — "A specification is untrusted data"
      *
@@ -255,8 +245,7 @@ final readonly class InputDtoType
     }
 
     /**
-     * A callable turning one element into this type, or null when an element
-     * goes in as it is.
+     * A callable turning one element into this type, or null when an element goes in as it is.
      */
     private function fromCallable(): ?string
     {

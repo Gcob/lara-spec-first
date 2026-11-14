@@ -10,20 +10,15 @@ use InvalidArgumentException;
 /**
  * A path OpenAPI allows and Laravel's router cannot match.
  *
- * Refused at build time because the alternatives are both silent. Symfony's
- * route compiler finds placeholders with `#\{(!)?([\w\x80-\xFF]+)\}#`, so
- * `{user-id}` is not recognized as a placeholder at all: it stays literal text
- * and the route matches only a URL containing those characters. No exception, no
- * warning, an endpoint that 404s forever. And a placeholder longer than 32
- * characters throws from that same compiler, which happens while routes are
- * being registered — so the application does not boot, far from the specification
- * that caused it.
+ * Refused at build time because the alternatives are both silent. Symfony's route compiler finds placeholders with
+ * `#\{(!)?([\w\x80-\xFF]+)\}#`, so `{user-id}` is not recognized as a placeholder at all: it stays literal text and the
+ * route matches only a URL containing those characters. No exception, no warning, an endpoint that 404s forever. And a
+ * placeholder longer than 32 characters throws from that same compiler, which happens while routes are being registered
+ * — so the application does not boot, far from the specification that caused it.
  *
- * The package does not convert the name either. A build that refuses and says
- * "rename this in your specification" teaches a real constraint of the platform
- * once, at build time. A build that silently converted would maintain a shadow
- * naming scheme forever, and the developer would still meet it the first time
- * they read a generated signature.
+ * The package does not convert the name either. A build that refuses and says "rename this in your specification"
+ * teaches a real constraint of the platform once, at build time. A build that silently converted would maintain a
+ * shadow naming scheme forever, and the developer would still meet it the first time they read a generated signature.
  *
  * @see docs/guide/openapi-support.md — "Parameter names are a contract"
  */

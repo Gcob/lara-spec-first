@@ -8,9 +8,8 @@ use Gcob\LaraSpecFirst\Generation\GeneratedFile;
 use Gcob\LaraSpecFirst\Generation\GeneratedTree;
 
 /**
- * A function with a static rather than a property on the test case: Pest closures
- * are bound to the test instance at runtime but typed as a pending call, so state
- * hung on `$this` is invisible to static analysis.
+ * A function with a static rather than a property on the test case: Pest closures are bound to the test instance at
+ * runtime but typed as a pending call, so state hung on `$this` is invisible to static analysis.
  */
 function treeRoot(): string
 {
@@ -130,8 +129,8 @@ it('refuses to write outside the tree', function (string $path): void {
 /**
  * Run a callback with a path at a given mode, restoring it afterwards.
  *
- * The restore has to happen even when the assertion fails, or an unwritable
- * directory survives the test run and the temporary cleanup cannot remove it.
+ * The restore has to happen even when the assertion fails, or an unwritable directory survives the test run and the
+ * temporary cleanup cannot remove it.
  */
 function atMode(string $path, int $mode, Closure $body): void
 {

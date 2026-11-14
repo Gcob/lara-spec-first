@@ -13,9 +13,8 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     /**
-     * Workbench scaffolds this with the #[Fillable] and #[Hidden] PHP
-     * attributes, which only exist from Laravel 13. This package supports
-     * Laravel 12 as well, and the property form works on both.
+     * Workbench scaffolds this with the #[Fillable] and #[Hidden] PHP attributes, which only exist from Laravel 13.
+     * This package supports Laravel 12 as well, and the property form works on both.
      *
      * @var list<string>
      */
@@ -28,15 +27,12 @@ class User extends Authenticatable
     /**
      * Never serialised, whatever the OpenAPI contract says.
      *
-     * This is a floor, not a description of any response shape: the spec
-     * defines what an endpoint returns. Keeping it matters precisely because
-     * this package is meant to live alongside legacy code — controllers, jobs
-     * and exports that never pass through the spec at all, where nothing else
-     * would stop a password hash from leaving.
+     * This is a floor, not a description of any response shape: the spec defines what an endpoint returns. Keeping it
+     * matters precisely because this package is meant to live alongside legacy code — controllers, jobs and exports
+     * that never pass through the spec at all, where nothing else would stop a password hash from leaving.
      *
-     * The rule of thumb: $hidden holds only what appears in no response, ever.
-     * The moment it varies the shape between endpoints, it is doing the spec's
-     * job and has become the problem.
+     * The rule of thumb: $hidden holds only what appears in no response, ever. The moment it varies the shape between
+     * endpoints, it is doing the spec's job and has become the problem.
      *
      * @var list<string>
      */

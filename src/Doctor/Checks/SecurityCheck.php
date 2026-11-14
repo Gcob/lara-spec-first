@@ -12,21 +12,17 @@ use Gcob\LaraSpecFirst\Doctor\SupportLevel;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 
 /**
- * The one finding that turns a documented-as-protected endpoint into a public
- * one: this phase registers routes without applying `security` at all, so an
- * operation whose contract requires a scheme is served with no authorization
- * check behind it.
+ * The one finding that turns a documented-as-protected endpoint into a public one: this phase registers routes without
+ * applying `security` at all, so an operation whose contract requires a scheme is served with no authorization check
+ * behind it.
  *
- * **Every affected operation is listed individually, on every run, and never
- * folded into a count.** That is the treatment
- * docs/guide/doctor.md#acknowledging-changes-behavior-not-just-noise already
- * reserves for security, applied here rather than invented: summarizing "12
- * operations declare security" would hide exactly the list a reader needs to
- * go and protect by hand in the meantime. It is also why this is a section of
- * its own rather than a line among the Support findings.
+ * **Every affected operation is listed individually, on every run, and never folded into a count.** That is the
+ * treatment docs/guide/doctor.md#acknowledging-changes-behavior-not-just-noise already reserves for security, applied
+ * here rather than invented: summarizing "12 operations declare security" would hide exactly the list a reader needs to
+ * go and protect by hand in the meantime. It is also why this is a section of its own rather than a line among the
+ * Support findings.
  *
- * Deleted in the same change that makes `security` an authorization check —
- * see #44.
+ * Deleted in the same change that makes `security` an authorization check — see #44.
  *
  * @see docs/guide/doctor.md — "What it checks"
  * @see docs/guide/security.md
@@ -84,28 +80,21 @@ final readonly class SecurityCheck
     }
 
     /**
-     * Whether some operation actually inherits a root `security` block this
-     * package does not read.
+     * Whether some operation actually inherits a root `security` block this package does not read.
      *
-     * Reported as one informational line rather than as a finding per
-     * inheriting operation, because the package does not read the block:
-     * `security` (root) is `Open` in
-     * docs/guide/openapi-support.md#the-support-matrix, so what an operation
-     * that stays silent actually inherits is not carried in `Contract\` at
-     * all. Naming the block is what this check can say honestly; listing the
-     * operations under it would mean claiming to know a requirement nothing
-     * here resolved.
+     * Reported as one informational line rather than as a finding per inheriting operation, because the package does
+     * not read the block: `security` (root) is `Open` in docs/guide/openapi-support.md#the-support-matrix, so what an
+     * operation that stays silent actually inherits is not carried in `Contract\` at all. Naming the block is what this
+     * check can say honestly; listing the operations under it would mean claiming to know a requirement nothing here
+     * resolved.
      *
-     * **Both halves are checked, because the line asserts both.** It used to
-     * ask only whether the block existed, and then print that "an operation
-     * that states no security of its own inherits requirements nothing here
-     * resolved" — a sentence with no referent on a document that declares a
-     * root block and overrides it on every single operation, which is a
-     * perfectly ordinary way to write one. The consequence is the half a
-     * reader would act on, so it is only stated when there is an operation it
-     * is true of. Where every operation states its own requirements the block
-     * changes nothing this package does, and silence is the honest answer
-     * rather than a caveat about a risk that does not exist.
+     * **Both halves are checked, because the line asserts both.** It used to ask only whether the block existed, and
+     * then print that "an operation that states no security of its own inherits requirements nothing here resolved" — a
+     * sentence with no referent on a document that declares a root block and overrides it on every single operation,
+     * which is a perfectly ordinary way to write one. The consequence is the half a reader would act on, so it is only
+     * stated when there is an operation it is true of. Where every operation states its own requirements the block
+     * changes nothing this package does, and silence is the honest answer rather than a caveat about a risk that does
+     * not exist.
      *
      * @param  list<Operation>  $operations
      */
@@ -130,20 +119,16 @@ final readonly class SecurityCheck
     }
 
     /**
-     * The requirements as a reader can act on them: alternatives joined by
-     * "or", the schemes inside one alternative joined by "and", each with the
-     * scopes it asks for.
+     * The requirements as a reader can act on them: alternatives joined by "or", the schemes inside one alternative
+     * joined by "and", each with the scopes it asks for.
      *
-     * **Nothing is sorted here, and nothing needs to be.** The schemes inside
-     * one requirement are ANDed, so their order carries no meaning, and
-     * `SecurityRequirement` settles it once at construction — `fromSchemes()`
-     * sorts by scheme name and is the only way to build one, the constructor
-     * being private. Sorting a second time here would be a second answer to a
-     * question already answered, and the day the two disagreed the message
-     * would depend on which one ran last. The order of the alternatives, and
-     * of the scopes inside one scheme, is the document's own and is left
-     * alone: both are the author's, and reordering either would make the
-     * message harder to check against the file it describes.
+     * **Nothing is sorted here, and nothing needs to be.** The schemes inside one requirement are ANDed, so their order
+     * carries no meaning, and `SecurityRequirement` settles it once at construction — `fromSchemes()` sorts by scheme
+     * name and is the only way to build one, the constructor being private. Sorting a second time here would be a
+     * second answer to a question already answered, and the day the two disagreed the message would depend on which one
+     * ran last. The order of the alternatives, and of the scopes inside one scheme, is the document's own and is left
+     * alone: both are the author's, and reordering either would make the message harder to check against the file it
+     * describes.
      *
      * @param  list<SecurityRequirement>  $requirements
      */

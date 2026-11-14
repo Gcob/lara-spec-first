@@ -21,8 +21,7 @@ use Illuminate\Support\ServiceProvider;
 /**
  * Entry point of the package into a Laravel application.
  *
- * Registered automatically through Composer package discovery, declared in
- * composer.json under extra.laravel.providers.
+ * Registered automatically through Composer package discovery, declared in composer.json under extra.laravel.providers.
  */
 class LaraSpecFirstServiceProvider extends ServiceProvider
 {
@@ -31,9 +30,8 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
     /**
      * Bind the package's services into the container.
      *
-     * Nothing here may reach for the reader or the parser: the runtime never
-     * sees a specification, so what belongs in this method is configuration and
-     * the wiring the build-time commands will resolve.
+     * Nothing here may reach for the reader or the parser: the runtime never sees a specification, so what belongs in
+     * this method is configuration and the wiring the build-time commands will resolve.
      *
      * @see docs/guide/code-generation/index.md — "The runtime never sees the spec"
      */
@@ -117,31 +115,24 @@ class LaraSpecFirstServiceProvider extends ServiceProvider
     /**
      * Register the contract's routes by loading the PHP the build emitted.
      *
-     * No specification is read here, at boot or ever: this method requires one
-     * generated file and knows nothing about how it was produced. That is the
-     * whole of the runtime's involvement with routing.
+     * No specification is read here, at boot or ever: this method requires one generated file and knows nothing about
+     * how it was produced. That is the whole of the runtime's involvement with routing.
      *
-     * **A missing file is silence, not an exception**, and the reason is
-     * structural rather than lenient. `spec:build` is an Artisan command of this
-     * package, so a provider that threw when the generated tree was absent
-     * would make the application unbootable exactly when the command that
-     * creates it needs to run — a fresh clone could never produce its own
-     * routes. It is also a legitimate state on that fresh clone, since
-     * .gitignore decides what a project commits. Reporting it belongs to
-     * `spec:doctor`, which is where drift is caught before a deploy rather than
-     * during one.
+     * **A missing file is silence, not an exception**, and the reason is structural rather than lenient. `spec:build`
+     * is an Artisan command of this package, so a provider that threw when the generated tree was absent would make the
+     * application unbootable exactly when the command that creates it needs to run — a fresh clone could never produce
+     * its own routes. It is also a legitimate state on that fresh clone, since .gitignore decides what a project
+     * commits. Reporting it belongs to `spec:doctor`, which is where drift is caught before a deploy rather than during
+     * one.
      *
-     * **An unusable setting is a different matter and does throw**, because
-     * nothing can be looked for without a path. But not in the console, and that
-     * exemption is the same reasoning as the paragraph above rather than a
-     * softening of it: throwing everywhere would take `config:clear`,
-     * `spec:build` and `spec:doctor` down with the application, leaving a cached
-     * broken configuration with no way out but deleting a cache file by hand. A
-     * request fails loudly; the commands that repair the installation stay
-     * reachable.
+     * **An unusable setting is a different matter and does throw**, because nothing can be looked for without a path.
+     * But not in the console, and that exemption is the same reasoning as the paragraph above rather than a softening
+     * of it: throwing everywhere would take `config:clear`, `spec:build` and `spec:doctor` down with the application,
+     * leaving a cached broken configuration with no way out but deleting a cache file by hand. A request fails loudly;
+     * the commands that repair the installation stay reachable.
      *
-     * `loadRoutesFrom()` rather than a plain require, because it is what skips
-     * the file when the application's routes are already cached.
+     * `loadRoutesFrom()` rather than a plain require, because it is what skips the file when the application's routes
+     * are already cached.
      *
      * @see docs/guide/code-generation/index.md — "The runtime never sees the spec"
      * @see docs/guide/code-generation/index.md — "Which generated code is committed"

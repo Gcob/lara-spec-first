@@ -13,17 +13,15 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 /**
  * Turns one operation into the PHP of its generated controller.
  *
- * **Every file it emits explains itself**, and that is a requirement rather than
- * a courtesy. A banner saying "generated, do not edit" answers who owns the file,
- * which is settled elsewhere, and it is not what a reader opening the file
- * actually needs. Three things are: where this came from, what the build worked
- * out while emitting it, and where to go next.
+ * **Every file it emits explains itself**, and that is a requirement rather than a courtesy. A banner saying
+ * "generated, do not edit" answers who owns the file, which is settled elsewhere, and it is not what a reader opening
+ * the file actually needs. Three things are: where this came from, what the build worked out while emitting it, and
+ * where to go next.
  *
- * The audience is deliberately both a person and a coding agent. An agent reads a
- * handful of files rather than a codebase, cannot infer a convention from ten
- * sibling examples, and has no way to know that the interesting behavior lives
- * three directories away unless the file says so. Every guess it has to make is a
- * chance to write something plausible and wrong into an application.
+ * The audience is deliberately both a person and a coding agent. An agent reads a handful of files rather than a
+ * codebase, cannot infer a convention from ten sibling examples, and has no way to know that the interesting behavior
+ * lives three directories away unless the file says so. Every guess it has to make is a chance to write something
+ * plausible and wrong into an application.
  *
  * @see docs/guide/code-generation/generated-file-anatomy.md — "Every generated file explains itself"
  * @see docs/guide/controllers.md — "One controller, one routeAction"
@@ -75,17 +73,14 @@ final readonly class ControllerEmitter
     }
 
     /**
-     * Every `use` the emitted file needs, in the order the formatter would put
-     * them.
+     * Every `use` the emitted file needs, in the order the formatter would put them.
      *
-     * Sorted here rather than left to a consumer's formatter, because a
-     * formatter with something to reorder is a formatter fighting the next
-     * build. **And sorted the way php-cs-fixer's `ordered_imports` sorts**,
-     * which a plain `sort()` is not: that fixer compares with `\\` replaced by
-     * a space and case folded, so `Gcob\\LaraSpecFirst\\Http` and
-     * `Gcob\\LaraSpecFirstX` land on opposite sides of where bytes would put
-     * them. The generated tree's own namespace is the consumer's to choose, so
-     * this is not a case that can be ruled out by inspection.
+     * Sorted here rather than left to a consumer's formatter, because a formatter with something to reorder is a
+     * formatter fighting the next build. **And sorted the way php-cs-fixer's `ordered_imports` sorts**, which a plain
+     * `sort()` is not: that fixer compares with `\\` replaced by a space and case folded, so
+     * `Gcob\\LaraSpecFirst\\Http` and `Gcob\\LaraSpecFirstX` land on opposite sides of where bytes would put them. The
+     * generated tree's own namespace is the consumer's to choose, so this is not a case that can be ruled out by
+     * inspection.
      *
      * @return list<string>
      */
@@ -124,9 +119,8 @@ final readonly class ControllerEmitter
     /**
      * `final `, or nothing at all.
      *
-     * **The one place the extendability rule turns into syntax.** A class whose
-     * name nobody chose is disposable, and `final` is what stops an `extends`
-     * being built on top of something disposable — so the modifier follows
+     * **The one place the extendability rule turns into syntax.** A class whose name nobody chose is disposable, and
+     * `final` is what stops an `extends` being built on top of something disposable — so the modifier follows
      * {@see NameSource} rather than a second rule that could disagree with it.
      *
      * @see docs/guide/controllers.md — "The contract decides what is customizable"
@@ -139,9 +133,8 @@ final readonly class ControllerEmitter
     /**
      * How `spec:make` would be told which operation this is, as PHP.
      *
-     * `null` rather than an empty string when the operation has no `operationId`:
-     * the 501 body names the command to run, and it has to fall back to the
-     * method and path rather than print an invocation with nothing after it.
+     * `null` rather than an empty string when the operation has no `operationId`: the 501 body names the command to
+     * run, and it has to fall back to the method and path rather than print an invocation with nothing after it.
      */
     private function name(Operation $operation): string
     {
@@ -151,9 +144,8 @@ final readonly class ControllerEmitter
     /**
      * A value as a PHP string literal, whatever it contains.
      *
-     * `var_export` rather than wrapping in quotes: a path may legally carry an
-     * apostrophe or end in a backslash, and either turns a hand-quoted literal
-     * into PHP that does not parse.
+     * `var_export` rather than wrapping in quotes: a path may legally carry an apostrophe or end in a backslash, and
+     * either turns a hand-quoted literal into PHP that does not parse.
      */
     private function literal(string $value): string
     {
@@ -183,9 +175,8 @@ final readonly class ControllerEmitter
     /**
      * Where the class name came from, and what that costs or buys.
      *
-     * Reported rather than left implicit, because it is what decides whether
-     * anything may extend this class — a fact a reader cannot recover from the
-     * name itself.
+     * Reported rather than left implicit, because it is what decides whether anything may extend this class — a fact a
+     * reader cannot recover from the name itself.
      */
     private function nameFinding(PlannedController $planned): string
     {
@@ -202,8 +193,7 @@ final readonly class ControllerEmitter
     }
 
     /**
-     * The JSON pointer into the document, so a reader lands on the exact position
-     * rather than grepping for the path.
+     * The JSON pointer into the document, so a reader lands on the exact position rather than grepping for the path.
      */
     private function pointer(Operation $operation): string
     {
@@ -213,11 +203,9 @@ final readonly class ControllerEmitter
     /**
      * Where to go from here.
      *
-     * **The rule is to point at what actually runs**, which for an operation with
-     * a custom controller is not this file. A reader — human or agent — who lands
-     * on a generated default that has been overridden is the single most common
-     * way to misread a codebase like this one, and one annotation removes the
-     * mistake entirely.
+     * **The rule is to point at what actually runs**, which for an operation with a custom controller is not this file.
+     * A reader — human or agent — who lands on a generated default that has been overridden is the single most common
+     * way to misread a codebase like this one, and one annotation removes the mistake entirely.
      *
      * @return non-empty-list<string>
      */
@@ -265,10 +253,9 @@ final readonly class ControllerEmitter
     /**
      * What the build knew and the reader cannot see.
      *
-     * Findings are the part that has to stay honest. A summary that says nothing
-     * costs a reader the time it takes to discover that, so what earns its place
-     * is a default that was resolved rather than declared, a name derived because
-     * `operationId` was absent, or something the build read and does not act on.
+     * Findings are the part that has to stay honest. A summary that says nothing costs a reader the time it takes to
+     * discover that, so what earns its place is a default that was resolved rather than declared, a name derived
+     * because `operationId` was absent, or something the build read and does not act on.
      *
      * @return non-empty-list<string>
      */

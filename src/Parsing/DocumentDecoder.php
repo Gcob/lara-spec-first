@@ -11,23 +11,18 @@ use Symfony\Component\Yaml\Yaml;
 /**
  * Decode YAML or JSON from a file, the one way this package does it.
  *
- * One entry point for both, because YAML 1.2 is a superset of JSON and the
- * YAML parser accepts either — a branch on the file extension would only add
- * a way for a correctly written document to be rejected for having the wrong
- * suffix, and a vendored copy's suffix is the upstream author's choice, not
- * this package's.
+ * One entry point for both, because YAML 1.2 is a superset of JSON and the YAML parser accepts either — a branch on the
+ * file extension would only add a way for a correctly written document to be rejected for having the wrong suffix, and
+ * a vendored copy's suffix is the upstream author's choice, not this package's.
  *
- * **The YAML parser is skipped when the content is plainly JSON**, sniffed by
- * its first non-whitespace byte the same way `cebe\openapi\`'s own reference
- * resolver already does. That is a different trade for a vendored registry
- * document than for the root specification: the root is small regardless of
- * suffix, but a real schema registry export can be megabytes, and running the
- * slower parser on every one of them for a suffix nobody trusts anyway is a
- * cost paid on every build for no correctness this package needs.
+ * **The YAML parser is skipped when the content is plainly JSON**, sniffed by its first non-whitespace byte the same
+ * way `cebe\openapi\`'s own reference resolver already does. That is a different trade for a vendored registry document
+ * than for the root specification: the root is small regardless of suffix, but a real schema registry export can be
+ * megabytes, and running the slower parser on every one of them for a suffix nobody trusts anyway is a cost paid on
+ * every build for no correctness this package needs.
  *
- * Extracted from `SpecDocumentReader` so vendoring can decode a fetched or
- * already-vendored reference the same way the root document is decoded,
- * rather than a second implementation of the same five checks.
+ * Extracted from `SpecDocumentReader` so vendoring can decode a fetched or already-vendored reference the same way the
+ * root document is decoded, rather than a second implementation of the same five checks.
  *
  * @internal Not public API — a step of the read pipeline.
  */
@@ -75,10 +70,9 @@ final readonly class DocumentDecoder
     }
 
     /**
-     * Whether this content should be read as JSON rather than YAML — the same
-     * sniff `cebe\openapi\`'s reference resolver uses, so a document this
-     * package vendors and one it hands to the parser directly are classified
-     * the same way.
+     * Whether this content should be read as JSON rather than YAML — the same sniff `cebe\openapi\`'s reference
+     * resolver uses, so a document this package vendors and one it hands to the parser directly are classified the same
+     * way.
      */
     public static function looksLikeJson(string $contents): bool
     {

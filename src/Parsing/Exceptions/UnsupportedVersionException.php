@@ -11,8 +11,8 @@ use RuntimeException;
 /**
  * The document does not declare a version this package implements.
  *
- * Every message here names what was found and what to do about it. A rejection
- * a reader cannot act on is a support ticket.
+ * Every message here names what was found and what to do about it. A rejection a reader cannot act on is a support
+ * ticket.
  */
 final class UnsupportedVersionException extends RuntimeException implements SpecException
 {

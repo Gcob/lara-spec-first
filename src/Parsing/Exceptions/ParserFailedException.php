@@ -11,15 +11,12 @@ use Throwable;
 /**
  * The OpenAPI parser gave up, and we are saying so in our own words.
  *
- * Every exception `cebe\openapi\` throws extends plain `\Exception` and
- * implements nothing of ours, so left alone it would travel straight through a
- * consuming application's `catch (SpecException)` — the one promise
- * {@see SpecException} makes. An exception type is a type like any other, and
- * the boundary that keeps the parser inside `Parsing\` has to hold for the ones
- * thrown as well as the ones returned.
+ * Every exception `cebe\openapi\` throws extends plain `\Exception` and implements nothing of ours, so left alone it
+ * would travel straight through a consuming application's `catch (SpecException)` — the one promise
+ * {@see SpecException} makes. An exception type is a type like any other, and the boundary that keeps the parser inside
+ * `Parsing\` has to hold for the ones thrown as well as the ones returned.
  *
- * The original is kept as the previous exception, so nothing is hidden from
- * whoever is debugging.
+ * The original is kept as the previous exception, so nothing is hidden from whoever is debugging.
  */
 final class ParserFailedException extends RuntimeException implements SpecException
 {

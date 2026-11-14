@@ -8,13 +8,11 @@ use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use RuntimeException;
 
 /**
- * An automatic edit to the specification did not prove itself, so nothing was
- * written.
+ * An automatic edit to the specification did not prove itself, so nothing was written.
  *
- * **The verification failing is not the failure mode this class is designed
- * around** — it is the one it exists to make impossible to miss. The edit happens
- * on a copy that is read back through the normal pipeline, and every outcome except
- * "identical but for the extension" ends here, with the original untouched.
+ * **The verification failing is not the failure mode this class is designed around** — it is the one it exists to make
+ * impossible to miss. The edit happens on a copy that is read back through the normal pipeline, and every outcome
+ * except "identical but for the extension" ends here, with the original untouched.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
  */

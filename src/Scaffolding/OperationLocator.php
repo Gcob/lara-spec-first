@@ -9,26 +9,22 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 /**
  * Finds the line an operation is written on, by reading the document as text.
  *
- * **Nothing here parses YAML, and that is the decision this class exists for.**
- * Parsing and re-emitting a specification destroys comments, key order and
- * anchors, in the one file a team reads in every pull request. YAML's indentation
- * is predictable enough that there is nothing to parse for: the operation's line
- * is findable, and one line goes in beneath it at the depth its siblings already
- * sit at.
+ * **Nothing here parses YAML, and that is the decision this class exists for.** Parsing and re-emitting a specification
+ * destroys comments, key order and anchors, in the one file a team reads in every pull request. YAML's indentation is
+ * predictable enough that there is nothing to parse for: the operation's line is findable, and one line goes in beneath
+ * it at the depth its siblings already sit at.
  *
- * **It refuses far more readily than it guesses.** Every shape it cannot read with
- * certainty answers null, and the command then prints the row for a human to place
- * — a flow-style mapping, a JSON document, an operation reached through a `$ref`
- * into another file, a `paths` key that is not a block. Each of those is a document
- * this package can still build from; none of them is one it may edit blind.
+ * **It refuses far more readily than it guesses.** Every shape it cannot read with certainty answers null, and the
+ * command then prints the row for a human to place — a flow-style mapping, a JSON document, an operation reached
+ * through a `$ref` into another file, a `paths` key that is not a block. Each of those is a document this package can
+ * still build from; none of them is one it may edit blind.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
  */
 final readonly class OperationLocator
 {
     /**
-     * Where the operation's own keys are written, or null when that cannot be
-     * established.
+     * Where the operation's own keys are written, or null when that cannot be established.
      *
      * @param  string  $document  the specification exactly as it is on disk
      */
@@ -73,17 +69,15 @@ final readonly class OperationLocator
     /**
      * The index of the line declaring a key, searching only that key's own level.
      *
-     * **A mapping key with nothing after the colon**, because that is what makes
-     * the block form the block form: `get: {responses: {}}` is the same document
-     * and an entirely different editing problem, so it is not matched at all.
+     * **A mapping key with nothing after the colon**, because that is what makes the block form the block form:
+     * `get: {responses: {}}` is the same document and an entirely different editing problem, so it is not matched at
+     * all.
      *
-     * The search stops at the first line that has climbed back out of the block,
-     * which is what keeps `get` under `/users/{id}` from being found under
-     * `/posts`.
+     * The search stops at the first line that has climbed back out of the block, which is what keeps `get` under
+     * `/users/{id}` from being found under `/posts`.
      *
      * @param  list<string>  $lines
-     * @param  int|null  $parentIndent  the indentation of the key this one sits
-     *                                  under, or null at the document's root
+     * @param  int|null  $parentIndent  the indentation of the key this one sits under, or null at the document's root
      */
     private function keyLine(array $lines, string $key, int $from, ?int $parentIndent): ?int
     {
@@ -121,19 +115,15 @@ final readonly class OperationLocator
     }
 
     /**
-     * The key a line declares with nothing after its colon but blank space and,
-     * optionally, a comment, or null.
+     * The key a line declares with nothing after its colon but blank space and, optionally, a comment, or null.
      *
-     * Quoting is stripped because a path key is routinely written `'/users/{id}':`
-     * — YAML needs the quotes for a value starting with a character it reserves,
-     * and the key is the same key either way.
+     * Quoting is stripped because a path key is routinely written `'/users/{id}':` — YAML needs the quotes for a value
+     * starting with a character it reserves, and the key is the same key either way.
      *
-     * **A trailing comment is allowed, deliberately**, even though this class
-     * otherwise refuses far more readily than it guesses. `get: # the list
-     * endpoint` is a block mapping exactly as much as `get:` alone is — the
-     * comment is not a value — and common enough on the very keys this locator
-     * matches that refusing it would turn an ordinary annotation into a document
-     * this package cannot edit for a reason the docblock does not warn about.
+     * **A trailing comment is allowed, deliberately**, even though this class otherwise refuses far more readily than
+     * it guesses. `get: # the list endpoint` is a block mapping exactly as much as `get:` alone is — the comment is not
+     * a value — and common enough on the very keys this locator matches that refusing it would turn an ordinary
+     * annotation into a document this package cannot edit for a reason the docblock does not warn about.
      */
     private function declaredKey(string $line): ?string
     {
@@ -147,10 +137,9 @@ final readonly class OperationLocator
     /**
      * The indentation the operation's own keys use, read from the first one.
      *
-     * Taken from the document rather than computed from a step, because a
-     * specification's indentation is its author's and a build has no business
-     * normalizing it. Null when the operation has no keys to learn it from, which
-     * is not a document this package would have got operations out of anyway.
+     * Taken from the document rather than computed from a step, because a specification's indentation is its author's
+     * and a build has no business normalizing it. Null when the operation has no keys to learn it from, which is not a
+     * document this package would have got operations out of anyway.
      *
      * @param  list<string>  $lines
      */
@@ -180,9 +169,8 @@ final readonly class OperationLocator
     /**
      * How far a line is indented, in characters.
      *
-     * Characters rather than a notion of levels: the insertion copies the
-     * whitespace it found, so whether the document indents with two spaces, four,
-     * or something stranger never has to be decided here.
+     * Characters rather than a notion of levels: the insertion copies the whitespace it found, so whether the document
+     * indents with two spaces, four, or something stranger never has to be decided here.
      */
     private function indentOf(string $line): int
     {
@@ -192,9 +180,9 @@ final readonly class OperationLocator
     /**
      * A line with nothing on it, or nothing but a comment.
      *
-     * Skipped rather than treated as structure, because a comment sits at whatever
-     * depth its author liked and a blank line has no depth at all — reading either
-     * as a level would end the search inside the block it was looking through.
+     * Skipped rather than treated as structure, because a comment sits at whatever depth its author liked and a blank
+     * line has no depth at all — reading either as a level would end the search inside the block it was looking
+     * through.
      */
     private function isBlank(string $line): bool
     {

@@ -11,22 +11,18 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 /**
  * `allOf`, folded into the one schema a rule set is built from.
  *
- * **A payload has to satisfy every branch, so the merge is an intersection**:
- * properties and required names accumulate, a bound takes the tighter of two,
- * a type list keeps what both allow. That is what the document says, and
- * nothing here chooses.
+ * **A payload has to satisfy every branch, so the merge is an intersection**: properties and required names accumulate,
+ * a bound takes the tighter of two, a type list keeps what both allow. That is what the document says, and nothing here
+ * chooses.
  *
- * **Where two branches cannot be said as one, the build refuses.** Two types
- * with nothing in common, two enumerations with no shared value, two formats
- * or two patterns — one rule set holds one of each, so emitting either would
- * enforce half the contract and drop the other half without a word. And one
- * case is refused for being JSON Schema's own trap rather than a
- * contradiction: a branch writing `additionalProperties: false` forbids every
- * property the *other* branches declare, which almost never is what its author
- * meant, and reading it either way would be guessing.
+ * **Where two branches cannot be said as one, the build refuses.** Two types with nothing in common, two enumerations
+ * with no shared value, two formats or two patterns — one rule set holds one of each, so emitting either would enforce
+ * half the contract and drop the other half without a word. And one case is refused for being JSON Schema's own trap
+ * rather than a contradiction: a branch writing `additionalProperties: false` forbids every property the *other*
+ * branches declare, which almost never is what its author meant, and reading it either way would be guessing.
  *
- * Kept apart from {@see RuleSetBuilder} because it is a statement about the
- * contract rather than about Laravel, and because it recurses on its own.
+ * Kept apart from {@see RuleSetBuilder} because it is a statement about the contract rather than about Laravel, and
+ * because it recurses on its own.
  *
  * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
  */
@@ -156,8 +152,8 @@ final readonly class AllOfMerger
     }
 
     /**
-     * The types both branches allow. An empty list states nothing, so it
-     * yields to the other branch rather than intersecting to nothing.
+     * The types both branches allow. An empty list states nothing, so it yields to the other branch rather than
+     * intersecting to nothing.
      *
      * @param  list<SchemaType>  $a
      * @param  list<SchemaType>  $b

@@ -11,33 +11,28 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 /**
  * Rejects `$ref` chains that never reach content.
  *
- * The last check before the OpenAPI parser is handed a document, and the only
- * one whose position is not negotiable.
+ * The last check before the OpenAPI parser is handed a document, and the only one whose position is not negotiable.
  *
  * The distinction this class exists to make:
  *
- *   A recursive *schema* refers back to an ancestor through content — a tree, a
- *   comment thread, nested categories. It resolves, and it is ordinary API
- *   modelling.
+ *   A recursive *schema* refers back to an ancestor through content — a tree, a comment thread, nested categories. It
+ *   resolves, and it is ordinary API modelling.
  *
- *   A pure *reference cycle* is a chain of Reference Objects pointing only at
- *   one another. There is no schema at the end of it, so it can never resolve.
+ *   A pure *reference cycle* is a chain of Reference Objects pointing only at one another. There is no schema at the
+ *   end of it, so it can never resolve.
  *
- * The second is the only document fault that takes the parser down rather than
- * raising, so it has to be caught here, on the decoded array, before the parser
- * is handed anything.
+ * The second is the only document fault that takes the parser down rather than raising, so it has to be caught here, on
+ * the decoded array, before the parser is handed anything.
  *
- * A chain closes through *data* as readily as through components, which is the
- * one thing the distinction above does not say on its own: a `$ref` written
- * inside an `example` is a literal, right up until a Reference Object aims at
- * the position holding it, at which point the parser resolves it like any
- * other and the chain is real. See followTargetsIntoData().
+ * A chain closes through *data* as readily as through components, which is the one thing the distinction above does not
+ * say on its own: a `$ref` written inside an `example` is a literal, right up until a Reference Object aims at the
+ * position holding it, at which point the parser resolves it like any other and the chain is real. See
+ * followTargetsIntoData().
  *
- * Stateless on purpose: it is injected into readonly collaborators and reused
- * across documents, so nothing about one document may survive into the next.
+ * Stateless on purpose: it is injected into readonly collaborators and reused across documents, so nothing about one
+ * document may survive into the next.
  *
- * @internal Not public API — a step of the read pipeline, reachable only through
- *           SpecDocumentReader.
+ * @internal Not public API — a step of the read pipeline, reachable only through SpecDocumentReader.
  *
  * @see SpecDocumentReader for the order of the read pipeline
  * @see docs/guide/openapi-support.md — "Parser caveats"
@@ -47,35 +42,28 @@ final readonly class ReferenceCycleDetector
     /**
      * Keys whose contents are always data, not specification.
      *
-     * `$ref` is an ordinary key name inside a value — an API that itself handles
-     * JSON Schema will have one in an `example`. Walking into these would read a
-     * literal as a reference and reject a perfectly valid document, which for a
-     * `Rejected`-level check is the worst outcome available: a false positive
-     * refuses a contract that was fine.
+     * `$ref` is an ordinary key name inside a value — an API that itself handles JSON Schema will have one in an
+     * `example`. Walking into these would read a literal as a reference and reject a perfectly valid document, which
+     * for a `Rejected`-level check is the worst outcome available: a false positive refuses a contract that was fine.
      *
-     * `examples` is deliberately absent: it is two different things wearing one
-     * name, and only its shape tells them apart. See isOpaque().
+     * `examples` is deliberately absent: it is two different things wearing one name, and only its shape tells them
+     * apart. See isOpaque().
      *
-     * **This list says what is never walked into looking for references. It does
-     * not say what happens when a reference lands inside one.** The two are
-     * different questions, and only the first one is answered by a key's name:
-     * a `$ref` sitting in an `example` is a literal right up until a Reference
-     * Object points at the position it occupies, at which moment the parser
-     * resolves that position and reads the literal as a reference. See
-     * followTargetsIntoData().
+     * **This list says what is never walked into looking for references. It does not say what happens when a reference
+     * lands inside one.** The two are different questions, and only the first one is answered by a key's name: a `$ref`
+     * sitting in an `example` is a literal right up until a Reference Object points at the position it occupies, at
+     * which moment the parser resolves that position and reads the literal as a reference. See followTargetsIntoData().
      */
     private const OPAQUE_KEYS = ['example', 'default', 'enum', 'const'];
 
     /**
      * Every pure reference cycle in the document, each reported once.
      *
-     * **Does not throw.** A cyclic chain is a document fault like any other this
-     * package collects rather than stops at — see
-     * {@see Gcob\LaraSpecFirst\Parsing\SpecDocumentReader} for why. What stays
-     * non-negotiable is the *position* in the pipeline: this still has to run,
-     * and its result still has to be acted on, before the document reaches the
-     * parser, because a cyclic chain is the one document fault the parser
-     * cannot survive — it exhausts memory instead of raising.
+     * **Does not throw.** A cyclic chain is a document fault like any other this package collects rather than stops at
+     * — see {@see Gcob\LaraSpecFirst\Parsing\SpecDocumentReader} for why. What stays non-negotiable is the *position*
+     * in the pipeline: this still has to run, and its result still has to be acted on, before the document reaches the
+     * parser, because a cyclic chain is the one document fault the parser cannot survive — it exhausts memory instead
+     * of raising.
      *
      * @param  array<string, mixed>  $document
      * @return list<CyclicReferenceException>
@@ -112,13 +100,12 @@ final readonly class ReferenceCycleDetector
     /**
      * Every node carrying a local `$ref`, keyed by its own JSON pointer.
      *
-     * Keys are written the same way targets are, `#` included, so following a
-     * chain is a plain lookup rather than a conversion.
+     * Keys are written the same way targets are, `#` included, so following a chain is a plain lookup rather than a
+     * conversion.
      *
-     * References into another file or over the network are skipped: resolving
-     * them needs the vendored copies, which is a later concern. A cycle that
-     * only closes across files is therefore out of reach here, and that limit
-     * is deliberate rather than forgotten.
+     * References into another file or over the network are skipped: resolving them needs the vendored copies, which is
+     * a later concern. A cycle that only closes across files is therefore out of reach here, and that limit is
+     * deliberate rather than forgotten.
      *
      * @param  array<array-key, mixed>  $node
      * @return array<string, string> pointer of the reference => pointer it targets
@@ -151,20 +138,16 @@ final readonly class ReferenceCycleDetector
     }
 
     /**
-     * Walk a map of Example Objects, which is the one place a key's meaning
-     * depends on where it sits rather than on what it is called.
+     * Walk a map of Example Objects, which is the one place a key's meaning depends on where it sits rather than on
+     * what it is called.
      *
-     * The map itself must be followed: an Example Object may be a Reference
-     * Object. But every one of those objects carries a `value` that is literal
-     * data by definition — often, for an API that deals in JSON Schema, a
-     * document with a `$ref` of its own. Following it reads data as a reference
-     * and can refuse a valid document.
+     * The map itself must be followed: an Example Object may be a Reference Object. But every one of those objects
+     * carries a `value` that is literal data by definition — often, for an API that deals in JSON Schema, a document
+     * with a `$ref` of its own. Following it reads data as a reference and can refuse a valid document.
      *
-     * `value` cannot simply join OPAQUE_KEYS: `properties: {value: {...}}` is an
-     * ordinary schema and must be followed. Only its position here makes it
-     * data, and this is where that position is known. Worth the extra method
-     * because 3.1 recommends exactly this long form over the `example` keyword
-     * that the name-based list already covers.
+     * `value` cannot simply join OPAQUE_KEYS: `properties: {value: {...}}` is an ordinary schema and must be followed.
+     * Only its position here makes it data, and this is where that position is known. Worth the extra method because
+     * 3.1 recommends exactly this long form over the `example` keyword that the name-based list already covers.
      *
      * @param  array<array-key, mixed>  $examples
      * @return array<string, string>
@@ -187,31 +170,24 @@ final readonly class ReferenceCycleDetector
     }
 
     /**
-     * Extend the graph with every position inside data that a real reference
-     * actually points at.
+     * Extend the graph with every position inside data that a real reference actually points at.
      *
-     * The gap this closes, and why it is not a hole in the opaque list above:
-     * `#/components/schemas/A/example` is a legal pointer, `example` is
-     * legitimately data, and collect() is right never to walk into it. But a
-     * Reference Object aiming *at* that position is specification, and the
-     * parser resolves it against the object tree it has already built — where
-     * it finds the `$ref` sitting in that data and follows it like any other.
-     * Nothing in the chain collect() walks is `$ref`-shaped, so the chain looks
-     * finite to us and is not: it is the same memory exhaustion a pure cycle
-     * causes, reached from a shape a name-based rule cannot see.
+     * The gap this closes, and why it is not a hole in the opaque list above: `#/components/schemas/A/example` is a
+     * legal pointer, `example` is legitimately data, and collect() is right never to walk into it. But a Reference
+     * Object aiming *at* that position is specification, and the parser resolves it against the object tree it has
+     * already built — where it finds the `$ref` sitting in that data and follows it like any other. Nothing in the
+     * chain collect() walks is `$ref`-shaped, so the chain looks finite to us and is not: it is the same memory
+     * exhaustion a pure cycle causes, reached from a shape a name-based rule cannot see.
      *
-     * **A literal stays a literal until something points at it.** The edge is
-     * added for the target of a reference and never for the contents of data at
-     * large, so a document that merely carries a `$ref` inside an `example` —
-     * the valid contract the opaque list exists to protect — is untouched. What
-     * is refused is only ever a document that aims a reference at a position
-     * holding data, which is a pointer at something that is not a Schema, a
-     * Response or an Example Object in the first place.
+     * **A literal stays a literal until something points at it.** The edge is added for the target of a reference and
+     * never for the contents of data at large, so a document that merely carries a `$ref` inside an `example` — the
+     * valid contract the opaque list exists to protect — is untouched. What is refused is only ever a document that
+     * aims a reference at a position holding data, which is a pointer at something that is not a Schema, a Response or
+     * an Example Object in the first place.
      *
-     * Iterative rather than recursive, because a target inside data may itself
-     * point into more data. It terminates because every pass either adds a
-     * pointer the document actually resolves or drops it, and a document has
-     * finitely many positions.
+     * Iterative rather than recursive, because a target inside data may itself point into more data. It terminates
+     * because every pass either adds a pointer the document actually resolves or drops it, and a document has finitely
+     * many positions.
      *
      * @param  array<string, string>  $references  pointer of the reference => pointer it targets
      * @param  array<string, mixed>  $document
@@ -253,14 +229,12 @@ final readonly class ReferenceCycleDetector
     /**
      * Whether a key's contents are data rather than specification.
      *
-     * `examples` is the whole reason this is a method and not a lookup. The
-     * JSON Schema keyword is a **list** of literal values, so a `$ref` inside it
-     * is a literal. The OpenAPI field of the same name — on Components, a Media
-     * Type Object, a Parameter — is a **map** of Example Objects, and an Example
-     * Object may itself be a Reference Object. Treating both as data would hide
-     * a real cycle, and hiding one is not the harmless direction here: this is
-     * precisely the shape on which the parser exhausts memory instead of
-     * raising, so there would be nothing left to catch it downstream.
+     * `examples` is the whole reason this is a method and not a lookup. The JSON Schema keyword is a **list** of
+     * literal values, so a `$ref` inside it is a literal. The OpenAPI field of the same name — on Components, a Media
+     * Type Object, a Parameter — is a **map** of Example Objects, and an Example Object may itself be a Reference
+     * Object. Treating both as data would hide a real cycle, and hiding one is not the harmless direction here: this is
+     * precisely the shape on which the parser exhausts memory instead of raising, so there would be nothing left to
+     * catch it downstream.
      *
      * @param  array<array-key, mixed>  $child
      */
@@ -274,29 +248,23 @@ final readonly class ReferenceCycleDetector
     }
 
     /**
-     * Follow one chain until it reaches content, closes on itself, or joins a
-     * chain another start already accounted for.
+     * Follow one chain until it reaches content, closes on itself, or joins a chain another start already accounted
+     * for.
      *
-     * **Chain construction is unchanged from before this class stopped
-     * throwing** — a chain reported here may still include a non-cyclic prefix
-     * leading into the cycle, exactly as a single-fault run always could,
-     * depending on which pointer `findCycles()` happened to start from first.
-     * That is a pre-existing, harmless imprecision (the claim — "this chain
-     * never reaches content" — still holds for the prefix too), not something
-     * introduced by collecting more than one fault, and correcting it is a
-     * separate concern from the one this method exists to solve here.
+     * **Chain construction is unchanged from before this class stopped throwing** — a chain reported here may still
+     * include a non-cyclic prefix leading into the cycle, exactly as a single-fault run always could, depending on
+     * which pointer `findCycles()` happened to start from first. That is a pre-existing, harmless imprecision (the
+     * claim — "this chain never reaches content" — still holds for the prefix too), not something introduced by
+     * collecting more than one fault, and correcting it is a separate concern from the one this method exists to solve
+     * here.
      *
      * @param  array<string, string>  $references
-     * @param  array<string, true>  $visited  every pointer a previous call already
-     *                                        resolved — as safe, or as part of a
-     *                                        cycle already reported. Extended with
-     *                                        every pointer this call resolves too,
-     *                                        so a later start sharing part of this
-     *                                        chain neither re-walks it nor reports
-     *                                        the same cycle twice.
-     * @param  list<string>  $inData  every pointer in the graph that names a position
-     *                                holding a value; passed through so the fault can
-     *                                say which of them this chain runs through
+     * @param  array<string, true>  $visited  every pointer a previous call already resolved — as safe, or as part of a
+     *                                        cycle already reported. Extended with every pointer this call resolves
+     *                                        too, so a later start sharing part of this chain neither re-walks it nor
+     *                                        reports the same cycle twice.
+     * @param  list<string>  $inData  every pointer in the graph that names a position holding a value; passed through
+     *                                so the fault can say which of them this chain runs through
      */
     private function follow(string $start, array $references, array &$visited, array $inData): ?CyclicReferenceException
     {
@@ -338,8 +306,8 @@ final readonly class ReferenceCycleDetector
     }
 
     /**
-     * JSON Pointer escaping, so that a path segment containing `/` or `~` — a
-     * URL template such as `/users/{id}`, for instance — still round-trips.
+     * JSON Pointer escaping, so that a path segment containing `/` or `~` — a URL template such as `/users/{id}`, for
+     * instance — still round-trips.
      */
     private static function escape(string $segment): string
     {

@@ -7,22 +7,17 @@ use Illuminate\Contracts\Console\Kernel;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
- * A generated tree of its own, never written to and never created on disk —
- * Routing outcome and Drift both read whatever `generated.path` names, and
- * pointing at the real configured tree (workbench's, in this repository's
- * own test run) would make these tests report drift against content this
- * file has no control over. Not creating it at all is deliberate too: every
- * test here is then a fresh clone as far as Drift is concerned, which is its
- * own legitimate case — see DriftCheck — so nothing needs writing or
- * cleaning up either.
+ * A generated tree of its own, never written to and never created on disk — Routing outcome and Drift both read
+ * whatever `generated.path` names, and pointing at the real configured tree (workbench's, in this repository's own test
+ * run) would make these tests report drift against content this file has no control over. Not creating it at all is
+ * deliberate too: every test here is then a fresh clone as far as Drift is concerned, which is its own legitimate case
+ * — see DriftCheck — so nothing needs writing or cleaning up either.
  *
- * **Namespaced under `App\`, mapped to `app/` by Testbench's own skeleton
- * `composer.json`.** Installation checks `generated.namespace` against the
- * *real* `autoload.psr-4` map, and `base_path()` under a booted Testbench
- * application is that skeleton's root — the same `App\` -> `app/` a real
- * consumer application maps, and the same pair `generated.namespace`
- * defaults to in config/lara-spec-first.php, so this is also the realistic
- * case rather than an arbitrary one picked to dodge the check.
+ * **Namespaced under `App\`, mapped to `app/` by Testbench's own skeleton `composer.json`.** Installation checks
+ * `generated.namespace` against the *real* `autoload.psr-4` map, and `base_path()` under a booted Testbench application
+ * is that skeleton's root — the same `App\` -> `app/` a real consumer application maps, and the same pair
+ * `generated.namespace` defaults to in config/lara-spec-first.php, so this is also the realistic case rather than an
+ * arbitrary one picked to dodge the check.
  */
 function doctorTree(): string
 {
@@ -196,9 +191,8 @@ it('emits a parseable JSON error, not prose, when --json is combined with a refu
 // --- A document the pipeline could not read is not drift ---
 
 /**
- * A generated tree that exists and holds files, unlike {@see doctorTree()} —
- * Drift's own preconditions are what these tests are about, so "a build already
- * happened" has to be a real state on disk rather than an assumption.
+ * A generated tree that exists and holds files, unlike {@see doctorTree()} — Drift's own preconditions are what these
+ * tests are about, so "a build already happened" has to be a real state on disk rather than an assumption.
  */
 function builtDoctorTree(): string
 {

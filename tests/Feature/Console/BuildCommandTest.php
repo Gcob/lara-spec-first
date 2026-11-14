@@ -32,10 +32,9 @@ use Symfony\Component\Console\Output\BufferedOutput;
 /**
  * One temporary tree for this file, computed once.
  *
- * A function with a static rather than a property on the test case: Pest closures
- * are bound to the test instance at runtime but typed as a pending call, so state
- * hung on `$this` is invisible to static analysis. A named function says the same
- * thing and can be checked.
+ * A function with a static rather than a property on the test case: Pest closures are bound to the test instance at
+ * runtime but typed as a pending call, so state hung on `$this` is invisible to static analysis. A named function says
+ * the same thing and can be checked.
  */
 function buildTree(): string
 {
@@ -45,15 +44,12 @@ function buildTree(): string
 }
 
 /**
- * A fresh generated namespace for each test, and the reason is PHP rather than
- * tidiness.
+ * A fresh generated namespace for each test, and the reason is PHP rather than tidiness.
  *
- * `beforeEach` deletes and rebuilds the tree at the same paths, but a class this
- * process has already declared stays declared: PHP will not autoload a second
- * definition, and it tracks includes by path. So a fixed namespace would mean
- * every test after the first one to load a controller asserting against the bytes
- * *that* build wrote — silently, and correctly, for as long as every test builds
- * from the same fixture. A namespace nobody has loaded yet cannot be stale.
+ * `beforeEach` deletes and rebuilds the tree at the same paths, but a class this process has already declared stays
+ * declared: PHP will not autoload a second definition, and it tracks includes by path. So a fixed namespace would mean
+ * every test after the first one to load a controller asserting against the bytes *that* build wrote — silently, and
+ * correctly, for as long as every test builds from the same fixture. A namespace nobody has loaded yet cannot be stale.
  *
  * Passing a value sets it; passing nothing reads it back.
  */
@@ -923,10 +919,9 @@ it('hands the 501 the name spec:make would be given', function (): void {
 // --- --update-refs: the build's one entry point to the network ---
 
 /**
- * A fresh vendor tree for this block, torn down after it — separate from
- * `buildTree()` because a vendored reference is never gitignored the way the
- * generated tree can be, and asserting on it means it cannot be confused with
- * generated PHP.
+ * A fresh vendor tree for this block, torn down after it — separate from `buildTree()` because a vendored reference is
+ * never gitignored the way the generated tree can be, and asserting on it means it cannot be confused with generated
+ * PHP.
  */
 function vendorTree(): string
 {
@@ -936,11 +931,10 @@ function vendorTree(): string
 }
 
 /**
- * Point the build at the fixture with a remote `$ref` and allow the one host it
- * names — called from inside each test rather than a second file-wide
- * `beforeEach`, since Pest runs every `beforeEach` in a file for every test in
- * it regardless of where it is declared, and the existing one above already
- * points every other test in this file at `operations.yaml`.
+ * Point the build at the fixture with a remote `$ref` and allow the one host it names — called from inside each test
+ * rather than a second file-wide `beforeEach`, since Pest runs every `beforeEach` in a file for every test in it
+ * regardless of where it is declared, and the existing one above already points every other test in this file at
+ * `operations.yaml`.
  */
 function useRemoteReferenceFixture(): void
 {

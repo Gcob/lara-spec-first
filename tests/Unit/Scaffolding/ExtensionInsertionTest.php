@@ -73,11 +73,9 @@ function insertionFixture(): string
 }
 
 /**
- * Every fixture in this file is hand-authored to read cleanly, so a fault here
- * would mean a fixture regressed — asserted rather than silently tolerated, so
- * that regression fails where it happens instead of surfacing as a confusing
- * "undefined array key" once `insertInto()` indexes into a shorter-than-expected
- * list.
+ * Every fixture in this file is hand-authored to read cleanly, so a fault here would mean a fixture regressed —
+ * asserted rather than silently tolerated, so that regression fails where it happens instead of surfacing as a
+ * confusing "undefined array key" once `insertInto()` indexes into a shorter-than-expected list.
  *
  * @return list<Operation>
  */

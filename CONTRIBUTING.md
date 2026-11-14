@@ -219,11 +219,11 @@ composer check
 
 It covers:
 
-| Check      | Command                 | What it does                                                    |
-| ---------- | ----------------------- | --------------------------------------------------------------- |
-| Code style | `composer format:check` | Reports Pint (Laravel preset) issues without writing files      |
-| Static     | `composer analyse`      | Runs PHPStan via Larastan at level 8                            |
-| Tests      | `composer test`         | Runs the Pest suite against a Laravel app booted by `testbench` |
+| Check      | Command                 | What it does                                                                                  |
+| ---------- | ----------------------- | --------------------------------------------------------------------------------------------- |
+| Code style | `composer format:check` | Reports Pint (Laravel preset) issues and docblocks that need reflowing, without writing files |
+| Static     | `composer analyse`      | Runs PHPStan via Larastan at level 8                                                          |
+| Tests      | `composer test`         | Runs the Pest suite against a Laravel app booted by `testbench`                               |
 
 Use `composer format` to apply the formatting rather than only report on them. It runs Pint, then reflows docblock
 prose, which [has its own check](#docblock-width).
@@ -268,9 +268,14 @@ alone never changes its exit code. `composer format:docblocks:report` (or `just 
 worst first, with a total and the share of described tags. This is watched, never enforced: if the count grows, the
 answer is a decision about the style, not a failing build.
 
-`composer format:docblocks:check` is not part of `composer check`, and CI does not run it. The codebase is still wrapped
-at the old width, so adding it now would turn `main` red. One reformat commit comes first, and the CI check is wired in
-with it.
+**The reformat is one commit `git blame` skips.** The whole codebase was reflowed once, in a commit with nothing else in
+it, and `.git-blame-ignore-revs` lists it. GitHub reads that file on its own; for `git blame` on your clone, run once:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+A later commit that only reformats goes in the same file.
 
 ### What CI runs on your pull request
 
@@ -419,8 +424,8 @@ only that file: Pint then the docblock formatter for PHP, Prettier for Markdown.
 that fails is printed and skipped. `.gitignore` ignores the rest of `.claude/`, so your own `settings.local.json` and
 agents stay yours.
 
-The docblock check in CI comes with the reformat described [above](#docblock-width); until then nothing in CI reads the
-docblock width.
+CI runs the docblock check as part of `composer format:check`, so a docblock wrapped at the wrong width fails the "Code
+style and static analysis" job. A cramped tag only prints its warning there.
 
 ## Scope: what belongs in this package
 

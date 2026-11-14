@@ -10,11 +10,10 @@ use LogicException;
 /**
  * A file the build was about to write outside the directory it owns.
  *
- * A `LogicException` because it can only ever be our own bug: the paths reaching
- * the writer are built by this package, never by a consumer, so there is no
- * configuration that produces this and nothing a user can do about it. It exists
- * so that the invariant is enforced at the boundary rather than trusted across
- * it — a rule nothing checks is a rule until the first refactor.
+ * A `LogicException` because it can only ever be our own bug: the paths reaching the writer are built by this package,
+ * never by a consumer, so there is no configuration that produces this and nothing a user can do about it. It exists so
+ * that the invariant is enforced at the boundary rather than trusted across it — a rule nothing checks is a rule until
+ * the first refactor.
  *
  * @see docs/guide/code-generation/index.md — "A build never destroys your work"
  */
