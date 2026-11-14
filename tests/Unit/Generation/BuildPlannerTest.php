@@ -107,9 +107,6 @@ it('refuses two operations that claim one class name', function (): void {
     ])))->toThrow(UnusableNameException::class, 'both generate the class name "ShowUserController"');
 });
 
-// Symfony's compiler finds placeholders with `[\w\x80-\xFF]+`, so `{user-id}` is
-// never recognized as one: it stays literal text and the endpoint answers 404
-// forever with nothing reporting it.
 // Reachable without the controller collision above firing, and the advice
 // differs: a request's name comes from the `operationId` alone, so two
 // operations sharing one while declaring different `x-controller` values pass
@@ -137,6 +134,9 @@ it('accepts a path parameter named request when nothing is validated', function 
         ->toHaveCount(1);
 });
 
+// Symfony's compiler finds placeholders with `[\w\x80-\xFF]+`, so `{user-id}` is
+// never recognized as one: it stays literal text and the endpoint answers 404
+// forever with nothing reporting it.
 it('refuses a path parameter Laravel would never match', function (): void {
     expect(fn () => planner()->plan(operations([['get', '/users/{user-id}']])))
         ->toThrow(UnroutablePathException::class, 'letters, digits and underscores');
