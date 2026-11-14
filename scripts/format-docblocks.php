@@ -685,33 +685,39 @@ function tagHead(string $line): ?string
         $i++;
     }
 
-    // The type, up to the first space outside a bracket. A `$name` or `...$name` first means there is no type.
-    if (preg_match('/\G(?:&\s*)?(?:\.\.\.)?\$/', $line, $variable, 0, $i) !== 1) {
-        $depth = 0;
-        $start = $i;
+    // The type, up to the first space outside a bracket. A `$name` or `...$name` first means there is no type, and
+    // then Pint hangs the continuation at a column of its own (`@return $this` is one), so such a tag is left as
+    // written rather than fought over.
+    if (preg_match('/\G(?:&\s*)?(?:\.\.\.)?\$/', $line, $variable, 0, $i) === 1) {
+        return null;
+    }
 
-        for (; $i < $length; $i++) {
-            $character = $line[$i];
+    $depth = 0;
+    $start = $i;
 
-            if (str_contains('<{([', $character)) {
-                $depth++;
-            } elseif (str_contains('>})]', $character)) {
-                $depth--;
-            } elseif (($character === ' ' || $character === "\t") && $depth === 0) {
-                break;
-            }
+    for (; $i < $length; $i++) {
+        $character = $line[$i];
+
+        if (str_contains('<{([', $character)) {
+            $depth++;
+        } elseif (str_contains('>})]', $character)) {
+            $depth--;
+        } elseif (($character === ' ' || $character === "\t") && $depth === 0) {
+            break;
         }
+    }
 
-        $type = substr($line, $start, $i - $start);
+    $type = substr($line, $start, $i - $start);
 
-        // Unbalanced, or a type that goes on after the space: `callable(): void`, `A | B`.
-        if ($depth !== 0 || preg_match('/[|&:,?]$/', $type) === 1 || preg_match('/\G\s*[|&:]/', $line, $more, 0, $i) === 1) {
-            return null;
-        }
+    // Unbalanced, a type that goes on after the space (`callable(): void`, `A | B`, but not a by-reference
+    // `&$name`), or a quoted literal, whose inner spaces Pint keeps and this would squeeze.
+    if ($depth !== 0 || preg_match('/[|&:,?]$/', $type) === 1 || preg_match('/[\'"]/', $type) === 1
+        || preg_match('/\G\s*(?:[|:]|&(?!\s*(?:\.\.\.)?\$))/', $line, $more, 0, $i) === 1) {
+        return null;
+    }
 
-        while ($i < $length && ($line[$i] === ' ' || $line[$i] === "\t")) {
-            $i++;
-        }
+    while ($i < $length && ($line[$i] === ' ' || $line[$i] === "\t")) {
+        $i++;
     }
 
     if ($name !== 'return' && $name !== 'throws' && preg_match('/\G(?:&\s*)?(?:\.\.\.)?\$\w+/', $line, $variable, 0, $i) === 1) {

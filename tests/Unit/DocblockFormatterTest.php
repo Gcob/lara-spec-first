@@ -1135,3 +1135,72 @@ it('wraps the typed tags where Pint hangs them', function (): void {
             DOC)
         ->and($pint->getExitCode())->toBe(0, $pint->getOutput());
 });
+
+// A tag with no type (`@return $this`, an untyped `@param`) has its continuation hung by Pint at a column of its own,
+// and a quoted literal type keeps inner spaces Pint restores. Reflowing either would have the two tools rewrite each
+// other on every run, so the formatter leaves them as written and Pint finds nothing to change.
+it('leaves an untyped tag and a quoted literal type as written, so Pint agrees', function (): void {
+    $source = <<<'PHP'
+    <?php
+
+    declare(strict_types=1);
+
+    final class B
+    {
+        /**
+         * @param  $rule  the rule to add, so a caller can chain the next rule onto it without keeping a reference to it
+         *                around
+         * @param  'foo bar'|null  $mode  the mode, so a caller can chain the next rule onto it without keeping a
+         *                                reference to it around
+         * @return $this the same builder, so a caller can chain the next rule onto it without keeping a reference to it
+         *               around
+         */
+        public function rule($rule, ?string $mode): static
+        {
+            return $this;
+        }
+    }
+
+    PHP;
+
+    $directory = docblockProject(['File.php' => $source]);
+    $repository = dirname(__DIR__, 2);
+
+    // The baseline is the file as Pint writes it: hand-aligned columns are not the point here.
+    (new Process([PHP_BINARY, $repository.'/vendor/bin/pint', '--config', $repository.'/pint.json', $directory.'/File.php']))->run();
+    $baseline = (string) file_get_contents($directory.'/File.php');
+
+    $run = runDocblockFormatter(['--root='.$directory, $directory.'/File.php']);
+    $pint = new Process([PHP_BINARY, $repository.'/vendor/bin/pint', '--test', '--config', $repository.'/pint.json', $directory.'/File.php']);
+    $pint->run();
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and($baseline)->toContain('@return $this the same builder')
+        ->and(file_get_contents($directory.'/File.php'))->toBe($baseline)
+        ->and($pint->getExitCode())->toBe(0, $pint->getOutput());
+});
+
+it('wraps a typed by-reference parameter like any other', function (): void {
+    $source = <<<'PHP'
+    <?php
+
+    declare(strict_types=1);
+
+    final class C
+    {
+        /**
+         * @param  list<string>  &$handled  the keywords this field already enforced, so the rest are reported, which is far too long for one line
+         */
+        public function f(array &$handled): void {}
+    }
+
+    PHP;
+
+    $directory = docblockProject(['File.php' => $source], 100);
+
+    runDocblockFormatter(['--root='.$directory, $directory.'/File.php']);
+
+    $lines = explode("\n", (string) file_get_contents($directory.'/File.php'));
+
+    expect(max(array_map('strlen', $lines)))->toBeLessThanOrEqual(100);
+});
