@@ -315,6 +315,36 @@ it('says how each inline name was derived when two inline schemas meet', functio
         ->and($refusal)->toThrow(UnusableNameException::class, 'the schema written at "'.$root.'" gives the full type, "CreateUserAddress" (derived from the request "CreateUserAddressRequest") + "InputDto"');
 });
 
+// The two copies are written at two places, so each carries its own position for the `default` nothing
+// reads. That is the layout of the document, and the build that took the copies for one schema yesterday
+// takes them for one today.
+it('shares one DTO between two inline copies of a shape that differ only by where an ignored keyword is written', function (): void {
+    $street = static fn (string $at): Schema => new Schema(types: [SchemaType::String], ignored: ['default' => $at.'/default']);
+
+    $plan = planDtos([
+        dtoOperation('createUser', ['application/json' => dtoSchema(['address' => dtoSchema(['street' => $street('#/a')])])]),
+        dtoOperation('createUserAddress', ['application/json' => dtoSchema(['street' => $street('#/b')])], path: '/addresses'),
+    ]);
+
+    // One class, the one the second operation reads and the first nests.
+    expect(array_count_values(dtoNames($plan->dtos))['CreateUserAddressInputDto'])->toBe(1)
+        ->and($plan->readBy['post /addresses'])->toBe('CreateUserAddressInputDto');
+});
+
+// What a rule could be built from still tells two inline copies apart: `[0]` and `[false]` are `==`.
+it('still refuses two inline copies whose enums are loosely equal and not the same', function (): void {
+    $copy = static fn (mixed $value, string $at): Schema => dtoSchema(['kind' => new Schema(
+        types: [SchemaType::Integer],
+        enum: [$value],
+        ignored: ['default' => $at],
+    )]);
+
+    expect(fn () => planDtos([
+        dtoOperation('createUser', ['application/json' => dtoSchema(['address' => $copy(0, '#/a')])]),
+        dtoOperation('createUserAddress', ['application/json' => $copy(false, '#/b')], path: '/addresses'),
+    ]))->toThrow(UnusableNameException::class, 'both generate the input DTO "CreateUserAddressInputDto"');
+});
+
 // An object body with no `properties` is an open object whose keys are all undeclared. Its
 // type exists, so adding a property later creates no class that was not there, and it has
 // nothing to hold: the file says so, and where the body is read from instead.

@@ -45,6 +45,11 @@ final readonly class RuleSet
      *                              when every property is optional
      * @param  string  $rootKey  the key the request's own failures about the body are answered on, which no top-level
      *                           name of the contract is
+     * @param  array<string, list<string>>  $unenforced  each keyword the contract wrote that this rule set reads and
+     *                                                   enforces nothing for, by the fields it was left unenforced on.
+     *                                                   Data where `findings` is prose, so a report can group, count
+     *                                                   and gate on it without reading a sentence, and narrower on
+     *                                                   purpose: a finding that is only information has no entry here
      */
     public function __construct(
         public array $rules = [],
@@ -59,6 +64,7 @@ final readonly class RuleSet
         public array $uncheckedNames = [],
         public bool $requiredRoot = false,
         public string $rootKey = 'body',
+        public array $unenforced = [],
     ) {}
 
     /**

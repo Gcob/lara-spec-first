@@ -386,6 +386,32 @@ it('refuses two read media types describing two different shapes', function (): 
     ])))->toThrow(ConflictingInputException::class, 'cannot hold two rule sets');
 });
 
+// The comparison is strict: `==` called `null` and `0`, `null` and `false`, `[0]` and `[false]` equal, so a
+// constraint written on one media type only was dropped for the other. They are two schemas, and two rule sets.
+it('refuses two read media types whose shapes differ only by a value loose equality would forgive', function (Schema $one, Schema $other): void {
+    expect(fn () => RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => objectSchema(['a' => $one]),
+        'multipart/form-data' => objectSchema(['a' => $other]),
+    ])))->toThrow(ConflictingInputException::class, 'cannot hold two rule sets');
+})->with([
+    'minimum: 0 on one side' => [
+        new Schema(types: [SchemaType::Integer], minimum: 0),
+        new Schema(types: [SchemaType::Integer]),
+    ],
+    'minLength: 0 on one side' => [
+        new Schema(types: [SchemaType::String], minLength: 0),
+        new Schema(types: [SchemaType::String]),
+    ],
+    'additionalProperties: false on one side' => [
+        new Schema(types: [SchemaType::Object], additionalProperties: false),
+        new Schema(types: [SchemaType::Object]),
+    ],
+    'enum [0] against [false]' => [
+        new Schema(enum: [0]),
+        new Schema(enum: [false]),
+    ],
+]);
+
 // Two media types over one schema are not a conflict, and comparing by identity
 // rather than by value would have made them one: nothing guarantees a `$ref`
 // reaches two media types as the same object.
@@ -397,6 +423,22 @@ it('accepts two read media types describing one shape', function (): void {
 
     expect($set->rules)->toBe(['a' => ['sometimes', 'string']])
         ->and(implode('', $set->findings))->toContain('over one schema');
+});
+
+// An ignored keyword is written at a position, and two media types writing the
+// same shape inline write it at two. The position is what the doctor reports and
+// no rule is built from it, so it is not a difference between the two shapes.
+it('accepts two read media types whose shapes differ only in where an ignored keyword is written', function (): void {
+    $at = static fn (string $media): Schema => objectSchema([
+        'a' => new Schema(types: [SchemaType::String], ignored: ['default' => '#/'.$media.'/properties/a/default']),
+    ]);
+
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $at('json'),
+        'multipart/form-data' => $at('multipart'),
+    ]));
+
+    expect($set->rules)->toBe(['a' => ['sometimes', 'string']]);
 });
 
 // Reported rather than refused: refusing the whole build over a media type this
@@ -464,6 +506,28 @@ it('maps each constraint to the Laravel rule that means the same thing', functio
     'format: uuid' => [new Schema(types: [SchemaType::String], format: 'uuid'), ['sometimes', 'string', 'uuid']],
     'format: ipv4' => [new Schema(types: [SchemaType::String], format: 'ipv4'), ['sometimes', 'string', 'ipv4']],
     'format: ipv6' => [new Schema(types: [SchemaType::String], format: 'ipv6'), ['sometimes', 'string', 'ipv6']],
+    // `int32` is a range, so it is two bounds, and a bound the contract states beside it is kept when it is tighter.
+    'format: int32' => [
+        new Schema(types: [SchemaType::Integer], format: 'int32'),
+        ['sometimes', 'integer', 'min:-2147483648', 'max:2147483647'],
+    ],
+    'format: int32 with tighter bounds' => [
+        new Schema(types: [SchemaType::Integer], format: 'int32', minimum: 1.0, maximum: 100.0),
+        ['sometimes', 'integer', 'min:1', 'max:100'],
+    ],
+    'format: int32 with looser bounds' => [
+        new Schema(types: [SchemaType::Integer], format: 'int32', minimum: -5000000000.0, maximum: 5000000000.0),
+        ['sometimes', 'integer', 'min:-2147483648', 'max:2147483647'],
+    ],
+    'format: int32 with one tighter bound' => [
+        new Schema(types: [SchemaType::Integer], format: 'int32', maximum: 10.0),
+        ['sometimes', 'integer', 'min:-2147483648', 'max:10'],
+    ],
+    // `integer` is PHP's `FILTER_VALIDATE_INT`, which is the 64-bit range, and `numeric` takes any JSON number.
+    'format: int64 on an integer' => [new Schema(types: [SchemaType::Integer], format: 'int64'), ['sometimes', 'integer']],
+    'format: double on a number' => [new Schema(types: [SchemaType::Number], format: 'double'), ['sometimes', 'numeric']],
+    // An annotation for a form to hide what is typed: it asserts nothing.
+    'format: password' => [new Schema(types: [SchemaType::String], format: 'password'), ['sometimes', 'string']],
     // `D` gives PCRE's `$` the ECMA-262 reading, and `u` counts a multibyte
     // character as one.
     'pattern' => [
@@ -731,7 +795,7 @@ it('reports what no Laravel rule means the same as', function (Schema $field, st
     'a bound on an untyped field' => [new Schema(minimum: 1.0), '`field` states `minimum`'],
     'a recursion marker' => [Schema::recursion('#/components/schemas/Node'), 'points back at'],
     // A file part in a JSON body is a string: JSON cannot carry a file.
-    'a file part in a JSON body' => [new Schema(types: [SchemaType::String], isFilePart: true), '`isFilePart`'],
+    'a file part in a JSON body' => [new Schema(types: [SchemaType::String], isFilePart: true), '`field` states `format`'],
 ]);
 
 // `true` asks for nothing, so there is no rule for it to be missing: a finding
@@ -978,7 +1042,9 @@ it('reads a file part as a string unless multipart is the only body', function (
     [$rules, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true), mediaTypes: $mediaTypes);
 
     expect($rules['avatar'])->toBe(['present', 'string'])
-        ->and($findings)->toContain('`avatar` states `isFilePart`');
+        // `isFilePart` is no word of a contract: it is `format: binary` here, which is what the finding names.
+        ->and($findings)->toContain('`avatar` states `format`')
+        ->and($findings)->not->toContain('isFilePart');
 })->with([
     'JSON' => [['application/json']],
     'a form' => [['application/x-www-form-urlencoded']],
@@ -1643,4 +1709,178 @@ it('closes a form body to the name PHP gives a key, and a mixed body to both', f
         ->toBe(['user_name', 'plain'])
         ->and(RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, 'multipart/form-data' => $schema]))->closedKeys)
         ->toBe(['user.name', 'user_name', 'plain']);
+});
+
+// --- What a translated keyword leaves unenforced, as data ---
+
+// The doctor reports these per operation, and it cannot read them out of the
+// prose in `findings`: that list also carries what was merely worth saying (two
+// media types over one schema, a stricter-than-the-contract note), which must
+// never gate an exit code. So the keyword and the field are recorded beside the
+// sentence, and only for the four ways a keyword the rule set reads comes out
+// unenforced.
+it('names the keyword and the field for each way a read keyword is left unenforced', function (
+    array $content,
+    array $query,
+    array $expected,
+): void {
+    assert(array_is_list($query));
+
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query));
+
+    expect($set->unenforced)->toBe($expected);
+})->with([
+    'a format no Laravel rule means the same as' => [
+        ['application/json' => objectSchema(['website' => new Schema(types: [SchemaType::String], format: 'uri')])],
+        [],
+        ['format' => ['`website`']],
+    ],
+    'a format on a number, which nothing reads' => [
+        ['application/json' => objectSchema(['price' => new Schema(types: [SchemaType::Number], format: 'float')])],
+        [],
+        ['format' => ['`price`']],
+    ],
+    'a format on a string that is not a mapped one' => [
+        ['application/json' => objectSchema(['blob' => new Schema(types: [SchemaType::String], format: 'byte')])],
+        [],
+        ['format' => ['`blob`']],
+    ],
+    // A format meant for the other kind of number says nothing the type rule carries.
+    'int32 on a number' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Number], format: 'int32')])],
+        [],
+        ['format' => ['`count`']],
+    ],
+    'int64 on a number' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Number], format: 'int64')])],
+        [],
+        ['format' => ['`count`']],
+    ],
+    // What the rules already carry, or what asserts nothing: handled, so nothing to report.
+    'int64 on an integer, which the integer rule enforces' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Integer], format: 'int64')])],
+        [],
+        [],
+    ],
+    'int32 on an integer, which becomes its two bounds' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Integer], format: 'int32')])],
+        [],
+        [],
+    ],
+    'double on a number, which the numeric rule enforces' => [
+        ['application/json' => objectSchema(['price' => new Schema(types: [SchemaType::Number], format: 'double')])],
+        [],
+        [],
+    ],
+    'password, an annotation' => [
+        ['application/json' => objectSchema(['pwd' => new Schema(types: [SchemaType::String], format: 'password')])],
+        [],
+        [],
+    ],
+    // A field the rule set drops whole states constraints nothing enforces, and the doctor names each one.
+    'a query parameter whose name PHP rewrites' => [
+        [],
+        [new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer], minimum: 1.0, maximum: 100.0), required: true)],
+        ['required' => ['`page[size]`'], 'minimum' => ['`page[size]`'], 'maximum' => ['`page[size]`']],
+    ],
+    'a query parameter whose name carries a star' => [
+        [],
+        [new QueryParameter('a*b', new Schema(types: [SchemaType::String], pattern: '^a'), required: true)],
+        ['required' => ['`a*b`'], 'pattern' => ['`a*b`']],
+    ],
+    'a body property whose key carries a star' => [
+        ['application/json' => objectSchema(['a*b' => new Schema(types: [SchemaType::String], maxLength: 3)], ['a*b'])],
+        [],
+        ['required' => ['`a*b`'], 'maxLength' => ['`a*b`']],
+    ],
+    'a nested body property whose key carries a star, and is not required' => [
+        ['application/json' => objectSchema(['user' => objectSchema(['a*b' => new Schema(types: [SchemaType::Integer], minimum: 2.0)])])],
+        [],
+        ['minimum' => ['`user.a*b`']],
+    ],
+    'a required body key with no property, and a star' => [
+        ['application/json' => objectSchema([], ['a*b'])],
+        [],
+        ['required' => ['`a*b`']],
+    ],
+    // `isFilePart` is no word of a contract, so it is named by the keyword the contract wrote: `format: binary`, or a
+    // `contentMediaType` at 3.1.
+    'a file part written as format: binary, in a JSON body' => [
+        ['application/json' => objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true)])],
+        [],
+        ['format' => ['`doc`']],
+    ],
+    'a file part written as contentMediaType, in a JSON body' => [
+        ['application/json' => objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'application/pdf')])],
+        [],
+        ['contentMediaType' => ['`doc`']],
+    ],
+    'int64 on a query parameter' => [
+        [],
+        [new QueryParameter('after', new Schema(types: [SchemaType::Integer], format: 'int64'))],
+        [],
+    ],
+    'a pattern across the ECMA-262 / PCRE boundary' => [
+        ['application/json' => objectSchema(['code' => new Schema(types: [SchemaType::String], pattern: '^\d+$')])],
+        [],
+        ['pattern' => ['`code`']],
+    ],
+    'a content media type no rule can match' => [
+        ['multipart/form-data' => objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'text/csv')])],
+        [],
+        ['contentMediaType' => ['`doc`']],
+    ],
+    'a keyword the walk reached no rule for, on the body itself' => [
+        ['application/json' => new Schema(types: [SchemaType::Object], enum: [[]])],
+        [],
+        ['enum' => ['The body itself']],
+    ],
+    'a keyword on a query parameter' => [
+        [],
+        [new QueryParameter('sort', new Schema(types: [SchemaType::String], format: 'duration'))],
+        ['format' => ['`sort`']],
+    ],
+    // OpenAPI 3.0: `required` on a `readOnly` property takes effect on the response only, so a request that
+    // leaves it out does what the contract says. Its prose finding stays in the generated file, and the doctor
+    // has nothing to report.
+    'required on a readOnly property' => [
+        ['application/json' => objectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id'])],
+        [],
+        [],
+    ],
+]);
+
+it('lists every field one keyword is unenforced on, once each, in the order they are met', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'website' => new Schema(types: [SchemaType::String], format: 'uri'),
+        'tags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String], format: 'uri')),
+        'age' => new Schema(types: [SchemaType::Integer], minimum: 1.0),
+    ])]));
+
+    expect($set->unenforced)->toBe(['format' => ['`website`', '`tags`[]']]);
+});
+
+// The sentence a reader opens the generated file for is not the data the doctor
+// gates on. A body over two media types, a closed body a form cannot close and a
+// `query` array whose serialization is not read are all worth a line and none is
+// a keyword the contract wrote that nothing enforces.
+it('records nothing for a finding that is information rather than an unenforced keyword', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: [
+            'application/json' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
+            'multipart/form-data' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
+        ],
+        query: [new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])))],
+    ));
+
+    expect($set->findings)->not->toBe([])
+        ->and($set->unenforced)->toBe([]);
+});
+
+it('records nothing for a keyword that became a rule', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'email' => new Schema(types: [SchemaType::String], format: 'email', pattern: '^[a-z]+$', maxLength: 10),
+    ])]));
+
+    expect($set->unenforced)->toBe([]);
 });

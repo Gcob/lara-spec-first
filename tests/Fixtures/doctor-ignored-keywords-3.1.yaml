@@ -1,0 +1,30 @@
+# The 3.1 spelling of the same report, with keywords only 3.1 has: `prefixItems`
+# and `patternProperties` come back raw from the parser, and both are Ignored.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              patternProperties:
+                '^x-':
+                  type: string
+              properties:
+                pair:
+                  type: array
+                  prefixItems:
+                    - type: string
+                    - type: integer
+                status:
+                  type: string
+                  default: new
+      responses:
+        '201':
+          description: Created

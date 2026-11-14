@@ -63,6 +63,19 @@ final readonly class RuleSetBuilder
     ];
 
     /**
+     * The `format` values that are an annotation for a reader or a form and assert nothing, so no rule is missing for
+     * them. `password` hides what is typed.
+     */
+    private const ANNOTATION_FORMATS = ['password'];
+
+    /**
+     * The range `format: int32` states, which `integer` does not carry: PHP's integers are 64-bit.
+     */
+    private const INT32_MINIMUM = -2147483648;
+
+    private const INT32_MAXIMUM = 2147483647;
+
+    /**
      * The one body media type a part can be a file in, so the one a file part is read as one for.
      */
     private const MULTIPART = 'multipart/form-data';
@@ -157,6 +170,7 @@ final readonly class RuleSetBuilder
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
+                self::leaveFieldUnenforced($walk, '`'.$parameter->name.'`', $parameter->schema, $parameter->required);
 
                 continue;
             }
@@ -216,7 +230,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced);
     }
 
     /**
@@ -316,7 +330,7 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
-            if ($schema != $first) {
+            if (! $schema->sameShapeAs($first)) {
                 throw ConflictingInputException::twoMediaTypeSchemas(
                     $operation->label(),
                     (string) $firstMediaType,
@@ -361,14 +375,12 @@ final readonly class RuleSetBuilder
         // body's own schema — an `enum` is the one a real contract writes there
         // — is read and enforced by nothing, and an empty findings list makes
         // the generated file claim the opposite.
-        $walk->findings = [
-            ...$walk->findings,
-            ...self::unhandled(
-                'The body itself',
-                $schema,
-                ['type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf'],
-            ),
-        ];
+        self::reportUnhandled(
+            $walk,
+            'The body itself',
+            $schema,
+            ['type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf'],
+        );
 
         self::planFormNames($schema, $walk);
 
@@ -591,6 +603,13 @@ final readonly class RuleSetBuilder
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
+                self::leaveFieldUnenforced(
+                    $walk,
+                    '`'.$prefix.$name.'`',
+                    $property,
+                    in_array($name, $schema->required, true),
+                    isset($dependents[$name]),
+                );
 
                 continue;
             }
@@ -640,6 +659,13 @@ final readonly class RuleSetBuilder
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
+                self::leaveFieldUnenforced(
+                    $walk,
+                    '`'.$prefix.$name.'`',
+                    new Schema,
+                    in_array($name, $schema->required, true),
+                    isset($dependents[$name]),
+                );
 
                 continue;
             }
@@ -940,7 +966,7 @@ final readonly class RuleSetBuilder
             );
         }
 
-        $walk->findings = [...$walk->findings, ...self::unhandled($label, $schema, $handled)];
+        self::reportUnhandled($walk, $label, $schema, $handled);
     }
 
     /**
@@ -1090,6 +1116,7 @@ final readonly class RuleSetBuilder
                 $label,
                 $mediaType,
             );
+            $walk->leaveUnenforced('contentMediaType', $label);
         } elseif ($mediaType !== '' && ! in_array($mediaType, ['application/octet-stream', '*/*'], true)) {
             $rules[] = 'mimetypes:'.$mediaType;
             // The one stricter-than-the-contract case here, and the exception the principle
@@ -1160,12 +1187,13 @@ final readonly class RuleSetBuilder
 
             if ($format !== null) {
                 array_push($rules, ...$format);
-            } else {
+            } elseif (! in_array($schema->format, self::ANNOTATION_FORMATS, true)) {
                 $walk->findings[] = sprintf(
                     '%s declares `format: %s`, which no Laravel rule means the same as, so it is not enforced.',
                     $label,
                     $schema->format,
                 );
+                $walk->leaveUnenforced('format', $label);
             }
 
             $handled[] = 'format';
@@ -1182,6 +1210,7 @@ final readonly class RuleSetBuilder
                     $label,
                     $translation->reason,
                 );
+                $walk->leaveUnenforced('pattern', $label);
             }
 
             $handled[] = 'pattern';
@@ -1199,8 +1228,29 @@ final readonly class RuleSetBuilder
      */
     private static function numberRules(Schema $schema, array &$rules, array &$handled): void
     {
-        self::bound($schema->minimum, 'min', $rules);
-        self::bound($schema->maximum, 'max', $rules);
+        $minimum = $schema->minimum;
+        $maximum = $schema->maximum;
+
+        // `int64` is what `integer` already refuses anything outside of, `double` is any JSON number, and `int32` is
+        // the one range of the three the type rule does not carry: it is the two bounds, the tighter of each with
+        // whatever the contract states beside it. `float` is a 32-bit range with a precision no rule checks, so it is
+        // left to be reported with the rest.
+        $type = $schema->soleType();
+
+        if ($schema->format === 'int32' && $type === SchemaType::Integer) {
+            $minimum = $minimum === null ? self::INT32_MINIMUM : max($minimum, self::INT32_MINIMUM);
+            $maximum = $maximum === null ? self::INT32_MAXIMUM : min($maximum, self::INT32_MAXIMUM);
+            $handled[] = 'format';
+        } elseif (
+            ($schema->format === 'int64' && $type === SchemaType::Integer)
+            || ($schema->format === 'double' && $type === SchemaType::Number)
+            || in_array($schema->format, self::ANNOTATION_FORMATS, true)
+        ) {
+            $handled[] = 'format';
+        }
+
+        self::bound($minimum, 'min', $rules);
+        self::bound($maximum, 'max', $rules);
         self::bound($schema->exclusiveMinimum, 'gt', $rules);
         self::bound($schema->exclusiveMaximum, 'lt', $rules);
         self::bound($schema->multipleOf, 'multiple_of', $rules);
@@ -1346,22 +1396,79 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * What one field states that none of its rules carries.
+     * What one field states that none of its rules carries, as a finding and as the keywords it names.
      *
      * @param  list<string>  $handled  the keywords the walk acted on for this field, whether by a rule or by a finding
      *                                 of its own
+     */
+    private static function reportUnhandled(RuleWalk $walk, string $label, Schema $schema, array $handled): void
+    {
+        $keywords = self::statedKeywords($schema, $handled);
+
+        if ($keywords === []) {
+            return;
+        }
+
+        $walk->findings[] = sprintf('%s states %s, which nothing in this rule set enforces.', $label, self::list($keywords));
+
+        foreach ($keywords as $keyword) {
+            $walk->leaveUnenforced($keyword, $label);
+        }
+    }
+
+    /**
+     * The keywords of a field the rule set drops whole, as data for the doctor.
+     *
+     * A field with no rule key (a name PHP rewrites, a `*` Laravel reads as a wildcard) gets a finding of its own that
+     * says so, and none of what the contract states about it is enforced: not its presence, and not any keyword a rule
+     * could have come from. Those are the same unenforced keywords as any other, so they are named the same way.
+     *
+     * @param  bool  $required  whether the contract asks for the field
+     * @param  bool  $dependent  whether `dependentRequired` asks for it
+     */
+    private static function leaveFieldUnenforced(
+        RuleWalk $walk,
+        string $label,
+        Schema $schema,
+        bool $required,
+        bool $dependent = false,
+    ): void {
+        if ($required) {
+            $walk->leaveUnenforced('required', $label);
+        }
+
+        if ($dependent) {
+            $walk->leaveUnenforced('dependentRequired', $label);
+        }
+
+        foreach (self::statedKeywords($schema, []) as $keyword) {
+            $walk->leaveUnenforced($keyword, $label);
+        }
+    }
+
+    /**
+     * The keywords a field states that none of its rules carries.
+     *
+     * @param  list<string>  $handled  the keywords the walk acted on for this field
      * @return list<string>
      */
-    private static function unhandled(string $label, Schema $schema, array $handled): array
+    private static function statedKeywords(Schema $schema, array $handled): array
     {
-        $keywords = array_values(array_filter(
+        $stated = array_filter(
             self::RULE_KEYWORDS,
             static fn (string $keyword): bool => ! in_array($keyword, $handled, true) && self::states($schema, $keyword),
-        ));
+        );
 
-        return $keywords === []
-            ? []
-            : [sprintf('%s states %s, which nothing in this rule set enforces.', $label, self::list($keywords))];
+        // Why: `isFilePart` is the normal form's one flag for two spellings, and no contract has the word. A finding
+        // naming it sends the reader looking for a keyword that is not in their file, so it says what they wrote.
+        $named = array_map(
+            static fn (string $keyword): string => $keyword === 'isFilePart'
+                ? ($schema->contentMediaType === null ? 'format' : 'contentMediaType')
+                : $keyword,
+            $stated,
+        );
+
+        return array_values(array_unique($named));
     }
 
     /**

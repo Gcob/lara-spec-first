@@ -1,0 +1,23 @@
+# `format: uri` is Partial: Laravel's `url` turns away URIs JSON Schema allows, so
+# no rule is emitted for it. The request writes nothing the matrix marks Ignored,
+# so this is the one finding the doctor owes for it.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                callback:
+                  type: string
+                  format: uri
+      responses:
+        '201':
+          description: Created

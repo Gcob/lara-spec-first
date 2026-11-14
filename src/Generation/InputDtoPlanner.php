@@ -200,11 +200,13 @@ final class InputDtoPlanner
             // by what it says. By position because the merged value depends on how
             // deep the walk expanded it and on what a 3.0 `$ref` wrapper carries
             // beside it (an `example`, a `readOnly`), so one component reached two
-            // ways would be refused as two. By value, serialized rather than loosely
-            // compared, because `[0]` and `[false]` are `==`.
+            // ways would be refused as two. By value, strictly rather than loosely
+            // compared, because `[0]` and `[false]` are `==`, and without the
+            // positions of the keywords nothing reads: two inline copies are
+            // written at two places.
             $same = $named && $existing['named']
                 ? $existing['position'] === $position
-                : ! $named && ! $existing['named'] && serialize($existing['schema']) === serialize($merged);
+                : ! $named && ! $existing['named'] && $existing['schema']->shapeKey() === $merged->shapeKey();
 
             if ($existing['partial'] !== $partial || ! $same) {
                 throw UnusableNameException::inputDtoClaimedTwice(

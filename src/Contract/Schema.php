@@ -16,11 +16,10 @@ namespace Gcob\LaraSpecFirst\Contract;
  * usable was written" rather than "the document was silent". Nothing is generated from the difference, so nothing needs
  * to carry it.
  *
- * **What it does not carry.** A keyword the support matrix marks `Ignored` has no property here: nothing reads it, and
- * a field nobody reads is a value waiting to be mistaken for a supported one.
- *
- * TODO (#36): reporting those ignored keywords per operation is that card's, and this class is where the collection
- * would hang when it lands.
+ * **What it does not carry.** A keyword the support matrix marks `Ignored` has no value here: nothing reads it, and a
+ * field nobody reads is a value waiting to be mistaken for a supported one. What it carries instead is the fact that it
+ * was written and where, in {@see self::$ignored}, which only `spec:doctor` reads: a keyword cannot be reported once
+ * the reading is over, and this is the one place both the keyword and its position are still known.
  *
  * @see docs/guide/openapi-support.md — "The normal form a schema takes"
  */
@@ -66,6 +65,11 @@ final readonly class Schema
      *                                   infinite tree, so it is cut here and named rather than walked. Spelled the way
      *                                   every position is: a bare JSON Pointer for the root document, and
      *                                   `path.yaml#/pointer` for an ancestor written in another file
+     * @param  array<string, string>  $ignored  each keyword this node writes that the support matrix marks `Ignored`,
+     *                                          by the position of the keyword itself, spelled the way every position
+     *                                          is. Only this node's own: a keyword written on a child is the child's.
+     *                                          The values are positions and never the keywords' values, which hold
+     *                                          schemas the walk did not resolve
      */
     public function __construct(
         public ?string $name = null,
@@ -96,6 +100,7 @@ final readonly class Schema
         public ?string $contentMediaType = null,
         public ?string $recursesTo = null,
         public ?string $source = null,
+        public array $ignored = [],
     ) {}
 
     /**
@@ -109,6 +114,59 @@ final readonly class Schema
     public static function recursion(string $pointer, ?string $name = null): self
     {
         return new self(name: $name, recursesTo: $pointer);
+    }
+
+    /**
+     * What this schema states, as a string two schemas share exactly when they state the same thing.
+     *
+     * Where an ignored keyword is written is a fact about the document's layout, never about the shape, so
+     * {@see self::$ignored} is left out at every depth. Everything else is compared strictly, which `==` is not: `[0]`
+     * and `[false]` are `==`, and are two enums. `$ordered` says whether the order a map was written in is part of the
+     * answer: a generator that emits properties in their written order needs it, and a check that asks whether two
+     * media types say one thing does not.
+     */
+    public function shapeKey(bool $ordered = true): string
+    {
+        return serialize(self::shapeOf($this, $ordered));
+    }
+
+    /**
+     * Whether two schemas state the same thing, wherever each was written.
+     *
+     * What differs between two inline copies of one shape is {@see self::$ignored}: the positions of keywords nothing
+     * reads. Comparing the objects would call the copies different and refuse a contract that says one thing twice.
+     * Built on {@see self::shapeKey()}, so this and the planner of the input DTOs cannot drift on what a shape is.
+     */
+    public function sameShapeAs(self $other): bool
+    {
+        return $this->shapeKey(ordered: false) === $other->shapeKey(ordered: false);
+    }
+
+    private static function shapeOf(mixed $value, bool $ordered): mixed
+    {
+        if ($value instanceof self) {
+            $properties = get_object_vars($value);
+            unset($properties['ignored']);
+
+            return self::shapeOf($properties, $ordered);
+        }
+
+        // JSON Schema compares numbers by value: `1.0` is `1`, so a YAML `1.0` must not split one shape in two.
+        if (is_float($value) && is_finite($value) && $value === floor($value) && abs($value) < PHP_INT_MAX) {
+            return (int) $value;
+        }
+
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $shape = array_map(static fn (mixed $item): mixed => self::shapeOf($item, $ordered), $value);
+
+        if (! $ordered && ! array_is_list($shape)) {
+            ksort($shape);
+        }
+
+        return $shape;
     }
 
     /**
