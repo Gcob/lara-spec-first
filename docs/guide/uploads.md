@@ -83,36 +83,41 @@ reaching a generator carries neither spelling: it carries
 | The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable                                                                           |
 | `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`                                                                                     |
 
-**`encoding.<part>.contentType` wins over `contentMediaType` for the types, and it only narrows.** OpenAPI lets a
-multipart body state the types of a part beside the schema, and for 3.0 that is the only place it can, since 3.0 has no
-`contentMediaType`. The contract carries the string as written, and the rule set reads it for a file part: the list is
-split on commas, each entry is cut at its `;` and lower-cased, a duplicate is dropped, and what is left is the part's
-`mimetypes:`, wildcards (`image/*`) kept. `image/png, image/jpeg` is `mimetypes:image/png,image/jpeg`. It wins even when
-it is looser than `contentMediaType`, with no finding: it is the one the contract puts nearest the part, and the author
-who wrote both meant the one that wins. A `contentType` that is empty once cleaned counts as not written, so
-`contentMediaType` applies.
+**`encoding.<part>.contentType` replaces `contentMediaType` for the types.** OpenAPI lets a multipart body state the
+types of a part beside the schema, and for 3.0 that is the only place it can, since 3.0 has no `contentMediaType`. The
+contract carries the string as written, and the rule set reads it for a file part: the list is split on commas, each
+entry is cut at its `;` and lower-cased, a duplicate is dropped, and what is left is the part's `mimetypes:`, wildcards
+(`image/*`) kept. `image/png, image/jpeg` is `mimetypes:image/png,image/jpeg`. It wins even when it is looser than
+`contentMediaType`, with no finding: it is the one the contract puts nearest the part, and the author who wrote both
+meant the one that wins. A `contentType` that is empty once cleaned counts as not written, so `contentMediaType`
+applies.
 
 **What `encoding` never does is make a part a file.** `format: binary` or `contentMediaType` still does that, so the
 input DTO and the rest of the generated tree read the part as before. It is read on the top-level parts of the body, and
 on `part.*` for an array of files; a part nested inside an object has no `encoding` of its own in OpenAPI, so there is
-nothing to read. It is read under `multipart/form-data` and `application/x-www-form-urlencoded`, the two media types
-OpenAPI gives it to, and an `encoding` beside `application/json` is ignored without a word. Only `contentType` is read:
-`headers`, `style`, `explode` and `allowReserved` are not.
+nothing to read. It narrows a part under `multipart/form-data` alone. Under `application/x-www-form-urlencoded`, the
+other media type OpenAPI gives it to, a part is a string and a `contentType` is only reported (below), and an `encoding`
+beside `application/json` is ignored without a word. A part written under both multipart and form-encoded, in a body
+that declares both, is not a file either: the two lists are read as one, multipart's first, and it is reported unless
+neither is the default. Only `contentType` is read: `headers`, `style`, `explode` and `allowReserved` are not.
 
 **A type that would make the rule stricter than the contract, or cannot be enforced, adds no `mimetypes`.** One
-`application/octet-stream` or `*/*` anywhere in the list means "any bytes", so the whole list adds nothing, for the
-reason given two paragraphs below. A text type adds none either, the generated file says so, and the doctor names
-`encoding` as not enforced, as it does for a text `contentMediaType`, with the reason given right after. The rest of the
-list is not kept with the text entry dropped, since that would refuse the CSV the contract accepts.
+`application/octet-stream` or `*/*` anywhere in the list means "any bytes", so the whole list adds nothing (the
+paragraph on "any bytes" below gives the reason). A text type adds none either, the generated file says so, and the
+doctor names `encoding` as not enforced, as it does for a text `contentMediaType` (the paragraph on text types below
+gives the reason). The rest of the list is not kept with the text entry dropped, since that would refuse the CSV the
+contract accepts.
 
 **An `encoding` the request cannot act on is reported, never dropped quietly.** A part the body does not declare under
 `properties` is a fault in the document: the generated file says so, and nothing is read from it. A `contentType` on a
 part that is not read as a file (a string, a number, an object, a list of tags, or any part of a body that is JSON or
 form-encoded too, where a file part is a string) leaves a finding in the generated file, and the doctor names `encoding`
-among what is not enforced. **The one exception is the default:** a `contentType` equal to what OpenAPI already assumes
-for that part (`text/plain` on a primitive, `application/json` on an object, `application/octet-stream` on a file, and
-for an array the default of its items) says nothing the contract had not, so it adds no finding and exits no differently
-from a contract that wrote nothing.
+among what is not enforced. A `contentType` that is not a string (a YAML list is the usual slip, since the specification
+says one comma-separated string) is a fault in the document: the generated file says so, nothing is read from it, and
+the part keeps what `contentMediaType` says. **The one exception is the default:** a `contentType` equal to what OpenAPI
+already assumes for that part (`text/plain` on a primitive, `application/json` on an object, `application/octet-stream`
+on a file, and for an array the default of its items) says nothing the contract had not, so it adds no finding and exits
+no differently from a contract that wrote nothing.
 
 **A file is a file only in a body that is `multipart/form-data` alone.** JSON carries no files, so a `format: binary`
 property in a JSON or form-encoded body is a string like any other, and the rule set says it states a keyword nothing
