@@ -292,11 +292,11 @@ final class InputDtoPlanner
             // A required `readOnly` property is the other case: the request emits no
             // presence rule for it, since `required` there is about responses, so a
             // body without it reaches `from()` all the same.
-            $readOnly = AllOfMerger::merge($property, $this->identity, '`'.$key.'`')->readOnly;
             //
             // A name PHP rewrites in a form body is the third: the request has no rule for
             // it there, so the validated payload never carries it. The type is shared by
             // JSON and form bodies alike, so it is optional whichever sends it.
+            $readOnly = AllOfMerger::merge($property, $this->identity, '`'.$key.'`')->readOnly;
             $rewritten = RuleSetBuilder::phpRewrites($key);
             $optional = $partial
                 || ! in_array($key, $merged->required, true)
