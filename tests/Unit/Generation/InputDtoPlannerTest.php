@@ -600,32 +600,80 @@ it('makes a required readOnly property optional, at the root and nested', functi
         ->and(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))->toContain('`id` is required by the schema and `readOnly`');
 });
 
-// A form body never carries a name PHP rewrites under the name the contract writes, and the
-// request has no rule for it, so the validated payload lacks it: the property cannot be required.
-// The type is shared by every operation, JSON or form, so it is optional whichever sends it.
-it('makes a required property whose name PHP rewrites optional, and says why', function (): void {
-    $plan = planDtos([dtoOperation('doThing', ['multipart/form-data' => dtoSchema(
+/**
+ * Whether each property of a DTO is optional, in order.
+ *
+ * @return list<bool>
+ */
+function optionalFlags(InputDtoPlan $plan, string $class): array
+{
+    return array_map(static fn ($property): bool => $property->optional, dtoNamed($plan, $class)->properties);
+}
+
+// A form-only body has a rule for the name PHP delivers, so a required one reaches `from()`
+// whatever its name, and nothing in the type is hedged.
+it('keeps a required property whose name PHP rewrites required when the body is only a form', function (string $mediaType): void {
+    $plan = planDtos([dtoOperation('doThing', [$mediaType => dtoSchema(
         ['a b' => dtoString(), 'page[size]' => dtoString(), 'plain' => dtoString()],
         ['a b', 'page[size]', 'plain'],
     )])]);
 
-    expect(array_map(static fn ($property): bool => $property->optional, dtoNamed($plan, 'DoThingInputDto')->properties))
-        ->toBe([true, true, false])
-        ->and(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))
-        ->toContain('`a b` is required by the schema, but PHP rewrites its name in a form body');
+    expect(optionalFlags($plan, 'DoThingInputDto'))->toBe([false, false, false])
+        ->and(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))->not->toContain('PHP rewrites');
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// A name in a JSON-only body, and a name below the root of a form, are never rewritten: the request
+// enforces them, so the type must not claim PHP rewrites them.
+it('does not hedge a name PHP does not rewrite there', function (): void {
+    $nested = dtoSchema(['a b' => dtoString()], ['a b']);
+    $json = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(['a b' => dtoString()], ['a b'])])]);
+    $form = planDtos([dtoOperation('doThing', ['multipart/form-data' => dtoSchema(['address' => $nested], ['address'])])]);
+
+    expect(optionalFlags($json, 'DoThingInputDto'))->toBe([false])
+        ->and(implode("\n", dtoNamed($json, 'DoThingInputDto')->findings))->not->toContain('PHP rewrites')
+        ->and(optionalFlags($form, 'DoThingInputDto'))->toBe([false])
+        ->and(optionalFlags($form, 'DoThingAddressInputDto'))->toBe([false])
+        ->and(implode("\n", dtoNamed($form, 'DoThingAddressInputDto')->findings))->not->toContain('PHP rewrites');
 });
 
-// Shared by every operation that reaches the schema, so the shape cannot depend on
-// whether the root or a nested use came first: the key is optional in both.
+// A body that is JSON and a form at once has the JSON name's rule and nothing for the form's, and a
+// name two others collide on has none: the request cannot promise either, so the property is optional.
+it('makes a required property optional when the request cannot check the name PHP rewrote', function (array $media, array $names): void {
+    $schema = dtoSchema(array_fill_keys($names, dtoString()), array_values($names));
+    $plan = planDtos([dtoOperation('doThing', array_fill_keys($media, $schema))]);
+
+    expect(optionalFlags($plan, 'DoThingInputDto'))->toBe(array_fill(0, count($names), true))
+        ->and(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))
+        ->toContain('`'.$names[0].'` is required by the schema, but the request cannot check it in a form body');
+})->with([
+    'JSON and a form' => [['application/json', 'multipart/form-data'], ['a b']],
+    'a collision' => [['multipart/form-data'], ['page[size]', 'page']],
+]);
+
+// Shared by every operation that reaches the schema, so the shape cannot depend on whether the
+// root or a nested use came first.
 it('gives a schema one shape whichever operation reaches it first', function (bool $rootFirst): void {
-    $shared = dtoSchema(['user.name' => dtoString()], ['user.name'], 'Shared', '#/components/schemas/Shared');
+    $shared = dtoSchema(['a b' => dtoString()], ['a b'], 'Shared', '#/components/schemas/Shared');
     $asRoot = dtoOperation('asRoot', ['application/json' => $shared]);
     $nested = dtoOperation('nested', ['application/json' => dtoSchema(['shared' => $shared], ['shared'])], path: '/other');
 
     $plan = planDtos($rootFirst ? [$asRoot, $nested] : [$nested, $asRoot]);
 
-    expect(dtoNamed($plan, 'SharedInputDto')->properties[0]->optional)->toBeTrue();
+    expect(dtoNamed($plan, 'SharedInputDto')->properties[0]->optional)->toBeFalse();
 })->with(['the root first' => [true], 'the nested use first' => [false]]);
+
+// The same named schema read by a form request that checks its name and by one that cannot: one
+// class serves both, so the property is optional whichever request got there first.
+it('hedges a shared property when any request reading it cannot check the name', function (bool $formFirst): void {
+    $shared = dtoSchema(['a b' => dtoString()], ['a b'], 'Shared', '#/components/schemas/Shared');
+    $form = dtoOperation('asForm', ['multipart/form-data' => $shared]);
+    $mixed = dtoOperation('asMixed', ['application/json' => $shared, 'multipart/form-data' => $shared], path: '/other');
+
+    $plan = planDtos($formFirst ? [$form, $mixed] : [$mixed, $form]);
+
+    expect(optionalFlags($plan, 'SharedInputDto'))->toBe([true])
+        ->and(implode("\n", dtoNamed($plan, 'SharedInputDto')->findings))->toContain('`a b` is required by the schema, but the request cannot check it');
+})->with(['the form first' => [true], 'the mixed first' => [false]]);
 
 /**
  * `Author` and `Book` refer to each other, which is the shape of most real contracts.

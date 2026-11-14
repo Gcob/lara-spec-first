@@ -67,6 +67,39 @@ final class RuleWalk
     public bool $mixedBody = false;
 
     /**
+     * For a body read only as a form: each top-level contract name PHP rewrites and
+     * that has a rule, by the path its value is delivered under (`page[size]` is
+     * `['page', 'size']`).
+     *
+     * @var array<string, list<string>>
+     */
+    public array $formPaths = [];
+
+    /**
+     * Each top-level contract name PHP rewrites, by the rule key its delivered value
+     * answers to, for a body read as a form alone or beside JSON.
+     *
+     * @var array<string, string>
+     */
+    public array $deliveredKeys = [];
+
+    /**
+     * The top-level names whose value the request cannot check when a form sends it, by
+     * the reason, worded to follow "the request cannot check it in a form body: ".
+     *
+     * @var array<string, string>
+     */
+    public array $unchecked = [];
+
+    /**
+     * The top-level names that have no rule at all, because PHP delivers them under a key
+     * another name shares or under none. A subset of {@see self::$unchecked}.
+     *
+     * @var array<string, true>
+     */
+    public array $withheld = [];
+
+    /**
      * Whether the finding about `mimetypes` refusing a file named like PHP has
      * been written, since one request says it once however many parts it has.
      */

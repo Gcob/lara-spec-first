@@ -61,7 +61,8 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A file part's `encoding.<part>.contentType`, which [`uploads.md`](../uploads.md) names as open |
 | `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for          |
 |                                                                                                              | A `query` name PHP rewrites (`user.name`, `a b`, `page[size]`), which no rule key can find     |
-|                                                                                                              | The same top-level name in a body read as a form, which PHP rewrites the same way              |
+|                                                                                                              | A form client's value for a top-level name PHP rewrites, in a body that is JSON too            |
+|                                                                                                              | Two top-level names a form delivers under one key, which no rule can tell apart                |
 | A `query` parameter, with its own `required`                                                                 | A bound on a field that states no single type                                                  |
 | A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                                |
 | [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size |                                                                                                |
@@ -129,15 +130,34 @@ an optional parameter would never be validated, and a required one would answer 
 treated as [a field name carrying `*`](#every-constraint-maps-or-reports) is: no rule, a finding that says why, and the
 request accepts what the contract accepts. It is not in the list of names `validationData()` reads either.
 
-**A top-level body name PHP rewrites gets no rule either, when the body is read as a form.** A form-encoded or multipart
-body goes through the same parser: `user.name=ada` arrives as `user_name`, and `page[size]=3` as `page => [size => 3]`.
-Measured with a real SAPI (`curl -d` and `curl -F` to `php -S`, PHP 8.5), not only with `parse_str()`, and only the
-top-level name: `address[a.b]` keeps its dot, and a JSON body keeps every name as written, so a JSON-only body keeps the
-escaped rule for `user.name`. A body that is JSON and a form at once is read as a form here, since a rule for the JSON
-name would refuse every form client. The request has no rule for the name and a finding says why. **The matching input
-DTO property is `Optional`** whichever media type sends it, because one type serves them all and the validated payload
-never carries the name. **A closed body accepts the name PHP gives the key** (`user_name`), and beside it the one the
+**A top-level body name PHP rewrites is keyed by the name PHP delivers, when the body is read only as a form.** A
+form-encoded or multipart body goes through the same parser as the query string: `user.name=ada` arrives as `user_name`,
+`a b` as `a_b`, and `page[size]=3` as `page => [size => 3]`. Measured with a real SAPI (`curl -d` and `curl -F` to
+`php -S`, PHP 8.5), a file part included (`my.file` arrives as `my_file`), and only the top-level name: `address[a.b]`
+keeps its dot, and a JSON body keeps every name as written. Unlike a query name, the contract's name for a body field
+has a delivered name a rule can find, so the rules are keyed by it: `user_name` and `page.size` carry the presence, the
+type and the bounds of `user.name` and `page[size]`, and the name takes part in an optional body's `required_with` and
+in `dependentRequired` under the key it arrives as. **The generated `dto()` puts the value back under the contract's
+name** before `from()` reads it, from a `FORM_NAMES` constant in the request, so a valid value reaches the DTO and the
+DTO's properties stay the contract's, one class serving a JSON body and a nested use as well. `validated()` is left as
+Laravel returns it, with `user_name`. **A closed body accepts the name PHP gives the key**, and beside it the one the
 contract writes when the body is also JSON.
+
+**Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
+as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), so
+the data cannot say which one was sent. Neither gets a rule, none takes part in `required_with` or `dependentRequired`
+(a `dependentRequired` it triggers says which dependency it loses), and their DTO properties are `Optional`. Two names
+that differ only by a character PHP rewrites also derive one PHP property name, so the DTO refuses them with its own
+error before this finding is reached; it is the bracketed case that gets here in a build.
+
+**A body that is JSON and a form at once keeps the rule for the name the contract writes, and a form client's value is
+not checked.** A JSON client sends `user.name` exactly, and a rule keyed by it is right for that client. A form client
+sends it as `user.name` too, which PHP delivers as `user_name`, and no one rule set holds both keys without refusing one
+of the two clients. The value a form client sends is not checked, and **a required name is not asked for**: a presence
+rule keyed by the JSON name would answer 422 to every form client, which is stricter than the contract and the one thing
+the principle forbids here without a reason. The generated file says where a form client's value arrives and that it is
+not checked there, and the matching DTO property is `Optional`: the payload cannot be promised to carry it. This is the
+one report path for a name PHP rewrites; a contract that needs it checked is better served by one media type.
 
 **A path parameter is the router's question, and its answer is a 404.** `/users/abc` on an operation whose `{id}` is an
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong

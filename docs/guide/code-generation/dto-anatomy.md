@@ -233,7 +233,12 @@ each is expanded to a different depth depending on where the build enters it, an
 class cannot match both, because the operation that reached it from the other side would hand `from()` input nothing
 checked. A schema that only repeats itself (`Address` holding an `Address`) is the same shape everywhere and stays a
 DTO. A key the rules cannot name when its object is nested (a required `user.name`) is optional in the DTO, so that a
-schema's shape does not depend on which operation reached it first, and the file's findings say so for each such key.
+schema's shape does not depend on which operation reached it first, and the file's findings say so for each such key. So
+is a name a form client sends under another one that the request cannot check there (a body that is JSON and a form at
+once, or two names a form delivers under one key): the property is `Optional`, and it is optional for every request that
+reads the schema, whichever got there first. **A name PHP rewrites in a form body that the request does check is not
+hedged**: `user.name` is read by `from()` under the contract's name, which the request's `dto()` puts back from the name
+PHP delivered, so a required one stays required.
 
 **An enumeration value is written in the docblock only when it is safe to.** A value is data from the specification and
 a docblock is code: a string holding the sequence that closes a comment would end it early. Such a value costs the

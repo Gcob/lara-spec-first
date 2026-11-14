@@ -160,8 +160,9 @@ final class InputDtoPlanner
         }
 
         $named = $name !== null;
-        $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $origin, $naming, $named);
-        $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $origin, $naming, $named);
+        $unchecked = $request->rules->uncheckedNames;
+        $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $origin, $naming, $named, $unchecked);
+        $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $origin, $naming, $named, $unchecked);
 
         // The `PATCH` reads the partial type, and so does a body that may be
         // absent entirely: there every property may be missing.
@@ -179,6 +180,9 @@ final class InputDtoPlanner
      * Registered *before* its properties are built, so a node that recurses
      * back to it finds it instead of building it again.
      *
+     * @param  array<string, string>  $unchecked  the body's top-level names the request cannot
+     *                                            check when a form sends them, by the reason.
+     *                                            Only a root has any
      * @return string the short name
      *
      * @throws UnusableNameException
@@ -194,6 +198,7 @@ final class InputDtoPlanner
         string $origin,
         string $naming,
         bool $named,
+        array $unchecked = [],
     ): string {
         if (isset($this->registry[$shortName])) {
             $existing = $this->registry[$shortName];
@@ -222,6 +227,10 @@ final class InputDtoPlanner
             if ($existing['multipart'] !== $this->multipart && self::hasFilePart($merged)) {
                 throw UnusableNameException::inputDtoServesFilesAndStrings($shortName, $position);
             }
+
+            // One class serves every request that reads the schema, so a name one of them cannot
+            // check is optional for all, whichever got here first.
+            $this->hedge($shortName, $unchecked);
 
             return $shortName;
         }
@@ -293,16 +302,17 @@ final class InputDtoPlanner
             // presence rule for it, since `required` there is about responses, so a
             // body without it reaches `from()` all the same.
             //
-            // A name PHP rewrites in a form body is the third: the request has no rule for
-            // it there, so the validated payload never carries it. The type is shared by
-            // JSON and form bodies alike, so it is optional whichever sends it.
+            // A name a form client sends under another one is the third: when the request has no rule
+            // that checks it there (the body is also JSON, or the name collides with another), the
+            // validated payload cannot be promised to carry it. Only a root is read from a form, and
+            // a name PHP delivers is checked and built like any other.
             $readOnly = AllOfMerger::merge($property, $this->identity, '`'.$key.'`')->readOnly;
-            $rewritten = RuleSetBuilder::phpRewrites($key);
+            $uncheckedReason = $unchecked[$key] ?? null;
             $optional = $partial
                 || ! in_array($key, $merged->required, true)
                 || RuleSetBuilder::breaksKeyList($key)
                 || $readOnly
-                || $rewritten;
+                || $uncheckedReason !== null;
 
             if (! $partial && RuleSetBuilder::breaksKeyList($key) && in_array($key, $merged->required, true)) {
                 $this->registry[$shortName]['findings'][] = sprintf(
@@ -313,14 +323,8 @@ final class InputDtoPlanner
                 );
             }
 
-            if (! $partial && $rewritten && in_array($key, $merged->required, true)) {
-                $this->registry[$shortName]['findings'][] = sprintf(
-                    '`%s` is required by the schema, but PHP rewrites its name in a form body (`.` and a space '
-                        .'become `_`, and `[` opens a nested array), where the request has no rule for it and '
-                        .'the payload never carries it. One shape serves a JSON body and a nested use, which '
-                        .'keep it, so the property is `Optional` here.',
-                    $key,
-                );
+            if (! $partial && $uncheckedReason !== null && in_array($key, $merged->required, true)) {
+                $this->registry[$shortName]['findings'][] = self::uncheckedFinding($key, $uncheckedReason);
             }
 
             if (! $partial && $readOnly && in_array($key, $merged->required, true)) {
@@ -348,6 +352,42 @@ final class InputDtoPlanner
         $this->registry[$shortName]['properties'] = $properties;
 
         return $shortName;
+    }
+
+    /**
+     * Make the properties a request cannot check optional in a type already registered.
+     *
+     * @param  array<string, string>  $unchecked
+     */
+    private function hedge(string $shortName, array $unchecked): void
+    {
+        if ($unchecked === [] || $this->registry[$shortName]['partial']) {
+            return;
+        }
+
+        $required = $this->registry[$shortName]['schema']->required;
+
+        foreach ($this->registry[$shortName]['properties'] as $index => $property) {
+            if ($property->optional || ! isset($unchecked[$property->key])) {
+                continue;
+            }
+
+            $this->registry[$shortName]['properties'][$index] = new InputDtoProperty($property->key, $property->name, $property->type, true);
+
+            if (in_array($property->key, $required, true)) {
+                $this->registry[$shortName]['findings'][] = self::uncheckedFinding($property->key, $unchecked[$property->key]);
+            }
+        }
+    }
+
+    private static function uncheckedFinding(string $key, string $reason): string
+    {
+        return sprintf(
+            '`%s` is required by the schema, but the request cannot check it in a form body: %s. The '
+                .'payload is not promised to carry it, so the property is `Optional` here.',
+            $key,
+            $reason,
+        );
     }
 
     /**

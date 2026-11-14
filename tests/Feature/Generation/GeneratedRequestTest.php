@@ -1117,14 +1117,22 @@ function postWithRewrittenNames(array $mediaTypes, bool $closed = false): Operat
 
 // What a real PHP SAPI hands Laravel for `user.name=ada&a b=1&page[size]=3&plain=x`, form-encoded or
 // multipart (measured with `curl -d` and `curl -F` to `php -S`): `user_name`, `a_b` and a nested `page`.
-// A rule keyed by the contract's name never finds them, so a required one refused every valid request.
-it('accepts a form body carrying the names PHP rewrites, and still judges the rest', function (string $mediaType): void {
+// The rules are keyed by what arrives, so presence and type are judged as for any other field.
+it('judges a form body by the names PHP delivers', function (string $mediaType): void {
     $class = emittedRequestClass(postWithRewrittenNames([$mediaType]));
     $sent = ['user_name' => 'ada', 'a_b' => '1', 'page' => ['size' => '3'], 'plain' => 'x'];
 
     expect(sendThroughEmitted($class, 'POST', parameters: $sent)[0])->toBe(200)
+        // A required name that never arrived.
+        ->and(sendThroughEmitted($class, 'POST', parameters: array_diff_key($sent, ['user_name' => 1]))[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: array_diff_key($sent, ['a_b' => 1]))[0])->toBe(422)
+        // The wrong type, for a name PHP rewrote and for one it did not.
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['user_name' => ['ada']] + $sent)[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['a_b' => 'x'] + $sent)[0])->toBe(422)
         ->and(sendThroughEmitted($class, 'POST', parameters: ['plain' => ['x']] + $sent)[0])->toBe(422)
-        ->and(sendThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1'])[0])->toBe(422);
+        // `page[size]` is an integer, reached through the nested array PHP built.
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => 'big']] + $sent)[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: array_diff_key($sent, ['page' => 1]))[0])->toBe(200);
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
 it('keeps a dotted name of a JSON body as the contract writes it', function (): void {
@@ -1143,11 +1151,110 @@ it('closes a form body to the names PHP delivers', function (): void {
         ->and(sendThroughEmitted($class, 'POST', parameters: ['extra' => 1] + $sent)[0])->toBe(422);
 });
 
-it('builds the DTO of a form body whose required name PHP rewrote', function (): void {
-    $class = emittedRequestClass(postWithRewrittenNames(['application/x-www-form-urlencoded']));
+// A valid value reaches the DTO under the name the contract writes, which the validated payload
+// holds under the name PHP delivered.
+it('builds the DTO of a form body from the names PHP delivered', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithRewrittenNames([$mediaType]));
 
-    expect(dtoThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x']))
+    expect(dtoThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1', 'page' => ['size' => '3'], 'plain' => 'x']))
+        // `toEqual`: a DTO writes its optional properties after the required ones.
+        ->toEqual([200, ['user.name' => 'ada', 'a b' => 1, 'plain' => 'x', 'page[size]' => 3]])
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x']))
+        ->toEqual([200, ['user.name' => 'ada', 'a b' => 1, 'plain' => 'x']])
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['a_b' => '1', 'plain' => 'x'])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+it('builds the DTO of a JSON body under the names the contract writes', function (): void {
+    $class = emittedRequestClass(postWithRewrittenNames(['application/json']));
+
+    expect(dtoThroughEmitted($class, 'POST', ['user.name' => 'ada', 'a b' => 1, 'plain' => 'x']))
+        ->toEqual([200, ['user.name' => 'ada', 'a b' => 1, 'plain' => 'x']]);
+});
+
+// A bracketed name is delivered below the top-level key another name uses (`page[size]` is
+// `page => [size => ...]`), so the two cannot be told apart in the data: no rule for either, any
+// value passes, and neither is built into the DTO, which has them optional. Two names that differ
+// only by a rewritten character (`a b`, `a.b`) never get this far: the DTO refuses their shared property name.
+it('gives a collision no rule, so a form value passes unchecked and does not reach the DTO', function (): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer]), 'plain' => new Schema(types: [SchemaType::String])],
+        required: ['page', 'page[size]', 'plain'],
+    );
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/collide'),
+        operationId: 'sendCollision',
+        requestBody: new RequestBody(['multipart/form-data' => $schema], true),
+    ));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['plain' => 'x']))->toBe([200, ['plain' => 'x']])
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['page' => ['size' => 'anything'], 'plain' => 'x']))->toBe([200, ['plain' => 'x']])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => 'anything'])[0])->toBe(422);
+});
+
+// PHP renames a part of `$_FILES` the way it does a field (`my.file` arrives as `my_file`), so a
+// required upload under a dotted name is judged by the key it arrives as, and read back by `dto()`.
+it('judges and builds an upload whose part name PHP rewrites', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/scans'),
+        operationId: 'sendScan',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['my.file' => new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png')],
+            required: ['my.file'],
+        )], true),
+    ));
+
+    Route::post('/_generated/scan', fn () => response()->json(['file' => app($class)->dto()->toArray()['my.file']::class]));
+
+    $send = static fn (array $files): int => app(HttpKernel::class)->handle(Request::create(
+        '/_generated/scan',
+        'POST',
+        [],
+        [],
+        $files,
+        ['HTTP_ACCEPT' => 'application/json'],
+    ))->getStatusCode();
+
+    expect($send(['my_file' => UploadedFile::fake()->create('a.png', 1, 'image/png')]))->toBe(200)
+        ->and($send([]))->toBe(422);
+});
+
+// JSON and a form at once: the JSON name keeps its type rule, a form client's value is not checked
+// and not built into the DTO, and a required name is not asked for since that would refuse a form.
+it('checks a JSON client on the name the contract writes and lets a form client through', function (): void {
+    $class = emittedRequestClass(postWithRewrittenNames(['application/json', 'multipart/form-data']));
+
+    expect(sendThroughEmitted($class, 'POST', json: ['user.name' => 'ada', 'a b' => 1, 'plain' => 'x'])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', json: ['user.name' => 5, 'plain' => 'x'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x'])[0])->toBe(200)
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x']))
         ->toBe([200, ['plain' => 'x']]);
+});
+
+// An optional body asks for what it requires once any key is sent, and a form sends `user.name`
+// as `user_name`.
+it('waits on the key a form delivers when the body is optional', function (): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: ['plain' => new Schema(types: [SchemaType::String]), 'user.name' => new Schema(types: [SchemaType::String])],
+        required: ['plain'],
+    );
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/optional'),
+        operationId: 'sendOptional',
+        requestBody: new RequestBody(['multipart/form-data' => $schema], false),
+    ));
+
+    expect(sendThroughEmitted($class, 'POST')[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'plain' => 'x'])[0])->toBe(200);
 });
 
 /**

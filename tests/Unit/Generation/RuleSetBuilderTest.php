@@ -1227,32 +1227,178 @@ it('says it once for a request with several typed file parts', function (): void
  * name: `address[a.b]` keeps its dot. A JSON body keeps every name as written.
  */
 
-it('gives no rule to a top-level body name PHP rewrites when the body is a form', function (string $mediaType): void {
+it('keys the rules of a top-level body name PHP rewrites by the name a form delivers', function (string $mediaType): void {
     $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(
         [
             'user.name' => new Schema(types: [SchemaType::String]),
             'a b' => new Schema(types: [SchemaType::String]),
             'page[size]' => new Schema(types: [SchemaType::Integer]),
             'plain' => new Schema(types: [SchemaType::String]),
-            'address' => objectSchema(['a.b' => new Schema(types: [SchemaType::String])], ['a.b']),
+            'address' => objectSchema(['a.b' => new Schema(types: [SchemaType::String])]),
         ],
         ['user.name', 'a b', 'plain'],
     )]));
 
-    expect(array_keys($set->rules))->toBe(['plain', 'address', 'address.a\.b'])
-        ->and(implode("\n", $set->findings))->toContain('`user.name` is a property of a form body whose name PHP rewrites')
-        ->and(implode("\n", $set->findings))->toContain('`page[size]` is a property of a form body whose name PHP rewrites');
+    expect($set->rules)->toBe([
+        'user_name' => ['present', 'string'],
+        'a_b' => ['present', 'string'],
+        'page.size' => ['sometimes', 'integer'],
+        'plain' => ['present', 'string'],
+        'address' => ['sometimes', 'array'],
+        'address.a\.b' => ['sometimes', 'string'],
+    ])
+        // What `dto()` reads the value from, by the name the contract writes.
+        ->and($set->formPaths)->toBe(['user.name' => ['user_name'], 'a b' => ['a_b'], 'page[size]' => ['page', 'size']])
+        ->and($set->uncheckedNames)->toBe([])
+        ->and(implode("\n", $set->findings))->not->toContain('rewrites');
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
-it('keeps the rule for a dotted name in a JSON body, and drops it when the body is also a form', function (): void {
-    $schema = objectSchema(['user.name' => new Schema(types: [SchemaType::String])], ['user.name']);
+it('escapes a dot a delivered path keeps below the top level', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        ['address[a.b]' => new Schema(types: [SchemaType::String])],
+    )]));
 
-    expect(RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema]))->rules)
-        ->toHaveKey('user\.name')
-        ->and(RuleSetBuilder::for(operationWithInput(content: [
-            'application/json' => $schema,
-            'application/x-www-form-urlencoded' => $schema,
-        ]))->rules)->toBe([]);
+    expect($set->rules)->toBe(['address.a\.b' => ['sometimes', 'string']])
+        ->and($set->formPaths)->toBe(['address[a.b]' => ['address', 'a.b']]);
+});
+
+it('keeps the rule for a dotted name in a JSON body', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        ['user.name' => new Schema(types: [SchemaType::String])],
+        ['user.name'],
+    )]));
+
+    expect($set->rules)->toBe(['user\.name' => ['present', 'string']])
+        ->and($set->formPaths)->toBe([])
+        ->and($set->uncheckedNames)->toBe([]);
+});
+
+// One rule set serves both, and no key finds both names: the JSON name keeps its type, and what a
+// form client sends is not checked. A presence rule would refuse every form client, which is
+// stricter than the contract, so a required name is not asked for.
+it('keeps the type of the JSON name when the body is also a form, and says where a form value arrives', function (): void {
+    $schema = objectSchema(['user.name' => new Schema(types: [SchemaType::String])], ['user.name']);
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $schema,
+        'application/x-www-form-urlencoded' => $schema,
+    ]));
+
+    expect($set->rules)->toBe(['user\.name' => ['sometimes', 'string']])
+        ->and($set->formPaths)->toBe([])
+        ->and(array_keys($set->uncheckedNames))->toBe(['user.name'])
+        ->and(implode("\n", $set->findings))
+        ->toContain('`user.name` is a property of a body that is JSON and a form at once')
+        ->toContain('A form client sends it as `user.name`, which PHP delivers as `user_name`')
+        ->toContain('not checked there')
+        ->toContain('not asked for');
+});
+
+it('names a delivered path in the finding of a mixed body', function (): void {
+    $schema = objectSchema(['page[size]' => new Schema(types: [SchemaType::Integer])]);
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $schema,
+        'multipart/form-data' => $schema,
+    ]));
+
+    expect(implode("\n", $set->findings))->toContain('A form client sends it as `page[size]`, which PHP delivers as `page.size`')
+        ->and($set->rules)->toBe(['page[size]' => ['sometimes', 'integer']]);
+});
+
+// Two contract names PHP delivers as one key, or a declared name equal to the delivered one, cannot
+// be told apart in the data: no rule for any of them, one finding naming both.
+it('gives no rule to names PHP delivers as one key, and names both', function (array $names): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        [...array_fill_keys($names, new Schema(types: [SchemaType::String])), 'plain' => new Schema(types: [SchemaType::String])],
+        array_values($names),
+    )]));
+
+    expect($set->rules)->toBe(['plain' => ['sometimes', 'string']])
+        ->and(array_keys($set->uncheckedNames))->toBe($names)
+        ->and($set->formPaths)->toBe([])
+        ->and(implode("\n", $set->findings))
+        ->toContain('`'.$names[0].'` and `'.$names[1].'` reach Laravel under one name, `');
+})->with([
+    'two rewritten names' => [['a b', 'a.b']],
+    'a rewritten and a plain name' => [['user.name', 'user_name']],
+]);
+
+// A name delivered below a top-level key another name uses: `page[size]` is `page => [size => ...]`.
+it('gives no rule to a bracketed name delivered below a declared top-level name', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        ['page' => new Schema(types: [SchemaType::String]), 'page[size]' => new Schema(types: [SchemaType::Integer]), 'plain' => new Schema(types: [SchemaType::String])],
+    )]));
+
+    expect($set->rules)->toBe(['plain' => ['sometimes', 'string']])
+        ->and(array_keys($set->uncheckedNames))->toBe(['page[size]', 'page'])
+        ->and(implode("\n", $set->findings))->toContain('`page[size]` is delivered by a form as `page.size`, below the key `page` that `page` uses');
+});
+
+it('lets two bracketed names share the top-level key they are delivered below', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        ['page[size]' => new Schema(types: [SchemaType::Integer]), 'page[number]' => new Schema(types: [SchemaType::Integer])],
+    )]));
+
+    expect($set->rules)->toBe(['page.size' => ['sometimes', 'integer'], 'page.number' => ['sometimes', 'integer']]);
+});
+
+it('keeps the rule of a name PHP does not rewrite beside one it does', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        ['user.name' => new Schema(types: [SchemaType::String]), 'user_id' => new Schema(types: [SchemaType::Integer])],
+    )]));
+
+    expect($set->rules)->toBe(['user_name' => ['sometimes', 'string'], 'user_id' => ['sometimes', 'integer']]);
+});
+
+// An optional body asks for `plain` when any other key is sent, and a form sends `user.name` as
+// `user_name`: the sibling is named by the key that carries it.
+it('names the delivered key of a sibling an optional body waits on', function (array $media, string $expected): void {
+    $schema = objectSchema(
+        ['plain' => new Schema(types: [SchemaType::String]), 'user.name' => new Schema(types: [SchemaType::String])],
+        ['plain'],
+    );
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: array_fill_keys($media, $schema),
+        bodyRequired: false,
+    ));
+
+    expect($set->rules['plain'])->toBe([$expected, 'string']);
+})->with([
+    'a form' => [['multipart/form-data'], 'present_with:user_name'],
+    'JSON' => [['application/json'], 'present_with:user\.name'],
+    'both' => [['application/json', 'multipart/form-data'], 'present_with:user\.name,user_name'],
+]);
+
+it('names the delivered key of a dependentRequired trigger', function (array $media, string $expected): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: ['user.name' => new Schema(types: [SchemaType::String]), 'email' => new Schema(types: [SchemaType::String])],
+        dependentRequired: ['user.name' => ['email']],
+    );
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $schema)));
+
+    expect($set->rules['email'])->toBe([$expected, 'string']);
+})->with([
+    'a form' => [['application/x-www-form-urlencoded'], 'present_with:user_name'],
+    'JSON' => [['application/json'], 'present_with:user\.name'],
+    'both' => [['application/json', 'application/x-www-form-urlencoded'], 'present_with:user\.name,user_name'],
+]);
+
+// The trigger of a `dependentRequired` that has no rule loses what it asked for, and the finding
+// says which dependency: once, where it used to be said twice and about the name alone.
+it('says once which dependency a trigger without a rule loses', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'a b' => new Schema(types: [SchemaType::String]),
+            'a.b' => new Schema(types: [SchemaType::String]),
+            'email' => new Schema(types: [SchemaType::String]),
+        ],
+        dependentRequired: ['a b' => ['email']],
+    )]));
+
+    expect($set->rules['email'])->toBe(['sometimes', 'string'])
+        ->and(substr_count(implode("\n", $set->findings), 'would make `email` required'))->toBe(1)
+        ->and(implode("\n", $set->findings))->toContain('`a b` would make `email` required');
 });
 
 it('closes a form body to the name PHP gives a key, and a mixed body to both', function (): void {

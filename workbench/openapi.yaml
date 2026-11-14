@@ -142,6 +142,34 @@ paths:
             responses:
                 '200': { description: Updated }
 
+    /posts/search:
+        # A form-encoded body whose names PHP rewrites before Laravel sees them:
+        # `user.name` arrives as `user_name` and `page[size]` as
+        # `page => [size => ...]`. The generated request keys the rules by what
+        # arrives (`user_name`, `page.size`), and `dto()` hands the value back
+        # under the name written here. Read the generated request's rules and
+        # its `FORM_NAMES`, then `curl -d 'user.name=ada&page[size]=3'` it.
+        post:
+            operationId: searchPosts
+            summary: Search posts from a form
+            tags: [Posts]
+            requestBody:
+                required: true
+                content:
+                    application/x-www-form-urlencoded:
+                        schema:
+                            type: object
+                            required: [user.name]
+                            properties:
+                                user.name:
+                                    type: string
+                                    maxLength: 50
+                                page[size]:
+                                    type: integer
+                                    minimum: 1
+            responses:
+                '200': { description: Matching posts }
+
     /posts/{postId}/attachments:
         # A multipart body, and the one place a part is a file. `cover` becomes
         # `file`, `mimetypes:image/png` and `max:2.44140625` (2500 bytes, exact),

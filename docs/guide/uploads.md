@@ -159,6 +159,12 @@ OpenAPI has no vocabulary for a pixel size at all. A contract needing either is 
 [the rule set cannot carry](./code-generation/request-validation.md#every-constraint-maps-or-reports), and the doctor
 says so rather than the build inventing it.
 
+**A part's name is the one PHP delivers.** PHP rewrites a top-level name before Laravel sees it, in `$_FILES` as in the
+form fields: a part named `my.file` arrives as `my_file`, and `up[load]` as `up => [load => ...]`. The part's rules are
+keyed by what arrives, so they judge the upload and `dto()` reads it back under the name the contract writes. A body
+that is also JSON keeps the rule for the contract's own name, which a form client's upload never reaches, as
+[the request validation page](./code-generation/request-validation.md#one-rule-set-body-and-query) says.
+
 **Several files are two rule keys, the array and its elements**, which is the dot notation the rest of the rule set
 already uses:
 

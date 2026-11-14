@@ -141,6 +141,19 @@ final readonly class FormRequestEmitter
             );
         }
 
+        if ($set->formPaths !== []) {
+            $constants .= sprintf(
+                "    /**\n     * Where a form delivers the properties whose names PHP rewrites, by the name the contract writes.\n"
+                    ."     * The rules are keyed by what arrives, and `dto()` reads each value back from here.\n     */\n"
+                    ."    private const FORM_NAMES = [%s];\n\n",
+                implode(', ', array_map(
+                    fn (string $name, array $path): string => $this->literal($name).' => ['.implode(', ', array_map($this->literal(...), $path)).']',
+                    array_keys($set->formPaths),
+                    $set->formPaths,
+                )),
+            );
+        }
+
         if ($set->queryKeys !== []) {
             $constants .= sprintf(
                 "    /**\n     * The `query` parameters the contract declares, the only keys read from the query string.\n     */\n"
@@ -258,6 +271,10 @@ final readonly class FormRequestEmitter
             return '';
         }
 
+        $payload = $planned->rules->formPaths === []
+            ? '$validator->validated()'
+            : '$this->contractNames($validator->validated())';
+
         return sprintf(<<<'PHP'
 
                 public function dto(): %1$s
@@ -269,13 +286,57 @@ final readonly class FormRequestEmitter
                     $validator->excludeUnvalidatedArrayKeys = false;
 
                     try {
-                        return %1$s::from($validator->validated());
+                        return %1$s::from(%2$s);
                     } finally {
                         $validator->excludeUnvalidatedArrayKeys = $excluded;
                     }
                 }
 
-            PHP, $planned->dto);
+            PHP, $planned->dto, $payload).$this->contractNames($planned->rules);
+    }
+
+    /**
+     * `contractNames()`, or nothing: the validated payload of a form body with each value PHP
+     * delivered under another name also under the name the contract writes, which is the key
+     * `from()` reads.
+     *
+     * **A form client's `user.name` reaches Laravel as `user_name`**, and the rules are keyed by
+     * what arrives, so `validated()` holds it there. The DTO's properties are the contract's, and
+     * one class serves a JSON body and a nested use too, so the name is put back here and not in
+     * the DTO. `validated()` is left as Laravel returns it.
+     */
+    private function contractNames(RuleSet $set): string
+    {
+        if ($set->formPaths === []) {
+            return '';
+        }
+
+        return <<<'PHP'
+
+                /**
+                 * @param  array<array-key, mixed>  $payload
+                 * @return array<array-key, mixed>
+                 */
+                private function contractNames(array $payload): array
+                {
+                    foreach (self::FORM_NAMES as $name => $path) {
+                        $value = $payload;
+
+                        foreach ($path as $step) {
+                            if (! is_array($value) || ! array_key_exists($step, $value)) {
+                                continue 2;
+                            }
+
+                            $value = $value[$step];
+                        }
+
+                        $payload[$name] = $value;
+                    }
+
+                    return $payload;
+                }
+
+            PHP;
     }
 
     /**

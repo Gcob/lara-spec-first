@@ -227,7 +227,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked);
     }
 
     /**
@@ -382,6 +382,8 @@ final readonly class RuleSetBuilder
             ),
         ];
 
+        self::planFormNames($schema, $walk);
+
         self::objectChildren(
             $walk,
             '',
@@ -473,14 +475,15 @@ final readonly class RuleSetBuilder
 
                 $siblings = array_values(array_filter(
                     array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required]),
-                    static fn (string $other): bool => $other !== $name
-                        && self::unescapableKey($other) === null
-                        && ! ($walk->formBody && self::phpRewrites($other)),
+                    static fn (string $other): bool => $other !== $name && self::unescapableKey($other) === null,
                 ));
 
-                return $siblings === []
-                    ? 'sometimes'
-                    : self::withRule(array_map(self::ruleKey(...), $siblings));
+                // The key each sibling answers to, which is not always the name the contract writes.
+                $keys = array_values(array_unique(array_merge(
+                    ...array_map(static fn (string $other): array => self::triggerKeys($other, $walk, ''), $siblings),
+                )));
+
+                return $keys === [] ? 'sometimes' : self::withRule($keys);
             };
         }
 
@@ -509,7 +512,7 @@ final readonly class RuleSetBuilder
 
         foreach ($schema->properties as $name => $property) {
             $name = (string) $name;
-            $unescapable = self::unescapableKey($name) ?? self::unreachableBodyName($name, $schema, $walk, $prefix);
+            $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
@@ -517,10 +520,21 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
+            // Its finding was written when the names were planned.
+            if ($prefix === '' && isset($walk->withheld[$name])) {
+                continue;
+            }
+
             $asked = $presence($name, $property);
 
             if ($asked === 'sometimes' && isset($dependents[$name])) {
                 $asked = self::withRule($dependents[$name]);
+            }
+
+            // One rule serves a JSON client and a form client, and a presence rule keyed by the
+            // JSON name would refuse every form client, which sends it under another name.
+            if ($prefix === '' && isset($walk->unchecked[$name])) {
+                $asked = 'sometimes';
             }
 
             // A request never has to carry what only a response does: OpenAPI
@@ -531,7 +545,7 @@ final readonly class RuleSetBuilder
                 $asked = 'sometimes';
             }
 
-            self::field($walk, $prefix.self::ruleKey($name), '`'.$prefix.$name.'`', $property, $asked);
+            self::field($walk, self::fieldKey($name, $walk, $prefix), '`'.$prefix.$name.'`', $property, $asked);
         }
 
         // A name the contract requires, or makes required by
@@ -547,11 +561,17 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
-            $unescapable = self::unescapableKey($name) ?? self::unreachableBodyName($name, $schema, $walk, $prefix);
+            $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
 
+                continue;
+            }
+
+            // Written when the names were planned: no rule for it, and for a name a form client sends
+            // under another one, a rule keyed by the JSON name would refuse that client.
+            if ($prefix === '' && isset($walk->unchecked[$name])) {
                 continue;
             }
 
@@ -565,7 +585,7 @@ final readonly class RuleSetBuilder
                 $asked = self::withRule($dependents[$name]);
             }
 
-            $walk->rules[$prefix.self::ruleKey($name)] = [$asked];
+            $walk->rules[self::fieldKey($name, $walk, $prefix)] = [$asked];
             $undeclared[] = $name;
         }
 
@@ -591,8 +611,8 @@ final readonly class RuleSetBuilder
         $dependents = [];
 
         foreach ($schema->dependentRequired as $trigger => $names) {
-            $unescapable = self::unescapableKey((string) $trigger)
-                ?? self::unreachableBodyName((string) $trigger, $schema, $walk, $prefix);
+            $trigger = (string) $trigger;
+            $unescapable = self::unescapableKey($trigger);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
@@ -600,8 +620,24 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
+            $keys = self::triggerKeys($trigger, $walk, $prefix);
+
+            if ($keys === []) {
+                // The name itself was reported when the names were planned: this says what it costs.
+                $walk->findings[] = sprintf(
+                    '`%s` would make %s required, but it has no rule, so %s not asked for through it.',
+                    $trigger,
+                    self::list(array_map('strval', $names)),
+                    count($names) === 1 ? 'that is' : 'those are',
+                );
+
+                continue;
+            }
+
             foreach ($names as $name) {
-                $dependents[$name][] = $prefix.self::ruleKey((string) $trigger);
+                foreach ($keys as $key) {
+                    $dependents[$name][] = $prefix.$key;
+                }
             }
         }
 
@@ -1428,63 +1464,253 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The name PHP gives a top-level key of a form body, or null when it gives
-     * none.
+     * The path PHP delivers a name of a form body under, or null when it delivers it
+     * under none: `user.name` is `['user_name']`, `a b` is `['a_b']` and `page[size]`
+     * is `['page', 'size']`.
      *
      * Asked of PHP itself: `parse_str()` is the parser a form body goes through,
      * and what it keeps is the answer, where a rewrite of its rules written here
      * would be one more thing to keep in step with it. Measured against a real SAPI
-     * (`curl -d` and `curl -F` to `php -S`), `$_POST` agrees with it: `user.name`
-     * arrives as `user_name`, `a b` as `a_b` and `page[size]` as `page`, and a
-     * name inside brackets (`address[a.b]`) keeps its dot.
+     * (`curl -d` and `curl -F` to `php -S`), `$_POST` agrees with it, and a name
+     * inside brackets (`address[a.b]`) keeps its dot.
      *
-     * @internal Public so the input DTO asks the question the rules did.
+     * @return list<string>|null
      */
-    public static function deliveredName(string $name): ?string
+    private static function deliveredPath(string $name): ?array
     {
         parse_str(urlencode($name).'=1', $parsed);
 
-        $key = array_key_first($parsed);
+        $path = [];
+        $node = $parsed;
 
-        return $key === null ? null : (string) $key;
-    }
-
-    /**
-     * Whether PHP rewrites a top-level name of a form body before Laravel sees it.
-     *
-     * @internal Public for the reason {@see self::deliveredName()} gives.
-     */
-    public static function phpRewrites(string $name): bool
-    {
-        return self::deliveredName($name) !== $name;
-    }
-
-    /**
-     * A finding for a top-level body name PHP rewrites in a form, or null for
-     * the ordinary case.
-     *
-     * The same reasoning as {@see self::unreachableQueryName()}: no rule key finds
-     * the name the contract writes, so a rule would refuse every valid request or
-     * never judge one. A name nested inside another keeps its dot, and a JSON body
-     * keeps every name, so only the root of a body read as a form is affected.
-     */
-    private static function unreachableBodyName(string $name, Schema $schema, RuleWalk $walk, string $prefix): ?string
-    {
-        if ($prefix !== '' || ! $walk->formBody || ! self::phpRewrites($name)) {
-            return null;
+        while (is_array($node) && $node !== []) {
+            $key = array_key_first($node);
+            $path[] = (string) $key;
+            $node = $node[$key];
         }
 
-        $delivered = self::deliveredName($name);
+        return $path === [] || is_array($node) ? null : $path;
+    }
 
-        return sprintf(
-            '`%s` is a property of a form body whose name PHP rewrites before Laravel sees it (`.` and a '
-                .'space become `_`, and `[` opens a nested array), so no rule key can find it. None is '
-                .'emitted for it, and neither its type nor its presence is enforced.%s',
-            $name,
-            $schema->additionalProperties === false && $delivered !== null
-                ? sprintf(' The body is closed to its declared names, so it accepts `%s`, the name PHP gives it.', $delivered)
-                : '',
-        );
+    /**
+     * The name PHP gives the top level of a form body's key, or null when it gives none.
+     *
+     * @internal Public so the closed root names what it receives.
+     */
+    public static function deliveredName(string $name): ?string
+    {
+        return self::deliveredPath($name)[0] ?? null;
+    }
+
+    private static function phpRewrites(string $name): bool
+    {
+        return self::deliveredPath($name) !== [$name];
+    }
+
+    /**
+     * The rule key a path is validated under: each step escaped, since a name inside brackets
+     * keeps its dot.
+     *
+     * @param  list<string>  $path
+     */
+    private static function pathKey(array $path): string
+    {
+        return implode('.', array_map(self::ruleKey(...), $path));
+    }
+
+    /**
+     * Decide, for a body read as a form, which rule key each top-level name answers to.
+     *
+     * **PHP rewrites a top-level name of a form-encoded or multipart body before Laravel sees it**
+     * (`user.name` arrives as `user_name`, `page[size]` as `page => [size => ...]`), so a rule keyed
+     * by the name the contract writes never finds the value. A body read only as a form keys its rules
+     * by the name PHP delivers, so presence, type, `required_with` and `dependentRequired` judge what
+     * was sent, and `dto()` reads the value back under the contract's name.
+     *
+     * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name
+     * and a declared one that is equal to what it becomes, or a bracketed name under a declared
+     * top-level one. None of them gets a rule, and one finding names them.
+     *
+     * **A body that is JSON as well keeps the rule keyed by the name the contract writes**, since a
+     * JSON client sends exactly that, and the value a form client sends under the other name is not
+     * checked: no one rule set holds both keys without refusing one of the clients. A presence rule is
+     * left out for the same reason, and a finding says where the form value arrives.
+     */
+    private static function planFormNames(Schema $schema, RuleWalk $walk): void
+    {
+        if (! $walk->formBody) {
+            return;
+        }
+
+        $dependedOn = [];
+
+        foreach ($schema->dependentRequired as $trigger => $names) {
+            array_push($dependedOn, (string) $trigger, ...array_map('strval', $names));
+        }
+
+        $names = array_values(array_filter(
+            array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required, ...$dependedOn]),
+            static fn (string $name): bool => self::unescapableKey($name) === null,
+        ));
+
+        $paths = [];
+
+        foreach ($names as $name) {
+            $paths[$name] = self::deliveredPath($name);
+        }
+
+        if ($walk->mixedBody) {
+            foreach ($names as $name) {
+                if (! self::phpRewrites($name)) {
+                    continue;
+                }
+
+                $path = $paths[$name];
+                $asked = in_array($name, $schema->required, true) || in_array($name, $dependedOn, true);
+
+                $walk->unchecked[$name] = 'the body is also JSON, and one rule set cannot hold both the name the contract writes and the one PHP gives it';
+                $walk->findings[] = sprintf(
+                    '`%1$s` is a property of a body that is JSON and a form at once. Its rule keeps the name the contract '
+                        .'writes, which a JSON client sends. A form client sends it as `%1$s`, which PHP delivers %2$s, '
+                        .'so its value is not checked there.%3$s',
+                    $name,
+                    $path === null ? 'under no name' : 'as `'.self::pathKey($path).'`',
+                    $asked ? ' A presence rule would refuse every form client, so it is not asked for.' : '',
+                );
+
+                if ($path !== null) {
+                    $walk->deliveredKeys[$name] = self::pathKey($path);
+                }
+            }
+
+            return;
+        }
+
+        // The key each name answers to, which is its own for a name PHP leaves alone.
+        $effective = [];
+
+        foreach ($names as $name) {
+            $effective[$name] = $paths[$name] === null ? null : self::pathKey($paths[$name]);
+        }
+
+        $groups = [];
+        $overlaps = [];
+
+        foreach ($names as $name) {
+            $key = $effective[$name];
+
+            if ($key === null) {
+                $walk->unchecked[$name] = 'PHP delivers nothing under that name';
+                $walk->withheld[$name] = true;
+                $walk->findings[] = sprintf(
+                    '`%s` is a property of a form body that PHP delivers under no name, so no rule is emitted for it, and '
+                        .'neither its type nor its presence is enforced.',
+                    $name,
+                );
+
+                continue;
+            }
+
+            $groups[$key][] = $name;
+
+            // A bracketed name delivers below a top-level key, which another name may be.
+            $head = self::ruleKey($paths[$name][0] ?? '');
+
+            if (count($paths[$name] ?? []) > 1) {
+                foreach ($names as $other) {
+                    if ($other !== $name && $effective[$other] === $head) {
+                        $overlaps[] = [$name, $other, $key, $head];
+                    }
+                }
+            }
+        }
+
+        $collided = [];
+
+        foreach ($groups as $key => $members) {
+            $members = array_values(array_unique($members));
+
+            if (count($members) < 2) {
+                continue;
+            }
+
+            foreach ($members as $member) {
+                $collided[$member] = true;
+                $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
+                $walk->withheld[$member] = true;
+            }
+
+            $walk->findings[] = sprintf(
+                '%s reach Laravel under one name, `%s`, which a form delivers them as, so no rule can tell them apart. '
+                    .'None is emitted for them, and neither their type nor their presence is enforced, nor do they '
+                    .'take part in `required_with` or `dependentRequired`.',
+                self::list($members),
+                $key,
+            );
+        }
+
+        foreach ($overlaps as [$name, $other, $key, $head]) {
+            $walk->findings[] = sprintf(
+                '`%s` is delivered by a form as `%s`, below the key `%s` that `%s` uses, so no rule can tell their values '
+                    .'apart. None is emitted for either, and neither their type nor their presence is enforced, nor do they '
+                    .'take part in `required_with` or `dependentRequired`.',
+                $name,
+                $key,
+                $head,
+                $other,
+            );
+
+            foreach ([$name, $other] as $member) {
+                $collided[$member] = true;
+                $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
+                $walk->withheld[$member] = true;
+            }
+        }
+
+        foreach ($names as $name) {
+            if (isset($collided[$name]) || $paths[$name] === null || ! self::phpRewrites($name)) {
+                continue;
+            }
+
+            $walk->formPaths[$name] = $paths[$name];
+            $walk->deliveredKeys[$name] = self::pathKey($paths[$name]);
+        }
+    }
+
+    /**
+     * The rule key the field of a name is validated under: the key a form delivers it as, for a
+     * top-level name of a body read only as a form, and the name as written for the rest.
+     */
+    private static function fieldKey(string $name, RuleWalk $walk, string $prefix): string
+    {
+        return $prefix === '' && isset($walk->formPaths[$name])
+            ? $walk->deliveredKeys[$name]
+            : $prefix.self::ruleKey($name);
+    }
+
+    /**
+     * The keys whose presence stands for a name being sent, for a sibling or a `dependentRequired`
+     * trigger: both of a JSON and form body's, one of a form's, none for a name with no rule.
+     *
+     * @return list<string>
+     */
+    private static function triggerKeys(string $name, RuleWalk $walk, string $prefix): array
+    {
+        if ($prefix !== '' || ! $walk->formBody) {
+            return [self::ruleKey($name)];
+        }
+
+        if (isset($walk->withheld[$name])) {
+            return [];
+        }
+
+        if (isset($walk->formPaths[$name])) {
+            return [$walk->deliveredKeys[$name]];
+        }
+
+        return isset($walk->deliveredKeys[$name])
+            ? [self::ruleKey($name), $walk->deliveredKeys[$name]]
+            : [self::ruleKey($name)];
     }
 
     /**

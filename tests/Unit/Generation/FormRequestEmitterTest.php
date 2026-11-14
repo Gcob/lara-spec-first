@@ -248,6 +248,35 @@ it('emits no root check for a form body', function (): void {
         ->and($emitted)->not->toContain('function after()');
 });
 
+// A form delivers `user.name` as `user_name`, and `validated()` holds it there, so `dto()` puts the value
+// back under the name the contract writes. Written only when a name is rewritten.
+it('puts the names a form delivered back before dto() builds the DTO', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'user.name' => new Schema(types: [SchemaType::String]),
+                'page[size]' => new Schema(types: [SchemaType::Integer]),
+                'plain' => new Schema(types: [SchemaType::String]),
+            ],
+        )], true),
+    );
+
+    $emitted = emittedRequest($operation, controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain("private const FORM_NAMES = ['user.name' => ['user_name'], 'page[size]' => ['page', 'size']];")
+        ->and($emitted)->toContain('CreateThingInputDto::from($this->contractNames($validator->validated()));')
+        ->and($emitted)->toContain('private function contractNames(array $payload): array')
+        ->and($emitted)->toContain("'user_name' => ['sometimes', 'string'],")
+        ->and($emitted)->toContain("'page.size' => ['sometimes', 'integer'],")
+        ->and(emittedRequest(bodyOnlyOperation(), controllerShortName: 'CreateThingController'))
+        ->not->toContain('contractNames');
+});
+
 /**
  * A `GET` whose only input is one query parameter.
  */

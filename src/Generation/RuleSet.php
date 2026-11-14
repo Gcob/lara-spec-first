@@ -51,6 +51,17 @@ final readonly class RuleSet
      *                                   from the query string and everything else
      *                                   from the body, so each rule key has one
      *                                   source
+     * @param  array<string, list<string>>  $formPaths  for a body read only as a
+     *                                                  form, where `dto()` finds
+     *                                                  the value of each name PHP
+     *                                                  rewrites: the contract's
+     *                                                  name => the path it is
+     *                                                  delivered under
+     * @param  array<string, string>  $uncheckedNames  the top-level names the
+     *                                                 request cannot check when a
+     *                                                 form sends them, by the
+     *                                                 reason. The DTO cannot ask
+     *                                                 for them
      * @param  bool  $jsonRoot  whether the body is an object read as JSON, so
      *                          the request refuses a JSON root that is not one
      * @param  bool  $nullableRoot  whether that root may be `null`, which the
@@ -65,6 +76,8 @@ final readonly class RuleSet
         public array $queryKeys = [],
         public bool $jsonRoot = false,
         public bool $nullableRoot = false,
+        public array $formPaths = [],
+        public array $uncheckedNames = [],
     ) {}
 
     /**
