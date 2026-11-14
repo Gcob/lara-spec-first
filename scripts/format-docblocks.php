@@ -38,7 +38,7 @@ declare(strict_types=1);
  *
  * Usage:
  *
- *   php scripts/format-docblocks.php [--check] [--root=DIR] [path ...]
+ *   php scripts/format-docblocks.php [--check | --report] [--root=DIR] [path ...]
  *
  * With no path, every PHP file under the root. `--check` writes nothing, lists
  * the files that would change, and exits 1 when there are any. `--root` is for
@@ -46,6 +46,17 @@ declare(strict_types=1);
  * `max_line_length` from the `[*.php]` section of the root's .editorconfig, so
  * it is never configured twice. Exit codes: 0 clean, 1 files differ (check
  * mode), 2 usage or configuration error.
+ *
+ * Cramped tags. A `@param`, `@return`, `@throws` or `@var` hangs its
+ * continuation under the start of its description, so a long type and name
+ * leave the description little room. A tag with fewer columns left on its first
+ * line than `docblock_min_description_width` in the same .editorconfig section
+ * is "cramped". That is watched, never enforced: `--check` prints one
+ * `warning: file:line, N columns left (@tag)` line per cramped tag on stderr
+ * and a warning alone does not change the exit code; `--report` prints them all
+ * on stdout, the worst first, with a total and the share of described tags, and
+ * exits 0. Without the key there is nothing to compare to: `--check` stays
+ * silent and `--report` is a configuration error.
  */
 
 /** Tags that are all prose after the tag: the description hangs under the text that follows the tag. */
@@ -53,6 +64,9 @@ const PROSE_TAGS = ['internal', 'deprecated', 'since', 'todo'];
 
 /** Tags with a type, and for two of them a name, before the description: it hangs under the description's start. */
 const TYPED_TAGS = ['param', 'return', 'throws', 'var'];
+
+/** The `.editorconfig` key, beside `max_line_length`, for the room a tag's description needs on its first line. */
+const MIN_DESCRIPTION_KEY = 'docblock_min_description_width';
 
 /** Directories that are never read, relative to the root. */
 const SKIPPED_DIRECTORIES = ['vendor', 'node_modules', 'build', 'worktrees', 'tests/Fixtures', 'workbench/app/Http/Generated'];
@@ -63,16 +77,19 @@ const SKIPPED_DIRECTORIES = ['vendor', 'node_modules', 'build', 'worktrees', 'te
 function main(array $argv): int
 {
     $check = false;
+    $report = false;
     $root = dirname(__DIR__);
     $paths = [];
 
     foreach (array_slice($argv, 1) as $argument) {
         if ($argument === '--check') {
             $check = true;
+        } elseif ($argument === '--report') {
+            $report = true;
         } elseif (str_starts_with($argument, '--root=')) {
             $root = substr($argument, strlen('--root='));
         } elseif (str_starts_with($argument, '--')) {
-            fwrite(STDERR, "Unknown option {$argument}. Usage: format-docblocks.php [--check] [--root=DIR] [path ...]\n");
+            fwrite(STDERR, "Unknown option {$argument}. Usage: format-docblocks.php [--check | --report] [--root=DIR] [path ...]\n");
 
             return 2;
         } else {
@@ -88,7 +105,9 @@ function main(array $argv): int
         return 2;
     }
 
-    $width = maxLineLength($resolvedRoot.'/.editorconfig');
+    $editorConfig = $resolvedRoot.'/.editorconfig';
+    $width = editorConfigSetting($editorConfig, 'max_line_length');
+    $minimum = editorConfigSetting($editorConfig, MIN_DESCRIPTION_KEY);
 
     if ($width === null) {
         fwrite(STDERR, "No max_line_length for PHP files in {$resolvedRoot}/.editorconfig. Add it under [*.php].\n");
@@ -102,7 +121,12 @@ function main(array $argv): int
         return 2;
     }
 
+    if ($report) {
+        return reportCrampedTags($files, $resolvedRoot, $width, $minimum);
+    }
+
     $changed = 0;
+    $warnings = [];
 
     foreach ($files as $file) {
         $source = file_get_contents($file);
@@ -111,6 +135,14 @@ function main(array $argv): int
             fwrite(STDERR, "Cannot read {$file}.\n");
 
             return 2;
+        }
+
+        if ($check && $minimum !== null) {
+            foreach (describedTags($source, $width) as $tag) {
+                if ($tag['left'] < $minimum) {
+                    $warnings[] = crampedLine(displayPath($file, $resolvedRoot), $tag);
+                }
+            }
         }
 
         $reflowed = reflowSource($source, $width);
@@ -127,6 +159,10 @@ function main(array $argv): int
         }
     }
 
+    foreach ($warnings as $warning) {
+        fwrite(STDERR, "warning: {$warning}\n");
+    }
+
     if ($check && $changed > 0) {
         fwrite(STDERR, "{$changed} file(s) have docblocks that need reflowing. Run `composer format` to fix them.\n");
 
@@ -137,10 +173,118 @@ function main(array $argv): int
 }
 
 /**
- * The `max_line_length` that applies to a PHP file, or null when none does. A later matching section wins, as in
+ * What `--report` prints for a tag: where it is and how much room its description has.
+ *
+ * @param  array{line: int, left: int, tag: string}  $tag
+ */
+function crampedLine(string $file, array $tag): string
+{
+    return "{$file}:{$tag['line']}, {$tag['left']} columns left (@{$tag['tag']})";
+}
+
+/**
+ * @param  list<string>  $files
+ */
+function reportCrampedTags(array $files, string $root, int $width, ?int $minimum): int
+{
+    if ($minimum === null) {
+        fwrite(STDERR, 'No '.MIN_DESCRIPTION_KEY." for PHP files in {$root}/.editorconfig. Add it under [*.php].\n");
+
+        return 2;
+    }
+
+    $described = 0;
+    $cramped = [];
+
+    foreach ($files as $file) {
+        $source = file_get_contents($file);
+
+        if ($source === false) {
+            fwrite(STDERR, "Cannot read {$file}.\n");
+
+            return 2;
+        }
+
+        foreach (describedTags($source, $width) as $tag) {
+            $described++;
+
+            if ($tag['left'] < $minimum) {
+                $cramped[] = ['file' => displayPath($file, $root)] + $tag;
+            }
+        }
+    }
+
+    // The worst first; the sort is stable, so ties stay in file and line order.
+    usort($cramped, static fn (array $a, array $b): int => $a['left'] <=> $b['left']);
+
+    foreach ($cramped as $tag) {
+        echo crampedLine($tag['file'], $tag), "\n";
+    }
+
+    $share = $described === 0 ? 0.0 : 100 * count($cramped) / $described;
+
+    echo $cramped === [] ? '' : "\n";
+    echo sprintf("%d cramped of %d described tags (%.1f%%), fewer than %d columns left.\n", count($cramped), $described, $share, $minimum);
+
+    return 0;
+}
+
+/**
+ * Every `@param`, `@return`, `@throws` and `@var` that has a description, with the columns it leaves for that
+ * description on its first line. A tag inside a code fence is not a tag.
+ *
+ * @return list<array{line: int, left: int, tag: string}>
+ */
+function describedTags(string $source, int $width): array
+{
+    $found = [];
+    // What precedes the current token on its line: the first line of a docblock starts where the token does.
+    $sinceNewline = '';
+
+    foreach (token_get_all($source) as $token) {
+        $text = is_array($token) ? $token[1] : $token;
+        $newline = strrpos($text, "\n");
+        $before = $sinceNewline;
+        $sinceNewline = $newline === false ? $sinceNewline.$text : substr($text, $newline + 1);
+
+        if (! is_array($token) || $token[0] !== T_DOC_COMMENT) {
+            continue;
+        }
+
+        $fence = null;
+
+        foreach (explode("\n", $token[1]) as $offset => $line) {
+            // The gutter of a docblock line, or the opening of a one-line docblock, then what is written there.
+            if (preg_match('/^(\s*(?:\*|\/\*\*) ?)(.*?)(?:\s*\*\/)?$/', $line, $parts) !== 1) {
+                continue;
+            }
+
+            if (preg_match('/^ {0,3}(`{3,}|~{3,})/', $parts[2], $opening) === 1) {
+                $fence = $fence === null ? $opening[1] : (closesFence($parts[2], $fence) ? null : $fence);
+
+                continue;
+            }
+
+            $head = $fence === null ? tagHead($parts[2]) : null;
+
+            if ($head !== null && preg_match('/^@(\w+)/', $head, $name) === 1 && in_array($name[1], TYPED_TAGS, true)) {
+                $found[] = [
+                    'line' => $token[2] + $offset,
+                    'left' => max(0, $width - ($offset === 0 ? textWidth($before) : 0) - textWidth($parts[1]) - textWidth($head)),
+                    'tag' => $name[1],
+                ];
+            }
+        }
+    }
+
+    return $found;
+}
+
+/**
+ * The integer `$key` that applies to a PHP file, or null when none does. A later matching section wins, as in
  * EditorConfig.
  */
-function maxLineLength(string $editorConfig): ?int
+function editorConfigSetting(string $editorConfig, string $key): ?int
 {
     $contents = is_file($editorConfig) ? file_get_contents($editorConfig) : false;
 
@@ -164,7 +308,7 @@ function maxLineLength(string $editorConfig): ?int
             continue;
         }
 
-        if ($applies && preg_match('/^max_line_length\s*=\s*(\S+)/i', $line, $setting) === 1) {
+        if ($applies && preg_match('/^'.preg_quote($key, '/').'\s*=\s*(\S+)/i', $line, $setting) === 1) {
             $value = ctype_digit($setting[1]) ? (int) $setting[1] : null;
         }
     }

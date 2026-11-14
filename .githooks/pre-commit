@@ -6,8 +6,9 @@
 # hand. So it lists the files, prints the one command that fixes them, and
 # stops. Fix, stage again, commit again.
 #
-#   - PHP: the docblock formatter, `composer format:docblocks:check`. Pint is not
-#     run here; `composer check` and CI already do.
+#   - PHP: the docblock formatter, `php scripts/format-docblocks.php --check`.
+#     Pint is not run here; `composer check` and CI already do. Its warnings about
+#     cramped tags (see the script) are shown and never block the commit.
 #   - Markdown: `scripts/format-markdown.sh --check`, only when Node is installed.
 #     Without it the check is skipped with a note rather than failing a commit
 #     over a missing tool, and a Docker download is too slow for a hook.
@@ -27,11 +28,16 @@ staged() {
 
 unformatted_php=""
 unformatted_markdown=""
+warnings=""
 
 if [ -n "$(staged '*.php')" ]; then
-    # stdout is the list of files, one per line. Composer's own complaint about
-    # the exit code goes to stderr and is of no use here.
-    unformatted_php=$(staged '*.php' | xargs -0 composer format:docblocks:check -- 2>/dev/null)
+    scratch=$(mktemp -d)
+    trap 'rm -rf "$scratch"' EXIT
+
+    # stdout is the list of files, one per line. stderr holds the warnings, which
+    # are shown below, and a summary line that is of no use here.
+    unformatted_php=$(staged '*.php' | xargs -0 sh -c 'php scripts/format-docblocks.php --check "$@" 2>> "$0/stderr"' "$scratch")
+    warnings=$(grep '^warning: ' "$scratch/stderr" 2> /dev/null)
 fi
 
 if [ -n "$(staged '*.md')" ]; then
@@ -40,6 +46,11 @@ if [ -n "$(staged '*.md')" ]; then
     else
         echo "pre-commit: Node is not installed, so staged Markdown was not checked." >&2
     fi
+fi
+
+if [ -n "$warnings" ]; then
+    echo "pre-commit: cramped docblock tags, a warning and not a reason to stop (composer format:docblocks:report lists them all):" >&2
+    printf '%s\n' "$warnings" | sed 's/^warning: /  /' >&2
 fi
 
 [ -z "$unformatted_php$unformatted_markdown" ] && exit 0

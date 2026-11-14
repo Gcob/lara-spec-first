@@ -249,8 +249,9 @@ Docblock prose is wrapped at 120 columns, the `max_line_length` of `[*.php]` in 
 rewraps a paragraph, so `scripts/format-docblocks.php` does it, the PHP counterpart of `scripts/format-markdown.sh`:
 
 ```bash
-composer format                  # Pint, then the docblock formatter
-composer format:docblocks:check  # lists the files that would change, writes nothing
+composer format                   # Pint, then the docblock formatter
+composer format:docblocks:check   # lists the files that would change, writes nothing
+composer format:docblocks:report  # lists every cramped tag (see below), never fails
 ```
 
 It rewraps prose only: paragraphs, list items, and the description of `@param`, `@return`, `@throws`, `@var`,
@@ -258,6 +259,14 @@ It rewraps prose only: paragraphs, list items, and the description of `@param`, 
 under the start of its description, which is how Pint's `phpdoc_align` hangs it, so Pint leaves the result alone. Code
 blocks, tables, `@see` and `@link`, `@template`, `@phpstan-*` and `@psalm-*` lines, backtick spans, type expressions
 (never split), URLs and the generated goldens are left as written.
+
+**A cramped tag.** Under Pint's hanging indent, a long type and variable name leave a `@param` description little room.
+A `@param`, `@return`, `@throws` or `@var` whose description has fewer than 40 columns left on its first line is
+"cramped", and the 40 is `docblock_min_description_width` in `[*.php]` of `.editorconfig`, beside the width.
+`format:docblocks:check` prints one `warning: file:line, N columns left (@tag)` line on stderr for each, and a warning
+alone never changes its exit code. `composer format:docblocks:report` (or `just docblock-report`) lists them all, the
+worst first, with a total and the share of described tags. This is watched, never enforced: if the count grows, the
+answer is a decision about the style, not a failing build.
 
 `composer format:docblocks:check` is not part of `composer check`, and CI does not run it. The codebase is still wrapped
 at the old width, so adding it now would turn `main` red. One reformat commit comes first, and the CI check is wired in
@@ -390,17 +399,18 @@ For your pull request:
 Two hooks run the formatters for you. Both only call the commands above, and neither is required: CI is the gate.
 
 **Before a commit.** `.githooks/pre-commit` is enabled by the `core.hooksPath` setting above. It checks the staged PHP
-files with `composer format:docblocks:check`, and the staged Markdown files with `scripts/format-markdown.sh --check`
-when Node is installed. It never rewrites a file. When one is not formatted, the commit stops, the files are listed, and
-the command that fixes them is printed:
+files with `php scripts/format-docblocks.php --check`, and the staged Markdown files with
+`scripts/format-markdown.sh --check` when Node is installed. It never rewrites a file. When one is not formatted, the
+commit stops, the files are listed, and the command that fixes them is printed:
 
 ```bash
 composer format      # PHP: Pint, then the docblock formatter
 composer format:md   # Markdown
 ```
 
-Stage the result and commit again. `git commit --no-verify` skips the hook once. It reads the working-tree copy of each
-staged file, so a file staged only in part with `git add -p` is checked as a whole.
+Cramped-tag warnings are shown too, and never stop a commit. Stage the result and commit again. `git commit --no-verify`
+skips the hook once. It reads the working-tree copy of each staged file, so a file staged only in part with `git add -p`
+is checked as a whole.
 
 **After an edit, in Claude Code.** `.claude/settings.json` is committed and holds one thing: a `PostToolUse` hook on
 `Edit` and `Write` that runs `scripts/format-edited-file.sh`. It reads the edited path from the hook's input and formats

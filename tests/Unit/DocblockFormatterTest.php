@@ -60,11 +60,12 @@ afterEach(function (): void {
 });
 
 /**
- * A project holding these files, with a PHP width of `$width` in its `.editorconfig`.
+ * A project holding these files, with a PHP width of `$width` in its `.editorconfig`, and the least room a tag's
+ * description may have on its first line before the formatter warns, when `$minDescription` is given.
  *
  * @param  array<string, string>  $files  path relative to the project, then contents
  */
-function docblockProject(array $files = [], ?int $width = 40): string
+function docblockProject(array $files = [], ?int $width = 40, ?int $minDescription = null): string
 {
     $directory = sys_get_temp_dir().'/lsf-docblocks-'.bin2hex(random_bytes(6));
     mkdir($directory);
@@ -76,6 +77,10 @@ function docblockProject(array $files = [], ?int $width = 40): string
 
     if ($width !== null) {
         $editorConfig .= "\n[*.php]\nmax_line_length = {$width}\n";
+
+        if ($minDescription !== null) {
+            $editorConfig .= "docblock_min_description_width = {$minDescription}\n";
+        }
     }
 
     $files = ['.editorconfig' => $editorConfig] + $files;
@@ -843,6 +848,147 @@ describe('the command line', function (): void {
 
         expect($run['exit'])->toBe(2)
             ->and($run['err'])->toContain('Unknown option --chek');
+    });
+});
+
+// D5: the hanging indent of a long `@param` eats the room its description has. That is watched, never enforced: a tag
+// whose description starts with fewer than the configured columns left on its line is a warning, and a warning alone
+// never fails a check.
+describe('the cramped tag warnings', function (): void {
+    // Width 60 and a docblock at column 4: ` * @return ` and its type start the description at column 4 + 3 + 8 + n + 1,
+    // so a type of 4 letters leaves 40 columns (not cramped) and a type of 5 leaves 39 (cramped).
+    $source = <<<'PHP'
+    <?php
+
+    final class A
+    {
+        /**
+         * @param  array<string, int>  $content  content
+         * @param  string  $name
+         * @return abcd ok
+         * @throws abcde ok
+         */
+        public function f(): void {}
+
+        /** @var list<string> names */
+        private array $names = [];
+
+        /**
+         * ```
+         * @param  array<string, int>  $content  content
+         * ```
+         */
+        public function g(): void {}
+    }
+
+    PHP;
+
+    it('prints one warning per cramped tag on stderr and still exits 0', function () use ($source): void {
+        $directory = docblockProject(['src/A.php' => $source], 60, 40);
+
+        $run = runDocblockFormatter(['--check', '--root='.$directory]);
+
+        expect($run['exit'])->toBe(0)
+            ->and($run['out'])->toBe('')
+            ->and($run['err'])->toBe(
+                "warning: src/A.php:6, 15 columns left (@param)\n"
+                ."warning: src/A.php:9, 39 columns left (@throws)\n"
+                ."warning: src/A.php:13, 34 columns left (@var)\n",
+            );
+    });
+
+    it('still fails for a real formatting difference, and prints the warnings too', function () use ($source): void {
+        $long = "<?php\n\n/**\n * Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho.\n */\nfinal class B {}\n";
+        $directory = docblockProject(['src/A.php' => $source, 'src/B.php' => $long], 60, 40);
+
+        $run = runDocblockFormatter(['--check', '--root='.$directory]);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toBe("src/B.php\n")
+            ->and($run['err'])->toContain('warning: src/A.php:9, 39 columns left (@throws)')
+            ->and($run['err'])->toContain('1 file(s) have docblocks that need reflowing');
+    });
+
+    it('warns about nothing while it writes', function () use ($source): void {
+        $directory = docblockProject(['src/A.php' => $source], 60, 40);
+
+        $run = runDocblockFormatter(['--root='.$directory]);
+
+        expect($run)->toBe(['exit' => 0, 'out' => '', 'err' => '']);
+    });
+
+    it('warns about nothing when the .editorconfig sets no threshold', function () use ($source): void {
+        $directory = docblockProject(['src/A.php' => $source], 60);
+
+        $run = runDocblockFormatter(['--check', '--root='.$directory]);
+
+        expect($run)->toBe(['exit' => 0, 'out' => '', 'err' => '']);
+    });
+
+    it('takes the threshold from the .editorconfig', function () use ($source): void {
+        $directory = docblockProject(['src/A.php' => $source], 60, 4);
+
+        $run = runDocblockFormatter(['--check', '--root='.$directory]);
+
+        expect($run['err'])->toBe('')->and($run['exit'])->toBe(0);
+    });
+});
+
+describe('the cramped tag report', function (): void {
+    $source = <<<'PHP'
+    <?php
+
+    final class A
+    {
+        /**
+         * @param  array<string, int>  $content  content
+         * @param  string  $name
+         * @return abcd ok
+         * @throws abcde ok
+         */
+        public function f(): void {}
+    }
+
+    PHP;
+
+    it('lists every cramped tag, the worst first, with a total and the share of described tags', function () use ($source): void {
+        $directory = docblockProject(['src/A.php' => $source, 'src/B.php' => "<?php\n\n/**\n * @return int a described tag with room\n */\nfinal class B {}\n"], 60, 40);
+
+        $run = runDocblockFormatter(['--report', '--root='.$directory]);
+
+        expect($run['exit'])->toBe(0, $run['err'])
+            ->and($run['out'])->toBe(
+                "src/A.php:6, 15 columns left (@param)\n"
+                ."src/A.php:9, 39 columns left (@throws)\n"
+                ."\n"
+                ."2 cramped of 4 described tags (50.0%), fewer than 40 columns left.\n",
+            );
+    });
+
+    it('reports a clean tree as zero of zero', function (): void {
+        $directory = docblockProject(['src/A.php' => "<?php\n\nfinal class A {}\n"], 60, 40);
+
+        $run = runDocblockFormatter(['--report', '--root='.$directory]);
+
+        expect($run['exit'])->toBe(0)
+            ->and($run['out'])->toBe("0 cramped of 0 described tags (0.0%), fewer than 40 columns left.\n");
+    });
+
+    it('needs the threshold in the .editorconfig', function () use ($source): void {
+        $directory = docblockProject(['src/A.php' => $source], 60);
+
+        $run = runDocblockFormatter(['--report', '--root='.$directory]);
+
+        expect($run['exit'])->toBe(2)
+            ->and($run['err'])->toContain('docblock_min_description_width');
+    });
+
+    it('writes nothing', function () use ($source): void {
+        $directory = docblockProject(['src/A.php' => $source], 60, 40);
+
+        runDocblockFormatter(['--report', '--root='.$directory]);
+
+        expect(file_get_contents($directory.'/src/A.php'))->toBe($source);
     });
 });
 

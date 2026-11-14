@@ -82,6 +82,11 @@ format:
 format-docblocks-check:
     {{php}} composer format:docblocks:check
 
+# List every cramped @param, @return, @throws or @var (the worst first), with a total
+# and the share of described tags. Watched, never enforced.
+docblock-report:
+    {{php}} composer format:docblocks:report
+
 # The only recipe that does not go through the container: Prettier is a Node tool
 # and the PHP image carries none. The script picks npx when Node is installed and
 # borrows a throwaway Docker container otherwise, so it works either way — and

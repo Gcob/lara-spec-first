@@ -331,6 +331,33 @@ describe('the pre-commit hook', function (): void {
             ->and($commit['err'])->toContain("  src/Two Words.php\n");
     });
 
+    // A `@param` whose type is 63 columns wide leaves 34 columns for its description at the repository's width of 120,
+    // under the 40 of its `.editorconfig`.
+    it('shows a cramped tag as a warning and lets the commit through', function (): void {
+        $type = 'array<string, array<string, array<string, array<string, int>>>>';
+        $project = stagedProject(['src/Cramped.php' => "<?php\n\n/**\n * @param  {$type}  \$content  content\n */\nfunction f(array \$content): void {}\n"]);
+
+        $commit = hookGit($project, ['commit', '-q', '-m', 'x']);
+
+        expect($commit['exit'])->toBe(0, $commit['err'])
+            ->and($commit['err'])->toContain("  src/Cramped.php:4, 34 columns left (@param)\n")
+            ->and($commit['err'])->not->toContain('not formatted');
+    });
+
+    it('shows the warnings along with the files it refuses', function (): void {
+        $type = 'array<string, array<string, array<string, array<string, int>>>>';
+        $project = stagedProject([
+            'src/Cramped.php' => "<?php\n\n/**\n * @param  {$type}  \$content  content\n */\nfunction f(array \$content): void {}\n",
+            'src/Long.php' => "<?php\n\n/**\n * Short.\n * Lines.\n */\nfinal class A {}\n",
+        ]);
+
+        $commit = hookGit($project, ['commit', '-q', '-m', 'x']);
+
+        expect($commit['exit'])->not->toBe(0)
+            ->and($commit['err'])->toContain("  src/Cramped.php:4, 34 columns left (@param)\n")
+            ->and($commit['err'])->toContain("  src/Long.php\n");
+    });
+
     it('refuses an unformatted Markdown file and prints its fix', function (): void {
         $project = stagedProject(['docs/page.md' => LONG_MARKDOWN]);
 
