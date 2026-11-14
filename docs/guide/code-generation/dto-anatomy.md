@@ -224,7 +224,8 @@ there. The payload is not in it: the generated file's findings say to read the b
 `$request->json()->all()` for a JSON body.
 
 **A node that recurses is the class of the schema it points back at.** `Address` holds an `Address`: `parent` is typed
-`Optional|AddressInputDto`, and `?AddressInputDto` instead of `AddressInputDto` when the schema is nullable. The request
+`Optional|AddressInputDto`, and `Optional|AddressInputDto|null` when the schema is nullable (`?AddressInputDto` for a
+required key, as for any nullable DTO). The request
 [validates the recursion down to `x-max-depth`](./request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth)
 and refuses what is below, so every level the DTO builds was checked, and the same class describes all of them. The cut
 shows in the type, not in a new class: the deepest level a payload may reach has no `parent` (the key is absent, or
@@ -239,21 +240,26 @@ where it is written, so nothing depends on where the build came in, and the file
 the root, the nested object and the recursion alike (`Class name taken from the schema ...`).
 
 **A recursion the request did not unroll stays `mixed`, and says so.** The DTO does not build a class from input nothing
-checked. Two shapes are left as they arrived:
+checked. Three shapes are left as they arrived:
 
 - **A recursion through a schema with no name.** An inline schema has no position a class could be found by.
 - **A field that is two recursion markers at once** (two `allOf` branches that each write the field, pointing back at
   different components).
+- **A recursion into a schema that is not an object with properties.** A component written with `properties` and no
+  `type` gets no type rule below it, so a string passes the request and a class built from it would be a `TypeError`. An
+  array that recurses through its items is a validated list, and the class of an object would read no key of it.
 
-For both, the file's findings say that the field points back at a position and that the request validates nothing below
-it, so it is `mixed`. The request's finding says the same thing from its side, and it is where the lever is.
+For the first two, the file's findings say that the field points back at a position and that the request validates
+nothing below it, so it is `mixed`, and the request's finding says the same thing from its side, where the lever is. For
+the third they say that the schema it points back at is not an object with properties.
 
 **One exception to "one class per schema, no `mixed` for a named recursion": a recursive property with `properties`
 written beside its reference.** The request does validate it: it unrolls the site with the extra property, level after
 level. The class of the ancestor does not carry that property, so a typed field would lose a key the request validated
 in `from()` and `toArray()`. The field stays `mixed`, and the file's findings say that the request validates it and that
-the class does not carry what is written beside the marker. A `required` beside the marker changes nothing in the class,
-and the field is typed.
+the class does not carry what is written beside the reference. A `required` or a `type` beside it changes nothing in the
+class, and the field is typed. It is the same answer whichever operation the build reaches the site through: the site is
+a recursion marker from one side and the expanded schema from the other, and both ask the same question.
 
 **A key the rules cannot name when its object is nested is optional in the DTO.** A required `user.name` is `Optional`
 beside the rest of its object, so that a schema's shape does not depend on which operation reached it first, and the
