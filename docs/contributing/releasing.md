@@ -3,8 +3,8 @@ title: Releasing
 audience: Contributors
 covers: >
     How a version of this package is cut: what has to be true before a release is prepared, what `just release-prep`
-    does on its own and what it leaves to judgment, the checks `just release` runs and why an agent cannot tag, what the
-    GitHub release carries, and what the board and the plan owe afterwards.
+    does on its own and what it leaves to judgment, the checks `just release` runs and what its prompt does and does not
+    guard against, what the GitHub release carries, and what the board and the plan owe afterwards.
 read_before: Preparing a release, tagging one, or changing the `release-prep` or `release` recipes.
 tags: [workflow, versions, contributing, ci, conventions]
 ---
@@ -17,8 +17,9 @@ tags: [workflow, versions, contributing, ci, conventions]
 > - `just release-prep <version> <card>` does the mechanical steps and opens a draft pull request. The rest of that pull
 >   request is judgment, and a person or an agent does it by hand.
 > - `just release <version>` is a dry run. `just release <version> --publish` tags, and only after the version is typed
->   at a terminal, so an agent cannot tag, even by mistake.
-> - Only the maintainer tags. The tag and the GitHub release are never an agent's.
+>   at a terminal, so the real run cannot happen by accident, from a pipe, or with a missing flag.
+> - Only the maintainer tags, by rule: the factory's rules forbid it, and the script does not enforce it against an
+>   agent that means to.
 > - Packagist publishes the version from the tag, and the board and the plan are synced afterwards.
 
 A version of this package is cut in three steps by two different hands: the factory prepares everything up to a merged
@@ -71,7 +72,13 @@ just release-prep 0.2.0 126 --dry-run  # only the checks
 **It refuses before it writes anything.** Every check is printed green or red, and one red check stops it with exit
 code 1. The checks are a valid version and a card number, a tag that does not exist, a branch that does not exist, a
 clean working tree, CI green on the tip of `origin/main`, every `Ready when` box of the card ticked, and a
-`CHANGELOG.md` at `main` with a non-empty `[Unreleased]`, no heading for the version yet, and its link references.
+`CHANGELOG.md` at `main` with a non-empty `[Unreleased]`, no heading for the version yet, and its link references. A
+card with no `Ready when` section, or one with no box in it, is red as well: a card that lists nothing does not say what
+blocks the release.
+
+**Run it in a worktree, or from a clean `main`.** The real run switches the checkout it runs in to the release branch
+and leaves it there, so it refuses a dirty tree, and a hook that refuses the commit leaves the branch behind with
+`CHANGELOG.md` edited. In a worktree made for the release, that costs nothing.
 
 **Then it does these things, in this order:**
 
@@ -124,15 +131,19 @@ when any check is red. An exit code of 0 means the real run would go through.
 4. `HEAD` is the tip of `origin/main`, as origin reports it.
 5. CI is green on that commit.
 6. `CHANGELOG.md` has a `## [<version>] - ` heading with an entry under it.
-7. `gh` is logged in as `Gcob`, and reads the repository from `origin`.
+7. `gh` is logged in as `Gcob`.
+8. `gh` reads the repository from `origin`, which is what the release links are pinned with.
 
 **`--publish` then asks a person.** With every check green, it shows who the tag will be created by (the git identity of
 the checkout) and waits for the version to be typed at a terminal. The identity is shown rather than checked because a
 public script cannot know the maintainer's private address, and a person reading it can.
 
-**An agent cannot tag.** Without a terminal (an agent, a pipe, CI), or with a wrong answer, `--publish` exits non-zero
-and has written nothing. This is not a rule an agent promises to follow: the prompt is the lock, which is why the
-[agent guide](../../AGENTS.md) points here and the factory never runs `--publish`.
+**The prompt stops a mistake, not an intention.** Without a terminal (a pipe, CI, a script that forgot the flag), or
+with a wrong answer, `--publish` exits non-zero and has written nothing. That makes the real run impossible by accident.
+It does not stop a process that opens a pseudo-terminal and types the version, which it knows because it is in the
+command, nor a plain `git tag` and `git push`, nor `gh release create`. **Tagging is the maintainer's by rule, not by
+construction**: the factory's rules forbid it, and [the agent guide](../../AGENTS.md) says never to run
+`just release --publish`.
 
 **With the right answer it does three things:**
 

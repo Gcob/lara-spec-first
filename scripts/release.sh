@@ -5,14 +5,17 @@
 # format-markdown.sh and check-lowest.sh: it needs git, gh and a terminal, and
 # the PHP container has none of them.
 #
-# Tagging is the maintainer's, never an agent's, and this script is what makes
-# that true by construction rather than by promise:
+# Tagging is the maintainer's by rule: the factory's rules forbid an agent to do
+# it. This script makes the real run impossible by accident, which is less than
+# impossible for an agent that means to: a process that opens a pseudo-terminal
+# and types the version gets through, and so does a plain `git tag` and
+# `git push`. What it guards against is a pipe, a missing flag and a red check.
 #
 #   - Alone it only reads. It prints every check green or red and what it would
 #     do, writes nothing, and exits 1 when any check is red.
 #   - With --publish it needs the same checks green, then a terminal: it shows
 #     who the tag will be signed as, and waits for the version to be typed. With
-#     no terminal (an agent, a pipe, CI) or a wrong answer it exits non-zero and
+#     no terminal (a pipe, CI) or a wrong answer it exits non-zero and
 #     has written nothing.
 #   - Then the annotated tag, the push, and the GitHub release whose body is the
 #     version's changelog entry, its relative links turned into links pinned to
