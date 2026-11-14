@@ -439,7 +439,10 @@ where `true` arrives already typed. Four things come with it:
   finding on the field. A form or multipart body has a DTO, and
   [its `from()`](./dto-anatomy.md#what-each-schema-type-becomes) reads the text with
   `filter_var(..., FILTER_VALIDATE_BOOL)`, since `(bool) 'false'` is `true`. A `query` parameter is not on the DTO, so
-  the finding names the read that works there: `filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL)`.
+  the finding names the read that works there:
+  `$request->has('notify') ? filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL) : null`. `has()` comes
+  first because `filter_var(null, FILTER_VALIDATE_BOOL)` is `false`, with or without `FILTER_NULL_ON_FAILURE`, so an
+  optional parameter that was not sent would read as `false`.
 - **`"1"` and `"0"` are accepted although the contract writes `true` and `false`.** It is the maintainer's decision,
   kept because the four spellings are what a client of a query string or a form already sends, and the finding on the
   field says it accepts the two more.

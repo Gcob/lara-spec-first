@@ -39,7 +39,8 @@ use Illuminate\Validation\Validator;
  *     `true` and Laravel's `boolean` refuses it. It accepts `"true"` and `"false"`. `"1"` and
  *     `"0"` are accepted too, which the contract does not write for a boolean.
  *     `validated('notify')` holds the string as sent, and `"false"` is a truthy string in PHP:
- *     read it with `filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL)`.
+ *     read it with `$request->has('notify') ? filter_var($request->validated('notify'),
+ *     FILTER_VALIDATE_BOOL) : null`, which is `null` when it was not sent.
  *
  * Navigation
  *

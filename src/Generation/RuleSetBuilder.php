@@ -907,7 +907,8 @@ final readonly class RuleSetBuilder
                 '%1$s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
                     .'Laravel\'s `boolean` refuses it. It accepts %4$s.%2$s '
                     .'`validated(\'%3$s\')` holds the string as sent, and `"false"` is a truthy string in PHP: '
-                    .'read it with `filter_var($request->validated(\'%3$s\'), FILTER_VALIDATE_BOOL)`.',
+                    .'read it with `$request->has(\'%3$s\') ? filter_var($request->validated(\'%3$s\'), '
+                    .'FILTER_VALIDATE_BOOL) : null`, which is `null` when it was not sent.',
                 $label,
                 $tooMany,
                 trim($label, '`'),

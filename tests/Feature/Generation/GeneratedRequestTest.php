@@ -1383,3 +1383,32 @@ it('does not check the root of a body that is only a form', function (): void {
         ->and((new FormRequestEmitter('App', 'x.yaml'))->emit(plannedRequests([$operation])['requests'][0])->contents)
         ->not->toContain('json_decode');
 });
+
+// The read the finding on a boolean query parameter suggests, run against a real request: the
+// parameter is optional, and an absent one has to stay `null` rather than become `false`.
+it('reads an optional boolean query parameter as null when it is absent, with the suggested read', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listThings',
+        queryParameters: [new QueryParameter('notify', new Schema(types: [SchemaType::Boolean]))],
+    ));
+
+    Route::get('/_generated/optional-notify', function () use ($class) {
+        $request = app($class);
+
+        return response()->json(['notify' => $request->has('notify') ? filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL) : null]);
+    });
+
+    $notify = static fn (string $query): mixed => json_decode((string) app(HttpKernel::class)->handle(Request::create(
+        '/_generated/optional-notify'.$query,
+        'GET',
+        server: ['HTTP_ACCEPT' => 'application/json'],
+    ))->getContent(), true)['notify'];
+
+    expect($notify(''))->toBeNull()
+        ->and($notify('?notify=false'))->toBeFalse()
+        ->and($notify('?notify=true'))->toBeTrue()
+        ->and($notify('?notify=0'))->toBeFalse();
+});

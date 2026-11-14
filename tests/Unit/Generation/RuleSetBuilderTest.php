@@ -1154,7 +1154,10 @@ it('reads a boolean query parameter as the spellings a query string can carry', 
         // The contract writes `true` and `false`: the finding owns up to the two more, and to the
         // read that works, since `"false"` is a truthy string.
         ->and(implode("\n", $set->findings))->toContain('`"1"` and `"0"` are accepted too')
-        ->and(implode("\n", $set->findings))->toContain('`filter_var($request->validated(\'notify\'), FILTER_VALIDATE_BOOL)`');
+        // `filter_var(null, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE)` is `false`, so an absent
+        // parameter would read as `false`: the suggested read asks `has()` first.
+        ->and(implode("\n", $set->findings))->toContain('`$request->has(\'notify\') ? filter_var($request->validated(\'notify\'), FILTER_VALIDATE_BOOL) : null`')
+        ->and(implode("\n", $set->findings))->toContain('`null` when it was not sent');
 });
 
 it('reads a boolean field of a form or multipart body the same way', function (string $mediaType): void {
