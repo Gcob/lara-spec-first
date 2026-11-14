@@ -1950,22 +1950,28 @@ it('refuses the recursive field itself when the schema states a depth of zero', 
     ]);
 });
 
-// `missing` says everything about the field below the cut: the key is absent. A presence rule
-// beside it would contradict it, so the field carries `missing` and nothing else, whether the
-// contract asks for the key or not.
-it('asks for nothing but the absence of the recursive field at the cut', function (): void {
-    $cutAtOnce = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+// `missing` says the key is absent. A required field that cannot be null keeps the presence the contract asks of it
+// beside `missing`, so a payload that reaches the cut is refused, where `missing` alone would have let it through
+// looser than the contract. Below the root that presence is the parent's `required_array_keys`, which the unrolled
+// level already carries (a child's own presence is `sometimes`, so a tree that stops earlier is unaffected), and an
+// optional field carries `missing` alone.
+it('keeps the presence a required recursive field asks for beside the cut', function (): void {
+    $requiredAtOnce = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 0,
         parentRequired: true,
     )]));
-    $cutBelow = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+    $optionalAtOnce = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 0,
+    )]));
+    $requiredBelow = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 1,
         parentRequired: true,
     )]));
 
-    expect($cutAtOnce->rules['parent'])->toBe(['missing'])
-        ->and($cutBelow->rules['parent'])->toBe(['present', 'array', 'required_array_keys:parent'])
-        ->and($cutBelow->rules['parent.parent'])->toBe(['missing']);
+    expect($requiredAtOnce->rules['parent'])->toBe(['present', 'missing'])
+        ->and($optionalAtOnce->rules['parent'])->toBe(['missing'])
+        ->and($requiredBelow->rules['parent'])->toBe(['present', 'array', 'required_array_keys:parent'])
+        ->and($requiredBelow->rules['parent.parent'])->toBe(['missing']);
 });
 
 // A schema that allows `null` allows it at the cut as well, and nothing else: no Laravel rule says "null or absent"
@@ -2313,6 +2319,28 @@ it('says null passes below the depth only when the schema is nullable', function
     'a schema that is not nullable' => [false, '`null` passes only where the schema is nullable, and `Address` is not', 'because `Address` is nullable'],
 ]);
 
+// An empty list of the recursive schema carries nothing, and the cut is on its elements, so it passes: the finding says
+// so for a list, and does not call `[]` a 422 where the cut is a list element.
+it('says an empty list of the recursive schema passes at the cut', function (): void {
+    $node = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        properties: [
+            'children' => new Schema(
+                types: [SchemaType::Array],
+                items: Schema::recursion('#/components/schemas/Node', 'Node'),
+            ),
+        ],
+        maxDepth: 1,
+        source: '#/components/schemas/Node',
+    );
+
+    $finding = implode("\n", RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]))->findings);
+
+    expect($finding)->toContain('An empty list of `Node` passes')
+        ->and($finding)->not->toContain('`[]` answer 422');
+});
+
 it('says one level, not 1 levels', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 1)]));
     $finding = implode("\n", $set->findings);
@@ -2321,32 +2349,79 @@ it('says one level, not 1 levels', function (): void {
         ->and($finding)->not->toContain('1 levels');
 });
 
-// A recursion that branches grows as `k` to the power of the depth, so a depth that reads as reasonable for a tree
-// is more rules than a request should evaluate, and then more than a process holds. Unrolling stops at a ceiling,
-// per operation, and the fields it did not reach keep what the walk always gave them: presence and a finding.
-it('stops unrolling at a ceiling and says so, instead of running out of memory', function (): void {
+// A recursion that branches grows as `k` to the power of the depth, so a depth that reads as reasonable for a tree is
+// more rules than a request should evaluate, and then more than a process holds. When the stated depth does not fit
+// the ceiling, the depth is lowered evenly for the operation and every branch is cut at the same level.
+//
+// By hand, for `Tree` (`value`, `left`, `right`): an expansion at crossing `c` below an applied depth `N` writes its own
+// key, `value`, and two markers, so `T(c) = 2 + 2 T(c + 1)` and `T(N) = 1` (the cut key), which is `3 * 2^(N - c) - 2`.
+// The root's `left` and `right` are crossing 0, so the unrolled keys are `2 * T(0) = 6 * 2^N - 4`: 764 at N = 7, which
+// fits 1,000, and 1,532 at N = 8, which does not. The rule set is those and the root's `value`: 765.
+it('lowers the depth evenly until the rules fit the ceiling, and says so', function (): void {
     $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'));
+    $cut = array_keys(array_filter($set->rules, static fn (array $rules): bool => $rules === ['missing']));
     $findings = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'ceiling')));
 
-    // The root's own key is not unrolled. The check runs where a marker is met, so each of the 20 levels the walk is
-    // inside of when it passes the ceiling still writes the three fields it has left: past it by a few dozen keys at
-    // most, where the full tree is millions.
-    expect(count($set->rules))->toBeGreaterThan(RuleSetBuilder::MAX_UNROLLED_KEYS)
-        ->toBeLessThanOrEqual(1 + RuleSetBuilder::MAX_UNROLLED_KEYS + 20 * 3)
+    expect(count($set->rules))->toBe(765)
+        ->and($set->rules[str_repeat('left.', 6).'left'])->toBe(['sometimes', 'array'])
+        ->and($set->rules[str_repeat('left.', 7).'left'])->toBe(['missing'])
+        ->and($set->rules[str_repeat('right.', 7).'right'])->toBe(['missing'])
+        ->and($cut)->toHaveCount(2 ** 8)
         ->and($findings)->toHaveCount(1)
         ->and($findings[0])
         ->toContain('`Tree`')
         ->toContain('`x-max-depth: 20`')
-        ->toContain((string) RuleSetBuilder::MAX_UNROLLED_KEYS)
-        ->toContain('presence')
-        ->toContain('lower');
+        ->toContain('1000')
+        ->toContain('7 levels deep')
+        ->toContain('on every branch')
+        ->toContain('`x-max-depth`');
 });
 
-it('keeps the presence rule of a field it did not unroll', function (): void {
+it('leaves no branch with its presence rule alone once the depth is lowered', function (): void {
     $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'));
     $presenceOnly = array_filter($set->rules, static fn (array $rules): bool => $rules === ['sometimes']);
 
-    expect($presenceOnly)->not->toBe([]);
+    expect($presenceOnly)->toBe([])
+        ->and(implode('', $set->findings))->not->toContain('presence rule');
+});
+
+// The depth is lowered for the operation, as one cap on every recursive schema: a schema whose own depth is under it
+// keeps it, and says nothing about a ceiling.
+it('lowers only the schemas that are deeper than the depth that fits', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-two-schemas.yaml', 'createThing'));
+    $about = static fn (string $schema): string => implode("\n", array_filter(
+        $set->findings,
+        static fn (string $finding): bool => str_starts_with($finding, '`'.$schema.'` recurses'),
+    ));
+
+    expect($set->rules['meta.up.up.up'])->toBe(['missing'])
+        ->and(array_key_exists('meta.up.up.up.up', $set->rules))->toBeFalse()
+        ->and($set->rules['tree.'.str_repeat('left.', 6).'left'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['tree.'.str_repeat('left.', 7).'left'])->toBe(['missing'])
+        ->and($about('Meta'))->toContain('`x-max-depth: 2`')
+        ->and($about('Meta'))->not->toContain('ceiling')
+        ->and($about('Tree'))->toContain('ceiling');
+});
+
+// By hand, for `Tree` and `Chain` (`note`, `next`) stated at 20 in one operation. A chain applied at `N` writes two keys
+// for each of its `N` expansions and one for the cut, `2 N + 1`, and the tree writes `6 * 2^N - 4`. At a shared cap of 7
+// that is 764 + 15 = 779 keys, which fits 1,000, and at 8 it is 1,532 + 17, which does not. The two are tied on 8, so the
+// one with the most keys, the tree, is lowered to 7: 764 + 17 = 781 fits, and the chain keeps 8. The four keys the
+// two roots hold without recursing are not unrolled, so the rule set is 785.
+it('lowers the heavier of two tied schemas first, and only as far as the rules need', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-tie.yaml', 'createThing'));
+    $about = static fn (string $schema): string => implode("\n", array_filter(
+        $set->findings,
+        static fn (string $finding): bool => str_starts_with($finding, '`'.$schema.'` recurses'),
+    ));
+
+    expect($set->rules['tree.'.str_repeat('left.', 6).'left'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['tree.'.str_repeat('left.', 7).'left'])->toBe(['missing'])
+        ->and($set->rules['chain.'.str_repeat('next.', 7).'next'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['chain.'.str_repeat('next.', 8).'next'])->toBe(['missing'])
+        ->and(count($set->rules))->toBe(4 + 764 + 17)
+        ->and($about('Tree'))->toContain('`x-max-depth: 20`')->toContain('7 levels deep')
+        ->and($about('Chain'))->toContain('`x-max-depth: 20`')->toContain('8 levels deep');
 });
 
 // The `and`, `or` and `not` filter of a search endpoint, with no depth stated. By hand: an expansion writes its own

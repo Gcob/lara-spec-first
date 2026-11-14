@@ -34,9 +34,12 @@ tags: [versions, conventions, planning]
   stricter than the contract, which the generated file says in a finding that names `x-max-depth`. A contract whose
   recursion is deeper than three levels in real traffic states the depth it needs. The rule set grows with the depth: a
   schema that recurses once per level gets one more copy of its rules for each level, and a schema that recurses more
-  than once per level gets that many times more. **Unrolling stops at 1,000 rule keys per operation**: past it, a field
-  keeps its presence rule and a finding says which ones and that `x-max-depth` is the lever, so a build never runs out
-  of memory on a branching schema. An `allOf` around a recursion keeps each constraint at the level that wrote it.
+  than once per level gets that many times more. **Unrolling is capped at 1,000 rule keys per operation**: when the
+  stated depths do not fit, they are lowered until they do, the deepest schema first, every branch of a schema is cut at
+  its own level, and a finding names for each lowered schema the stated depth, the depth that applies and `x-max-depth`,
+  so a build never runs out of memory on a branching schema. An empty list of the recursive schema passes at the cut,
+  and a required field that cannot be `null` keeps its presence beside it. An `allOf` around a recursion keeps each
+  constraint at the level that wrote it.
   [Request validation](./docs/guide/code-generation/request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth).
 - **`spec:doctor` now exits `2` on a request schema that writes an `Ignored` keyword**: `default`, `deprecated`,
   `oneOf`, `anyOf`, `not`, `discriminator`, `minProperties`, `prefixItems` and the rest of the

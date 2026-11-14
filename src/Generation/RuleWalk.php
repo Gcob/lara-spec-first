@@ -154,22 +154,60 @@ final class RuleWalk
 
     /**
      * Each recursive schema the walk had to cut at its depth, by its position: the name it is reported under, the depth
-     * it was cut at, whether the schema stated it, whether it allows `null`, and the rule keys that refuse what is
-     * below, in the order they were met. One finding is written for each, once the walk is over, because only then is
-     * the count known.
+     * it was cut at, the depth it asked for (more than that when the ceiling lowered it), whether the schema stated it,
+     * whether it allows `null`, and the rule keys that refuse what is below, in the order they were met. One finding is
+     * written for each, once the walk is over, because only then is the count known.
      *
-     * @var array<string, array{name: string, depth: int, stated: bool, nullable: bool, keys: list<string>}>
+     * @var array<string, array{name: string, depth: int, requested: int, stated: bool, nullable: bool, keys: list<string>}>
      */
     public array $cuts = [];
 
     /**
-     * Each recursive schema the walk stopped unrolling because it had reached the ceiling, by its position: the name it
-     * is reported under, the depth it applies, whether the schema stated it, and the rule keys left with their presence
-     * rule alone, in the order they were met. One finding is written for each, with the cuts.
-     *
-     * @var array<string, array{name: string, depth: int, stated: bool, keys: list<string>}>
+     * The depth no recursive schema is validated below in this walk, or null for the depths the contract states. The
+     * ceiling lowers it for the whole operation, so a tree is cut at one level on every branch, and a schema whose own
+     * depth is under it keeps its own.
      */
-    public array $ceilings = [];
+    public ?int $depthCap = null;
+
+    /**
+     * The depth a single recursive schema is held to beside {@see self::$depthCap}, by its position: what tells two
+     * schemas apart that the common cap leaves tied.
+     *
+     * @var array<string, int>
+     */
+    public array $caps = [];
+
+    /**
+     * The depth each recursive schema asked for, by its position, before any cap: the contract's own, or the default.
+     *
+     * @var array<string, int>
+     */
+    public array $requested = [];
+
+    /**
+     * How many rule keys each recursive schema wrote by its own expansions, the ones its nested schemas wrote not
+     * counted, by its position. What ties are broken by.
+     *
+     * @var array<string, int>
+     */
+    public array $keysBy = [];
+
+    /**
+     * The sum of {@see self::$keysBy}, which is what lets one expansion tell its own keys from its nested ones.
+     */
+    public int $attributed = 0;
+
+    /**
+     * The deepest limit a recursive schema asked for in this walk, before the cap: where a search for the depth that
+     * fits starts from.
+     */
+    public int $deepest = 0;
+
+    /**
+     * Whether the unrolled keys went past the ceiling. A walk that did is not a rule set: it stops expanding at once
+     * and its result is thrown away, so the build never holds more than a ceiling's worth of keys plus one level.
+     */
+    public bool $exceeded = false;
 
     /**
      * How many rule keys the expansions that are over have written. A rule key an expansion writes is counted once, by

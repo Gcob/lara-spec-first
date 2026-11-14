@@ -37,8 +37,9 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 >   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()`, and `validated()` itself keeps
 >   returning Laravel's array.
 > - A recursive schema is validated down to the depth it states with `x-max-depth` (three when it says nothing), and a
->   payload deeper than that is refused, with a finding in the generated file that names the extension. Unrolling stops
->   at 1,000 rule keys per operation, with a finding, so a deep branching schema never costs a build.
+>   payload deeper than that is refused, with a finding in the generated file that names the extension. Unrolling is
+>   capped at 1,000 rule keys per operation: a deeper branching schema is cut at one lower level on every branch, with a
+>   finding, so it never costs a build.
 > - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one. A
 >   rule is never stricter than the contract either, unless matching it exactly would be far too complex in Laravel, and
 >   then the generated file says so in a finding.
@@ -709,26 +710,34 @@ recursive schema allows:
 
 | The recursive schema | Rules below the depth                             | What passes               | What answers 422                    |
 | -------------------- | ------------------------------------------------- | ------------------------- | ----------------------------------- |
-| Not nullable         | `missing`                                         | The key absent            | `null`, `""`, `[]`, `{}`, any value |
+| Not nullable         | `missing`, beside the presence the contract asks  | The key absent            | `null`, `""`, `[]`, `{}`, any value |
 | Nullable             | The contract's presence rule, then `NullOrAbsent` | The key absent, or `null` | `[]`, `{}`, any other value         |
 
+**The table is for a field that holds the recursive schema. A list of it is cut on its elements**, so an empty list
+passes in both rows: it carries no data, and the depth exists to limit how much data a payload carries. A list with one
+element below the depth answers 422 on that element.
+
 **Not `prohibited`, which is "missing or empty"**: it lets `null`, `""` and `[]` through, and a typed DTO would then be
-built from an empty array. `missing` is the key being absent, and it carries no presence rule beside it, which would
-contradict it. **A nullable schema needs a rule of the package's own**, `Gcob\LaraSpecFirst\Validation\NullOrAbsent`,
-imported by the generated request the way a generated DTO imports `Optional`: `missing` refuses the `null` the contract
-allows, `prohibited` lets `""` and `[]` through, and `nullable` does not skip an implicit rule, so no rule Laravel ships
-says "null or absent". The class is implicit, so Laravel calls it for an absent key and for `""` too. **What the
-contract asks of the key stays beside it** (`present` for a required one), so the last validated level of a required
-nullable recursion can write `"parent": null` and pass. **Over HTTP `""` is `null` by then**: Laravel's
-`ConvertEmptyStringsToNull` middleware runs before any rule, so a nullable field takes `""` for the `null` it allows and
-a non-nullable one refuses it like any other value. Execution tests pin each cell of the table.
+built from an empty array. `missing` is the key being absent. **What the contract asks of the key stays beside it when
+the schema is not nullable**: a required field at the cut is `present` and `missing` at once, which no payload
+satisfies, and that is the contract's own tree, which a required non-nullable recursion never ends. Below the root the
+presence is the parent object's `required_array_keys`, which the level above already carries, and a child's own presence
+is `sometimes`, so a tree that stops earlier is untouched. **A nullable schema needs a rule of the package's own**,
+`Gcob\LaraSpecFirst\Validation\NullOrAbsent`, imported by the generated request the way a generated DTO imports
+`Optional`: `missing` refuses the `null` the contract allows, `prohibited` lets `""` and `[]` through, and `nullable`
+does not skip an implicit rule, so no rule Laravel ships says "null or absent". The class is implicit, so Laravel calls
+it for an absent key and for `""` too. **What the contract asks of the key stays beside it** (`present` for a required
+one), so the last validated level of a required nullable recursion can write `"parent": null` and pass. **Over HTTP `""`
+is `null` by then**: Laravel's `ConvertEmptyStringsToNull` middleware runs before any rule, so a nullable field takes
+`""` for the `null` it allows and a non-nullable one refuses it like any other value. Execution tests pin each cell of
+the table.
 
 **That is stricter than the contract, and the generated file says so.** A payload five levels deep is valid against a
 schema that states no limit, so this is the exception [the principle](#every-constraint-maps-or-reports) allows when
 matching the contract exactly is far too complex in Laravel. **Each recursive schema the walk cuts gets one finding**
 (`Comment` and `Address` in one request are two, among the file's others), and it names the schema, the depth it
 applied, whether the schema stated it, the first field it refuses and how many more, which rule it carries there, what
-`null` does (it passes only where the schema is nullable), and `x-max-depth` as the lever.
+`null` does (it passes only where the schema is nullable), whether an empty list passes, and `x-max-depth` as the lever.
 
 **The rules unroll in `RuleSetBuilder`, and the contract's normal form does not change.** A recursion marker still
 carries the position of the schema it points back at (`recursesTo`), and the builder keeps the definitions of the named
@@ -750,35 +759,40 @@ intersection, so a constraint belongs to the level of the schema that wrote it:
 - **`x-max-depth` written in a component's own inline `allOf` branch is the component's**, since the branch is part of
   it. One written on a component that is only included stays with that component.
 
-**Three shapes keep the presence rule and the finding they had before the unrolling**, and the finding says that nothing
+**Two shapes keep the presence rule and the finding they had before the unrolling**, and the finding says that nothing
 below the field is validated:
 
 - **A recursion through a schema with no name.** An inline schema has no position a marker can be found by.
 - **A field that is two markers at once**: two branches of an `allOf` that each write a field of one name pointing back
   at a different component. The walk follows one ancestor, and unrolling it would drop the other without a word. The
   finding names both.
-- **A field met after the ceiling**, below.
 
-**Unrolling stops at a ceiling of 1,000 rule keys per operation, and the ceiling never refuses a contract.** A schema
-that recurses once per level (`Comment`, `Address`) adds one copy of its rules per level, so the default of three levels
-gives the repository's own recursive fixtures 12 rules for a two-field `Node` where the walk used to give 3. A schema
-that recurses `k` times per level grows as `k` to the power of the depth: two children (`left` and `right`) refuse `2`
-to the power of the depth plus one fields at the cut, 16 at the default depth, and every level above them carries its
-own rules. That is harmless at the default depth and fatal at a depth a contract plausibly states for a tree: a binary
-tree at `x-max-depth: 20` is over three million keys, which exhausts a gigabyte before the build ends, and a request
-evaluates every key it holds. So the walk counts the keys it writes by unrolling (the ones a schema holds without
-recursing do not count), and **a marker met once the count has reached 1,000 is not expanded**. Its field keeps the
-presence rule it would have had, as a marker through an inline schema does, and **one finding per recursive schema says
-which fields, that nothing below them is validated, which makes the request looser than the contract there, and that
-`x-max-depth` is the lever**. The ceiling is a number of keys because that is what a request pays for; the filter every
-search endpoint has (`and`, `or`, `not` over itself) is 315 unrolled keys at the default depth, and a binary tree at
-depth 7 is 381, so a contract stays far under it unless it asks for a branching schema to go deep.
+**Unrolling is capped at 1,000 rule keys per operation, and when the stated depths do not fit, they are lowered, the
+deepest schema first.** A schema that recurses once per level (`Comment`, `Address`) adds one copy of its rules per
+level, so the default of three levels gives the repository's own recursive fixtures 12 rules for a two-field `Node`
+where the walk used to give 3. A schema that recurses `k` times per level grows as `k` to the power of the depth: two
+children (`left` and `right`) refuse `2` to the power of the depth plus one fields at the cut, 16 at the default depth,
+and every level above them carries its own rules. That is harmless at the default depth and fatal at a depth a contract
+plausibly states for a tree: a binary tree at `x-max-depth: 20` is over three million keys, which exhausts a gigabyte
+before the build ends, and a request evaluates every key it holds. So the walk counts the keys it writes by unrolling
+(the ones a schema holds without recursing do not count), and **a walk that passes 1,000 is thrown away and redone with
+the depths lowered, until the rules fit**.
 
-**The walk is depth first, so the ceiling is met on the first fields written, not evenly.** A branching schema past the
-ceiling is fully validated down its first branches and unrolled to no depth at all in the last ones, and the finding
-names the first field it left. The number is checked where a marker is met, so a build passes it by what every level it
-is inside of still has to write: a few dozen keys, never a multiple. A contract that wants a branching schema validated
-evenly lowers `x-max-depth` until it fits.
+**Evenly is per schema.** A schema has one applied depth, so every branch of it (`left` and `right` alike) is cut at the
+same level and none is left unvalidated. Across the schemas of one operation, the deepest applied depth is lowered
+first, one level at a time, and a tie goes to the schema that wrote the most keys; a schema whose depth is under the one
+that fits keeps its own. The build reaches that state without taking the steps: it finds by halving the deepest depth
+that every schema can share and still fit, and then lowers, one by one and heaviest first, the schemas that sit one
+level above it, until the rules fit. A failed attempt stops at the ceiling, so the build costs about the ceiling and
+never the tree, whatever depth the contract states. A recursive pair is counted as two schemas, each lowered on its own.
+
+**That makes the request stricter than the stated depth, and the finding says so**: it is the same cut finding, worded
+for each schema it lowered with the stated depth, the ceiling, the depth that applies, and `x-max-depth` as the lever.
+**The ceiling never refuses a contract**, and at a cap of zero nothing is unrolled, which always fits. The ceiling is a
+number of keys because that is what a request pays for; the filter every search endpoint has (`and`, `or`, `not` over
+itself) is 315 unrolled keys at the default depth, and a binary tree at depth 6 is 381, so a contract stays far under it
+unless it asks for a branching schema to go deep. A binary tree stated at 20 is validated 7 levels deep (764 unrolled
+keys; 8 levels would be 1,532).
 
 **The input DTO still reads a recursive node as `mixed`**, see
 [`dto-anatomy.md`](./dto-anatomy.md#what-each-schema-type-becomes). The request now validates it to the depth, and

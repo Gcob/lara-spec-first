@@ -345,6 +345,61 @@ it('answers a payload the way the contract reads an allOf around a recursion', f
     return $datasets;
 });
 
+// The depth is lowered evenly when the stated one does not fit the ceiling, so a binary tree stated at 20 is cut at the
+// same level on `left` and on `right`: 7 crossings by hand (see `RuleSetBuilderTest`). A chain of 7 passes on both
+// sides, a chain of 8 is below the depth on both, and a wrong value within the depth is refused on both.
+it('cuts a tree whose depth was lowered at the same level on every branch', function (string $side): void {
+    $tree = bodyOfFixture('recursion-binary-tree-deep.yaml', 'createTree');
+    $chain = static function (int $levels, mixed $end = []) use ($side): array {
+        $payload = $end;
+
+        for ($level = 0; $level < $levels; $level++) {
+            $payload = [$side => $payload];
+        }
+
+        return $payload;
+    };
+
+    expect(statusForBuiltRules($tree, $chain(7)))->toBe(200)
+        ->and(statusForBuiltRules($tree, $chain(8)))->toBe(422)
+        ->and(statusForBuiltRules($tree, [$side => 'oops']))->toBe(422)
+        ->and(statusForBuiltRules($tree, $chain(2, 'oops')))->toBe(422);
+})->with(['left', 'right']);
+
+// A list is cut on its elements, so a list that is empty carries nothing and passes at the last level, while one
+// element below it is refused.
+it('lets an empty recursive list through at the cut and refuses an element there', function (): void {
+    $node = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        properties: [
+            'children' => new Schema(
+                types: [SchemaType::Array],
+                items: Schema::recursion('#/components/schemas/Node', 'Node'),
+            ),
+        ],
+        maxDepth: 1,
+        source: '#/components/schemas/Node',
+    );
+
+    expect(statusForBuiltRules($node, ['children' => [['children' => []]]]))->toBe(200)
+        ->and(statusForBuiltRules($node, ['children' => [['children' => [[]]]]]))->toBe(422);
+});
+
+// A required field the schema cannot be null on is a way back the contract insists on. A payload that reaches the cut
+// through a `Book` with no `author` is refused, as `required` says, and a payload that ends earlier, on an `Author`
+// with no books, is untouched: the presence is asked of the parent, which a shorter tree does not have.
+it('refuses a tree that reaches the cut without its required way back, and not one that ends early', function (array $payload, int $status): void {
+    expect(statusForBuiltRules(bodyOfFixture('recursion-required-pair.yaml', 'createAuthor'), $payload))->toBe($status);
+})->with([
+    'nothing' => [[], 200],
+    'no books' => [['books' => []], 200],
+    'a book with no author, at the root' => [['books' => [['title' => 'x']]], 422],
+    'two levels, ending on an author with no books' => [['books' => [['author' => ['books' => [['author' => []]]]]]], 200],
+    'the last book has no author' => [['books' => [['author' => ['books' => [['title' => 'x']]]]]], 422],
+    'a book reaching the cut' => [['books' => [['author' => ['books' => [['author' => ['books' => [['author' => []]]]]]]]]], 422],
+]);
+
 /*
  * Part 2's table, against the framework rather than against a string: one
  * case for each rule whose meaning the design checked, because a rule name

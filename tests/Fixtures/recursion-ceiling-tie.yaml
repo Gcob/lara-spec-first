@@ -1,0 +1,44 @@
+# Two recursive schemas stated at the same depth, one that branches and one that does not. Neither fits the ceiling at
+# 20, and the shared cap that fits (7) leaves the two tied one level above it: lowering the branching one is enough.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tree:
+                  $ref: '#/components/schemas/Tree'
+                chain:
+                  $ref: '#/components/schemas/Chain'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Tree:
+      type: object
+      x-max-depth: 20
+      properties:
+        value:
+          type: string
+        left:
+          $ref: '#/components/schemas/Tree'
+        right:
+          $ref: '#/components/schemas/Tree'
+    Chain:
+      type: object
+      x-max-depth: 20
+      properties:
+        note:
+          type: string
+        next:
+          $ref: '#/components/schemas/Chain'
