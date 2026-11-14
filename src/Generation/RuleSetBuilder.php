@@ -221,7 +221,7 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
-            self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence, insideList: false);
+            self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
         }
 
         return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys);
@@ -379,7 +379,6 @@ final readonly class RuleSetBuilder
             '',
             $schema,
             self::rootPresence($operation, $schema, $body),
-            insideList: false,
         );
 
         // The payload's root has no field for `array:` to sit on, so a closed
@@ -469,7 +468,6 @@ final readonly class RuleSetBuilder
         string $prefix,
         Schema $schema,
         callable $presence,
-        bool $insideList,
     ): void {
         $dependents = self::dependents($schema, $walk, $prefix);
 
@@ -497,7 +495,7 @@ final readonly class RuleSetBuilder
                 $asked = 'sometimes';
             }
 
-            self::field($walk, $prefix.self::ruleKey($name), '`'.$prefix.$name.'`', $property, $asked, $insideList);
+            self::field($walk, $prefix.self::ruleKey($name), '`'.$prefix.$name.'`', $property, $asked);
         }
 
         // A name the contract requires, or makes required by
@@ -589,7 +587,6 @@ final readonly class RuleSetBuilder
         string $label,
         Schema $written,
         string $presence,
-        bool $insideList,
     ): void {
         $schema = AllOfMerger::merge($written, $walk->identity, $label);
         $rules = $presence === '' ? [] : [$presence];
@@ -625,7 +622,9 @@ final readonly class RuleSetBuilder
         // and a string the moment the body can also be JSON. A schema that
         // says both "file" and some other type is not read as a file: the
         // other type is what the rules would answer to.
-        if (self::isFile($schema, $walk->multipart)) {
+        $isFile = self::isFile($schema, $walk->multipart);
+
+        if ($isFile) {
             // `required` rather than `present`: Laravel's `required` is the
             // rule that means "a file was sent", and an empty upload slot is
             // not one. A nullable part keeps `present`.
@@ -634,122 +633,117 @@ final readonly class RuleSetBuilder
             }
 
             self::fileRules($schema, $label, $rules, $handled, $walk);
-            // `soleType()` never answers `Null`, so it stands for "the file
-            // rules above were the type rules" and skips the cases below.
-            $type = SchemaType::Null;
-        }
+        } else {
+            switch ($type) {
+                case SchemaType::String:
+                    $rules[] = 'string';
+                    self::stringRules($schema, $label, $rules, $handled, $walk);
+                    break;
+                case SchemaType::Integer:
+                    $rules[] = 'integer';
+                    self::numberRules($schema, $rules, $handled);
+                    break;
+                case SchemaType::Number:
+                    $rules[] = 'numeric';
+                    self::numberRules($schema, $rules, $handled);
+                    break;
+                case SchemaType::Boolean:
+                    if ($walk->textSource !== null) {
+                        $rules[] = self::textBoolean($schema, $label, $walk, $handled);
+                    } else {
+                        $rules[] = 'boolean';
 
-        switch ($type) {
-            case SchemaType::Null:
-                break;
-            case SchemaType::String:
-                $rules[] = 'string';
-                self::stringRules($schema, $label, $rules, $handled, $walk);
-                break;
-            case SchemaType::Integer:
-                $rules[] = 'integer';
-                self::numberRules($schema, $rules, $handled);
-                break;
-            case SchemaType::Number:
-                $rules[] = 'numeric';
-                self::numberRules($schema, $rules, $handled);
-                break;
-            case SchemaType::Boolean:
-                if ($walk->textSource !== null) {
-                    $rules[] = self::textBoolean($schema, $label, $walk, $handled);
-                } else {
-                    $rules[] = 'boolean';
+                        if ($walk->mixedBody) {
+                            $walk->findings[] = sprintf(
+                                '%s is a boolean in a body that is JSON and also a form. One rule set cannot accept '
+                                    .'the text a form carries and still refuse `null`, so it keeps `boolean`, which '
+                                    .'refuses the string `"true"` a form writes.',
+                                $label,
+                            );
+                        }
+                    }
+                    break;
+                case SchemaType::Array:
+                    // `list` beside `array`, because Laravel's `array` passes for
+                    // an associative one, and a JSON array is a list.
+                    array_push($rules, 'array', 'list');
+                    self::bound($schema->minItems, 'min', $rules);
+                    self::bound($schema->maxItems, 'max', $rules);
+                    array_push($handled, 'minItems', 'maxItems', 'items');
+                    $children = 'items';
+                    break;
+                case SchemaType::Object:
+                    // A JSON object arrives as a PHP array, and `array:` with the
+                    // declared keys is how a nested object refuses the ones it did
+                    // not declare.
+                    $declared = array_map('strval', array_keys($schema->properties));
+                    $structural = array_values(array_filter($declared, self::breaksKeyList(...)));
 
-                    if ($walk->mixedBody) {
+                    if ($schema->additionalProperties === false && $structural !== []) {
+                        // `array:` names keys as a comma list compared against
+                        // keys Laravel has already split on dots, so a name with
+                        // either would refuse every valid payload.
+                        $rules[] = 'array';
                         $walk->findings[] = sprintf(
-                            '%s is a boolean in a body that is JSON and also a form. One rule set cannot accept '
-                                .'the text a form carries and still refuse `null`, so it keeps `boolean`, which '
-                                .'refuses the string `"true"` a form writes.',
+                            '%s forbids undeclared keys, but declares %s, which Laravel cannot name in `array:`, '
+                                .'so undeclared keys are not refused.',
                             $label,
+                            self::list($structural),
                         );
-                    }
-                }
-                break;
-            case SchemaType::Array:
-                // `list` beside `array`, because Laravel's `array` passes for
-                // an associative one, and a JSON array is a list.
-                array_push($rules, 'array', 'list');
-                self::bound($schema->minItems, 'min', $rules);
-                self::bound($schema->maxItems, 'max', $rules);
-                array_push($handled, 'minItems', 'maxItems', 'items');
-                $children = 'items';
-                break;
-            case SchemaType::Object:
-                // A JSON object arrives as a PHP array, and `array:` with the
-                // declared keys is how a nested object refuses the ones it did
-                // not declare.
-                $declared = array_map('strval', array_keys($schema->properties));
-                $structural = array_values(array_filter($declared, self::breaksKeyList(...)));
-
-                if ($schema->additionalProperties === false && $structural !== []) {
-                    // `array:` names keys as a comma list compared against
-                    // keys Laravel has already split on dots, so a name with
-                    // either would refuse every valid payload.
-                    $rules[] = 'array';
-                    $walk->findings[] = sprintf(
-                        '%s forbids undeclared keys, but declares %s, which Laravel cannot name in `array:`, '
-                            .'so undeclared keys are not refused.',
-                        $label,
-                        self::list($structural),
-                    );
-                } else {
-                    $rules[] = $schema->additionalProperties === false ? 'array:'.implode(',', $declared) : 'array';
-                }
-
-                // JSON Schema's `required` asks for keys, and so does
-                // `required_array_keys`, on the object itself. Putting it on
-                // the parent rather than a `present_with` on each child is what
-                // lets a nullable object be `null`: a child's rule would fire
-                // on the parent's key being present whatever its value, while
-                // `nullable` on the parent skips this one.
-                $requiredKeys = [];
-
-                foreach ($schema->required as $name) {
-                    if (self::breaksKeyList($name)) {
-                        // The rule's parameters are comma-separated and the
-                        // data's keys are split on dots before it runs, so
-                        // either character makes this name match nothing.
-                        $walk->findings[] = sprintf(
-                            '%s requires `%s`, which Laravel cannot name in `required_array_keys`, so its '
-                                .'presence is not enforced.',
-                            $label,
-                            $name,
-                        );
-
-                        continue;
+                    } else {
+                        $rules[] = $schema->additionalProperties === false ? 'array:'.implode(',', $declared) : 'array';
                     }
 
-                    if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
-                        $walk->findings[] = self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`');
+                    // JSON Schema's `required` asks for keys, and so does
+                    // `required_array_keys`, on the object itself. Putting it on
+                    // the parent rather than a `present_with` on each child is what
+                    // lets a nullable object be `null`: a child's rule would fire
+                    // on the parent's key being present whatever its value, while
+                    // `nullable` on the parent skips this one.
+                    $requiredKeys = [];
 
-                        continue;
+                    foreach ($schema->required as $name) {
+                        if (self::breaksKeyList($name)) {
+                            // The rule's parameters are comma-separated and the
+                            // data's keys are split on dots before it runs, so
+                            // either character makes this name match nothing.
+                            $walk->findings[] = sprintf(
+                                '%s requires `%s`, which Laravel cannot name in `required_array_keys`, so its '
+                                    .'presence is not enforced.',
+                                $label,
+                                $name,
+                            );
+
+                            continue;
+                        }
+
+                        if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
+                            $walk->findings[] = self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`');
+
+                            continue;
+                        }
+
+                        if (self::unescapableKey($name) === null) {
+                            $requiredKeys[] = $name;
+                        }
                     }
 
-                    if (self::unescapableKey($name) === null) {
-                        $requiredKeys[] = $name;
+                    if ($requiredKeys !== []) {
+                        $rules[] = 'required_array_keys:'.implode(',', $requiredKeys);
                     }
-                }
+                    array_push($handled, 'properties', 'required', 'dependentRequired', 'additionalProperties');
+                    $children = 'properties';
+                    break;
+                default:
+                    $unmapped = self::isStringEnumeration($schema) ? null : self::unmappedType($schema);
 
-                if ($requiredKeys !== []) {
-                    $rules[] = 'required_array_keys:'.implode(',', $requiredKeys);
-                }
-                array_push($handled, 'properties', 'required', 'dependentRequired', 'additionalProperties');
-                $children = 'properties';
-                break;
-            default:
-                $unmapped = self::isStringEnumeration($schema) ? null : self::unmappedType($schema);
-
-                if ($unmapped !== null) {
-                    // Risk 2 of the card #35 plan: without a type rule, Laravel
-                    // reads `min` and `max` as a string length, so a bound on an
-                    // untyped field is reported rather than half-translated.
-                    $walk->findings[] = sprintf('%s %s, so no type rule is emitted for it.', $label, $unmapped);
-                }
+                    if ($unmapped !== null) {
+                        // Without a type rule Laravel reads `min` and `max` as a string
+                        // length, so a bound on an untyped field is reported rather than
+                        // half-translated.
+                        $walk->findings[] = sprintf('%s %s, so no type rule is emitted for it.', $label, $unmapped);
+                    }
+            }
         }
 
         if ($schema->enum !== null && ! in_array('enum', $handled, true)) {
@@ -775,7 +769,7 @@ final readonly class RuleSetBuilder
 
         if ($children === 'items') {
             if ($schema->items !== null) {
-                self::field($walk, $key.'.*', $label.'[]', $schema->items, '', insideList: true);
+                self::field($walk, $key.'.*', $label.'[]', $schema->items, '');
             }
 
             if ($schema->uniqueItems) {
@@ -797,7 +791,6 @@ final readonly class RuleSetBuilder
                 $key.'.',
                 $schema,
                 static fn (string $name, Schema $property): string => 'sometimes',
-                $insideList || str_contains($key, '*'),
             );
         }
 
