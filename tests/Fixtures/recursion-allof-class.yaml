@@ -1,0 +1,33 @@
+# A body that wraps a recursive component in an `allOf` with `required`. The wrapper has no name, so the body is its own
+# class, and `Category` is only ever reached through the recursion marker of `children`: nothing walks it as a schema of
+# its own, so the DTO has to find its class from the definition the marker points back at.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Category'
+                - required: [name]
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Category:
+      type: object
+      properties:
+        name:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'

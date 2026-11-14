@@ -24,7 +24,7 @@ use JsonSerializable;
  *
  * Findings
  *   - Class name taken from the schema `NewUser`, written at `#/components/schemas/NewUser`. Every
- *     operation sending that schema shares this type.
+ *     operation reaching that schema shares this type.
  *   - The partial type: every property is `Optional`, and `toArray()` leaves out the ones the
  *     client did not send. A `PATCH` reads it, and so does a body that may be absent entirely.
  *   - Read by `patch /users/{id}`.

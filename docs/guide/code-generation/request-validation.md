@@ -794,9 +794,10 @@ itself) is 315 unrolled keys at the default depth, and a binary tree at depth 6 
 unless it asks for a branching schema to go deep. A binary tree stated at 20 is validated 7 levels deep (764 unrolled
 keys; 8 levels would be 1,532).
 
-**The input DTO still reads a recursive node as `mixed`**, see
-[`dto-anatomy.md`](./dto-anatomy.md#what-each-schema-type-becomes). The request now validates it to the depth, and
-typing the DTO to the same depth is [#100](https://github.com/Gcob/lara-spec-first/issues/100)'s second part.
+**The input DTO is typed to match.** A recursive node is the class of the schema it points back at, so every level the
+request validates is a DTO. A recursion the request did not unroll is `mixed`, and so is one with `properties` written
+beside its reference, which no class of the ancestor can carry. See
+[`dto-anatomy.md`](./dto-anatomy.md#what-each-schema-type-becomes).
 
 ## The generated request is `final`
 

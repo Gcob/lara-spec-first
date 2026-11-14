@@ -198,23 +198,23 @@ finding in the generated file.
 [`Contract\Schema`](../openapi-support.md#the-normal-form-a-schema-takes), so nothing below depends on which OpenAPI
 version wrote the document:
 
-| The schema says                                                              | The property is                | `from()` does                           | `toArray()` does  |
-| ---------------------------------------------------------------------------- | ------------------------------ | --------------------------------------- | ----------------- |
-| `string`                                                                     | `string`                       | Reads it                                | Writes it         |
-| `integer`                                                                    | `int`                          | `(int)`, request side only              | Writes it         |
-| `number`                                                                     | `float`                        | `(float)`, request side only            | Writes it         |
-| `boolean`                                                                    | `bool`                         | `filter_var()`, request side only       | Writes it         |
-| `string`, `format: date-time`                                                | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `format()`, below |
-| `string`, `format: date`                                                     | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toDateString()`  |
-| `enum`                                                                       | Its scalar type                | Reads it, or casts it as its type does  | Writes it         |
-| `object` with `properties`, via `$ref`                                       | The DTO named after the schema | `::from()`                              | `->toArray()`     |
-| `object` with `properties`, inline                                           | A DTO named after its parent   | `::from()`                              | `->toArray()`     |
-| `object` with no `properties`                                                | `array<string, mixed>`         | Reads it                                | Writes it         |
-| `array` with `items`                                                         | `list<T>`, in the docblock     | `array_map()` with `T`'s own conversion | The same, back    |
-| A file part                                                                  | `UploadedFile`                 | Reads it                                | Writes it as is   |
-| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | `mixed`                        | Reads it                                | Writes it         |
-| `nullable`                                                                   | `?T`                           | Checks for `null` before any conversion | Writes the `null` |
-| No single type, or none at all                                               | `mixed`                        | Reads it                                | Writes it         |
+| The schema says                                                              | The property is                                                                        | `from()` does                           | `toArray()` does  |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------- | ----------------- |
+| `string`                                                                     | `string`                                                                               | Reads it                                | Writes it         |
+| `integer`                                                                    | `int`                                                                                  | `(int)`, request side only              | Writes it         |
+| `number`                                                                     | `float`                                                                                | `(float)`, request side only            | Writes it         |
+| `boolean`                                                                    | `bool`                                                                                 | `filter_var()`, request side only       | Writes it         |
+| `string`, `format: date-time`                                                | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`              | `format()`, below |
+| `string`, `format: date`                                                     | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`              | `toDateString()`  |
+| `enum`                                                                       | Its scalar type                                                                        | Reads it, or casts it as its type does  | Writes it         |
+| `object` with `properties`, via `$ref`                                       | The DTO named after the schema                                                         | `::from()`                              | `->toArray()`     |
+| `object` with `properties`, inline                                           | A DTO named after its parent                                                           | `::from()`                              | `->toArray()`     |
+| `object` with no `properties`                                                | `array<string, mixed>`                                                                 | Reads it                                | Writes it         |
+| `array` with `items`                                                         | `list<T>`, in the docblock                                                             | `array_map()` with `T`'s own conversion | The same, back    |
+| A file part                                                                  | `UploadedFile`                                                                         | Reads it                                | Writes it as is   |
+| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The class of the schema it points back at, `mixed` where the request did not unroll it | `::from()`, as above                    | `->toArray()`     |
+| `nullable`                                                                   | `?T`                                                                                   | Checks for `null` before any conversion | Writes the `null` |
+| No single type, or none at all                                               | `mixed`                                                                                | Reads it                                | Writes it         |
 
 **An object body with no `properties` gets a DTO with no properties, and the file says it carries nothing.** The row
 above is the case of a property whose value is a free-form object. A body has no parent to hold it as one, and a DTO's
@@ -223,25 +223,54 @@ It still exists, with both of its types, so a property added to the contract lat
 there. The payload is not in it: the generated file's findings say to read the body from the request itself, with
 `$request->json()->all()` for a JSON body.
 
-**A node that recurses is `mixed` too, for now.** The request
-[validates it down to `x-max-depth`](./request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth) and
-refuses what is below, so the input is checked. The DTO has not caught up: `address.parent` is read as it arrived, and
-typing it as the ancestor's class, to the same depth, is the second part of
-[#100](https://github.com/Gcob/lara-spec-first/issues/100). **Open
-([#100](https://github.com/Gcob/lara-spec-first/issues/100)):** this paragraph and the next one are rewritten there.
+**A node that recurses is the class of the schema it points back at.** `Address` holds an `Address`: `parent` is typed
+`Optional|AddressInputDto`, and `Optional|AddressInputDto|null` when the schema is nullable (`?AddressInputDto` for a
+required key, as for any nullable DTO). The request
+[validates the recursion down to `x-max-depth`](./request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth)
+and refuses what is below, so every level the DTO builds was checked, and the same class describes all of them. The cut
+shows in the type, not in a new class: the deepest level a payload may reach has no `parent` (the key is absent, or
+`null` when the schema is nullable), and the property says so with `Optional`, or `null`. A list of the schema is
+`list<T>` of the same class, and an empty one at the cut passes. A `required` recursion that is not nullable never ends,
+so a payload that reaches the cut is the request's 422, and the DTO never sees a missing key.
 
-**A schema in a recursive pair is `mixed` where it is nested.** `Author` holds `Book`s and `Book` holds an `Author`:
-each is expanded to a different depth depending on where the build enters it, and so are the rules that validate it. One
-class cannot match both, because the operation that reached it from the other side would hand `from()` input nothing
-checked. A schema that only repeats itself (`Address` holding an `Address`) is the same shape everywhere and stays a
-DTO. A key the rules cannot name when its object is nested (a required `user.name`) is optional in the DTO, so that a
-schema's shape does not depend on which operation reached it first, and the file's findings say so for each such key. So
-is a name a form client sends under another one that the request cannot check there (a body that is JSON and a form at
-once, or two names a form delivers under one key): the property is `Optional`, and it is optional for every request that
-reads the schema, whichever got there first. **A name PHP rewrites in a form body that the request does check is not
-hedged**: `page[size]` and `a b` are read by `from()` under the contract's name, which the request's `dto()` puts back
-from the name PHP delivered, so a required one stays required. A required `user.name` is the exception, and for the
-reason above rather than this one: a dot breaks the key list, so it stays optional.
+**A schema in a recursive pair is one class too, whichever operation reaches it first.** `Author` holds `Book`s and
+`Book` holds an `Author`: `AuthorInputDto` and `BookInputDto` each name the other, and the two files are the same bytes
+whether an operation enters through `Author` or through `Book`. The class of a recursion is the one the schema gets
+where it is written, so nothing depends on where the build came in, and the file's findings say so in one wording for
+the root, the nested object and the recursion alike (`Class name taken from the schema ...`).
+
+**A recursion the request did not unroll stays `mixed`, and says so.** The DTO does not build a class from input nothing
+checked. Three shapes are left as they arrived:
+
+- **A recursion through a schema with no name.** An inline schema has no position a class could be found by.
+- **A field that is two recursion markers at once** (two `allOf` branches that each write the field, pointing back at
+  different components).
+- **A recursion into a schema that is not an object with properties.** A component written with `properties` and no
+  `type` gets no type rule below it, so a string passes the request and a class built from it would be a `TypeError`. An
+  array that recurses through its items is a validated list, and the class of an object would read no key of it.
+
+For the first two, the file's findings say that the field points back at a position and that the request validates
+nothing below it, so it is `mixed`, and the request's finding says the same thing from its side, where the lever is. For
+the third they say what they say of any property of that shape: that it states no type, or that the schema it points
+back at is not an object with properties. Either way the wording is the same whichever operation the build meets first.
+
+**One exception to "one class per schema, no `mixed` for a named recursion": a recursive property with `properties`
+written beside its reference.** The request does validate it: it unrolls the site with the extra property, level after
+level. The class of the ancestor does not carry that property, so a typed field would lose a key the request validated
+in `from()` and `toArray()`. The field stays `mixed`, and the file's findings say that the request validates it and that
+the class does not carry what is written beside the reference. A `required` or a `type` beside it changes nothing in the
+class, and the field is typed. It is the same answer whichever operation the build reaches the site through: the site is
+a recursion marker from one side and the expanded schema from the other, and both ask the same question.
+
+**A key the rules cannot name when its object is nested is optional in the DTO.** A required `user.name` is `Optional`
+beside the rest of its object, so that a schema's shape does not depend on which operation reached it first, and the
+file's findings say so for each such key. So is a name a form client sends under another one that the request cannot
+check there (a body that is JSON and a form at once, or two names a form delivers under one key): the property is
+`Optional`, and it is optional for every request that reads the schema, whichever got there first. **A name PHP rewrites
+in a form body that the request does check is not hedged**: `page[size]` and `a b` are read by `from()` under the
+contract's name, which the request's `dto()` puts back from the name PHP delivered, so a required one stays required. A
+required `user.name` is the exception, and for the reason above rather than this one: a dot breaks the key list, so it
+stays optional.
 
 **An enumeration value is written in the docblock only when it is safe to.** A value is data from the specification and
 a docblock is code: a string holding the sequence that closes a comment would end it early. Such a value costs the

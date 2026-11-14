@@ -41,6 +41,15 @@ tags: [versions, conventions, planning]
   and a required field that cannot be `null` keeps its presence beside it. An `allOf` around a recursion keeps each
   constraint at the level that wrote it.
   [Request validation](./docs/guide/code-generation/request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth).
+- **The input DTO types a recursion as its own class, where it used to read `mixed`.** `Address` holding an `Address`
+  now generates `Optional|AddressInputDto $parent` (`Optional|AddressInputDto|null` when the schema is nullable, and
+  `?AddressInputDto` for a required key), a list of the schema is a `list` of its class, and a recursive pair is one
+  class per schema whichever operation reaches it first. **A reader of the type sees a class where it saw an array:**
+  `$dto->parent['street']` now throws, so code that indexed into it needs `->toArray()` or the property. A recursion the
+  request does not unroll (through a schema with no name, a field that is two markers, or into a schema that is not an
+  object with properties) stays `mixed` and says so in the file's findings; so does one with `properties` written beside
+  its reference, which the request validates and the ancestor's class cannot carry, and its finding says that instead.
+  [DTO anatomy](./docs/guide/code-generation/dto-anatomy.md#what-each-schema-type-becomes).
 - **`spec:doctor` now exits `2` on a request schema that writes an `Ignored` keyword**: `default`, `deprecated`,
   `oneOf`, `anyOf`, `not`, `discriminator`, `minProperties`, `prefixItems` and the rest of the
   [matrix's `Ignored` schema rows](./docs/guide/openapi-support.md#schemas). `default` and `deprecated` alone appear in

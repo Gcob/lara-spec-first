@@ -24,7 +24,7 @@ use JsonSerializable;
  *
  * Findings
  *   - Class name taken from the schema `NewUser`, written at `#/components/schemas/NewUser`. Every
- *     operation sending that schema shares this type.
+ *     operation reaching that schema shares this type.
  *   - Read by `post /users`.
  *   - `user-id` is not a PHP identifier, so it is read into `$user_id`. `from()` and `toArray()`
  *     keep the key as written.

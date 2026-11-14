@@ -1,0 +1,59 @@
+# The two shapes of a recursion the golden `Address` does not cover, run through the generated request and DTO: a list
+# that holds its own schema, and a schema that allows `null`. Each states a short `x-max-depth` so a payload that reaches
+# the cut stays small. The classes are built at run time by `GeneratedInputDtoTest`, since a golden file per shape would
+# be a golden file nothing else reads.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /categories:
+    post:
+      operationId: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Category'
+      responses:
+        '201':
+          description: Created
+  /trees:
+    post:
+      operationId: createTree
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tree]
+              properties:
+                tree:
+                  $ref: '#/components/schemas/Node'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Category:
+      type: object
+      x-max-depth: 2
+      required: [name]
+      properties:
+        name:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+    Node:
+      type: [object, 'null']
+      x-max-depth: 1
+      required: [label]
+      properties:
+        label:
+          type: string
+        next:
+          $ref: '#/components/schemas/Node'

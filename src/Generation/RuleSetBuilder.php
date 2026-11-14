@@ -1092,12 +1092,16 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * The definitions of the named schemas a field is written as, which a recursion marker below it can point back at.
+     *
      * @param  Schema|null  $merged  `$written` merged, when the caller already has it
      * @return list<Schema>
      *
      * @throws ConflictingInputException
+     *
+     * @internal Public so the input DTO keeps the stack the rules keep, and finds the same ancestor for a marker.
      */
-    private static function definitions(Schema $written, ?Schema $merged, string $identity, string $label): array
+    public static function definitions(Schema $written, ?Schema $merged, string $identity, string $label): array
     {
         $definitions = $written->source === null
             ? []
@@ -1129,10 +1133,10 @@ final readonly class RuleSetBuilder
      * none is left unvalidated. A walk that passes the ceiling stops expanding and is thrown away, which is how
      * {@see self::for()} knows to try a lower cap.
      *
-     * A marker whose ancestor the walk does not hold has no depth to read: an inline schema has no name to be found by.
-     * It keeps presence and a finding, as it always did, and so does a field that is two markers at once (two branches
-     * of an `allOf` writing a marker to two different components under one name): the walk follows one ancestor, and
-     * the other would be dropped without a word.
+     * {@see self::unrolls()} says which markers this expands. A marker whose ancestor the walk does not hold has no
+     * depth to read: an inline schema has no name to be found by. It keeps presence and a finding, as it always did,
+     * and so does a field that is two markers at once (two branches of an `allOf` writing a marker to two different
+     * components under one name): the walk follows one ancestor, and the other would be dropped without a word.
      *
      * @param  Schema  $site  the field the marker is written as, merged: the marker and whatever is written beside it
      * @param  string  $presence  how the field is asked for. Beside `missing` it stays when the contract asks for the
@@ -1152,8 +1156,7 @@ final readonly class RuleSetBuilder
         $ancestor = $walk->ancestor($position);
         $rules = $presence === '' ? [] : [$presence];
 
-        // Two markers that could not be folded into one are two ancestors to expand, and the walk follows one.
-        if ($ancestor === null || $site->allOf !== []) {
+        if ($ancestor === null || ! self::unrolls($site, $ancestor)) {
             // A self-referential schema is a supported contract and an
             // infinite tree, and no rule set reaches an infinite depth.
             $walk->rules[$key] = $rules;
@@ -1228,6 +1231,26 @@ final readonly class RuleSetBuilder
             $walk->unrolled = $walk->unrolledKeys();
             $walk->expansionStart = null;
         }
+    }
+
+    /**
+     * Whether the request unrolls a recursion marker, so that a schema below it is validated down to a depth.
+     *
+     * One answer for both sides, since the input DTO types a marker as its own class only where the request validated
+     * what the class is built from. **The ancestor the walk holds decides**, never what the merged site is called: a
+     * site takes the name and source of the first named schema merged into it (`allOf: [Mixin, Node]`), and it still
+     * points back at `Node`. A marker with no ancestor (an inline schema has no name to be found by) and a field that
+     * is two markers at once (an `allOf` left holding a marker branch: the walk follows one ancestor, and the other
+     * would be dropped without a word) are not unrolled. They keep presence and a finding.
+     *
+     * @param  Schema  $site  the field the marker is written as, merged
+     * @param  Schema|null  $ancestor  the definition a walk holds at the position the marker points back at
+     *
+     * @internal Public so the input DTO asks the question the rules did.
+     */
+    public static function unrolls(Schema $site, ?Schema $ancestor): bool
+    {
+        return $site->recursesTo !== null && $ancestor !== null && $site->allOf === [];
     }
 
     /**

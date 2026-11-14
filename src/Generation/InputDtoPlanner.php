@@ -60,6 +60,14 @@ final class InputDtoPlanner
      */
     private array $readBy = [];
 
+    /**
+     * The definitions of the named schemas the walk is inside, the way the rules keep them: what a recursion marker is
+     * resolved against, so a class is found for it whichever operation reached the schema first.
+     *
+     * @var list<Schema>
+     */
+    private array $ancestors = [];
+
     private string $identity = '';
 
     private bool $multipart = false;
@@ -125,6 +133,8 @@ final class InputDtoPlanner
             return;
         }
 
+        $this->ancestors = RuleSetBuilder::definitions($written, $merged, $this->identity, 'the body');
+
         $mediaTypes = array_values(array_intersect($body->mediaTypes(), RuleSetBuilder::READ_MEDIA_TYPES));
         $inline = DocumentPointer::forOperation($operation).'/requestBody/content/'
             .DocumentPointer::escape($mediaTypes[0] ?? '').'/schema';
@@ -146,12 +156,7 @@ final class InputDtoPlanner
         } else {
             $base = $this->className($name, $position);
             $origin = 'the schema\'s name';
-            $naming = sprintf(
-                'Class name taken from the schema `%s`, written at `%s`. Every operation sending that '
-                    .'schema shares this type.',
-                $name,
-                $position,
-            );
+            $naming = self::namedAfter($name, $position);
         }
 
         $named = $name !== null;
@@ -400,22 +405,33 @@ final class InputDtoPlanner
     {
         $schema = AllOfMerger::merge($written, $this->identity, '`'.$segment.'`');
 
-        // A recursive node is the shape of its ancestor, and no rule set reaches an
-        // infinite depth, so the rules validate nothing below it. A DTO built from
-        // it would be built from input nothing checked: a `parent: "oops"` would be
-        // a `TypeError` in `from()` and a 500 where the request owed a 422. So it
-        // is read as it arrived, `mixed`, and the file says why.
         if ($schema->recursesTo !== null) {
-            $this->registry[$owner]['findings'][] = sprintf(
-                '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
-                    .'`mixed` rather than built into a DTO from input nothing checked.',
-                $segment,
-                $schema->recursesTo,
-            );
-
-            return new InputDtoType(InputDtoType::MIXED);
+            return $this->recursion($schema, $segment, $owner);
         }
 
+        $before = count($this->ancestors);
+        // What is above the site, taken before its own definitions go on the stack: a schema that only recurses into
+        // itself is not above the field that extends it.
+        $above = array_values(array_filter(array_map(static fn (Schema $schema): ?string => $schema->source, $this->ancestors)));
+        array_push($this->ancestors, ...RuleSetBuilder::definitions($written, $schema, $this->identity, '`'.$segment.'`'));
+
+        try {
+            return $this->typeOf($written, $schema, $base, $segment, $pointer, $owner, $above);
+        } finally {
+            $this->ancestors = array_slice($this->ancestors, 0, $before);
+        }
+    }
+
+    /**
+     * What one property becomes, once its own definitions are on the stack.
+     *
+     * @param  list<string>  $above  the positions of the named schemas above the property
+     *
+     * @throws UnusableNameException
+     * @throws ConflictingInputException
+     */
+    private function typeOf(Schema $written, Schema $schema, string $base, string $segment, string $pointer, string $owner, array $above): InputDtoType
+    {
         $enum = $schema->enum;
         $nullable = $schema->isNullable() || ($enum !== null && in_array(null, $enum, true));
         $values = $enum === null
@@ -459,7 +475,7 @@ final class InputDtoPlanner
             case SchemaType::Object:
                 return $schema->properties === []
                     ? new InputDtoType(InputDtoType::MAP, $nullable)
-                    : $this->nested($written, $schema, $base, $segment, $pointer, $nullable, $owner);
+                    : $this->nested($written, $schema, $base, $segment, $pointer, $nullable, $owner, $above);
         }
 
         // No single type: an untyped enumeration of one kind of value says
@@ -471,9 +487,20 @@ final class InputDtoPlanner
             return new InputDtoType($kind, $nullable, literals: $literals);
         }
 
+        $this->registry[$owner]['findings'][] = self::noSingleTypeFinding($segment, $schema);
+
+        return new InputDtoType(InputDtoType::MIXED);
+    }
+
+    /**
+     * What the file says about a property that states no single type. One wording for a schema reached directly and one
+     * reached through a recursion marker, so the bytes of a class do not depend on which the build met first.
+     */
+    private static function noSingleTypeFinding(string $segment, Schema $schema): string
+    {
         $stated = array_filter($schema->types, static fn (SchemaType $stated): bool => $stated !== SchemaType::Null);
 
-        $this->registry[$owner]['findings'][] = sprintf(
+        return sprintf(
             '`%s` states %s, so it is `mixed`. The request\'s findings say the same about its rules.',
             $segment,
             match (count($stated)) {
@@ -481,37 +508,28 @@ final class InputDtoPlanner
                 default => 'more than one type',
             },
         );
-
-        return new InputDtoType(InputDtoType::MIXED);
     }
 
     /**
      * An object with properties, as a DTO of its own.
      *
+     * @param  list<string>  $above  the positions of the named schemas above the property
+     *
      * @throws UnusableNameException
      * @throws ConflictingInputException
      */
-    private function nested(Schema $written, Schema $merged, string $base, string $segment, string $pointer, bool $nullable, string $owner): InputDtoType
+    private function nested(Schema $written, Schema $merged, string $base, string $segment, string $pointer, bool $nullable, string $owner, array $above): InputDtoType
     {
+        $recursive = $this->recursiveBranch($written, $segment, $above);
+
+        if ($recursive !== null) {
+            $type = $this->ancestorType($recursive[0], $recursive[1], $segment, $owner);
+
+            return $type->kind === InputDtoType::DTO ? new InputDtoType(InputDtoType::DTO, $nullable || $type->nullable, class: $type->class) : $type;
+        }
+
         [$name, $source] = $this->nameOf($written, $merged);
         $position = $source ?? $pointer;
-
-        // A schema in a recursive pair is expanded to a different depth depending
-        // on where the walk entered, so its shape, and the rules that validated it,
-        // depend on the operation that reached it first. One class cannot be right
-        // for both: the request that reached it from the other side would hand
-        // `from()` input nothing checked. It is read as it arrived instead.
-        if ($name !== null && self::dependsOnEntry($merged, $source)) {
-            $this->registry[$owner]['findings'][] = sprintf(
-                '`%s` is the schema `%s`, which refers back to a schema outside itself, so what the request '
-                    .'validates below it depends on where the request starts. It is `mixed` rather than a DTO '
-                    .'that would be right for one operation and wrong for another.',
-                $segment,
-                $name,
-            );
-
-            return new InputDtoType(InputDtoType::MIXED);
-        }
 
         if ($name === null) {
             $ownBase = $base.self::studly($segment);
@@ -524,12 +542,7 @@ final class InputDtoPlanner
         } else {
             $ownBase = $this->className($name, $position);
             $origin = 'the schema\'s name';
-            $naming = sprintf(
-                'Class name taken from the schema `%s`, written at `%s`. Every operation reaching that '
-                    .'schema shares this type.',
-                $name,
-                $position,
-            );
+            $naming = self::namedAfter($name, $position);
         }
 
         $class = $this->register($ownBase.'InputDto', false, $written, $merged, $position, $ownBase, $origin, $naming, $name !== null);
@@ -590,41 +603,189 @@ final class InputDtoPlanner
     }
 
     /**
-     * Whether a schema's expansion depends on where the walk entered it: it holds a recursion marker aimed at a schema
-     * that is not itself, or inside it.
+     * A recursion marker: the class of the schema it points back at, wherever the walk came in.
      *
-     * A marker back at the schema itself, or at one written inside it, is cut at the same place whichever way the
-     * schema is reached, so `Address` containing an `Address` is the same shape everywhere. One aimed at a schema above
-     * it, `Author` inside `Book` inside `Author`, is cut where the entry happened to be.
+     * **The request validates down to the depth the schema states and refuses what is below it**, so a class built from
+     * a marker is built from input that was checked. The class is the ancestor's own definition, found on the stack the
+     * way the rules find it, and registered here when nothing walked that schema as a schema of its own: a body written
+     * `allOf: [Category, {required: [name]}]` is a class of its own, and `Category` is only reached through the marker.
+     *
+     * What the request did not unroll stays `mixed` ({@see RuleSetBuilder::unrolls()}), asked of the ancestor this
+     * planner holds on its own stack. So does a marker with properties written beside it, which the request does
+     * validate: that is a schema the ancestor's class does not say.
+     *
+     * @throws UnusableNameException
+     * @throws ConflictingInputException
      */
-    private static function dependsOnEntry(Schema $schema, ?string $source): bool
+    private function recursion(Schema $site, string $segment, string $owner): InputDtoType
     {
-        $inside = $source === null ? [] : [$source];
-        $targets = [];
-        self::collect($schema, $inside, $targets);
+        $position = (string) $site->recursesTo;
+        $ancestor = null;
 
-        return array_diff($targets, $inside) !== [];
+        foreach (array_reverse($this->ancestors) as $definition) {
+            if ($definition->source === $position) {
+                $ancestor = $definition;
+
+                break;
+            }
+        }
+
+        if ($ancestor === null || ! RuleSetBuilder::unrolls($site, $ancestor)) {
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
+                    .'`mixed` rather than built into a DTO from input nothing checked.',
+                $segment,
+                $position,
+            );
+
+            return new InputDtoType(InputDtoType::MIXED);
+        }
+
+        return $this->ancestorType($ancestor, AllOfMerger::besideMarker($site), $segment, $owner);
     }
 
     /**
-     * @param  list<string>  $inside  the positions of the named schemas written in the tree
-     * @param  list<string>  $targets  where each recursion marker in it points
+     * What a site is when it is the schema a recursion points back at, written alone or with something beside it: the
+     * ancestor's own class, or `mixed`. One answer for a written site whichever way the build reaches it, as a marker
+     * ({@see self::recursion()}) or as the expanded schema ({@see self::recursiveBranch()}).
+     *
+     * `mixed` where the class cannot say what the request validated. A `properties` beside the reference is validated
+     * at every level, and the ancestor's class has no property for it. And a schema that is not an object with
+     * properties, as the rules expand it, has no type rule or no keys to read: the class of an untyped component would
+     * be built from a string the request let through, and one of an array would read no key of the list.
+     *
+     * @param  Schema  $ancestor  the definition of the schema the site points back at
+     * @param  Schema|null  $beside  what the site writes beside the reference
+     *
+     * @throws UnusableNameException
+     * @throws ConflictingInputException
      */
-    private static function collect(Schema $schema, array &$inside, array &$targets): void
+    private function ancestorType(Schema $ancestor, ?Schema $beside, string $segment, string $owner): InputDtoType
     {
-        if ($schema->recursesTo !== null) {
-            $targets[] = $schema->recursesTo;
+        $position = (string) $ancestor->source;
 
-            return;
+        if ($beside !== null && $beside->properties !== []) {
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` is validated by the request, which unrolls it, but it is `mixed` here: it writes properties '
+                    .'beside the reference, and the class of `%s` does not carry them.',
+                $segment,
+                $ancestor->name,
+            );
+
+            return new InputDtoType(InputDtoType::MIXED);
         }
 
-        if ($schema->source !== null) {
-            $inside[] = $schema->source;
+        $expanded = $beside === null
+            ? $ancestor
+            : AllOfMerger::merge(new Schema(allOf: [$ancestor, $beside]), $this->identity, '`'.$segment.'`');
+
+        if ($expanded->soleType() === null) {
+            $this->registry[$owner]['findings'][] = self::noSingleTypeFinding($segment, $expanded);
+
+            return new InputDtoType(InputDtoType::MIXED);
+        }
+
+        if ($expanded->soleType() !== SchemaType::Object || $expanded->properties === []) {
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` points back at `%s`, which is not an object with properties, so it is `mixed` rather than a '
+                    .'class the request did not check the shape of.',
+                $segment,
+                $position,
+            );
+
+            return new InputDtoType(InputDtoType::MIXED);
+        }
+
+        $name = (string) $ancestor->name;
+        $base = $this->className($name, $position);
+        $class = $this->register(
+            $base.'InputDto',
+            false,
+            $ancestor,
+            $ancestor,
+            $position,
+            $base,
+            'the schema\'s name',
+            self::namedAfter($name, $position),
+            true,
+        );
+        // The cut lets `null` through when the ancestor allows it, and the levels above it when what is expanded does.
+        $nullable = self::allowsNull($ancestor) || self::allowsNull($expanded);
+
+        return new InputDtoType(InputDtoType::DTO, $nullable, class: $class);
+    }
+
+    private static function allowsNull(Schema $schema): bool
+    {
+        return $schema->isNullable() || ($schema->enum !== null && in_array(null, $schema->enum, true));
+    }
+
+    /**
+     * The branch of an `allOf` that is a schema in a recursive cycle through this site, and what the others write.
+     *
+     * A site such as `allOf: [Author, {required: [name]}]` in `Book` is a recursion marker when the build comes in
+     * through `Author`, and the expanded `Author` when it comes in through `Book`. It has to be typed the same either
+     * way, so the second path asks the question the first does: a branch is the ancestor when it is named and holds a
+     * marker aimed at a schema the walk is inside *above the site*. Exactly one is, or the site is an ordinary
+     * composition.
+     *
+     * @param  list<string>  $above  the positions of the named schemas above the site
+     * @return array{0: Schema, 1: Schema|null}|null the branch's definition and what is written beside it
+     *
+     * @throws ConflictingInputException
+     */
+    private function recursiveBranch(Schema $written, string $segment, array $above): ?array
+    {
+        $found = array_keys(array_filter(
+            $written->allOf,
+            static fn (Schema $branch): bool => $branch->source !== null && self::pointsBackInto($branch, $above),
+        ));
+
+        if (count($found) !== 1) {
+            return null;
+        }
+
+        $label = '`'.$segment.'`';
+        $others = $written->allOf;
+        unset($others[$found[0]]);
+        $rest = new Schema(...[...get_object_vars($written), 'allOf' => array_values($others), 'name' => null, 'source' => null, 'ignored' => []]);
+        $beside = AllOfMerger::merge($rest, $this->identity, $label);
+
+        return [AllOfMerger::merge($written->allOf[$found[0]], $this->identity, $label), $beside == new Schema ? null : $beside];
+    }
+
+    /**
+     * Whether a recursion marker aimed at one of these positions is written anywhere in a schema.
+     *
+     * @param  list<string>  $positions
+     */
+    private static function pointsBackInto(Schema $schema, array $positions): bool
+    {
+        if ($schema->recursesTo !== null) {
+            return in_array($schema->recursesTo, $positions, true);
         }
 
         foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
-            self::collect($child, $inside, $targets);
+            if (self::pointsBackInto($child, $positions)) {
+                return true;
+            }
         }
+
+        return false;
+    }
+
+    /**
+     * How a class named after a schema says so. One wording for the root and the nested use, so the class reads the
+     * same whichever the walk reached first.
+     */
+    private static function namedAfter(string $name, string $position): string
+    {
+        return sprintf(
+            'Class name taken from the schema `%s`, written at `%s`. Every operation reaching that '
+                .'schema shares this type.',
+            $name,
+            $position,
+        );
     }
 
     /**
