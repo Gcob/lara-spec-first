@@ -317,7 +317,8 @@ final readonly class FormRequestEmitter
         foreach ($set->rules as $key => $rules) {
             $lines[] = sprintf(
                 '            %s => [%s],',
-                $this->literal($key),
+                // Cast: PHP turned a key like "2024" into an integer on the way in.
+                $this->literal((string) $key),
                 implode(', ', array_map($this->rule(...), $rules)),
             );
         }

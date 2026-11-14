@@ -1047,3 +1047,26 @@ it('validates a body that names properties without saying type: object', functio
         ->and(statusForBuiltRules($body, []))->toBe(422)
         ->and(statusForBuiltRules($body, ['name' => 5]))->toBe(422);
 });
+
+// PHP turns the array key "2024" into an integer, and the emitter wrote every rule
+// key through a `string` parameter: the build crashed on a legal property name.
+it('builds and runs a request for a property named like an integer', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/years'),
+        operationId: 'createYear',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['2024' => new Schema(types: [SchemaType::String]), 'name' => new Schema(types: [SchemaType::String])],
+            required: ['2024'],
+            additionalProperties: false,
+        )], true),
+    ));
+
+    expect(sendThroughEmitted($class, 'POST', json: ['2024' => 'a', 'name' => 'Ada']))
+        ->toBe([200, [2024 => 'a', 'name' => 'Ada']])
+        ->and(sendThroughEmitted($class, 'POST', json: ['name' => 'Ada'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', json: ['2024' => 5])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', json: ['2024' => 'a', 'extra' => 1])[0])->toBe(422);
+});
