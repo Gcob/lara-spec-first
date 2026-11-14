@@ -409,6 +409,8 @@ final readonly class RuleSetBuilder
         // A form delivers a name PHP rewrote, so a closed root names the name it
         // receives. A body that is JSON too keeps the one the contract writes beside it.
         $closed = [];
+        $heads = [];
+        $accepted = [];
 
         foreach (array_keys($schema->properties) as $name) {
             $name = (string) $name;
@@ -425,9 +427,38 @@ final readonly class RuleSetBuilder
                 $closed[] = $name;
             }
 
-            if ($delivered !== null) {
-                $closed[] = $delivered;
+            if ($delivered === null) {
+                continue;
             }
+
+            $closed[] = $delivered;
+
+            // Below the head, a bracketed name's own key is what the contract declares. A form-only
+            // body closes the head to those keys; the rest accepts the head as a key of its own.
+            $path = $walk->formPaths[$name] ?? null;
+
+            if ($path !== null && count($path) > 1 && ! str_contains($path[1], ',')) {
+                $heads[$delivered][] = $path[1];
+            } else {
+                $accepted[$name] = $delivered;
+            }
+        }
+
+        foreach ($heads as $head => $below) {
+            $walk->rules[self::ruleKey((string) $head)] = ['sometimes', 'array:'.implode(',', array_unique($below))];
+        }
+
+        if ($accepted !== []) {
+            $walk->findings[] = sprintf(
+                'The body is closed to its declared names, but a form delivers %s, so the key check accepts %s, which '
+                    .'a client can also send as a key the contract does not declare, and nothing tells the two apart.',
+                self::enumerate(array_map(
+                    static fn (string $name, string $delivered): string => '`'.$name.'` as `'.$delivered.'`',
+                    array_keys($accepted),
+                    $accepted,
+                )),
+                self::list(array_values(array_unique($accepted))),
+            );
         }
 
         return array_values(array_unique($closed));
@@ -1751,6 +1782,22 @@ final readonly class RuleSetBuilder
                 $name,
             )
             : null;
+    }
+
+    /**
+     * Phrases already quoted, in a sentence, with the separator English uses.
+     *
+     * @param  list<string>  $items
+     */
+    private static function enumerate(array $items): string
+    {
+        if (count($items) < 2) {
+            return implode('', $items);
+        }
+
+        $last = array_pop($items);
+
+        return implode(', ', $items).' and '.$last;
     }
 
     /**

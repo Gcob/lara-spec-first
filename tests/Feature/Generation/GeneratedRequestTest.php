@@ -1151,6 +1151,18 @@ it('closes a form body to the names PHP delivers', function (): void {
         ->and(sendThroughEmitted($class, 'POST', parameters: ['extra' => 1] + $sent)[0])->toBe(422);
 });
 
+// The closed root accepts the key PHP gives a name, which for `page[size]` is `page`: the head is
+// closed on its own rule to the keys the contract declares below it.
+it('refuses what lands under a bracketed name\'s head in a closed form body', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithRewrittenNames([$mediaType], closed: true));
+    $sent = ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x'];
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3']] + $sent)[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3', 'evil' => '1']] + $sent)[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['evil' => '1']] + $sent)[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => 'abc'] + $sent)[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
 // A valid value reaches the DTO under the name the contract writes, which the validated payload
 // holds under the name PHP delivered.
 it('builds the DTO of a form body from the names PHP delivered', function (string $mediaType): void {

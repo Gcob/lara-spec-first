@@ -1431,6 +1431,60 @@ it('says once which dependency a trigger without a rule loses', function (): voi
         ->and(implode("\n", $set->findings))->toContain('`a b` would make `email` required');
 });
 
+// The closed root accepts the head PHP delivers a bracketed name under, so the head gets a rule of
+// its own that closes it to the keys the contract declares below it.
+it('closes the head of a bracketed name in a closed form body', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'page[size]' => new Schema(types: [SchemaType::Integer]),
+            'page[number]' => new Schema(types: [SchemaType::Integer]),
+            'q' => new Schema(types: [SchemaType::String]),
+        ],
+        additionalProperties: false,
+    )]));
+
+    expect($set->rules['page'])->toBe(['sometimes', 'array:size,number'])
+        ->and($set->closedKeys)->toBe(['page', 'q'])
+        ->and(implode("\n", $set->findings))->not->toContain('closed to its declared names');
+});
+
+it('leaves the head of a bracketed name open when the body is open', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        ['page[size]' => new Schema(types: [SchemaType::Integer])],
+    )]));
+
+    expect(array_keys($set->rules))->toBe(['page.size']);
+});
+
+// `user.name` and `user_name` are one key once PHP has delivered them, so the closed root takes the
+// second for the first, and the file says so.
+it('says what a closed form body accepts that the contract does not', function (array $media): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: ['user.name' => new Schema(types: [SchemaType::String]), 'plain' => new Schema(types: [SchemaType::String])],
+        additionalProperties: false,
+    );
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $schema)));
+
+    expect(implode("\n", $set->findings))
+        ->toContain('The body is closed to its declared names, but a form delivers `user.name` as `user_name`')
+        ->toContain('so the key check accepts `user_name`');
+})->with([
+    'a form' => [['multipart/form-data']],
+    'JSON and a form' => [['application/json', 'multipart/form-data']],
+]);
+
+it('says nothing of a closed body whose names PHP leaves alone', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['plain' => new Schema(types: [SchemaType::String])],
+        additionalProperties: false,
+    )]));
+
+    expect(implode("\n", $set->findings))->not->toContain('closed to its declared names');
+});
+
 it('closes a form body to the name PHP gives a key, and a mixed body to both', function (): void {
     $schema = new Schema(
         types: [SchemaType::Object],

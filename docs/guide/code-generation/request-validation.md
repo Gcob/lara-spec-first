@@ -141,7 +141,11 @@ in `dependentRequired` under the key it arrives as. **The generated `dto()` puts
 name** before `from()` reads it, from a `FORM_NAMES` constant in the request, so a valid value reaches the DTO and the
 DTO's properties stay the contract's, one class serving a JSON body and a nested use as well. `validated()` is left as
 Laravel returns it, with `user_name`. **A closed body accepts the name PHP gives the key**, and beside it the one the
-contract writes when the body is also JSON.
+contract writes when the body is also JSON. For a bracketed name that key is the head (`page` for `page[size]`), and a
+body read only as a form closes the head with its own rule, `'page' => ['sometimes', 'array:size']`, so `page[evil]=1`
+and `page=abc` are refused as the contract refuses them. For a name with no bracket (`user.name`), nothing tells
+`user_name` apart from it: the key check accepts a `user_name` the contract does not declare, and the generated file
+says so, as it does for a bracketed name in a body that is JSON too, whose head is not closed.
 
 **Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
 as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), so
