@@ -216,7 +216,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced);
     }
 
     /**
@@ -361,14 +361,12 @@ final readonly class RuleSetBuilder
         // body's own schema — an `enum` is the one a real contract writes there
         // — is read and enforced by nothing, and an empty findings list makes
         // the generated file claim the opposite.
-        $walk->findings = [
-            ...$walk->findings,
-            ...self::unhandled(
-                'The body itself',
-                $schema,
-                ['type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf'],
-            ),
-        ];
+        self::reportUnhandled(
+            $walk,
+            'The body itself',
+            $schema,
+            ['type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf'],
+        );
 
         self::planFormNames($schema, $walk);
 
@@ -616,7 +614,7 @@ final readonly class RuleSetBuilder
             // reads `required` on a `readOnly` property as a promise about
             // responses. Its other rules still judge it when it is sent.
             if ($asked !== 'sometimes' && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`')) {
-                $walk->findings[] = self::readOnlyFinding('`'.$prefix.$name.'`');
+                self::reportReadOnly($walk, '`'.$prefix.$name.'`');
                 $asked = 'sometimes';
             }
 
@@ -864,7 +862,7 @@ final readonly class RuleSetBuilder
                         }
 
                         if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
-                            $walk->findings[] = self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`');
+                            self::reportReadOnly($walk, rtrim($label, '`').'.'.$name.'`');
 
                             continue;
                         }
@@ -940,7 +938,7 @@ final readonly class RuleSetBuilder
             );
         }
 
-        $walk->findings = [...$walk->findings, ...self::unhandled($label, $schema, $handled)];
+        self::reportUnhandled($walk, $label, $schema, $handled);
     }
 
     /**
@@ -953,9 +951,13 @@ final readonly class RuleSetBuilder
         return AllOfMerger::merge($property, $walk->identity, $label)->readOnly;
     }
 
-    private static function readOnlyFinding(string $label): string
+    /**
+     * `readOnly` is `Partial` because of exactly this: the one constraint of a required property it drops.
+     */
+    private static function reportReadOnly(RuleWalk $walk, string $label): void
     {
-        return sprintf(
+        $walk->leaveUnenforced('readOnly', $label);
+        $walk->findings[] = sprintf(
             '%s is `readOnly` and required. `required` on a `readOnly` property applies to responses '
                 .'only: 3.0 states it, and a 3.1 document is read the same way (3.1 defers to JSON Schema, '
                 .'where `readOnly` is an annotation). So a request does not have to carry it and no '
@@ -1090,6 +1092,7 @@ final readonly class RuleSetBuilder
                 $label,
                 $mediaType,
             );
+            $walk->leaveUnenforced('contentMediaType', $label);
         } elseif ($mediaType !== '' && ! in_array($mediaType, ['application/octet-stream', '*/*'], true)) {
             $rules[] = 'mimetypes:'.$mediaType;
             // The one stricter-than-the-contract case here, and the exception the principle
@@ -1166,6 +1169,7 @@ final readonly class RuleSetBuilder
                     $label,
                     $schema->format,
                 );
+                $walk->leaveUnenforced('format', $label);
             }
 
             $handled[] = 'format';
@@ -1182,6 +1186,7 @@ final readonly class RuleSetBuilder
                     $label,
                     $translation->reason,
                 );
+                $walk->leaveUnenforced('pattern', $label);
             }
 
             $handled[] = 'pattern';
@@ -1346,22 +1351,27 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * What one field states that none of its rules carries.
+     * What one field states that none of its rules carries, as a finding and as the keywords it names.
      *
      * @param  list<string>  $handled  the keywords the walk acted on for this field, whether by a rule or by a finding
      *                                 of its own
-     * @return list<string>
      */
-    private static function unhandled(string $label, Schema $schema, array $handled): array
+    private static function reportUnhandled(RuleWalk $walk, string $label, Schema $schema, array $handled): void
     {
         $keywords = array_values(array_filter(
             self::RULE_KEYWORDS,
             static fn (string $keyword): bool => ! in_array($keyword, $handled, true) && self::states($schema, $keyword),
         ));
 
-        return $keywords === []
-            ? []
-            : [sprintf('%s states %s, which nothing in this rule set enforces.', $label, self::list($keywords))];
+        if ($keywords === []) {
+            return;
+        }
+
+        $walk->findings[] = sprintf('%s states %s, which nothing in this rule set enforces.', $label, self::list($keywords));
+
+        foreach ($keywords as $keyword) {
+            $walk->leaveUnenforced($keyword, $label);
+        }
     }
 
     /**

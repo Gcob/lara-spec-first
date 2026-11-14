@@ -1660,3 +1660,92 @@ it('closes a form body to the name PHP gives a key, and a mixed body to both', f
         ->and(RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, 'multipart/form-data' => $schema]))->closedKeys)
         ->toBe(['user.name', 'user_name', 'plain']);
 });
+
+// --- What a translated keyword leaves unenforced, as data ---
+
+// The doctor reports these per operation, and it cannot read them out of the
+// prose in `findings`: that list also carries what was merely worth saying (two
+// media types over one schema, a stricter-than-the-contract note), which must
+// never gate an exit code. So the keyword and the field are recorded beside the
+// sentence, and only for the four ways a keyword the rule set reads comes out
+// unenforced.
+it('names the keyword and the field for each way a read keyword is left unenforced', function (
+    array $content,
+    array $query,
+    array $expected,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query));
+
+    expect($set->unenforced)->toBe($expected);
+})->with([
+    'a format no Laravel rule means the same as' => [
+        ['application/json' => objectSchema(['website' => new Schema(types: [SchemaType::String], format: 'uri')])],
+        [],
+        ['format' => ['`website`']],
+    ],
+    'a format on a number, which nothing reads' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Integer], format: 'int64')])],
+        [],
+        ['format' => ['`count`']],
+    ],
+    'a pattern across the ECMA-262 / PCRE boundary' => [
+        ['application/json' => objectSchema(['code' => new Schema(types: [SchemaType::String], pattern: '^\d+$')])],
+        [],
+        ['pattern' => ['`code`']],
+    ],
+    'a content media type no rule can match' => [
+        ['multipart/form-data' => objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'text/csv')])],
+        [],
+        ['contentMediaType' => ['`doc`']],
+    ],
+    'a keyword the walk reached no rule for, on the body itself' => [
+        ['application/json' => new Schema(types: [SchemaType::Object], enum: [[]])],
+        [],
+        ['enum' => ['The body itself']],
+    ],
+    'a keyword on a query parameter' => [
+        [],
+        [new QueryParameter('sort', new Schema(types: [SchemaType::String], format: 'duration'))],
+        ['format' => ['`sort`']],
+    ],
+    'required on a readOnly property' => [
+        ['application/json' => objectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id'])],
+        [],
+        ['readOnly' => ['`id`']],
+    ],
+]);
+
+it('lists every field one keyword is unenforced on, once each, in the order they are met', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'website' => new Schema(types: [SchemaType::String], format: 'uri'),
+        'tags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String], format: 'uri')),
+        'age' => new Schema(types: [SchemaType::Integer], minimum: 1.0),
+    ])]));
+
+    expect($set->unenforced)->toBe(['format' => ['`website`', '`tags`[]']]);
+});
+
+// The sentence a reader opens the generated file for is not the data the doctor
+// gates on. A body over two media types, a closed body a form cannot close and a
+// `query` array whose serialization is not read are all worth a line and none is
+// a keyword the contract wrote that nothing enforces.
+it('records nothing for a finding that is information rather than an unenforced keyword', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: [
+            'application/json' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
+            'multipart/form-data' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
+        ],
+        query: [new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])))],
+    ));
+
+    expect($set->findings)->not->toBe([])
+        ->and($set->unenforced)->toBe([]);
+});
+
+it('records nothing for a keyword that became a rule', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'email' => new Schema(types: [SchemaType::String], format: 'email', pattern: '^[a-z]+$', maxLength: 10),
+    ])]));
+
+    expect($set->unenforced)->toBe([]);
+});

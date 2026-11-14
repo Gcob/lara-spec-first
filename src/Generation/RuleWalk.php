@@ -26,6 +26,15 @@ final class RuleWalk
     public array $findings = [];
 
     /**
+     * Each keyword the walk read and enforced nothing for, by the fields it was left unenforced on: a keyword mapped to
+     * the labels of those fields, in the order they were met. The data behind the findings that are about a keyword,
+     * and none of the ones that are only worth saying.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $unenforced = [];
+
+    /**
      * Whether `multipart/form-data` is the only media type the rule set is read from, which is the one body a part can
      * be a file in.
      */
@@ -117,6 +126,16 @@ final class RuleWalk
      * once however many parts it has.
      */
     public bool $phpUploadNamed = false;
+
+    /**
+     * Record that a keyword was read on a field and nothing enforces it, once per field.
+     */
+    public function leaveUnenforced(string $keyword, string $label): void
+    {
+        if (! in_array($label, $this->unenforced[$keyword] ?? [], true)) {
+            $this->unenforced[$keyword][] = $label;
+        }
+    }
 
     /**
      * @param  string  $identity  the operation's label, for a refusal's message
