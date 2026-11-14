@@ -180,6 +180,12 @@ final readonly class RuleSetBuilder
 
             $key = self::ruleKey($parameter->name);
 
+            if (isset($walk->formHeads[$parameter->name])) {
+                $bodyName = $walk->formHeads[$parameter->name][0];
+
+                throw ConflictingInputException::deliveredFieldDeclaredTwice($operation->label(), $bodyName, $parameter->name, $parameter->name);
+            }
+
             if (isset($walk->rules[$key])) {
                 throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
             }
@@ -1557,6 +1563,14 @@ final readonly class RuleSetBuilder
 
         foreach ($names as $name) {
             $paths[$name] = self::deliveredPath($name);
+        }
+
+        foreach ($names as $name) {
+            $head = $paths[$name][0] ?? null;
+
+            if ($head !== null && self::phpRewrites($name)) {
+                $walk->formHeads[$head][] = $name;
+            }
         }
 
         if ($walk->mixedBody) {

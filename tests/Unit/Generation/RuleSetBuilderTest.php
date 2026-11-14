@@ -306,6 +306,36 @@ it('refuses a name declared by both the body and a query parameter', function ()
     )))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
 });
 
+// A form delivers `page[size]` below `page` and `user.name` as `user_name`, so a query parameter
+// with that name is the same key to Laravel, and validationData() drops the body's copy of it.
+it('refuses a query parameter named like the key a form delivers a body name under', function (array $media, string $body, string $query, string $delivered): void {
+    $schema = objectSchema([$body => new Schema(types: [SchemaType::Integer])], [$body]);
+    $build = fn () => RuleSetBuilder::for(operationWithInput(
+        content: array_fill_keys($media, $schema),
+        query: [new QueryParameter($query, new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect($build)->toThrow(ConflictingInputException::class, sprintf(
+        'declares "%s" as a property of its request body, which a form delivers as "%s", and "%s" as a `query` parameter',
+        $body,
+        $delivered,
+        $query,
+    ));
+})->with([
+    'a bracketed name, form only' => [['application/x-www-form-urlencoded'], 'page[size]', 'page', 'page'],
+    'a dotted name, form only' => [['multipart/form-data'], 'user.name', 'user_name', 'user_name'],
+    'a dotted name, JSON and form' => [['application/json', 'multipart/form-data'], 'user.name', 'user_name', 'user_name'],
+]);
+
+it('leaves a dotted body name beside a query parameter alone when the body is JSON only', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['user.name' => new Schema(types: [SchemaType::String])])],
+        query: [new QueryParameter('user_name', new Schema(types: [SchemaType::String]))],
+    ));
+
+    expect(array_keys($set->rules))->toBe(['user\\.name', 'user_name']);
+});
+
 it('refuses two read media types describing two different shapes', function (): void {
     expect(fn () => RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),

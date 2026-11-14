@@ -84,6 +84,15 @@ final class RuleWalk
     public array $deliveredKeys = [];
 
     /**
+     * Each top-level contract name PHP rewrites, grouped by the top-level key a form delivers it
+     * under (`page[size]` under `page`), whether or not it has a rule. A `query` parameter of that
+     * name reaches Laravel as the same key.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $formHeads = [];
+
+    /**
      * The top-level names whose value the request cannot check when a form sends it, by
      * the reason, worded to follow "the request cannot check it in a form body: ".
      *

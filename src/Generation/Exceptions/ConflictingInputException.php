@@ -42,6 +42,26 @@ final class ConflictingInputException extends InvalidArgumentException implement
     }
 
     /**
+     * A body name a form delivers under another key, and a query parameter that is that key.
+     *
+     * PHP rewrites a top-level name of a form body (`user.name` arrives as `user_name`,
+     * `page[size]` below `page`), so the query parameter and the body name are one key by the
+     * time Laravel reads them, and the same two reasons as {@see self::fieldDeclaredTwice()} hold.
+     */
+    public static function deliveredFieldDeclaredTwice(string $identity, string $bodyName, string $delivered, string $queryName): self
+    {
+        return new self(sprintf(
+            'The operation "%s" declares "%s" as a property of its request body, which a form delivers as "%s", '.
+            'and "%s" as a `query` parameter. PHP rewrites the body name before Laravel sees it, so the two '.
+            'arrive under one key, and one rule key cannot carry both sets of constraints. Rename one of them.',
+            $identity,
+            $bodyName,
+            $delivered,
+            $queryName
+        ));
+    }
+
+    /**
      * Two media types this package reads, over two different schemas.
      *
      * Two media types over *one* schema are not a conflict and produce one rule

@@ -266,6 +266,12 @@ sets competing for one key, and the build would be choosing which half of the co
 the same shape as
 [two `x-controller` values reducing to one parent](../controllers.md#the-contract-decides-what-is-customizable).
 
+**The name that counts is the one Laravel reads, so a form body's delivered name is compared too.** A body read as a
+form delivers `user.name` as `user_name` and `page[size]` below `page`, so a `query` parameter named `user_name`, or
+`page`, is the same key as that body property and is refused the same way. The message names the body's name, the key a
+form delivers it as, and the parameter. A body that is JSON only keeps `user.name` as written, and `user_name` beside it
+is two names.
+
 **Path-item parameters merge with the operation's, and the operation wins on a name they share.** That is OpenAPI's own
 rule, not one this package invents, and it is a merge rather than a collision.
 
