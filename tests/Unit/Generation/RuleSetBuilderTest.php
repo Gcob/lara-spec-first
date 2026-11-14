@@ -12,6 +12,7 @@ use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 
 /*
  * One rule set, asserted rule by rule.
@@ -64,7 +65,7 @@ function operationWithInput(
  *
  * @param  array<string, Schema>  $properties
  * @param  list<string>  $required
- * @return array<string, list<string|InRule>>
+ * @return array<string, list<string|InRule|NullOrAbsent>>
  */
 function rulesFor(array $properties, array $required = [], string $method = 'post'): array
 {
@@ -458,7 +459,7 @@ it('reports a media type it does not read rather than refusing it', function ():
 /**
  * The rules one field gets, alone in an otherwise empty object body.
  *
- * @return list<string|InRule>
+ * @return list<string|InRule|NullOrAbsent>
  */
 function fieldRules(Schema $field): array
 {
@@ -934,7 +935,7 @@ it('reports a body whose own schema is not an object', function (): void {
  * The rules and findings of one multipart property.
  *
  * @param  array<int, string>  $mediaTypes
- * @return array{0: array<string, list<string|InRule>>, 1: string}
+ * @return array{0: array<string, list<string|InRule|NullOrAbsent>>, 1: string}
  */
 function filePartRules(Schema $part, bool $required = true, array $mediaTypes = ['multipart/form-data'], string $method = 'post'): array
 {
@@ -1896,11 +1897,11 @@ it('records nothing for a keyword that became a rule', function (): void {
 /**
  * `Address`, which holds one `Address` as `parent`, the way a component that refers to itself reaches the rule set.
  */
-function recursiveAddress(?int $maxDepth = null, bool $parentRequired = false): Schema
+function recursiveAddress(?int $maxDepth = null, bool $parentRequired = false, bool $nullable = false): Schema
 {
     return new Schema(
         name: 'Address',
-        types: [SchemaType::Object],
+        types: $nullable ? [SchemaType::Object, SchemaType::Null] : [SchemaType::Object],
         properties: [
             'city' => new Schema(types: [SchemaType::String]),
             'parent' => Schema::recursion('#/components/schemas/Address', 'Address'),
@@ -1965,6 +1966,43 @@ it('asks for nothing but the absence of the recursive field at the cut', functio
     expect($cutAtOnce->rules['parent'])->toBe(['missing'])
         ->and($cutBelow->rules['parent'])->toBe(['present', 'array', 'required_array_keys:parent'])
         ->and($cutBelow->rules['parent.parent'])->toBe(['missing']);
+});
+
+// A schema that allows `null` allows it at the cut as well, and nothing else: no Laravel rule says "null or absent"
+// (`missing` refuses `null`, `prohibited` lets `""` and `[]` through), so the field carries the package's own.
+// What the contract asks of the key stays beside it.
+it('lets a nullable recursive field be null at the cut and nothing else', function (): void {
+    $optional = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 1,
+        nullable: true,
+    )]));
+    $required = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 0,
+        parentRequired: true,
+        nullable: true,
+    )]));
+
+    expect($optional->rules['parent.parent'])->toEqual(['sometimes', new NullOrAbsent])
+        ->and($required->rules['parent'])->toEqual(['present', new NullOrAbsent]);
+});
+
+it('reads the rule at a list element cut as the rule alone', function (): void {
+    $node = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object, SchemaType::Null],
+        properties: [
+            'children' => new Schema(
+                types: [SchemaType::Array],
+                items: Schema::recursion('#/components/schemas/Node', 'Node'),
+            ),
+        ],
+        maxDepth: 1,
+        source: '#/components/schemas/Node',
+    );
+
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]));
+
+    expect($set->rules['children.*.children.*'])->toEqual([new NullOrAbsent]);
 });
 
 it('unrolls a recursion through a list element', function (): void {

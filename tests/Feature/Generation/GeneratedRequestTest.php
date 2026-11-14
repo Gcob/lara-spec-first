@@ -14,6 +14,7 @@ use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
+use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
@@ -133,14 +134,14 @@ it('hands a boolean query parameter to validated() as the string it was sent', f
  * The emitter writes an `InRule` as `Rule::in([...])`; the validator needs the framework's object, so the same
  * translation happens here.
  *
- * @param  array<string, list<string|InRule>>  $built
+ * @param  array<string, list<string|InRule|NullOrAbsent>>  $built
  * @return array<string, list<mixed>>
  */
 function frameworkRules(array $built): array
 {
     return array_map(
         static fn (array $list): array => array_map(
-            static fn (string|InRule $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
+            static fn (string|InRule|NullOrAbsent $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
             $list,
         ),
         $built,
@@ -223,6 +224,68 @@ it('refuses an empty string for a non-nullable string, because Laravel turns it 
     );
 
     expect(statusForBuiltRules($body, ['title' => '']))->toBe(422);
+});
+
+/**
+ * A schema that holds one of itself as `next`, nullable or not, required or not, validated one level deep.
+ */
+function chain(bool $nullable, bool $required): Schema
+{
+    return new Schema(
+        name: 'Chain',
+        types: $nullable ? [SchemaType::Object, SchemaType::Null] : [SchemaType::Object],
+        properties: ['next' => Schema::recursion('#/components/schemas/Chain', 'Chain')],
+        required: $required ? ['next'] : [],
+        maxDepth: 1,
+        source: '#/components/schemas/Chain',
+    );
+}
+
+// Below the depth a field is what the contract allows and the request still can't validate: absent, or `null` when
+// the schema says so. Sent through the rules the builder emits, level 1 is `next`, and `next.next` is the cut.
+it('accepts at the depth a field that is absent, or null when the schema is nullable', function (array $payload): void {
+    expect(statusForBuiltRules(chain(nullable: true, required: false), $payload))->toBe(200);
+})->with([
+    'absent' => [['next' => []]],
+    'null' => [['next' => ['next' => null]]],
+    'nothing at all' => [[]],
+]);
+
+// The case `missing` broke: the last validated level writes `"next": null`, which the contract allows when it
+// asks for the key and allows `null`.
+it('lets the last validated level of a required nullable recursion end in null', function (): void {
+    $chain = chain(nullable: true, required: true);
+
+    expect(statusForBuiltRules($chain, ['next' => ['next' => null]]))->toBe(200)
+        ->and(statusForBuiltRules($chain, ['next' => null]))->toBe(200)
+        ->and(statusForBuiltRules($chain, ['next' => []]))->toBe(422);
+});
+
+it('refuses anything else at the depth, whether or not the schema is nullable', function (bool $nullable, mixed $value): void {
+    $payload = ['next' => ['next' => $value]];
+
+    expect(statusForBuiltRules(chain($nullable, required: false), $payload))->toBe(422);
+})->with([
+    'a nullable one, an empty list' => [true, []],
+    'a nullable one, an empty object' => [true, new stdClass],
+    'a nullable one, a string' => [true, 'x'],
+    'a nullable one, a full object' => [true, ['next' => null]],
+    'a non-nullable one, an empty list' => [false, []],
+    'a non-nullable one, an empty object' => [false, new stdClass],
+    'a non-nullable one, a string' => [false, 'x'],
+    'a non-nullable one, a full object' => [false, ['next' => null]],
+    'a non-nullable one, null' => [false, null],
+]);
+
+it('lets a non-nullable recursive field be absent at the depth', function (): void {
+    expect(statusForBuiltRules(chain(nullable: false, required: false), ['next' => []]))->toBe(200);
+});
+
+// Laravel's `ConvertEmptyStringsToNull` runs before any rule, so `""` reaches the rules as `null`: a nullable field
+// takes it for the `null` it allows, and a non-nullable one refuses it like any other value.
+it('reads an empty string at the depth as the null Laravel turns it into', function (): void {
+    expect(statusForBuiltRules(chain(nullable: true, required: false), ['next' => ['next' => '']]))->toBe(200)
+        ->and(statusForBuiltRules(chain(nullable: false, required: false), ['next' => ['next' => '']]))->toBe(422);
 });
 
 /*

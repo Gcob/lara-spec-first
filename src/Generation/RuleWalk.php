@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 
 /**
  * What one walk over an operation's input has produced so far.
@@ -18,7 +19,7 @@ use Gcob\LaraSpecFirst\Contract\Schema;
 final class RuleWalk
 {
     /**
-     * @var array<string, list<string|InRule>>
+     * @var array<string, list<string|InRule|NullOrAbsent>>
      */
     public array $rules = [];
 
@@ -147,10 +148,11 @@ final class RuleWalk
 
     /**
      * Each recursive schema the walk had to cut at its depth, by its position: the name it is reported under, the depth
-     * it was cut at, whether the schema stated it, and the rule keys that refuse what is below, in the order they were
-     * met. One finding is written for each, once the walk is over, because only then is the count known.
+     * it was cut at, whether the schema stated it, whether it allows `null`, and the rule keys that refuse what is
+     * below, in the order they were met. One finding is written for each, once the walk is over, because only then is
+     * the count known.
      *
-     * @var array<string, array{name: string, depth: int, stated: bool, keys: list<string>}>
+     * @var array<string, array{name: string, depth: int, stated: bool, nullable: bool, keys: list<string>}>
      */
     public array $cuts = [];
 

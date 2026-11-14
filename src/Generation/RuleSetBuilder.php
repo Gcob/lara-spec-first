@@ -11,6 +11,7 @@ use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 
 /**
  * One operation's request body and `query` parameters, as one Laravel rule set.
@@ -799,7 +800,7 @@ final readonly class RuleSetBuilder
         // so `null` is allowed only when both allow it: `type: [string, null]`
         // with `enum: [a]` refuses it, and so does `type: string` with
         // `enum: [a, null]`. A field stating neither constrains nothing.
-        if (self::allowsNull($schema) && ($schema->types !== [] || $schema->enum !== null)) {
+        if (self::statesNullable($schema)) {
             $rules[] = 'nullable';
         }
 
@@ -1031,11 +1032,16 @@ final readonly class RuleSetBuilder
         $crossed = $walk->crossings[$position] ?? 0;
 
         if ($crossed >= $depth) {
-            $walk->rules[$key] = ['missing'];
+            // A nullable schema allows `null` at the cut and the request still validates nothing below it, so the field
+            // takes the one value the contract allows there. No rule Laravel ships says "null or absent": `missing`
+            // refuses `null`, `prohibited` lets `""` and `[]` through, and `nullable` does not skip an implicit rule.
+            // The presence the contract asks of the key stays beside it, which `missing` could not carry.
+            $walk->rules[$key] = self::statesNullable($ancestor) ? [...$rules, new NullOrAbsent] : ['missing'];
             $walk->cuts[$position] ??= [
                 'name' => $ancestor->name ?? $position,
                 'depth' => $depth,
                 'stated' => $ancestor->maxDepth !== null,
+                'nullable' => self::statesNullable($ancestor),
                 'keys' => [],
             ];
             $walk->cuts[$position]['keys'][] = $key;
@@ -1068,9 +1074,8 @@ final readonly class RuleSetBuilder
             );
 
             $walk->findings[] = sprintf(
-                '`%1$s` recurses, and %2$s. %3$s is `missing` below that, so the field must be absent there: a '
-                    .'payload deeper than that answers 422, an empty value (`null`, `""`, `[]`) included, which the '
-                    .'contract allows. `x-max-depth` on `%1$s` sets the depth.',
+                '`%1$s` recurses, and %2$s. %3$s is %4$s below that: a payload deeper than that answers 422, %5$s '
+                    .'included, which the contract allows. `x-max-depth` on `%1$s` sets the depth.',
                 $cut['name'],
                 $cut['stated']
                     ? sprintf('it states `x-max-depth: %1$d`, so the request validates it %1$d levels deep', $cut['depth'])
@@ -1079,6 +1084,8 @@ final readonly class RuleSetBuilder
                         $cut['depth'],
                     ),
                 $where,
+                $cut['nullable'] ? '`NullOrAbsent` (the field must be absent, or `null`)' : '`missing` (the field must be absent)',
+                $cut['nullable'] ? 'any other value, an empty one (`""`, `[]`) among them,' : 'an empty value (`null`, `""`, `[]`)',
             );
         }
     }
@@ -1207,7 +1214,7 @@ final readonly class RuleSetBuilder
      * **`maxLength` is bytes and `max` is kilobytes, and the ceiling is exact.** Laravel's `max` takes a decimal, so
      * 2500 bytes is `max:2.44140625`.
      *
-     * @param  list<string|InRule>  $rules
+     * @param  list<string|InRule|NullOrAbsent>  $rules
      * @param  list<string>  $handled
      *
      * @see docs/guide/uploads.md — "The schema names the file part"
@@ -1285,7 +1292,7 @@ final readonly class RuleSetBuilder
     /**
      * What a string's own keywords become.
      *
-     * @param  list<string|InRule>  $rules
+     * @param  list<string|InRule|NullOrAbsent>  $rules
      * @param  list<string>  $handled
      */
     private static function stringRules(Schema $schema, string $label, array &$rules, array &$handled, RuleWalk $walk): void
@@ -1337,7 +1344,7 @@ final readonly class RuleSetBuilder
      * Beside `integer` or `numeric`, `min` and `max` compare the value, and `gt` and `lt` take a number as readily as a
      * field name.
      *
-     * @param  list<string|InRule>  $rules
+     * @param  list<string|InRule|NullOrAbsent>  $rules
      * @param  list<string>  $handled
      */
     private static function numberRules(Schema $schema, array &$rules, array &$handled): void
@@ -1372,7 +1379,7 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * @param  list<string|InRule>  $rules
+     * @param  list<string|InRule|NullOrAbsent>  $rules
      */
     private static function bound(int|float|null $value, string $rule, array &$rules): void
     {
@@ -1429,6 +1436,15 @@ final readonly class RuleSetBuilder
     public static function breaksKeyList(string $name): bool
     {
         return str_contains($name, ',') || str_contains($name, '.');
+    }
+
+    /**
+     * Whether the schema states something and `null` satisfies it: the `nullable` rule's condition. A field stating
+     * neither a type nor an enumeration constrains nothing, so there is nothing for `null` to be an exception to.
+     */
+    private static function statesNullable(Schema $schema): bool
+    {
+        return self::allowsNull($schema) && ($schema->types !== [] || $schema->enum !== null);
     }
 
     /**

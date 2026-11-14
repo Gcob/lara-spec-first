@@ -28,12 +28,12 @@ tags: [versions, conventions, planning]
   itself (a tree, a comment thread, an `Address` holding an `Address`) used to stop at the point it repeated, so
   `parent: "oops"` passed and nothing below the first repeat was checked. The generated request now unrolls the
   recursion into the depth the schema states with `x-max-depth` (three when it states none), validates every level, and
-  requires the field below the last one to be absent (`missing`), an empty value there included. **A request that
-  answered 200 before may now answer 422**: a payload with a wrong value in a recursive node, and a payload nested
-  deeper than the depth. The first is the contract being enforced, the second is stricter than the contract, which the
-  generated file says in a finding that names `x-max-depth`. A contract whose recursion is deeper than three levels in
-  real traffic states the depth it needs. The rule set grows with the depth: a schema that recurses once per level gets
-  one more copy of its rules for each level.
+  requires the field below the last one to be absent, or `null` when the schema is nullable, and refuses an empty value
+  there otherwise. **A request that answered 200 before may now answer 422**: a payload with a wrong value in a
+  recursive node, and a payload nested deeper than the depth. The first is the contract being enforced, the second is
+  stricter than the contract, which the generated file says in a finding that names `x-max-depth`. A contract whose
+  recursion is deeper than three levels in real traffic states the depth it needs. The rule set grows with the depth: a
+  schema that recurses once per level gets one more copy of its rules for each level.
   [Request validation](./docs/guide/code-generation/request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth).
 - **`spec:doctor` now exits `2` on a request schema that writes an `Ignored` keyword**: `default`, `deprecated`,
   `oneOf`, `anyOf`, `not`, `discriminator`, `minProperties`, `prefixItems` and the rest of the
@@ -83,6 +83,8 @@ rather than one that was missing, and nothing downstream failed to say so.
 - **`x-max-depth`**, the package's first schema-level extension: how many times a payload may re-enter a recursive
   schema. A whole number of zero or more, written on the recursive component and read the same way at 3.0 and 3.1, and
   refused where the document is read when it is anything else. `Contract\Schema` carries it as `maxDepth`.
+- **`Gcob\LaraSpecFirst\Validation\NullOrAbsent`** is public API: a rule a generated request imports for a nullable
+  recursive field below its depth, which accepts an absent key or `null` and nothing else.
 - **`spec:build` emits one `FormRequest` per operation that states anything about its input**, into the `Requests`
   sub-namespace of the generated tree, pruned like every other generated file. The rule set is the request body and the
   `query` parameters merged by field name; the scalar types, nullability and presence are mapped, and every keyword the

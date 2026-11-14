@@ -700,20 +700,33 @@ recursive pair (`Author` holds `Book`s and `Book` holds an `Author`) therefore n
 at `Author`, the pair reads `Author`'s depth, and entered at `Book`, it reads `Book`'s. Each operation unrolls from the
 schema its own body starts at, so the same pair can be validated to two depths by two operations and neither is wrong.
 
-**Below the depth the field must be absent (`missing`), which makes a deeper payload a 422.** The alternatives were to
-stop validating there, which brings back what a typed [input DTO](#the-payload-arrives-as-a-dto) turns into a 500 (a
-`parent: "oops"` below the last rule), or to refuse a contract that states no depth at build time, which turns away a
-contract that is valid. **Not `prohibited`, which is "missing or empty"**: it lets `null`, `""` and `[]` through, and a
-typed DTO would then be built from an empty array. `missing` is the key being absent, so an empty value is refused there
-like any other, and the field carries that rule alone, since a presence rule beside it would contradict it.
+**Below the depth the field must be absent, or `null` when the schema allows it, which makes a deeper payload a 422.**
+The alternatives were to stop validating there, which brings back what a typed
+[input DTO](#the-payload-arrives-as-a-dto) turns into a 500 (a `parent: "oops"` below the last rule), or to refuse a
+contract that states no depth at build time, which turns away a contract that is valid. The rule is chosen by what the
+recursive schema allows:
+
+| The recursive schema | Rules below the depth                             | What passes               | What answers 422                    |
+| -------------------- | ------------------------------------------------- | ------------------------- | ----------------------------------- |
+| Not nullable         | `missing`                                         | The key absent            | `null`, `""`, `[]`, `{}`, any value |
+| Nullable             | The contract's presence rule, then `NullOrAbsent` | The key absent, or `null` | `[]`, `{}`, any other value         |
+
+**Not `prohibited`, which is "missing or empty"**: it lets `null`, `""` and `[]` through, and a typed DTO would then be
+built from an empty array. `missing` is the key being absent, and it carries no presence rule beside it, which would
+contradict it. **A nullable schema needs a rule of the package's own**, `Gcob\LaraSpecFirst\Validation\NullOrAbsent`,
+imported by the generated request the way a generated DTO imports `Optional`: `missing` refuses the `null` the contract
+allows, `prohibited` lets `""` and `[]` through, and `nullable` does not skip an implicit rule, so no rule Laravel ships
+says "null or absent". The class is implicit, so Laravel calls it for an absent key and for `""` too. **What the
+contract asks of the key stays beside it** (`present` for a required one), so the last validated level of a required
+nullable recursion can write `"parent": null` and pass. **Over HTTP `""` is `null` by then**: Laravel's
+`ConvertEmptyStringsToNull` middleware runs before any rule, so a nullable field takes `""` for the `null` it allows and
+a non-nullable one refuses it like any other value. Execution tests pin each cell of the table.
 
 **That is stricter than the contract, and the generated file says so.** A payload five levels deep is valid against a
 schema that states no limit, so this is the exception [the principle](#every-constraint-maps-or-reports) allows when
 matching the contract exactly is far too complex in Laravel, and the one finding of the file names the schema, the depth
-it applied, whether the schema stated it, the first field it refuses and how many more, that an empty value there is
-refused too, and `x-max-depth` as the lever. A recursive field the schema requires cannot be satisfied below the depth:
-its parent asks for the key and `missing` refuses it. A contract that requires its own recursion has no finite payload
-unless the field is nullable, and then this request accepts none either.
+it applied, whether the schema stated it, the first field it refuses and how many more, which rule it carries there, and
+`x-max-depth` as the lever.
 
 **The rules unroll in `RuleSetBuilder`, and the contract's normal form does not change.** A recursion marker still
 carries the position of the schema it points back at (`recursesTo`), and the builder keeps the schemas it is inside of
