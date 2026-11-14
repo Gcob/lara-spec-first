@@ -74,6 +74,7 @@ function describeSchema(?Schema $schema): ?array
         'isFilePart' => $schema->isFilePart,
         'contentMediaType' => $schema->contentMediaType,
         'recursesTo' => $schema->recursesTo,
+        'maxDepth' => $schema->maxDepth,
         'items' => describeSchema($schema->items),
         'allOf' => array_map(describeSchema(...), $schema->allOf),
         'properties' => array_map(describeSchema(...), $schema->properties),

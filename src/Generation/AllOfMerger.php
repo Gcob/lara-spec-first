@@ -124,6 +124,9 @@ final readonly class AllOfMerger
             isFilePart: $a->isFilePart || $b->isFilePart,
             contentMediaType: self::same($a->contentMediaType, $b->contentMediaType, '`contentMediaType`', $refuse),
             recursesTo: $a->recursesTo ?? $b->recursesTo,
+            // Follows the name, as `source` does: a depth belongs to the schema that states it, and a branch's own would
+            // otherwise leak into the component that merely includes it.
+            maxDepth: $a->name !== null ? $a->maxDepth : $b->maxDepth,
         );
     }
 
@@ -304,6 +307,7 @@ final readonly class AllOfMerger
             isFilePart: $schema->isFilePart,
             contentMediaType: $schema->contentMediaType,
             recursesTo: $schema->recursesTo,
+            maxDepth: $schema->maxDepth,
             source: $schema->source,
         );
     }

@@ -1,0 +1,27 @@
+# `x-max-depth` must be a whole number of levels, zero or more. Anything else is
+# refused where the document is read, as the lifecycle extensions are.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /addresses:
+    post:
+      operationId: createAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Address'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Address:
+      type: object
+      x-max-depth: -1
+      properties:
+        parent:
+          $ref: '#/components/schemas/Address'

@@ -65,6 +65,10 @@ final readonly class Schema
      *                                   infinite tree, so it is cut here and named rather than walked. Spelled the way
      *                                   every position is: a bare JSON Pointer for the root document, and
      *                                   `path.yaml#/pointer` for an ancestor written in another file
+     * @param  int|null  $maxDepth  the `x-max-depth` this schema states: how many times a payload may re-enter it
+     *                              through a recursion marker. Null when the document states none, which a generator
+     *                              reads as the package's default. An extension rather than a keyword, so no parser
+     *                              models it and both versions of the document write it the same way
      * @param  array<string, string>  $ignored  each keyword this node writes that the support matrix marks `Ignored`,
      *                                          by the position of the keyword itself, spelled the way every position
      *                                          is. Only this node's own: a keyword written on a child is the child's.
@@ -99,6 +103,7 @@ final readonly class Schema
         public bool $isFilePart = false,
         public ?string $contentMediaType = null,
         public ?string $recursesTo = null,
+        public ?int $maxDepth = null,
         public ?string $source = null,
         public array $ignored = [],
     ) {}

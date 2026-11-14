@@ -100,6 +100,27 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     }
 
     /**
+     * `x-max-depth` carries something that is not a count of levels.
+     *
+     * Refused rather than read as the default, for the reason {@see self::unknownExtensionValue()} gives: a depth
+     * nobody could read would leave the contract saying one thing and the generated request enforcing another.
+     *
+     * @param  string  $pointer  where the schema carrying it is written
+     *
+     * @see docs/guide/code-generation/request-validation.md — "A recursive schema is validated to a stated depth"
+     */
+    public static function extensionNotADepth(string $extension, mixed $written, string $pointer): self
+    {
+        return new self(sprintf(
+            '`%s` on `%s` is %s, and this package reads it as a whole number of levels, zero or more: how many times '.
+            'a payload may re-enter the schema.',
+            $extension,
+            $pointer,
+            is_scalar($written) ? var_export($written, true) : get_debug_type($written)
+        ));
+    }
+
+    /**
      * @param  non-empty-list<string>  $keys
      */
     private static function orList(array $keys): string
