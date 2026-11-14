@@ -6,6 +6,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
@@ -183,7 +184,7 @@ final readonly class RuleSetBuilder
             if (isset($walk->formHeads[$parameter->name])) {
                 $bodyName = $walk->formHeads[$parameter->name][0];
 
-                throw ConflictingInputException::deliveredFieldDeclaredTwice($operation->label(), $bodyName, $parameter->name, $parameter->name);
+                throw ConflictingInputException::deliveredFieldDeclaredTwice($operation->label(), $bodyName, $parameter->name);
             }
 
             if (isset($walk->rules[$key])) {
@@ -374,7 +375,7 @@ final readonly class RuleSetBuilder
         $walk->jsonRoot = $walk->jsonBody;
         $walk->nullableRoot = $schema->isNullable();
         $walk->requiredRoot = $body->required;
-        $walk->rootKey = self::rootKey($schema);
+        $walk->rootKey = self::rootKey($schema, $operation);
 
         // The root goes through the same sweep a field does, minus what the
         // object walk below acts on. Without it a keyword written on the
@@ -413,6 +414,7 @@ final readonly class RuleSetBuilder
         $closed = [];
         $steps = [];
         $accepted = [];
+        $declared = self::declaredNames($schema);
 
         foreach (array_keys($schema->properties) as $name) {
             $name = (string) $name;
@@ -434,6 +436,12 @@ final readonly class RuleSetBuilder
             }
 
             $closed[] = $delivered;
+
+            // A name that collided has its own finding, and the key its value arrives under is a declared name
+            // too, so the contract does not refuse it.
+            if (isset($walk->withheld[$name]) && in_array($delivered, $declared, true)) {
+                continue;
+            }
 
             // Below the head, a bracketed name's own key is what the contract declares: one level of it. A deeper
             // name is not, and the head rule only reads one level.
@@ -475,16 +483,15 @@ final readonly class RuleSetBuilder
 
     /**
      * The key the request's own failures about the body itself are answered on: `body`, unless the
-     * contract has a top-level name that is that, in which case the client could not tell which of
+     * contract has a top-level name that is that, or a `query` parameter (which is merged into the same data), in which case the client could not tell which of
      * the two is wrong, and the same key with `_` in front until none is.
      */
-    private static function rootKey(Schema $schema): string
+    private static function rootKey(Schema $schema, Operation $operation): string
     {
-        $declared = [...array_map('strval', array_keys($schema->properties)), ...$schema->required];
-
-        foreach ($schema->dependentRequired as $trigger => $names) {
-            array_push($declared, (string) $trigger, ...array_map('strval', $names));
-        }
+        $declared = [
+            ...self::declaredNames($schema),
+            ...array_map(static fn (QueryParameter $parameter): string => $parameter->name, $operation->queryParameters),
+        ];
 
         $key = 'body';
 
@@ -493,6 +500,23 @@ final readonly class RuleSetBuilder
         }
 
         return $key;
+    }
+
+    /**
+     * Every top-level name the body's schema writes: its properties, its required list and both sides of a
+     * `dependentRequired`.
+     *
+     * @return list<string>
+     */
+    private static function declaredNames(Schema $schema): array
+    {
+        $declared = [...array_map('strval', array_keys($schema->properties)), ...$schema->required];
+
+        foreach ($schema->dependentRequired as $trigger => $names) {
+            array_push($declared, (string) $trigger, ...array_map('strval', $names));
+        }
+
+        return $declared;
     }
 
     /**
@@ -1448,16 +1472,17 @@ final readonly class RuleSetBuilder
                     .'empty here. Every property is `sometimes`.',
                 self::list($schema->required),
             );
-        } elseif (
-            ! $body->required
-            && $schema->required !== []
-            && count(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required])) === 1
-        ) {
+        } elseif (! $body->required && $schema->required !== []) {
+            $alone = count(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required])) === 1;
+
             $findings[] = sprintf(
-                'The body may be absent entirely while its schema requires %s and declares nothing '
-                    .'else. There is no other key to name, and Laravel cannot tell an absent body from an '
-                    .'empty one, so it is `sometimes`: a body sent as `{}` is accepted.',
+                'The body may be absent entirely while its schema requires %s%s. A rule cannot tell a body sent as '
+                    .'`{}` from one that is not sent, since both leave every key out of the data, so `{}` is accepted, '
+                    .'which the contract refuses.',
                 self::list($schema->required),
+                $alone
+                    ? ' and declares nothing else. There is no other key to name, so it is `sometimes`'
+                    : ', so each is required only when another key of the body is sent',
             );
         }
 
@@ -1622,10 +1647,15 @@ final readonly class RuleSetBuilder
 
         $dependedOn = [];
         $dependent = [];
+        $triggers = [];
 
         foreach ($schema->dependentRequired as $trigger => $names) {
             array_push($dependedOn, (string) $trigger, ...array_map('strval', $names));
             array_push($dependent, ...array_map('strval', $names));
+
+            foreach ($names as $name) {
+                $triggers[(string) $name][] = (string) $trigger;
+            }
         }
 
         $names = array_values(array_filter(
@@ -1740,7 +1770,10 @@ final readonly class RuleSetBuilder
                 }
 
                 $path = $paths[$name];
-                $asked = in_array($name, $schema->required, true) || in_array($name, $dependent, true);
+                $required = in_array($name, $schema->required, true);
+                $when = $required || ! in_array($name, $dependent, true)
+                    ? ''
+                    : ' when '.self::enumerate(array_map(static fn (string $trigger): string => '`'.$trigger.'`', array_values(array_unique($triggers[$name])))).' is sent';
 
                 $walk->unchecked[$name] = 'the body is also JSON, and one rule set cannot hold both the name the contract writes and the one PHP gives it';
                 $walk->findings[] = sprintf(
@@ -1749,11 +1782,11 @@ final readonly class RuleSetBuilder
                         .'so its value is not checked there.%3$s',
                     $name,
                     $path === null ? 'under no name' : 'as `'.self::pathKey($path).'`',
-                    $asked
-                        ? ' The contract requires it, and a presence rule keyed by the JSON name would refuse every '
+                    $required || $when !== ''
+                        ? ' The contract requires it'.$when.', and a presence rule keyed by the JSON name would refuse every '
                             .'form client, so it is not asked for from a JSON client either: one rule set serves both '
-                            .'and `rules()` does not branch on the media type, so a JSON body that leaves it out is '
-                            .'accepted, which the contract refuses.'
+                            .'and `rules()` does not branch on the media type, so a JSON body that '
+                            .($when === '' ? 'leaves it out' : 'sends the trigger and leaves it out').' is accepted, which the contract refuses.'
                         : '',
                 );
 

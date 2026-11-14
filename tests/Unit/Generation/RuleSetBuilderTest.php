@@ -221,6 +221,20 @@ it('says that an empty form is not read as an absent body when the body is requi
     'JSON only, required' => [['application/json'], true, false],
 ]);
 
+// An optional body with two required properties asks each through the other, so `{}` is accepted, and no rule
+// can tell it from an absent body.
+it('says that an optional body requiring two properties accepts an empty object', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(
+            ['a' => new Schema(types: [SchemaType::String]), 'b' => new Schema(types: [SchemaType::String])],
+            ['a', 'b'],
+        )],
+        bodyRequired: false,
+    ));
+
+    expect(implode("\n", $set->findings))->toContain('`{}` is accepted, which the contract refuses');
+});
+
 // --- Query parameters, whose presence is their own and never the method's ---
 
 it('keys a query parameter by its own name and its own required flag', function (): void {
@@ -324,6 +338,17 @@ it('refuses a name declared by both the body and a query parameter', function ()
     )))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
 });
 
+// A `query` parameter is merged into the data the body is validated against, so a key of the body's own
+// failures that is its name would answer for both.
+it('answers on a root key no query parameter has either', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['title' => new Schema(types: [SchemaType::String])])],
+        query: [new QueryParameter('body', new Schema(types: [SchemaType::String]), required: true)],
+    ));
+
+    expect($set->rootKey)->toBe('_body');
+});
+
 // A form delivers `page[size]` below `page` and `user.name` as `user_name`, so a query parameter
 // with that name is the same key to Laravel, and validationData() drops the body's copy of it.
 it('refuses a query parameter named like the key a form delivers a body name under', function (array $media, string $body, string $query, string $delivered): void {
@@ -334,7 +359,7 @@ it('refuses a query parameter named like the key a form delivers a body name und
     ));
 
     expect($build)->toThrow(ConflictingInputException::class, sprintf(
-        'declares "%s" as a property of its request body, which a form delivers as "%s", and "%s" as a `query` parameter',
+        'declares "%s" as a property of its request body, which a form delivers under the key "%s", and "%s" as a `query` parameter',
         $body,
         $delivered,
         $query,
@@ -1476,6 +1501,30 @@ it('says once which dependency a trigger without a rule loses', function (): voi
         ->and(implode("\n", $set->findings))->toContain('`a b` would make `email` required');
 });
 
+// A name that a form client sends under another key loses its presence rule, and the contract asks for it
+// differently when it is required and when only a trigger makes it so.
+it('words what a mixed body loses for a required name and for a dependent one', function (): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'user.name' => new Schema(types: [SchemaType::String]),
+            'a.b' => new Schema(types: [SchemaType::String]),
+            'trigger' => new Schema(types: [SchemaType::String]),
+        ],
+        required: ['user.name'],
+        dependentRequired: ['trigger' => ['a.b']],
+    );
+    $findings = implode("\n", RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $schema,
+        'multipart/form-data' => $schema,
+    ]))->findings);
+
+    expect($findings)->toContain('The contract requires it, and a presence rule')
+        ->and($findings)->toContain('The contract requires it when `trigger` is sent, and a presence rule')
+        ->and(substr_count($findings, 'The contract requires it, and'))->toBe(1)
+        ->and($findings)->toContain('a JSON body that sends the trigger and leaves it out is accepted');
+});
+
 // The closed root accepts the head PHP delivers a bracketed name under, so the head gets a rule of
 // its own that closes it to the keys the contract declares below it.
 it('closes the head of a bracketed name in a closed form body', function (): void {
@@ -1513,6 +1562,22 @@ it('does not close the head of a name bracketed more than once, and says so', fu
     'the deep name alone' => [['filter[created][gte]']],
     // `array:x` would refuse `filter[created][gte]`, which the contract declares.
     'beside a one-level sibling' => [['filter[created][gte]', 'filter[x]']],
+]);
+
+// The collision finding already names both names, and the contract declares the key the other one arrives
+// under, so saying the check accepts a key "the contract does not declare" would be wrong.
+it('does not say a closed body accepts a key it declares, when two names collide', function (array $properties, string $finding): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::String]), array_flip($properties)),
+        additionalProperties: false,
+    )]));
+
+    expect(implode("\n", $set->findings))->not->toContain('closed to its declared names')
+        ->and(implode("\n", $set->findings))->toContain($finding);
+})->with([
+    'a dotted and a plain name' => [['user.name', 'user_name'], 'reach Laravel under one name'],
+    'a bracketed name below a declared one' => [['page', 'page[size]'], 'below the key `page` that `page` uses'],
 ]);
 
 it('leaves the head of a bracketed name open when the body is open', function (): void {

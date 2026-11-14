@@ -48,15 +48,15 @@ final class ConflictingInputException extends InvalidArgumentException implement
      * `page[size]` below `page`), so the query parameter and the body name are one key by the
      * time Laravel reads them, and the same two reasons as {@see self::fieldDeclaredTwice()} hold.
      */
-    public static function deliveredFieldDeclaredTwice(string $identity, string $bodyName, string $delivered, string $queryName): self
+    public static function deliveredFieldDeclaredTwice(string $identity, string $bodyName, string $queryName): self
     {
         return new self(sprintf(
-            'The operation "%s" declares "%s" as a property of its request body, which a form delivers as "%s", '.
+            'The operation "%s" declares "%s" as a property of its request body, which a form delivers under the key "%s", '.
             'and "%s" as a `query` parameter. PHP rewrites the body name before Laravel sees it, so the two '.
             'arrive under one key, and one rule key cannot carry both sets of constraints. Rename one of them.',
             $identity,
             $bodyName,
-            $delivered,
+            $queryName,
             $queryName
         ));
     }

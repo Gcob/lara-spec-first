@@ -148,7 +148,9 @@ name below it has one bracket: a name with two (`filter[created][gte]`) would ha
 `filter[created][lt]=5` pass `array:created`, so such a head stays open, with its neighbours, and the generated file
 says the key check accepts it. For a name with no bracket (`user.name`), nothing tells `user_name` apart from it: the
 key check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a
-bracketed name in a body that is JSON too, whose head is not closed.
+bracketed name in a body that is JSON too, whose head is not closed. A name that collides with another (below) is
+already named by the collision finding, and when the key it arrives under is one the contract declares, the closed body
+says nothing more about it.
 
 **Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
 as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), so
@@ -221,9 +223,10 @@ read only as a form has no such check.
 empty array. To send an empty object, give them `new stdClass` (or `(object) []`), or send the raw content `{}`. A test
 of a consumer's own that posts an empty array to an object body will see this 422.
 
-**The key is `body`, unless the contract has a top-level name that is `body`.** A property named `body` is answered on
-the `body` key too, and the client could not tell which of the two is wrong, so the failure goes on `_body` then (and
-`__body`, and so on, until no name of the contract is it). The key is written in the generated `after()`.
+**The key is `body`, unless the contract has a top-level name or a `query` parameter that is `body`.** A property named
+`body` is answered on the `body` key too, and so is a `query` parameter, which is merged into the same data, so the
+client could not tell which of the two is wrong. The failure goes on `_body` then (and `__body`, and so on, until no
+name of the contract is it). The key is written in the generated `after()`.
 
 **An empty content is an absent body, and the body's `required` decides.** A required body sent as nothing is refused on
 the body's own key, with Laravel's `required` message, since no rule says so when every property is optional (they are
@@ -298,9 +301,9 @@ the same shape as
 
 **The name that counts is the one Laravel reads, so a form body's delivered name is compared too.** A body read as a
 form delivers `user.name` as `user_name` and `page[size]` below `page`, so a `query` parameter named `user_name`, or
-`page`, is the same key as that body property and is refused the same way. The message names the body's name, the key a
-form delivers it as, and the parameter. A body that is JSON only keeps `user.name` as written, and `user_name` beside it
-is two names.
+`page`, is the same key as that body property and is refused the same way. The message names the body's name and the
+parameter, which is the key a form delivers it under. A body that is JSON only keeps `user.name` as written, and
+`user_name` beside it is two names.
 
 **Path-item parameters merge with the operation's, and the operation wins on a name they share.** That is OpenAPI's own
 rule, not one this package invents, and it is a merge rather than a collision.
@@ -324,13 +327,16 @@ required ones would accept a body made of an optional key alone, which is a body
 
 | The client sends | Outcome                                                                        |
 | ---------------- | ------------------------------------------------------------------------------ |
-| Nothing          | Valid. No field sees a sibling present, so none of them is required            |
+| Nothing, or `{}` | Valid. No field sees a sibling present, so none of them is required            |
 | `street` alone   | Refused. `city` and `code` both see `street`, and both become required         |
 | All three        | Validated against the rest of their rules, exactly as a required body would be |
 
-When the body declares one key and requires it, there is nothing else to name, and it becomes `sometimes`: Laravel
-cannot tell an absent body from `{}`, so `{}` is accepted, and the generated file says so. With nothing required, every
-field was already `sometimes` and an absent body was already valid.
+When the body declares one key and requires it, there is nothing else to name, and it becomes `sometimes`. With two or
+more required, each is asked for through the others, so a body that sends none of them asks for none. A rule cannot tell
+a body sent as `{}` from one that is not sent, since both leave every key out of the data, so `{}` is accepted whenever
+the body is optional and requires something, and the generated file says so. (The empty content the request refuses is a
+required body's, never an optional one's.) With nothing required, every field was already `sometimes` and an absent body
+was already valid.
 
 **The cost is noise, and it is bounded.** Eight required properties mean eight rules naming seven siblings each, in a
 file nobody edits by hand. Nothing else in the rule set grows that way, and an optional body that requires properties is
