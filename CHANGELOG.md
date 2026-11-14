@@ -82,7 +82,9 @@ tags: [versions, conventions, planning]
   no `mimetypes` before**: a 3.0 contract has no `contentMediaType`, so every file passed until now. `encoding` also
   wins over a looser `contentMediaType`. The doctor names `encoding` as not enforced, and exits `2`, for a `contentType`
   on a part that is not read as a file (unless it is the default OpenAPI gives that part) and for a text type on a file
-  part, so **a contract that writes one and was green may now be red until it is acknowledged**.
+  part, so **a contract that writes one and was green may now be red until it is acknowledged**. A malformed `encoding`
+  (a `contentType` that is not a string, an entry for a part the body does not declare) is a document fault and exits
+  `1`.
 - **`Local $ref within the document` moved down**, which the row itself announced as "a major, on the release that reads
   schemas". A reference aimed at a position inside a `$defs` is now refused. It used to be accepted and it never worked:
   the parser does not model that keyword, so the target was a plain array it could not build a schema from, and the
@@ -129,12 +131,14 @@ rather than one that was missing, and nothing downstream failed to say so.
   contract carries it as written, and the generated request turns the list into `mimetypes:` on a top-level part of a
   `multipart/form-data` body, and on `part.*` for an array of files, ahead of `contentMediaType` and even when it is
   looser. Each entry is cut at its `;`, trimmed, lower-cased and de-duplicated, wildcards kept.
-  `application/octet-stream` or `*/*` in the list adds no `mimetypes`, and a text type adds none and is reported. A
-  `contentType` on a part that is not read as a file (a form-encoded body is only reported, never narrowed), other than
-  the default OpenAPI gives that part, is reported, and so is one that is not a string (a YAML list). A part the body
-  does not declare is a fault in the document, in the generated file only. `encoding` beside `application/json` is
-  ignored, and `headers`, `style`, `explode` and `allowReserved` are still not read. The finding that every file part
-  said `encoding` was not read is gone. What this changes for an existing contract is under `Changed`.
+  `application/octet-stream` or `*/*` in the list adds no `mimetypes`, and a named text type adds none and is reported
+  (`text/*` keeps its rule, which Laravel matches on the first half of the sniffed type). A `contentType` on a part that
+  is not read as a file (a form-encoded body is only reported, never narrowed), other than a default OpenAPI gives that
+  part, is reported. A `contentType` that is not a string (a YAML list) and a part the body does not declare are faults
+  in the document, in the generated file and in `spec:doctor`, which exits `1` for them. `encoding` beside
+  `application/json` is ignored, and `headers`, `style`, `explode` and `allowReserved` are still not read. The finding
+  that every file part said `encoding` was not read is gone. What this changes for an existing contract is under
+  `Changed`.
 - **`spec:build` writes the input DTOs.** One `final readonly` class per request body that is an object, in the `Data`
   sub-namespace: a promoted constructor, `from()`, `toArray()`, `Arrayable` and `JsonSerializable`. Each body gets a
   full type and a `Partial` one, `NewUserInputDto` and `NewUserPartialInputDto`, named after the schema and never after
