@@ -115,9 +115,15 @@ reached it or the file that holds it.** `#/components/schemas/NewUser` gives `Ne
 specification across files does not change the contract and must not rename a class a controller imports. A body written
 inline takes its operation's name, `CreateUserInputDto`, and an object nested inline takes its parent's name and its
 property's, `CreateUserAddressInputDto`, with `Item` added for an element of an array. **Two different schemas that give
-one name are a build error naming where each is written**, and so is a component name that is not a class name once it
-is turned into one. Where a schema is written goes in the file's `Provenance`, which is where a DTO that came from
-another file says so.
+one class are a build error**, and so is a component name that is not a class name once it is turned into one. The
+refusal is not always about two schemas sharing a name, because the generator adds a suffix to it: a component `User`
+also generates `UserPartialInputDto`, so a component called `UserPartial` collides with it, and an inline `address` in
+`createUser` collides with the inline body of `createUserAddress`, both `CreateUserAddressInputDto`. The message names
+the class, where each schema is written, which type of each it is (full or partial), the base its name came from (the
+schema's name, its request, or its parent and a property) and the suffix added to it, so it says what met rather than
+blaming the names. The naming scheme is not changed to avoid it: rename one of the schemas, or give an inline schema a
+component name of its own. Where a schema is written goes in the file's `Provenance`, which is where a DTO that came
+from another file says so.
 
 **A property is named exactly like the contract's key** when the key is a valid PHP identifier, so `created_at` in the
 specification is `$created_at` in the class and one `grep` finds both. A key that is not an identifier (`user-id`,

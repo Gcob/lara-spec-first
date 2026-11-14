@@ -687,8 +687,9 @@ sending that shape shares one pair. An inline body takes the operation's name, `
 whether or not a `$ref` was involved, because the same `$ref: User` used in a request and in a response would otherwise
 give the two directions one name. **The name is the schema's and never the `$ref`'s or the file's**:
 `./other.yaml#/components/schemas/NewUser` is the same `NewUserInputDto`, so reorganizing a specification into files
-renames nothing, and two different schemas under one name are a build error naming where each is written. The exact
-spellings are public API surface under [rule 4](../openapi-support.md#the-four-rules) and belong to
+renames nothing, and two different schemas that give one class are a build error naming the class and where each is
+written ([what it says](./dto-anatomy.md#one-class-three-members)). The exact spellings are public API surface under
+[rule 4](../openapi-support.md#the-four-rules) and belong to
 [the name freeze](../../../README.md#before-10-freeze-what-a-major-would-cost).
 
 ## Nothing to validate, no class

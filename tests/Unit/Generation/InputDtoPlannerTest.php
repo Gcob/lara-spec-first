@@ -270,6 +270,40 @@ it('refuses a nested schema that takes the name of another', function (): void {
         ->toThrow(UnusableNameException::class, 'both generate the input DTO "PetInputDto"');
 });
 
+// `User` and `UserPartial` are two components and no schema is named wrong: the partial
+// type of the first is `UserPartialInputDto`, and so is the full type of the second. The
+// refusal says which type of each claims the class, and the suffix that made them meet.
+it('says which type of each schema claims the class when a suffix makes two names meet', function (): void {
+    $user = dtoSchema(['a' => dtoString()], name: 'User', source: '#/components/schemas/User');
+    $userPartial = dtoSchema(['b' => dtoString()], name: 'UserPartial', source: '#/components/schemas/UserPartial');
+
+    $refusal = fn () => planDtos([
+        dtoOperation('createUser', ['application/json' => $user]),
+        dtoOperation('createUserPartial', ['application/json' => $userPartial], path: '/partials'),
+    ]);
+
+    expect($refusal)->toThrow(UnusableNameException::class, 'both generate the input DTO "UserPartialInputDto"')
+        ->and($refusal)->toThrow(UnusableNameException::class, 'the schema written at "#/components/schemas/User" gives the partial type, "User" (the schema\'s name) + "PartialInputDto"')
+        ->and($refusal)->toThrow(UnusableNameException::class, 'the schema written at "#/components/schemas/UserPartial" gives the full type, "UserPartial" (the schema\'s name) + "InputDto"')
+        ->and($refusal)->toThrow(UnusableNameException::class, 'a suffix the generator adds');
+});
+
+// An inline `address` of `createUser` and the inline body of `createUserAddress` both
+// derive `CreateUserAddress`, one from a parent and a property and one from an operation.
+it('says how each inline name was derived when two inline schemas meet', function (): void {
+    $refusal = fn () => planDtos([
+        dtoOperation('createUser', ['application/json' => dtoSchema(['address' => dtoSchema(['street' => dtoString()])])]),
+        dtoOperation('createUserAddress', ['application/json' => dtoSchema(['zip' => dtoString()])], path: '/addresses'),
+    ]);
+
+    $nested = '#/paths/~1things/post/requestBody/content/application~1json/schema/properties/address';
+    $root = '#/paths/~1addresses/post/requestBody/content/application~1json/schema';
+
+    expect($refusal)->toThrow(UnusableNameException::class, 'both generate the input DTO "CreateUserAddressInputDto"')
+        ->and($refusal)->toThrow(UnusableNameException::class, 'the schema written at "'.$nested.'" gives the full type, "CreateUserAddress" (derived from its parent "CreateUser" and the property "address") + "InputDto"')
+        ->and($refusal)->toThrow(UnusableNameException::class, 'the schema written at "'.$root.'" gives the full type, "CreateUserAddress" (derived from the request "CreateUserAddressRequest") + "InputDto"');
+});
+
 it('refuses a component name that is no class name', function (): void {
     $schema = dtoSchema(['a' => dtoString()], name: '2fa', source: '#/components/schemas/2fa');
 

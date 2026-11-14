@@ -43,7 +43,7 @@ use Illuminate\Support\Str;
 final class InputDtoPlanner
 {
     /**
-     * @var array<string, array{partial: bool, named: bool, multipart: bool, schema: Schema, position: string, naming: string, properties: list<InputDtoProperty>, findings: list<string>}>
+     * @var array<string, array{partial: bool, named: bool, multipart: bool, schema: Schema, position: string, base: string, origin: string, naming: string, properties: list<InputDtoProperty>, findings: list<string>}>
      */
     private array $registry = [];
 
@@ -141,6 +141,7 @@ final class InputDtoPlanner
 
         if ($name === null) {
             $base = $request->name->stem();
+            $origin = sprintf('derived from the request "%s"', $request->name->shortName);
             $naming = sprintf(
                 'Class name derived from the operation\'s request, `%s`, because the body is written '
                     .'inline and has no name of its own.',
@@ -148,6 +149,7 @@ final class InputDtoPlanner
             );
         } else {
             $base = $this->className($name, $position);
+            $origin = 'the schema\'s name';
             $naming = sprintf(
                 'Class name taken from the schema `%s`, written at `%s`. Every operation sending that '
                     .'schema shares this type.',
@@ -157,8 +159,8 @@ final class InputDtoPlanner
         }
 
         $named = $name !== null;
-        $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $naming, $named);
-        $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $naming, $named);
+        $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $origin, $naming, $named);
+        $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $origin, $naming, $named);
 
         // The `PATCH` reads the partial type, and so does a body that may be
         // absent entirely: there every property may be missing.
@@ -188,6 +190,7 @@ final class InputDtoPlanner
         Schema $merged,
         string $position,
         string $base,
+        string $origin,
         string $naming,
         bool $named,
     ): string {
@@ -205,7 +208,11 @@ final class InputDtoPlanner
                 : ! $named && ! $existing['named'] && serialize($existing['schema']) === serialize($merged);
 
             if ($existing['partial'] !== $partial || ! $same) {
-                throw UnusableNameException::inputDtoClaimedTwice($shortName, $existing['position'], $position);
+                throw UnusableNameException::inputDtoClaimedTwice(
+                    $shortName,
+                    ['position' => $existing['position'], 'base' => $existing['base'], 'origin' => $existing['origin'], 'partial' => $existing['partial']],
+                    ['position' => $position, 'base' => $base, 'origin' => $origin, 'partial' => $partial],
+                );
             }
 
             // One schema, two bodies: a part that is a file in a multipart body
@@ -224,6 +231,8 @@ final class InputDtoPlanner
             'multipart' => $this->multipart,
             'schema' => $merged,
             'position' => $position,
+            'base' => $base,
+            'origin' => $origin,
             'naming' => $naming,
             'properties' => [],
             'findings' => [],
@@ -429,6 +438,7 @@ final class InputDtoPlanner
 
         if ($name === null) {
             $ownBase = $base.self::studly($segment);
+            $origin = sprintf('derived from its parent "%s" and the property "%s"', $base, $segment);
             $naming = sprintf(
                 'Class name derived from its parent\'s name and the property `%s`, because the object is '
                     .'written inline and has no name of its own.',
@@ -436,6 +446,7 @@ final class InputDtoPlanner
             );
         } else {
             $ownBase = $this->className($name, $position);
+            $origin = 'the schema\'s name';
             $naming = sprintf(
                 'Class name taken from the schema `%s`, written at `%s`. Every operation reaching that '
                     .'schema shares this type.',
@@ -444,7 +455,7 @@ final class InputDtoPlanner
             );
         }
 
-        $class = $this->register($ownBase.'InputDto', false, $written, $merged, $position, $ownBase, $naming, $name !== null);
+        $class = $this->register($ownBase.'InputDto', false, $written, $merged, $position, $ownBase, $origin, $naming, $name !== null);
 
         return new InputDtoType(InputDtoType::DTO, $nullable, class: $class);
     }

@@ -164,25 +164,42 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     /**
      * Two different schemas that would generate one input DTO class.
      *
-     * **Named by position, because the schema's name is the one thing they
-     * share.** `Pet` in two files, or a component `Pet` beside a file `Pet.yaml`,
-     * is the contract saying two things under one name, and the DTO's name comes
-     * from the name alone: whichever won would silently be the other's type.
-     * An inline schema's position is the operation's, which is what a reader
-     * edits to resolve it.
+     * **Named by position, and by what each contributes to the class name.** The
+     * schema's name is not always what they share: `User` and `UserPartial` are two
+     * components with two names, and the partial type of the first is the full type of
+     * the second. Naming only the schemas blames them for a collision the generator's
+     * suffix made, so each side says which type it is, the base the name came from and
+     * the suffix added to it. An inline schema's position is the operation's, which is
+     * what a reader edits to resolve it.
      *
+     * @param  array{position: string, base: string, origin: string, partial: bool}  $first
+     * @param  array{position: string, base: string, origin: string, partial: bool}  $second
+     *
+     * @see docs/guide/code-generation/dto-anatomy.md — "One class, three members"
      * @see docs/guide/code-generation/request-validation.md — "Two directions, two types"
      */
-    public static function inputDtoClaimedTwice(string $shortName, string $first, string $second): self
+    public static function inputDtoClaimedTwice(string $shortName, array $first, array $second): self
     {
+        $claim = static fn (array $side): string => sprintf(
+            'the schema written at "%s" gives the %s type, "%s" (%s) + "%s"',
+            $side['position'],
+            $side['partial'] ? 'partial' : 'full',
+            $side['base'],
+            $side['origin'],
+            $side['partial'] ? 'PartialInputDto' : 'InputDto',
+        );
+
         return new self(sprintf(
             'The schemas written at "%s" and at "%s" both generate the input DTO "%s", and the two '.
-            'are not the same schema. A DTO is named after the schema it describes, so two '.
-            'different ones cannot share a name: rename one of the components, or give an inline '.
-            'schema a component name of its own.',
-            $first,
-            $second,
-            $shortName
+            'are not the same schema: %s, and %s. A class name is a base plus a suffix the '.
+            'generator adds ("InputDto" for the full type, "PartialInputDto" for the partial one), so '.
+            'two different bases can meet through a suffix, and two schemas can share a base. Rename '.
+            'one of the schemas, or give an inline schema a component name of its own.',
+            $first['position'],
+            $second['position'],
+            $shortName,
+            $claim($first),
+            $claim($second),
         ));
     }
 
