@@ -342,7 +342,7 @@ final class InputDtoPlanner
             $this->registry[$shortName]['findings'][] = 'The body declares no properties, so this type has none and carries '
                 .'nothing: `from()` reads no key and `toArray()` returns `[]`. It exists so that adding a '
                 .'property later creates no class that was not there. Read the body from the request '
-                .'itself: `$request->json()->all()` for a JSON body, `$request->post()` for a form.';
+                .'itself: `$request->json()->all()` for a JSON body, the form bag and `$request->allFiles()` for a form.';
         }
 
         $this->registry[$shortName]['properties'] = $properties;

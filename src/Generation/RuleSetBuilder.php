@@ -841,9 +841,10 @@ final readonly class RuleSetBuilder
     private static function readOnlyFinding(string $label): string
     {
         return sprintf(
-            '%s is `readOnly` and required. OpenAPI applies `required` on a `readOnly` property to '
-                .'responses only, so a request does not have to carry it and no presence rule is emitted. '
-                .'Its other rules judge it when it is sent.',
+            '%s is `readOnly` and required. `required` on a `readOnly` property applies to responses '
+                .'only: 3.0 states it, and a 3.1 document is read the same way (3.1 defers to JSON Schema, '
+                .'where `readOnly` is an annotation). So a request does not have to carry it and no '
+                .'presence rule is emitted. Its other rules judge it when it is sent.',
             $label,
         );
     }

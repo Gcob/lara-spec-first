@@ -130,6 +130,7 @@ final class UpdateUserRequest extends FormRequest
     {
         $body = $this->isJson() ? $this->json()->all() : $this->request->all();
 
+        // Why: this is Laravel's own all(): a text field wins over an upload of the same name.
         return array_replace_recursive($body, $this->allFiles(), $body);
     }
 

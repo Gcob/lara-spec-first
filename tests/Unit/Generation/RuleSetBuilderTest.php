@@ -934,8 +934,9 @@ it('keeps format: byte a string', function (): void {
 /*
  * `readOnly` on a request.
  *
- * OpenAPI: `required` on a `readOnly` property applies to responses only, so a
- * request that leaves it out is a valid one.
+ * OpenAPI 3.0: `required` on a `readOnly` property applies to responses only, so a
+ * request that leaves it out is a valid one. 3.1 defers to JSON Schema, where `readOnly` is an
+ * annotation, and the package reads a 3.1 document the same way.
  */
 
 it('asks for no presence on a readOnly property the schema requires', function (): void {
@@ -951,7 +952,8 @@ it('asks for no presence on a readOnly property the schema requires', function (
         'id' => ['sometimes', 'integer'],
         'name' => ['present', 'string'],
     ])->and(implode("\n", $set->findings))->toContain('`id` is `readOnly` and required')
-        ->and(implode("\n", $set->findings))->toContain('responses only');
+        // 3.0 states it; 3.1 dropped the sentence, so a 3.1 document is read the same way, not by rule.
+        ->and(implode("\n", $set->findings))->toContain('3.0 states it, and a 3.1 document is read the same way');
 });
 
 it('keeps the other rules of a readOnly property, and still reads its allOf', function (): void {

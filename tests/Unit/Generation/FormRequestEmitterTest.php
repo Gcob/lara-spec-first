@@ -311,6 +311,12 @@ it('leaves no trailing whitespace in the docblock it writes', function (): void 
     }
 });
 
+// The three-argument merge reads like a mistake to whoever meets it, and it is Laravel's own.
+it('says the merge of the body and its uploads is Laravel\'s own all()', function (): void {
+    expect(emittedRequest(goldenOperation()))
+        ->toContain("// Why: this is Laravel's own all(): a text field wins over an upload of the same name.");
+});
+
 it('reproduces the golden file byte for byte', function (): void {
     $emitted = emittedRequest(
         goldenOperation(),

@@ -328,12 +328,14 @@ that is not required carries `sometimes` under either method, and its remaining 
 | Not in `required`   | `sometimes`                                                                         | `sometimes`               |
 | Every other keyword | [Mapped as below](#every-constraint-maps-or-reports)                                | The same rules, unchanged |
 
-**A `readOnly` property is never asked for, whatever the list says.** OpenAPI reads `required` on a `readOnly` property
-as a promise about responses, so `POST /users` without an `id` is valid. The property gets `sometimes` under every
-method, at any depth, and a finding names it. Sent anyway, it is judged by its other rules, since a request that carries
-it is not one the contract forbids. **The input DTO follows the rule set**: such a property is `Optional|T` on both
-types, because a body without it passes validation and reaches `from()`, and a plain `T` would read a key nothing
-checked.
+**A `readOnly` property is never asked for, whatever the list says.** OpenAPI 3.0 reads `required` on a `readOnly`
+property as a promise about responses, so `POST /users` without an `id` is valid. 3.1 dropped that sentence and defers
+to JSON Schema, where `readOnly` is an annotation and says nothing about presence. A 3.1 document is read the same way
+anyway, by choice and not by rule, since a request that carries no server-assigned `id` is the case the keyword
+describes. The property gets `sometimes` under every method, at any depth, and a finding names it. Sent anyway, it is
+judged by its other rules, since a request that carries it is not one the contract forbids. **The input DTO follows the
+rule set**: such a property is `Optional|T` on both types, because a body without it passes validation and reaches
+`from()`, and a plain `T` would read a key nothing checked.
 
 **`present` rather than `required`, because the two keywords do not mean the same thing.** JSON Schema's `required` asks
 for the key; Laravel's asks for a non-empty value, and refuses `null`, `""`, `[]` and `{}` whatever else the field
