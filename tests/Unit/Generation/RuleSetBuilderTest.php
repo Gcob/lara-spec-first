@@ -1105,7 +1105,11 @@ it('reads a boolean query parameter as the spellings a query string can carry', 
 
     expect($set->rules)->toEqual(['notify' => ['required', new InRule(['true', 'false', '1', '0'])]])
         ->and(implode("\n", $set->findings))->toContain('`notify` is a boolean read from a query string')
-        ->and(implode("\n", $set->findings))->toContain("`validated('notify')` holds the string as sent");
+        ->and(implode("\n", $set->findings))->toContain("`validated('notify')` holds the string as sent")
+        // The contract writes `true` and `false`: the finding owns up to the two more, and to the
+        // read that works, since `"false"` is a truthy string.
+        ->and(implode("\n", $set->findings))->toContain('`"1"` and `"0"` are accepted too')
+        ->and(implode("\n", $set->findings))->toContain('`filter_var($request->validated(\'notify\'), FILTER_VALIDATE_BOOL)`');
 });
 
 it('reads a boolean field of a form or multipart body the same way', function (string $mediaType): void {
@@ -1114,7 +1118,8 @@ it('reads a boolean field of a form or multipart body the same way', function (s
     )]));
 
     expect($set->rules['active'])->toEqual(['sometimes', 'nullable', new InRule(['true', 'false', '1', '0'])])
-        ->and(implode("\n", $set->findings))->toContain('`active` is a boolean read from a form body');
+        ->and(implode("\n", $set->findings))->toContain('`active` is a boolean read from a form body')
+        ->and(implode("\n", $set->findings))->toContain('`"1"` and `"0"` are accepted too');
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
 it('keeps boolean for a JSON body', function (): void {

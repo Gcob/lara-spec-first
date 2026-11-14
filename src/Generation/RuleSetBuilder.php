@@ -852,19 +852,36 @@ final readonly class RuleSetBuilder
             $handled[] = 'enum';
         }
 
+        // The contract writes `true` and `false`. `1` and `0` are the looser half of the
+        // rule, which the maintainer kept, so the finding names them.
+        $quote = static fn (array $list): string => implode(' and ', array_map(
+            static fn (string $spelling): string => '`"'.$spelling.'"`',
+            array_values($list),
+        ));
+        $words = array_intersect(['true', 'false'], $spellings);
+        $digits = array_intersect(['1', '0'], $spellings);
+        $tooMany = $digits === []
+            ? ''
+            : sprintf(' %s %s accepted too, which the contract does not write for a boolean.', $quote($digits), count($digits) === 1 ? 'is' : 'are');
+
         $walk->findings[] = $walk->textSource === 'query string'
             ? sprintf(
-                '%s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
-                    .'Laravel\'s `boolean` refuses it. It accepts `true`, `false`, `1` and `0`, and '
-                    .'`validated(\'%s\')` holds the string as sent.',
+                '%1$s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
+                    .'Laravel\'s `boolean` refuses it. It accepts %4$s.%2$s '
+                    .'`validated(\'%3$s\')` holds the string as sent, and `"false"` is a truthy string in PHP: '
+                    .'read it with `filter_var($request->validated(\'%3$s\'), FILTER_VALIDATE_BOOL)`.',
                 $label,
+                $tooMany,
                 trim($label, '`'),
+                $quote($words),
             )
             : sprintf(
-                '%s is a boolean read from a form body, where every value is text and Laravel\'s `boolean` '
-                    .'refuses `"true"`. It accepts `true`, `false`, `1` and `0`, and `validated()` holds the '
+                '%1$s is a boolean read from a form body, where every value is text and Laravel\'s `boolean` '
+                    .'refuses `"true"`. It accepts %3$s.%2$s `validated()` holds the '
                     .'string as sent, which `dto()` reads as a `bool`.',
                 $label,
+                $tooMany,
+                $quote($words),
             );
 
         return new InRule($spellings);

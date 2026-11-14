@@ -36,13 +36,15 @@ use Illuminate\Validation\Validator;
  *   - A `PATCH` is a partial update, so the schema's required list (`email`, `born_on`, `nickname`
  *     and `address`) is read as empty here. Every property is `sometimes`.
  *   - `active` is a boolean read from a form body, where every value is text and Laravel's
- *     `boolean` refuses `"true"`. It accepts `true`, `false`, `1` and `0`, and `validated()` holds
- *     the string as sent, which `dto()` reads as a `bool`.
+ *     `boolean` refuses `"true"`. It accepts `"true"` and `"false"`. `"1"` and `"0"` are accepted
+ *     too, which the contract does not write for a boolean. `validated()` holds the string as
+ *     sent, which `dto()` reads as a `bool`.
  *   - `address.parent` points back at `#/components/schemas/Address`, so nothing below it is
  *     validated: no rule set reaches an infinite depth.
  *   - `2fa` is a boolean read from a form body, where every value is text and Laravel's `boolean`
- *     refuses `"true"`. It accepts `true`, `false`, `1` and `0`, and `validated()` holds the
- *     string as sent, which `dto()` reads as a `bool`.
+ *     refuses `"true"`. It accepts `"true"` and `"false"`. `"1"` and `"0"` are accepted too, which
+ *     the contract does not write for a boolean. `validated()` holds the string as sent, which
+ *     `dto()` reads as a `bool`.
  *   - A `mimetypes` rule in this request is stricter than the contract in one case: Laravel
  *     refuses a file whose name ends in a PHP extension (`php`, `phtml`, `phar` and the like)
  *     whatever its type, a security default no rule turns off, and matching the contract there

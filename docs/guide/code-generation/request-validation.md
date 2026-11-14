@@ -402,14 +402,18 @@ one becomes is this table's.
 `true` (`?notify=true`), as a form-encoded or multipart body writes one. Every generated client would answer 422 to a
 contract it follows, which is a rule refusing what the contract accepts. So for **a `query` parameter and a field of a
 form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body keeps `boolean`,
-where `true` arrives already typed. Three things come with it:
+where `true` arrives already typed. Four things come with it:
 
 - **`false` is not in the list as a PHP value.** `Rule::in` compares `(string) false`, which is the empty string, and a
   list holding it would accept the `null` an empty value becomes, which a non-nullable boolean refuses.
 - **`validated()` holds the string as sent.** `validated('notify')` is `'false'`, and the generated file says so in a
   finding on the field. A form or multipart body has a DTO, and
   [its `from()`](./dto-anatomy.md#what-each-schema-type-becomes) reads the text with
-  `filter_var(..., FILTER_VALIDATE_BOOL)`, since `(bool) 'false'` is `true`. A `query` parameter is not on the DTO.
+  `filter_var(..., FILTER_VALIDATE_BOOL)`, since `(bool) 'false'` is `true`. A `query` parameter is not on the DTO, so
+  the finding names the read that works there: `filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL)`.
+- **`"1"` and `"0"` are accepted although the contract writes `true` and `false`.** It is the maintainer's decision,
+  kept because the four spellings are what a client of a query string or a form already sends, and the finding on the
+  field says it accepts the two more.
 - **A body that is JSON and a form at once keeps `boolean`.** One rule set cannot accept the form's text and still
   refuse `null`, so a form client's `"true"` is refused there and the field's finding says so. This is the exception
   [the principle](#every-constraint-maps-or-reports) allows when matching the contract exactly would be far too complex.

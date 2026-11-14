@@ -36,8 +36,10 @@ use Illuminate\Validation\Validator;
  *   - `website` declares `format: uri`, which no Laravel rule means the same as, so it is not
  *     enforced.
  *   - `notify` is a boolean read from a query string, where `?name=true` is how OpenAPI writes
- *     `true` and Laravel's `boolean` refuses it. It accepts `true`, `false`, `1` and `0`, and
- *     `validated('notify')` holds the string as sent.
+ *     `true` and Laravel's `boolean` refuses it. It accepts `"true"` and `"false"`. `"1"` and
+ *     `"0"` are accepted too, which the contract does not write for a boolean.
+ *     `validated('notify')` holds the string as sent, and `"false"` is a truthy string in PHP:
+ *     read it with `filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL)`.
  *
  * Navigation
  *
