@@ -939,6 +939,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 - [`card-management.md`](./card-management.md)
 - [`documentation.md`](./documentation.md) — this file
+- [`releasing.md`](./releasing.md)
 
 Repository root:
 
