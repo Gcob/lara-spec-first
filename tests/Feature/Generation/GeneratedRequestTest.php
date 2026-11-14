@@ -1129,3 +1129,12 @@ it('keeps Laravel\'s boolean for a JSON body', function (): void {
     expect(sendThroughEmitted($class, 'POST', json: ['active' => false]))->toBe([200, ['active' => false]])
         ->and(sendThroughEmitted($class, 'POST', json: ['active' => 'true'])[0])->toBe(422);
 });
+
+// The case the finding on a `mimetypes` rule names: a real PNG whose name ends in a PHP
+// extension is refused, which the contract (a PNG is a PNG) does not ask for.
+it('refuses a file named like PHP even when its type is the declared one', function (): void {
+    $png = (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+
+    expect(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload($png, 'avatar.png')]))->toBe(200)
+        ->and(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload($png, 'avatar.php')]))->toBe(422);
+});

@@ -35,7 +35,9 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 > - A request whose body is an object has `dto()`, which returns the body as
 >   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()`, and `validated()` itself keeps
 >   returning Laravel's array.
-> - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one.
+> - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one. A
+>   rule is never stricter than the contract either, unless matching it exactly would be far too complex in Laravel, and
+>   then the generated file says so in a finding.
 > - `routeAction` receives the generated request as its first parameter, which is what makes Laravel run it at all, and
 >   hands the controller the typed DTO it built.
 
@@ -68,9 +70,10 @@ nothing, and `spec:build` warns about it on a line of its own: unlike that opera
 validates.
 
 **Everything in the right-hand column is named, per field, in the generated file's own `Findings` block**, which is the
-half that makes an incomplete rule set honest rather than misleading. Nothing is approximated by a looser rule, and
-nothing is dropped in silence: that is [the principle](#every-constraint-maps-or-reports) the rest of this page is
-about, and it is what makes each pass safe to ship on its own.
+half that makes an incomplete rule set honest rather than misleading. Nothing is approximated by a looser rule, a
+stricter one is a named exception, and nothing is dropped in silence: that is
+[the principle](#every-constraint-maps-or-reports) the rest of this page is about, and it is what makes each pass safe
+to ship on its own.
 
 **The input DTO is built.** `spec:build` writes [the DTO](#the-payload-arrives-as-a-dto) of every body that is an
 object, in the `Data` sub-namespace, and the request returns it from `dto()`. A request whose operation has no body, or
@@ -354,10 +357,25 @@ count as one of [the file's own findings](./generated-file-anatomy.md#every-gene
 
 ## Every constraint maps or reports
 
-**A keyword becomes the Laravel rule that means the same thing, or it becomes a report.** Never a looser rule that
-almost matches: accepting a payload the contract refuses is a wrong answer where a report is a missing one, and only the
-second is recoverable. Which keywords are honored at all is [the support matrix](../openapi-support.md#schemas)'s to
-state; what each honored one becomes is this table's.
+**A keyword becomes the Laravel rule that means the same thing, or it becomes a report.** A generated rule is never
+looser than the contract, and never stricter either, in these words from the maintainer: _never stricter than the
+contract when it is not way too complicated to integrate in Laravel_.
+
+- **Never looser: accepting a payload the contract refuses.** That is a wrong answer where a report is a missing one,
+  and only the second is recoverable.
+- **Never stricter: refusing a payload the contract accepts.** Every generated client then gets a 422 for something it
+  was allowed to send, and nobody reading the contract can see why. A boolean the contract writes as `true` and a rule
+  that wants `1` is the example this page had to reverse.
+- **The one exception: when matching the contract exactly would be far too complex to integrate in Laravel, a stricter
+  rule is allowed, and the generated file says so in a finding on the field.** A rule that is stricter in silence is a
+  defect, and a stricter rule with its finding is a decision somebody can read. The cases today:
+  [a boolean in a body that is JSON and a form at once](#every-constraint-maps-or-reports) keeps `boolean`, a file
+  part's `mimetypes` refuses [a file named like PHP](../uploads.md#the-schema-names-the-file-part), and
+  `ConvertEmptyStringsToNull` makes a non-nullable string refuse `""`, which is the framework's and not a rule here, so
+  [it is stated above](#patch-empties-the-required-list) rather than reported per field.
+
+Which keywords are honored at all is [the support matrix](../openapi-support.md#schemas)'s to state; what each honored
+one becomes is this table's.
 
 **What a type, a nullability and an annotation each become:**
 
@@ -396,7 +414,7 @@ where `true` arrives already typed. Three things come with it:
 
 Pinned by execution tests for the query string, a form body, a multipart body and a JSON body. An earlier version of
 this page called the 422 the price of not using a looser rule, and a test pinned it: the maintainer reversed that, since
-refusing what a contract accepts is the worse direction.
+the principle runs both ways and a rule refusing what the contract accepts is not a safe default.
 
 **`list` beside `array`, because Laravel's `array` passes for an associative one.** `{"tags": {"a": 1}}` would otherwise
 satisfy a `tags` declared `type: array`, which is a payload the contract refuses being accepted. `list` is
@@ -490,8 +508,8 @@ honor, and the generated file's findings already say that messages come from the
 
 **Top-level keys only, and that is what lets the check run whenever the root closes itself.** Every nested object that
 closes itself already refuses its own extras through `array:` on its own key, so the root's check has nothing to add
-below the first level — and checking deeper would refuse the extras of a nested object that allows them, which a
-generated class stricter than the contract must never do.
+below the first level — and checking deeper would refuse the extras of a nested object that allows them, which would be
+a rule stricter than the contract for no gain, since matching it here is not complex.
 
 **Laravel's `#[FailOnUnknownFields]` was the other candidate, and it lost twice.** It does not exist on the lowest
 Laravel this package supports, so it would have needed a version gate with this check underneath it anyway — two emitted

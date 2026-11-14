@@ -180,7 +180,10 @@ surface under [rule 4](../openapi-support.md#the-four-rules) from the first rele
 `required` becomes `Optional|T` or plain `T`. Plain `T` is stricter than the contract and still conforms to it, since a
 server that always sends a field breaks no promise, and it spares a factory from ever writing `new Optional()`. The cost
 is that a server can then never omit a field the contract allows it to omit. The lean is `Optional|T`, for the same
-reading on both sides.
+reading on both sides. It is also what
+[the never-stricter principle](./request-validation.md#every-constraint-maps-or-reports) asks: plain `T` would be the
+stricter reading, allowed only if matching the contract were far too complex, which it is not, and it would then need a
+finding in the generated file.
 
 ## What each schema type becomes
 

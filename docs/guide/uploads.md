@@ -133,11 +133,15 @@ table, pick one extension per type, and turn away a valid file whose name says n
 case is verified against the framework rather than assumed: `mimetypes:image/*` matches, because Laravel compares the
 type's first segment plus `/*` beside the exact values.
 
-**One Laravel behavior is stricter than the rule asks for, and the contract cannot turn it off.** `mimetypes` refuses
-any upload whose client-side extension is in the framework's PHP list unless `php` is one of the declared types, which
-is a security default rather than a bug. A contract declaring `text/x-php` therefore gets a rule slightly stricter than
-it wrote, and that is where the package stops: overriding a framework security default from a generated class is not
-something a specification should be able to ask for.
+**One Laravel behavior is stricter than the rule asks for, and it is the exception the never-stricter principle
+allows.** [The principle](./code-generation/request-validation.md#every-constraint-maps-or-reports) is that a rule is
+never stricter than the contract unless matching it exactly would be far too complex in Laravel, and then the generated
+file says so in a finding. Here `mimetypes` refuses any upload whose client-side extension is in the framework's PHP
+list unless `php` is one of the declared types, which is a security default rather than a bug. A contract declaring
+`image/png` therefore refuses a real PNG named `avatar.php`, which it did not ask for, and no rule turns that off:
+matching the contract would mean overriding a framework security default from a generated class, which is not something
+a specification should be able to ask for. **Every file part with a `mimetypes` rule names this in its own finding**,
+and an execution test pins the refusal.
 
 **The ceiling is exact, because Laravel's `max` takes a decimal.** It sizes a file in kilobytes and a contract states
 bytes, and an earlier version of this page concluded that no rule could say 2500 bytes, so it rounded down. Measured

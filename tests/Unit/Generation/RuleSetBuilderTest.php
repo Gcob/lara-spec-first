@@ -1147,3 +1147,15 @@ it('reads the booleans of an enumeration as every spelling of them', function ()
 
     expect($set->rules['on'])->toEqual(['sometimes', new InRule(['true', '1'])]);
 });
+
+// The one place a `mimetypes` rule is stricter than the contract: Laravel turns away a
+// file named like PHP whatever its type, and no rule turns that off. The principle allows
+// it when matching the contract would be far too complex, and the file says so.
+it('says that mimetypes refuses a file named like PHP, and only when it emits mimetypes', function (): void {
+    [, $typed] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png'));
+    [, $untyped] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true));
+
+    expect($typed)->toContain('`avatar` has a `mimetypes` rule that is stricter than the contract in one case')
+        ->and($typed)->toContain('PHP extension')
+        ->and($untyped)->not->toContain('stricter than the contract');
+});
