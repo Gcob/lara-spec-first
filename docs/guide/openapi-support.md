@@ -787,7 +787,8 @@ in a response schema is not named and the responses stay one `Deferred` count. F
 there is one finding per keyword and per operation, whatever the number of occurrences: it lists every position it is
 written at, and its `pointer` is the first. The `Ignored` rows carry the position of the keyword itself. A `Partial` row
 carries the fields it was left unenforced on and points at the operation, since no rule set keeps a position finer than
-the field. Both are a package limit, so they exit `2` and never `1`.
+the field. Both are a package limit, so they exit `2` and never `1`. A keyword written beside a `$ref` in a 3.1 document
+is not read, so it is not named: see [#118](https://github.com/Gcob/lara-spec-first/issues/118).
 
 **That a first run on a published contract comes back red was weighed rather than missed.** `default` and `deprecated`
 alone appear in most specifications, and with `oneOf`, `discriminator` and `minProperties` a real document trips several

@@ -686,6 +686,7 @@ final readonly class OperationExtractor
      */
     private function ignoredKeywords(DocumentWalk $walk, SchemaPosition $position): array
     {
+        // TODO (#118): read the keywords written beside a $ref in 3.1
         $raw = $walk->rawAt($position) ?? [];
         $ignored = [];
 
