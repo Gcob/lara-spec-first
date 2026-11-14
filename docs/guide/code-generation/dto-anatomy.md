@@ -239,19 +239,21 @@ where it is written, so nothing depends on where the build came in, and the file
 the root, the nested object and the recursion alike (`Class name taken from the schema ...`).
 
 **A recursion the request did not unroll stays `mixed`, and says so.** The DTO does not build a class from input nothing
-checked. Three shapes are left as they arrived:
+checked. Two shapes are left as they arrived:
 
 - **A recursion through a schema with no name.** An inline schema has no position a class could be found by.
 - **A field that is two recursion markers at once** (two `allOf` branches that each write the field, pointing back at
   different components).
-- **A marker with `properties` written beside it.** The request unrolls it with the extra property and the ancestor's
-  class does not carry it, so `from()` would lose a key the request validated. A `required` beside the marker changes
-  nothing in the class, and the field is typed.
 
-For the first two, the file's findings say that the field points back at a position and that the request validates
-nothing below it, so it is `mixed`, and the request's finding says the same thing from its side, where the lever is. For
-the third, the request does validate it, and the finding says so: the field is `mixed` because the ancestor's class does
-not carry what is written beside the marker.
+For both, the file's findings say that the field points back at a position and that the request validates nothing below
+it, so it is `mixed`. The request's finding says the same thing from its side, and it is where the lever is.
+
+**One exception to "one class per schema, no `mixed` for a named recursion": a recursive property with `properties`
+written beside its reference.** The request does validate it: it unrolls the site with the extra property, level after
+level. The class of the ancestor does not carry that property, so a typed field would lose a key the request validated
+in `from()` and `toArray()`. The field stays `mixed`, and the file's findings say that the request validates it and that
+the class does not carry what is written beside the marker. A `required` beside the marker changes nothing in the class,
+and the field is typed.
 
 **A key the rules cannot name when its object is nested is optional in the DTO.** A required `user.name` is `Optional`
 beside the rest of its object, so that a schema's shape does not depend on which operation reached it first, and the

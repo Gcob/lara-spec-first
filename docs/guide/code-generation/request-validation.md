@@ -795,7 +795,8 @@ unless it asks for a branching schema to go deep. A binary tree stated at 20 is 
 keys; 8 levels would be 1,532).
 
 **The input DTO is typed to match.** A recursive node is the class of the schema it points back at, so every level the
-request validates is a DTO, and a recursion the request did not unroll is `mixed`. See
+request validates is a DTO. A recursion the request did not unroll is `mixed`, and so is one with `properties` written
+beside its reference, which no class of the ancestor can carry. See
 [`dto-anatomy.md`](./dto-anatomy.md#what-each-schema-type-becomes).
 
 ## The generated request is `final`
