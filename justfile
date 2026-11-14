@@ -77,8 +77,8 @@ coverage:
 format:
     {{php}} composer format
 
-# List the PHP files whose docblocks need reflowing, without writing. Not part of
-# `check` until the codebase has been reflowed.
+# List the PHP files whose docblocks need reflowing, without writing. `check`
+# runs it through `composer format:check`.
 format-docblocks-check:
     {{php}} composer format:docblocks:check
 
