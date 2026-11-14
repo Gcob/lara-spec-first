@@ -480,6 +480,28 @@ it('maps each constraint to the Laravel rule that means the same thing', functio
     'format: uuid' => [new Schema(types: [SchemaType::String], format: 'uuid'), ['sometimes', 'string', 'uuid']],
     'format: ipv4' => [new Schema(types: [SchemaType::String], format: 'ipv4'), ['sometimes', 'string', 'ipv4']],
     'format: ipv6' => [new Schema(types: [SchemaType::String], format: 'ipv6'), ['sometimes', 'string', 'ipv6']],
+    // `int32` is a range, so it is two bounds, and a bound the contract states beside it is kept when it is tighter.
+    'format: int32' => [
+        new Schema(types: [SchemaType::Integer], format: 'int32'),
+        ['sometimes', 'integer', 'min:-2147483648', 'max:2147483647'],
+    ],
+    'format: int32 with tighter bounds' => [
+        new Schema(types: [SchemaType::Integer], format: 'int32', minimum: 1.0, maximum: 100.0),
+        ['sometimes', 'integer', 'min:1', 'max:100'],
+    ],
+    'format: int32 with looser bounds' => [
+        new Schema(types: [SchemaType::Integer], format: 'int32', minimum: -5000000000.0, maximum: 5000000000.0),
+        ['sometimes', 'integer', 'min:-2147483648', 'max:2147483647'],
+    ],
+    'format: int32 with one tighter bound' => [
+        new Schema(types: [SchemaType::Integer], format: 'int32', maximum: 10.0),
+        ['sometimes', 'integer', 'min:-2147483648', 'max:10'],
+    ],
+    // `integer` is PHP's `FILTER_VALIDATE_INT`, which is the 64-bit range, and `numeric` takes any JSON number.
+    'format: int64 on an integer' => [new Schema(types: [SchemaType::Integer], format: 'int64'), ['sometimes', 'integer']],
+    'format: double on a number' => [new Schema(types: [SchemaType::Number], format: 'double'), ['sometimes', 'numeric']],
+    // An annotation for a form to hide what is typed: it asserts nothing.
+    'format: password' => [new Schema(types: [SchemaType::String], format: 'password'), ['sometimes', 'string']],
     // `D` gives PCRE's `$` the ECMA-262 reading, and `u` counts a multibyte
     // character as one.
     'pattern' => [
@@ -1686,9 +1708,51 @@ it('names the keyword and the field for each way a read keyword is left unenforc
         ['format' => ['`website`']],
     ],
     'a format on a number, which nothing reads' => [
-        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Integer], format: 'int64')])],
+        ['application/json' => objectSchema(['price' => new Schema(types: [SchemaType::Number], format: 'float')])],
+        [],
+        ['format' => ['`price`']],
+    ],
+    'a format on a string that is not a mapped one' => [
+        ['application/json' => objectSchema(['blob' => new Schema(types: [SchemaType::String], format: 'byte')])],
+        [],
+        ['format' => ['`blob`']],
+    ],
+    // A format meant for the other kind of number says nothing the type rule carries.
+    'int32 on a number' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Number], format: 'int32')])],
         [],
         ['format' => ['`count`']],
+    ],
+    'int64 on a number' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Number], format: 'int64')])],
+        [],
+        ['format' => ['`count`']],
+    ],
+    // What the rules already carry, or what asserts nothing: handled, so nothing to report.
+    'int64 on an integer, which the integer rule enforces' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Integer], format: 'int64')])],
+        [],
+        [],
+    ],
+    'int32 on an integer, which becomes its two bounds' => [
+        ['application/json' => objectSchema(['count' => new Schema(types: [SchemaType::Integer], format: 'int32')])],
+        [],
+        [],
+    ],
+    'double on a number, which the numeric rule enforces' => [
+        ['application/json' => objectSchema(['price' => new Schema(types: [SchemaType::Number], format: 'double')])],
+        [],
+        [],
+    ],
+    'password, an annotation' => [
+        ['application/json' => objectSchema(['pwd' => new Schema(types: [SchemaType::String], format: 'password')])],
+        [],
+        [],
+    ],
+    'int64 on a query parameter' => [
+        [],
+        [new QueryParameter('after', new Schema(types: [SchemaType::Integer], format: 'int64'))],
+        [],
     ],
     'a pattern across the ECMA-262 / PCRE boundary' => [
         ['application/json' => objectSchema(['code' => new Schema(types: [SchemaType::String], pattern: '^\d+$')])],

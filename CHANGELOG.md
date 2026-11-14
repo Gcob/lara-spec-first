@@ -31,8 +31,9 @@ tags: [versions, conventions, planning]
   read and a response is not. Support findings carries one finding per keyword and per operation, listing every position
   the keyword is written at, and it is a package limit: `2`, never `1`, and in `--json` with its `pointer`. A `Partial`
   keyword is named the same way for the fields it is left unenforced on (a `format` no Laravel rule means the same as, a
-  `pattern` across the ECMA-262 / PCRE boundary), so a `format: int64` or a `format: uri` in a request now gates too.
-  The exit code of a contract that writes none of them is unchanged.
+  `pattern` across the ECMA-262 / PCRE boundary), so a `format: uri` or a `format: float` in a request now gates too.
+  `format: int32` on an integer is enforced as its two bounds, and `int64`, `double` and `password` are handled, so none
+  of them gates. The exit code of a contract that writes none of them is unchanged.
 - **`parameters` (`header`, `cookie`) moved from `Deferred` to `Ignored`** in the
   [support matrix](./docs/guide/openapi-support.md#parameters-bodies-responses). The package will not validate a header
   or a cookie parameter, so the row states a position rather than a gap, and a contract declaring one will exit non-zero

@@ -473,21 +473,24 @@ one becomes is this table's.
 
 **What a type, a nullability and an annotation each become:**
 
-| Schema                                  | Laravel rule                                                                                                            |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `type: string`                          | `string`                                                                                                                |
-| `type: integer`                         | `integer`                                                                                                               |
-| `type: number`                          | `numeric`                                                                                                               |
-| `type: boolean`                         | `boolean`, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field               |
-| `type: array`                           | `array` and `list`, with the element rules keyed `field.*`                                                              |
-| `type: object`                          | `array`, with each property keyed `field.child`. A JSON object arrives as a PHP array, and Laravel has no `object` rule |
-| `nullable`, `type: [..., "null"]`       | `nullable`                                                                                                              |
-| `enum`                                  | `Rule::in()` with the declared values                                                                                   |
-| `const`                                 | `Rule::in()` with the one value                                                                                         |
-| `format: date`                          | `date_format:Y-m-d`                                                                                                     |
-| `format: date-time`                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                     |
-| `format: email`, `uuid`, `ipv4`, `ipv6` | `email`, `uuid`, `ipv4`, `ipv6`                                                                                         |
-| `format: uri`                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                              |
+| Schema                                                  | Laravel rule                                                                                                                                 |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type: string`                                          | `string`                                                                                                                                     |
+| `type: integer`                                         | `integer`                                                                                                                                    |
+| `type: number`                                          | `numeric`                                                                                                                                    |
+| `type: boolean`                                         | `boolean`, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                    |
+| `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                   |
+| `type: object`                                          | `array`, with each property keyed `field.child`. A JSON object arrives as a PHP array, and Laravel has no `object` rule                      |
+| `nullable`, `type: [..., "null"]`                       | `nullable`                                                                                                                                   |
+| `enum`                                                  | `Rule::in()` with the declared values                                                                                                        |
+| `const`                                                 | `Rule::in()` with the one value                                                                                                              |
+| `format: date`                                          | `date_format:Y-m-d`                                                                                                                          |
+| `format: date-time`                                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                                          |
+| `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`                                                                                                              |
+| `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                   |
+| `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                |
+| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer` is PHP's `FILTER_VALIDATE_INT`, which refuses what a 64-bit integer cannot hold, and `numeric` takes any JSON number |
+| `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                            |
 
 **Laravel's `boolean` refuses the string `"true"`, so a boolean that arrives as text does not get it.** It accepts `1`,
 `0`, `"1"`, `"0"`, `true` and `false`, and OpenAPI's default `form` style writes a boolean in a query string as the text
@@ -550,6 +553,10 @@ payload, so the rule is a pattern, which `\.[0-9]+` makes variable-width.
 `2026-02-30T00:00:00Z` matches the grammar and is refused by `date`, which is the division of labour. An execution test
 sends the payloads from each producer above, those refusals, and a trailing newline at the validator, since over HTTP
 Laravel's `TrimStrings` removes it first.
+
+**`format: float`, `byte` and the other values not in the table are reported**, and `spec:doctor` names them. `float` is
+the one a reader would expect to be free: it is a 32-bit range with a precision no rule can check, so `numeric` is not
+the same thing, unlike `double`.
 
 Which `format` values are honored at all is [the matrix](../openapi-support.md#any-type)'s row.
 

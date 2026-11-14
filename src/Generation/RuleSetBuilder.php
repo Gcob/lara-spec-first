@@ -63,6 +63,19 @@ final readonly class RuleSetBuilder
     ];
 
     /**
+     * The `format` values that are an annotation for a reader or a form and assert nothing, so no rule is missing for
+     * them. `password` hides what is typed.
+     */
+    private const ANNOTATION_FORMATS = ['password'];
+
+    /**
+     * The range `format: int32` states, which `integer` does not carry: PHP's integers are 64-bit.
+     */
+    private const INT32_MINIMUM = -2147483648;
+
+    private const INT32_MAXIMUM = 2147483647;
+
+    /**
      * The one body media type a part can be a file in, so the one a file part is read as one for.
      */
     private const MULTIPART = 'multipart/form-data';
@@ -1159,7 +1172,7 @@ final readonly class RuleSetBuilder
 
             if ($format !== null) {
                 array_push($rules, ...$format);
-            } else {
+            } elseif (! in_array($schema->format, self::ANNOTATION_FORMATS, true)) {
                 $walk->findings[] = sprintf(
                     '%s declares `format: %s`, which no Laravel rule means the same as, so it is not enforced.',
                     $label,
@@ -1200,8 +1213,29 @@ final readonly class RuleSetBuilder
      */
     private static function numberRules(Schema $schema, array &$rules, array &$handled): void
     {
-        self::bound($schema->minimum, 'min', $rules);
-        self::bound($schema->maximum, 'max', $rules);
+        $minimum = $schema->minimum;
+        $maximum = $schema->maximum;
+
+        // `int64` is what `integer` already refuses anything outside of, `double` is any JSON number, and `int32` is
+        // the one range of the three the type rule does not carry: it is the two bounds, the tighter of each with
+        // whatever the contract states beside it. `float` is a 32-bit range with a precision no rule checks, so it is
+        // left to be reported with the rest.
+        $type = $schema->soleType();
+
+        if ($schema->format === 'int32' && $type === SchemaType::Integer) {
+            $minimum = $minimum === null ? self::INT32_MINIMUM : max($minimum, self::INT32_MINIMUM);
+            $maximum = $maximum === null ? self::INT32_MAXIMUM : min($maximum, self::INT32_MAXIMUM);
+            $handled[] = 'format';
+        } elseif (
+            ($schema->format === 'int64' && $type === SchemaType::Integer)
+            || ($schema->format === 'double' && $type === SchemaType::Number)
+            || in_array($schema->format, self::ANNOTATION_FORMATS, true)
+        ) {
+            $handled[] = 'format';
+        }
+
+        self::bound($minimum, 'min', $rules);
+        self::bound($maximum, 'max', $rules);
         self::bound($schema->exclusiveMinimum, 'gt', $rules);
         self::bound($schema->exclusiveMaximum, 'lt', $rules);
         self::bound($schema->multipleOf, 'multiple_of', $rules);
