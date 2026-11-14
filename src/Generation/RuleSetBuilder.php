@@ -263,13 +263,33 @@ final readonly class RuleSetBuilder
             $findings[] = sprintf(
                 'The body declares %s over one schema, so one rule set covers them all.',
                 self::list(array_keys($read)),
-            ).(isset($read[self::MULTIPART])
+            ).(isset($read[self::MULTIPART]) && self::hasFilePart(reset($read))
                 ? ' A part the schema marks as a file is then read as a string, because a JSON or form-encoded '
                     .'body cannot carry one and no rule serves both.'
                 : '');
         }
 
         return reset($read);
+    }
+
+    /**
+     * Whether a file part is written anywhere in a schema, a nested one and an
+     * `allOf` branch included. A recursion marker has nothing under it, so it
+     * ends the walk.
+     */
+    private static function hasFilePart(Schema $schema): bool
+    {
+        if ($schema->isFilePart) {
+            return true;
+        }
+
+        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
+            if (self::hasFilePart($child)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

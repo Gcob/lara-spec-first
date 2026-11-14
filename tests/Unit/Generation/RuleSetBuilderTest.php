@@ -1068,3 +1068,25 @@ it('still reports a body that states no type and no properties', function (): vo
     expect($set->rules)->toBe([])
         ->and(implode('', $set->findings))->toContain('is not an object');
 });
+
+// The sentence explains why a file part is a string, so it is written only when the
+// schema has one. Under a body with none it described something that was not there.
+it('does not explain a file part the mixed body does not have', function (): void {
+    [, $findings] = filePartRules(new Schema(types: [SchemaType::String]), mediaTypes: ['multipart/form-data', 'application/json']);
+
+    expect($findings)->toContain('over one schema')
+        ->and($findings)->not->toContain('A part the schema marks as a file');
+});
+
+it('explains a file part that sits inside a nested object, an array or an allOf', function (Schema $schema): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'multipart/form-data' => $schema,
+        'application/json' => $schema,
+    ]));
+
+    expect(implode("\n", $set->findings))->toContain('A part the schema marks as a file');
+})->with([
+    'a nested object' => [objectSchema(['meta' => objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true)])])],
+    'an array' => [objectSchema(['docs' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String], isFilePart: true))])],
+    'an allOf' => [new Schema(allOf: [objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true)])])],
+]);
