@@ -63,3 +63,17 @@ it('compares two schemas by what they state rather than by where an ignored keyw
             new Schema(properties: ['b' => new Schema, 'a' => new Schema]),
         ))->toBeTrue();
 });
+
+// `sameShapeAs()` forgives the order a map was written in and the planner of the input DTOs does not, since
+// it emits properties in that order. Both leave an ignored keyword's position out, and both are strict about
+// values: `[0]` and `[false]` are `==`.
+it('keys a shape without its ignored keywords, strictly, and in order unless told otherwise', function (): void {
+    $ab = new Schema(properties: ['a' => new Schema(ignored: ['default' => '#/x']), 'b' => new Schema]);
+    $ba = new Schema(properties: ['b' => new Schema, 'a' => new Schema(ignored: ['default' => '#/y'])]);
+
+    expect($ab->shapeKey())->toBe((new Schema(properties: ['a' => new Schema, 'b' => new Schema]))->shapeKey())
+        ->and($ab->shapeKey())->not->toBe($ba->shapeKey())
+        ->and($ab->shapeKey(ordered: false))->toBe($ba->shapeKey(ordered: false))
+        ->and((new Schema(enum: [0]))->shapeKey())->not->toBe((new Schema(enum: [false]))->shapeKey())
+        ->and((new Schema(enum: [0]))->sameShapeAs(new Schema(enum: [false])))->toBeFalse();
+});

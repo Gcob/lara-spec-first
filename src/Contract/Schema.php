@@ -117,41 +117,51 @@ final readonly class Schema
     }
 
     /**
+     * What this schema states, as a string two schemas share exactly when they state the same thing.
+     *
+     * Where an ignored keyword is written is a fact about the document's layout, never about the shape, so
+     * {@see self::$ignored} is left out at every depth. Everything else is compared strictly, which `==` is not: `[0]`
+     * and `[false]` are `==`, and are two enums. `$ordered` says whether the order a map was written in is part of the
+     * answer: a generator that emits properties in their written order needs it, and a check that asks whether two
+     * media types say one thing does not.
+     */
+    public function shapeKey(bool $ordered = true): string
+    {
+        return serialize(self::shapeOf($this, $ordered));
+    }
+
+    /**
      * Whether two schemas state the same thing, wherever each was written.
      *
      * What differs between two inline copies of one shape is {@see self::$ignored}: the positions of keywords nothing
-     * reads, which are a fact about the document's layout and never about the shape. `==` would call the copies
-     * different and refuse a contract that says one thing twice.
+     * reads. Comparing the objects would call the copies different and refuse a contract that says one thing twice.
+     * Built on {@see self::shapeKey()}, so this and the planner of the input DTOs cannot drift on what a shape is.
      */
     public function sameShapeAs(self $other): bool
     {
-        return self::sameValue($this, $other);
+        return $this->shapeKey(ordered: false) === $other->shapeKey(ordered: false);
     }
 
-    private static function sameValue(mixed $left, mixed $right): bool
+    private static function shapeOf(mixed $value, bool $ordered): mixed
     {
-        if ($left instanceof self && $right instanceof self) {
-            $left = get_object_vars($left);
-            $right = get_object_vars($right);
-            unset($left['ignored'], $right['ignored']);
+        if ($value instanceof self) {
+            $properties = get_object_vars($value);
+            unset($properties['ignored']);
+
+            return self::shapeOf($properties, $ordered);
         }
 
-        if (! is_array($left) || ! is_array($right)) {
-            return $left == $right;
+        if (! is_array($value)) {
+            return $value;
         }
 
-        // The order a map was written in is not part of what it says, which is also what `==` has always answered.
-        if (count($left) !== count($right)) {
-            return false;
+        $shape = array_map(static fn (mixed $item): mixed => self::shapeOf($item, $ordered), $value);
+
+        if (! $ordered && ! array_is_list($shape)) {
+            ksort($shape);
         }
 
-        foreach ($left as $key => $value) {
-            if (! array_key_exists($key, $right) || ! self::sameValue($value, $right[$key])) {
-                return false;
-            }
-        }
-
-        return true;
+        return $shape;
     }
 
     /**
