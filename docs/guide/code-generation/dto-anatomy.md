@@ -216,6 +216,13 @@ version wrote the document:
 | `nullable`                                                                   | `?T`                           | Checks for `null` before any conversion | Writes the `null` |
 | No single type, or none at all                                               | `mixed`                        | Reads it                                | Writes it         |
 
+**An object body with no `properties` gets a DTO with no properties, and the file says it carries nothing.** The row
+above is the case of a property whose value is a free-form object. A body has no parent to hold it as one, and a DTO's
+properties are the contract's declared keys, so the type is empty: `from()` reads no key and `toArray()` returns `[]`.
+It still exists, with both of its types, so a property added to the contract later does not create a class that was not
+there. The payload is not in it: the generated file's findings say to read the body from the request itself, with
+`$request->json()->all()` for a JSON body.
+
 **A node that recurses is `mixed` too, and the reason is that nothing validated it.** No rule set reaches an infinite
 depth, so the rules stop at the point a schema repeats its ancestor: `address.parent` has no rule beyond `sometimes`.
 Building the ancestor's DTO from it would build a typed object from input nothing checked, and a `parent: "oops"` would

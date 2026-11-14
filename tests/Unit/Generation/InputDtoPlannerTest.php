@@ -304,6 +304,26 @@ it('says how each inline name was derived when two inline schemas meet', functio
         ->and($refusal)->toThrow(UnusableNameException::class, 'the schema written at "'.$root.'" gives the full type, "CreateUserAddress" (derived from the request "CreateUserAddressRequest") + "InputDto"');
 });
 
+// An object body with no `properties` is an open object whose keys are all undeclared. Its
+// type exists, so adding a property later creates no class that was not there, and it has
+// nothing to hold: the file says so, and where the body is read from instead.
+it('says what an object body with no properties carries, which is nothing', function (): void {
+    $plan = planDtos([dtoOperation('receiveHook', ['application/json' => dtoSchema([])])]);
+
+    $dto = dtoNamed($plan, 'ReceiveHookInputDto');
+
+    expect($dto->properties)->toBe([])
+        ->and(implode("\n", $dto->findings))
+        ->toContain('The body declares no properties, so this type has none and carries nothing')
+        ->toContain('`$request->json()->all()`');
+});
+
+it('says nothing of the kind about a body that declares a property', function (): void {
+    $plan = planDtos([dtoOperation('receiveHook', ['application/json' => dtoSchema(['a' => dtoString()])])]);
+
+    expect(implode("\n", dtoNamed($plan, 'ReceiveHookInputDto')->findings))->not->toContain('carries nothing');
+});
+
 it('refuses a component name that is no class name', function (): void {
     $schema = dtoSchema(['a' => dtoString()], name: '2fa', source: '#/components/schemas/2fa');
 

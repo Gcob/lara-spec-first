@@ -303,6 +303,17 @@ final class InputDtoPlanner
             $properties[] = new InputDtoProperty($key, $name, $type, $optional);
         }
 
+        // Only a body's root gets here without properties: a nested object with none is
+        // a `map` property of its parent. An open object has no declared key for a
+        // property to be, so the type is empty and keeps its name, which a property
+        // added to the contract later would otherwise have to create.
+        if ($merged->properties === []) {
+            $this->registry[$shortName]['findings'][] = 'The body declares no properties, so this type has none and carries '
+                .'nothing: `from()` reads no key and `toArray()` returns `[]`. It exists so that adding a '
+                .'property later creates no class that was not there. Read the body from the request '
+                .'itself: `$request->json()->all()` for a JSON body, `$request->post()` for a form.';
+        }
+
         $this->registry[$shortName]['properties'] = $properties;
 
         return $shortName;
