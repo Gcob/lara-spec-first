@@ -626,6 +626,50 @@ function untouchedDocblocks(): array
          * @param  array<string, array<string, Schema>>  $content
          */
         DOC],
+        'a list under a deprecated tag' => [<<<'DOC'
+        /**
+         * @deprecated since 2.0, use one of:
+         *   - Foo::bar()
+         *   - Baz::qux()
+         */
+        DOC],
+        'a fenced block under a todo tag' => [<<<'DOC'
+        /**
+         * @todo Replace this call once fixed:
+         * ```php
+         * $x = parse($spec);
+         * ```
+         */
+        DOC],
+        'a numbered list under a since tag' => [<<<'DOC'
+        /**
+         * @since 1.2 Steps:
+         * 1. first
+         * 2. second
+         */
+        DOC],
+        'a list under an internal tag' => [<<<'DOC'
+        /**
+         * @internal Used by:
+         *   * the builder
+         *   * the planner
+         */
+        DOC],
+        'a list under a param tag' => [<<<'DOC'
+        /**
+         * @param  string  $mode  one of:
+         *                        - fast
+         *                        - slow
+         */
+        DOC],
+        'a tilde fence under a return tag' => [<<<'DOC'
+        /**
+         * @return string the source:
+         *                ~~~
+         *                $x = 1;
+         *                ~~~
+         */
+        DOC],
         'a see tag' => [<<<'DOC'
         /**
          * @see docs/guide/openapi-support.md — "Where a schema is reported from"

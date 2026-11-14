@@ -734,7 +734,17 @@ function tagHead(string $line): ?string
  */
 function reflowBlock(array $block, string $head, int $limit, string $indent): ?array
 {
-    if (isPreformatted(array_slice($block, 1))) {
+    $continuation = array_slice($block, 1);
+
+    // A list or a fenced block under a tag is structure, and joining it into the tag's prose would flatten it. The hang
+    // this writes never opens either, since atomsOf() glues such a word to the one before it.
+    foreach ($continuation as $line) {
+        if (! endsNotBlock($line) || preg_match('/^\s*(`{3,}|~{3,})/', $line) === 1) {
+            return null;
+        }
+    }
+
+    if (isPreformatted($continuation)) {
         return null;
     }
 
