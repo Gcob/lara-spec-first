@@ -70,9 +70,21 @@ it('declares dto() returning the input DTO, built from validated()', function ()
     expect(emittedRequest(goldenOperation()))
         ->toContain('use App\\Http\\Generated\\Data\\CreateUserInputDto;')
         ->toContain('public function dto(): CreateUserInputDto')
-        ->toContain('return CreateUserInputDto::from($this->validated());')
+        ->toContain('return CreateUserInputDto::from($validator->validated());')
         ->toContain('@see `\\App\\Http\\Generated\\Data\\CreateUserInputDto`')
         ->toContain('`dto()` returns the body as `CreateUserInputDto`');
+});
+
+// `validated()` leaves out an array with child rules when none of its children was sent. `dto()`
+// reads with that off, and puts it back, so `validated()` is what Laravel returns after a `dto()`
+// call as before it. Run against Laravel in tests/Feature/Generation/GeneratedDeclaredArraysTest.php.
+it('reads the validated data with excludeUnvalidatedArrayKeys off, and restores it', function (): void {
+    expect(emittedRequest(goldenOperation()))
+        ->toContain('$excluded = $validator->excludeUnvalidatedArrayKeys;')
+        ->toContain('$validator->excludeUnvalidatedArrayKeys = false;')
+        ->toContain('} finally {')
+        ->toContain('$validator->excludeUnvalidatedArrayKeys = $excluded;')
+        ->and(emittedRequest(goldenOperation()))->not->toContain('$this->validated()');
 });
 
 // The reason the method is `dto()`: `Request::data()` exists and is read by the typed
@@ -151,9 +163,24 @@ it('imports nothing it does not use', function (): void {
 
     $emitted = emittedRequest($operation, controllerShortName: 'CreateThingController');
 
+    // `Validator` is used here, by `dto()`, and by nothing else.
     expect($emitted)->not->toContain('use Illuminate\\Validation\\Rule;')
-        ->and($emitted)->not->toContain('use Illuminate\\Validation\\Validator;')
+        ->and($emitted)->toContain('use Illuminate\\Validation\\Validator;')
+        ->and($emitted)->toContain('assert($validator instanceof Validator);')
         ->and($emitted)->not->toContain('function after()');
+});
+
+it('imports no Validator for a request with no dto() and no closed root', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listThings',
+        queryParameters: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    );
+
+    expect(emittedRequest($operation, controllerShortName: 'ListThingsController'))
+        ->not->toContain('use Illuminate\\Validation\\Validator;');
 });
 
 // A root has no field for `array:` to sit on, so a closed root becomes a check

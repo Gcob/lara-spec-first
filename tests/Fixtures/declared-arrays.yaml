@@ -1,0 +1,59 @@
+# Arrays whose children are all optional: what Laravel's `validated()` leaves out
+# when none of them was sent, and what `dto()` has to keep.
+#
+# `settings` is required and `extras` is not, and both are objects declaring one
+# optional key; `widgets` is a list of such objects. Sent as `{}` they pass the
+# rule set and hold nothing `validated()` would carry.
+#
+# The tests run the classes this contract generates rather than committed copies
+# of them: see tests/Feature/Generation/GeneratedDeclaredArraysTest.php.
+openapi: 3.1.0
+info:
+  title: Declared arrays fixture
+  version: 1.0.0
+paths:
+  /accounts:
+    post:
+      operationId: createAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Account'
+      responses:
+        '201': { description: Created }
+  /accounts/{id}:
+    patch:
+      operationId: updateAccount
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Account'
+      responses:
+        '200': { description: Updated }
+components:
+  schemas:
+    Account:
+      type: object
+      required: [settings, widgets]
+      properties:
+        name: { type: string }
+        settings:
+          type: object
+          properties:
+            theme: { type: string }
+        extras:
+          type: object
+          properties:
+            note: { type: string }
+        widgets:
+          type: array
+          items:
+            type: object
+            properties:
+              label: { type: string }

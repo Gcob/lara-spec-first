@@ -571,7 +571,17 @@ the contract already described.
 // app/Http/Generated/Requests/CreateUserRequest.php
 public function dto(): CreateUserInputDto
 {
-    return CreateUserInputDto::from($this->validated());
+    $validator = $this->getValidatorInstance();
+    assert($validator instanceof Validator);
+
+    $excluded = $validator->excludeUnvalidatedArrayKeys;
+    $validator->excludeUnvalidatedArrayKeys = false;
+
+    try {
+        return CreateUserInputDto::from($validator->validated());
+    } finally {
+        $validator->excludeUnvalidatedArrayKeys = $excluded;
+    }
 }
 ```
 
@@ -583,9 +593,19 @@ compatible one would change what every typed accessor returns. Found by running 
 reading it, so the test that pins it asserts the two facts the name rests on: `FormRequest` has a `data()`, and has no
 `dto()`. A future Laravel that adds one fails that test rather than a consumer's boot.
 
-**`validated()` keeps returning Laravel's array.** It is the framework's own method, `validated()` and
-`validated('email')` both have callers, and a generated class that changed what they hand back would be this package
-redefining something it does not own. The DTO sits beside it, under a name of ours.
+**`dto()` reads the validated data with `excludeUnvalidatedArrayKeys` off, and puts the flag back.** By default
+Laravel's `validated()` leaves out an array that has child rules when none of its declared children was sent. A required
+object sent as `{}` passes `present|array` and is then absent from the data, so `from()` read an undefined key and the
+request answered 500 on a payload the contract allows. A list of objects none of which holds a declared key lost every
+element, and an optional `{}` arrived as `Optional`, which tells the controller the client did not send it. Kept as
+sent, the array carries the keys the contract does not declare too, and `from()` reads only the ones it does, so none
+reaches the DTO. The flag is on the validator Laravel builds, which is why the method asserts the class: the request is
+`final` and declares no `validator()`, so it is always that one. Laravel 12 and 13 both have the flag, as a public
+property of the validator.
+
+**`validated()` keeps returning Laravel's array**, and `dto()` leaves it as it found it. It is the framework's own
+method, `validated()` and `validated('email')` both have callers, and a generated class that changed what they hand back
+would be this package redefining something it does not own. The DTO sits beside it, under a name of ours.
 
 **Its properties are the body schema's, and a query parameter is not one of them.** The rule set merges the two, so
 `validated()` carries both; the DTO mirrors the body and nothing else, because the body is where its name comes from.

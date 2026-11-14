@@ -110,7 +110,17 @@ final class CreateUserRequest extends FormRequest
 
     public function dto(): CreateUserInputDto
     {
-        return CreateUserInputDto::from($this->validated());
+        $validator = $this->getValidatorInstance();
+        assert($validator instanceof Validator);
+
+        $excluded = $validator->excludeUnvalidatedArrayKeys;
+        $validator->excludeUnvalidatedArrayKeys = false;
+
+        try {
+            return CreateUserInputDto::from($validator->validated());
+        } finally {
+            $validator->excludeUnvalidatedArrayKeys = $excluded;
+        }
     }
 
     /**

@@ -101,9 +101,10 @@ What each member is for:
 
 1. **The constructor is the shape.** One promoted property per schema property, typed from the schema, so a contract
    change is a changed signature and a static analysis error in the code that reads it.
-2. **`from()` takes an array and nothing else.** On the request side it is fed `validated()`; on the response side a
-   [factory](./response-dtos.md#factories-carry-the-behavior) may call it or the constructor, whichever reads better for
-   the source it maps from. Building a DTO from a model is the factory's job, never the DTO's.
+2. **`from()` takes an array and nothing else.** On the request side it is fed the validated data, read with Laravel's
+   `excludeUnvalidatedArrayKeys` off ([why](./request-validation.md#the-payload-arrives-as-a-dto)); on the response side
+   a [factory](./response-dtos.md#factories-carry-the-behavior) may call it or the constructor, whichever reads better
+   for the source it maps from. Building a DTO from a model is the factory's job, never the DTO's.
 3. **`toArray()` writes the contract's keys back out**, recursing into nested DTOs and leaving out every `Optional`.
    `jsonSerialize()` returns the same array, so a DTO returned from a controller becomes a JSON response through
    Laravel's own router with nothing registered.

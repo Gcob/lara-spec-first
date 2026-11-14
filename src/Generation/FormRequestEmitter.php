@@ -91,7 +91,7 @@ final readonly class FormRequestEmitter
 
     /**
      * The import block: the base class always, and `Rule` and `Validator` only
-     * when a rule or the closed-root check uses them — an unused import is
+     * when a rule, the closed-root check or `dto()` uses them — an unused import is
      * something a consumer's formatter removes, and a formatter with something
      * to remove is a formatter fighting the next build.
      */
@@ -104,7 +104,7 @@ final readonly class FormRequestEmitter
             $imports[] = $this->import(self::RULE_CLASS);
         }
 
-        if ($set->closedKeys !== null) {
+        if ($set->closedKeys !== null || $planned->dto !== null) {
             $imports[] = $this->import(self::VALIDATOR_CLASS);
         }
 
@@ -238,6 +238,17 @@ final readonly class FormRequestEmitter
      * the body declares, so `validated('page')` is still where a query
      * parameter is read.
      *
+     * **It reads the validated data with `excludeUnvalidatedArrayKeys` off**, and
+     * puts the flag back. By default `validated()` leaves out an array that has
+     * child rules when none of its declared children was sent, so a required
+     * object sent as `{}` passes `present|array` and is then absent from the data
+     * `from()` reads, a list of objects with no declared key loses its elements, and
+     * an optional `{}` arrives as `Optional`. Kept as sent, the array carries the
+     * keys the contract does not declare too, and `from()` reads only the ones it
+     * does, so none reaches the DTO. The `assert` is for the static analysis of
+     * the class a consumer reads: `getValidatorInstance()` is typed as the
+     * contract, and the flag is on the validator Laravel builds.
+     *
      * @see docs/guide/code-generation/request-validation.md — "The payload arrives as a DTO"
      */
     private function dto(PlannedRequest $planned): string
@@ -246,10 +257,24 @@ final readonly class FormRequestEmitter
             return '';
         }
 
-        return sprintf(
-            "\n    public function dto(): %1\$s\n    {\n        return %1\$s::from(\$this->validated());\n    }\n",
-            $planned->dto,
-        );
+        return sprintf(<<<'PHP'
+
+                public function dto(): %1$s
+                {
+                    $validator = $this->getValidatorInstance();
+                    assert($validator instanceof Validator);
+
+                    $excluded = $validator->excludeUnvalidatedArrayKeys;
+                    $validator->excludeUnvalidatedArrayKeys = false;
+
+                    try {
+                        return %1$s::from($validator->validated());
+                    } finally {
+                        $validator->excludeUnvalidatedArrayKeys = $excluded;
+                    }
+                }
+
+            PHP, $planned->dto);
     }
 
     /**
