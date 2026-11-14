@@ -408,9 +408,10 @@ composer format      # PHP: Pint, then the docblock formatter
 composer format:md   # Markdown
 ```
 
-Cramped-tag warnings are shown too, and never stop a commit. Stage the result and commit again. `git commit --no-verify`
-skips the hook once. It reads the working-tree copy of each staged file, so a file staged only in part with `git add -p`
-is checked as a whole.
+Cramped-tag warnings are shown too, and never stop a commit. When `php` is missing or the formatter itself fails, the
+hook says the check was skipped and why, and lets the commit through. Stage the result and commit again.
+`git commit --no-verify` skips the hook once. It reads the working-tree copy of each staged file, so a file staged only
+in part with `git add -p` is checked as a whole.
 
 **After an edit, in Claude Code.** `.claude/settings.json` is committed and holds one thing: a `PostToolUse` hook on
 `Edit` and `Write` that runs `scripts/format-edited-file.sh`. It reads the edited path from the hook's input and formats

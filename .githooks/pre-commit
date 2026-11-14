@@ -31,13 +31,27 @@ unformatted_markdown=""
 warnings=""
 
 if [ -n "$(staged '*.php')" ]; then
-    scratch=$(mktemp -d)
-    trap 'rm -rf "$scratch"' EXIT
+    if command -v php > /dev/null 2>&1; then
+        scratch=$(mktemp -d)
+        trap 'rm -rf "$scratch"' EXIT
 
-    # stdout is the list of files, one per line. stderr holds the warnings, which
-    # are shown below, and a summary line that is of no use here.
-    unformatted_php=$(staged '*.php' | xargs -0 sh -c 'php scripts/format-docblocks.php --check "$@" 2>> "$0/stderr"' "$scratch")
-    warnings=$(grep '^warning: ' "$scratch/stderr" 2> /dev/null)
+        # stdout is the list of files, one per line. stderr holds the warnings,
+        # which are shown below, and a summary line that is of no use here. The
+        # exit code goes to a file: xargs turns 1 and 2 into the same 123.
+        unformatted_php=$(staged '*.php' | xargs -0 sh -c 'php scripts/format-docblocks.php --check "$@" 2>> "$0/stderr"; echo $? >> "$0/status"' "$scratch")
+        warnings=$(grep '^warning: ' "$scratch/stderr" 2> /dev/null)
+
+        # 0 is clean and 1 is "files differ". Anything else means nothing was
+        # checked, and a commit must not pass in silence over that.
+        if grep -qv '^[01]$' "$scratch/status" 2> /dev/null || [ ! -s "$scratch/status" ]; then
+            status=$(grep -v '^[01]$' "$scratch/status" 2> /dev/null | head -n 1)
+            echo "pre-commit: the docblock check did not run (exit ${status:-unknown}), so staged PHP was not checked:" >&2
+            grep -v '^warning: ' "$scratch/stderr" 2> /dev/null | head -n 1 | sed 's/^/  /' >&2
+            unformatted_php=""
+        fi
+    else
+        echo "pre-commit: php is not installed, so the docblock check was skipped for staged PHP files." >&2
+    fi
 fi
 
 if [ -n "$(staged '*.md')" ]; then

@@ -138,17 +138,41 @@ function editPayload(string $path): string
  * Run `git` in a project, as a hook would see it.
  *
  * @param  list<string>  $arguments
+ * @param  array<string, string>|null  $env  the environment of the command, or null to inherit this one
  * @return array{exit: int, out: string, err: string}
  */
-function hookGit(string $project, array $arguments): array
+function hookGit(string $project, array $arguments, ?array $env = null): array
 {
     $process = new Process(
-        ['git', '-c', 'core.hooksPath=.githooks', '-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...$arguments],
+        [hookExecutable('git'), '-c', 'core.hooksPath=.githooks', '-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...$arguments],
         $project,
+        $env,
     );
     $process->run();
 
     return ['exit' => (int) $process->getExitCode(), 'out' => $process->getOutput(), 'err' => $process->getErrorOutput()];
+}
+
+function hookExecutable(string $name): string
+{
+    return trim((string) shell_exec('command -v '.escapeshellarg($name)));
+}
+
+/**
+ * A `PATH` that holds what the pre-commit hook needs and no `php`: a directory of links to the system's own tools.
+ *
+ * @param  list<string>  $tools
+ */
+function hookPathWithout(string $project, array $tools = ['git', 'xargs', 'mktemp', 'rm', 'grep', 'sed', 'head', 'cat', 'sh']): string
+{
+    $bin = $project.'/.toolbox';
+    mkdir($bin);
+
+    foreach ($tools as $tool) {
+        symlink(hookExecutable($tool), $bin.'/'.$tool);
+    }
+
+    return $bin;
 }
 
 /**
@@ -356,6 +380,28 @@ describe('the pre-commit hook', function (): void {
         expect($commit['exit'])->not->toBe(0)
             ->and($commit['err'])->toContain("  src/Cramped.php:4, 34 columns left (@param)\n")
             ->and($commit['err'])->toContain("  src/Long.php\n");
+    });
+
+    // A hook that fails open in silence is a hook nobody knows is off.
+    it('says the check was skipped when php is not installed, and lets the commit through', function (): void {
+        $project = stagedProject(['src/Long.php' => "<?php\n\n/**\n * Short.\n * Lines.\n */\nfinal class A {}\n"]);
+
+        $commit = hookGit($project, ['commit', '-q', '-m', 'x'], ['PATH' => hookPathWithout($project)]);
+
+        expect($commit['exit'])->toBe(0, $commit['err'])
+            ->and($commit['err'])->toContain('pre-commit: php is not installed, so the docblock check was skipped')
+            ->and(hookGit($project, ['rev-parse', '--verify', '-q', 'HEAD'])['exit'])->toBe(0);
+    });
+
+    it('says the check did not run when the formatter fails, and lets the commit through', function (): void {
+        $project = stagedProject(['src/Gone.php' => "<?php\n\nfinal class A {}\n"]);
+        unlink($project.'/src/Gone.php');
+
+        $commit = hookGit($project, ['commit', '-q', '-m', 'x']);
+
+        expect($commit['exit'])->toBe(0, $commit['err'])
+            ->and($commit['err'])->toContain('pre-commit: the docblock check did not run (exit 2)')
+            ->and($commit['err'])->toContain('does not exist');
     });
 
     it('refuses an unformatted Markdown file and prints its fix', function (): void {
