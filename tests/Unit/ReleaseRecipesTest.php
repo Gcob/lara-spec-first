@@ -49,7 +49,7 @@ const RELEASE_PREPARED_CHANGELOG = <<<'MD'
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-11-20
+## [0.2.0] - __TODAY__
 
 ### Added
 
@@ -97,7 +97,7 @@ done > "$dir/calls/$(printf '%04d' "$n")"
 case "$1 $2" in
     "api user") cat "$dir/login" ;;
     "api --paginate") cat "$dir/ci" ;;
-    "repo view") echo "Gcob/lara-spec-first" ;;
+    "repo view") cat "$dir/slug" ;;
     "issue view") cat "$dir/card" ;;
     "pr create") echo "https://github.com/Gcob/lara-spec-first/pull/999" ;;
     "release create") ;;
@@ -170,15 +170,19 @@ function releaseProject(string $changelog = RELEASE_UNRELEASED_CHANGELOG): array
         chmod($project['work'].'/scripts/'.$script, 0755);
     }
 
-    file_put_contents($project['work'].'/CHANGELOG.md', $changelog);
+    file_put_contents($project['work'].'/CHANGELOG.md', str_replace('__TODAY__', date('Y-m-d'), $changelog));
     releaseGit($project['work'], ['add', '.']);
     releaseGit($project['work'], ['commit', '--quiet', '-m', 'chore: start']);
-    releaseGit($project['work'], ['remote', 'add', 'origin', $project['origin']]);
+    // The remote carries the address GitHub gives it, and git sends it to the bare repository on disk. The scripts read
+    // the address from the configuration, as they would in a checkout, and everything they push goes to the disk.
+    releaseGit($project['work'], ['remote', 'add', 'origin', 'https://github.com/Gcob/lara-spec-first.git']);
+    releaseGit($project['work'], ['config', 'url.'.$project['origin'].'.insteadOf', 'https://github.com/Gcob/lara-spec-first.git']);
     releaseGit($project['work'], ['push', '--quiet', '--set-upstream', 'origin', 'main']);
 
     file_put_contents($project['bin'].'/gh', RELEASE_FAKE_GH);
     chmod($project['bin'].'/gh', 0755);
     file_put_contents($project['state'].'/login', 'Gcob');
+    file_put_contents($project['state'].'/slug', 'Gcob/lara-spec-first');
     file_put_contents($project['state'].'/ci', '12 0 0');
     file_put_contents($project['state'].'/card', RELEASE_READY_CARD);
 
@@ -394,6 +398,38 @@ describe('release-prep', function (): void {
         releaseNothingWritten($project, $head);
     });
 
+    it('prepares a release only when every box is ticked, whatever bullet it is written with', function (string $open): void {
+        $project = releaseProject();
+        $head = releaseGit($project['work'], ['rev-parse', 'HEAD']);
+        file_put_contents($project['state'].'/card', "## Ready when\n\n- [x] #107\n{$open} #108\n");
+
+        $run = releaseRun($project, 'release-prep.sh', ['0.2.0', '126']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   card #126 has every "Ready when" box ticked: 1 still open');
+
+        releaseNothingWritten($project, $head);
+    })->with([
+        'a dash' => ['- [ ]'],
+        'an asterisk' => ['* [ ]'],
+        'a plus' => ['+ [ ]'],
+        'a number' => ['1. [ ]'],
+    ]);
+
+    it('prepares a release only when origin can be asked about the branch', function (): void {
+        $project = releaseProject();
+        rename($project['origin'], $project['origin'].'-gone');
+
+        $run = releaseRun($project, 'release-prep.sh', ['0.2.0', '126']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   the branch release/126/0.2.0 does not exist: origin could not be asked')
+            ->and($run['out'])->not->toContain('ok    the branch')
+            ->and(releaseGit($project['work'], ['status', '--porcelain']))->toBe('')
+            ->and(releaseGit($project['work'], ['branch', '--format=%(refname:short)']))->toBe('main')
+            ->and(releaseGhWrites($project))->toBe([]);
+    });
+
     it('prepares a release only for a version and a card it can read', function (string $version, string $card): void {
         $project = releaseProject();
         $head = releaseGit($project['work'], ['rev-parse', 'HEAD']);
@@ -459,6 +495,31 @@ describe('release', function (): void {
                 'RED   CI is green on',
                 '0.2.0',
             ],
+            'something merged after the release pull request' => [
+                function (array $p): void {
+                    $changelog = (string) file_get_contents($p['work'].'/CHANGELOG.md');
+                    file_put_contents($p['work'].'/CHANGELOG.md', str_replace("## [Unreleased]\n", "## [Unreleased]\n\n- A late change.\n", $changelog));
+                    releaseGit($p['work'], ['commit', '--quiet', '--all', '-m', 'feat: land after the release']);
+                    releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+                },
+                'RED   [Unreleased] is empty at HEAD: something merged after the release pull request',
+                '0.2.0',
+            ],
+            'the heading is not dated today' => [
+                function (array $p): void {
+                    $changelog = (string) file_get_contents($p['work'].'/CHANGELOG.md');
+                    file_put_contents($p['work'].'/CHANGELOG.md', str_replace(date('Y-m-d'), '2026-01-01', $changelog));
+                    releaseGit($p['work'], ['commit', '--quiet', '--all', '-m', 'docs: date the entry']);
+                    releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+                },
+                'RED   the heading\'s date is today: it says "2026-01-01"',
+                '0.2.0',
+            ],
+            'gh reads another repository than origin' => [
+                fn (array $p) => file_put_contents($p['state'].'/slug', 'someone/else'),
+                'RED   gh reads the repository from origin: gh says someone/else, origin says Gcob/lara-spec-first',
+                '0.2.0',
+            ],
             'CI has failed on a later page' => [
                 fn (array $p) => file_put_contents($p['state'].'/ci', "12 0 0\n12 0 1\n"),
                 'RED   CI is green on',
@@ -509,6 +570,18 @@ describe('release', function (): void {
             ->and(releaseGit($project['origin'], ['tag', '--list']))->toBe($tags)
             ->and(releaseGit($project['work'], ['rev-parse', 'HEAD']))->toBe($head);
     })->with(releaseRedChecks());
+
+    it('refuses to tag when origin cannot be asked whether the tag exists', function (): void {
+        $project = releaseProject(RELEASE_PREPARED_CHANGELOG);
+        rename($project['origin'], $project['origin'].'-gone');
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0', '--publish']);
+
+        expect($run['exit'])->not->toBe(0)
+            ->and($run['out'])->toContain('RED   the tag v0.2.0 does not exist: origin could not be asked')
+            ->and(releaseGit($project['work'], ['tag', '--list']))->toBe('')
+            ->and(releaseGhWrites($project))->toBe([]);
+    });
 
     it('refuses to tag with no terminal, even when every check is green', function (): void {
         $project = releaseProject(RELEASE_PREPARED_CHANGELOG);
