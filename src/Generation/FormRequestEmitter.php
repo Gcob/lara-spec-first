@@ -104,7 +104,7 @@ final readonly class FormRequestEmitter
             $imports[] = $this->import(self::RULE_CLASS);
         }
 
-        if ($set->closedKeys !== null || $planned->dto !== null) {
+        if ($set->closedKeys !== null || $set->jsonRoot || $planned->dto !== null) {
             $imports[] = $this->import(self::VALIDATOR_CLASS);
         }
 
@@ -279,14 +279,25 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * The closed-root check, or nothing.
+     * The root checks, or nothing: a JSON body that is not an object is refused, and a
+     * closed root refuses the keys it does not declare.
      *
      * **A closure, and one emitted shape.** Laravel's `#[FailOnUnknownFields]`
-     * does this from 12.x on, but not on the lowest Laravel this package
+     * does the second from 12.x on, but not on the lowest Laravel this package
      * supports, and an attribute behind a version gate with this closure
-     * underneath it anyway would be two shapes that have to stay equivalent.
+     * underneath it anyway would be two shapes that have to stay equivalent. Both
+     * checks sit in the one closure, since a root that is not an object has no
+     * keys to compare, and answering for both would say the same thing twice.
      *
-     * **Top-level keys only, read from the body rather than from `all()`**, by
+     * **The first check is the contract's own for a typed object, and stricter for
+     * an untyped one.** Laravel reads a JSON body as `(array) json_decode(...)`, so
+     * `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has a key
+     * for, and an open root with nothing required would accept them. Only a JSON
+     * request is checked (a form cannot send a non-object), and an empty body is
+     * left alone: whether one is allowed is the body's `required`, which the rules
+     * answer. A schema that allows `null` allows it here.
+     *
+     * **The second reads the top-level keys from the body rather than from `all()`**, by
      * the same `bodyInput()` `validationData()` reads: the JSON bag, or the form
      * bag, and the uploaded files either way, never `getInputSource()`, which
      * answers with the query string on a `GET` or a `HEAD`. The files are a bag of
@@ -296,36 +307,62 @@ final readonly class FormRequestEmitter
      * deeper here would repeat that, and would refuse the extras of a nested
      * object that allows them.
      *
-     * **The refusal is Laravel's `prohibited`**, through `addFailure()`, so its
-     * words are the ones in `lang/en/validation.php` and a project's own lines
-     * and translations apply, which a message written here could not honor. An
-     * undeclared key is exactly what that rule says: a field that is not allowed.
+     * **The refusal is Laravel's own rule**, through `addFailure()`, so its words are
+     * the ones in `lang/en/validation.php` and a project's own lines and
+     * translations apply, which a message written here could not honor: `prohibited`
+     * for an undeclared key, which is exactly what that rule says, and `array` for a
+     * root that is not an object, as a nested object that is not one is refused.
      */
     private function after(RuleSet $set): string
     {
-        if ($set->closedKeys === null) {
+        if ($set->closedKeys === null && ! $set->jsonRoot) {
             return '';
         }
 
-        return <<<'PHP'
+        $lines = [];
 
-                /**
-                 * @return list<callable(Validator): void>
-                 */
-                public function after(): array
-                {
-                    return [
-                        function (Validator $validator): void {
-                            foreach (array_keys($this->bodyInput()) as $key) {
-                                if (! in_array((string) $key, self::BODY_KEYS, true)) {
-                                    $validator->addFailure((string) $key, 'prohibited');
-                                }
-                            }
-                        },
-                    ];
-                }
+        if ($set->jsonRoot) {
+            $lines = [
+                '                $content = $this->getContent();',
+                '',
+                '                // Why: decoded without `assoc`, because `{}` and `[]` are both `[]` with it.',
+                '                if ($this->isJson() && trim($content) !== \'\' && ! is_object(json_decode($content))'
+                    .($set->nullableRoot ? ' && trim($content) !== \'null\'' : '').') {',
+                '                    $validator->addFailure(\'body\', \'array\');',
+                ...($set->closedKeys === null ? [] : ['', '                    return;']),
+                '                }',
+            ];
+        }
 
-            PHP;
+        if ($set->closedKeys !== null) {
+            if ($lines !== []) {
+                $lines[] = '';
+            }
+
+            array_push(
+                $lines,
+                '                foreach (array_keys($this->bodyInput()) as $key) {',
+                '                    if (! in_array((string) $key, self::BODY_KEYS, true)) {',
+                '                        $validator->addFailure((string) $key, \'prohibited\');',
+                '                    }',
+                '                }',
+            );
+        }
+
+        return implode("\n", [
+            '',
+            '    /**',
+            '     * @return list<callable(Validator): void>',
+            '     */',
+            '    public function after(): array',
+            '    {',
+            '        return [',
+            '            function (Validator $validator): void {',
+            ...$lines,
+            '            },',
+            '        ];',
+            '    }',
+        ])."\n";
     }
 
     /**

@@ -154,6 +154,7 @@ final readonly class RuleSetBuilder
         $walk->textSource = $read !== [] && ! in_array('application/json', $read, true) ? 'form body' : null;
         $walk->mixedBody = count($read) > 1 && in_array('application/json', $read, true);
         $walk->formBody = array_diff($read, ['application/json']) !== [];
+        $walk->jsonBody = in_array('application/json', $read, true);
 
         if ($body !== null) {
             $closedKeys = self::bodyRules($operation, $body, $walk);
@@ -226,7 +227,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot);
     }
 
     /**
@@ -354,13 +355,18 @@ final readonly class RuleSetBuilder
 
         $schema = AllOfMerger::merge($written, $operation->label(), 'the body');
 
-        foreach (self::rootFindings($operation, $schema, $body) as $finding) {
+        foreach (self::rootFindings($operation, $schema, $body, $walk) as $finding) {
             $walk->findings[] = $finding;
         }
 
         if (! self::isObjectBody($schema)) {
             return null;
         }
+
+        // Laravel reads a JSON body as `(array) json_decode(...)`, so `"Ada"` and `[1,2]`
+        // reach the rules as a list no rule has a key for. The request checks the root itself.
+        $walk->jsonRoot = $walk->jsonBody;
+        $walk->nullableRoot = $schema->isNullable();
 
         // The root goes through the same sweep a field does, minus what the
         // object walk below acts on. Without it a keyword written on the
@@ -1300,7 +1306,7 @@ final readonly class RuleSetBuilder
      *
      * @return list<string>
      */
-    private static function rootFindings(Operation $operation, Schema $schema, RequestBody $body): array
+    private static function rootFindings(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): array
     {
         $findings = [];
 
@@ -1312,12 +1318,13 @@ final readonly class RuleSetBuilder
         }
 
         // Why: the one place a request is stricter than the contract by design. Matching
-        // it would take a rule that holds for an object or for anything else, at a root
-        // that has no field for a rule to sit on.
-        if ($schema->types === []) {
-            $findings[] = 'The body names `properties` and no `type`, so it is read as an object, and a body '
-                .'that is not one (the JSON string `"Ada"` is valid against this schema) is refused. That is '
-                .'stricter than the contract, since a rule set cannot accept an object or anything else at '
+        // it would take a check that holds for an object or for anything else, at a root
+        // that has no field for a rule to sit on. A form cannot send a non-object, so only
+        // a body read as JSON is stricter.
+        if ($schema->types === [] && $walk->jsonBody) {
+            $findings[] = 'The body names `properties` and no `type`, so it is read as an object, and a JSON '
+                .'body that is not one (the string `"Ada"` is valid against this schema) is refused. That is '
+                .'stricter than the contract, since the request cannot accept an object or anything else at '
                 .'the root. Add `type: object` to the schema to make the reading the contract\'s own.';
         }
 

@@ -51,10 +51,10 @@ beforeEach(function (): void {
  * one: `$this->postJson()` is the Laravel idiom and Pest's closure binding
  * hides it from static analysis, so the kernel is called directly instead.
  *
- * @param  array<string, mixed>  $payload
+ * @param  array<string, mixed>|object  $payload  an object for a body that is `{}`, since an empty array is `[]`
  * @return array{0: int, 1: array<string, mixed>}
  */
-function sendGeneratedRequest(array $payload, string $query = ''): array
+function sendGeneratedRequest(array|object $payload, string $query = ''): array
 {
     $response = app(HttpKernel::class)->handle(Request::create(
         '/_generated/users'.$query,
@@ -887,7 +887,7 @@ function postWithRequiredQuery(): Operation
 // `all()` merged the two and the contract's required field was satisfied by the
 // query string.
 it('refuses a required body field that was supplied in the query string', function (): void {
-    [$status, $body] = sendGeneratedRequest([], '?email=x@example.test&age=31');
+    [$status, $body] = sendGeneratedRequest(new stdClass, '?email=x@example.test&age=31');
 
     expect($status)->toBe(422)
         ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['email']);
@@ -1271,4 +1271,115 @@ it('refuses a file named like PHP even when its type is the declared one', funct
 
     expect(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload($png, 'avatar.png')]))->toBe(200)
         ->and(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload($png, 'avatar.php')]))->toBe(422);
+});
+
+/**
+ * A `POST` whose JSON body is an object that asks for nothing, so no rule has a key to fail on.
+ */
+function postWithOptionalJsonObject(bool $typed = true, bool $closed = false, bool $nullable = false, bool $bodyRequired = true): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/search'),
+        operationId: 'searchThings',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: $typed ? [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])] : [],
+            properties: ['q' => new Schema(types: [SchemaType::String])],
+            additionalProperties: $closed ? false : null,
+        )], $bodyRequired),
+    );
+}
+
+/**
+ * One request through the real kernel carrying `$content` as its JSON body, as sent.
+ *
+ * @param  class-string<FormRequest>  $class
+ */
+function statusForRawJson(string $class, string $content): int
+{
+    Route::post('/_generated/raw-json', fn () => response()->json(app($class)->validated()));
+
+    return app(HttpKernel::class)->handle(Request::create(
+        '/_generated/raw-json',
+        'POST',
+        [],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        $content,
+    ))->getStatusCode();
+}
+
+// Laravel reads a JSON body as `(array) json_decode(...)`, so `"Ada"`, `42` and `[1,2]` become a
+// list, and with every property optional and the root open no rule looked at it: 200 where the
+// contract says the body is not an object.
+it('refuses a JSON body that is not an object', function (bool $typed, bool $closed, string $content): void {
+    $class = emittedRequestClass(postWithOptionalJsonObject($typed, $closed));
+
+    expect(statusForRawJson($class, $content))->toBe(422);
+})->with([
+    'typed, open' => [true, false],
+    'untyped, open' => [false, false],
+    'typed, closed' => [true, true],
+])->with([
+    'a string' => ['"Ada"'],
+    'a number' => ['42'],
+    'a list' => ['[1,2]'],
+    'null' => ['null'],
+    'malformed' => ['{'],
+]);
+
+it('still accepts an object, an empty one included, and an absent optional body', function (bool $typed, bool $closed): void {
+    $class = emittedRequestClass(postWithOptionalJsonObject($typed, $closed, bodyRequired: false));
+
+    expect(statusForRawJson($class, '{}'))->toBe(200)
+        ->and(statusForRawJson($class, '{"q":"x"}'))->toBe(200)
+        ->and(statusForRawJson($class, ''))->toBe(200)
+        ->and(statusForRawJson($class, "  \n"))->toBe(200);
+})->with([
+    'typed, open' => [true, false],
+    'untyped, open' => [false, false],
+    'typed, closed' => [true, true],
+]);
+
+it('accepts a null body when the schema is nullable', function (): void {
+    $class = emittedRequestClass(postWithOptionalJsonObject(nullable: true));
+
+    expect(statusForRawJson($class, 'null'))->toBe(200)
+        ->and(statusForRawJson($class, '"Ada"'))->toBe(422);
+});
+
+it('refuses a non-object root once, not once per check', function (): void {
+    $class = emittedRequestClass(postWithOptionalJsonObject(closed: true));
+    Route::post('/_generated/raw-json-errors', fn () => response()->json(app($class)->validated()));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/raw-json-errors',
+        'POST',
+        [],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        '[1,2]',
+    ));
+
+    expect(array_keys((array) (json_decode((string) $response->getContent(), true)['errors'] ?? [])))->toBe(['body']);
+});
+
+it('does not check the root of a body that is only a form', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/search'),
+        operationId: 'searchForm',
+        requestBody: new RequestBody(['application/x-www-form-urlencoded' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['q' => new Schema(types: [SchemaType::String])],
+        )], true),
+    );
+
+    expect(emittedRequestClass($operation))->toBeString()
+        ->and((new FormRequestEmitter('App', 'x.yaml'))->emit(plannedRequests([$operation])['requests'][0])->contents)
+        ->not->toContain('json_decode');
 });

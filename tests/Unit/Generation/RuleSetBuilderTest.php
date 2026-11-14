@@ -1075,6 +1075,30 @@ it('says a body with properties and no type refuses a body that is not an object
         ->and(implode("\n", $set->findings))->toContain('stricter than the contract');
 });
 
+// A form cannot send a root that is not an object, so the finding is true of a JSON body only.
+it('says nothing about a non-object root of a body with properties and no type that is only a form', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        properties: ['name' => new Schema(types: [SchemaType::String])],
+    )]));
+
+    expect(implode("\n", $set->findings))->not->toContain('no `type`')
+        ->and($set->jsonRoot)->toBeFalse();
+});
+
+it('has the request check the root of an object body read as JSON', function (): void {
+    $typed = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        ['name' => new Schema(types: [SchemaType::String])],
+    )]));
+    $both = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => objectSchema(['name' => new Schema(types: [SchemaType::String])]),
+        'multipart/form-data' => objectSchema(['name' => new Schema(types: [SchemaType::String])]),
+    ]));
+
+    expect($typed->jsonRoot)->toBeTrue()
+        ->and($typed->nullableRoot)->toBeFalse()
+        ->and($both->jsonRoot)->toBeTrue();
+});
+
 it('says nothing of the kind when the body states type: object', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['name' => new Schema(types: [SchemaType::String])],

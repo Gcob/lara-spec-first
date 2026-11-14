@@ -177,11 +177,21 @@ spells `type: object`, and generators that omit the type are common. Only the bo
 field of the same shape gets no type rule, since `array` would refuse a string the contract accepts. The input DTO reads
 the body the same way, so such a body has its rules and its `dto()`.
 
-**This reading is stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports)
-allows.** A body `"Ada"` is valid against a schema that names properties and no type, and the request answers 422.
-Accepting it would take a root that is an object or anything else, which Laravel cannot say: a rule needs a field to sit
-on, and a bare value has none. The generated file says so in a finding, and `type: object` in the schema makes the
-reading the contract's own.
+**A JSON body that is not an object is refused, for every object body.** Laravel reads a JSON body as
+`(array) json_decode(...)`, so `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has a key for, and an
+open root with nothing required would accept all three. The generated request checks the root itself, in the same
+`after()` closure as the closed root's key check, below: the raw body is decoded without `assoc`, because `{}` and `[]`
+are both `[]` with it, and anything but an object is answered with Laravel's `array` message on a `body` key. An empty
+body is left alone, since whether one is allowed is the body's `required`, which the rules answer, and a schema that
+allows `null` allows it here. Only a request that is JSON is checked: a form cannot send a non-object, so a body read
+only as a form has no such check.
+
+**For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
+stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body
+`"Ada"` is valid against such a schema, and the request answers 422. Accepting it would take a root that is an object or
+anything else, which Laravel cannot say: a rule needs a field to sit on, and a bare value has none. The generated file
+says so in a finding when the body is read as JSON, and `type: object` in the schema makes the reading the contract's
+own.
 
 **Any other media type is reported rather than guessed at.** A body declaring `application/xml` is a contract this
 package does not serve, and a `format: byte` string inside a JSON body is

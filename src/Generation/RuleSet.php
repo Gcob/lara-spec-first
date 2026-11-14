@@ -51,6 +51,10 @@ final readonly class RuleSet
      *                                   from the query string and everything else
      *                                   from the body, so each rule key has one
      *                                   source
+     * @param  bool  $jsonRoot  whether the body is an object read as JSON, so
+     *                          the request refuses a JSON root that is not one
+     * @param  bool  $nullableRoot  whether that root may be `null`, which the
+     *                              schema then allows
      */
     public function __construct(
         public array $rules = [],
@@ -59,6 +63,8 @@ final readonly class RuleSet
         public ?Schema $body = null,
         public bool $multipart = false,
         public array $queryKeys = [],
+        public bool $jsonRoot = false,
+        public bool $nullableRoot = false,
     ) {}
 
     /**

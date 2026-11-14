@@ -48,6 +48,19 @@ final class RuleWalk
     public bool $formBody = false;
 
     /**
+     * Whether `application/json` is among the media types the body is read from.
+     */
+    public bool $jsonBody = false;
+
+    /**
+     * Whether the generated request has to refuse a JSON body whose root is not an
+     * object, and whether a `null` root is the schema's own to allow.
+     */
+    public bool $jsonRoot = false;
+
+    public bool $nullableRoot = false;
+
+    /**
      * Whether the body is read from JSON and from a form at once, which no one
      * boolean rule serves.
      */

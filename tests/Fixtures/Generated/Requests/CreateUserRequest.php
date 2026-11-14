@@ -133,6 +133,15 @@ final class CreateUserRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
+                $content = $this->getContent();
+
+                // Why: decoded without `assoc`, because `{}` and `[]` are both `[]` with it.
+                if ($this->isJson() && trim($content) !== '' && ! is_object(json_decode($content))) {
+                    $validator->addFailure('body', 'array');
+
+                    return;
+                }
+
                 foreach (array_keys($this->bodyInput()) as $key) {
                     if (! in_array((string) $key, self::BODY_KEYS, true)) {
                         $validator->addFailure((string) $key, 'prohibited');

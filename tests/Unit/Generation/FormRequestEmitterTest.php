@@ -163,11 +163,11 @@ it('imports nothing it does not use', function (): void {
 
     $emitted = emittedRequest($operation, controllerShortName: 'CreateThingController');
 
-    // `Validator` is used here, by `dto()`, and by nothing else.
+    // `Validator` is used here, by `dto()` and by the root check, and `Rule` by nothing.
     expect($emitted)->not->toContain('use Illuminate\\Validation\\Rule;')
         ->and($emitted)->toContain('use Illuminate\\Validation\\Validator;')
         ->and($emitted)->toContain('assert($validator instanceof Validator);')
-        ->and($emitted)->not->toContain('function after()');
+        ->and($emitted)->not->toContain('BODY_KEYS');
 });
 
 it('imports no Validator for a request with no dto() and no closed root', function (): void {
@@ -192,6 +192,60 @@ it('closes the root with an after() check on its declared keys', function (): vo
         // The same reader `validationData()` uses, so the two cannot disagree
         // about what the body is.
         ->toContain('foreach (array_keys($this->bodyInput()) as $key)');
+});
+
+// An open JSON object has no keys to compare, and still has a root that must be one: the same
+// `after()` carries the check, and a form-only body carries neither.
+it('checks that a JSON root is an object in the same after() as the closed root', function (): void {
+    $emitted = emittedRequest(goldenOperation());
+
+    expect($emitted)->toContain('! is_object(json_decode($content))')
+        ->and($emitted)->toContain("\$validator->addFailure('body', 'array');")
+        ->and(substr_count($emitted, 'public function after()'))->toBe(1)
+        ->and(substr_count($emitted, 'function (Validator $validator): void'))->toBe(1);
+});
+
+it('emits an after() for an open JSON object and imports Validator for it', function (): void {
+    $emitted = emittedRequest(bodyOnlyOperation(), controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain('public function after(): array')
+        ->and($emitted)->toContain('json_decode($content)')
+        ->and($emitted)->not->toContain('BODY_KEYS')
+        ->and($emitted)->not->toContain('return;');
+});
+
+it('lets a nullable body be null', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object, SchemaType::Null],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+        )], true),
+    );
+
+    expect(emittedRequest($operation, controllerShortName: 'CreateThingController'))
+        ->toContain("&& trim(\$content) !== 'null'");
+});
+
+it('emits no root check for a form body', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+        )], true),
+    );
+
+    $emitted = emittedRequest($operation, controllerShortName: 'CreateThingController');
+
+    expect($emitted)->not->toContain('json_decode')
+        ->and($emitted)->not->toContain('function after()');
 });
 
 /**
