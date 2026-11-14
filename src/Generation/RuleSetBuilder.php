@@ -132,6 +132,13 @@ final readonly class RuleSetBuilder
     ];
 
     /**
+     * How many times a payload may re-enter a recursive schema when the schema states no `x-max-depth`.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "A recursive schema is validated to a stated depth"
+     */
+    public const int DEFAULT_MAX_DEPTH = 3;
+
+    /**
      * @throws ConflictingInputException the body and a query parameter naming one field, two media types over two
      *                                   schemas, or an `allOf` whose branches disagree
      */
@@ -229,6 +236,8 @@ final readonly class RuleSetBuilder
 
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
         }
+
+        self::reportCuts($walk);
 
         return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced);
     }
@@ -384,12 +393,22 @@ final readonly class RuleSetBuilder
 
         self::planFormNames($schema, $walk);
 
+        $named = $schema->source !== null;
+
+        if ($named) {
+            $walk->ancestors[] = $schema;
+        }
+
         self::objectChildren(
             $walk,
             '',
             $schema,
             self::rootPresence($operation, $schema, $body, $walk),
         );
+
+        if ($named) {
+            array_pop($walk->ancestors);
+        }
 
         // The payload's root has no field for `array:` to sit on, so a closed
         // root becomes a closure comparing its top-level keys. Only the top
@@ -764,17 +783,15 @@ final readonly class RuleSetBuilder
         $rules = $presence === '' ? [] : [$presence];
 
         if ($schema->recursesTo !== null) {
-            // A self-referential schema is a supported contract and an
-            // infinite tree, and no rule set reaches an infinite depth.
-            $walk->rules[$key] = $rules;
-            $walk->findings[] = sprintf(
-                '%s points back at `%s`, so nothing below it is validated: no rule set reaches an '
-                    .'infinite depth.',
-                $label,
-                $schema->recursesTo,
-            );
+            self::recursion($walk, $key, $label, $schema->recursesTo, $presence);
 
             return;
+        }
+
+        $named = $schema->source !== null;
+
+        if ($named) {
+            $walk->ancestors[] = $schema;
         }
 
         $handled = ['allOf', 'type'];
@@ -966,7 +983,103 @@ final readonly class RuleSetBuilder
             );
         }
 
+        if ($named) {
+            array_pop($walk->ancestors);
+        }
+
         self::reportUnhandled($walk, $label, $schema, $handled);
+    }
+
+    /**
+     * A recursion marker: the ancestor it points back at, expanded once more, down to the depth that ancestor states.
+     *
+     * **A level is one crossing of a marker**, and the limit at a marker is the `x-max-depth` of the schema it points
+     * to (three when it states none), so the two sides of a recursive pair never have to agree. Below the limit the
+     * field is `prohibited`, which refuses a payload the contract allows: the finding that says so is written once the
+     * walk is over ({@see self::reportCuts()}). The rules unroll here and the contract's normal form does not change,
+     * since a rule set is the one reader that needs a finite tree.
+     *
+     * A marker whose ancestor the walk does not hold has no depth to read: an inline schema has no name to be found by.
+     * It keeps presence and a finding, as it always did.
+     *
+     * @param  string  $position  where the ancestor is written, which is what the marker carries
+     * @param  string  $presence  how the field is asked for, kept at the cut: asking for a key and refusing a value are
+     *                            two statements, and a `null` satisfies both
+     *
+     * @throws ConflictingInputException
+     */
+    private static function recursion(RuleWalk $walk, string $key, string $label, string $position, string $presence): void
+    {
+        $ancestor = $walk->ancestor($position);
+        $rules = $presence === '' ? [] : [$presence];
+
+        if ($ancestor === null) {
+            // A self-referential schema is a supported contract and an
+            // infinite tree, and no rule set reaches an infinite depth.
+            $walk->rules[$key] = $rules;
+            $walk->findings[] = sprintf(
+                '%s points back at `%s`, so nothing below it is validated: no rule set reaches an '
+                    .'infinite depth.',
+                $label,
+                $position,
+            );
+
+            return;
+        }
+
+        $depth = $ancestor->maxDepth ?? self::DEFAULT_MAX_DEPTH;
+        $crossed = $walk->crossings[$position] ?? 0;
+
+        if ($crossed >= $depth) {
+            $walk->rules[$key] = [...$rules, 'prohibited'];
+            $walk->cuts[$position] ??= [
+                'name' => $ancestor->name ?? $position,
+                'depth' => $depth,
+                'stated' => $ancestor->maxDepth !== null,
+                'keys' => [],
+            ];
+            $walk->cuts[$position]['keys'][] = $key;
+
+            return;
+        }
+
+        $walk->crossings[$position] = $crossed + 1;
+        self::field($walk, $key, $label, $ancestor, $presence);
+        $walk->crossings[$position] = $crossed;
+    }
+
+    /**
+     * One finding for each recursive schema the walk cut: what the request now refuses that the contract allows, and
+     * the extension that moves the line.
+     *
+     * **Stricter than the contract, and said so**, which is the one way the request may be. Laravel's `prohibited`
+     * passes an empty value (`null`, `""`, `[]`), so what it lets through at the cut is named too: a finding that
+     * claimed more would be a rule stricter in silence and looser in the same breath.
+     */
+    private static function reportCuts(RuleWalk $walk): void
+    {
+        foreach ($walk->cuts as $cut) {
+            $more = count($cut['keys']) - 1;
+            $where = sprintf(
+                '`%s`%s',
+                $cut['keys'][0],
+                $more > 0 ? sprintf(' and %d more', $more) : '',
+            );
+
+            $walk->findings[] = sprintf(
+                '`%1$s` recurses, and %2$s. %3$s is `prohibited` below that: a payload deeper than that answers 422, '
+                    .'which the contract allows. `x-max-depth` on `%1$s` sets the depth. `prohibited` lets an empty value '
+                    .'through there (`null`, `""`, `[]`), which the contract may refuse.',
+                $cut['name'],
+                $cut['stated']
+                    ? sprintf('it states `x-max-depth: %1$d`, so the request validates it %1$d levels deep', $cut['depth'])
+                    : sprintf(
+                        'it states no `x-max-depth`, so the request validates it %d levels deep, the package\'s default',
+                        $cut['depth'],
+                    ),
+                $where,
+            );
+        }
     }
 
     /**

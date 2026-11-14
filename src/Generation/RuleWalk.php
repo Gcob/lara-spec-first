@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Generation;
 
+use Gcob\LaraSpecFirst\Contract\Schema;
+
 /**
  * What one walk over an operation's input has produced so far.
  *
@@ -126,6 +128,46 @@ final class RuleWalk
      * once however many parts it has.
      */
     public bool $phpUploadNamed = false;
+
+    /**
+     * The named schemas being expanded, outermost first: the path from the body down to the field in hand. A recursion
+     * marker names the ancestor it points back at, and this is where that ancestor is found to be expanded again.
+     *
+     * @var list<Schema>
+     */
+    public array $ancestors = [];
+
+    /**
+     * How many times the path in hand has re-entered each recursive schema, by its position (`recursesTo`). The limit
+     * is the `x-max-depth` of the schema re-entered, so each one counts on its own.
+     *
+     * @var array<string, int>
+     */
+    public array $crossings = [];
+
+    /**
+     * Each recursive schema the walk had to cut at its depth, by its position: the name it is reported under, the depth
+     * it was cut at, whether the schema stated it, and the rule keys that refuse what is below, in the order they were
+     * met. One finding is written for each, once the walk is over, because only then is the count known.
+     *
+     * @var array<string, array{name: string, depth: int, stated: bool, keys: list<string>}>
+     */
+    public array $cuts = [];
+
+    /**
+     * The expanded ancestor a recursion marker points back at, or null when no schema the walk is inside is written at
+     * that position (an inline one has no name to be found by).
+     */
+    public function ancestor(string $position): ?Schema
+    {
+        foreach (array_reverse($this->ancestors) as $schema) {
+            if ($schema->source === $position) {
+                return $schema;
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Record that a keyword was read on a field and nothing enforces it, once per field.

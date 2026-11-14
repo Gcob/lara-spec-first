@@ -44,8 +44,6 @@ use Illuminate\Validation\Validator;
  *     `boolean` refuses `"true"`. It accepts `"true"` and `"false"`. `"1"` and `"0"` are accepted
  *     too, which the contract does not write for a boolean. `validated()` holds the string as
  *     sent, which `dto()` reads as a `bool`.
- *   - `address.parent` points back at `#/components/schemas/Address`, so nothing below it is
- *     validated: no rule set reaches an infinite depth.
  *   - `2fa` is a boolean read from a form body, where every value is text and Laravel's `boolean`
  *     refuses `"true"`. It accepts `"true"` and `"false"`. `"1"` and `"0"` are accepted too, which
  *     the contract does not write for a boolean. `validated()` holds the string as sent, which
@@ -58,6 +56,11 @@ use Illuminate\Validation\Validator;
  *     `encoding.<part>.contentType` beside the body is not read, so a restriction written there is
  *     not enforced.
  *   - `anything` states no type, so no type rule is emitted for it.
+ *   - `Address` recurses, and it states no `x-max-depth`, so the request validates it 3 levels
+ *     deep, the package's default. `address.parent.parent.parent.parent` is `prohibited` below
+ *     that: a payload deeper than that answers 422, which the contract allows. `x-max-depth` on
+ *     `Address` sets the depth. `prohibited` lets an empty value through there (`null`, `""`,
+ *     `[]`), which the contract may refuse.
  *
  * Navigation
  *
@@ -92,7 +95,16 @@ final class UpdateUserRequest extends FormRequest
             'address' => ['sometimes', 'array', 'required_array_keys:street'],
             'address.street' => ['sometimes', 'string'],
             'address.city' => ['sometimes', 'nullable', 'string'],
-            'address.parent' => ['sometimes'],
+            'address.parent' => ['sometimes', 'array', 'required_array_keys:street'],
+            'address.parent.street' => ['sometimes', 'string'],
+            'address.parent.city' => ['sometimes', 'nullable', 'string'],
+            'address.parent.parent' => ['sometimes', 'array', 'required_array_keys:street'],
+            'address.parent.parent.street' => ['sometimes', 'string'],
+            'address.parent.parent.city' => ['sometimes', 'nullable', 'string'],
+            'address.parent.parent.parent' => ['sometimes', 'array', 'required_array_keys:street'],
+            'address.parent.parent.parent.street' => ['sometimes', 'string'],
+            'address.parent.parent.parent.city' => ['sometimes', 'nullable', 'string'],
+            'address.parent.parent.parent.parent' => ['sometimes', 'prohibited'],
             'profile' => ['sometimes', 'array'],
             'profile.bio' => ['sometimes', 'string'],
             'tags' => ['sometimes', 'array', 'list'],

@@ -239,6 +239,27 @@ paths:
             responses:
                 '200': { description: Comments }
 
+    /comments:
+        # A schema that refers to itself: `Comment` holds `replies`, which are
+        # `Comment`s. No rule set reaches an infinite depth, so the generated
+        # request validates it down to the depth `Comment` states with
+        # `x-max-depth` (two here, three when a schema says nothing) and refuses
+        # what is below with `prohibited`. Read `replies.*.replies.*.replies` in the
+        # generated request and the finding that says it is stricter than this
+        # contract, then post a thread three replies deep and a thread two deep.
+        post:
+            operationId: createComment
+            summary: Post a comment with its replies
+            tags: [Comments]
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Comment'
+            responses:
+                '201': { description: Created }
+
     /pets/{id}:
         # Remote reference vendoring, made visible. `schema` below is a `$ref`
         # naming a URL — the Swagger Petstore demo, the most widely recognized
@@ -342,6 +363,21 @@ components:
                         email:
                             type: string
                             format: email
+
+        # Recursive, and stating how deep: the request validates `replies` two
+        # levels down and refuses a third.
+        Comment:
+            type: object
+            x-max-depth: 2
+            required: [body]
+            properties:
+                body:
+                    type: string
+                    maxLength: 500
+                replies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Comment'
 
     securitySchemes:
         bearerAuth:
