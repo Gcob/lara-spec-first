@@ -49,7 +49,7 @@ final readonly class Schema
      *                               schema written inline, whose position is
      *                               its operation's. A recursion marker has a
      *                               name and no source: `recursesTo` is its
-     *                               position Two schemas of one name
+     *                               position. Two schemas of one name
      *                               written in two places are two schemas, and
      *                               this is what tells a generator which two
      * @param  list<SchemaType>  $types  always a list, never a bare string, and
