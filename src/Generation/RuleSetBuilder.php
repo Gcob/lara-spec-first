@@ -614,7 +614,7 @@ final readonly class RuleSetBuilder
             // reads `required` on a `readOnly` property as a promise about
             // responses. Its other rules still judge it when it is sent.
             if ($asked !== 'sometimes' && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`')) {
-                self::reportReadOnly($walk, '`'.$prefix.$name.'`');
+                $walk->findings[] = self::readOnlyFinding('`'.$prefix.$name.'`');
                 $asked = 'sometimes';
             }
 
@@ -862,7 +862,7 @@ final readonly class RuleSetBuilder
                         }
 
                         if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
-                            self::reportReadOnly($walk, rtrim($label, '`').'.'.$name.'`');
+                            $walk->findings[] = self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`');
 
                             continue;
                         }
@@ -951,13 +951,9 @@ final readonly class RuleSetBuilder
         return AllOfMerger::merge($property, $walk->identity, $label)->readOnly;
     }
 
-    /**
-     * `readOnly` is `Partial` because of exactly this: the one constraint of a required property it drops.
-     */
-    private static function reportReadOnly(RuleWalk $walk, string $label): void
+    private static function readOnlyFinding(string $label): string
     {
-        $walk->leaveUnenforced('readOnly', $label);
-        $walk->findings[] = sprintf(
+        return sprintf(
             '%s is `readOnly` and required. `required` on a `readOnly` property applies to responses '
                 .'only: 3.0 states it, and a 3.1 document is read the same way (3.1 defers to JSON Schema, '
                 .'where `readOnly` is an annotation). So a request does not have to carry it and no '

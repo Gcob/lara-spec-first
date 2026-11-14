@@ -637,9 +637,10 @@ them are only worth saying: two media types over one schema, a rule stricter tha
 exit code on those would fail a pipeline over a remark. So the builder also records, beside the sentence, the keyword
 and the fields it was left unenforced on, for the four ways a keyword it reads comes out that way: a `format` no rule
 means the same as, a `pattern` across the ECMA-262 / PCRE boundary, a `contentMediaType` no rule can match, and a
-keyword stated where nothing reads it. `required` on a `readOnly` property is the fifth. The `Ignored` keywords are not
-in a rule set at all, since nothing reads them, and the reading collects them with their position instead. See
-[the doctor's Support findings](../doctor.md#what-it-checks).
+keyword stated where nothing reads it. `required` on a `readOnly` property is not one of them: the request does what the
+contract says there, since `required` takes effect on the response only, so the generated file says it in a finding and
+the doctor has nothing to report. The `Ignored` keywords are not in a rule set at all, since nothing reads them, and the
+reading collects them with their position instead. See [the doctor's Support findings](../doctor.md#what-it-checks).
 
 ## The generated request is `final`
 

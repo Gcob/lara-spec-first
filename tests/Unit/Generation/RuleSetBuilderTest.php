@@ -1710,10 +1710,13 @@ it('names the keyword and the field for each way a read keyword is left unenforc
         [new QueryParameter('sort', new Schema(types: [SchemaType::String], format: 'duration'))],
         ['format' => ['`sort`']],
     ],
+    // OpenAPI 3.0: `required` on a `readOnly` property takes effect on the response only, so a request that
+    // leaves it out does what the contract says. Its prose finding stays in the generated file, and the doctor
+    // has nothing to report.
     'required on a readOnly property' => [
         ['application/json' => objectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id'])],
         [],
-        ['readOnly' => ['`id`']],
+        [],
     ],
 ]);
 
