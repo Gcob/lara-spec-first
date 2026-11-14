@@ -1062,6 +1062,25 @@ it('reads a body that names properties and no type as an object', function (): v
         ->and(implode('', $set->findings))->not->toContain('not an object');
 });
 
+// The one place a request is stricter than the contract on purpose: the schema accepts the JSON
+// string `"Ada"` there, and a rule set cannot say "an object, or anything else" at the root.
+it('says a body with properties and no type refuses a body that is not an object', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
+        properties: ['name' => new Schema(types: [SchemaType::String])],
+    )]));
+
+    expect(implode("\n", $set->findings))->toContain('names `properties` and no `type`, so it is read as an object')
+        ->and(implode("\n", $set->findings))->toContain('stricter than the contract');
+});
+
+it('says nothing of the kind when the body states type: object', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        ['name' => new Schema(types: [SchemaType::String])],
+    )]));
+
+    expect(implode("\n", $set->findings))->not->toContain('no `type`');
+});
+
 it('still reports a body that states no type and no properties', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(required: ['name'])]));
 

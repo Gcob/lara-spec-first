@@ -166,6 +166,12 @@ spells `type: object`, and generators that omit the type are common. Only the bo
 field of the same shape gets no type rule, since `array` would refuse a string the contract accepts. The input DTO reads
 the body the same way, so such a body has its rules and its `dto()`.
 
+**This reading is stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports)
+allows.** A body `"Ada"` is valid against a schema that names properties and no type, and the request answers 422.
+Accepting it would take a root that is an object or anything else, which Laravel cannot say: a rule needs a field to sit
+on, and a bare value has none. The generated file says so in a finding, and `type: object` in the schema makes the
+reading the contract's own.
+
 **Any other media type is reported rather than guessed at.** A body declaring `application/xml` is a contract this
 package does not serve, and a `format: byte` string inside a JSON body is
 [a string nothing decodes](../uploads.md#a-base64-part-is-a-string).

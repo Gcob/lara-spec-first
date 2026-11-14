@@ -1279,6 +1279,16 @@ final readonly class RuleSetBuilder
             return $findings;
         }
 
+        // Why: the one place a request is stricter than the contract by design. Matching
+        // it would take a rule that holds for an object or for anything else, at a root
+        // that has no field for a rule to sit on.
+        if ($schema->types === []) {
+            $findings[] = 'The body names `properties` and no `type`, so it is read as an object, and a body '
+                .'that is not one (the JSON string `"Ada"` is valid against this schema) is refused. That is '
+                .'stricter than the contract, since a rule set cannot accept an object or anything else at '
+                .'the root. Add `type: object` to the schema to make the reading the contract\'s own.';
+        }
+
         if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
             $findings[] = sprintf(
                 'A `PATCH` is a partial update, so the schema\'s required list (%s) is read as '
