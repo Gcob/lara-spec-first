@@ -32,6 +32,7 @@
 # affects the git repository itself.
 /.github            export-ignore
 /.githooks          export-ignore
+/.claude            export-ignore
 /.vitepress         export-ignore
 /docs               export-ignore
 /package.json       export-ignore

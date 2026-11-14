@@ -1,0 +1,73 @@
+#!/bin/sh
+# Refuse a commit whose staged PHP or Markdown files are not formatted.
+#
+# It checks and never rewrites: a hook that edits files at commit time changes
+# what you staged behind your back, and breaks a `git add -p` commit built by
+# hand. So it lists the files, prints the one command that fixes them, and
+# stops. Fix, stage again, commit again.
+#
+#   - PHP: the docblock formatter, `composer format:docblocks:check`. Pint is not
+#     run here; `composer check` and CI already do.
+#   - Markdown: `scripts/format-markdown.sh --check`, only when Node is installed.
+#     Without it the check is skipped with a note rather than failing a commit
+#     over a missing tool, and a Docker download is too slow for a hook.
+#
+# It reads the working-tree copy of each staged file, so a file staged only in
+# part with `git add -p` is judged as a whole.
+#
+# Enable it once per clone:  git config core.hooksPath .githooks
+# Skip it once, knowingly:   git commit --no-verify
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# `-z` and `xargs -0` so a path with a space is one argument, not two.
+staged() {
+    git diff --cached --name-only -z --diff-filter=ACMR -- "$1"
+}
+
+unformatted_php=""
+unformatted_markdown=""
+
+if [ -n "$(staged '*.php')" ]; then
+    # stdout is the list of files, one per line. Composer's own complaint about
+    # the exit code goes to stderr and is of no use here.
+    unformatted_php=$(staged '*.php' | xargs -0 composer format:docblocks:check -- 2>/dev/null)
+fi
+
+if [ -n "$(staged '*.md')" ]; then
+    if command -v npx > /dev/null 2>&1; then
+        unformatted_markdown=$(staged '*.md' | xargs -0 scripts/format-markdown.sh --check 2>/dev/null)
+    else
+        echo "pre-commit: Node is not installed, so staged Markdown was not checked." >&2
+    fi
+fi
+
+[ -z "$unformatted_php$unformatted_markdown" ] && exit 0
+
+echo "pre-commit: these staged files are not formatted, so nothing was committed." >&2
+
+if [ -n "$unformatted_php" ]; then
+    echo "" >&2
+    echo "PHP docblocks:" >&2
+    printf '%s\n' "$unformatted_php" | sed 's/^/  /' >&2
+fi
+
+if [ -n "$unformatted_markdown" ]; then
+    echo "" >&2
+    echo "Markdown:" >&2
+    printf '%s\n' "$unformatted_markdown" | sed 's/^/  /' >&2
+fi
+
+echo "" >&2
+echo "Fix them, stage them again, then commit again:" >&2
+echo "" >&2
+
+if [ -n "$unformatted_php" ] && [ -n "$unformatted_markdown" ]; then
+    echo "  composer format && composer format:md" >&2
+elif [ -n "$unformatted_php" ]; then
+    echo "  composer format" >&2
+else
+    echo "  composer format:md" >&2
+fi
+
+exit 1

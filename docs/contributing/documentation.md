@@ -830,6 +830,8 @@ just format-md          # composer format:md, natively
 just format-md-check    # reports what needs it, writes nothing
 ```
 
+Name the files after the command to limit it to those, as the hooks do: `scripts/format-markdown.sh --check a.md b.md`.
+
 `.editorconfig` and `.prettierrc.json` define what it does: line width, indentation, wrapping. Read them there rather
 than here. The recipes are in the `justfile`, the tool row is in [`stack.md`](../project/stack.md).
 

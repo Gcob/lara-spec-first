@@ -113,7 +113,13 @@ _ide_helper.php
 _ide_helper_models.php
 
 # AI assistants
-.claude/
+#
+# `.claude/*` rather than `.claude/`: git cannot re-include a file inside a
+# directory it ignores, so the exception below would do nothing. Only the shared
+# hook settings are tracked; a contributor's own settings.local.json and agents/
+# stay theirs.
+.claude/*
+!.claude/settings.json
 .aider*
 .cursor/
 CLAUDE.local.md

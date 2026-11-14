@@ -225,7 +225,8 @@ It covers:
 | Static     | `composer analyse`      | Runs PHPStan via Larastan at level 8                            |
 | Tests      | `composer test`         | Runs the Pest suite against a Laravel app booted by `testbench` |
 
-Use `composer format` to apply the formatting rather than only report on them.
+Use `composer format` to apply the formatting rather than only report on them. It runs Pint, then reflows docblock
+prose, which [has its own check](#docblock-width).
 
 **One more check needs Node, so it is not part of `composer check` either:**
 
@@ -241,6 +242,26 @@ PHP, so they run outside the container and are not part of `composer check`. Run
 and the commands are in [`docs/contributing/documentation.md`](./docs/contributing/documentation.md), under
 [formatting](./docs/contributing/documentation.md#formatting) and
 [the documentation site](./docs/contributing/documentation.md#the-documentation-site).
+
+### Docblock width
+
+Docblock prose is wrapped at 120 columns, the `max_line_length` of `[*.php]` in `.editorconfig`. Pint has no rule that
+rewraps a paragraph, so `scripts/format-docblocks.php` does it, the PHP counterpart of `scripts/format-markdown.sh`:
+
+```bash
+composer format                  # Pint, then the docblock formatter
+composer format:docblocks:check  # lists the files that would change, writes nothing
+```
+
+It rewraps prose only: paragraphs, list items, and the description of `@internal`, `@deprecated`, `@since` and `@todo`.
+Code blocks, tables, `@see` and `@link`, `@template`, `@phpstan-*` and `@psalm-*` lines, backtick spans, type
+expressions, URLs and the generated goldens are left as written. The tags Pint aligns itself (`@param`, `@return`,
+`@throws`, `@var`) are not rewrapped yet: how their continuation lines are indented is still being decided, because Pint
+rewrites any indent the formatter picks.
+
+`composer format:docblocks:check` is not part of `composer check`, and CI does not run it. The codebase is still wrapped
+at the old width, so adding it now would turn `main` red. One reformat commit comes first, and the CI check is wired in
+with it.
 
 ### What CI runs on your pull request
 
@@ -338,7 +359,8 @@ breaking release.
 
 ### The commit message names its card
 
-A `prepare-commit-msg` hook reads the card from the branch name and adds a `Refs: #N` trailer. Opt-in, once per clone:
+A `prepare-commit-msg` hook reads the card from the branch name and adds a `Refs: #N` trailer. Opt-in, once per clone,
+and the same setting turns on [the pre-commit hook](#formatting-hooks) below:
 
 ```bash
 git config core.hooksPath .githooks
@@ -362,6 +384,32 @@ For your pull request:
 4. Open the PR against `main`, describing **what** changed and **why**. Link the related issue. Where the work diverged
    from the card, say **why the original plan was wrong**; where it did not, write nothing.
 5. A maintainer will review. Expect questions. They are about the code, never about you.
+
+### Formatting hooks
+
+Two hooks run the formatters for you. Both only call the commands above, and neither is required: CI is the gate.
+
+**Before a commit.** `.githooks/pre-commit` is enabled by the `core.hooksPath` setting above. It checks the staged PHP
+files with `composer format:docblocks:check`, and the staged Markdown files with `scripts/format-markdown.sh --check`
+when Node is installed. It never rewrites a file. When one is not formatted, the commit stops, the files are listed, and
+the command that fixes them is printed:
+
+```bash
+composer format      # PHP: Pint, then the docblock formatter
+composer format:md   # Markdown
+```
+
+Stage the result and commit again. `git commit --no-verify` skips the hook once. It reads the working-tree copy of each
+staged file, so a file staged only in part with `git add -p` is checked as a whole.
+
+**After an edit, in Claude Code.** `.claude/settings.json` is committed and holds one thing: a `PostToolUse` hook on
+`Edit` and `Write` that runs `scripts/format-edited-file.sh`. It reads the edited path from the hook's input and formats
+only that file: Pint then the docblock formatter for PHP, Prettier for Markdown. It never blocks the edit. A formatter
+that fails is printed and skipped. `.gitignore` ignores the rest of `.claude/`, so your own `settings.local.json` and
+agents stay yours.
+
+The docblock check in CI comes with the reformat described [above](#docblock-width); until then nothing in CI reads the
+docblock width.
 
 ## Scope: what belongs in this package
 

@@ -18,7 +18,7 @@ use Symfony\Component\Process\Process;
  * What the formatter must leave alone is as much of the contract as what it
  * rewraps, so those cases carry the same weight.
  *
- * @see CONTRIBUTING.md — "Formatting"
+ * @see CONTRIBUTING.md — "Docblock width"
  */
 
 /**
