@@ -563,6 +563,7 @@ it('executes a recursive pair the same in both orders', function (string $fixtur
     'a bare $ref' => ['recursion-pair.yaml', true],
     'a required beside the $ref' => ['recursion-pair-required.yaml', true],
     'properties beside the $ref' => ['recursion-pair-properties.yaml', false],
+    'an Author with no type' => ['recursion-pair-untyped.yaml', false],
 ]);
 
 it('refuses a node that is wrong at the last level the schema validates', function (): void {

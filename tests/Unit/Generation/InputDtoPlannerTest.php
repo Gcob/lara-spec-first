@@ -523,7 +523,7 @@ it('types a recursion behind a mixin as the class it points back at only when th
 // The class of a marker is the ancestor's class only when the ancestor is an object with properties, the test every other
 // nested schema meets. An untyped schema has no type rule below it, and an array's class would be empty: the request
 // validates a list there and the class reads no key of it.
-it('types a recursion into a schema that is not an object with properties as mixed', function (string $operationId, string $class, string $property, bool $list): void {
+it('types a recursion into a schema that is not an object with properties as mixed', function (string $operationId, string $class, string $property, bool $list, string $says): void {
     $plan = planDtos(array_values(array_filter(
         extractFixture('recursion-untyped.yaml'),
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
@@ -533,11 +533,31 @@ it('types a recursion into a schema that is not an object with properties as mix
     $type = $list ? $found->type->item : $found->type;
 
     expect($type?->kind)->toBe(InputDtoType::MIXED)
-        ->and(implode("\n", $dto->findings))->toContain('`'.$property.'` points back at')
-        ->and(implode("\n", $dto->findings))->toContain('not an object with properties');
+        ->and(implode("\n", $dto->findings))->toContain('`'.$property.'` '.$says);
 })->with([
-    'a component with properties and no type' => ['createNode', 'NodeInputDto', 'parent', false],
-    'an array that recurses through its items' => ['createForest', 'CreateForestForestItemInputDto', 'children', false],
+    // The wording is the one a schema reached directly gets, so the file reads the same from either side of a pair.
+    'a component with properties and no type' => ['createNode', 'NodeInputDto', 'parent', false, 'states no type, so it is `mixed`'],
+    'an array that recurses through its items' => ['createForest', 'CreateForestForestItemInputDto', 'children', false, 'points back at `#/components/schemas/Forest`, which is not an object with properties'],
+]);
+
+// A field that extends a recursive component is an ordinary composition when nothing above it is that component. The
+// planner asks whether a branch points back into a schema the walk is inside, and the field's own definitions are not
+// above it. The expected classes are what `main` (`a5da29e`) planned for the same contract: a class of the field's own,
+// named after its parent and the property, with the keys of the extension as the extension requires them. The `children`
+// list is a `list` there as well; what changes is that its items are now the class of `Category`, not `mixed`.
+it('types a field extending a recursive component as main does', function (string $operationId, string $class, array $properties): void {
+    $plan = planDtos(array_values(array_filter(
+        extractFixture('recursion-extends.yaml'),
+        static fn (Operation $operation): bool => $operation->operationId === $operationId,
+    )));
+    $dto = dtoNamed($plan, $class);
+
+    expect(array_map(static fn ($p): string => $p->key.' '.$p->type->kind.($p->optional ? ' optional' : ' required'), $dto->properties))->toBe($properties)
+        ->and(implode("\n", $dto->findings))->not->toContain('validated by the request, which unrolls it');
+})->with([
+    'properties beside the $ref' => ['createThing', 'CreateThingCategoryInputDto', ['name string optional', 'children list optional', 'extra string required']],
+    'a named mixin beside the $ref' => ['createMixed', 'CreateMixedCategoryInputDto', ['note string optional', 'name string optional', 'children list optional']],
+    'a required beside the $ref' => ['createStrict', 'CreateStrictCategoryInputDto', ['name string optional', 'children list required']],
 ]);
 
 // What is written beside a marker holds at every level the request crosses it at. A `required` changes nothing the

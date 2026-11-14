@@ -1,0 +1,78 @@
+# A field that extends a recursive component without being part of a cycle: the body holds no recursion of its own, and
+# `Category` only recurses into itself. Nothing above the field is `Category`, so the field is an ordinary composition and
+# keeps the class it always had, named after its parent and the property, however it extends the component.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category:
+                  allOf:
+                    - $ref: '#/components/schemas/Category'
+                    - required: [extra]
+                      properties:
+                        extra:
+                          type: string
+      responses:
+        '201':
+          description: Created
+  /mixeds:
+    post:
+      operationId: createMixed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category:
+                  allOf:
+                    - $ref: '#/components/schemas/Mixin'
+                    - $ref: '#/components/schemas/Category'
+      responses:
+        '201':
+          description: Created
+  /stricts:
+    post:
+      operationId: createStrict
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category:
+                  allOf:
+                    - $ref: '#/components/schemas/Category'
+                    - required: [children]
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Mixin:
+      type: object
+      properties:
+        note:
+          type: string
+    Category:
+      type: object
+      properties:
+        name:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'

@@ -410,10 +410,13 @@ final class InputDtoPlanner
         }
 
         $before = count($this->ancestors);
+        // What is above the site, taken before its own definitions go on the stack: a schema that only recurses into
+        // itself is not above the field that extends it.
+        $above = array_values(array_filter(array_map(static fn (Schema $schema): ?string => $schema->source, $this->ancestors)));
         array_push($this->ancestors, ...RuleSetBuilder::definitions($written, $schema, $this->identity, '`'.$segment.'`'));
 
         try {
-            return $this->typeOf($written, $schema, $base, $segment, $pointer, $owner);
+            return $this->typeOf($written, $schema, $base, $segment, $pointer, $owner, $above);
         } finally {
             $this->ancestors = array_slice($this->ancestors, 0, $before);
         }
@@ -422,10 +425,12 @@ final class InputDtoPlanner
     /**
      * What one property becomes, once its own definitions are on the stack.
      *
+     * @param  list<string>  $above  the positions of the named schemas above the property
+     *
      * @throws UnusableNameException
      * @throws ConflictingInputException
      */
-    private function typeOf(Schema $written, Schema $schema, string $base, string $segment, string $pointer, string $owner): InputDtoType
+    private function typeOf(Schema $written, Schema $schema, string $base, string $segment, string $pointer, string $owner, array $above): InputDtoType
     {
         $enum = $schema->enum;
         $nullable = $schema->isNullable() || ($enum !== null && in_array(null, $enum, true));
@@ -470,7 +475,7 @@ final class InputDtoPlanner
             case SchemaType::Object:
                 return $schema->properties === []
                     ? new InputDtoType(InputDtoType::MAP, $nullable)
-                    : $this->nested($written, $schema, $base, $segment, $pointer, $nullable, $owner);
+                    : $this->nested($written, $schema, $base, $segment, $pointer, $nullable, $owner, $above);
         }
 
         // No single type: an untyped enumeration of one kind of value says
@@ -482,9 +487,20 @@ final class InputDtoPlanner
             return new InputDtoType($kind, $nullable, literals: $literals);
         }
 
+        $this->registry[$owner]['findings'][] = self::noSingleTypeFinding($segment, $schema);
+
+        return new InputDtoType(InputDtoType::MIXED);
+    }
+
+    /**
+     * What the file says about a property that states no single type. One wording for a schema reached directly and one
+     * reached through a recursion marker, so the bytes of a class do not depend on which the build met first.
+     */
+    private static function noSingleTypeFinding(string $segment, Schema $schema): string
+    {
         $stated = array_filter($schema->types, static fn (SchemaType $stated): bool => $stated !== SchemaType::Null);
 
-        $this->registry[$owner]['findings'][] = sprintf(
+        return sprintf(
             '`%s` states %s, so it is `mixed`. The request\'s findings say the same about its rules.',
             $segment,
             match (count($stated)) {
@@ -492,19 +508,19 @@ final class InputDtoPlanner
                 default => 'more than one type',
             },
         );
-
-        return new InputDtoType(InputDtoType::MIXED);
     }
 
     /**
      * An object with properties, as a DTO of its own.
      *
+     * @param  list<string>  $above  the positions of the named schemas above the property
+     *
      * @throws UnusableNameException
      * @throws ConflictingInputException
      */
-    private function nested(Schema $written, Schema $merged, string $base, string $segment, string $pointer, bool $nullable, string $owner): InputDtoType
+    private function nested(Schema $written, Schema $merged, string $base, string $segment, string $pointer, bool $nullable, string $owner, array $above): InputDtoType
     {
-        $recursive = $this->recursiveBranch($written, $segment);
+        $recursive = $this->recursiveBranch($written, $segment, $above);
 
         if ($recursive !== null) {
             $type = $this->ancestorType($recursive[0], $recursive[1], $segment, $owner);
@@ -663,6 +679,12 @@ final class InputDtoPlanner
             ? $ancestor
             : AllOfMerger::merge(new Schema(allOf: [$ancestor, $beside]), $this->identity, '`'.$segment.'`');
 
+        if ($expanded->soleType() === null) {
+            $this->registry[$owner]['findings'][] = self::noSingleTypeFinding($segment, $expanded);
+
+            return new InputDtoType(InputDtoType::MIXED);
+        }
+
         if ($expanded->soleType() !== SchemaType::Object || $expanded->properties === []) {
             $this->registry[$owner]['findings'][] = sprintf(
                 '`%s` points back at `%s`, which is not an object with properties, so it is `mixed` rather than a '
@@ -704,18 +726,19 @@ final class InputDtoPlanner
      * A site such as `allOf: [Author, {required: [name]}]` in `Book` is a recursion marker when the build comes in
      * through `Author`, and the expanded `Author` when it comes in through `Book`. It has to be typed the same either
      * way, so the second path asks the question the first does: a branch is the ancestor when it is named and holds a
-     * marker aimed at a schema the walk is inside. Exactly one is, or the site is an ordinary composition.
+     * marker aimed at a schema the walk is inside *above the site*. Exactly one is, or the site is an ordinary
+     * composition.
      *
+     * @param  list<string>  $above  the positions of the named schemas above the site
      * @return array{0: Schema, 1: Schema|null}|null the branch's definition and what is written beside it
      *
      * @throws ConflictingInputException
      */
-    private function recursiveBranch(Schema $written, string $segment): ?array
+    private function recursiveBranch(Schema $written, string $segment, array $above): ?array
     {
-        $sources = array_values(array_filter(array_map(static fn (Schema $schema): ?string => $schema->source, $this->ancestors)));
         $found = array_keys(array_filter(
             $written->allOf,
-            static fn (Schema $branch): bool => $branch->source !== null && self::pointsBackInto($branch, $sources),
+            static fn (Schema $branch): bool => $branch->source !== null && self::pointsBackInto($branch, $above),
         ));
 
         if (count($found) !== 1) {

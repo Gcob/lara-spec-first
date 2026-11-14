@@ -251,7 +251,8 @@ checked. Three shapes are left as they arrived:
 
 For the first two, the file's findings say that the field points back at a position and that the request validates
 nothing below it, so it is `mixed`, and the request's finding says the same thing from its side, where the lever is. For
-the third they say that the schema it points back at is not an object with properties.
+the third they say what they say of any property of that shape: that it states no type, or that the schema it points
+back at is not an object with properties. Either way the wording is the same whichever operation the build meets first.
 
 **One exception to "one class per schema, no `mixed` for a named recursion": a recursive property with `properties`
 written beside its reference.** The request does validate it: it unrolls the site with the extra property, level after
