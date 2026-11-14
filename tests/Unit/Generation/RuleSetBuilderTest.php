@@ -1749,6 +1749,32 @@ it('names the keyword and the field for each way a read keyword is left unenforc
         [],
         [],
     ],
+    // A field the rule set drops whole states constraints nothing enforces, and the doctor names each one.
+    'a query parameter whose name PHP rewrites' => [
+        [],
+        [new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer], minimum: 1.0, maximum: 100.0), required: true)],
+        ['required' => ['`page[size]`'], 'minimum' => ['`page[size]`'], 'maximum' => ['`page[size]`']],
+    ],
+    'a query parameter whose name carries a star' => [
+        [],
+        [new QueryParameter('a*b', new Schema(types: [SchemaType::String], pattern: '^a'), required: true)],
+        ['required' => ['`a*b`'], 'pattern' => ['`a*b`']],
+    ],
+    'a body property whose key carries a star' => [
+        ['application/json' => objectSchema(['a*b' => new Schema(types: [SchemaType::String], maxLength: 3)], ['a*b'])],
+        [],
+        ['required' => ['`a*b`'], 'maxLength' => ['`a*b`']],
+    ],
+    'a nested body property whose key carries a star, and is not required' => [
+        ['application/json' => objectSchema(['user' => objectSchema(['a*b' => new Schema(types: [SchemaType::Integer], minimum: 2.0)])])],
+        [],
+        ['minimum' => ['`user.a*b`']],
+    ],
+    'a required body key with no property, and a star' => [
+        ['application/json' => objectSchema([], ['a*b'])],
+        [],
+        ['required' => ['`a*b`']],
+    ],
     'int64 on a query parameter' => [
         [],
         [new QueryParameter('after', new Schema(types: [SchemaType::Integer], format: 'int64'))],

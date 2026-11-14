@@ -170,6 +170,7 @@ final readonly class RuleSetBuilder
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
+                self::leaveFieldUnenforced($walk, '`'.$parameter->name.'`', $parameter->schema, $parameter->required);
 
                 continue;
             }
@@ -602,6 +603,13 @@ final readonly class RuleSetBuilder
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
+                self::leaveFieldUnenforced(
+                    $walk,
+                    '`'.$prefix.$name.'`',
+                    $property,
+                    in_array($name, $schema->required, true),
+                    isset($dependents[$name]),
+                );
 
                 continue;
             }
@@ -651,6 +659,13 @@ final readonly class RuleSetBuilder
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
+                self::leaveFieldUnenforced(
+                    $walk,
+                    '`'.$prefix.$name.'`',
+                    new Schema,
+                    in_array($name, $schema->required, true),
+                    isset($dependents[$name]),
+                );
 
                 continue;
             }
@@ -1388,10 +1403,7 @@ final readonly class RuleSetBuilder
      */
     private static function reportUnhandled(RuleWalk $walk, string $label, Schema $schema, array $handled): void
     {
-        $keywords = array_values(array_filter(
-            self::RULE_KEYWORDS,
-            static fn (string $keyword): bool => ! in_array($keyword, $handled, true) && self::states($schema, $keyword),
-        ));
+        $keywords = self::statedKeywords($schema, $handled);
 
         if ($keywords === []) {
             return;
@@ -1402,6 +1414,50 @@ final readonly class RuleSetBuilder
         foreach ($keywords as $keyword) {
             $walk->leaveUnenforced($keyword, $label);
         }
+    }
+
+    /**
+     * The keywords of a field the rule set drops whole, as data for the doctor.
+     *
+     * A field with no rule key (a name PHP rewrites, a `*` Laravel reads as a wildcard) gets a finding of its own that
+     * says so, and none of what the contract states about it is enforced: not its presence, and not any keyword a rule
+     * could have come from. Those are the same unenforced keywords as any other, so they are named the same way.
+     *
+     * @param  bool  $required  whether the contract asks for the field
+     * @param  bool  $dependent  whether `dependentRequired` asks for it
+     */
+    private static function leaveFieldUnenforced(
+        RuleWalk $walk,
+        string $label,
+        Schema $schema,
+        bool $required,
+        bool $dependent = false,
+    ): void {
+        if ($required) {
+            $walk->leaveUnenforced('required', $label);
+        }
+
+        if ($dependent) {
+            $walk->leaveUnenforced('dependentRequired', $label);
+        }
+
+        foreach (self::statedKeywords($schema, []) as $keyword) {
+            $walk->leaveUnenforced($keyword, $label);
+        }
+    }
+
+    /**
+     * The keywords a field states that none of its rules carries.
+     *
+     * @param  list<string>  $handled  the keywords the walk acted on for this field
+     * @return list<string>
+     */
+    private static function statedKeywords(Schema $schema, array $handled): array
+    {
+        return array_values(array_filter(
+            self::RULE_KEYWORDS,
+            static fn (string $keyword): bool => ! in_array($keyword, $handled, true) && self::states($schema, $keyword),
+        ));
     }
 
     /**
