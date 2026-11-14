@@ -440,6 +440,17 @@ it('reads encoding contentType from the raw document', function (): void {
         ->and($body?->contentType('application/json', 'avatar'))->toBeNull();
 });
 
+// A `contentType` that is not a string is still something the author wrote, so it stays in the contract as written
+// (a rule can then say it read nothing from it), where dropping it would make the part look as if it wrote none. A
+// `null` is a key with nothing in it, which writes none.
+it('reads encoding contentType from the raw document, a value that is not a string included', function (): void {
+    $body = extractionFrom('encoding.yaml')->operations[3]->requestBody;
+
+    expect($body?->encoding)->toBe(['multipart/form-data' => ['avatar' => ['image/png', 'image/jpeg'], 'caption' => 5]])
+        ->and($body?->contentType('multipart/form-data', 'avatar'))->toBeNull()
+        ->and($body?->contentType('multipart/form-data', 'caption'))->toBeNull();
+});
+
 it('carries no encoding for a body that writes none', function (): void {
     expect(extractionFrom('encoding.yaml')->operations[2]->requestBody?->encoding)->toBe([]);
 });

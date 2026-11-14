@@ -392,9 +392,14 @@ final readonly class OperationExtractor
      * and only when the schema is inline: reading it would put values in the contract that the document does not hold,
      * and read one body two ways depending on whether it sits behind a `$ref`.
      *
+     * **A value that is not a string is kept as written.** The specification says one comma-separated string, and a
+     * YAML list is the natural mistake. Dropping it here would make the part look as if it wrote no `contentType`, and
+     * the request would say nothing about a restriction the author wrote. Only `null` is dropped: a key with nothing in
+     * it writes none.
+     *
      * The Encoding Object is the same in 3.0 and 3.1, so no {@see VersionStrategy} method is involved.
      *
-     * @return array<string, string>
+     * @return array<string, mixed>
      */
     private function encodedContentTypes(DocumentWalk $walk, SchemaPosition $mediaAt): array
     {
@@ -403,7 +408,7 @@ final readonly class OperationExtractor
         $contentTypes = [];
 
         foreach ($raw as $part => $entry) {
-            if (is_array($entry) && is_string($entry['contentType'] ?? null)) {
+            if (is_array($entry) && ($entry['contentType'] ?? null) !== null) {
                 $contentTypes[(string) $part] = $entry['contentType'];
             }
         }

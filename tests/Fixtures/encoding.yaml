@@ -71,6 +71,28 @@ paths:
       responses:
         '201':
           description: Created
+  # A `contentType` the spec says is one comma-separated string. A YAML list and a number are what a person writes by
+  # mistake, and the contract keeps them as written so a rule can say it did not read them.
+  /mistyped:
+    post:
+      operationId: uploadMistyped
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Upload'
+            encoding:
+              avatar:
+                contentType:
+                  - image/png
+                  - image/jpeg
+              caption:
+                contentType: 5
+              document:
+                contentType: ~
+      responses:
+        '201':
+          description: Created
 components:
   schemas:
     Upload:

@@ -588,17 +588,22 @@ final readonly class RuleSetBuilder
      *
      * **Only the media types `encoding` applies to** (`multipart/form-data` and `application/x-www-form-urlencoded`,
      * which OpenAPI names), and only those the body declares: `encoding` beside `application/json` is ignored, as the
-     * specification says. The two are merged because a part is read as a file only when the body is multipart alone,
-     * and every other body only reports what it does not read.
+     * specification says. A part is read as a file only when the body is multipart alone, and then only multipart's
+     * `encoding` is read. When the body declares both, the part is not a file and what is written is only reported: a
+     * part written under both is read as the two lists joined (multipart's first), so the report names both and says
+     * nothing only when neither is the part's default.
      *
      * **A part the schema does not declare is a fault in the document**, not a limit of this package, so it is said in
-     * the generated file and left out of the doctor's `unenforced`.
+     * the generated file and left out of the doctor's `unenforced`. So is a `contentType` that is not a string (a YAML
+     * list, a number): the specification says one comma-separated string, so nothing is read from it, and the part
+     * keeps what `contentMediaType` says. A string written under the other media type is still read.
      *
      * @return array<string, string> a part name => the `contentType` as written
      */
     private static function encodedParts(RequestBody $body, Schema $schema, RuleWalk $walk): array
     {
-        $parts = [];
+        $written = [];
+        $mistyped = [];
 
         foreach ([self::MULTIPART, 'application/x-www-form-urlencoded'] as $mediaType) {
             if (! isset($body->content[$mediaType])) {
@@ -606,12 +611,22 @@ final readonly class RuleSetBuilder
             }
 
             foreach ($body->encoding[$mediaType] ?? [] as $part => $contentType) {
-                $parts[(string) $part] ??= $contentType;
+                $part = (string) $part;
+
+                if (! is_string($contentType)) {
+                    $mistyped[$part] = true;
+
+                    continue;
+                }
+
+                if (! in_array($contentType, $written[$part] ?? [], true)) {
+                    $written[$part][] = $contentType;
+                }
             }
         }
 
         $undeclared = array_values(array_filter(
-            array_map('strval', array_keys($parts)),
+            array_map('strval', array_keys($written + $mistyped)),
             static fn (string $part): bool => ! isset($schema->properties[$part]),
         ));
 
@@ -622,10 +637,19 @@ final readonly class RuleSetBuilder
                 self::list($undeclared),
             );
 
-            $parts = array_diff_key($parts, array_flip($undeclared));
+            $written = array_diff_key($written, array_flip($undeclared));
+            $mistyped = array_diff_key($mistyped, array_flip($undeclared));
         }
 
-        return $parts;
+        foreach (array_keys($mistyped) as $part) {
+            $walk->findings[] = sprintf(
+                '`encoding` writes a `contentType` for `%s` that is not a string: that is a fault in the document, '
+                    .'and nothing is read from it.',
+                $part,
+            );
+        }
+
+        return array_map(static fn (array $lists): string => implode(', ', $lists), $written);
     }
 
     /**
@@ -1542,13 +1566,23 @@ final readonly class RuleSetBuilder
         if (array_intersect($types, ['application/octet-stream', '*/*']) !== []) {
             // Any bytes: nothing to match.
         } elseif ($sniffed !== []) {
-            $walk->findings[] = sprintf(
-                '%s, and no `mimetypes` rule is emitted for it: Laravel reads the type libmagic sniffs from the '
-                    .'content, which is never that one for a text file, so the rule would refuse every real upload.',
-                $encoded
-                    ? sprintf('The `encoding` of %s declares `contentType: %s`', $label, trim((string) $contentType))
-                    : sprintf('%s declares `contentMediaType: %s`', $label, $sniffed[0]),
-            );
+            $walk->findings[] = $encoded
+                ? sprintf(
+                    'The `encoding` of %s declares `contentType: %s`, and no `mimetypes` rule is emitted for it: Laravel '
+                        .'reads the type libmagic sniffs from the content, which is never `%s` for a text file, so a rule '
+                        .'listing it would refuse every real file of that type, and the list is left out whole rather '
+                        .'than refuse them.',
+                    $label,
+                    trim((string) $contentType),
+                    $sniffed[0],
+                )
+                : sprintf(
+                    '%s declares `contentMediaType: %s`, and no `mimetypes` rule is emitted for it: Laravel reads the '
+                        .'type libmagic sniffs from the content, which is never that one for a text file, so the rule '
+                        .'would refuse every real upload.',
+                    $label,
+                    $sniffed[0],
+                );
             $walk->leaveUnenforced($encoded ? 'encoding' : 'contentMediaType', $label);
         } elseif ($types !== []) {
             $rules[] = 'mimetypes:'.implode(',', $types);
@@ -1632,8 +1666,12 @@ final readonly class RuleSetBuilder
                 .'multipart body is narrowed by it, and %s.',
             $label,
             trim($contentType),
+            // What is true of this part: a schema that is no file is said not to be one, whatever the body, and only a
+            // file part is a string because of the body it sits in.
             match (true) {
-                $walk->multipart => $schema->soleType() === SchemaType::Array ? 'its items are not a file part' : 'it is not a file part',
+                $schema->soleType() === SchemaType::Array && ! ($schema->items !== null && $schema->items->isFilePart) => 'its items are not a file part',
+                ! $schema->isFilePart && $schema->soleType() !== SchemaType::Array => 'it is not a file part',
+                $walk->multipart => 'it is not read as a file part',
                 $walk->jsonBody => 'the body is also JSON, which reads a file part as a string',
                 default => 'a form-encoded body is read as text',
             },

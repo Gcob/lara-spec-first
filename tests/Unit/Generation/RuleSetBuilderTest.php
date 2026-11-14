@@ -1018,10 +1018,11 @@ it('narrows a file part from encoding', function (
     array $rules,
     array $says,
     array $unenforced,
+    ?array $formEncoding = null,
 ): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: array_fill_keys($mediaTypes, objectSchema($properties)),
-        encoding: ['multipart/form-data' => $encoding, 'application/x-www-form-urlencoded' => $encoding],
+        encoding: ['multipart/form-data' => $encoding, 'application/x-www-form-urlencoded' => $formEncoding ?? $encoding],
     ));
     $findings = implode("\n", $set->findings);
 
@@ -1057,7 +1058,8 @@ it('narrows a file part from encoding', function (
             ['avatar' => ['sometimes', 'file']], [], []],
         'a text type in a list' => [['avatar' => $file], ['avatar' => 'image/png, text/csv'], $multipart,
             ['avatar' => ['sometimes', 'file']],
-            ['The `encoding` of `avatar` declares `contentType: image/png, text/csv`, and no `mimetypes` rule is emitted for it'],
+            ['The `encoding` of `avatar` declares `contentType: image/png, text/csv`, and no `mimetypes` rule is emitted for it',
+                'a rule listing it would refuse every real file of that type'],
             ['encoding' => ['`avatar`']]],
         'no contentType, so contentMediaType applies' => [['avatar' => $gif], [], $multipart,
             ['avatar' => ['sometimes', 'file', 'mimetypes:image/gif']], [], []],
@@ -1113,13 +1115,51 @@ it('narrows a file part from encoding', function (
             [], []],
         'a default beside another type is not the default' => [['note' => $text], ['note' => 'text/plain, image/png'], $multipart,
             ['note' => ['sometimes', 'string']], ['The `encoding` of `note` declares'], ['encoding' => ['`note`']]],
-        'a form' => [['name' => $text], ['name' => 'text/csv'], ['application/x-www-form-urlencoded'],
+        'a plain part in a form' => [['name' => $text], ['name' => 'text/csv'], ['application/x-www-form-urlencoded'],
             ['name' => ['sometimes', 'string']],
-            ['The `encoding` of `name` declares `contentType: text/csv`', 'form-encoded'], ['encoding' => ['`name`']]],
-        'a mixed body' => [['avatar' => $file], ['avatar' => 'image/png'], ['multipart/form-data', 'application/json'],
+            ['The `encoding` of `name` declares `contentType: text/csv`', 'it is not a file part'], ['encoding' => ['`name`']]],
+        'a file part in a form' => [['avatar' => $file], ['avatar' => 'image/png'], ['application/x-www-form-urlencoded'],
             ['avatar' => ['sometimes', 'string']],
-            ['The `encoding` of `avatar` declares `contentType: image/png`', 'also JSON'],
+            ['The `encoding` of `avatar` declares `contentType: image/png`', 'a form-encoded body is read as text'],
             ['encoding' => ['`avatar`'], 'format' => ['`avatar`']]],
+        'a file part in a mixed body' => [['avatar' => $file], ['avatar' => 'image/png'], ['multipart/form-data', 'application/json'],
+            ['avatar' => ['sometimes', 'string']],
+            ['The `encoding` of `avatar` declares `contentType: image/png`', 'the body is also JSON, which reads a file part as a string'],
+            ['encoding' => ['`avatar`'], 'format' => ['`avatar`']]],
+        'a plain part in a mixed body' => [['name' => $text], ['name' => 'image/png'], ['multipart/form-data', 'application/json'],
+            ['name' => ['sometimes', 'string']],
+            ['The `encoding` of `name` declares `contentType: image/png`', 'it is not a file part'], ['encoding' => ['`name`']]],
+        // The two media types `encoding` applies to are read in a fixed order, multipart first. A part is read as a
+        // file only when the body is multipart alone, and then the form-encoded one is not read at all.
+        'a part written under both, in a multipart body alone' => [['avatar' => $file], ['avatar' => 'image/png'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png']], [], [], ['avatar' => 'image/gif']],
+        'a part written under both, in a body that is both' => [
+            ['avatar' => $file], ['avatar' => 'image/png'], ['multipart/form-data', 'application/x-www-form-urlencoded'],
+            ['avatar' => ['sometimes', 'string']],
+            ['The `encoding` of `avatar` declares `contentType: image/png, image/gif`'],
+            ['encoding' => ['`avatar`'], 'format' => ['`avatar`']], ['avatar' => 'image/gif']],
+        'a part written under both with the default, in a body that is both' => [
+            ['note' => $text], ['note' => 'text/plain'], ['multipart/form-data', 'application/x-www-form-urlencoded'],
+            ['note' => ['sometimes', 'string']], [], [], ['note' => 'Text/Plain; charset=utf-8']],
+        'a part written under both, one of them not the default' => [
+            ['note' => $text], ['note' => 'text/plain'], ['multipart/form-data', 'application/x-www-form-urlencoded'],
+            ['note' => ['sometimes', 'string']],
+            ['The `encoding` of `note` declares `contentType: text/plain, image/png`'], ['encoding' => ['`note`']], ['note' => 'image/png']],
+        // The specification says one comma-separated string. A YAML list or a number is a fault in the document, said
+        // in the generated file, and read as nothing: never dropped quietly, never turned into a rule.
+        'a contentType written as a YAML list' => [['avatar' => $file], ['avatar' => ['image/png', 'image/jpeg']], $multipart,
+            ['avatar' => ['sometimes', 'file']],
+            ['`encoding` writes a `contentType` for `avatar` that is not a string: that is a fault in the document, and nothing is read from it'],
+            []],
+        'a contentType written as a number' => [['avatar' => $file], ['avatar' => 5], $multipart,
+            ['avatar' => ['sometimes', 'file']],
+            ['`encoding` writes a `contentType` for `avatar` that is not a string'], []],
+        'a contentType that is not a string, over a contentMediaType' => [['avatar' => $gif], ['avatar' => ['image/png']], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/gif']],
+            ['`encoding` writes a `contentType` for `avatar` that is not a string'], []],
+        'a contentType that is not a string, on a part the schema does not declare' => [['avatar' => $file], ['ghost' => ['image/png']], $multipart,
+            ['avatar' => ['sometimes', 'file']],
+            ['`encoding` names `ghost`, which the body does not declare'], []],
         'JSON, where encoding does not apply' => [['avatar' => $file], ['avatar' => 'image/png'], ['application/json'],
             ['avatar' => ['sometimes', 'string']], [], ['format' => ['`avatar`']]],
     ];
