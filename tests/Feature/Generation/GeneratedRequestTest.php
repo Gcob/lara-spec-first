@@ -105,16 +105,26 @@ it('validates a query parameter beside the body', function (): void {
         ->toBe([200, ['email' => 'someone@example.test', 'notify' => '1']]);
 });
 
-// Risk 1 of the card #35 plan, measured rather than assumed. Laravel's
-// `boolean` accepts `1`, `0`, `"1"`, `"0"`, `true` and `false`, and refuses
-// `"true"` — so `?notify=true` answers 422 on a contract that says
-// `type: boolean`. Documented in request-validation.md rather than worked
-// around: a looser rule would accept what the contract refuses.
-it('refuses the string "true" for a boolean query parameter', function (): void {
-    [$status, $body] = sendGeneratedRequest(['email' => 'someone@example.test'], '?notify=true');
+// OpenAPI's default `form` style writes a boolean as `?notify=true`, and Laravel's
+// `boolean` refuses the string "true". The maintainer reversed the earlier choice
+// (to answer 422, documented as the price of not using a looser rule): a rule that
+// refuses what the contract accepts is the worse direction, so a query parameter
+// takes the four spellings a form can carry. `validated()` holds the string as sent.
+it('accepts every spelling of a boolean query parameter, and refuses the rest', function (string $query, int $status): void {
+    expect(sendGeneratedRequest(['email' => 'someone@example.test'], $query)[0])->toBe($status);
+})->with([
+    'true' => ['?notify=true', 200],
+    'false' => ['?notify=false', 200],
+    'one' => ['?notify=1', 200],
+    'zero' => ['?notify=0', 200],
+    'yes' => ['?notify=yes', 422],
+    'capitalized' => ['?notify=True', 422],
+    'empty' => ['?notify=', 422],
+]);
 
-    expect($status)->toBe(422)
-        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['notify']);
+it('hands a boolean query parameter to validated() as the string it was sent', function (): void {
+    expect(sendGeneratedRequest(['email' => 'someone@example.test'], '?notify=false'))
+        ->toBe([200, ['email' => 'someone@example.test', 'notify' => 'false']]);
 });
 
 /**
@@ -791,7 +801,7 @@ function emittedRequestClass(Operation $operation): string
  * @param  class-string<FormRequest>  $class
  * @param  array<string, mixed>  $parameters  form fields, for a request that is not JSON
  * @param  array<string, mixed>  $files
- * @param  array<string, mixed>|null  $json  the body, for a JSON request
+ * @param  array<array-key, mixed>|null  $json  the body, for a JSON request
  * @return array{0: int, 1: array<string, mixed>}
  */
 function sendThroughEmitted(string $class, string $method, string $query = '', ?array $json = null, array $parameters = [], array $files = []): array
@@ -1058,7 +1068,8 @@ it('builds and runs a request for a property named like an integer', function ()
         operationId: 'createYear',
         requestBody: new RequestBody(['application/json' => new Schema(
             types: [SchemaType::Object],
-            properties: ['2024' => new Schema(types: [SchemaType::String]), 'name' => new Schema(types: [SchemaType::String])],
+            // PHP makes the key "2024" an integer, as it does for the parser's own map.
+            properties: ['2024' => new Schema(types: [SchemaType::String]), 'name' => new Schema(types: [SchemaType::String])], // @phpstan-ignore argument.type
             required: ['2024'],
             additionalProperties: false,
         )], true),
@@ -1080,4 +1091,41 @@ it('accepts an upload for a part written format: binary in a 3.1 document', func
     expect(sendThroughEmitted($class, 'POST', files: ['avatar' => $upload]))->toBe([200, ['avatar' => UploadedFile::class]])
         ->and(sendThroughEmitted($class, 'POST', parameters: ['avatar' => 'not a file'])[0])->toBe(422)
         ->and(sendThroughEmitted($class, 'POST')[0])->toBe(422);
+});
+
+/**
+ * A `POST` carrying one boolean field in a body of the given media types.
+ *
+ * @param  list<string>  $mediaTypes
+ */
+function postWithBooleanField(array $mediaTypes): Operation
+{
+    $schema = new Schema(types: [SchemaType::Object], properties: ['active' => new Schema(types: [SchemaType::Boolean])], required: ['active']);
+
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/flags'),
+        operationId: 'setFlag',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $schema), true),
+    );
+}
+
+// A form-encoded and a multipart body carry every value as a string, so `"false"` is
+// the contract's `false` there.
+it('accepts "true" and "false" for a boolean field of a form or multipart body', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithBooleanField([$mediaType]));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['active' => 'false']))->toBe([200, ['active' => 'false']])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['active' => 'true'])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['active' => '0'])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['active' => 'maybe'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST')[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+it('keeps Laravel\'s boolean for a JSON body', function (): void {
+    $class = emittedRequestClass(postWithBooleanField(['application/json']));
+
+    expect(sendThroughEmitted($class, 'POST', json: ['active' => false]))->toBe([200, ['active' => false]])
+        ->and(sendThroughEmitted($class, 'POST', json: ['active' => 'true'])[0])->toBe(422);
 });

@@ -54,7 +54,7 @@ it('writes the rule set as rules() returns it', function (): void {
         ->toContain("'nickname' => ['sometimes', 'nullable', 'string'],")
         ->toContain("'tags.*' => ['string', 'distinct:strict'],")
         ->toContain("'address' => ['sometimes', 'array', 'required_array_keys:city'],")
-        ->toContain("'notify' => ['sometimes', 'boolean'],");
+        ->toContain("'notify' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],");
 });
 
 // An array, never `in:a,b`: the string form splits on a comma inside a value.

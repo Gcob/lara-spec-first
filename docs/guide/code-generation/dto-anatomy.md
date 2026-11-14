@@ -130,7 +130,9 @@ value before `from()` saw it:
 
 - **On the request side, validation has already run.** A `multipart/form-data` body delivers `"42"` where the schema
   said `integer`, and Laravel's `integer` rule accepts it. `(int)` is what lets the typed property accept it too, and it
-  cannot turn a bad value into a wrong one, since a bad value never got past the rule set.
+  cannot turn a bad value into a wrong one, since a bad value never got past the rule set. A boolean is read with
+  `filter_var(..., FILTER_VALIDATE_BOOL)` rather than `(bool)`, because a form writes it as the text `"false"`, which
+  the rule set accepts and `(bool)` would turn into `true`.
 - **On the response side, nothing has.** A factory feeds `from()` from a model, where `(int) 'abc'` would be `0` and
   `(bool) 'false'` would be `true`, silently. So the value goes in as it is, and since every generated file declares
   `strict_types`, a value of the wrong type is a `TypeError` naming the property rather than a wrong number in a
@@ -191,7 +193,7 @@ version wrote the document:
 | `string`                                                                     | `string`                       | Reads it                                | Writes it         |
 | `integer`                                                                    | `int`                          | `(int)`, request side only              | Writes it         |
 | `number`                                                                     | `float`                        | `(float)`, request side only            | Writes it         |
-| `boolean`                                                                    | `bool`                         | `(bool)`, request side only             | Writes it         |
+| `boolean`                                                                    | `bool`                         | `filter_var()`, request side only       | Writes it         |
 | `string`, `format: date-time`                                                | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `format()`, below |
 | `string`, `format: date`                                                     | `CarbonImmutable`              | `CarbonImmutable::parse()`              | `toDateString()`  |
 | `enum`                                                                       | Its scalar type                | Reads it, or casts it as its type does  | Writes it         |

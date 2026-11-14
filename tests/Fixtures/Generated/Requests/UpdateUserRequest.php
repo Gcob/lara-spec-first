@@ -34,8 +34,14 @@ use Illuminate\Validation\Rule;
  *     `validated('name')`.
  *   - A `PATCH` is a partial update, so the schema's required list (`email`, `born_on`, `nickname`
  *     and `address`) is read as empty here. Every property is `sometimes`.
+ *   - `active` is a boolean read from a form body, where every value is text and Laravel's
+ *     `boolean` refuses `"true"`. It accepts `true`, `false`, `1` and `0`, and `validated()` holds
+ *     the string as sent, which `dto()` reads as a `bool`.
  *   - `address.parent` points back at `#/components/schemas/Address`, so nothing below it is
  *     validated: no rule set reaches an infinite depth.
+ *   - `2fa` is a boolean read from a form body, where every value is text and Laravel's `boolean`
+ *     refuses `"true"`. It accepts `true`, `false`, `1` and `0`, and `validated()` holds the
+ *     string as sent, which `dto()` reads as a `bool`.
  *   - `avatar` is a file part. Its types are read from `contentMediaType` alone: an
  *     `encoding.<part>.contentType` beside the body is not read, so a restriction written there is
  *     not enforced.
@@ -65,7 +71,7 @@ final class UpdateUserRequest extends FormRequest
             'email' => ['sometimes', 'string', 'email'],
             'age' => ['sometimes', 'integer'],
             'score' => ['sometimes', 'numeric'],
-            'active' => ['sometimes', 'boolean'],
+            'active' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],
             'born_on' => ['sometimes', 'nullable', 'string', 'date_format:Y-m-d'],
             'seen_at' => ['sometimes', 'string', 'regex:/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$/D', 'date'],
             'status' => ['sometimes', 'string', Rule::in(['active', 'banned'])],
@@ -91,7 +97,7 @@ final class UpdateUserRequest extends FormRequest
             'visits.*' => ['string', 'regex:/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$/D', 'date'],
             'meta' => ['sometimes', 'array'],
             'user-id' => ['sometimes', 'string'],
-            '2fa' => ['sometimes', 'boolean'],
+            '2fa' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],
             'avatar' => ['sometimes', 'file', 'mimetypes:image/png'],
             'anything' => ['sometimes'],
         ];

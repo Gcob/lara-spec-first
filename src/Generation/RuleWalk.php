@@ -34,6 +34,19 @@ final class RuleWalk
     public bool $multipart = false;
 
     /**
+     * Where the fields being walked come from when every value in it is text
+     * (`query string` or `form body`), or null for a JSON body. It is what
+     * decides how a boolean is read.
+     */
+    public ?string $textSource = null;
+
+    /**
+     * Whether the body is read from JSON and from a form at once, which no one
+     * boolean rule serves.
+     */
+    public bool $mixedBody = false;
+
+    /**
      * @param  string  $identity  the operation's label, for a refusal's message
      */
     public function __construct(

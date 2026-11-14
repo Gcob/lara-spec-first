@@ -9,6 +9,7 @@ use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
+use Gcob\LaraSpecFirst\Generation\InputDtoType;
 use Gcob\LaraSpecFirst\Generation\PlannedInputDto;
 use Symfony\Component\Process\Process;
 
@@ -114,7 +115,7 @@ it('casts the scalars the request side delivers as strings', function (): void {
     expect(emittedDto('NewUserInputDto'))
         ->toContain("age: array_key_exists('age', \$payload) ? (int) \$payload['age'] : new Optional,")
         ->toContain("score: array_key_exists('score', \$payload) ? (float) \$payload['score'] : new Optional,")
-        ->toContain("active: array_key_exists('active', \$payload) ? (bool) \$payload['active'] : new Optional,");
+        ->toContain("active: array_key_exists('active', \$payload) ? filter_var(\$payload['active'], FILTER_VALIDATE_BOOL) : new Optional,");
 });
 
 // `CarbonImmutable::parse(null)` is the current time, so a nullable date is
@@ -310,4 +311,16 @@ it('never writes an enumeration value that could close a docblock', function (st
 
 it('keeps the literal union for an enumeration that is safe to write', function (): void {
     expect(emittedDto('NewUserInputDto'))->toContain("'active'|'banned'");
+});
+
+// A list of booleans converts each element, and `boolval(...)` read "false" as true.
+it('converts a list of booleans element by element with the text-aware cast', function (): void {
+    $type = new InputDtoType(InputDtoType::LIST, item: new InputDtoType(InputDtoType::BOOL));
+
+    $expression = $type->from('$flags');
+    $flags = ['false', 'true', '0', '1'];
+
+    expect($expression)->toContain('filter_var($item, FILTER_VALIDATE_BOOL)')
+        ->and($expression)->not->toContain('boolval')
+        ->and(eval('return '.$expression.';'))->toBe([false, true, false, true]);
 });

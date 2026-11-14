@@ -233,7 +233,9 @@ final readonly class InputDtoType
         return match ($this->kind) {
             self::INT => '(int) '.$value,
             self::FLOAT => '(float) '.$value,
-            self::BOOL => '(bool) '.$value,
+            // `filter_var`, since `(bool) 'false'` is `true`: a query string, a form and a
+            // multipart body write a boolean as text, and the rule set accepts that text.
+            self::BOOL => 'filter_var('.$value.', FILTER_VALIDATE_BOOL)',
             self::DATE, self::DATE_TIME => 'CarbonImmutable::parse('.$value.')',
             self::DTO => $this->class.'::from('.$value.')',
             self::LIST => $this->buildList($value),
@@ -268,8 +270,6 @@ final readonly class InputDtoType
                     return 'intval(...)';
                 case self::FLOAT:
                     return 'floatval(...)';
-                case self::BOOL:
-                    return 'boolval(...)';
                 case self::DATE:
                 case self::DATE_TIME:
                     return 'CarbonImmutable::parse(...)';

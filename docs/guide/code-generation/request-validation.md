@@ -88,7 +88,7 @@ public function rules(): array
     return [
         'email' => ['present', 'string', 'email', 'max:255'],
         'age' => ['sometimes', 'integer', 'min:18'],
-        'notify' => ['sometimes', 'boolean'],   // ?notify=1, a query parameter
+        'notify' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],   // ?notify=true, a query parameter
     ];
 }
 ```
@@ -148,13 +148,14 @@ specification's own:
 **Three media types are read, and one operation declares one of them.** `application/json`, `multipart/form-data` and
 `application/x-www-form-urlencoded` are all read from the body, so one rule set covers all three; what changes is only
 whether a part can be a file, which is [`uploads.md`](../uploads.md#one-operation-one-media-type)'s subject. **The rule
-set is shared, the values under it are not:** a form-encoded body carries strings only, so `notify=true` meets Laravel's
-`boolean` as the string it is where JSON's `true` arrives already typed, and a nested structure arrives flattened. A
-contract whose schema leans on a type the encoding cannot carry is served better by `application/json`. **An operation
-declaring two of them over two different schemas is a build error**, because one `rules()` cannot hold two rule sets and
-[nothing rewrites it per request](#nothing-rewrites-the-rule-set). Two media types over one schema are not a conflict
-and produce one rule set. **A part is a file only when `multipart/form-data` is the body's one media type**: beside
-another, the part is read as a string, because one rule set cannot hold both a `file` and the string JSON sends.
+set is shared, the values under it are not:** a form-encoded body carries strings only, so `notify=true` arrives as the
+string it is where JSON's `true` arrives already typed, which [a boolean's rule](#every-constraint-maps-or-reports)
+reads, and a nested structure arrives flattened. A contract whose schema leans on a type the encoding cannot carry is
+served better by `application/json`. **An operation declaring two of them over two different schemas is a build error**,
+because one `rules()` cannot hold two rule sets and [nothing rewrites it per request](#nothing-rewrites-the-rule-set).
+Two media types over one schema are not a conflict and produce one rule set. **A part is a file only when
+`multipart/form-data` is the body's one media type**: beside another, the part is read as a string, because one rule set
+cannot hold both a `file` and the string JSON sends.
 
 **A body schema that names `properties` and no `type` is read as an object.** JSON Schema applies `properties` to
 objects only, so the schema says nothing about a string, but a body that names properties is an object whether or not it
@@ -365,7 +366,7 @@ state; what each honored one becomes is this table's.
 | `type: string`                          | `string`                                                                                                                |
 | `type: integer`                         | `integer`                                                                                                               |
 | `type: number`                          | `numeric`                                                                                                               |
-| `type: boolean`                         | `boolean`                                                                                                               |
+| `type: boolean`                         | `boolean`, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field               |
 | `type: array`                           | `array` and `list`, with the element rules keyed `field.*`                                                              |
 | `type: object`                          | `array`, with each property keyed `field.child`. A JSON object arrives as a PHP array, and Laravel has no `object` rule |
 | `nullable`, `type: [..., "null"]`       | `nullable`                                                                                                              |
@@ -376,11 +377,26 @@ state; what each honored one becomes is this table's.
 | `format: email`, `uuid`, `ipv4`, `ipv6` | `email`, `uuid`, `ipv4`, `ipv6`                                                                                         |
 | `format: uri`                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                              |
 
-**Laravel's `boolean` refuses the string `"true"`, and that is worth knowing before a client meets it.** It accepts `1`,
-`0`, `"1"`, `"0"`, `true` and `false`, so `?notify=true` on a parameter the contract types `boolean` answers 422. That
-is the rule meaning what Laravel says it means rather than what the name suggests, it is
-[pinned by an execution test](https://github.com/Gcob/lara-spec-first/blob/main/tests/Feature/Generation/GeneratedRequestTest.php),
-and it is not worked around: a looser rule would accept what the contract refuses.
+**Laravel's `boolean` refuses the string `"true"`, so a boolean that arrives as text does not get it.** It accepts `1`,
+`0`, `"1"`, `"0"`, `true` and `false`, and OpenAPI's default `form` style writes a boolean in a query string as the text
+`true` (`?notify=true`), as a form-encoded or multipart body writes one. Every generated client would answer 422 to a
+contract it follows, which is a rule refusing what the contract accepts. So for **a `query` parameter and a field of a
+form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body keeps `boolean`,
+where `true` arrives already typed. Three things come with it:
+
+- **`false` is not in the list as a PHP value.** `Rule::in` compares `(string) false`, which is the empty string, and a
+  list holding it would accept the `null` an empty value becomes, which a non-nullable boolean refuses.
+- **`validated()` holds the string as sent.** `validated('notify')` is `'false'`, and the generated file says so in a
+  finding on the field. A form or multipart body has a DTO, and
+  [its `from()`](./dto-anatomy.md#what-each-schema-type-becomes) reads the text with
+  `filter_var(..., FILTER_VALIDATE_BOOL)`, since `(bool) 'false'` is `true`. A `query` parameter is not on the DTO.
+- **A body that is JSON and a form at once keeps `boolean`.** One rule set cannot accept the form's text and still
+  refuse `null`, so a form client's `"true"` is refused there and the field's finding says so. This is the exception
+  [the principle](#every-constraint-maps-or-reports) allows when matching the contract exactly would be far too complex.
+
+Pinned by execution tests for the query string, a form body, a multipart body and a JSON body. An earlier version of
+this page called the 422 the price of not using a looser rule, and a test pinned it: the maintainer reversed that, since
+refusing what a contract accepts is the worse direction.
 
 **`list` beside `array`, because Laravel's `array` passes for an associative one.** `{"tags": {"a": 1}}` would otherwise
 satisfy a `tags` declared `type: array`, which is a payload the contract refuses being accepted. `list` is

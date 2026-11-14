@@ -60,6 +60,20 @@ it('casts what a multipart body delivers as strings', function (): void {
         ->and($dto->_2fa)->toBeTrue();
 });
 
+// The rule set accepts the text a form writes for a boolean, and `(bool) 'false'` is
+// `true`: the cast has to read the text, not its truthiness.
+it('reads the text of a boolean as the boolean it spells', function (string $text, bool $expected): void {
+    $dto = NewUserInputDto::from(multipartPayload(['active' => $text, '2fa' => $text]));
+
+    expect($dto->active)->toBe($expected)
+        ->and($dto->_2fa)->toBe($expected);
+})->with([
+    'false' => ['false', false],
+    'true' => ['true', true],
+    'zero' => ['0', false],
+    'one' => ['1', true],
+]);
+
 // `(int) $payload` over a list the validator already proved is one.
 it('builds a nested list of lists with its own casts', function (): void {
     $dto = NewUserInputDto::from(multipartPayload(['matrix' => [['1', '2'], ['3']]]));

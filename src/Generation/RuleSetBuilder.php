@@ -146,6 +146,12 @@ final readonly class RuleSetBuilder
             && array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES)) === [self::MULTIPART];
         $closedKeys = null;
 
+        $read = $operation->requestBody === null
+            ? []
+            : array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES));
+        $walk->textSource = $read !== [] && ! in_array('application/json', $read, true) ? 'form body' : null;
+        $walk->mixedBody = count($read) > 1 && in_array('application/json', $read, true);
+
         if ($body !== null) {
             $closedKeys = self::bodyRules($operation, $body, $walk);
         }
@@ -154,6 +160,8 @@ final readonly class RuleSetBuilder
         // as one, whatever the body is.
         $multipart = $walk->multipart;
         $walk->multipart = false;
+        $walk->textSource = 'query string';
+        $walk->mixedBody = false;
         $queryKeys = [];
 
         foreach ($operation->queryParameters as $parameter) {
@@ -645,7 +653,20 @@ final readonly class RuleSetBuilder
                 self::numberRules($schema, $rules, $handled);
                 break;
             case SchemaType::Boolean:
-                $rules[] = 'boolean';
+                if ($walk->textSource !== null) {
+                    $rules[] = self::textBoolean($schema, $label, $walk, $handled);
+                } else {
+                    $rules[] = 'boolean';
+
+                    if ($walk->mixedBody) {
+                        $walk->findings[] = sprintf(
+                            '%s is a boolean in a body that is JSON and also a form. One rule set cannot accept '
+                                .'the text a form carries and still refuse `null`, so it keeps `boolean`, which '
+                                .'refuses the string `"true"` a form writes.',
+                            $label,
+                        );
+                    }
+                }
                 break;
             case SchemaType::Array:
                 // `list` beside `array`, because Laravel's `array` passes for
@@ -729,7 +750,7 @@ final readonly class RuleSetBuilder
                 }
         }
 
-        if ($schema->enum !== null) {
+        if ($schema->enum !== null && ! in_array('enum', $handled, true)) {
             $values = array_values(array_filter($schema->enum, static fn (mixed $value): bool => $value !== null));
 
             // `Rule::in` compares as strings, so an untyped enumeration of
@@ -799,6 +820,59 @@ final readonly class RuleSetBuilder
                 .'Its other rules judge it when it is sent.',
             $label,
         );
+    }
+
+    /**
+     * The rule for a boolean whose value arrives as text.
+     *
+     * **Laravel's `boolean` refuses `"true"` and `"false"`**, and those are how
+     * OpenAPI's default `form` style writes a boolean in a query string
+     * (`?notify=true`), and how a form or multipart body carries one. Refusing
+     * them answers 422 to every generated client for a contract it follows, so
+     * `true`, `false`, `1` and `0` are accepted, as text. `false` is not in the
+     * list as a PHP value: `Rule::in` compares `(string) false`, which is the
+     * empty string, and that would accept the `null` an empty value becomes.
+     * `validated()` holds the string as sent, which the finding says.
+     *
+     * An enumeration of booleans is read as every spelling of its values, since
+     * `Rule::in([true])` would accept `1` and refuse `true`.
+     *
+     * @param  list<string>  $handled
+     */
+    private static function textBoolean(Schema $schema, string $label, RuleWalk $walk, array &$handled): InRule
+    {
+        $spellings = ['true', 'false', '1', '0'];
+
+        if ($schema->enum !== null && array_filter($schema->enum, is_bool(...)) !== []) {
+            $spellings = [];
+
+            foreach ($schema->enum as $value) {
+                if ($value === true) {
+                    array_push($spellings, 'true', '1');
+                } elseif ($value === false) {
+                    array_push($spellings, 'false', '0');
+                }
+            }
+
+            $handled[] = 'enum';
+        }
+
+        $walk->findings[] = $walk->textSource === 'query string'
+            ? sprintf(
+                '%s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
+                    .'Laravel\'s `boolean` refuses it. It accepts `true`, `false`, `1` and `0`, and '
+                    .'`validated(\'%s\')` holds the string as sent.',
+                $label,
+                trim($label, '`'),
+            )
+            : sprintf(
+                '%s is a boolean read from a form body, where every value is text and Laravel\'s `boolean` '
+                    .'refuses `"true"`. It accepts `true`, `false`, `1` and `0`, and `validated()` holds the '
+                    .'string as sent, which `dto()` reads as a `bool`.',
+                $label,
+            );
+
+        return new InRule($spellings);
     }
 
     /**

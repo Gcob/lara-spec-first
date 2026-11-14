@@ -88,7 +88,7 @@ final readonly class NewUserPartialInputDto implements Arrayable, JsonSerializab
             email: array_key_exists('email', $payload) ? $payload['email'] : new Optional,
             age: array_key_exists('age', $payload) ? (int) $payload['age'] : new Optional,
             score: array_key_exists('score', $payload) ? (float) $payload['score'] : new Optional,
-            active: array_key_exists('active', $payload) ? (bool) $payload['active'] : new Optional,
+            active: array_key_exists('active', $payload) ? filter_var($payload['active'], FILTER_VALIDATE_BOOL) : new Optional,
             born_on: array_key_exists('born_on', $payload) ? ($payload['born_on'] === null ? null : CarbonImmutable::parse($payload['born_on'])) : new Optional,
             seen_at: array_key_exists('seen_at', $payload) ? CarbonImmutable::parse($payload['seen_at']) : new Optional,
             status: array_key_exists('status', $payload) ? $payload['status'] : new Optional,
@@ -103,7 +103,7 @@ final readonly class NewUserPartialInputDto implements Arrayable, JsonSerializab
             visits: array_key_exists('visits', $payload) ? array_values(array_map(CarbonImmutable::parse(...), $payload['visits'])) : new Optional,
             meta: array_key_exists('meta', $payload) ? $payload['meta'] : new Optional,
             user_id: array_key_exists('user-id', $payload) ? $payload['user-id'] : new Optional,
-            _2fa: array_key_exists('2fa', $payload) ? (bool) $payload['2fa'] : new Optional,
+            _2fa: array_key_exists('2fa', $payload) ? filter_var($payload['2fa'], FILTER_VALIDATE_BOOL) : new Optional,
             avatar: array_key_exists('avatar', $payload) ? $payload['avatar'] : new Optional,
             anything: array_key_exists('anything', $payload) ? $payload['anything'] : new Optional,
         );

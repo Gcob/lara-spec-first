@@ -35,6 +35,9 @@ use Illuminate\Validation\Validator;
  *     `validated('name')`.
  *   - `website` declares `format: uri`, which no Laravel rule means the same as, so it is not
  *     enforced.
+ *   - `notify` is a boolean read from a query string, where `?name=true` is how OpenAPI writes
+ *     `true` and Laravel's `boolean` refuses it. It accepts `true`, `false`, `1` and `0`, and
+ *     `validated('notify')` holds the string as sent.
  *
  * Navigation
  *
@@ -76,7 +79,7 @@ final class CreateUserRequest extends FormRequest
             'address' => ['sometimes', 'array', 'required_array_keys:city'],
             'address.city' => ['sometimes', 'string'],
             'website' => ['sometimes', 'string'],
-            'notify' => ['sometimes', 'boolean'],
+            'notify' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],
         ];
     }
 

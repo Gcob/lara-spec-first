@@ -234,9 +234,9 @@ it('leaves a required query parameter required on a PATCH', function (): void {
         query: [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]), required: true)],
     ));
 
-    expect($set->rules)->toBe([
+    expect($set->rules)->toEqual([
         'name' => ['sometimes', 'string'],
-        'dryRun' => ['required', 'boolean'],
+        'dryRun' => ['required', new InRule(['true', 'false', '1', '0'])],
     ]);
 });
 
@@ -1090,3 +1090,60 @@ it('explains a file part that sits inside a nested object, an array or an allOf'
     'an array' => [objectSchema(['docs' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String], isFilePart: true))])],
     'an allOf' => [new Schema(allOf: [objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true)])])],
 ]);
+
+/*
+ * A boolean the way a form writes one. OpenAPI's default `form` style serializes
+ * `true` as the text `true`, which Laravel's `boolean` refuses, so a query
+ * parameter and a form-encoded or multipart field accept the four spellings.
+ */
+
+it('reads a boolean query parameter as the spellings a query string can carry', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('notify', new Schema(types: [SchemaType::Boolean]), required: true)],
+    ));
+
+    expect($set->rules)->toEqual(['notify' => ['required', new InRule(['true', 'false', '1', '0'])]])
+        ->and(implode("\n", $set->findings))->toContain('`notify` is a boolean read from a query string')
+        ->and(implode("\n", $set->findings))->toContain("`validated('notify')` holds the string as sent");
+});
+
+it('reads a boolean field of a form or multipart body the same way', function (string $mediaType): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(
+        ['active' => new Schema(types: [SchemaType::Boolean, SchemaType::Null])],
+    )]));
+
+    expect($set->rules['active'])->toEqual(['sometimes', 'nullable', new InRule(['true', 'false', '1', '0'])])
+        ->and(implode("\n", $set->findings))->toContain('`active` is a boolean read from a form body');
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+it('keeps boolean for a JSON body', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
+        ['active' => new Schema(types: [SchemaType::Boolean])],
+    )]));
+
+    expect($set->rules['active'])->toBe(['sometimes', 'boolean'])
+        ->and($set->findings)->toBe([]);
+});
+
+// One rule set cannot hold `boolean` and the form's spellings at once without
+// accepting `null`, so a body that is both keeps the JSON rule and says so.
+it('keeps boolean for a body that is JSON and a form, and says what that refuses', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => objectSchema(['active' => new Schema(types: [SchemaType::Boolean])]),
+        'application/x-www-form-urlencoded' => objectSchema(['active' => new Schema(types: [SchemaType::Boolean])]),
+    ]));
+
+    expect($set->rules['active'])->toBe(['sometimes', 'boolean'])
+        ->and(implode("\n", $set->findings))->toContain('`active` is a boolean in a body that is JSON and also a form')
+        ->and(implode("\n", $set->findings))->toContain('refuses the string `"true"`');
+});
+
+it('reads the booleans of an enumeration as every spelling of them', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('on', new Schema(types: [SchemaType::Boolean], enum: [true]))],
+    ));
+
+    expect($set->rules['on'])->toEqual(['sometimes', new InRule(['true', '1'])]);
+});
