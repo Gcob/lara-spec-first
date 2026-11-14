@@ -401,7 +401,7 @@ final readonly class RuleSetBuilder
      * body's root: a nested field with the same shape would be refused a
      * string the contract accepts, so it keeps no type rule.
      */
-    private static function isObjectBody(Schema $schema): bool
+    public static function isObjectBody(Schema $schema): bool
     {
         return $schema->soleType() === SchemaType::Object
             || ($schema->types === [] && $schema->properties !== []);

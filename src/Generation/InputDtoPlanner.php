@@ -124,8 +124,9 @@ final class InputDtoPlanner
         $merged = AllOfMerger::merge($written, $this->identity, 'the body');
 
         // A body that is not an object has no rule set and no DTO, for the same
-        // reason: a property is a field name, and a bare value has none.
-        if ($merged->soleType() !== SchemaType::Object) {
+        // reason: a property is a field name, and a bare value has none. The
+        // rule set's own test, so a body it reads as an object gets a DTO too.
+        if (! RuleSetBuilder::isObjectBody($merged)) {
             return;
         }
 

@@ -249,6 +249,17 @@ it('has no DTO for a body that is not an object, or for no body', function (): v
         ->and($plan->readBy)->toBe([]);
 });
 
+// The rule set reads a body that names properties and says no type as an
+// object, so the DTO must too: a request with rules and no `dto()` would be
+// two readings of one schema.
+it('has a DTO for a body that names properties and says no type', function (): void {
+    $plan = planDtos([dtoOperation('createThing', [
+        'application/json' => new Schema(properties: ['a' => dtoString()], required: ['a']),
+    ])]);
+
+    expect(dtoNames($plan->dtos))->toBe(['CreateThingInputDto', 'CreateThingPartialInputDto']);
+});
+
 // The decision this exists for: the name is the schema's, so two different
 // schemas that give one name are refused, naming where each is written.
 it('refuses two different schemas under one name, naming both positions', function (): void {
