@@ -61,6 +61,12 @@ final class RuleWalk
     public bool $nullableRoot = false;
 
     /**
+     * Whether the contract requires the body, which a request with no content at all breaks.
+     * No rule says so when every property is optional, so the request checks it itself.
+     */
+    public bool $requiredRoot = false;
+
+    /**
      * Whether the body is read from JSON and from a form at once, which no one
      * boolean rule serves.
      */

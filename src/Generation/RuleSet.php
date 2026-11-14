@@ -66,6 +66,12 @@ final readonly class RuleSet
      *                          the request refuses a JSON root that is not one
      * @param  bool  $nullableRoot  whether that root may be `null`, which the
      *                              schema then allows
+     * @param  bool  $requiredRoot  whether the body is required, so the request
+     *                              refuses an empty content: no rule does when
+     *                              every property is optional
+     * @param  bool  $formRoot  whether the body is read from a form as well,
+     *                          whose fields an empty raw content says nothing
+     *                          about
      */
     public function __construct(
         public array $rules = [],
@@ -78,6 +84,8 @@ final readonly class RuleSet
         public bool $nullableRoot = false,
         public array $formPaths = [],
         public array $uncheckedNames = [],
+        public bool $requiredRoot = false,
+        public bool $formRoot = false,
     ) {}
 
     /**

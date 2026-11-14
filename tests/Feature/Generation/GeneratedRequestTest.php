@@ -1483,6 +1483,47 @@ it('still accepts an object, an empty one included, and an absent optional body'
     'typed, closed' => [true, true],
 ]);
 
+// A required body with no required property: every rule is `sometimes`, so nothing refused an empty
+// content, and the contract says the body is required. `{}` is a body, an empty one.
+it('refuses an empty content when the body is required', function (bool $typed, bool $closed, string $content): void {
+    $class = emittedRequestClass(postWithOptionalJsonObject($typed, $closed));
+
+    expect(statusForRawJson($class, $content))->toBe(422)
+        ->and(statusForRawJson($class, '{}'))->toBe(200);
+})->with([
+    'typed, open' => [true, false],
+    'untyped, open' => [false, false],
+    'typed, closed' => [true, true],
+])->with([
+    'nothing' => [''],
+    'blanks' => ["  \n"],
+]);
+
+it('refuses a required JSON body that arrives with no content type at all', function (): void {
+    $class = emittedRequestClass(postWithOptionalJsonObject());
+    Route::post('/_generated/no-body', fn () => response()->json(app($class)->validated()));
+
+    $status = app(HttpKernel::class)->handle(Request::create('/_generated/no-body', 'POST', [], [], [], ['HTTP_ACCEPT' => 'application/json']))->getStatusCode();
+
+    expect($status)->toBe(422);
+});
+
+// A form can carry fields that never show in the raw content (multipart leaves `php://input` empty),
+// so an empty content says nothing about a body that is a form too.
+it('does not read an empty content as an absent body when the body is also a form', function (): void {
+    $schema = new Schema(types: [SchemaType::Object], properties: ['q' => new Schema(types: [SchemaType::String])]);
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/mixed-required'),
+        operationId: 'sendMixedRequired',
+        requestBody: new RequestBody(['application/json' => $schema, 'multipart/form-data' => $schema], true),
+    ));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['q' => 'x'])[0])->toBe(200)
+        ->and(statusForRawJson($class, ''))->toBe(422);
+});
+
 it('accepts a null body when the schema is nullable', function (): void {
     $class = emittedRequestClass(postWithOptionalJsonObject(nullable: true));
 

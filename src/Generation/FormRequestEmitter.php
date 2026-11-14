@@ -354,9 +354,11 @@ final readonly class FormRequestEmitter
      * an untyped one.** Laravel reads a JSON body as `(array) json_decode(...)`, so
      * `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has a key
      * for, and an open root with nothing required would accept them. Only a JSON
-     * request is checked (a form cannot send a non-object), and an empty body is
-     * left alone: whether one is allowed is the body's `required`, which the rules
-     * answer. A schema that allows `null` allows it here.
+     * request is checked (a form cannot send a non-object). An empty content is not a
+     * non-object but an absent body: it is refused when the body is `required`, which no
+     * rule says when every property is optional, and accepted when it is not. A body that
+     * is a form too is only read as absent when the request is JSON, since a form's fields
+     * need not show in the raw content. A schema that allows `null` allows it here.
      *
      * **The second reads the top-level keys from the body rather than from `all()`**, by
      * the same `bodyInput()` `validationData()` reads: the JSON bag, or the form
@@ -386,6 +388,13 @@ final readonly class FormRequestEmitter
             $lines = [
                 '                $content = $this->getContent();',
                 '',
+                ...($set->requiredRoot ? [
+                    '                if (trim($content) === \'\''.($set->formRoot ? ' && $this->isJson()' : '').') {',
+                    '                    $validator->addFailure(\'body\', \'required\');',
+                    ...($set->closedKeys === null ? [] : ['', '                    return;']),
+                    '                }',
+                    '',
+                ] : []),
                 '                // Why: decoded without `assoc`, because `{}` and `[]` are both `[]` with it.',
                 '                if ($this->isJson() && trim($content) !== \'\' && ! is_object(json_decode($content))'
                     .($set->nullableRoot ? ' && trim($content) !== \'null\'' : '').') {',

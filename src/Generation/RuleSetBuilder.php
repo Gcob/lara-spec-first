@@ -163,6 +163,7 @@ final readonly class RuleSetBuilder
         // A query string carries no file, so the parameters below are never read
         // as one, whatever the body is.
         $multipart = $walk->multipart;
+        $formRoot = $walk->formBody;
         $walk->multipart = false;
         $walk->textSource = 'query string';
         $walk->mixedBody = false;
@@ -233,7 +234,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $formRoot);
     }
 
     /**
@@ -373,6 +374,7 @@ final readonly class RuleSetBuilder
         // reach the rules as a list no rule has a key for. The request checks the root itself.
         $walk->jsonRoot = $walk->jsonBody;
         $walk->nullableRoot = $schema->isNullable();
+        $walk->requiredRoot = $body->required;
 
         // The root goes through the same sweep a field does, minus what the
         // object walk below acts on. Without it a keyword written on the

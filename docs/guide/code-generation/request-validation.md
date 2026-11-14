@@ -209,10 +209,17 @@ the body the same way, so such a body has its rules and its `dto()`.
 `(array) json_decode(...)`, so `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has a key for, and an
 open root with nothing required would accept all three. The generated request checks the root itself, in the same
 `after()` closure as the closed root's key check, below: the raw body is decoded without `assoc`, because `{}` and `[]`
-are both `[]` with it, and anything but an object is answered with Laravel's `array` message on a `body` key. An empty
-body is left alone, since whether one is allowed is the body's `required`, which the rules answer, and a schema that
-allows `null` allows it here. Only a request that is JSON is checked: a form cannot send a non-object, so a body read
-only as a form has no such check.
+are both `[]` with it, and anything but an object is answered with Laravel's `array` message on a `body` key. A schema
+that allows `null` allows it here. Only a request that is JSON is checked: a form cannot send a non-object, so a body
+read only as a form has no such check.
+
+**An empty content is an absent body, and the body's `required` decides.** A required body sent as nothing is refused on
+the body's own key, with Laravel's `required` message, since no rule says so when every property is optional (they are
+all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one, that passes either way. A
+body read only as JSON is checked whatever the request's `Content-Type`, so a client that sends nothing and names no
+media type is refused too. A body that is a form as well is checked only when the request is JSON, because a form's
+fields need not show in the raw content (PHP leaves `php://input` empty for `multipart/form-data`): an empty form
+request to such a body is accepted when nothing is required.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body

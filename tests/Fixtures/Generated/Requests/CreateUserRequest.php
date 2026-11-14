@@ -136,6 +136,12 @@ final class CreateUserRequest extends FormRequest
             function (Validator $validator): void {
                 $content = $this->getContent();
 
+                if (trim($content) === '') {
+                    $validator->addFailure('body', 'required');
+
+                    return;
+                }
+
                 // Why: decoded without `assoc`, because `{}` and `[]` are both `[]` with it.
                 if ($this->isJson() && trim($content) !== '' && ! is_object(json_decode($content))) {
                     $validator->addFailure('body', 'array');
