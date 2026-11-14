@@ -83,6 +83,10 @@ reaching a generator carries neither spelling: it carries
 | The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable                                                                           |
 | `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`                                                                                     |
 
+**An optional body is "all or none" for its file parts too.** Once any part is sent, `present_with` asks for the
+required file part's key, and `file` refuses the `null` an empty upload slot becomes, so a form posted with its file
+input left empty answers 422 rather than reaching the controller with no file.
+
 **`encoding.<part>.contentType` replaces `contentMediaType` for the types.** OpenAPI lets a multipart body state the
 types of a part beside the schema, and for 3.0 that is the only place it can, since 3.0 has no `contentMediaType`. The
 contract carries the string as written, and the rule set reads it for a file part: the list is split on commas, each

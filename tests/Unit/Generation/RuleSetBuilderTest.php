@@ -955,6 +955,25 @@ it('reads a file part as file, not string', function (): void {
     expect($rules['avatar'])->toBe(['required', 'file']);
 });
 
+// A file part keeps `present_with` rather than `required`: the swap to `required` fires on `present` alone, and
+// `required_with` would let a blank sibling trigger nothing. What refuses an empty slot is `file`, after it.
+it('asks for a required file part of an optional body with present_with naming the other parts', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['multipart/form-data' => objectSchema([
+            'avatar' => new Schema(types: [SchemaType::String], isFilePart: true),
+            'caption' => new Schema(types: [SchemaType::String]),
+            'alt' => new Schema(types: [SchemaType::String]),
+        ], ['avatar', 'caption'])],
+        bodyRequired: false,
+    ));
+
+    expect($set->rules)->toBe([
+        'avatar' => ['present_with:caption,alt', 'file'],
+        'caption' => ['present_with:avatar,alt', 'string'],
+        'alt' => ['sometimes', 'string'],
+    ]);
+});
+
 it('reads the types of a file part from contentMediaType', function (?string $declared, array $expected): void {
     [$rules] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: $declared));
 

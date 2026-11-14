@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /*
  * The one proof that Laravel actually runs what the emitter writes.
@@ -788,14 +789,27 @@ it('requires the rest of an optional body when a key is sent blank', function ()
  * @param  list<string>  $mediaTypes  the media types the body declares
  * @param  array<string, array<string, string>>  $encoding  the body's `encoding`: media type, part, `contentType`
  */
-function statusForUpload(Schema $body, array $files, array $fields = [], array $mediaTypes = ['multipart/form-data'], HttpMethod $method = HttpMethod::Post, array $encoding = []): int
+function statusForUpload(Schema $body, array $files, array $fields = [], array $mediaTypes = ['multipart/form-data'], HttpMethod $method = HttpMethod::Post, array $encoding = [], bool $bodyRequired = true): int
+{
+    return responseForUpload($body, $files, $fields, $mediaTypes, $method, $encoding, $bodyRequired)->getStatusCode();
+}
+
+/**
+ * The response behind `statusForUpload()`, for a test that reads which part the 422 names.
+ *
+ * @param  array<string, mixed>  $files  uploads, by part name
+ * @param  array<string, mixed>  $fields  text parts, by name
+ * @param  list<string>  $mediaTypes  the media types the body declares
+ * @param  array<string, array<string, string>>  $encoding  the body's `encoding`: media type, part, `contentType`
+ */
+function responseForUpload(Schema $body, array $files, array $fields = [], array $mediaTypes = ['multipart/form-data'], HttpMethod $method = HttpMethod::Post, array $encoding = [], bool $bodyRequired = true): SymfonyResponse
 {
     $built = RuleSetBuilder::for(new Operation(
         index: 0,
         method: $method,
         path: PathTemplate::fromString('/_generated/upload'),
         operationId: 'upload',
-        requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), true, $encoding),
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), $bodyRequired, $encoding),
     ))->rules;
 
     $rules = frameworkRules($built);
@@ -810,7 +824,28 @@ function statusForUpload(Schema $body, array $files, array $fields = [], array $
         [],
         $files,
         ['HTTP_ACCEPT' => 'application/json'],
-    ))->getStatusCode();
+    ));
+}
+
+/**
+ * An object schema of named parts.
+ *
+ * @param  array<string, Schema>  $parts
+ * @param  list<string>  $required
+ */
+function objectOfParts(array $parts, array $required = []): Schema
+{
+    return new Schema(types: [SchemaType::Object], properties: $parts, required: $required);
+}
+
+/**
+ * The `$_FILES` entry PHP writes for a file input left empty: no name, no temporary file, `UPLOAD_ERR_NO_FILE`.
+ *
+ * @return array{name: string, type: string, tmp_name: string, error: int, size: int}
+ */
+function noFileEntry(): array
+{
+    return ['name' => '', 'type' => '', 'tmp_name' => '', 'error' => UPLOAD_ERR_NO_FILE, 'size' => 0];
 }
 
 function filePart(?string $contentMediaType = null, ?int $maxLength = null, bool $nullable = false): Schema
@@ -845,6 +880,34 @@ it('lets an optional file part be absent', function (): void {
 // A `PATCH` empties the required list for a file part as for any other.
 it('lets a PATCH leave a file part out', function (): void {
     expect(statusForUpload(oneField(filePart()), [], method: HttpMethod::Patch))->toBe(200);
+});
+
+// `present_with` makes the file part's key mandatory once another part is sent, and
+// leaves the type to `file`, which is not implicit: an empty slot is a key holding
+// `null`, so the key is there and only `file` can say it is not an upload.
+it('refuses an empty upload slot for a required file part of an optional body once another part is sent', function (
+    array $files,
+    array $fields,
+): void {
+    $body = objectOfParts(['avatar' => filePart(), 'caption' => new Schema(types: [SchemaType::String])], ['avatar', 'caption']);
+
+    $response = responseForUpload($body, $files, $fields, bodyRequired: false);
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and(array_keys(json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR)['errors']))->toContain('avatar');
+})->with([
+    // The browser sends `avatar=` as text when the file input is left empty and the form is not posted as a file.
+    'an empty text part' => [[], ['avatar' => '', 'caption' => 'a caption']],
+    // The raw `$_FILES` entry, never an `UploadedFile`: Laravel's `uploaded` guard would refuse that one for
+    // another reason, and the row would pass without `file`.
+    'a no-file upload' => [['avatar' => noFileEntry()], ['caption' => 'a caption']],
+    'the empty slot alone' => [['avatar' => noFileEntry()], []],
+]);
+
+it('accepts an optional multipart body sent with no part at all', function (): void {
+    $body = objectOfParts(['avatar' => filePart(), 'caption' => new Schema(types: [SchemaType::String])], ['avatar', 'caption']);
+
+    expect(statusForUpload($body, [], bodyRequired: false))->toBe(200);
 });
 
 it('reads the media type from contentMediaType', function (string $declared, string $sent, int $status): void {
