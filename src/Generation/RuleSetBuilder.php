@@ -443,25 +443,36 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
-            // Below the head, a bracketed name's own key is what the contract declares: one level of it. A deeper
-            // name is not, and the head rule only reads one level.
+            // A bracketed name closes every level above its leaf: each level is an array whose keys are the
+            // ones the contract declares below it. A name PHP only renamed (`user.name` as `user_name`) has no
+            // level to close, and the key check accepts what it delivers.
             $path = $walk->formPaths[$name] ?? null;
-            $steps[$delivered][$name] = $path !== null && count($path) === 2 && ! str_contains($path[1], ',') ? $path[1] : null;
+
+            if ($path === null || count($path) < 2) {
+                $accepted[$name] = $delivered;
+
+                continue;
+            }
+
+            for ($level = 1; $level < count($path); $level++) {
+                $steps[self::pathKey(array_slice($path, 0, $level))][$name] = $path[$level];
+            }
         }
 
-        // A form-only body closes a head to the keys the contract declares below it. One name that cannot be
-        // named that way leaves the head open, since `array:` would refuse the others' siblings it declares.
-        foreach ($steps as $head => $below) {
-            $head = (string) $head;
+        // A form-only body closes each level to the keys the contract declares below it. A key `array:` cannot
+        // name (a comma in it) leaves that level open, and the finding below names what it then accepts.
+        foreach ($steps as $level => $below) {
+            $level = (string) $level;
+            $keys = array_values(array_unique(array_values($below)));
 
-            if (! in_array(null, $below, true)) {
-                $walk->rules[self::ruleKey($head)] = ['sometimes', 'array:'.implode(',', array_unique(array_values($below)))];
+            if (array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) === []) {
+                $walk->rules[$level] = ['sometimes', 'array:'.implode(',', $keys)];
 
                 continue;
             }
 
             foreach (array_keys($below) as $name) {
-                $accepted[(string) $name] = $head;
+                $accepted[(string) $name] = $level;
             }
         }
 

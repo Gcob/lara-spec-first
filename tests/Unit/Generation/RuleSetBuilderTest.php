@@ -1543,26 +1543,42 @@ it('closes the head of a bracketed name in a closed form body', function (): voi
         ->and(implode("\n", $set->findings))->not->toContain('closed to its declared names');
 });
 
-// The head rule closes one level: `array:created` would be satisfied by `filter[created]=abc` or by
-// `filter[created][lt]=5`, which the contract refuses, so a name deeper than two levels closes nothing, and
-// the closed root says that it accepts the head.
-it('does not close the head of a name bracketed more than once, and says so', function (array $properties): void {
+// A bracketed name closes every level above its leaf, so `filter[evil]=1`, `filter=abc` and
+// `filter[created][lt]=5` are refused, while every name the contract declares still fits.
+it('closes every level above a name bracketed more than once', function (array $properties, array $expected): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
         properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($properties)),
         additionalProperties: false,
     )]));
 
-    expect($set->rules)->not->toHaveKey('filter')
-        ->and($set->closedKeys)->toBe(['filter'])
-        ->and(implode("\n", $set->findings))
-        ->toContain('The body is closed to its declared names, but a form delivers `filter[created][gte]` as `filter`')
-        ->toContain('so the key check accepts `filter`');
+    foreach ($expected as $key => $rule) {
+        expect($set->rules[$key] ?? null)->toBe($rule);
+    }
+
+    expect($set->closedKeys)->toBe(['filter'])
+        ->and(implode("\n", $set->findings))->not->toContain('so the key check accepts `filter`');
 })->with([
-    'the deep name alone' => [['filter[created][gte]']],
-    // `array:x` would refuse `filter[created][gte]`, which the contract declares.
-    'beside a one-level sibling' => [['filter[created][gte]', 'filter[x]']],
+    'the deep name alone' => [
+        ['filter[created][gte]'],
+        ['filter' => ['sometimes', 'array:created'], 'filter.created' => ['sometimes', 'array:gte']],
+    ],
+    'beside a one-level sibling' => [
+        ['filter[created][gte]', 'filter[x]'],
+        ['filter' => ['sometimes', 'array:created,x'], 'filter.created' => ['sometimes', 'array:gte']],
+    ],
 ]);
+
+it('leaves open a level whose key array: cannot name, and says so', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['filter[a,b][gte]' => new Schema(types: [SchemaType::Integer])],
+        additionalProperties: false,
+    )]));
+
+    expect($set->rules)->not->toHaveKey('filter')
+        ->and(implode("\n", $set->findings))->toContain('so the key check accepts `filter`');
+});
 
 // The collision finding already names both names, and the contract declares the key the other one arrives
 // under, so saying the check accepts a key "the contract does not declare" would be wrong.
