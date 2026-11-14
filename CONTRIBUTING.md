@@ -268,9 +268,14 @@ alone never changes its exit code. `composer format:docblocks:report` (or `just 
 worst first, with a total and the share of described tags. This is watched, never enforced: if the count grows, the
 answer is a decision about the style, not a failing build.
 
-`composer format:docblocks:check` is not part of `composer check`, and CI does not run it. The codebase is still wrapped
-at the old width, so adding it now would turn `main` red. One reformat commit comes first, and the CI check is wired in
-with it.
+**The reformat is one commit `git blame` skips.** The whole codebase was reflowed once, in a commit with nothing else in
+it, and `.git-blame-ignore-revs` lists it. GitHub reads that file on its own; for `git blame` on your clone, run once:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+A later commit that only reformats goes in the same file.
 
 ### What CI runs on your pull request
 
