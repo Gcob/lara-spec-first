@@ -46,8 +46,9 @@ tags: [versions, conventions, planning]
   schema is a `list` of its class, and a recursive pair is one class per schema whichever operation reaches it first.
   Tightening `mixed` into a DTO is not breaking for a reader of the type: a caller that read `$dto->parent` as an array
   now gets the DTO, so **code that indexed into it needs `->toArray()` or the property**. A recursion the request does
-  not unroll (through a schema with no name, a field that is two markers, a marker with `properties` beside it) stays
-  `mixed` and says so in the file's findings. The finding "points back at ..., so it is `mixed`" now only names those.
+  not unroll (through a schema with no name, a field that is two markers) stays `mixed` and says so in the file's
+  findings; so does one with `properties` written beside its reference, which the request validates and the ancestor's
+  class cannot carry, and its finding says that instead.
   [DTO anatomy](./docs/guide/code-generation/dto-anatomy.md#what-each-schema-type-becomes).
 - **`spec:doctor` now exits `2` on a request schema that writes an `Ignored` keyword**: `default`, `deprecated`,
   `oneOf`, `anyOf`, `not`, `discriminator`, `minProperties`, `prefixItems` and the rest of the
