@@ -107,8 +107,11 @@ main_sha=$(remote_main_sha)
 if [ -z "$main_sha" ]; then
     fail "origin has a main branch: it answered nothing"
 elif [ "$DRY_RUN" -eq 0 ]; then
-    git fetch --quiet origin main || fail "origin/main can be fetched"
-    pass "origin/main is fetched ($(echo "$main_sha" | cut -c1-7))"
+    if git fetch --quiet origin main; then
+        pass "origin/main is fetched ($(echo "$main_sha" | cut -c1-7))"
+    else
+        fail "origin/main is fetched: git fetch origin main failed"
+    fi
 elif [ "$(git rev-parse -q --verify refs/remotes/origin/main 2>/dev/null)" = "$main_sha" ]; then
     pass "origin/main is up to date here ($(echo "$main_sha" | cut -c1-7))"
 else
@@ -205,6 +208,15 @@ fi
 
 git switch --quiet --create "$BRANCH" --no-track "$main_sha" || exit 1
 
+# From here on this checkout is on the release branch. Say how to leave it when a
+# step fails, because nothing below undoes the switch.
+stranded() {
+    echo "Stopped on $BRANCH, which this checkout is now on. Fix the cause and finish by hand, or go back with" >&2
+    echo "  git switch - && git branch -D $BRANCH" >&2
+    echo "after discarding the CHANGELOG.md change if there is one." >&2
+    exit 1
+}
+
 awk -v v="$VERSION" -v d="$TODAY" -v base="$base" '
     /^## \[Unreleased\]$/ && !heading {
         print
@@ -220,11 +232,11 @@ awk -v v="$VERSION" -v d="$TODAY" -v base="$base" '
         next
     }
     { print }
-' CHANGELOG.md >CHANGELOG.md.release-prep && mv CHANGELOG.md.release-prep CHANGELOG.md || exit 1
+' CHANGELOG.md >CHANGELOG.md.release-prep && mv CHANGELOG.md.release-prep CHANGELOG.md || stranded
 
-git add CHANGELOG.md || exit 1
-git commit --quiet -m "docs(release): #$CARD cut $VERSION in the changelog" || exit 1
-git push --quiet --set-upstream origin "$BRANCH" || exit 1
+git add CHANGELOG.md || stranded
+git commit --quiet -m "docs(release): #$CARD cut $VERSION in the changelog" || stranded
+git push --quiet --set-upstream origin "$BRANCH" || stranded
 
 pr_description() {
     cat <<DESCRIPTION

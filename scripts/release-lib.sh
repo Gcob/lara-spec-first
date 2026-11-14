@@ -61,27 +61,38 @@ remote_main_sha() {
     git ls-remote origin refs/heads/main 2>/dev/null | cut -f1
 }
 
-# Is every check run of this commit finished and successful? Prints the three
-# numbers it read (all, still running, failed) and fails unless there is at least
-# one run and none of the others.
+# What `gh api` prints for one page of a commit's check runs: the number of runs
+# there are in all, how many of this page are not finished, and how many of this
+# page finished and did not succeed. `skipped` and `neutral` are not failures.
+CI_JQ='
+    [
+        .total_count,
+        ([.check_runs[] | select(.status != "completed")] | length),
+        ([.check_runs[] | select(.status == "completed"
+            and ((.conclusion == "success" or .conclusion == "skipped" or .conclusion == "neutral") | not))] | length)
+    ] | map(tostring) | join(" ")'
+
+# Is every check run of this commit finished and successful? `--paginate` makes
+# `gh` ask for every page, and print one line per page, so a failure on page two
+# is as visible as one on page one. Prints the three numbers it read (all, still
+# running, failed) and fails unless there is at least one run and none of the others.
 ci_state() {
-    counts=$(gh api "repos/{owner}/{repo}/commits/$1/check-runs?per_page=100" --jq '
-        [
-            .total_count,
-            ([.check_runs[] | select(.status != "completed")] | length),
-            ([.check_runs[] | select(.status == "completed"
-                and ((.conclusion == "success" or .conclusion == "skipped" or .conclusion == "neutral") | not))] | length)
-        ] | map(tostring) | join(" ")' 2>/dev/null) || {
+    pages=$(gh api --paginate "repos/{owner}/{repo}/commits/$1/check-runs?per_page=100" --jq "$CI_JQ" 2>/dev/null) || {
         echo "gh could not read the check runs"
         return 1
     }
 
-    set -- $counts
-
-    if [ "$#" -ne 3 ]; then
+    counts=$(printf '%s\n' "$pages" | awk '
+        NF != 3 { bad = 1 }
+        NR == 1 { total = $1 }
+        { pending += $2; failed += $3 }
+        END { if (bad) exit 1; print total, pending, failed }
+    ') || {
         echo "gh answered something unexpected"
         return 1
-    fi
+    }
+
+    set -- $counts
 
     if [ "$1" -gt 0 ] && [ "$2" -eq 0 ] && [ "$3" -eq 0 ]; then
         echo "$1 runs, all green"
