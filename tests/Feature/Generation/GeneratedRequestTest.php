@@ -1070,3 +1070,14 @@ it('builds and runs a request for a property named like an integer', function ()
         ->and(sendThroughEmitted($class, 'POST', json: ['2024' => 5])[0])->toBe(422)
         ->and(sendThroughEmitted($class, 'POST', json: ['2024' => 'a', 'extra' => 1])[0])->toBe(422);
 });
+
+// What common generators still emit for an upload in a 3.1 document: `type: string`
+// and `format: binary`. It was read as a string, and every upload answered 422.
+it('accepts an upload for a part written format: binary in a 3.1 document', function (): void {
+    $class = emittedRequestClass(extractFixture('file-part-3.1-binary.yaml')[0]);
+    $upload = realUpload("name,age\nada,36\n");
+
+    expect(sendThroughEmitted($class, 'POST', files: ['avatar' => $upload]))->toBe([200, ['avatar' => UploadedFile::class]])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['avatar' => 'not a file'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST')[0])->toBe(422);
+});

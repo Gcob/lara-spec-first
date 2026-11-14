@@ -62,9 +62,12 @@ for, so the package meets the contract where the framework already is.
 ## The schema names the file part
 
 **Either OpenAPI spelling names one, and they normalize to one notion.** `format: binary` in 3.0, `contentMediaType` in
-3.1, which dropped `format: binary` with the rest of JSON Schema 2020-12's format vocabulary. That difference lives
-behind [the version strategy](./openapi-support.md#handling-30-and-31) like every other, and a schema reaching a
-generator carries neither spelling: it carries
+3.1, which dropped `format: binary` with the rest of JSON Schema 2020-12's format vocabulary. **A 3.1 document that
+still writes `type: string` and `format: binary` is read as a file part too**, because that is what many generators emit
+for an upload whatever version they declare, and reading it as a string would answer 422 to every upload. A
+`contentEncoding` beside either spelling says the text is the file carried as a string, so it is not one. That
+difference lives behind [the version strategy](./openapi-support.md#handling-30-and-31) like every other, and a schema
+reaching a generator carries neither spelling: it carries
 [one file-part flag](./openapi-support.md#the-normal-form-a-schema-takes). It is the one place a keyword
 [the parser hands back raw](./openapi-support.md#schemas) has to be read rather than ignored.
 

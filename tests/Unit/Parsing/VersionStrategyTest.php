@@ -159,6 +159,21 @@ it('names a file part from the spelling its version has', function (): void {
         ->toBeFalse();
 });
 
+// 3.1 dropped `format: binary`, and generators still write it for an upload. A
+// part spelled that way is a file at 3.1 too, unless a `contentEncoding` says the
+// text is the file carried as a string.
+it('reads format binary as a file part at 3.1 as well', function (): void {
+    $strategy = new OpenApi31Strategy;
+    $file = $strategy->normalizeSchema(['type' => 'string', 'format' => 'binary']);
+    $encoded = $strategy->normalizeSchema(['type' => 'string', 'format' => 'binary', 'contentEncoding' => 'base64']);
+
+    expect($file->isFilePart)->toBeTrue()
+        ->and($file->format)->toBeNull()
+        ->and($encoded->isFilePart)->toBeFalse()
+        ->and($encoded->format)->toBe('binary')
+        ->and($strategy->normalizeSchema(['type' => 'string', 'format' => 'uuid'])->isFilePart)->toBeFalse();
+});
+
 // `format: binary` is not a format a generator looks up; it is how 3.0 says
 // "this is a file". Leaving it in `format` as well would state one fact twice,
 // and it would make a 3.0 schema differ from its 3.1 twin over a keyword the
