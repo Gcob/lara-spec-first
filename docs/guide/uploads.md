@@ -140,7 +140,7 @@ file says so in a finding. Here `mimetypes` refuses any upload whose client-side
 list unless `php` is one of the declared types, which is a security default rather than a bug. A contract declaring
 `image/png` therefore refuses a real PNG named `avatar.php`, which it did not ask for, and no rule turns that off:
 matching the contract would mean overriding a framework security default from a generated class, which is not something
-a specification should be able to ask for. **Every file part with a `mimetypes` rule names this in its own finding**,
+a specification should be able to ask for. **Every request with a `mimetypes` rule names this once in its findings**,
 and an execution test pins the refusal.
 
 **The ceiling is exact, because Laravel's `max` takes a decimal.** It sizes a file in kilobytes and a contract states

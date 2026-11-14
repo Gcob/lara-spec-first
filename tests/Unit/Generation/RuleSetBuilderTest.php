@@ -1155,7 +1155,14 @@ it('says that mimetypes refuses a file named like PHP, and only when it emits mi
     [, $typed] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png'));
     [, $untyped] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true));
 
-    expect($typed)->toContain('`avatar` has a `mimetypes` rule that is stricter than the contract in one case')
+    expect($typed)->toContain('A `mimetypes` rule in this request is stricter than the contract in one case')
         ->and($typed)->toContain('PHP extension')
         ->and($untyped)->not->toContain('stricter than the contract');
+});
+
+it('says it once for a request with several typed file parts', function (): void {
+    $png = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(['a' => $png, 'b' => $png])]));
+
+    expect(substr_count(implode("\n", $set->findings), 'stricter than the contract'))->toBe(1);
 });

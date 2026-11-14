@@ -47,6 +47,12 @@ final class RuleWalk
     public bool $mixedBody = false;
 
     /**
+     * Whether the finding about `mimetypes` refusing a file named like PHP has
+     * been written, since one request says it once however many parts it has.
+     */
+    public bool $phpUploadNamed = false;
+
+    /**
      * @param  string  $identity  the operation's label, for a refusal's message
      */
     public function __construct(

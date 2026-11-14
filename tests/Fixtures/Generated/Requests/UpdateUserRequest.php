@@ -42,7 +42,7 @@ use Illuminate\Validation\Rule;
  *   - `2fa` is a boolean read from a form body, where every value is text and Laravel's `boolean`
  *     refuses `"true"`. It accepts `true`, `false`, `1` and `0`, and `validated()` holds the
  *     string as sent, which `dto()` reads as a `bool`.
- *   - `avatar` has a `mimetypes` rule that is stricter than the contract in one case: Laravel
+ *   - A `mimetypes` rule in this request is stricter than the contract in one case: Laravel
  *     refuses a file whose name ends in a PHP extension (`php`, `phtml`, `phar` and the like)
  *     whatever its type, a security default no rule turns off, and matching the contract there
  *     would mean overriding it from a generated class.

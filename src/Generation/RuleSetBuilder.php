@@ -942,13 +942,13 @@ final readonly class RuleSetBuilder
             // allows: Laravel's `mimetypes` refuses a file whose name ends in a PHP extension
             // whatever its type, and nothing short of overriding that security default
             // from a generated class matches the contract exactly.
-            $walk->findings[] = sprintf(
-                '%s has a `mimetypes` rule that is stricter than the contract in one case: Laravel refuses '
-                    .'a file whose name ends in a PHP extension (`php`, `phtml`, `phar` and the like) whatever its '
-                    .'type, a security default no rule turns off, and matching the contract there would mean '
-                    .'overriding it from a generated class.',
-                $label,
-            );
+            if (! $walk->phpUploadNamed) {
+                $walk->phpUploadNamed = true;
+                $walk->findings[] = 'A `mimetypes` rule in this request is stricter than the contract in one case: '
+                    .'Laravel refuses a file whose name ends in a PHP extension (`php`, `phtml`, `phar` and the '
+                    .'like) whatever its type, a security default no rule turns off, and matching the contract '
+                    .'there would mean overriding it from a generated class.';
+            }
         }
 
         // A decimal, because Laravel's `max` compares with a `BigNumber` and takes
