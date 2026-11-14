@@ -387,3 +387,27 @@ describe('the pre-commit hook', function (): void {
         expect(hookGit($project, ['commit', '-q', '-m', 'x'])['exit'])->toBe(0);
     })->skip(fn (): bool => ! hookHasNode(), 'Node is not installed');
 });
+
+// The Claude Code settings are shared at the root and personal everywhere else: a contributor who starts Claude Code in
+// `workbench/` and clicks "always allow" must not be one `git add -A` from publishing the result.
+describe('.gitignore', function (): void {
+    it('tracks the root .claude/settings.json and nothing else under a .claude folder', function (): void {
+        $paths = [
+            '.claude/settings.json',
+            '.claude/settings.local.json',
+            '.claude/agents/card-reviewer.md',
+            'workbench/.claude/settings.local.json',
+            'workbench/.claude/settings.json',
+            'src/Deep/.claude/settings.local.json',
+        ];
+        $project = hookProject(array_fill_keys($paths, "{}\n") + ['.gitignore' => (string) file_get_contents(hookRepository().'/.gitignore')]);
+
+        hookGit($project, ['init', '-q']);
+
+        // No global ignore file, which would hide a folder on one machine and not on the next.
+        $status = hookGit($project, ['-c', 'core.excludesFile=/dev/null', 'status', '--porcelain', '--untracked-files=all']);
+        $untracked = array_map(static fn (string $line): string => substr($line, 3), array_filter(explode("\n", $status['out'])));
+
+        expect(array_intersect($untracked, $paths))->toBe(['.claude/settings.json']);
+    });
+});
