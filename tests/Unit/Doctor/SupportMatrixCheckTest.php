@@ -7,8 +7,13 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\QueryParameter;
+use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Doctor\Checks\SupportMatrixCheck;
 use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
+use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
@@ -387,4 +392,196 @@ it('points at the operation the operationId rule names', function (): void {
     expect($findings)->toHaveCount(1)
         ->and($findings[0]->pointer)->toBe('#/paths/~1users~1{id}/get')
         ->and($findings[0]->level)->toBe(SupportLevel::Partial);
+});
+
+// --- Request schemas: what a keyword the contract wrote does not become ---
+
+/**
+ * A `POST /things` carrying a body, `query` parameters, or both.
+ *
+ * @param  array<string, Schema>  $content
+ * @param  list<QueryParameter>  $query
+ */
+function supportMatrixRequest(array $content = [], array $query = [], string $path = '/things'): Operation
+{
+    return new Operation(
+        0,
+        HttpMethod::Post,
+        PathTemplate::fromString($path),
+        'createThing',
+        requestBody: $content === [] ? null : new RequestBody($content, true),
+        queryParameters: $query,
+    );
+}
+
+/**
+ * @param  array<string, Schema>  $properties
+ * @param  array<string, string>  $ignored
+ * @param  list<Schema>  $allOf
+ */
+function supportMatrixObject(array $properties = [], array $ignored = [], array $allOf = []): Schema
+{
+    return new Schema(types: [SchemaType::Object], properties: $properties, allOf: $allOf, ignored: $ignored);
+}
+
+it('reports an ignored keyword once per operation, naming where it is written', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => supportMatrixObject(
+        ignored: ['oneOf' => '#/paths/~1things/post/requestBody/content/application~1json/schema/oneOf'],
+    )])]);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($findings[0]->section)->toBe('Support findings')
+        ->and($findings[0]->level)->toBe(SupportLevel::Ignored)
+        ->and($findings[0]->pointer)->toBe('#/paths/~1things/post/requestBody/content/application~1json/schema/oneOf')
+        ->and($findings[0]->message)->toContain('post /things')
+        ->and($findings[0]->message)->toContain('`oneOf`')
+        ->and($findings[0]->message)->toContain('#/paths/~1things/post/requestBody/content/application~1json/schema/oneOf');
+});
+
+// One finding per keyword and per operation, never one per occurrence: a `default`
+// on every property of a body is one line that lists where, and the pointer is
+// the first of them.
+it('folds a keyword written at several positions into one finding that lists them all', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => supportMatrixObject(
+        properties: [
+            'status' => new Schema(types: [SchemaType::String], ignored: ['default' => '#/schema/properties/status/default']),
+            'tags' => new Schema(
+                types: [SchemaType::Array],
+                items: new Schema(types: [SchemaType::String], ignored: ['default' => '#/schema/properties/tags/items/default']),
+            ),
+            'kind' => new Schema(types: [SchemaType::String], ignored: ['deprecated' => '#/schema/properties/kind/deprecated']),
+        ],
+    )])]);
+
+    expect($findings)->toHaveCount(2)
+        ->and($findings[0]->message)->toContain('`default`')
+        ->and($findings[0]->message)->toContain('#/schema/properties/status/default, #/schema/properties/tags/items/default')
+        ->and($findings[0]->pointer)->toBe('#/schema/properties/status/default')
+        ->and($findings[1]->message)->toContain('`deprecated`')
+        ->and($findings[1]->pointer)->toBe('#/schema/properties/kind/deprecated');
+});
+
+it('reports the same keyword once for each operation that writes it', function (): void {
+    $write = static fn (string $path): Operation => supportMatrixRequest(
+        ['application/json' => supportMatrixObject(ignored: ['default' => '#/'.$path.'/default'])],
+        path: $path,
+    );
+
+    $findings = SupportMatrixCheck::requestSchemas([$write('/a'), $write('/b')]);
+
+    expect($findings)->toHaveCount(2)
+        ->and($findings[0]->message)->toContain('post /a')
+        ->and($findings[1]->message)->toContain('post /b');
+});
+
+it('reads an allOf branch, a nested object and a query parameter', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(
+        ['application/json' => supportMatrixObject(
+            properties: ['inner' => supportMatrixObject(ignored: ['not' => '#/inner/not'])],
+            allOf: [supportMatrixObject(ignored: ['anyOf' => '#/branch/anyOf'])],
+        )],
+        [new QueryParameter('sort', new Schema(types: [SchemaType::String], ignored: ['default' => '#/query/sort/default']))],
+    )]);
+
+    expect(array_map(static fn ($finding): string => $finding->pointer, $findings))
+        ->toBe(['#/inner/not', '#/branch/anyOf', '#/query/sort/default']);
+});
+
+// A body in a media type this package does not read produces no rule, so a
+// keyword in it is not one that goes unenforced: the media type itself is what
+// the generated request says it did not read.
+it('ignores a media type the rule set does not read', function (): void {
+    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest([
+        'application/xml' => supportMatrixObject(ignored: ['oneOf' => '#/xml/oneOf']),
+    ])]))->toBe([]);
+});
+
+it('is silent about an operation whose request writes no ignored keyword', function (): void {
+    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => supportMatrixObject(
+        properties: ['name' => new Schema(types: [SchemaType::String], maxLength: 10)],
+    )])]))->toBe([]);
+});
+
+// The same shape under two media types is one request, so a keyword written at
+// one position is not reported twice, and one written at two is listed at both.
+it('lists a keyword once per position when two media types share one schema', function (): void {
+    $shared = supportMatrixObject(ignored: ['default' => '#/components/schemas/Thing/default']);
+
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest([
+        'application/json' => $shared,
+        'multipart/form-data' => $shared,
+    ])]);
+
+    expect($findings)->toHaveCount(1)
+        ->and(substr_count($findings[0]->message, '#/components/schemas/Thing/default'))->toBe(1);
+});
+
+it('reports what a read keyword leaves unenforced as Partial, naming the fields', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => supportMatrixObject(
+        properties: [
+            'website' => new Schema(types: [SchemaType::String], format: 'uri'),
+            'home' => new Schema(types: [SchemaType::String], format: 'uri'),
+        ],
+    )])]);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($findings[0]->level)->toBe(SupportLevel::Partial)
+        ->and($findings[0]->pointer)->toBe('#/paths/~1things/post')
+        ->and($findings[0]->message)->toContain('post /things')
+        ->and($findings[0]->message)->toContain('`format`')
+        ->and($findings[0]->message)->toContain('`website`, `home`');
+});
+
+// The informational lines of a generated file's findings must never gate the
+// doctor: two media types over one schema is worth saying and wrong to fail on.
+it('does not report what a generated file only mentions', function (): void {
+    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest([
+        'application/json' => supportMatrixObject(['a' => new Schema(types: [SchemaType::String])]),
+        'multipart/form-data' => supportMatrixObject(['a' => new Schema(types: [SchemaType::String])]),
+    ], [new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])))])]))
+        ->toBe([]);
+});
+
+// What the build plan refuses, Routing outcome already reports. The ignored
+// keywords were read before any rule set existed, so they stay reportable; what
+// a rule set would have said cannot be known, and is left out rather than guessed.
+it('still reports ignored keywords when the rule set cannot be built', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(
+        ['application/json' => supportMatrixObject(
+            properties: [
+                'page' => new Schema(types: [SchemaType::String], format: 'uri', ignored: ['default' => '#/page/default']),
+            ],
+        )],
+        [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    )]);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->level)->toBe(SupportLevel::Ignored)
+        ->and($findings[0]->message)->toContain('`default`');
+});
+
+/**
+ * @param  list<Finding>  $findings
+ */
+function supportMatrixReport(array $findings): DiagnosticReport
+{
+    return new DiagnosticReport('spec.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], $findings);
+}
+
+// A package limit gates with 2, and a document fault still wins with 1.
+it('gates the exit code as a package limit, never as a document fault', function (): void {
+    $limits = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => supportMatrixObject(
+        ignored: ['oneOf' => '#/oneOf'],
+        properties: ['website' => new Schema(types: [SchemaType::String], format: 'uri')],
+    )])]);
+
+    $fault = new Finding(FindingClass::DocumentFault, 'Document validity', null, '', 'a fault');
+
+    expect($limits)->toHaveCount(2)
+        ->and(array_unique(array_map(static fn ($finding): FindingClass => $finding->class, $limits), SORT_REGULAR))
+        ->toBe([FindingClass::PackageLimit])
+        ->and(supportMatrixReport($limits)->exitCode())->toBe(2)
+        ->and(supportMatrixReport([...$limits, $fault])->exitCode())->toBe(1);
 });

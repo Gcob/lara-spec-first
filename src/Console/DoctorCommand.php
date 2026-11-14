@@ -97,6 +97,7 @@ final class DoctorCommand extends Command
             ...ReferencesCheck::check($outcome),
             ...SupportMatrixCheck::rejected($outcome),
             ...SupportMatrixCheck::missingOperationId($outcome->operations),
+            ...SupportMatrixCheck::requestSchemas($outcome->operations),
             ...SupportMatrixCheck::deferred($outcome->document),
             ...SecurityCheck::check($outcome->operations),
             ...LifecycleCheck::check($outcome->operations, $now),

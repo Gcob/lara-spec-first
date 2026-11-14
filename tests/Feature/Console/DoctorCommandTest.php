@@ -188,6 +188,136 @@ it('emits a parseable JSON error, not prose, when --json is combined with a refu
         ->and($decoded['error'])->toBeString();
 });
 
+// --- Request schemas: a keyword the contract wrote and the request does not enforce ---
+
+const DOCTOR_BODY_AT = '#/paths/~1orders/post/requestBody/content/application~1json/schema';
+
+/**
+ * The findings `spec:doctor --json` reports for a fixture, with the exit code.
+ *
+ * @return array{0: int, 1: array<string, mixed>}
+ */
+function doctorJson(string $fixture): array
+{
+    config()->set('lara-spec-first.spec.path', specFixturePath($fixture));
+
+    $output = new BufferedOutput;
+    $exit = app(Kernel::class)->call('spec:doctor', ['--json' => true], $output);
+
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode($output->fetch(), true, flags: JSON_THROW_ON_ERROR);
+
+    return [$exit, $decoded];
+}
+
+/**
+ * @param  array<string, mixed>  $report
+ * @return list<array<string, string>>
+ */
+function doctorSupportFindings(array $report, string $level): array
+{
+    return array_values(array_filter(
+        $report['findings'],
+        static fn (array $finding): bool => $finding['section'] === 'Support findings' && $finding['level'] === $level,
+    ));
+}
+
+// Acceptance 1: an ignored keyword is named, with the operation and where it is
+// written, and the exit code is the one reserved for package limits.
+it('names an ignored keyword, its operation and its position, and exits 2', function (string $fixture): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath($fixture));
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(2)
+        ->and($text)->toContain('[package limit: ignored] post /orders writes `default` at '.DOCTOR_BODY_AT.'/properties/status/default')
+        ->and($text)->not->toContain('[document fault]');
+})->with(['doctor-ignored-keywords-3.0.yaml', 'doctor-ignored-keywords-3.1.yaml']);
+
+// One finding per keyword and per operation: `default` is written three times in
+// the 3.0 fixture, and is one line that lists the three, the first one carried as
+// the pointer.
+it('reports a keyword written at several positions once, listing every one', function (): void {
+    [$exit, $report] = doctorJson('doctor-ignored-keywords-3.0.yaml');
+
+    $ignored = doctorSupportFindings($report, 'ignored');
+    $byKeyword = [];
+
+    foreach ($ignored as $finding) {
+        assert(preg_match('/writes `([^`]+)`/', $finding['message'], $match) === 1);
+        $byKeyword[$match[1]] = $finding;
+    }
+
+    expect($exit)->toBe(2)
+        ->and(array_keys($byKeyword))->toBe(['default', 'deprecated', 'oneOf'])
+        ->and($byKeyword['default']['pointer'])->toBe(DOCTOR_BODY_AT.'/properties/status/default')
+        ->and($byKeyword['default']['message'])->toContain(DOCTOR_BODY_AT.'/properties/status/default, '
+            .DOCTOR_BODY_AT.'/properties/quantity/default, #/paths/~1orders/post/parameters/0/schema/default')
+        ->and($byKeyword['deprecated']['pointer'])->toBe(DOCTOR_BODY_AT.'/properties/status/deprecated')
+        ->and($byKeyword['oneOf']['pointer'])->toBe(DOCTOR_BODY_AT.'/properties/payment/oneOf');
+});
+
+// Acceptance 3: `--json` carries every one of them, as a package limit.
+it('carries every request schema finding in the JSON output', function (): void {
+    [$exit, $report] = doctorJson('doctor-ignored-keywords-3.1.yaml');
+
+    $ignored = doctorSupportFindings($report, 'ignored');
+
+    expect($exit)->toBe(2)
+        ->and($report['summary']['exitCode'])->toBe(2)
+        ->and(array_column($ignored, 'class'))->toBe(['package_limit', 'package_limit', 'package_limit'])
+        ->and(array_column($ignored, 'pointer'))->toBe([
+            DOCTOR_BODY_AT.'/patternProperties',
+            DOCTOR_BODY_AT.'/properties/pair/prefixItems',
+            DOCTOR_BODY_AT.'/properties/status/default',
+        ]);
+});
+
+// The unenforced part of a Partial keyword is reported the same way, from the
+// rule set rather than from the schema, and it gates as a package limit too.
+it('names what a Partial keyword leaves unenforced, and exits 2', function (): void {
+    [$exit, $report] = doctorJson('doctor-unenforced-keyword.yaml');
+
+    $partial = doctorSupportFindings($report, 'partial');
+
+    expect($exit)->toBe(2)
+        ->and($partial)->toHaveCount(1)
+        ->and($partial[0]['class'])->toBe('package_limit')
+        ->and($partial[0]['pointer'])->toBe('#/paths/~1orders/post')
+        ->and($partial[0]['message'])->toContain('post /orders writes `format`')
+        ->and($partial[0]['message'])->toContain('`callback`')
+        ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
+});
+
+// Acceptance 2: a keyword a response writes is not named, and the responses are
+// still the one Deferred count, which does not gate.
+it('names no keyword a response schema writes, and keeps responses as one deferred count', function (): void {
+    [$exit, $report] = doctorJson('doctor-ignored-keyword-in-response.yaml');
+
+    $support = array_values(array_filter(
+        $report['findings'],
+        static fn (array $finding): bool => $finding['section'] === 'Support findings',
+    ));
+
+    expect($exit)->toBe(0)
+        ->and($support)->toHaveCount(1)
+        ->and($support[0]['level'])->toBe('deferred')
+        ->and($support[0]['message'])->toContain('1 response declaration(s) found');
+});
+
+// The rule set cannot be built for an operation whose body and query name one
+// field, and Routing outcome reports that. Support findings must not die on it,
+// nor lose what was read before a rule set existed.
+it('still names an ignored keyword on an operation the build plan refuses', function (): void {
+    [, $report] = doctorJson('doctor-ignored-keyword-with-conflicting-input.yaml');
+
+    $ignored = doctorSupportFindings($report, 'ignored');
+
+    expect($ignored)->toHaveCount(1)
+        ->and($ignored[0]['pointer'])->toBe(DOCTOR_BODY_AT.'/properties/page/default')
+        ->and(implode("\n", array_column($report['findings'], 'message')))->toContain('page');
+});
+
 // --- A document the pipeline could not read is not drift ---
 
 /**

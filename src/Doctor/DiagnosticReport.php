@@ -133,8 +133,8 @@ final readonly class DiagnosticReport
      * least one package limit — a softer signal. A document fault always wins when both are present: it is the one a
      * report cannot let a package limit's noisier count bury.
      *
-     * The numbers themselves are provisional — see doctor.md's own open question on them — but the ordering they
-     * express is not.
+     * The numbers are the ones docs/guide/commands.md states, and the ordering is what keeps a package limit from ever
+     * hiding a document fault.
      *
      * @see docs/guide/doctor.md — "Two kinds of finding, never mixed"
      */

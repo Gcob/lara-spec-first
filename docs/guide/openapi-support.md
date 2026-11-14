@@ -718,8 +718,8 @@ ships a driver whose job is to read this keyword, so "nothing reads it" is not a
 
 **The rows a request rule set reads are shipped behavior; the rest state the position taken.** A schema keyword the
 generated `FormRequest` turns into a rule is `Supported`, or `Partial` where it describes a boundary, which is where
-`format` and `pattern` landed. A row landing on `Partial` rather than `Supported` gains a reachable non-zero exit once
-#36 makes a position audible in `spec:doctor` per operation, and [rule 4](#the-four-rules) makes every move on that axis
+`format` and `pattern` landed. A row landing on `Partial` rather than `Supported` gains a reachable non-zero exit, since
+`spec:doctor` names what it leaves unenforced per operation, and [rule 4](#the-four-rules) makes every move on that axis
 major in either direction, which is why the `CHANGELOG` records them. A keyword only a later generator reads is still
 `Deferred`.
 
@@ -780,6 +780,14 @@ that stays cheap: `Rejected` to `Ignored` is a move **up** [the ladder](#the-fou
 silence is the failure this package exists against, and `oneOf` being common is an argument for saying so, not for
 staying quiet.
 
+**The doctor names each one per operation, in `Support findings`, for a request and never for a response.** A schema
+keyword is unhonored only against a generator that reads it, and nothing reads a response yet, so a keyword written only
+in a response schema is not named and the responses stay one `Deferred` count. For the body and the `query` parameters
+there is one finding per keyword and per operation, whatever the number of occurrences: it lists every position it is
+written at, and its `pointer` is the first. The `Ignored` rows carry the position of the keyword itself. A `Partial` row
+carries the fields it was left unenforced on and points at the operation, since no rule set keeps a position finer than
+the field. Both are a package limit, so they exit `2` and never `1`.
+
 **That a first run on a published contract comes back red was weighed rather than missed.** `default` and `deprecated`
 alone appear in most specifications, and with `oneOf`, `discriminator` and `minProperties` a real document trips several
 rows at once. The danger [support levels](#support-levels) names is a consumer acknowledging everything on day one and
@@ -796,7 +804,7 @@ move it moves **up** the ladder, which is a minor and which the doctor announces
 | `nullable` (3.0), `type: [..., "null"]` (3.1) | Supported    | Two spellings of one idea, and the normal form is 3.1's: `null` is [a member of the type list](#the-normal-form-a-schema-takes) rather than a flag beside it.                                                                                                                                                                                                                                                                                                 |
 | `enum`                                        | Supported    | `Rule::in()` over an array, never `in:a,b`, which would split a value carrying a comma. `null` is allowed only when the type list and the enumeration both allow it, since a value has to satisfy both. An untyped enumeration of strings also gets `string`, since `Rule::in` compares as strings.                                                                                                                                                           |
 | `const`                                       | Supported    | **Raw**, and data-carrying, so the refusal above does not reach it. 3.1's one-value `enum`, and [read as one](#the-normal-form-a-schema-takes).                                                                                                                                                                                                                                                                                                               |
-| `format`                                      | Partial      | Only where Laravel's rule means the same thing: `email`, `uuid`, `ipv4`, `ipv6`, `date` and `date-time` do, and `uri` does not, since Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows. Which rule each one becomes is [the mapping table](./code-generation/request-validation.md#every-constraint-maps-or-reports)'s. Every other value is an annotation, reported once per document rather than per occurrence.           |
+| `format`                                      | Partial      | Only where Laravel's rule means the same thing: `email`, `uuid`, `ipv4`, `ipv6`, `date` and `date-time` do, and `uri` does not, since Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows. Which rule each one becomes is [the mapping table](./code-generation/request-validation.md#every-constraint-maps-or-reports)'s. Every other value is not enforced, and `spec:doctor` says so once per operation, listing the fields. |
 | `default`                                     | Ignored      | Nothing fills an absent field from a schema. A generated `FormRequest` that supplied one would make the validated payload differ from what the client sent, and strict `PUT` needs the opposite, so [the caveat stands rather than the value being invented](./code-generation/request-validation.md#an-absent-field-gets-no-default).                                                                                                                        |
 | `readOnly`                                    | Partial      | In a request, `required` on a `readOnly` property is not enforced: OpenAPI 3.0 states that it applies to responses only, and a 3.1 document is read the same way (3.1 defers to JSON Schema, where `readOnly` is an annotation), so the property gets no presence rule, its other rules judge it when it is sent, and the generated request says so in a finding. Nothing reads it for a response yet, since there is no response validation.                 |
 | `writeOnly`                                   | Deferred     | Phase 2, and direction-dependent: expected in a request body and absent from a response.                                                                                                                                                                                                                                                                                                                                                                      |

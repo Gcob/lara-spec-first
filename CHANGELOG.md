@@ -24,6 +24,15 @@ tags: [versions, conventions, planning]
 
 ### Changed
 
+- **`spec:doctor` now exits `2` on a request schema that writes an `Ignored` keyword**: `default`, `deprecated`,
+  `oneOf`, `anyOf`, `not`, `discriminator`, `minProperties`, `prefixItems` and the rest of the
+  [matrix's `Ignored` schema rows](./docs/guide/openapi-support.md#schemas). `default` and `deprecated` alone appear in
+  most published contracts, so **a first run that was green may now be red**. The body and the `query` parameters are
+  read and a response is not. Support findings carries one finding per keyword and per operation, listing every position
+  the keyword is written at, and it is a package limit: `2`, never `1`, and in `--json` with its `pointer`. A `Partial`
+  keyword is named the same way for the fields it is left unenforced on (a `format` no Laravel rule means the same as, a
+  `pattern` across the ECMA-262 / PCRE boundary), so a `format: int64` or a `format: uri` in a request now gates too.
+  The exit code of a contract that writes none of them is unchanged.
 - **`parameters` (`header`, `cookie`) moved from `Deferred` to `Ignored`** in the
   [support matrix](./docs/guide/openapi-support.md#parameters-bodies-responses). The package will not validate a header
   or a cookie parameter, so the row states a position rather than a gap, and a contract declaring one will exit non-zero
@@ -90,6 +99,8 @@ rather than one that was missing, and nothing downstream failed to say so.
   keeps a declared integer key such as `"2024"`.
 - **`Gcob\LaraSpecFirst\Data\Optional`** is public API: the one class of this package a generated DTO imports.
 - **`Contract\Schema` carries `source`**, where a named schema is written, beside its `name`.
+- **`Contract\Schema` carries `ignored`**, each `Ignored` keyword a node writes and the position of the keyword, for
+  `spec:doctor` to report.
 - **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first
   generated controller; the block said otherwise.
 

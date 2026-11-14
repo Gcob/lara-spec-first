@@ -1,0 +1,33 @@
+# The same keywords, written in a response schema only. A response is read by
+# nothing yet, so no finding names a keyword in it: responses stay one Deferred
+# count, which does not gate the exit code.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders/{id}:
+    get:
+      operationId: showOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    default: new
+                    deprecated: true
+                  payment:
+                    oneOf:
+                      - type: object
+                      - type: string

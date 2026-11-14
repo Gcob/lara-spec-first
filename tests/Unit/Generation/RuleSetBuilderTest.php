@@ -1674,6 +1674,8 @@ it('names the keyword and the field for each way a read keyword is left unenforc
     array $query,
     array $expected,
 ): void {
+    assert(array_is_list($query));
+
     $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query));
 
     expect($set->unenforced)->toBe($expected);

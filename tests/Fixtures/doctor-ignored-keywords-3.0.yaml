@@ -1,0 +1,38 @@
+# A 3.0 request that writes keywords the support matrix marks Ignored: `default`
+# at two positions in the body and once on a query parameter, `deprecated`, and a
+# `oneOf` the generated request cannot express. What the doctor owes for it is
+# one finding per keyword, listing every position, and an exit of 2.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      parameters:
+        - name: sort
+          in: query
+          schema:
+            type: string
+            default: asc
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  default: new
+                  deprecated: true
+                quantity:
+                  type: integer
+                  default: 1
+                payment:
+                  oneOf:
+                    - type: object
+                    - type: string
+      responses:
+        '201':
+          description: Created

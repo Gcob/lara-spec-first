@@ -8,27 +8,32 @@ use Gcob\LaraSpecFirst\Contract\Audience;
 use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Doctor\FaultClassification;
 use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
+use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 
 /**
- * Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position — the widest section of the
- * support matrix, so it is built in the four lots below rather than all at once:
+ * Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position. Each method answers one kind:
  *
  *   1. **Rejected, already detected by the reading pipeline.** `trace`, a `$ref` into `components.pathItems`, a
  *      `$dynamicRef`/`$dynamicAnchor`. Already collected as faults tagged for this section by
- *      {@see FaultClassification::sectionOf()} — nothing left to detect, only to surface. See {@see self::rejected()}.
- *   2. **Partial, already read by `OperationExtractor`.** Only the one rule this PR adds new logic for: `operationId`
- *      is required on an operation that is both `public` and `stable`. See {@see self::missingOperationId()}.
- *   3. **Deferred, one line per construct rather than per occurrence** — a count, not a list, because the level's own
+ *      {@see FaultClassification::sectionOf()}, so there is nothing left to detect, only to surface. See
+ *      {@see self::rejected()}.
+ *   2. **Partial, `operationId`.** Required on an operation that is both `public` and `stable`. See
+ *      {@see self::missingOperationId()}.
+ *   3. **Partial and Ignored, in a request schema.** What the body and the `query` parameters write and the generated
+ *      request does not enforce, one finding per keyword per operation. See {@see self::requestSchemas()}.
+ *   4. **Deferred, one line per construct rather than per occurrence**, a count and not a list, because the level's own
  *      definition forbids one finding per occurrence. See {@see self::deferred()}.
- *   4. **`Open` constructs are out of scope for this PR** — the package has taken no position on them yet, so there is
- *      nothing to honor or refuse that a finding could point at. Not a gap: a finding a reader cannot act on is what
- *      doctor.md calls a rumor.
+ *
+ * `Open` constructs are not reported: the package has taken no position on them yet, so there is nothing to honor or
+ * refuse that a finding could point at. A finding a reader cannot act on is what doctor.md calls a rumor.
  *
  * @see docs/guide/doctor.md — "What it checks"
  * @see docs/guide/openapi-support.md — "The support matrix"
@@ -42,9 +47,8 @@ final readonly class SupportMatrixCheck
      *
      * **`query` and `requestBody` left it when a rule set was first built from them.** They are `Partial` in
      * docs/guide/openapi-support.md's matrix now, and a `Partial` construct is reported when something about a
-     * particular occurrence is missing rather than counted wholesale — what a given operation states and this package
-     * does not enforce is named in the generated request's own findings, per field, which is a better answer than a
-     * number. #36 is where the doctor says the same thing per operation.
+     * particular occurrence is missing rather than counted wholesale. {@see self::requestSchemas()} says that per
+     * operation, and the generated request's own findings say it per field.
      *
      * **Each label names the unit it counts, and the count matches it.** The whole content of one of these findings is
      * a number, so a label counting something other than what it says is the entire finding being wrong — `responses`
@@ -131,6 +135,139 @@ final readonly class SupportMatrixCheck
         }
 
         return $findings;
+    }
+
+    /**
+     * What each operation's request writes and the generated request does not enforce: the `Ignored` keywords of its
+     * schemas, and the part of a `Partial` keyword a rule set leaves out.
+     *
+     * **One finding per keyword and per operation**, never per occurrence. A `default` on every property of a body is
+     * one line that lists each position, and its pointer is the first of them: the structured field names one place,
+     * the message names the rest. A `Partial` keyword has no position the contract states beyond the field it is
+     * written on, so its message lists the fields and its pointer is the operation's, as
+     * {@see self::missingOperationId()}'s is.
+     *
+     * **Request schemas only, the body and the `query` parameters.** A response is read by nothing yet, and a keyword
+     * is unhonored only against a generator that reads it, which is why a response stays one `Deferred` count. Only the
+     * media types a rule set is built from count, for the same reason.
+     *
+     * **A package limit, always.** The contract is correct and this package does not enforce it, so these exit `2` and
+     * never `1`. That is a gate a first run on a published contract will trip, and docs/guide/openapi-support.md says
+     * why it is a position rather than a gap.
+     *
+     * **The `Ignored` half does not need a rule set, and the `Partial` half does.** The keywords were collected where
+     * the schema was read, so they are reportable for an operation the build plan would refuse. The rule set is built
+     * here rather than taken from the build plan, which may not exist: when it cannot be built the operation's conflict
+     * is `Routing outcome`'s to report, and what a rule set would have left unenforced is left out rather than guessed.
+     *
+     * @param  list<Operation>  $operations
+     * @return list<Finding>
+     */
+    public static function requestSchemas(array $operations): array
+    {
+        $findings = [];
+
+        foreach ($operations as $operation) {
+            foreach (self::ignoredKeywords($operation) as $keyword => $positions) {
+                $findings[] = new Finding(
+                    FindingClass::PackageLimit,
+                    self::SECTION,
+                    SupportLevel::Ignored,
+                    $positions[0],
+                    sprintf(
+                        '%s writes `%s` at %s. This package reads past it and the generated request enforces nothing '.
+                        'for it. See docs/guide/openapi-support.md, "Schemas". This is a fact about this package, '.
+                        'not a defect in your contract.',
+                        $operation->label(),
+                        $keyword,
+                        implode(', ', $positions),
+                    ),
+                );
+            }
+
+            foreach (self::unenforcedKeywords($operation) as $keyword => $fields) {
+                $findings[] = new Finding(
+                    FindingClass::PackageLimit,
+                    self::SECTION,
+                    SupportLevel::Partial,
+                    DocumentPointer::forOperation($operation),
+                    sprintf(
+                        '%s writes `%s` where the generated request enforces nothing for it: %s. This package reads '.
+                        'part of it and not what is written there. See docs/guide/openapi-support.md, "Schemas". '.
+                        'This is a fact about this package, not a defect in your contract.',
+                        $operation->label(),
+                        $keyword,
+                        implode(', ', $fields),
+                    ),
+                );
+            }
+        }
+
+        return $findings;
+    }
+
+    /**
+     * Each `Ignored` keyword one operation's request writes, by every position it is written at, in the order a walk of
+     * the body and then the `query` parameters meets them.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function ignoredKeywords(Operation $operation): array
+    {
+        $schemas = [];
+
+        if ($operation->requestBody !== null) {
+            foreach ($operation->requestBody->content as $mediaType => $schema) {
+                if (in_array($mediaType, RuleSetBuilder::READ_MEDIA_TYPES, true)) {
+                    $schemas[] = $schema;
+                }
+            }
+        }
+
+        foreach ($operation->queryParameters as $parameter) {
+            $schemas[] = $parameter->schema;
+        }
+
+        $found = [];
+
+        foreach ($schemas as $schema) {
+            self::collectIgnored($schema, $found);
+        }
+
+        return $found;
+    }
+
+    /**
+     * A schema's own ignored keywords, then its children's: properties, an array's items and `allOf` branches, which is
+     * every place the reading walks into. A recursion marker has nothing under it, and a position is listed once.
+     *
+     * @param  array<string, list<string>>  $found
+     */
+    private static function collectIgnored(Schema $schema, array &$found): void
+    {
+        foreach ($schema->ignored as $keyword => $position) {
+            if (! in_array($position, $found[$keyword] ?? [], true)) {
+                $found[$keyword][] = $position;
+            }
+        }
+
+        foreach ([...array_values($schema->properties), ...($schema->items === null ? [] : [$schema->items]), ...$schema->allOf] as $child) {
+            self::collectIgnored($child, $found);
+        }
+    }
+
+    /**
+     * What the operation's rule set read and enforced nothing for, or nothing when it cannot be built.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function unenforcedKeywords(Operation $operation): array
+    {
+        try {
+            return RuleSetBuilder::for($operation)->unenforced;
+        } catch (ConflictingInputException) {
+            return [];
+        }
     }
 
     /**

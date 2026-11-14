@@ -149,6 +149,11 @@ paths:
         # arrives (`user_name`, `page.size`), and `dto()` hands the value back
         # under the name written here. Read the generated request's rules and
         # its `FORM_NAMES`, then `curl -d 'user.name=ada&page[size]=3'` it.
+        #
+        # `sort` and `filter` write keywords the support matrix marks Ignored:
+        # `default`, `deprecated` and `oneOf` have no rule, so the generated
+        # request carries none for them. Run `spec:doctor` and read Support
+        # findings: one finding per keyword, naming where it is written.
         post:
             operationId: searchPosts
             summary: Search posts from a form
@@ -167,6 +172,14 @@ paths:
                                 page[size]:
                                     type: integer
                                     minimum: 1
+                                sort:
+                                    type: string
+                                    default: newest
+                                    deprecated: true
+                                filter:
+                                    oneOf:
+                                        - type: string
+                                        - type: integer
             responses:
                 '200': { description: Matching posts }
 

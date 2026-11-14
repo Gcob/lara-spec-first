@@ -628,10 +628,18 @@ the rule runs, so the name would match nothing and refuse every valid payload. S
 escaped; what the parent cannot say about it — that it is required, or that nothing else is allowed — is reported in the
 generated file's findings.
 
-**A constraint that maps to nothing is named per operation by `spec:doctor`**, which is
-[#36](https://github.com/Gcob/lara-spec-first/issues/36)'s to build, and by the generated file's own findings for the
-reader who is already looking at the class. Neither is a fallback for the other: one runs in CI before anything is
-generated, and the other answers "why is this field not enforced" at the moment somebody asks it.
+**A constraint that maps to nothing is named per operation by `spec:doctor`**, and by the generated file's own findings
+for the reader who is already looking at the class. Neither is a fallback for the other: one runs in CI before anything
+is generated, and the other answers "why is this field not enforced" at the moment somebody asks it.
+
+**The doctor reads data, and the generated file reads prose.** A rule set keeps its findings as sentences, and some of
+them are only worth saying: two media types over one schema, a rule stricter than the contract in one case. Gating an
+exit code on those would fail a pipeline over a remark. So the builder also records, beside the sentence, the keyword
+and the fields it was left unenforced on, for the four ways a keyword it reads comes out that way: a `format` no rule
+means the same as, a `pattern` across the ECMA-262 / PCRE boundary, a `contentMediaType` no rule can match, and a
+keyword stated where nothing reads it. `required` on a `readOnly` property is the fifth. The `Ignored` keywords are not
+in a rule set at all, since nothing reads them, and the reading collects them with their position instead. See
+[the doctor's Support findings](../doctor.md#what-it-checks).
 
 ## The generated request is `final`
 
