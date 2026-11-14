@@ -186,11 +186,12 @@ paths:
     /posts/{postId}/attachments:
         # A multipart body, and the one place a part is a file. `cover` becomes
         # `file`, `mimetypes:image/png` and `max:2.44140625` (2500 bytes, exact),
-        # `gallery` becomes an array plus the same rules under
-        # `gallery.*`, and `anything` states `application/octet-stream`, which
-        # means "any bytes" and so adds no `mimetypes`. The generated file's
-        # Findings block says that an `encoding` written beside the body is not
-        # read yet: until it is, a part's types come from `contentMediaType`.
+        # `gallery` becomes an array plus file rules under `gallery.*`, and
+        # `anything` states `application/octet-stream`, which means "any bytes"
+        # and so adds no `mimetypes`. The `encoding` beside the body wins over
+        # `contentMediaType` for the types of `gallery`: its items are narrowed
+        # to `mimetypes:image/jpeg,image/webp` rather than `image/*`, and it
+        # only ever narrows, since a part is a file because of its schema.
         post:
             operationId: uploadAttachments
             summary: Attach files to a post
@@ -221,6 +222,9 @@ paths:
                                 caption:
                                     type: string
                                     maxLength: 120
+                        encoding:
+                            gallery:
+                                contentType: image/jpeg, image/webp
             responses:
                 '201': { description: Attached }
 
