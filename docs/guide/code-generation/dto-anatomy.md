@@ -227,8 +227,8 @@ there. The payload is not in it: the generated file's findings say to read the b
 [validates it down to `x-max-depth`](./request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth) and
 refuses what is below, so the input is checked. The DTO has not caught up: `address.parent` is read as it arrived, and
 typing it as the ancestor's class, to the same depth, is the second part of
-[#100](https://github.com/Gcob/lara-spec-first/issues/100). **Open (#100):** this paragraph and the next one are
-rewritten there.
+[#100](https://github.com/Gcob/lara-spec-first/issues/100). **Open
+([#100](https://github.com/Gcob/lara-spec-first/issues/100)):** this paragraph and the next one are rewritten there.
 
 **A schema in a recursive pair is `mixed` where it is nested.** `Author` holds `Book`s and `Book` holds an `Author`:
 each is expanded to a different depth depending on where the build enters it, and so are the rules that validate it. One
