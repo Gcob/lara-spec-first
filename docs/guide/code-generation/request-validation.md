@@ -636,8 +636,11 @@ escaped; what the parent cannot say about it — that it is required, or that no
 generated file's findings.
 
 **A constraint that maps to nothing is named per operation by `spec:doctor`**, and by the generated file's own findings
-for the reader who is already looking at the class. Neither is a fallback for the other: one runs in CI before anything
-is generated, and the other answers "why is this field not enforced" at the moment somebody asks it.
+for the reader who is already looking at the class. A few are still prose only (a form field PHP delivers under another
+field's key, some `dependentRequired` entries, the rest listed in
+[#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the doctor stays silent on them for now. Neither is a
+fallback for the other: one runs in CI before anything is generated, and the other answers "why is this field not
+enforced" at the moment somebody asks it.
 
 **The doctor reads data, and the generated file reads prose.** A rule set keeps its findings as sentences, and some of
 them are only worth saying: two media types over one schema, a rule stricter than the contract in one case. Gating an

@@ -33,7 +33,14 @@ tags: [versions, conventions, planning]
   keyword is named the same way for the fields it is left unenforced on (a `format` no Laravel rule means the same as, a
   `pattern` across the ECMA-262 / PCRE boundary), so a `format: uri` or a `format: float` in a request now gates too.
   `format: int32` on an integer is enforced as its two bounds, and `int64`, `double` and `password` are handled, so none
-  of them gates. The exit code of a contract that writes none of them is unchanged.
+  of them gates. A field the rule set drops whole (a `query` name PHP rewrites, a body key with `*`) names what it
+  states the same way, so a `required` or a bound on such a field now gates too. The exit code of a contract that writes
+  none of them is unchanged.
+- **`spec:build` compares the schemas of two media types strictly**: a constraint written on one of them only
+  (`minimum: 0`, `minLength: 0`, `additionalProperties: false`, an `enum` of `[0]` against `[false]`) makes them two
+  schemas, which one `rules()` cannot hold, so the build refuses the operation as the
+  [docs](./docs/guide/code-generation/request-validation.md) already said. Such a contract built before, with the
+  constraint silently dropped for the other media type.
 - **`parameters` (`header`, `cookie`) moved from `Deferred` to `Ignored`** in the
   [support matrix](./docs/guide/openapi-support.md#parameters-bodies-responses). The package will not validate a header
   or a cookie parameter, so the row states a position rather than a gap, and a contract declaring one will exit non-zero

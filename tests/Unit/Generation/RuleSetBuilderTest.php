@@ -386,6 +386,32 @@ it('refuses two read media types describing two different shapes', function (): 
     ])))->toThrow(ConflictingInputException::class, 'cannot hold two rule sets');
 });
 
+// The comparison is strict: `==` called `null` and `0`, `null` and `false`, `[0]` and `[false]` equal, so a
+// constraint written on one media type only was dropped for the other. They are two schemas, and two rule sets.
+it('refuses two read media types whose shapes differ only by a value loose equality would forgive', function (Schema $one, Schema $other): void {
+    expect(fn () => RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => objectSchema(['a' => $one]),
+        'multipart/form-data' => objectSchema(['a' => $other]),
+    ])))->toThrow(ConflictingInputException::class, 'cannot hold two rule sets');
+})->with([
+    'minimum: 0 on one side' => [
+        new Schema(types: [SchemaType::Integer], minimum: 0),
+        new Schema(types: [SchemaType::Integer]),
+    ],
+    'minLength: 0 on one side' => [
+        new Schema(types: [SchemaType::String], minLength: 0),
+        new Schema(types: [SchemaType::String]),
+    ],
+    'additionalProperties: false on one side' => [
+        new Schema(types: [SchemaType::Object], additionalProperties: false),
+        new Schema(types: [SchemaType::Object]),
+    ],
+    'enum [0] against [false]' => [
+        new Schema(enum: [0]),
+        new Schema(enum: [false]),
+    ],
+]);
+
 // Two media types over one schema are not a conflict, and comparing by identity
 // rather than by value would have made them one: nothing guarantees a `$ref`
 // reaches two media types as the same object.
