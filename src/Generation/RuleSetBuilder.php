@@ -411,7 +411,7 @@ final readonly class RuleSetBuilder
         // A form delivers a name PHP rewrote, so a closed root names the name it
         // receives. A body that is JSON too keeps the one the contract writes beside it.
         $closed = [];
-        $heads = [];
+        $steps = [];
         $accepted = [];
 
         foreach (array_keys($schema->properties) as $name) {
@@ -435,19 +435,26 @@ final readonly class RuleSetBuilder
 
             $closed[] = $delivered;
 
-            // Below the head, a bracketed name's own key is what the contract declares. A form-only
-            // body closes the head to those keys; the rest accepts the head as a key of its own.
+            // Below the head, a bracketed name's own key is what the contract declares: one level of it. A deeper
+            // name is not, and the head rule only reads one level.
             $path = $walk->formPaths[$name] ?? null;
-
-            if ($path !== null && count($path) > 1 && ! str_contains($path[1], ',')) {
-                $heads[$delivered][] = $path[1];
-            } else {
-                $accepted[$name] = $delivered;
-            }
+            $steps[$delivered][$name] = $path !== null && count($path) === 2 && ! str_contains($path[1], ',') ? $path[1] : null;
         }
 
-        foreach ($heads as $head => $below) {
-            $walk->rules[self::ruleKey((string) $head)] = ['sometimes', 'array:'.implode(',', array_unique($below))];
+        // A form-only body closes a head to the keys the contract declares below it. One name that cannot be
+        // named that way leaves the head open, since `array:` would refuse the others' siblings it declares.
+        foreach ($steps as $head => $below) {
+            $head = (string) $head;
+
+            if (! in_array(null, $below, true)) {
+                $walk->rules[self::ruleKey($head)] = ['sometimes', 'array:'.implode(',', array_unique(array_values($below)))];
+
+                continue;
+            }
+
+            foreach (array_keys($below) as $name) {
+                $accepted[(string) $name] = $head;
+            }
         }
 
         if ($accepted !== []) {

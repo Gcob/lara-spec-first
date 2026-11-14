@@ -1494,6 +1494,27 @@ it('closes the head of a bracketed name in a closed form body', function (): voi
         ->and(implode("\n", $set->findings))->not->toContain('closed to its declared names');
 });
 
+// The head rule closes one level: `array:created` would be satisfied by `filter[created]=abc` or by
+// `filter[created][lt]=5`, which the contract refuses, so a name deeper than two levels closes nothing, and
+// the closed root says that it accepts the head.
+it('does not close the head of a name bracketed more than once, and says so', function (array $properties): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($properties)),
+        additionalProperties: false,
+    )]));
+
+    expect($set->rules)->not->toHaveKey('filter')
+        ->and($set->closedKeys)->toBe(['filter'])
+        ->and(implode("\n", $set->findings))
+        ->toContain('The body is closed to its declared names, but a form delivers `filter[created][gte]` as `filter`')
+        ->toContain('so the key check accepts `filter`');
+})->with([
+    'the deep name alone' => [['filter[created][gte]']],
+    // `array:x` would refuse `filter[created][gte]`, which the contract declares.
+    'beside a one-level sibling' => [['filter[created][gte]', 'filter[x]']],
+]);
+
 it('leaves the head of a bracketed name open when the body is open', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page[size]' => new Schema(types: [SchemaType::Integer])],

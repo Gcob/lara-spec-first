@@ -143,9 +143,12 @@ DTO's properties stay the contract's, one class serving a JSON body and a nested
 Laravel returns it, with `user_name`. **A closed body accepts the name PHP gives the key**, and beside it the one the
 contract writes when the body is also JSON. For a bracketed name that key is the head (`page` for `page[size]`), and a
 body read only as a form closes the head with its own rule, `'page' => ['sometimes', 'array:size']`, so `page[evil]=1`
-and `page=abc` are refused as the contract refuses them. For a name with no bracket (`user.name`), nothing tells
-`user_name` apart from it: the key check accepts a `user_name` the contract does not declare, and the generated file
-says so, as it does for a bracketed name in a body that is JSON too, whose head is not closed.
+and `page=abc` are refused as the contract refuses them. That rule reads one level, so it closes a head only when every
+name below it has one bracket: a name with two (`filter[created][gte]`) would have `filter[created]=abc` and
+`filter[created][lt]=5` pass `array:created`, so such a head stays open, with its neighbours, and the generated file
+says the key check accepts it. For a name with no bracket (`user.name`), nothing tells `user_name` apart from it: the
+key check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a
+bracketed name in a body that is JSON too, whose head is not closed.
 
 **Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
 as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), so
