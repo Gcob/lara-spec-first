@@ -2,7 +2,7 @@
 #
 # Tag a release: `just release <version>` is a dry run, and
 # `just release <version> --publish` is the real thing. It runs on the HOST, like
-# format-markdown.sh and check-lowest.sh: it needs git, gh and a terminal, and
+# format-markdown.sh and check-lowest.sh: it needs gh and a terminal, and
 # the PHP container has none of them.
 #
 # Tagging is the maintainer's by rule: the factory's rules forbid an agent to do
@@ -99,6 +99,16 @@ entry=$(awk -v v="$VERSION" '
 
 if [ -n "$(printf '%s' "$entry" | tr -d '[:space:]')" ]; then
     pass "CHANGELOG.md has a \"## [$VERSION] - \" heading with an entry"
+
+    heading=$(awk -v h="## [$VERSION] - " 'index($0, h) == 1 { print substr($0, length(h) + 1); exit }' CHANGELOG.md)
+    heading_date=${heading%% *}
+    today=$(date +%Y-%m-%d)
+
+    if [ "$heading_date" = "$today" ]; then
+        pass "the heading's date is today ($today)"
+    else
+        fail "the heading's date is today: it says \"$heading_date\" and today is $today. Edit the date in CHANGELOG.md through a pull request and merge it, then run this again"
+    fi
 else
     fail "CHANGELOG.md has a \"## [$VERSION] - \" heading with an entry: none found"
 fi
@@ -112,11 +122,20 @@ else
 fi
 
 slug=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
+origin_repository=$(origin_slug)
 
-if [ -n "$slug" ]; then
-    pass "gh reads the repository from origin ($slug)"
-else
+if [ -z "$slug" ]; then
     fail "gh reads the repository from origin: it answered nothing"
+elif [ "$slug" != "$origin_repository" ]; then
+    fail "gh reads the repository from origin: gh says $slug, origin says ${origin_repository:-nothing}"
+else
+    pass "gh reads the repository from origin ($slug)"
+fi
+
+if [ "$(git show "HEAD:CHANGELOG.md" 2>/dev/null | unreleased_lines)" -eq 0 ]; then
+    pass "[Unreleased] is empty at HEAD, so nothing merged after the release pull request"
+else
+    fail "[Unreleased] is empty at HEAD: something merged after the release pull request, so the tag would carry it without an entry. Put it in the $VERSION entry, or release from the commit before it"
 fi
 
 if [ "$PUBLISH" -eq 0 ]; then

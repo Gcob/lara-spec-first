@@ -42,7 +42,7 @@ tag_state() {
         return 0
     fi
 
-    remote=$(git ls-remote --tags origin "refs/tags/v$1" 2>&1) || {
+    remote=$(git ls-remote --tags origin "refs/tags/v$1" 2>/dev/null) || {
         echo "origin could not be asked"
         return 2
     }
@@ -54,6 +54,28 @@ tag_state() {
 
     return 1
 }
+
+# How many lines of content sit under `## [Unreleased]` in the CHANGELOG.md read
+# on standard input: a release leaves it empty, and a change merged after the
+# release pull request puts a line there.
+unreleased_lines() {
+    awk '
+        /^## \[Unreleased\]$/ { inside = 1; next }
+        inside && (/^## / || /^\[[^]]+\]: /) { exit }
+        inside && /[^[:space:]]/ { count++ }
+        END { print count + 0 }
+    '
+}
+
+# The `owner/repo` that the `origin` remote is configured with, read from the raw
+# configuration and not through `git remote get-url`, which would show where an
+# `insteadOf` rewrite sends it.
+origin_slug() {
+    git config --get remote.origin.url 2>/dev/null | sed -E -e 's#\.git$##' -e 's#^.*[:/]([^/:]+/[^/]+)$#\1#'
+}
+
+# A task-list item in a Markdown list, ticked or not: `-`, `*`, `+` or `1.` bullets.
+BOX='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+\['
 
 # The commit `main` points at on origin, asked of origin itself: nothing is
 # fetched, so a dry run writes nothing, not even a remote-tracking ref.

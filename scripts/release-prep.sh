@@ -90,10 +90,14 @@ fi
 
 if git rev-parse -q --verify "refs/heads/$BRANCH" >/dev/null 2>&1; then
     fail "the branch $BRANCH does not exist: it exists locally"
-elif [ -n "$(git ls-remote --heads origin "refs/heads/$BRANCH" 2>/dev/null)" ]; then
-    fail "the branch $BRANCH does not exist: it exists on origin"
+elif remote_branch=$(git ls-remote --heads origin "refs/heads/$BRANCH" 2>/dev/null); then
+    if [ -n "$remote_branch" ]; then
+        fail "the branch $BRANCH does not exist: it exists on origin"
+    else
+        pass "the branch $BRANCH does not exist"
+    fi
 else
-    pass "the branch $BRANCH does not exist"
+    fail "the branch $BRANCH does not exist: origin could not be asked"
 fi
 
 if [ -z "$(git status --porcelain)" ]; then
@@ -137,9 +141,9 @@ ready=$(printf '%s\n' "$body" | awk '
 
 if [ -z "$body" ]; then
     fail "card #$CARD has every \"Ready when\" box ticked: gh could not read the card"
-elif ! printf '%s\n' "$ready" | grep -Eq '^[[:space:]]*- \[[ xX]\]'; then
+elif ! printf '%s\n' "$ready" | grep -Eq "${BOX}[ xX]\]"; then
     fail "card #$CARD has every \"Ready when\" box ticked: it has no box to tick"
-elif open=$(printf '%s\n' "$ready" | grep -E '^[[:space:]]*- \[ \]'); then
+elif open=$(printf '%s\n' "$ready" | grep -E "${BOX} \]"); then
     fail "card #$CARD has every \"Ready when\" box ticked: $(printf '%s\n' "$open" | wc -l | tr -d ' ') still open"
     printf '%s\n' "$open" | sed 's/^/          /'
 else
@@ -156,12 +160,7 @@ if [ -z "$changelog" ]; then
     fail "CHANGELOG.md can be read at main"
 else
     if printf '%s\n' "$changelog" | grep -q '^## \[Unreleased\]$'; then
-        pending=$(printf '%s\n' "$changelog" | awk '
-            /^## \[Unreleased\]$/ { inside = 1; next }
-            inside && /^## / { exit }
-            inside && /[^[:space:]]/ { count++ }
-            END { print count + 0 }
-        ')
+        pending=$(printf '%s\n' "$changelog" | unreleased_lines)
 
         if [ "$pending" -gt 0 ]; then
             pass "CHANGELOG.md has an [Unreleased] entry with content"
