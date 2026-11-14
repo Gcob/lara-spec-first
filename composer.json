@@ -57,8 +57,13 @@
             "Composer\\Config::disableProcessTimeout",
             "@php vendor/bin/testbench"
         ],
-        "format": "pint",
+        "format": [
+            "pint",
+            "@format:docblocks"
+        ],
         "format:check": "pint --test",
+        "format:docblocks": "@php scripts/format-docblocks.php",
+        "format:docblocks:check": "@php scripts/format-docblocks.php --check",
         "format:md": "scripts/format-markdown.sh",
         "format:md:check": "scripts/format-markdown.sh --check",
         "diagrams": "scripts/build-diagrams.sh",
@@ -90,8 +95,10 @@
         "test": "Run the Pest test suite. Runs at 512M, like `analyse`: tests/Conformance/KnownParserBugsTest.php reads a large stderr back from a child process, and PHP's common 128M default fails it with a fatal that has nothing to do with the change under test.",
         "test:coverage": "Run the test suite with a coverage report. Same 512M as `test`, for the same reason.",
         "artisan": "Run an Artisan command inside the Workbench application: `composer artisan -- route:list`. A package has no artisan binary of its own; Testbench provides one.",
-        "format": "Apply Laravel Pint formatting.",
-        "format:check": "Report formatting issues without changing files.",
+        "format": "Apply Laravel Pint formatting, then reflow docblock prose to the .editorconfig column limit.",
+        "format:check": "Report Pint formatting issues without changing files.",
+        "format:docblocks": "Reflow docblock prose to the .editorconfig column limit. Pint has no rule for it, so scripts/format-docblocks.php does it; `composer format` runs it after Pint.",
+        "format:docblocks:check": "List the PHP files whose docblocks need reflowing, without writing, and exit non-zero when there are any. The pre-commit hook runs it on the staged files. Not part of `format:check` or `check` yet: the codebase has not been reflowed.",
         "format:md": "Reflow Markdown prose to the .editorconfig column limit and align tables. Runs Prettier outside the PHP container, since the image carries no Node.",
         "format:md:check": "Report which Markdown files need reformatting, without changing them.",
         "diagrams": "Render every PlantUML source under docs/diagrams/ to the SVG committed beside it. Runs PlantUML outside the PHP container, since the image carries no Java.",

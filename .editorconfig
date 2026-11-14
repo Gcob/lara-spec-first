@@ -13,6 +13,12 @@ indent_size = 4
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# PHP: the width scripts/format-docblocks.php reflows docblock prose to. Pint has no
+# rule for it, so this is where the number lives, the same way Prettier reads it
+# for Markdown below.
+[*.php]
+max_line_length = 120
+
 # Markdown: two trailing spaces are a hard line break, so they must survive.
 [*.md]
 trim_trailing_whitespace = false
