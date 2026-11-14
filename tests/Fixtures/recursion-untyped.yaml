@@ -1,0 +1,54 @@
+# Two recursions into a schema that is not an object with properties, which the request does not check the shape of. `Node`
+# states `properties` and no `type`, so the request writes no type rule below it: a string there passes. `Forest` is an
+# array that recurses through its items, so the request validates a list there and the class of an object would be empty.
+# The DTO keeps both as they arrive instead of building a class from input nothing checked.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /nodes:
+    post:
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Node'
+      responses:
+        '201':
+          description: Created
+  /forests:
+    post:
+      operationId: createForest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                forest:
+                  $ref: '#/components/schemas/Forest'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Node:
+      required: [label]
+      properties:
+        label:
+          type: string
+        parent:
+          $ref: '#/components/schemas/Node'
+    Forest:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          children:
+            $ref: '#/components/schemas/Forest'

@@ -520,6 +520,26 @@ it('types a recursion behind a mixin as the class it points back at only when th
     'a mixin that only requires' => ['createMarked', 'MarkedInputDto', InputDtoType::DTO],
 ]);
 
+// The class of a marker is the ancestor's class only when the ancestor is an object with properties, the test every other
+// nested schema meets. An untyped schema has no type rule below it, and an array's class would be empty: the request
+// validates a list there and the class reads no key of it.
+it('types a recursion into a schema that is not an object with properties as mixed', function (string $operationId, string $class, string $property, bool $list): void {
+    $plan = planDtos(array_values(array_filter(
+        extractFixture('recursion-untyped.yaml'),
+        static fn (Operation $operation): bool => $operation->operationId === $operationId,
+    )));
+    $dto = dtoNamed($plan, $class);
+    $found = array_values(array_filter($dto->properties, static fn ($p): bool => $p->key === $property))[0];
+    $type = $list ? $found->type->item : $found->type;
+
+    expect($type?->kind)->toBe(InputDtoType::MIXED)
+        ->and(implode("\n", $dto->findings))->toContain('`'.$property.'` points back at')
+        ->and(implode("\n", $dto->findings))->toContain('not an object with properties');
+})->with([
+    'a component with properties and no type' => ['createNode', 'NodeInputDto', 'parent', false],
+    'an array that recurses through its items' => ['createForest', 'CreateForestForestItemInputDto', 'children', false],
+]);
+
 // What is written beside a marker holds at every level the request crosses it at. A `required` changes nothing the
 // ancestor's class says, but a property does: the class would drop a key the request validated.
 it('keeps a recursion mixed when the site writes properties beside the marker', function (): void {

@@ -504,6 +504,14 @@ final class InputDtoPlanner
      */
     private function nested(Schema $written, Schema $merged, string $base, string $segment, string $pointer, bool $nullable, string $owner): InputDtoType
     {
+        $recursive = $this->recursiveBranch($written, $segment);
+
+        if ($recursive !== null) {
+            $type = $this->ancestorType($recursive[0], $recursive[1], $segment, $owner);
+
+            return $type->kind === InputDtoType::DTO ? new InputDtoType(InputDtoType::DTO, $nullable || $type->nullable, class: $type->class) : $type;
+        }
+
         [$name, $source] = $this->nameOf($written, $merged);
         $position = $source ?? $pointer;
 
@@ -617,15 +625,50 @@ final class InputDtoPlanner
             return new InputDtoType(InputDtoType::MIXED);
         }
 
-        // What is written beside the marker holds at every level, and the ancestor's class carries none of it.
-        $beside = AllOfMerger::besideMarker($site);
+        return $this->ancestorType($ancestor, AllOfMerger::besideMarker($site), $segment, $owner);
+    }
+
+    /**
+     * What a site is when it is the schema a recursion points back at, written alone or with something beside it: the
+     * ancestor's own class, or `mixed`. One answer for a written site whichever way the build reaches it, as a marker
+     * ({@see self::recursion()}) or as the expanded schema ({@see self::recursiveBranch()}).
+     *
+     * `mixed` where the class cannot say what the request validated. A `properties` beside the reference is validated
+     * at every level, and the ancestor's class has no property for it. And a schema that is not an object with
+     * properties, as the rules expand it, has no type rule or no keys to read: the class of an untyped component would
+     * be built from a string the request let through, and one of an array would read no key of the list.
+     *
+     * @param  Schema  $ancestor  the definition of the schema the site points back at
+     * @param  Schema|null  $beside  what the site writes beside the reference
+     *
+     * @throws UnusableNameException
+     * @throws ConflictingInputException
+     */
+    private function ancestorType(Schema $ancestor, ?Schema $beside, string $segment, string $owner): InputDtoType
+    {
+        $position = (string) $ancestor->source;
 
         if ($beside !== null && $beside->properties !== []) {
             $this->registry[$owner]['findings'][] = sprintf(
                 '`%s` is validated by the request, which unrolls it, but it is `mixed` here: it writes properties '
-                    .'beside the marker, and the class of `%s` does not carry them.',
+                    .'beside the reference, and the class of `%s` does not carry them.',
                 $segment,
                 $ancestor->name,
+            );
+
+            return new InputDtoType(InputDtoType::MIXED);
+        }
+
+        $expanded = $beside === null
+            ? $ancestor
+            : AllOfMerger::merge(new Schema(allOf: [$ancestor, $beside]), $this->identity, '`'.$segment.'`');
+
+        if ($expanded->soleType() !== SchemaType::Object || $expanded->properties === []) {
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` points back at `%s`, which is not an object with properties, so it is `mixed` rather than a '
+                    .'class the request did not check the shape of.',
+                $segment,
+                $position,
             );
 
             return new InputDtoType(InputDtoType::MIXED);
@@ -644,9 +687,68 @@ final class InputDtoPlanner
             self::namedAfter($name, $position),
             true,
         );
-        $nullable = $ancestor->isNullable() || ($ancestor->enum !== null && in_array(null, $ancestor->enum, true));
+        // The cut lets `null` through when the ancestor allows it, and the levels above it when what is expanded does.
+        $nullable = self::allowsNull($ancestor) || self::allowsNull($expanded);
 
         return new InputDtoType(InputDtoType::DTO, $nullable, class: $class);
+    }
+
+    private static function allowsNull(Schema $schema): bool
+    {
+        return $schema->isNullable() || ($schema->enum !== null && in_array(null, $schema->enum, true));
+    }
+
+    /**
+     * The branch of an `allOf` that is a schema in a recursive cycle through this site, and what the others write.
+     *
+     * A site such as `allOf: [Author, {required: [name]}]` in `Book` is a recursion marker when the build comes in
+     * through `Author`, and the expanded `Author` when it comes in through `Book`. It has to be typed the same either
+     * way, so the second path asks the question the first does: a branch is the ancestor when it is named and holds a
+     * marker aimed at a schema the walk is inside. Exactly one is, or the site is an ordinary composition.
+     *
+     * @return array{0: Schema, 1: Schema|null}|null the branch's definition and what is written beside it
+     *
+     * @throws ConflictingInputException
+     */
+    private function recursiveBranch(Schema $written, string $segment): ?array
+    {
+        $sources = array_values(array_filter(array_map(static fn (Schema $schema): ?string => $schema->source, $this->ancestors)));
+        $found = array_keys(array_filter(
+            $written->allOf,
+            static fn (Schema $branch): bool => $branch->source !== null && self::pointsBackInto($branch, $sources),
+        ));
+
+        if (count($found) !== 1) {
+            return null;
+        }
+
+        $label = '`'.$segment.'`';
+        $others = $written->allOf;
+        unset($others[$found[0]]);
+        $rest = new Schema(...[...get_object_vars($written), 'allOf' => array_values($others), 'name' => null, 'source' => null, 'ignored' => []]);
+        $beside = AllOfMerger::merge($rest, $this->identity, $label);
+
+        return [AllOfMerger::merge($written->allOf[$found[0]], $this->identity, $label), $beside == new Schema ? null : $beside];
+    }
+
+    /**
+     * Whether a recursion marker aimed at one of these positions is written anywhere in a schema.
+     *
+     * @param  list<string>  $positions
+     */
+    private static function pointsBackInto(Schema $schema, array $positions): bool
+    {
+        if ($schema->recursesTo !== null) {
+            return in_array($schema->recursesTo, $positions, true);
+        }
+
+        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
+            if (self::pointsBackInto($child, $positions)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

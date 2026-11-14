@@ -1,0 +1,55 @@
+# A recursive pair whose `Book.author` writes a `required` beside its `$ref`. It is one written site that the build
+# reaches as a recursion marker from one side and as the expanded schema from the other, and the DTO has to be the same
+# either way.
+# A recursive pair that two operations enter from opposite sides: `createAuthor` sends an `Author` that holds `Book`s, and
+# `createBook` sends a `Book` that holds an `Author`. The classes have to be the same whichever operation the build meets
+# first, so `GeneratedInputDtoTest` builds this contract in both orders and runs a request through each.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /authors:
+    post:
+      operationId: createAuthor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Author'
+      responses:
+        '201':
+          description: Created
+  /books:
+    post:
+      operationId: createBook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Author:
+      type: object
+      properties:
+        name:
+          type: string
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+    Book:
+      type: object
+      properties:
+        title:
+          type: string
+        author:
+          allOf:
+            - $ref: '#/components/schemas/Author'
+            - required: [name]

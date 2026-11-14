@@ -14,6 +14,7 @@ use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 
 /*
  * A generated DTO, run.
@@ -490,14 +491,33 @@ it('types a tree whose depth was lowered down to the applied depth', function (s
     expect(dtoAt($dto, ...array_fill(0, 8, $side)))->toBeInstanceOf(Optional::class);
 })->with(['left', 'right']);
 
-// A recursive pair is entered from both sides, by two operations. The build is run in both orders and the classes of each
-// are loaded and executed: the same bytes, and `dto()` reads each side of the pair as the other's class.
-it('executes a recursive pair the same in both orders', function (): void {
-    $authorsFirst = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\PairAuthorsFirst';
-    $booksFirst = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\PairBooksFirst';
+// The request writes no type rule below an untyped component, so a string there passes it, and a class built from that
+// string is a `TypeError` and a 500. The DTO holds what arrived instead. An array that recurses through its items is a
+// validated list, and the subtree stays in the DTO as it arrived.
+it('keeps a recursion into a schema the request does not shape as it arrived, never a 500', function (): void {
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\RecursionUntyped';
+    generatedFrom('recursion-untyped.yaml', $namespace);
 
-    $first = generatedFrom('recursion-pair.yaml', $authorsFirst);
-    $second = generatedFrom('recursion-pair.yaml', $booksFirst, reversed: true);
+    $node = dtoOfPost(generatedClass($namespace, 'Requests\\CreateNodeRequest'), ['label' => 'a', 'parent' => 'oops']);
+    $forest = dtoOfPost(generatedClass($namespace, 'Requests\\CreateForestRequest'), [
+        'forest' => [['name' => 'a', 'children' => [['name' => 'b', 'children' => []]]]],
+    ]);
+
+    expect(dtoAt($node, 'parent'))->toBe('oops')
+        ->and(dtoAt($forest, 'forest', 0, 'children'))->toBe([['name' => 'b', 'children' => []]]);
+});
+
+// A recursive pair is entered from both sides, by two operations. The build is run in both orders and the classes of each
+// are loaded and executed: the same bytes, and `dto()` reads each side of the pair as the other's class. `Book.author` is
+// one written site that is a marker from one side and the expanded schema from the other: a bare `$ref` and a `required`
+// beside it are the class of `Author` in both, and a `properties` beside it is `mixed` in both (the class cannot carry it).
+it('executes a recursive pair the same in both orders', function (string $fixture, bool $authorIsClass): void {
+    $name = Str::studly(basename($fixture, '.yaml'));
+    $authorsFirst = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\'.$name.'AuthorsFirst';
+    $booksFirst = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\'.$name.'BooksFirst';
+
+    $first = generatedFrom($fixture, $authorsFirst);
+    $second = generatedFrom($fixture, $booksFirst, reversed: true);
 
     expect(array_keys($first))->toBe([
         'Data/AuthorInputDto.php',
@@ -519,21 +539,31 @@ it('executes a recursive pair the same in both orders', function (): void {
         ]);
 
         expect(get_debug_type($fromAuthor))->toBe($author)
-            ->and(get_debug_type(dtoAt($fromAuthor, 'books', 0)))->toBe($book)
-            ->and(get_debug_type(dtoAt($fromAuthor, 'books', 0, 'author')))->toBe($author)
-            ->and(dtoAt($fromAuthor, 'books', 0, 'author', 'books'))->toBe([]);
+            ->and(get_debug_type(dtoAt($fromAuthor, 'books', 0)))->toBe($book);
 
         $fromBook = dtoOfPost(generatedClass($namespace, 'Requests\\CreateBookRequest'), [
             'title' => 'Notes',
             'author' => ['name' => 'Ada', 'books' => [['title' => 'More']]],
         ]);
 
-        expect(get_debug_type($fromBook))->toBe($book)
-            ->and(get_debug_type(dtoAt($fromBook, 'author')))->toBe($author)
-            ->and(get_debug_type(dtoAt($fromBook, 'author', 'books', 0)))->toBe($book)
-            ->and(dtoAt($fromBook, 'author', 'books', 0, 'author'))->toBeInstanceOf(Optional::class);
+        expect(get_debug_type($fromBook))->toBe($book);
+
+        if ($authorIsClass) {
+            expect(get_debug_type(dtoAt($fromAuthor, 'books', 0, 'author')))->toBe($author)
+                ->and(dtoAt($fromAuthor, 'books', 0, 'author', 'books'))->toBe([])
+                ->and(get_debug_type(dtoAt($fromBook, 'author')))->toBe($author)
+                ->and(get_debug_type(dtoAt($fromBook, 'author', 'books', 0)))->toBe($book)
+                ->and(dtoAt($fromBook, 'author', 'books', 0, 'author'))->toBeInstanceOf(Optional::class);
+        } else {
+            expect(dtoAt($fromAuthor, 'books', 0, 'author'))->toBeArray()
+                ->and(dtoAt($fromBook, 'author'))->toBeArray();
+        }
     }
-});
+})->with([
+    'a bare $ref' => ['recursion-pair.yaml', true],
+    'a required beside the $ref' => ['recursion-pair-required.yaml', true],
+    'properties beside the $ref' => ['recursion-pair-properties.yaml', false],
+]);
 
 it('refuses a node that is wrong at the last level the schema validates', function (): void {
     $payload = ['address' => addressDeep(2)];
