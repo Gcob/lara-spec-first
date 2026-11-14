@@ -70,14 +70,14 @@ generator carries neither spelling: it carries
 
 **What a part becomes:**
 
-| The contract states                            | Laravel rule                                                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `format: binary`, or `contentMediaType`        | `file`, in a body that is `multipart/form-data` alone                                                         |
-| `contentMediaType`                             | `mimetypes:` with the declared type, `image/*` included, since Laravel matches a wildcard, except a text type |
-| `maxLength` on a binary part                   | `max:` in kilobytes, the contract's bytes over 1024, as the exact decimal                                     |
-| The part is in the body root's `required` list | `required` beside the file rules                                                                              |
-| The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable                  |
-| `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`                            |
+| The contract states                            | Laravel rule                                                                                                                                                           |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format: binary`, or `contentMediaType`        | `file`, in a body that is `multipart/form-data` alone                                                                                                                  |
+| `contentMediaType`                             | `mimetypes:` with the declared type, `image/*` included, since Laravel matches a wildcard, except a text type                                                          |
+| `maxLength` on a binary part                   | `max:` in kilobytes, the contract's bytes over 1024, as the exact decimal                                                                                              |
+| The part is in the body root's `required` list | `required` beside the file rules, `present` when the schema says the property may be `null`, and `present_with` naming the other keys when the body itself is optional |
+| The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable                                                                           |
+| `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`                                                                                     |
 
 **Only `contentMediaType` is read for the types today, and `encoding` is the Open half.** OpenAPI also lets a multipart
 body state `encoding.<part>.contentType`, which wins over `contentMediaType`. `RequestBody` holds one schema per media

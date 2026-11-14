@@ -20,15 +20,21 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 > **In brief**
 >
-> - **Partly built.** `spec:build` emits one `FormRequest` per operation with something to validate, with the four
->   scalar types, nullability and presence mapped. Everything else the contract states is named in the generated file's
->   own findings rather than enforced — see [what is built](#what-is-built-today).
+> - **Built.** `spec:build` emits one `FormRequest` per operation with something to validate, and the whole of
+>   [the mapping table](#every-constraint-maps-or-reports) is applied: the scalar types, nullability and presence, the
+>   bounds, `format`, `enum` and `pattern`, arrays and nested objects, `allOf`, `dependentRequired`,
+>   `additionalProperties: false`, an optional body's "all or none", and the file parts of a multipart body. Whatever no
+>   Laravel rule means the same as is named in the generated file's own findings rather than enforced, see
+>   [what is built](#what-is-built-today).
 > - One rule set per operation, derived from the request body and the query parameters. The path's own parameters stay
 >   the router's.
 > - A body field is read from the body and a `query` parameter from the query string, never from each other: the request
 >   overrides `validationData()` so the URL cannot satisfy a body field, nor the body a query parameter.
 > - `PATCH` is `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema
 >   `default`.
+> - A request whose body is an object has `dto()`, which returns the body as
+>   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()`, and `validated()` itself keeps
+>   returning Laravel's array.
 > - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one.
 > - `routeAction` receives the generated request as its first parameter, which is what makes Laravel run it at all, and
 >   hands the controller the typed DTO it built.
