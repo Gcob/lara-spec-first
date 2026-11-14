@@ -150,6 +150,12 @@ declaring two of them over two different schemas is a build error**, because one
 and produce one rule set. **A part is a file only when `multipart/form-data` is the body's one media type**: beside
 another, the part is read as a string, because one rule set cannot hold both a `file` and the string JSON sends.
 
+**A body schema that names `properties` and no `type` is read as an object.** JSON Schema applies `properties` to
+objects only, so the schema says nothing about a string, but a body that names properties is an object whether or not it
+spells `type: object`, and generators that omit the type are common. Only the body's root is read this way: a nested
+field of the same shape gets no type rule, since `array` would refuse a string the contract accepts. The input DTO is
+built from `type: object` alone, so such a body has rules and no `dto()`.
+
 **Any other media type is reported rather than guessed at.** A body declaring `application/xml` is a contract this
 package does not serve, and a `format: byte` string inside a JSON body is
 [a string nothing decodes](../uploads.md#a-base64-part-is-a-string).

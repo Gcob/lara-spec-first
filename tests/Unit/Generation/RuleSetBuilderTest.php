@@ -1032,3 +1032,25 @@ it('keeps mimetypes for a binary type the content is sniffed as', function (stri
 
     expect($rules['avatar'])->toBe(['required', 'file', 'mimetypes:'.$declared]);
 })->with(['image/png', 'application/pdf', 'application/zip', 'image/svg+xml']);
+
+// JSON Schema applies `properties` to objects only, and a body that names properties
+// is an object whether or not it says `type: object`: generators that omit the type
+// are common. Read as a bare value, it got no rule at all.
+it('reads a body that names properties and no type as an object', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
+        properties: ['name' => new Schema(types: [SchemaType::String])],
+        required: ['name'],
+        additionalProperties: false,
+    )]));
+
+    expect($set->rules)->toBe(['name' => ['present', 'string']])
+        ->and($set->closedKeys)->toBe(['name'])
+        ->and(implode('', $set->findings))->not->toContain('not an object');
+});
+
+it('still reports a body that states no type and no properties', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(required: ['name'])]));
+
+    expect($set->rules)->toBe([])
+        ->and(implode('', $set->findings))->toContain('is not an object');
+});

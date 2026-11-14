@@ -1025,3 +1025,11 @@ it('still refuses a real file that is not the binary type declared', function ()
     expect(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload($png)]))->toBe(200)
         ->and(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload("name,age\nada,36\n")]))->toBe(422);
 });
+
+it('validates a body that names properties without saying type: object', function (): void {
+    $body = new Schema(properties: ['name' => new Schema(types: [SchemaType::String])], required: ['name']);
+
+    expect(statusForBuiltRules($body, ['name' => 'Ada']))->toBe(200)
+        ->and(statusForBuiltRules($body, []))->toBe(422)
+        ->and(statusForBuiltRules($body, ['name' => 5]))->toBe(422);
+});

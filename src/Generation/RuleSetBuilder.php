@@ -326,7 +326,7 @@ final readonly class RuleSetBuilder
             $walk->findings[] = $finding;
         }
 
-        if ($schema->soleType() !== SchemaType::Object) {
+        if (! self::isObjectBody($schema)) {
             return null;
         }
 
@@ -360,6 +360,22 @@ final readonly class RuleSetBuilder
         return $schema->additionalProperties === false
             ? array_map('strval', array_keys($schema->properties))
             : null;
+    }
+
+    /**
+     * Whether the body's schema is read as an object: it says so, or it names
+     * `properties` and says no type.
+     *
+     * JSON Schema applies `properties` to objects only, and a body that names
+     * some is an object whether or not it spells `type: object`, which
+     * generators that omit the type are common enough to matter. Only the
+     * body's root: a nested field with the same shape would be refused a
+     * string the contract accepts, so it keeps no type rule.
+     */
+    private static function isObjectBody(Schema $schema): bool
+    {
+        return $schema->soleType() === SchemaType::Object
+            || ($schema->types === [] && $schema->properties !== []);
     }
 
     /**
@@ -1139,7 +1155,7 @@ final readonly class RuleSetBuilder
     {
         $findings = [];
 
-        if ($schema->soleType() !== SchemaType::Object) {
+        if (! self::isObjectBody($schema)) {
             $findings[] = 'The body\'s own schema is not an object, so no rule is derived from it. '
                 .'A rule key is a field name, and a body that is a bare value has none.';
 
