@@ -10,6 +10,7 @@ use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
+use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\InputDtoPlan;
 use Gcob\LaraSpecFirst\Generation\InputDtoPlanner;
 use Gcob\LaraSpecFirst\Generation\InputDtoType;
@@ -420,26 +421,95 @@ it('types a file part as a file only in a multipart body', function (array $medi
     'multipart and JSON' => [['multipart/form-data', 'application/json'], InputDtoType::STRING],
 ]);
 
-// The rules validate nothing below a recursion, so the DTO does not build one from
-// it: input nothing checked would be a `TypeError` in `from()`, and a 500.
-it('reads a recursive node as mixed and says so', function (?string $name): void {
-    $node = new Schema(
-        name: 'Node',
-        source: '#/components/schemas/Node',
-        types: [SchemaType::Object],
-        properties: ['next' => Schema::recursion('#/components/schemas/Node', $name)],
+/**
+ * A schema that holds a recursion marker, written as a component.
+ *
+ * @param  array<string, Schema>  $properties
+ * @param  list<string>  $required
+ */
+function recursiveComponent(string $name, array $properties, array $required = [], bool $nullable = false): Schema
+{
+    return new Schema(
+        name: $name,
+        source: '#/components/schemas/'.$name,
+        types: $nullable ? [SchemaType::Object, SchemaType::Null] : [SchemaType::Object],
+        properties: $properties,
+        required: $required,
     );
+}
+
+// A named recursion is its own class at every level: the request validates down to the depth the
+// schema states and refuses what is below, so a DTO built from it is built from checked input.
+it('types a named recursion as its own class', function (Schema $node, bool $list, bool $nullable, bool $optional): void {
     $plan = planDtos([dtoOperation('doThing', ['application/json' => $node])]);
+    $dto = dtoNamed($plan, $node->name.'InputDto');
+    $property = array_values(array_filter($dto->properties, static fn ($property): bool => $property->key === 'link'))[0];
+
+    expect($property->optional)->toBe($optional)
+        ->and($property->type->kind)->toBe($list ? InputDtoType::LIST : InputDtoType::DTO);
+
+    $target = $list ? $property->type->item : $property->type;
+
+    expect($target?->kind)->toBe(InputDtoType::DTO)
+        ->and($target?->class)->toBe($node->name.'InputDto')
+        ->and($target?->nullable)->toBe($nullable)
+        ->and(implode("\n", $dto->findings))->not->toContain('points back')
+        // Nothing generated twice: one full type and one partial.
+        ->and(dtoNames($plan->dtos))->toBe([$node->name.'InputDto', $node->name.'PartialInputDto']);
+})->with([
+    'itself' => [
+        recursiveComponent('Address', ['street' => dtoString(), 'link' => Schema::recursion('#/components/schemas/Address', 'Address')], ['street']),
+        false, false, true,
+    ],
+    'a list of itself' => [
+        recursiveComponent('Category', [
+            'name' => dtoString(),
+            'link' => new Schema(types: [SchemaType::Array], items: Schema::recursion('#/components/schemas/Category', 'Category')),
+        ], ['name']),
+        true, false, true,
+    ],
+    'itself, nullable' => [
+        recursiveComponent('Node', ['label' => dtoString(), 'link' => Schema::recursion('#/components/schemas/Node', 'Node')], ['label'], nullable: true),
+        false, true, true,
+    ],
+    'itself, required and not nullable' => [
+        recursiveComponent('Chain', ['label' => dtoString(), 'link' => Schema::recursion('#/components/schemas/Chain', 'Chain')], ['label', 'link']),
+        false, false, false,
+    ],
+]);
+
+// A marker the request did not unroll is read as it arrived: no ancestor to read a depth from, or two ancestors where
+// the walk follows one. The predicate is the request's own, so the two cannot disagree.
+it('types a recursion the request did not unroll as mixed', function (array $operations, string $property): void {
+    $plan = planDtos(array_values($operations));
+    $dto = array_values(array_filter($plan->dtos, static fn ($dto): bool => ! $dto->partial))[0];
+    $found = array_values(array_filter($dto->properties, static fn ($p): bool => $p->key === $property))[0];
+
+    expect($found->type->kind)->toBe(InputDtoType::MIXED)
+        ->and(implode("\n", $dto->findings))->toContain('`'.$property.'` points back at');
+})->with([
+    'an inline ancestor with no name' => [
+        [dtoOperation('doThing', ['application/json' => recursiveComponent('Node', ['link' => Schema::recursion('#/components/schemas/Node')])])],
+        'link',
+    ],
+    'a field that is two markers' => [extractFixture('recursion-allof-two-markers.yaml'), 'part'],
+]);
+
+// What is written beside a marker holds at every level the request crosses it at. A `required` changes nothing the
+// ancestor's class says, but a property does: the class would drop a key the request validated.
+it('keeps a recursion mixed when the site writes properties beside the marker', function (): void {
+    $link = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        properties: ['extra' => dtoString()],
+        recursesTo: '#/components/schemas/Node',
+    );
+    $plan = planDtos([dtoOperation('doThing', ['application/json' => recursiveComponent('Node', ['label' => dtoString(), 'link' => $link])])]);
     $dto = dtoNamed($plan, 'NodeInputDto');
 
-    expect($dto->properties[0]->type->kind)->toBe(InputDtoType::MIXED)
-        ->and(implode("\n", $dto->findings))->toContain('`next` points back at `#/components/schemas/Node`')
-        // Nothing generated twice: one full type and one partial.
-        ->and(dtoNames($plan->dtos))->toBe(['NodeInputDto', 'NodePartialInputDto']);
-})->with([
-    'a named ancestor' => ['Node'],
-    'an ancestor with no name' => [null],
-]);
+    expect($dto->properties[1]->type->kind)->toBe(InputDtoType::MIXED)
+        ->and(implode("\n", $dto->findings))->toContain('`link` points back at');
+});
 
 // Decision 2 of the card #35 plan: a schema no single rule expresses is read as it
 // came, and the finding sends the reader to the request's.
@@ -532,22 +602,17 @@ it('shares one DTO between a $ref and the same $ref wrapped in an allOf', functi
         ->and(array_count_values(dtoNames($plan->dtos))['UserInputDto'])->toBe(1);
 });
 
-// The same component, expanded to a different depth by where the walk entered it.
+// The same component, reached from two operations: one class, whichever of them is read first.
 it('shares one DTO between two operations that reach one recursive pair', function (): void {
-    $author = dtoSchema(['name' => dtoString()], name: 'Author', source: '#/components/schemas/Author');
-    $book = dtoSchema(['title' => dtoString(), 'author' => $author], name: 'Book', source: '#/components/schemas/Book');
-    $authorWithBooks = dtoSchema(
-        ['name' => dtoString(), 'books' => new Schema(types: [SchemaType::Array], items: Schema::recursion('#/components/schemas/Book', 'Book'))],
-        name: 'Author',
-        source: '#/components/schemas/Author',
-    );
+    [$fromAuthors, $fromBooks] = authorAndBookWrittenFrom('author');
 
     $plan = planDtos([
-        dtoOperation('createBook', ['application/json' => $book]),
-        dtoOperation('createAuthor', ['application/json' => $authorWithBooks], path: '/authors'),
+        dtoOperation('createBook', ['application/json' => $fromBooks], path: '/books'),
+        dtoOperation('createAuthor', ['application/json' => $fromAuthors], path: '/authors'),
     ]);
 
-    expect(dtoNames($plan->dtos))->toContain('AuthorInputDto');
+    expect(array_count_values(dtoNames($plan->dtos))['AuthorInputDto'])->toBe(1)
+        ->and(array_count_values(dtoNames($plan->dtos))['BookInputDto'])->toBe(1);
 });
 
 // A name with dots is what Swashbuckle writes with full names, and Java's fully
@@ -727,28 +792,60 @@ function authorAndBookWrittenFrom(string $entry): array
         : [$book($author($bookMarker)), $author($book($authorMarker))];
 }
 
-// A schema in a recursive pair is expanded to a depth that depends on where the walk
-// entered it, and so are the rules that validated it. One class cannot be right for
-// both, so the nested use is `mixed` and the answer is the same in either order.
-it('reads a schema of a recursive pair as mixed where it is nested, in either order', function (string $first): void {
+/**
+ * The files a build would write for these operations' input DTOs, by class name.
+ *
+ * @param  list<Operation>  $operations
+ * @return array<string, string>
+ */
+function emittedDtos(array $operations): array
+{
+    $emitter = new InputDtoEmitter('App\\Http\\Generated', 'openapi.yaml');
+    $files = [];
+
+    foreach (planDtos($operations)->dtos as $dto) {
+        $files[$dto->shortName] = $emitter->emit($dto)->contents;
+    }
+
+    ksort($files);
+
+    return $files;
+}
+
+// A schema in a recursive pair is the same class whichever side the walk enters it from: the request unrolls
+// both sides to the depth each states, so a DTO is never right for one operation and wrong for another. Compared
+// as the files the build would write, byte for byte.
+it('types a recursive pair the same in both orders', function (): void {
     [$fromAuthors, $fromBooks] = authorAndBookWrittenFrom('author');
     $authors = dtoOperation('createAuthor', ['application/json' => $fromAuthors], path: '/authors');
     $books = dtoOperation('createBook', ['application/json' => $fromBooks], path: '/books');
 
-    $plan = planDtos($first === 'authors' ? [$authors, $books] : [$books, $authors]);
+    $authorsFirst = emittedDtos([$authors, $books]);
 
-    $kinds = static fn (string $class): array => array_map(
-        static fn ($property): string => $property->type->kind,
+    expect($authorsFirst)->toHaveKeys(['AuthorInputDto', 'BookInputDto'])
+        ->and(emittedDtos([$books, $authors]))->toBe($authorsFirst)
+        // `books` is a list of `Book`, `author` is an `Author`: each side reads the other as its own class.
+        ->and($authorsFirst['AuthorInputDto'])->toContain('public Optional|array $books,')
+        ->and($authorsFirst['AuthorInputDto'])->toContain('@param  Optional|list<BookInputDto>  $books')
+        ->and($authorsFirst['BookInputDto'])->toContain('public Optional|AuthorInputDto $author,');
+});
+
+// A body written `allOf: [Category, {required}]` is a class of its own, so nothing walks `Category` as a schema: the
+// marker of `children` is the only place it is reached, and its class has to come from the definition it points at.
+it('registers the target class of a recursion behind an allOf', function (): void {
+    $plan = planDtos(extractFixture('recursion-allof-class.yaml'));
+    $children = static fn (string $class): InputDtoType => array_values(array_filter(
         dtoNamed($plan, $class)->properties,
-    );
+        static fn ($property): bool => $property->key === 'children',
+    ))[0]->type;
 
-    expect(dtoNames($plan->dtos))->toContain('AuthorInputDto')->toContain('BookInputDto')
-        // `books` is a list of mixed, `author` is mixed: neither is built from input
-        // that only one of the two operations validates.
-        ->and($kinds('AuthorInputDto'))->toBe([InputDtoType::STRING, InputDtoType::LIST])
-        ->and(dtoNamed($plan, 'AuthorInputDto')->properties[1]->type->item?->kind)->toBe(InputDtoType::MIXED)
-        ->and($kinds('BookInputDto'))->toBe([InputDtoType::STRING, InputDtoType::MIXED]);
-})->with(['authors first' => ['authors'], 'books first' => ['books']]);
+    expect(dtoNames($plan->dtos))->toContain('CategoryInputDto')
+        ->and($children('CreateThingInputDto')->item?->class)->toBe('CategoryInputDto')
+        ->and($children('CategoryInputDto')->item?->class)->toBe('CategoryInputDto')
+        // The wrapper's `required` is the wrapper's own: it does not reach the component the marker points at.
+        ->and(dtoNamed($plan, 'CategoryInputDto')->properties[0]->optional)->toBeTrue()
+        ->and(dtoNamed($plan, 'CreateThingInputDto')->properties[0]->optional)->toBeFalse();
+});
 
 // A wrapper that adds `required` is a different schema from the one it points at.
 // Named after the branch and shared by position, it gave one class two shapes, and

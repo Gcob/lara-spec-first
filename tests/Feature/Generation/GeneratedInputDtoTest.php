@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use Gcob\LaraSpecFirst\Data\Optional;
+use Gcob\LaraSpecFirst\Generation\FormRequestEmitter;
+use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\AddressInputDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\NewUserInputDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\NewUserPartialInputDto;
@@ -118,7 +120,7 @@ it('parses the dates the rule set accepted', function (): void {
         ->and($dto->visits)->toHaveCount(1);
 });
 
-it('builds nested DTOs, and keeps a recursive node as it arrived', function (): void {
+it('builds nested DTOs', function (): void {
     $dto = NewUserInputDto::from(multipartPayload([
         'address' => ['street' => '1 Main St', 'parent' => ['street' => '2 Side St']],
         'profile' => ['bio' => 'Hello'],
@@ -126,7 +128,8 @@ it('builds nested DTOs, and keeps a recursive node as it arrived', function (): 
     ]));
 
     expect($dto->address)->toBeInstanceOf(AddressInputDto::class)
-        ->and($dto->address->parent)->toBe(['street' => '2 Side St'])
+        ->and($dto->address->parent)->toBeInstanceOf(AddressInputDto::class)
+        ->and($dto->toArray()['address']['parent'])->toBe(['street' => '2 Side St'])
         ->and($dto->roles)->toHaveCount(2);
 });
 
@@ -304,13 +307,156 @@ it('refuses a recursive node that is not the schema it points back at', function
         ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['address.parent']);
 });
 
-it('validates a recursion down to the depth the schema states and hands the node on as it arrived', function (): void {
-    $payload = ['address' => addressDeep(3)];
+/**
+ * A request class the build would write for a fixture contract, loaded under a namespace of its own.
+ *
+ * The golden files cover a recursion that is not nullable. These cover the two shapes that behave differently at the
+ * cut (a list, and a schema that allows `null`), and a golden file for each would be one nothing else reads.
+ *
+ * @return string the namespace of the generated classes
+ */
+function generatedRecursion(): string
+{
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\RecursionDepth';
+    static $loaded = false;
 
-    [$status, $body] = patchUser($payload);
+    if ($loaded) {
+        return $namespace;
+    }
 
-    expect($status)->toBe(200)
-        ->and($body['array'])->toBe($payload);
+    ['requests' => $requests, 'plan' => $plan] = plannedRequests(extractFixture('recursion-dto-depth.yaml'));
+    $dataEmitter = new InputDtoEmitter($namespace, 'tests/Fixtures/recursion-dto-depth.yaml');
+    $requestEmitter = new FormRequestEmitter($namespace, 'tests/Fixtures/recursion-dto-depth.yaml');
+    $files = [
+        ...array_map($dataEmitter->emit(...), $plan->dtos),
+        ...array_map($requestEmitter->emit(...), $requests),
+    ];
+
+    $directory = sys_get_temp_dir().'/lsf-recursion-'.bin2hex(random_bytes(4));
+    mkdir($directory);
+
+    try {
+        foreach ($files as $index => $file) {
+            file_put_contents($path = $directory.'/'.$index.'.php', $file->contents);
+            require $path;
+        }
+    } finally {
+        array_map(unlink(...), glob($directory.'/*.php') ?: []);
+        rmdir($directory);
+    }
+
+    $loaded = true;
+
+    return $namespace;
+}
+
+/**
+ * A class the build wrote for the recursion fixture, by its name under the generated namespace.
+ *
+ * @return class-string
+ */
+function generatedClass(string $relativeName): string
+{
+    $class = generatedRecursion().'\\'.$relativeName;
+
+    if (! class_exists($class)) {
+        throw new RuntimeException('The build wrote no class '.$class);
+    }
+
+    return $class;
+}
+
+/**
+ * One JSON request through the real kernel, to the `dto()` of a generated request.
+ *
+ * @param  class-string  $request
+ * @param  array<string, mixed>  $payload
+ */
+function dtoOfPost(string $request, array $payload): object
+{
+    $dto = null;
+    $route = '/_generated/'.md5($request);
+
+    Route::post($route, function () use ($request, &$dto) {
+        $dto = app($request)->dto();
+
+        return response()->json([]);
+    });
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        $route,
+        'POST',
+        [],
+        [],
+        [],
+        ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
+        (string) json_encode($payload),
+    ));
+
+    if (! is_object($dto)) {
+        throw new RuntimeException(sprintf('`%s` refused the payload with a %d: %s', $request, $response->getStatusCode(), $response->getContent()));
+    }
+
+    return $dto;
+}
+
+/**
+ * What a DTO holds at the end of a path of property names and list positions.
+ */
+function dtoAt(object $dto, string|int ...$path): mixed
+{
+    $value = $dto;
+
+    foreach ($path as $step) {
+        $value = match (true) {
+            is_array($value) => $value[$step],
+            is_object($value) => $value->{$step},
+            default => throw new RuntimeException(sprintf('Nothing at `%s` in %s.', $step, implode('.', $path))),
+        };
+    }
+
+    return $value;
+}
+
+// The request validates down to the depth the schema states, so the DTO is one class at every level. `Address` is not
+// nullable and states no depth (three), so the key below the last level is absent: `Optional`. The two shapes the
+// golden files do not hold are built from the fixture: a nullable schema, where `null` is the value that ends a tree,
+// and a list, where an empty one does.
+it('builds nested input DTOs down to the depth', function (): void {
+    $tree = generatedClass('Requests\\CreateTreeRequest');
+    $node = generatedClass('Data\\NodeInputDto');
+    $category = generatedClass('Data\\CategoryInputDto');
+
+    $user = dtoOfPost(UpdateUserRequest::class, ['address' => addressDeep(3)]);
+
+    expect(get_debug_type(dtoAt($user, 'address')))->toBe(AddressInputDto::class)
+        ->and(get_debug_type(dtoAt($user, 'address', 'parent')))->toBe(AddressInputDto::class)
+        ->and(get_debug_type(dtoAt($user, 'address', 'parent', 'parent')))->toBe(AddressInputDto::class)
+        ->and(dtoAt($user, 'address', 'parent', 'parent', 'parent'))->toBeInstanceOf(AddressInputDto::class)
+        ->and(dtoAt($user, 'address', 'parent', 'parent', 'parent', 'street'))->toBe('level 3')
+        // The key below the last level the request validates.
+        ->and(dtoAt($user, 'address', 'parent', 'parent', 'parent', 'parent'))->toBeInstanceOf(Optional::class);
+
+    $ended = dtoOfPost($tree, ['tree' => ['label' => 'a', 'next' => ['label' => 'b', 'next' => null]]]);
+
+    expect(get_debug_type(dtoAt($ended, 'tree')))->toBe($node)
+        ->and(get_debug_type(dtoAt($ended, 'tree', 'next')))->toBe($node)
+        ->and(dtoAt($ended, 'tree', 'next', 'label'))->toBe('b')
+        ->and(dtoAt($ended, 'tree', 'next', 'next'))->toBeNull();
+
+    $absent = dtoOfPost($tree, ['tree' => ['label' => 'a', 'next' => ['label' => 'b']]]);
+
+    expect(dtoAt($absent, 'tree', 'next', 'next'))->toBeInstanceOf(Optional::class);
+
+    $categories = dtoOfPost(generatedClass('Requests\\CreateCategoryRequest'), [
+        'name' => 'a',
+        'children' => [['name' => 'b', 'children' => [['name' => 'c', 'children' => []]]]],
+    ]);
+
+    expect(get_debug_type($categories))->toBe($category)
+        ->and(get_debug_type(dtoAt($categories, 'children', 0)))->toBe($category)
+        ->and(get_debug_type(dtoAt($categories, 'children', 0, 'children', 0)))->toBe($category)
+        ->and(dtoAt($categories, 'children', 0, 'children', 0, 'children'))->toBe([]);
 });
 
 it('refuses a node that is wrong at the last level the schema validates', function (): void {

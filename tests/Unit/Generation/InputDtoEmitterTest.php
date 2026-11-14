@@ -174,14 +174,15 @@ it('makes every property of the partial type optional', function (): void {
         ->not->toContain('AddressPartialInputDto');
 });
 
-// The rules validate nothing below a recursion, so a DTO built from it would be built
-// from input nothing checked: `parent: "oops"` would be a `TypeError` and a 500.
-it('reads a recursive node as it arrived instead of building a DTO from it', function (): void {
+// The rules validate a recursion down to the depth the schema states and refuse what is below it, so
+// the node is built from input that was checked: the class calls its own `from()`.
+it('builds a recursive node with the class it points back at', function (): void {
     expect(emittedDto('AddressInputDto'))
-        ->toContain('public mixed $parent,')
-        ->toContain("parent: array_key_exists('parent', \$payload) ? \$payload['parent'] : new Optional,")
-        ->toContain('`parent` points back at `#/components/schemas/Address`')
-        ->and(emittedDto('AddressInputDto'))->not->toContain('AddressInputDto::from');
+        ->toContain('public Optional|AddressInputDto $parent,')
+        ->toContain("parent: array_key_exists('parent', \$payload) ? AddressInputDto::from(\$payload['parent']) : new Optional,")
+        ->toContain("\$array['parent'] = \$this->parent->toArray();");
+    expect(emittedDto('AddressInputDto'))
+        ->not->toContain('mixed $parent', 'points back at');
 });
 
 it('carries the provenance of the schema it describes', function (): void {

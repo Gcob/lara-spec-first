@@ -11,6 +11,7 @@ use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * Works out every input DTO of a build: its name, its properties, and which operation reads it.
@@ -59,6 +60,14 @@ final class InputDtoPlanner
      * @var array<string, string>
      */
     private array $readBy = [];
+
+    /**
+     * The definitions of the named schemas the walk is inside, the way the rules keep them: what a recursion marker is
+     * resolved against, so a class is found for it whichever operation reached the schema first.
+     *
+     * @var list<Schema>
+     */
+    private array $ancestors = [];
 
     private string $identity = '';
 
@@ -125,6 +134,8 @@ final class InputDtoPlanner
             return;
         }
 
+        $this->ancestors = RuleSetBuilder::definitions($written, $merged, $this->identity, 'the body');
+
         $mediaTypes = array_values(array_intersect($body->mediaTypes(), RuleSetBuilder::READ_MEDIA_TYPES));
         $inline = DocumentPointer::forOperation($operation).'/requestBody/content/'
             .DocumentPointer::escape($mediaTypes[0] ?? '').'/schema';
@@ -146,12 +157,7 @@ final class InputDtoPlanner
         } else {
             $base = $this->className($name, $position);
             $origin = 'the schema\'s name';
-            $naming = sprintf(
-                'Class name taken from the schema `%s`, written at `%s`. Every operation sending that '
-                    .'schema shares this type.',
-                $name,
-                $position,
-            );
+            $naming = self::namedAfter($name, $position);
         }
 
         $named = $name !== null;
@@ -400,22 +406,28 @@ final class InputDtoPlanner
     {
         $schema = AllOfMerger::merge($written, $this->identity, '`'.$segment.'`');
 
-        // A recursive node is the shape of its ancestor, and no rule set reaches an
-        // infinite depth, so the rules validate nothing below it. A DTO built from
-        // it would be built from input nothing checked: a `parent: "oops"` would be
-        // a `TypeError` in `from()` and a 500 where the request owed a 422. So it
-        // is read as it arrived, `mixed`, and the file says why.
         if ($schema->recursesTo !== null) {
-            $this->registry[$owner]['findings'][] = sprintf(
-                '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
-                    .'`mixed` rather than built into a DTO from input nothing checked.',
-                $segment,
-                $schema->recursesTo,
-            );
-
-            return new InputDtoType(InputDtoType::MIXED);
+            return $this->recursion($schema, $segment, $owner);
         }
 
+        $before = count($this->ancestors);
+        array_push($this->ancestors, ...RuleSetBuilder::definitions($written, $schema, $this->identity, '`'.$segment.'`'));
+
+        try {
+            return $this->typeOf($written, $schema, $base, $segment, $pointer, $owner);
+        } finally {
+            $this->ancestors = array_slice($this->ancestors, 0, $before);
+        }
+    }
+
+    /**
+     * What one property becomes, once its own definitions are on the stack.
+     *
+     * @throws UnusableNameException
+     * @throws ConflictingInputException
+     */
+    private function typeOf(Schema $written, Schema $schema, string $base, string $segment, string $pointer, string $owner): InputDtoType
+    {
         $enum = $schema->enum;
         $nullable = $schema->isNullable() || ($enum !== null && in_array(null, $enum, true));
         $values = $enum === null
@@ -496,23 +508,6 @@ final class InputDtoPlanner
         [$name, $source] = $this->nameOf($written, $merged);
         $position = $source ?? $pointer;
 
-        // A schema in a recursive pair is expanded to a different depth depending
-        // on where the walk entered, so its shape, and the rules that validated it,
-        // depend on the operation that reached it first. One class cannot be right
-        // for both: the request that reached it from the other side would hand
-        // `from()` input nothing checked. It is read as it arrived instead.
-        if ($name !== null && self::dependsOnEntry($merged, $source)) {
-            $this->registry[$owner]['findings'][] = sprintf(
-                '`%s` is the schema `%s`, which refers back to a schema outside itself, so what the request '
-                    .'validates below it depends on where the request starts. It is `mixed` rather than a DTO '
-                    .'that would be right for one operation and wrong for another.',
-                $segment,
-                $name,
-            );
-
-            return new InputDtoType(InputDtoType::MIXED);
-        }
-
         if ($name === null) {
             $ownBase = $base.self::studly($segment);
             $origin = sprintf('derived from its parent "%s" and the property "%s"', $base, $segment);
@@ -524,12 +519,7 @@ final class InputDtoPlanner
         } else {
             $ownBase = $this->className($name, $position);
             $origin = 'the schema\'s name';
-            $naming = sprintf(
-                'Class name taken from the schema `%s`, written at `%s`. Every operation reaching that '
-                    .'schema shares this type.',
-                $name,
-                $position,
-            );
+            $naming = self::namedAfter($name, $position);
         }
 
         $class = $this->register($ownBase.'InputDto', false, $written, $merged, $position, $ownBase, $origin, $naming, $name !== null);
@@ -590,41 +580,79 @@ final class InputDtoPlanner
     }
 
     /**
-     * Whether a schema's expansion depends on where the walk entered it: it holds a recursion marker aimed at a schema
-     * that is not itself, or inside it.
+     * A recursion marker: the class of the schema it points back at, wherever the walk came in.
      *
-     * A marker back at the schema itself, or at one written inside it, is cut at the same place whichever way the
-     * schema is reached, so `Address` containing an `Address` is the same shape everywhere. One aimed at a schema above
-     * it, `Author` inside `Book` inside `Author`, is cut where the entry happened to be.
+     * **The request validates down to the depth the schema states and refuses what is below it**, so a class built from
+     * a marker is built from input that was checked. The class is the ancestor's own definition, found on the stack the
+     * way the rules find it, and registered here when nothing walked that schema as a schema of its own: a body written
+     * `allOf: [Category, {required: [name]}]` is a class of its own, and `Category` is only reached through the marker.
+     *
+     * What the request did not unroll stays `mixed` ({@see RuleSetBuilder::unrolls()}), and so does a marker with
+     * properties written beside it: that is a schema the ancestor's class does not say.
+     *
+     * @throws UnusableNameException
+     * @throws ConflictingInputException
      */
-    private static function dependsOnEntry(Schema $schema, ?string $source): bool
+    private function recursion(Schema $site, string $segment, string $owner): InputDtoType
     {
-        $inside = $source === null ? [] : [$source];
-        $targets = [];
-        self::collect($schema, $inside, $targets);
+        $position = (string) $site->recursesTo;
+        $beside = AllOfMerger::besideMarker($site);
 
-        return array_diff($targets, $inside) !== [];
+        if (! RuleSetBuilder::unrolls($site) || ($beside !== null && $beside->properties !== [])) {
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
+                    .'`mixed` rather than built into a DTO from input nothing checked.',
+                $segment,
+                $position,
+            );
+
+            return new InputDtoType(InputDtoType::MIXED);
+        }
+
+        $ancestor = null;
+
+        foreach (array_reverse($this->ancestors) as $definition) {
+            if ($definition->source === $position) {
+                $ancestor = $definition;
+
+                break;
+            }
+        }
+
+        if ($ancestor === null) {
+            throw new LogicException(sprintf('The recursion marker at `%s` unrolls, but the walk holds no schema written there.', $position));
+        }
+
+        $name = (string) ($ancestor->name ?? $site->name);
+        $base = $this->className($name, $position);
+        $class = $this->register(
+            $base.'InputDto',
+            false,
+            $ancestor,
+            $ancestor,
+            $position,
+            $base,
+            'the schema\'s name',
+            self::namedAfter($name, $position),
+            true,
+        );
+        $nullable = $ancestor->isNullable() || ($ancestor->enum !== null && in_array(null, $ancestor->enum, true));
+
+        return new InputDtoType(InputDtoType::DTO, $nullable, class: $class);
     }
 
     /**
-     * @param  list<string>  $inside  the positions of the named schemas written in the tree
-     * @param  list<string>  $targets  where each recursion marker in it points
+     * How a class named after a schema says so. One wording for the root and the nested use, so the class reads the
+     * same whichever the walk reached first.
      */
-    private static function collect(Schema $schema, array &$inside, array &$targets): void
+    private static function namedAfter(string $name, string $position): string
     {
-        if ($schema->recursesTo !== null) {
-            $targets[] = $schema->recursesTo;
-
-            return;
-        }
-
-        if ($schema->source !== null) {
-            $inside[] = $schema->source;
-        }
-
-        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
-            self::collect($child, $inside, $targets);
-        }
+        return sprintf(
+            'Class name taken from the schema `%s`, written at `%s`. Every operation reaching that '
+                .'schema shares this type.',
+            $name,
+            $position,
+        );
     }
 
     /**
