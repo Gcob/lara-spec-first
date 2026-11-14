@@ -329,7 +329,7 @@ it('says what an object body with no properties carries, which is nothing', func
         ->toContain('`$request->json()->all()`')
         // `post()` is the form bag alone: the uploads of a multipart body are `allFiles()`.
         ->toContain('the form bag and `$request->allFiles()` for a form')
-        ->not->toContain('`$request->post()`');
+        ->and(implode("\n", $dto->findings))->not->toContain('`$request->post()`');
 });
 
 it('says nothing of the kind about a body that declares a property', function (): void {
