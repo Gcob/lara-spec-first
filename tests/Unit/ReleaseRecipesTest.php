@@ -96,7 +96,7 @@ done > "$dir/calls/$(printf '%04d' "$n")"
 
 case "$1 $2" in
     "api user") cat "$dir/login" ;;
-    "api repos/"*) cat "$dir/ci" ;;
+    "api --paginate") cat "$dir/ci" ;;
     "repo view") echo "Gcob/lara-spec-first" ;;
     "issue view") cat "$dir/card" ;;
     "pr create") echo "https://github.com/Gcob/lara-spec-first/pull/999" ;;
@@ -356,6 +356,44 @@ describe('release-prep', function (): void {
         releaseNothingWritten($project, $head);
     });
 
+    it('prepares a release only when the card has a "Ready when" box to read', function (string $card): void {
+        $project = releaseProject();
+        $head = releaseGit($project['work'], ['rev-parse', 'HEAD']);
+        file_put_contents($project['state'].'/card', $card);
+
+        $run = releaseRun($project, 'release-prep.sh', ['0.2.0', '126']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   card #126 has every "Ready when" box ticked: it has no box to tick');
+
+        releaseNothingWritten($project, $head);
+    })->with([
+        'a card with no section' => ["## Why\n\nA release.\n\n## Done when\n\n- [ ] Packagist\n"],
+        'a section with prose and no box' => ["## Ready when\n\nLot 1 is closed.\n\n## Done when\n\n- [x] Packagist\n"],
+        'an empty section' => ["## Ready when\n\n## Done when\n\n- [x] Packagist\n"],
+    ]);
+
+    it('prepares a release in a dry run only when origin/main is the one this checkout knows', function (): void {
+        $project = releaseProject();
+        $head = releaseGit($project['work'], ['rev-parse', 'HEAD']);
+        $other = $project['dir'].'/other';
+        mkdir($other);
+        releaseGit($other, ['clone', '--quiet', $project['origin'], '.']);
+        releaseGit($other, ['config', 'user.name', 'Other']);
+        releaseGit($other, ['config', 'user.email', 'other@example.com']);
+        file_put_contents($other.'/news.txt', 'news');
+        releaseGit($other, ['add', 'news.txt']);
+        releaseGit($other, ['commit', '--quiet', '-m', 'chore: land on main']);
+        releaseGit($other, ['push', '--quiet', 'origin', 'main']);
+
+        $run = releaseRun($project, 'release-prep.sh', ['0.2.0', '126', '--dry-run']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   origin/main is up to date here: run git fetch origin main');
+
+        releaseNothingWritten($project, $head);
+    });
+
     it('prepares a release only for a version and a card it can read', function (string $version, string $card): void {
         $project = releaseProject();
         $head = releaseGit($project['work'], ['rev-parse', 'HEAD']);
@@ -418,6 +456,21 @@ describe('release', function (): void {
             ],
             'CI has failed' => [
                 fn (array $p) => file_put_contents($p['state'].'/ci', '12 0 1'),
+                'RED   CI is green on',
+                '0.2.0',
+            ],
+            'CI has failed on a later page' => [
+                fn (array $p) => file_put_contents($p['state'].'/ci', "12 0 0\n12 0 1\n"),
+                'RED   CI is green on',
+                '0.2.0',
+            ],
+            'CI is still running on a later page' => [
+                fn (array $p) => file_put_contents($p['state'].'/ci', "12 0 0\n12 2 0\n"),
+                'RED   CI is green on',
+                '0.2.0',
+            ],
+            'CI answers something unreadable' => [
+                fn (array $p) => file_put_contents($p['state'].'/ci', "all good\n"),
                 'RED   CI is green on',
                 '0.2.0',
             ],
@@ -527,6 +580,27 @@ describe('release', function (): void {
         'an empty line' => ["\n"],
     ])->skip(fn (): bool => ! Process::isPtySupported(), 'This PHP cannot open a pseudo-terminal');
 
+    it('prepares a release on the CI numbers its own jq expression reads from a page of check runs', function (): void {
+        $expression = (new Process(['sh', '-c', '. scripts/release-lib.sh && printf "%s" "$CI_JQ"'], releaseRepository()))->mustRun()->getOutput();
+        $page = json_encode([
+            'total_count' => 7,
+            'check_runs' => [
+                ['status' => 'completed', 'conclusion' => 'success'],
+                ['status' => 'completed', 'conclusion' => 'skipped'],
+                ['status' => 'completed', 'conclusion' => 'neutral'],
+                ['status' => 'queued', 'conclusion' => null],
+                ['status' => 'in_progress', 'conclusion' => null],
+                ['status' => 'completed', 'conclusion' => 'failure'],
+                ['status' => 'completed', 'conclusion' => 'cancelled'],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $jq = new Process(['jq', '-r', $expression], input: $page);
+        $jq->mustRun();
+
+        expect(trim($jq->getOutput()))->toBe('7 2 2');
+    })->skip(fn (): bool => trim((string) shell_exec('command -v jq')) === '', 'jq is not installed');
+
     it('prepares a release and tags it without ever giving gh a --repo or asking it more than it was taught', function (): void {
         $project = releaseProject(RELEASE_PREPARED_CHANGELOG);
 
@@ -542,7 +616,13 @@ describe('release', function (): void {
         }
 
         foreach ($asked as $question) {
-            expect($question)->toMatch('#^(api user|api repos/\{owner\}/\{repo\}/commits/[0-9a-f]+/check-runs\?per_page=100|repo view|issue view)$#');
+            expect($question)->toMatch('#^(api user|api --paginate|repo view|issue view)$#');
+        }
+
+        foreach (releaseGhCalls($project) as $call) {
+            if ($call[1] === '--paginate') {
+                expect($call[2])->toMatch('#^repos/\{owner\}/\{repo\}/commits/[0-9a-f]{40}/check-runs\?per_page=100$#');
+            }
         }
     });
 });
