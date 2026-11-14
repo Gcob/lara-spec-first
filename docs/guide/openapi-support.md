@@ -206,8 +206,9 @@ silence would hand a generator a schema that is wrong rather than one that is in
 **`ignored` is the one field that exists for a report and no generator.** It maps each `Ignored` keyword a node writes
 to the position of the keyword, and it is read by [`spec:doctor`](./doctor.md#what-it-checks) alone. A keyword cannot be
 reported once the reading is over, since nothing keeps it, so the position is taken where the schema is walked.
-`sameShapeAs()` is how two schemas are compared: it leaves `ignored` out, because two inline copies of one shape under
-two media types write the same keyword at two positions, and that is not a difference the contract states.
+`shapeKey()` is how two schemas are compared, by the rule set builder for two media types and by the input DTO planner
+for two inline schemas that name one class (`sameShapeAs()` is built on it): it leaves `ignored` out, because two inline
+copies of one shape write the same keyword at two positions, and that is not a difference the contract states.
 
 **Both `recursesTo` and `name` are read off the same thing: where the schema is written.** That position is computed
 rather than asked of the parser, and a schema written in another file is the whole reason. See
