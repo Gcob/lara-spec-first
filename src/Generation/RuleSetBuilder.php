@@ -795,6 +795,10 @@ final readonly class RuleSetBuilder
      * TODO (#90): read `encoding.<part>.contentType` once it is in the contract,
      * and drop the finding below.
      *
+     * **A text type is not one to match either, and a finding says so.** See
+     * {@see self::isSniffedAsAnotherType()}: `mimetypes:text/csv` refuses every
+     * real CSV.
+     *
      * **`application/octet-stream` and the any-type wildcard are not types to
      * match.** They are how a contract says "any bytes", and `mimetypes`
      * inspects the file's real type, so it would turn away every upload that
@@ -819,7 +823,15 @@ final readonly class RuleSetBuilder
             ? ''
             : strtolower(trim(explode(';', $schema->contentMediaType)[0]));
 
-        if ($mediaType !== '' && ! in_array($mediaType, ['application/octet-stream', '*/*'], true)) {
+        if (self::isSniffedAsAnotherType($mediaType)) {
+            $walk->findings[] = sprintf(
+                '%s declares `contentMediaType: %s`, and no `mimetypes` rule is emitted for it: Laravel reads '
+                    .'the type libmagic sniffs from the content, which is never that one for a text file, so '
+                    .'the rule would refuse every real upload.',
+                $label,
+                $mediaType,
+            );
+        } elseif ($mediaType !== '' && ! in_array($mediaType, ['application/octet-stream', '*/*'], true)) {
             $rules[] = 'mimetypes:'.$mediaType;
         }
 
@@ -836,6 +848,30 @@ final readonly class RuleSetBuilder
                 .'there is not enforced.',
             $label,
         );
+    }
+
+    /**
+     * Whether a media type is one libmagic never reports for a file of that
+     * type, so that `mimetypes` would refuse every real one.
+     *
+     * Measured on libmagic 5.41, with real files (a faked upload reports the
+     * type it is given and hides this): a CSV, a Markdown file and a YAML file
+     * sniff as `text/plain`, an XML file as `text/xml` where the contract says
+     * `application/xml`, and a JSON file as `application/json` on this version
+     * and `text/plain` on older ones. `text/*` is the class, and the textual
+     * `application/*` types are the same class: libmagic reads their content,
+     * and a content with a name of its own (`application/ld+json`) still comes
+     * back as the generic one. `image/svg+xml`, `application/pdf` and the
+     * binary types sniff as themselves and keep their rule.
+     */
+    private static function isSniffedAsAnotherType(string $mediaType): bool
+    {
+        return str_starts_with($mediaType, 'text/')
+            || in_array($mediaType, ['application/json', 'application/xml', 'application/yaml', 'application/x-yaml'], true)
+            || (
+                $mediaType !== 'image/svg+xml'
+                && (str_ends_with($mediaType, '+json') || str_ends_with($mediaType, '+xml'))
+            );
     }
 
     /**

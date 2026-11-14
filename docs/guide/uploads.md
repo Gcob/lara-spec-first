@@ -70,14 +70,14 @@ generator carries neither spelling: it carries
 
 **What a part becomes:**
 
-| The contract states                            | Laravel rule                                                                                 |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `format: binary`, or `contentMediaType`        | `file`, in a body that is `multipart/form-data` alone                                        |
-| `contentMediaType`                             | `mimetypes:` with the declared type, `image/*` included, since Laravel matches a wildcard    |
-| `maxLength` on a binary part                   | `max:` in kilobytes, the contract's bytes over 1024, as the exact decimal                    |
-| The part is in the body root's `required` list | `required` beside the file rules                                                             |
-| The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable |
-| `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`           |
+| The contract states                            | Laravel rule                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `format: binary`, or `contentMediaType`        | `file`, in a body that is `multipart/form-data` alone                                                         |
+| `contentMediaType`                             | `mimetypes:` with the declared type, `image/*` included, since Laravel matches a wildcard, except a text type |
+| `maxLength` on a binary part                   | `max:` in kilobytes, the contract's bytes over 1024, as the exact decimal                                     |
+| The part is in the body root's `required` list | `required` beside the file rules                                                                              |
+| The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable                  |
+| `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`                            |
 
 **Only `contentMediaType` is read for the types today, and `encoding` is the Open half.** OpenAPI also lets a multipart
 body state `encoding.<part>.contentType`, which wins over `contentMediaType`. `RequestBody` holds one schema per media
@@ -103,6 +103,15 @@ affected, since nothing in its DTO depends on the media type.
 real type, and matching `application/octet-stream` literally refuses a PNG: measured, not assumed. Emitting it would
 turn a contract that restricts nothing into one that refuses every upload but an octet stream. A parameter on the type
 (`image/png; charset=binary`) is not part of the type Laravel reads and is dropped, and the type is lower-cased.
+
+**A text type adds no `mimetypes` either, and the generated file says so.** `mimetypes` compares the declared type with
+the one libmagic sniffs from the content, and a text file never sniffs as the type the contract names. Measured on
+libmagic 5.41 with real files, which a faked upload cannot show since `UploadedFile::fake()` reports the type it is
+given: a CSV, a Markdown file and a YAML file are `text/plain`, an XML file is `text/xml` where the contract says
+`application/xml`, and a JSON file is `application/json` on this version and `text/plain` on older ones. So `text/*`,
+`application/json`, `application/xml`, `application/yaml`, `application/x-yaml` and any `+json` or `+xml` suffix type
+(`image/svg+xml` excepted, which sniffs as itself) get no rule, and the file part's findings name the type. A binary
+type (`image/png`, `application/pdf`, `application/zip`) sniffs as itself and keeps its rule.
 
 **Presence is read the same way as for any other property, with one difference in the name.** The body root's `required`
 list decides it, and a required file part is `required` where a required string is `present`: Laravel's `required` is

@@ -991,3 +991,37 @@ it('accepts a request carrying the query names PHP rewrites', function (): void 
         ->and(sendThroughEmitted($class, 'GET')[0])->toBe(200)
         ->and(sendThroughEmitted($class, 'GET', '?limit=x')[0])->toBe(422);
 });
+
+/**
+ * A real file on disk, whose type `mimetypes` has to sniff from its content.
+ *
+ * `UploadedFile::fake()` reports the type it is given and hides exactly this: a
+ * fake `.csv` is `text/csv` whatever it holds, and a real one is `text/plain`.
+ */
+function realUpload(string $content, string $name = 'upload'): UploadedFile
+{
+    $path = (string) tempnam(sys_get_temp_dir(), 'lsf-upload-');
+    file_put_contents($path, $content);
+
+    return new UploadedFile($path, $name, 'application/octet-stream', null, true);
+}
+
+// Measured on libmagic 5.41: a CSV, a Markdown file and a YAML file are
+// `text/plain`, an XML file is `text/xml`, and `UploadedFile::fake()` says
+// otherwise. A `mimetypes:text/csv` rule refused every one of them.
+it('accepts a real file whose declared text type its content sniffs as another', function (string $declared, string $content): void {
+    expect(statusForUpload(oneField(filePart($declared)), ['field' => realUpload($content)]))->toBe(200);
+})->with([
+    'a CSV' => ['text/csv', "name,age\nada,36\n"],
+    'Markdown' => ['text/markdown', "# Title\n\nSome text.\n"],
+    'YAML' => ['application/yaml', "a: 1\nb: 2\n"],
+    'XML' => ['application/xml', '<?xml version="1.0"?><a><b>1</b></a>'],
+    'JSON' => ['application/json', '{"a":1,"b":[1,2]}'],
+]);
+
+it('still refuses a real file that is not the binary type declared', function (): void {
+    $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+
+    expect(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload($png)]))->toBe(200)
+        ->and(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload("name,age\nada,36\n")]))->toBe(422);
+});

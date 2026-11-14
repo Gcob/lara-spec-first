@@ -1005,3 +1005,30 @@ it('reports a query name PHP rewrites, and gives it no rule', function (string $
         ->and(implode("\n", $set->findings))->toContain('`'.$name.'`')
         ->and(implode("\n", $set->findings))->toContain('PHP rewrites');
 })->with(['user.name', 'a b', 'page[size]']);
+
+// Laravel's `mimetypes` reads the type libmagic sniffs from the content, and a
+// real CSV, Markdown or YAML file sniffs as `text/plain` (an XML file as
+// `text/xml`), so a rule for the type the contract names refuses every real file.
+it('emits no mimetypes for a type the content cannot be sniffed as', function (string $declared): void {
+    [$rules, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: $declared));
+
+    expect($rules['avatar'])->toBe(['required', 'file'])
+        ->and($findings)->toContain('`avatar` declares `contentMediaType: '.strtolower(explode(';', $declared)[0]).'`')
+        ->and($findings)->toContain('sniffs');
+})->with([
+    'text/csv',
+    'text/markdown',
+    'text/*',
+    'Text/CSV; charset=utf-8',
+    'application/json',
+    'application/xml',
+    'application/ld+json',
+    'application/yaml',
+    'application/x-yaml',
+]);
+
+it('keeps mimetypes for a binary type the content is sniffed as', function (string $declared): void {
+    [$rules] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: $declared));
+
+    expect($rules['avatar'])->toBe(['required', 'file', 'mimetypes:'.$declared]);
+})->with(['image/png', 'application/pdf', 'application/zip', 'image/svg+xml']);
