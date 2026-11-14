@@ -153,6 +153,7 @@ final readonly class RuleSetBuilder
             : array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES));
         $walk->textSource = $read !== [] && ! in_array('application/json', $read, true) ? 'form body' : null;
         $walk->mixedBody = count($read) > 1 && in_array('application/json', $read, true);
+        $walk->formBody = array_diff($read, ['application/json']) !== [];
 
         if ($body !== null) {
             $closedKeys = self::bodyRules($operation, $body, $walk);
@@ -164,6 +165,7 @@ final readonly class RuleSetBuilder
         $walk->multipart = false;
         $walk->textSource = 'query string';
         $walk->mixedBody = false;
+        $walk->formBody = false;
         $queryKeys = [];
 
         foreach ($operation->queryParameters as $parameter) {
@@ -378,7 +380,7 @@ final readonly class RuleSetBuilder
             $walk,
             '',
             $schema,
-            self::rootPresence($operation, $schema, $body),
+            self::rootPresence($operation, $schema, $body, $walk),
         );
 
         // The payload's root has no field for `array:` to sit on, so a closed
@@ -386,9 +388,35 @@ final readonly class RuleSetBuilder
         // level: every nested object that closes itself already carries
         // `array:` on its own key, so checking deeper here would only repeat
         // it — and would refuse the extras of a nested object that allows them.
-        return $schema->additionalProperties === false
-            ? array_map('strval', array_keys($schema->properties))
-            : null;
+        if ($schema->additionalProperties !== false) {
+            return null;
+        }
+
+        // A form delivers a name PHP rewrote, so a closed root names the name it
+        // receives. A body that is JSON too keeps the one the contract writes beside it.
+        $closed = [];
+
+        foreach (array_keys($schema->properties) as $name) {
+            $name = (string) $name;
+
+            if (! $walk->formBody || ! self::phpRewrites($name)) {
+                $closed[] = $name;
+
+                continue;
+            }
+
+            $delivered = self::deliveredName($name);
+
+            if ($walk->mixedBody) {
+                $closed[] = $name;
+            }
+
+            if ($delivered !== null) {
+                $closed[] = $delivered;
+            }
+        }
+
+        return array_values(array_unique($closed));
     }
 
     /**
@@ -425,21 +453,23 @@ final readonly class RuleSetBuilder
      *
      * @return callable(string, Schema): string
      */
-    private static function rootPresence(Operation $operation, Schema $schema, RequestBody $body): callable
+    private static function rootPresence(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): callable
     {
         if ($operation->method === HttpMethod::Patch) {
             return static fn (string $name, Schema $property): string => 'sometimes';
         }
 
         if (! $body->required) {
-            return static function (string $name, Schema $property) use ($schema): string {
+            return static function (string $name, Schema $property) use ($schema, $walk): string {
                 if (! in_array($name, $schema->required, true)) {
                     return 'sometimes';
                 }
 
                 $siblings = array_values(array_filter(
                     array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required]),
-                    static fn (string $other): bool => $other !== $name && self::unescapableKey($other) === null,
+                    static fn (string $other): bool => $other !== $name
+                        && self::unescapableKey($other) === null
+                        && ! ($walk->formBody && self::phpRewrites($other)),
                 ));
 
                 return $siblings === []
@@ -473,7 +503,7 @@ final readonly class RuleSetBuilder
 
         foreach ($schema->properties as $name => $property) {
             $name = (string) $name;
-            $unescapable = self::unescapableKey($name);
+            $unescapable = self::unescapableKey($name) ?? self::unreachableBodyName($name, $schema, $walk, $prefix);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
@@ -511,7 +541,7 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
-            $unescapable = self::unescapableKey($name);
+            $unescapable = self::unescapableKey($name) ?? self::unreachableBodyName($name, $schema, $walk, $prefix);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
@@ -555,7 +585,8 @@ final readonly class RuleSetBuilder
         $dependents = [];
 
         foreach ($schema->dependentRequired as $trigger => $names) {
-            $unescapable = self::unescapableKey((string) $trigger);
+            $unescapable = self::unescapableKey((string) $trigger)
+                ?? self::unreachableBodyName((string) $trigger, $schema, $walk, $prefix);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
@@ -1385,6 +1416,66 @@ final readonly class RuleSetBuilder
                 $field,
             )
             : null;
+    }
+
+    /**
+     * The name PHP gives a top-level key of a form body, or null when it gives
+     * none.
+     *
+     * Asked of PHP itself: `parse_str()` is the parser a form body goes through,
+     * and what it keeps is the answer, where a rewrite of its rules written here
+     * would be one more thing to keep in step with it. Measured against a real SAPI
+     * (`curl -d` and `curl -F` to `php -S`), `$_POST` agrees with it: `user.name`
+     * arrives as `user_name`, `a b` as `a_b` and `page[size]` as `page`, and a
+     * name inside brackets (`address[a.b]`) keeps its dot.
+     *
+     * @internal Public so the input DTO asks the question the rules did.
+     */
+    public static function deliveredName(string $name): ?string
+    {
+        parse_str(urlencode($name).'=1', $parsed);
+
+        $key = array_key_first($parsed);
+
+        return $key === null ? null : (string) $key;
+    }
+
+    /**
+     * Whether PHP rewrites a top-level name of a form body before Laravel sees it.
+     *
+     * @internal Public for the reason {@see self::deliveredName()} gives.
+     */
+    public static function phpRewrites(string $name): bool
+    {
+        return self::deliveredName($name) !== $name;
+    }
+
+    /**
+     * A finding for a top-level body name PHP rewrites in a form, or null for
+     * the ordinary case.
+     *
+     * The same reasoning as {@see self::unreachableQueryName()}: no rule key finds
+     * the name the contract writes, so a rule would refuse every valid request or
+     * never judge one. A name nested inside another keeps its dot, and a JSON body
+     * keeps every name, so only the root of a body read as a form is affected.
+     */
+    private static function unreachableBodyName(string $name, Schema $schema, RuleWalk $walk, string $prefix): ?string
+    {
+        if ($prefix !== '' || ! $walk->formBody || ! self::phpRewrites($name)) {
+            return null;
+        }
+
+        $delivered = self::deliveredName($name);
+
+        return sprintf(
+            '`%s` is a property of a form body whose name PHP rewrites before Laravel sees it (`.` and a '
+                .'space become `_`, and `[` opens a nested array), so no rule key can find it. None is '
+                .'emitted for it, and neither its type nor its presence is enforced.%s',
+            $name,
+            $schema->additionalProperties === false && $delivered !== null
+                ? sprintf(' The body is closed to its declared names, so it accepts `%s`, the name PHP gives it.', $delivered)
+                : '',
+        );
     }
 
     /**

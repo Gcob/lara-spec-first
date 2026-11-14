@@ -840,21 +840,22 @@ function sendThroughEmitted(string $class, string $method, string $query = '', ?
  * built, so a body that passes validation and then breaks the DTO shows as a 500.
  *
  * @param  class-string<FormRequest>  $class
- * @param  array<array-key, mixed>  $json
+ * @param  array<array-key, mixed>  $json  the body, for a JSON request
+ * @param  array<string, mixed>  $parameters  form fields, for a request that is not JSON
  * @return array{0: int, 1: array<string, mixed>}
  */
-function dtoThroughEmitted(string $class, string $method, array $json): array
+function dtoThroughEmitted(string $class, string $method, array $json = [], array $parameters = []): array
 {
     Route::match([$method], '/_generated/emitted-dto', fn () => response()->json(app($class)->dto()->toArray()));
 
     $response = app(HttpKernel::class)->handle(Request::create(
         '/_generated/emitted-dto',
         $method,
+        $parameters,
         [],
         [],
-        [],
-        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
-        (string) json_encode($json),
+        ['HTTP_ACCEPT' => 'application/json'] + ($parameters === [] ? ['CONTENT_TYPE' => 'application/json'] : []),
+        $parameters === [] ? (string) json_encode($json) : null,
     ));
 
     /** @var array<string, mixed> $decoded */
@@ -1084,6 +1085,69 @@ it('accepts a request carrying the query names PHP rewrites', function (): void 
     expect(sendThroughEmitted($class, 'GET', '?user.name=ada&a%20b=1&page[size]=3&limit=2'))->toBe([200, ['limit' => '2']])
         ->and(sendThroughEmitted($class, 'GET')[0])->toBe(200)
         ->and(sendThroughEmitted($class, 'GET', '?limit=x')[0])->toBe(422);
+});
+
+/**
+ * A `POST` carrying a body of the given media types, whose properties are names PHP rewrites in a form.
+ *
+ * @param  list<string>  $mediaTypes
+ */
+function postWithRewrittenNames(array $mediaTypes, bool $closed = false): Operation
+{
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'user.name' => new Schema(types: [SchemaType::String]),
+            'a b' => new Schema(types: [SchemaType::Integer]),
+            'page[size]' => new Schema(types: [SchemaType::Integer]),
+            'plain' => new Schema(types: [SchemaType::String]),
+        ],
+        required: ['user.name', 'a b', 'plain'],
+        additionalProperties: $closed ? false : null,
+    );
+
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/rewritten'),
+        operationId: 'sendRewritten',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $schema), true),
+    );
+}
+
+// What a real PHP SAPI hands Laravel for `user.name=ada&a b=1&page[size]=3&plain=x`, form-encoded or
+// multipart (measured with `curl -d` and `curl -F` to `php -S`): `user_name`, `a_b` and a nested `page`.
+// A rule keyed by the contract's name never finds them, so a required one refused every valid request.
+it('accepts a form body carrying the names PHP rewrites, and still judges the rest', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithRewrittenNames([$mediaType]));
+    $sent = ['user_name' => 'ada', 'a_b' => '1', 'page' => ['size' => '3'], 'plain' => 'x'];
+
+    expect(sendThroughEmitted($class, 'POST', parameters: $sent)[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['plain' => ['x']] + $sent)[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1'])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+it('keeps a dotted name of a JSON body as the contract writes it', function (): void {
+    $class = emittedRequestClass(postWithRewrittenNames(['application/json']));
+
+    expect(sendThroughEmitted($class, 'POST', json: ['user.name' => 'ada', 'a b' => 1, 'plain' => 'x'])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', json: ['a b' => 1, 'plain' => 'x'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', json: ['user.name' => 5, 'a b' => 1, 'plain' => 'x'])[0])->toBe(422);
+});
+
+it('closes a form body to the names PHP delivers', function (): void {
+    $class = emittedRequestClass(postWithRewrittenNames(['multipart/form-data'], closed: true));
+    $sent = ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x'];
+
+    expect(sendThroughEmitted($class, 'POST', parameters: $sent)[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['extra' => 1] + $sent)[0])->toBe(422);
+});
+
+it('builds the DTO of a form body whose required name PHP rewrote', function (): void {
+    $class = emittedRequestClass(postWithRewrittenNames(['application/x-www-form-urlencoded']));
+
+    expect(dtoThroughEmitted($class, 'POST', parameters: ['user_name' => 'ada', 'a_b' => '1', 'plain' => 'x']))
+        ->toBe([200, ['plain' => 'x']]);
 });
 
 /**

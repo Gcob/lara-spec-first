@@ -61,6 +61,7 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A file part's `encoding.<part>.contentType`, which [`uploads.md`](../uploads.md) names as open |
 | `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for          |
 |                                                                                                              | A `query` name PHP rewrites (`user.name`, `a b`, `page[size]`), which no rule key can find     |
+|                                                                                                              | The same top-level name in a body read as a form, which PHP rewrites the same way              |
 | A `query` parameter, with its own `required`                                                                 | A bound on a field that states no single type                                                  |
 | A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                                |
 | [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size |                                                                                                |
@@ -127,6 +128,16 @@ in a name becomes `_`, so `user.name` arrives as `user_name`, and `[` opens a ne
 an optional parameter would never be validated, and a required one would answer 422 to every valid request. It is
 treated as [a field name carrying `*`](#every-constraint-maps-or-reports) is: no rule, a finding that says why, and the
 request accepts what the contract accepts. It is not in the list of names `validationData()` reads either.
+
+**A top-level body name PHP rewrites gets no rule either, when the body is read as a form.** A form-encoded or multipart
+body goes through the same parser: `user.name=ada` arrives as `user_name`, and `page[size]=3` as `page => [size => 3]`.
+Measured with a real SAPI (`curl -d` and `curl -F` to `php -S`, PHP 8.5), not only with `parse_str()`, and only the
+top-level name: `address[a.b]` keeps its dot, and a JSON body keeps every name as written, so a JSON-only body keeps the
+escaped rule for `user.name`. A body that is JSON and a form at once is read as a form here, since a rule for the JSON
+name would refuse every form client. The request has no rule for the name and a finding says why. **The matching input
+DTO property is `Optional`** whichever media type sends it, because one type serves them all and the validated payload
+never carries the name. **A closed body accepts the name PHP gives the key** (`user_name`), and beside it the one the
+contract writes when the body is also JSON.
 
 **A path parameter is the router's question, and its answer is a 404.** `/users/abc` on an operation whose `{id}` is an
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong

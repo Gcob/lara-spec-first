@@ -293,16 +293,32 @@ final class InputDtoPlanner
             // presence rule for it, since `required` there is about responses, so a
             // body without it reaches `from()` all the same.
             $readOnly = AllOfMerger::merge($property, $this->identity, '`'.$key.'`')->readOnly;
+            //
+            // A name PHP rewrites in a form body is the third: the request has no rule for
+            // it there, so the validated payload never carries it. The type is shared by
+            // JSON and form bodies alike, so it is optional whichever sends it.
+            $rewritten = RuleSetBuilder::phpRewrites($key);
             $optional = $partial
                 || ! in_array($key, $merged->required, true)
                 || RuleSetBuilder::breaksKeyList($key)
-                || $readOnly;
+                || $readOnly
+                || $rewritten;
 
             if (! $partial && RuleSetBuilder::breaksKeyList($key) && in_array($key, $merged->required, true)) {
                 $this->registry[$shortName]['findings'][] = sprintf(
                     '`%s` is required by the schema, but its name has a `.` or a `,`, which Laravel cannot '
                         .'name in `required_array_keys` when the object is nested, so the property is `Optional` '
                         .'here whatever the rules say at the root.',
+                    $key,
+                );
+            }
+
+            if (! $partial && $rewritten && in_array($key, $merged->required, true)) {
+                $this->registry[$shortName]['findings'][] = sprintf(
+                    '`%s` is required by the schema, but PHP rewrites its name in a form body (`.` and a space '
+                        .'become `_`, and `[` opens a nested array), where the request has no rule for it and '
+                        .'the payload never carries it. One shape serves a JSON body and a nested use, which '
+                        .'keep it, so the property is `Optional` here.',
                     $key,
                 );
             }

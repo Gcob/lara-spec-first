@@ -41,6 +41,13 @@ final class RuleWalk
     public ?string $textSource = null;
 
     /**
+     * Whether the body is read from a form (form-encoded or multipart), alone or
+     * beside JSON, which is when PHP renames a top-level name before Laravel
+     * sees it.
+     */
+    public bool $formBody = false;
+
+    /**
      * Whether the body is read from JSON and from a form at once, which no one
      * boolean rule serves.
      */

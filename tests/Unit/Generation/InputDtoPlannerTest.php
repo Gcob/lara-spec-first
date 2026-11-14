@@ -597,6 +597,21 @@ it('makes a required readOnly property optional, at the root and nested', functi
         ->and(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))->toContain('`id` is required by the schema and `readOnly`');
 });
 
+// A form body never carries a name PHP rewrites under the name the contract writes, and the
+// request has no rule for it, so the validated payload lacks it: the property cannot be required.
+// The type is shared by every operation, JSON or form, so it is optional whichever sends it.
+it('makes a required property whose name PHP rewrites optional, and says why', function (): void {
+    $plan = planDtos([dtoOperation('doThing', ['multipart/form-data' => dtoSchema(
+        ['a b' => dtoString(), 'page[size]' => dtoString(), 'plain' => dtoString()],
+        ['a b', 'page[size]', 'plain'],
+    )])]);
+
+    expect(array_map(static fn ($property): bool => $property->optional, dtoNamed($plan, 'DoThingInputDto')->properties))
+        ->toBe([true, true, false])
+        ->and(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))
+        ->toContain('`a b` is required by the schema, but PHP rewrites its name in a form body');
+});
+
 // Shared by every operation that reaches the schema, so the shape cannot depend on
 // whether the root or a nested use came first: the key is optional in both.
 it('gives a schema one shape whichever operation reaches it first', function (bool $rootFirst): void {

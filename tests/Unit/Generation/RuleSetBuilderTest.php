@@ -1190,3 +1190,51 @@ it('says it once for a request with several typed file parts', function (): void
 
     expect(substr_count(implode("\n", $set->findings), 'stricter than the contract'))->toBe(1);
 });
+
+/*
+ * PHP renames a name before Laravel sees a form-encoded or multipart body, the way it does a
+ * query string (measured with a real PHP SAPI, `curl -d` and `curl -F`: `user.name` arrives as
+ * `user_name`, `a b` as `a_b`, `page[size]` as `page => [size => ...]`), and only the top-level
+ * name: `address[a.b]` keeps its dot. A JSON body keeps every name as written.
+ */
+
+it('gives no rule to a top-level body name PHP rewrites when the body is a form', function (string $mediaType): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(
+        [
+            'user.name' => new Schema(types: [SchemaType::String]),
+            'a b' => new Schema(types: [SchemaType::String]),
+            'page[size]' => new Schema(types: [SchemaType::Integer]),
+            'plain' => new Schema(types: [SchemaType::String]),
+            'address' => objectSchema(['a.b' => new Schema(types: [SchemaType::String])], ['a.b']),
+        ],
+        ['user.name', 'a b', 'plain'],
+    )]));
+
+    expect(array_keys($set->rules))->toBe(['plain', 'address', 'address.a\.b'])
+        ->and(implode("\n", $set->findings))->toContain('`user.name` is a property of a form body whose name PHP rewrites')
+        ->and(implode("\n", $set->findings))->toContain('`page[size]` is a property of a form body whose name PHP rewrites');
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+it('keeps the rule for a dotted name in a JSON body, and drops it when the body is also a form', function (): void {
+    $schema = objectSchema(['user.name' => new Schema(types: [SchemaType::String])], ['user.name']);
+
+    expect(RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema]))->rules)
+        ->toHaveKey('user\.name')
+        ->and(RuleSetBuilder::for(operationWithInput(content: [
+            'application/json' => $schema,
+            'application/x-www-form-urlencoded' => $schema,
+        ]))->rules)->toBe([]);
+});
+
+it('closes a form body to the name PHP gives a key, and a mixed body to both', function (): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: ['user.name' => new Schema(types: [SchemaType::String]), 'plain' => new Schema(types: [SchemaType::String])],
+        additionalProperties: false,
+    );
+
+    expect(RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => $schema]))->closedKeys)
+        ->toBe(['user_name', 'plain'])
+        ->and(RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, 'multipart/form-data' => $schema]))->closedKeys)
+        ->toBe(['user.name', 'user_name', 'plain']);
+});
