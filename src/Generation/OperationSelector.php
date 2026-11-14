@@ -10,10 +10,9 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\NoSuchOperationException;
 /**
  * Turns what a developer typed into the operations they meant.
  *
- * **Three forms, and the singular one is the only primitive.** `--tag` and `--all`
- * are a loop over it rather than a second mechanism: nothing this package creates
- * is a grouped file, so there is nothing a bulk invocation could produce that is
- * not simply the singular form run several times.
+ * **Three forms, and the singular one is the only primitive.** `--tag` and `--all` are a loop over it rather than a
+ * second mechanism: nothing this package creates is a grouped file, so there is nothing a bulk invocation could produce
+ * that is not simply the singular form run several times.
  *
  * @see docs/guide/code-generation/scaffolding.md — "The build names the command"
  */
@@ -27,13 +26,11 @@ final readonly class OperationSelector
     /**
      * One operation, by the name a developer would have to hand.
      *
-     * **`operationId` first, then the method and path.** An `operationId` is the
-     * name its author chose and the obvious thing to type; the label exists
-     * because [an operation need not have one](../../docs/guide/code-generation/generated-file-anatomy.md)
-     * — and an operation with no `operationId` can still declare `x-controller`,
-     * so it can still need scaffolding. The method is matched however it was
-     * typed, since `GET /users/{id}` is how everyone writes an endpoint and
-     * `get /users/{id}` is how a document keys it.
+     * **`operationId` first, then the method and path.** An `operationId` is the name its author chose and the obvious
+     * thing to type; the label exists because [an operation need not have
+     * one](../../docs/guide/code-generation/generated-file-anatomy.md) — and an operation with no `operationId` can
+     * still declare `x-controller`, so it can still need scaffolding. The method is matched however it was typed, since
+     * `GET /users/{id}` is how everyone writes an endpoint and `get /users/{id}` is how a document keys it.
      *
      * @return list<Operation> one operation, as a list, so every caller handles one shape
      *
@@ -61,10 +58,9 @@ final readonly class OperationSelector
     /**
      * Every operation carrying a tag, in document order.
      *
-     * **Matched exactly, the way the document writes it.** Tags are the author's
-     * own grouping and this package does not own their spelling: matching
-     * `users` against `Users` would be inventing a rule that the next contract
-     * with both spellings would then be broken by.
+     * **Matched exactly, the way the document writes it.** Tags are the author's own grouping and this package does not
+     * own their spelling: matching `users` against `Users` would be inventing a rule that the next contract with both
+     * spellings would then be broken by.
      *
      * @return list<Operation>
      *
@@ -103,11 +99,10 @@ final readonly class OperationSelector
     /**
      * How many operations carry each tag, most first, then by name.
      *
-     * Lives here because it answers the same question from the other end: what a
-     * developer could type. `spec:build` prints it to
-     * [name the commands rather than run them](../../docs/guide/code-generation/scaffolding.md#the-build-names-the-command),
-     * and a specification with two hundred unimplemented operations needs a
-     * grouping rather than two hundred lines.
+     * Lives here because it answers the same question from the other end: what a developer could type. `spec:build`
+     * prints it to [name the commands rather than run
+     * them](../../docs/guide/code-generation/scaffolding.md#the-build-names-the-command), and a specification with two
+     * hundred unimplemented operations needs a grouping rather than two hundred lines.
      *
      * @return array<string, int> tag to the number of operations carrying it
      */

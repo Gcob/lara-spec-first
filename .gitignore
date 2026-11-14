@@ -113,7 +113,16 @@ _ide_helper.php
 _ide_helper_models.php
 
 # AI assistants
-.claude/
+#
+# `.claude/*` rather than `.claude/`: git cannot re-include a file inside a
+# directory it ignores, so the exception below would do nothing. The `**/` keeps
+# the old rule's reach, since a pattern with a slash in the middle is anchored to
+# the root: a `.claude/` folder at any depth stays ignored (workbench/.claude/
+# holds the settings.local.json of anyone who starts Claude Code there). Only the
+# shared hook settings at the root are tracked; a contributor's own
+# settings.local.json and agents/ stay theirs.
+**/.claude/*
+!/.claude/settings.json
 .aider*
 .cursor/
 CLAUDE.local.md

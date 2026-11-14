@@ -10,10 +10,9 @@ use InvalidArgumentException;
 /**
  * A path in the specification is not a usable path template.
  *
- * Only faults that make the path meaningless in its own terms live here —
- * nothing about what Laravel can route. That distinction is the whole reason
- * `Contract\` exists: it describes the contract, not what one framework is able
- * to do with it.
+ * Only faults that make the path meaningless in its own terms live here — nothing about what Laravel can route. That
+ * distinction is the whole reason `Contract\` exists: it describes the contract, not what one framework is able to do
+ * with it.
  */
 final class InvalidPathTemplateException extends InvalidArgumentException implements SpecException
 {

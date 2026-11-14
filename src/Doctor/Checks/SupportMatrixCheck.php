@@ -16,25 +16,19 @@ use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 
 /**
- * Every `Partial`, `Ignored` and `Rejected` construct in the document, with
- * its position — the widest section of the support matrix, so it is built in
- * the four lots below rather than all at once:
+ * Every `Partial`, `Ignored` and `Rejected` construct in the document, with its position — the widest section of the
+ * support matrix, so it is built in the four lots below rather than all at once:
  *
- *   1. **Rejected, already detected by the reading pipeline.** `trace`, a
- *      `$ref` into `components.pathItems`, a `$dynamicRef`/`$dynamicAnchor`.
- *      Already collected as faults tagged for this section by
- *      {@see FaultClassification::sectionOf()} — nothing left to detect,
- *      only to surface. See {@see self::rejected()}.
- *   2. **Partial, already read by `OperationExtractor`.** Only the one rule
- *      this PR adds new logic for: `operationId` is required on an operation
- *      that is both `public` and `stable`. See {@see self::missingOperationId()}.
- *   3. **Deferred, one line per construct rather than per occurrence** — a
- *      count, not a list, because the level's own definition forbids one
- *      finding per occurrence. See {@see self::deferred()}.
- *   4. **`Open` constructs are out of scope for this PR** — the package has
- *      taken no position on them yet, so there is nothing to honor or refuse
- *      that a finding could point at. Not a gap: a finding a reader cannot
- *      act on is what doctor.md calls a rumor.
+ *   1. **Rejected, already detected by the reading pipeline.** `trace`, a `$ref` into `components.pathItems`, a
+ *      `$dynamicRef`/`$dynamicAnchor`. Already collected as faults tagged for this section by
+ *      {@see FaultClassification::sectionOf()} — nothing left to detect, only to surface. See {@see self::rejected()}.
+ *   2. **Partial, already read by `OperationExtractor`.** Only the one rule this PR adds new logic for: `operationId`
+ *      is required on an operation that is both `public` and `stable`. See {@see self::missingOperationId()}.
+ *   3. **Deferred, one line per construct rather than per occurrence** — a count, not a list, because the level's own
+ *      definition forbids one finding per occurrence. See {@see self::deferred()}.
+ *   4. **`Open` constructs are out of scope for this PR** — the package has taken no position on them yet, so there is
+ *      nothing to honor or refuse that a finding could point at. Not a gap: a finding a reader cannot act on is what
+ *      doctor.md calls a rumor.
  *
  * @see docs/guide/doctor.md — "What it checks"
  * @see docs/guide/openapi-support.md — "The support matrix"
@@ -44,22 +38,17 @@ final readonly class SupportMatrixCheck
     private const SECTION = 'Support findings';
 
     /**
-     * What is left of the Deferred lot: response declarations, and nothing
-     * else.
+     * What is left of the Deferred lot: response declarations, and nothing else.
      *
-     * **`query` and `requestBody` left it when a rule set was first built from
-     * them.** They are `Partial` in docs/guide/openapi-support.md's matrix now,
-     * and a `Partial` construct is reported when something about a particular
-     * occurrence is missing rather than counted wholesale — what a given
-     * operation states and this package does not enforce is named in the
-     * generated request's own findings, per field, which is a better answer
-     * than a number. #36 is where the doctor says the same thing per operation.
+     * **`query` and `requestBody` left it when a rule set was first built from them.** They are `Partial` in
+     * docs/guide/openapi-support.md's matrix now, and a `Partial` construct is reported when something about a
+     * particular occurrence is missing rather than counted wholesale — what a given operation states and this package
+     * does not enforce is named in the generated request's own findings, per field, which is a better answer than a
+     * number. #36 is where the doctor says the same thing per operation.
      *
-     * **Each label names the unit it counts, and the count matches it.** The
-     * whole content of one of these findings is a number, so a label counting
-     * something other than what it says is the entire finding being wrong —
-     * `responses` counts response *declarations* across the document, not
-     * operations that declare any.
+     * **Each label names the unit it counts, and the count matches it.** The whole content of one of these findings is
+     * a number, so a label counting something other than what it says is the entire finding being wrong — `responses`
+     * counts response *declarations* across the document, not operations that declare any.
      */
     private const DEFERRED_LABELS = [
         'responses' => 'response declaration(s)',
@@ -68,12 +57,10 @@ final readonly class SupportMatrixCheck
     /**
      * Constructs the package reads and will not act on, ever.
      *
-     * `header` and `cookie` parameters are the whole list. They were counted
-     * beside `query` under one `Deferred` label until a parameter first became
-     * a rule, because an `Ignored` finding needs its non-zero exit only once
-     * there is behavior to be absent from — and now there is. What a validator
-     * would answer for a missing credential is a 401 and not a 422, so this is
-     * a position rather than a gap.
+     * `header` and `cookie` parameters are the whole list. They were counted beside `query` under one `Deferred` label
+     * until a parameter first became a rule, because an `Ignored` finding needs its non-zero exit only once there is
+     * behavior to be absent from — and now there is. What a validator would answer for a missing credential is a 401
+     * and not a 422, so this is a position rather than a gap.
      *
      * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
      */
@@ -82,9 +69,8 @@ final readonly class SupportMatrixCheck
     ];
 
     /**
-     * The verbs a Path Item Object may carry an Operation Object under.
-     * Everything else at that level — `parameters`, `summary`, `$ref`,
-     * `servers` — belongs to the path rather than to one operation.
+     * The verbs a Path Item Object may carry an Operation Object under. Everything else at that level — `parameters`,
+     * `summary`, `$ref`, `servers` — belongs to the path rather than to one operation.
      */
     private const VERBS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 
@@ -105,11 +91,9 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * `operationId` is `Partial`: honored when present, and required once an
-     * operation promises `public` and `stable` at once — elsewhere the
-     * method and path stand in for it. Nothing in the reading pipeline
-     * refuses its absence today, so this is genuinely new logic rather than
-     * a translated fault, unlike {@see self::rejected()}.
+     * `operationId` is `Partial`: honored when present, and required once an operation promises `public` and `stable`
+     * at once — elsewhere the method and path stand in for it. Nothing in the reading pipeline refuses its absence
+     * today, so this is genuinely new logic rather than a translated fault, unlike {@see self::rejected()}.
      *
      * @param  list<Operation>  $operations
      * @return list<Finding>
@@ -150,25 +134,19 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * One line per Deferred construct actually present, naming how many —
-     * never one per occurrence, which the level's own definition forbids:
-     * "Deferred exists because the exit code has to stay reachable" only
-     * holds if a whole document's worth of them still reads as one line.
+     * One line per Deferred construct actually present, naming how many — never one per occurrence, which the level's
+     * own definition forbids: "Deferred exists because the exit code has to stay reachable" only holds if a whole
+     * document's worth of them still reads as one line.
      *
-     * **No pointer, and that is a property of the finding rather than a gap.**
-     * A count spans every position that contributed to it; naming one of them
-     * would point a reader at an arbitrary occurrence and imply the other
-     * nineteen are elsewhere. `{@see self::missingOperationId()}` and
-     * `RoutingOutcomeCheck`'s shadowing findings each name one position and
-     * carry one — see docs/guide/doctor.md for what the report promises per
-     * finding.
+     * **No pointer, and that is a property of the finding rather than a gap.** A count spans every position that
+     * contributed to it; naming one of them would point a reader at an arbitrary occurrence and imply the other
+     * nineteen are elsewhere. `{@see self::missingOperationId()}` and `RoutingOutcomeCheck`'s shadowing findings each
+     * name one position and carry one — see docs/guide/doctor.md for what the report promises per finding.
      *
-     * **Every node is read as `mixed` and checked.** This walks the raw
-     * document, which means a document the parser already faulted on is still
-     * walked: `parameters: oops` is a real thing a person writes, and this
-     * section running after Document validity has to survive it and say what
-     * it can, not take the process down with a `foreach` over a string. The
-     * fault is already in the report by the time this runs.
+     * **Every node is read as `mixed` and checked.** This walks the raw document, which means a document the parser
+     * already faulted on is still walked: `parameters: oops` is a real thing a person writes, and this section running
+     * after Document validity has to survive it and say what it can, not take the process down with a `foreach` over a
+     * string. The fault is already in the report by the time this runs.
      *
      * @return list<Finding>
      */
@@ -238,16 +216,12 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * Every `header` and `cookie` parameter the document declares, from both
-     * levels OpenAPI allows one at.
+     * Every `header` and `cookie` parameter the document declares, from both levels OpenAPI allows one at.
      *
-     * **A Path Item's own `parameters` count.** OpenAPI lets a path declare
-     * parameters shared by every operation under it, and a specification that
-     * puts all of them there — a perfectly ordinary style — used to report
-     * zero, which is rule 2 defeated for a construct this package genuinely
-     * does not honor. Counted once per path rather than once per operation
-     * beneath it, because one declaration is what is written and what a reader
-     * would count.
+     * **A Path Item's own `parameters` count.** OpenAPI lets a path declare parameters shared by every operation under
+     * it, and a specification that puts all of them there — a perfectly ordinary style — used to report zero, which is
+     * rule 2 defeated for a construct this package genuinely does not honor. Counted once per path rather than once per
+     * operation beneath it, because one declaration is what is written and what a reader would count.
      *
      * @param  array<array-key, mixed>  $raw
      */
@@ -277,8 +251,7 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * The entries of one node's `parameters`, or nothing at all when it does
-     * not hold a list.
+     * The entries of one node's `parameters`, or nothing at all when it does not hold a list.
      *
      * @param  array<array-key, mixed>  $node
      * @return list<mixed>
@@ -291,22 +264,18 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * Whether one entry of a `parameters` list is a parameter this package
-     * reads and will not act on: a `header` or a `cookie`.
+     * Whether one entry of a `parameters` list is a parameter this package reads and will not act on: a `header` or a
+     * `cookie`.
      *
-     * Named rather than defined by exclusion. "Not a path parameter" was the
-     * right rule while nothing read a parameter at all; now `query` becomes a
-     * rule, so the two locations that stay unread are the two this names.
+     * Named rather than defined by exclusion. "Not a path parameter" was the right rule while nothing read a parameter
+     * at all; now `query` becomes a rule, so the two locations that stay unread are the two this names.
      *
-     * **A `$ref`'d parameter is resolved, not assumed.** `{$ref:
-     * '#/components/parameters/UserId'}` carries no `in` of its own, so
-     * reading `in` off the reference counted a referenced *path* parameter
-     * toward the non-path total. Resolved against the same document, which is
-     * where a local pointer points; a reference this method cannot follow —
-     * into another file, or at a position the document does not hold — is
-     * skipped rather than guessed at, on the same rule the rest of this class
-     * follows: a number that might be wrong is worse than a number that is
-     * short by a case it says it cannot see.
+     * **A `$ref`'d parameter is resolved, not assumed.** `{$ref: '#/components/parameters/UserId'}` carries no `in` of
+     * its own, so reading `in` off the reference counted a referenced *path* parameter toward the non-path total.
+     * Resolved against the same document, which is where a local pointer points; a reference this method cannot follow
+     * — into another file, or at a position the document does not hold — is skipped rather than guessed at, on the same
+     * rule the rest of this class follows: a number that might be wrong is worse than a number that is short by a case
+     * it says it cannot see.
      *
      * @param  array<array-key, mixed>  $raw
      */
@@ -339,20 +308,17 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * The node a `#/...` JSON Pointer names inside this same document, or
-     * null for anything this method cannot follow — a reference into another
-     * file, a pointer at a position the document does not hold, or a target
-     * that is not a node.
+     * The node a `#/...` JSON Pointer names inside this same document, or null for anything this method cannot follow —
+     * a reference into another file, a pointer at a position the document does not hold, or a target that is not a
+     * node.
      *
-     * Deliberately not a general `$ref` resolver: `Parsing\` owns resolution,
-     * and this is one lookup a count needs rather than a second resolver for
-     * the package to keep in step with the first.
+     * Deliberately not a general `$ref` resolver: `Parsing\` owns resolution, and this is one lookup a count needs
+     * rather than a second resolver for the package to keep in step with the first.
      *
-     * The walk is this method's own; the *spelling* of a segment is not, and
-     * comes from {@see DocumentPointer::unescape()}. That split is the one
-     * `DocumentPointer` exists to enforce — a pointer is an identity, so a
-     * second escaping of `~` and `/` would be a second answer waiting to
-     * disagree with the first — and it costs this method nothing to honor.
+     * The walk is this method's own; the *spelling* of a segment is not, and comes from
+     * {@see DocumentPointer::unescape()}. That split is the one `DocumentPointer` exists to enforce — a pointer is an
+     * identity, so a second escaping of `~` and `/` would be a second answer waiting to disagree with the first — and
+     * it costs this method nothing to honor.
      *
      * @param  array<array-key, mixed>  $raw
      * @return ?array<array-key, mixed>
@@ -386,8 +352,7 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * Every Path Item Object in the document, or nothing when `paths` is not
-     * a map of them.
+     * Every Path Item Object in the document, or nothing when `paths` is not a map of them.
      *
      * @param  array<array-key, mixed>  $raw
      * @return list<array<array-key, mixed>>
@@ -412,10 +377,9 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * Every Operation Object in the document, read straight off the raw
-     * array rather than through `Contract\Operation` — the extraction
-     * pipeline does not carry `parameters`, `requestBody` or `responses`
-     * forward at all today, so counting them has nothing typed to count.
+     * Every Operation Object in the document, read straight off the raw array rather than through `Contract\Operation`
+     * — the extraction pipeline does not carry `parameters`, `requestBody` or `responses` forward at all today, so
+     * counting them has nothing typed to count.
      *
      * @param  array<array-key, mixed>  $raw
      * @return list<array<array-key, mixed>>

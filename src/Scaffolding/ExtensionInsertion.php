@@ -13,32 +13,24 @@ use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnverifiedInsertionException;
 use Throwable;
 
 /**
- * Writes one line into the specification, and proves it changed nothing else
- * first.
+ * Writes one line into the specification, and proves it changed nothing else first.
  *
- * **This is the only thing in the package that edits the source of truth**, which
- * is why it is the most cautious. Everything else reads the document; a build
- * refuses to touch it; and the reason this exists at all is that wanting a custom
- * controller and having to hand-edit YAML before anything can help you is friction
- * with no purpose.
+ * **This is the only thing in the package that edits the source of truth**, which is why it is the most cautious.
+ * Everything else reads the document; a build refuses to touch it; and the reason this exists at all is that wanting a
+ * custom controller and having to hand-edit YAML before anything can help you is friction with no purpose.
  *
- * **The edit happens on a copy, and the copy is read back through the normal
- * pipeline.** Not a lighter check written for this occasion: the same reader, the
- * same guards, the same extractor the build uses. What comes out is compared
- * against what the original produced, and everything must be identical except the
- * extension just added. Only then does the copy replace the original.
+ * **The edit happens on a copy, and the copy is read back through the normal pipeline.** Not a lighter check written
+ * for this occasion: the same reader, the same guards, the same extractor the build uses. What comes out is compared
+ * against what the original produced, and everything must be identical except the extension just added. Only then does
+ * the copy replace the original.
  *
- * **If that comparison fails, nothing is written.** The command says the automatic
- * edit would have changed something it did not intend, and falls back to printing
- * the row for a human to place. That path should never run, which is exactly why it
- * has to exist: an automatic edit to the file a whole team reads is worth a check
- * that cannot be argued with.
+ * **If that comparison fails, nothing is written.** The command says the automatic edit would have changed something it
+ * did not intend, and falls back to printing the row for a human to place. That path should never run, which is exactly
+ * why it has to exist: an automatic edit to the file a whole team reads is worth a check that cannot be argued with.
  *
- * **The copy lives beside the original**, and that is not tidiness. A `$ref` is
- * resolved relative to the file that carries it, so a copy in the system's
- * temporary directory would resolve references differently — or fail to resolve
- * them at all — and the comparison would then be measuring the move rather than
- * the edit.
+ * **The copy lives beside the original**, and that is not tidiness. A `$ref` is resolved relative to the file that
+ * carries it, so a copy in the system's temporary directory would resolve references differently — or fail to resolve
+ * them at all — and the comparison would then be measuring the move rather than the edit.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
  */
@@ -49,17 +41,13 @@ final readonly class ExtensionInsertion
     /**
      * Add `x-controller` to one operation, or write nothing at all.
      *
-     * **`$value` is normalized here, once, for every caller.** A leading `\` is a
-     * spelling {@see OperationExtractor} accepts and drops on read —
-     * `ltrim($written, '\\')` — rather than refuses. Normalizing anywhere
-     * upstream of this method (a proposal built from a configured
-     * namespace, a value typed at a prompt) would still leave every other caller,
-     * present or future, free to hand this method a value the extractor would
-     * read back differently — which is exactly the mismatch
-     * {@see self::assertOnlyTheExtensionChanged()} exists to catch, thrown as
-     * "changed something else" for a spelling the document accepts. Normalizing
-     * the one value every caller funnels through closes that for all of them at
-     * once.
+     * **`$value` is normalized here, once, for every caller.** A leading `\` is a spelling {@see OperationExtractor}
+     * accepts and drops on read — `ltrim($written, '\\')` — rather than refuses. Normalizing anywhere upstream of this
+     * method (a proposal built from a configured namespace, a value typed at a prompt) would still leave every other
+     * caller, present or future, free to hand this method a value the extractor would read back differently — which is
+     * exactly the mismatch {@see self::assertOnlyTheExtensionChanged()} exists to catch, thrown as "changed something
+     * else" for a spelling the document accepts. Normalizing the one value every caller funnels through closes that for
+     * all of them at once.
      *
      * @throws UnverifiedInsertionException
      */
@@ -114,17 +102,14 @@ final readonly class ExtensionInsertion
     /**
      * The document with one line added, and nothing else touched.
      *
-     * No dumper, no reflow, no reordering: the text is split at a line and the new
-     * line is pushed in. Comments, key order and anchors survive because nothing
-     * ever looked at them.
+     * No dumper, no reflow, no reordering: the text is split at a line and the new line is pushed in. Comments, key
+     * order and anchors survive because nothing ever looked at them.
      *
-     * **Split on `\r?\n` and rejoined with whichever ending the document actually
-     * uses.** A bare `explode("\n", ...)` on a CRLF document leaves every line
-     * carrying a trailing `\r`, so the inserted line — pushed in with none — is
-     * the one line in the file with the wrong ending. The comparison in
-     * {@see self::assertOnlyTheExtensionChanged()} would not catch it: the parsed
-     * operations are identical either way, which is exactly the class of change
-     * this method exists to avoid making unnoticed.
+     * **Split on `\r?\n` and rejoined with whichever ending the document actually uses.** A bare `explode("\n", ...)`
+     * on a CRLF document leaves every line carrying a trailing `\r`, so the inserted line — pushed in with none — is
+     * the one line in the file with the wrong ending. The comparison in {@see self::assertOnlyTheExtensionChanged()}
+     * would not catch it: the parsed operations are identical either way, which is exactly the class of change this
+     * method exists to avoid making unnoticed.
      */
     private function withExtension(string $document, OperationLocation $location, string $value): string
     {
@@ -137,8 +122,7 @@ final readonly class ExtensionInsertion
     }
 
     /**
-     * Read the copy the way the build reads a specification, and require the same
-     * contract back.
+     * Read the copy the way the build reads a specification, and require the same contract back.
      *
      * @throws UnverifiedInsertionException
      */
@@ -205,18 +189,14 @@ final readonly class ExtensionInsertion
     /**
      * Where the copy goes: beside the original, named for what it is.
      *
-     * The random suffix is not about collisions between users. It is about two runs
-     * of this command in one directory, and about a copy left behind by a process
-     * that died — a fixed name would make the second run read the first one's
+     * The random suffix is not about collisions between users. It is about two runs of this command in one directory,
+     * and about a copy left behind by a process that died — a fixed name would make the second run read the first one's
      * leftovers as a specification.
      *
-     * **Leading-dotted, on top of that.** *Beside* the original is not tidiness —
-     * {@see self::insert()}'s own reasoning is that a `$ref` resolves relative to
-     * the file that carries it, so a copy anywhere else would resolve references
-     * differently. But *beside* also means a `spec/*.yaml` glob in an editor
-     * watcher, a linter, or CI sees this file for however long the read-back
-     * takes — a dotfile keeps it out of most such globs without moving it
-     * anywhere.
+     * **Leading-dotted, on top of that.** *Beside* the original is not tidiness — {@see self::insert()}'s own reasoning
+     * is that a `$ref` resolves relative to the file that carries it, so a copy anywhere else would resolve references
+     * differently. But *beside* also means a `spec/*.yaml` glob in an editor watcher, a linter, or CI sees this file
+     * for however long the read-back takes — a dotfile keeps it out of most such globs without moving it anywhere.
      */
     private function copyPath(string $specPath): string
     {

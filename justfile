@@ -73,9 +73,19 @@ test:
 coverage:
     {{php}} composer test:coverage
 
-# Apply Laravel Pint formatting.
+# Apply Laravel Pint formatting, then reflow docblock prose to the column limit.
 format:
     {{php}} composer format
+
+# List the PHP files whose docblocks need reflowing, without writing. `check`
+# runs it through `composer format:check`.
+format-docblocks-check:
+    {{php}} composer format:docblocks:check
+
+# List every cramped @param, @return, @throws or @var (the worst first), with a total
+# and the share of described tags. Watched, never enforced.
+docblock-report:
+    {{php}} composer format:docblocks:report
 
 # The only recipe that does not go through the container: Prettier is a Node tool
 # and the PHP image carries none. The script picks npx when Node is installed and

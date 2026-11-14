@@ -11,19 +11,15 @@ use Throwable;
 /**
  * The one place `--update-refs` reaches the network.
  *
- * Wraps `Illuminate\Http\Client\Factory` — available in any application this
- * package can be installed into — rather than the `Http` facade, so this stays
- * a plain object a unit test can construct and `Http::fake()` still intercepts
+ * Wraps `Illuminate\Http\Client\Factory` — available in any application this package can be installed into — rather
+ * than the `Http` facade, so this stays a plain object a unit test can construct and `Http::fake()` still intercepts
  * it, since the facade and this factory share the same underlying instance.
  *
- * **Redirects are never followed.** The host on the URL written in the
- * document is the one thing the allowlist checked, and a client that follows a
- * redirect fetches whatever a `3xx` response names instead — an allowed host
- * that answers `302 Location: http://169.254.169.254/…`, or any other host,
- * would have its response committed under the *allowed* host's directory,
- * where a reviewer reading the diff has no way to tell it came from somewhere
- * else. A reference that moved is a reference to rewrite in the document, not
- * one to follow silently.
+ * **Redirects are never followed.** The host on the URL written in the document is the one thing the allowlist checked,
+ * and a client that follows a redirect fetches whatever a `3xx` response names instead — an allowed host that answers
+ * `302 Location: http://169.254.169.254/…`, or any other host, would have its response committed under the *allowed*
+ * host's directory, where a reviewer reading the diff has no way to tell it came from somewhere else. A reference that
+ * moved is a reference to rewrite in the document, not one to follow silently.
  *
  * @internal Not public API — a detail of how vendoring fetches a reference.
  */
@@ -32,8 +28,7 @@ final readonly class RemoteReferenceFetcher
     public function __construct(private Factory $http = new Factory) {}
 
     /**
-     * @throws RemoteReferenceFetchException the request failed, redirected, or
-     *                                       the server did not answer with success
+     * @throws RemoteReferenceFetchException the request failed, redirected, or the server did not answer with success
      */
     public function fetch(string $url): string
     {

@@ -11,18 +11,15 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 /**
  * Turns one operation's input into the PHP of its generated `FormRequest`.
  *
- * **The class extends `Illuminate\Foundation\Http\FormRequest`, which this
- * package does not depend on.** Only `illuminate/routing` and
- * `illuminate/support` are required, and the class the generated file extends
- * lives in the application that will host it. Nothing here instantiates one:
- * the emitter writes a string, and the only place a real `FormRequest` is
- * constructed is a test running inside a booted application, which is also the
- * only proof that Laravel actually executes what is written.
+ * **The class extends `Illuminate\Foundation\Http\FormRequest`, which this package does not depend on.** Only
+ * `illuminate/routing` and `illuminate/support` are required, and the class the generated file extends lives in the
+ * application that will host it. Nothing here instantiates one: the emitter writes a string, and the only place a real
+ * `FormRequest` is constructed is a test running inside a booted application, which is also the only proof that Laravel
+ * actually executes what is written.
  *
- * **It is `final`, and there is nothing to extend.** A project that wants
- * different rules is describing a different contract; the three things a
- * developer would otherwise reach for — authorization, messages, and
- * normalizing a payload — each have a home, and the docblock names them.
+ * **It is `final`, and there is nothing to extend.** A project that wants different rules is describing a different
+ * contract; the three things a developer would otherwise reach for — authorization, messages, and normalizing a payload
+ * — each have a home, and the docblock names them.
  *
  * @see docs/guide/code-generation/request-validation.md — "The generated request is final"
  */
@@ -31,18 +28,15 @@ final readonly class FormRequestEmitter
     /**
      * The class a generated request extends, written rather than imported.
      *
-     * `illuminate/foundation` is not a dependency of this package and must not
-     * become one: only `illuminate/routing` and `illuminate/support` are
-     * required, and everything here emits a string. A `::class` reference would
-     * put a class this package does not ship in its own type graph for no
-     * benefit, since nothing here ever constructs one.
+     * `illuminate/foundation` is not a dependency of this package and must not become one: only `illuminate/routing`
+     * and `illuminate/support` are required, and everything here emits a string. A `::class` reference would put a
+     * class this package does not ship in its own type graph for no benefit, since nothing here ever constructs one.
      */
     private const BASE_CLASS = 'Illuminate\\Foundation\\Http\\FormRequest';
 
     /**
-     * The two other framework classes a generated request may name, written
-     * rather than imported for the reason {@see self::BASE_CLASS} gives:
-     * `illuminate/validation` is not a dependency of this package either.
+     * The two other framework classes a generated request may name, written rather than imported for the reason
+     * {@see self::BASE_CLASS} gives: `illuminate/validation` is not a dependency of this package either.
      */
     private const RULE_CLASS = 'Illuminate\\Validation\\Rule';
 
@@ -90,9 +84,8 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * The import block: the base class always, and `Rule` and `Validator` only
-     * when a rule, the closed-root check or `dto()` uses them — an unused import is
-     * something a consumer's formatter removes, and a formatter with something
+     * The import block: the base class always, and `Rule` and `Validator` only when a rule, the closed-root check or
+     * `dto()` uses them — an unused import is something a consumer's formatter removes, and a formatter with something
      * to remove is a formatter fighting the next build.
      */
     private function useStatements(PlannedRequest $planned): string
@@ -125,12 +118,10 @@ final readonly class FormRequestEmitter
     /**
      * The constants the generated class reads its keys from, or nothing.
      *
-     * `BODY_KEYS` is the closed-root check's, `FORM_NAMES` is where `dto()` finds
-     * a form value under a name PHP rewrote, and `QUERY_KEYS` is what
-     * `validationData()` takes from the query string. `QUERY_KEYS` and
-     * `FORM_NAMES` are keyed by the names the document writes. `BODY_KEYS` holds the
-     * names the body arrives under, which is how PHP's own bags key them: the
-     * name the document writes, and for a form the one PHP gives it.
+     * `BODY_KEYS` is the closed-root check's, `FORM_NAMES` is where `dto()` finds a form value under a name PHP
+     * rewrote, and `QUERY_KEYS` is what `validationData()` takes from the query string. `QUERY_KEYS` and `FORM_NAMES`
+     * are keyed by the names the document writes. `BODY_KEYS` holds the names the body arrives under, which is how
+     * PHP's own bags key them: the name the document writes, and for a form the one PHP gives it.
      */
     private function keyConstants(RuleSet $set): string
     {
@@ -171,25 +162,20 @@ final readonly class FormRequestEmitter
     /**
      * `validationData()`, and the body reader it shares with the closed-root check.
      *
-     * **Laravel validates `$this->all()`, which is the body with the query string
-     * merged in**, and a rule key has one source in the contract. So a required
-     * body field supplied in the URL passed, a `query` parameter was satisfied by a
-     * body key of the same name, and a body integer sent as `?age=31` reached
-     * `validated()` as the string `"31"`. The build already refuses one name
-     * declared in both places, so each key can be read from the one place it
-     * belongs to: the body's keys from the body, and the declared `query`
-     * parameters, by name, from the query string.
+     * **Laravel validates `$this->all()`, which is the body with the query string merged in**, and a rule key has one
+     * source in the contract. So a required body field supplied in the URL passed, a `query` parameter was satisfied by
+     * a body key of the same name, and a body integer sent as `?age=31` reached `validated()` as the string `"31"`. The
+     * build already refuses one name declared in both places, so each key can be read from the one place it belongs to:
+     * the body's keys from the body, and the declared `query` parameters, by name, from the query string.
      *
-     * **The body is read from the body, never through `input()` or
-     * `getInputSource()`**, which answer with the query string on a `GET` or a
-     * `HEAD`. The uploads are merged the way Laravel's own `all()` merges them, with
-     * the text field winning on a shared name, so a file rule still judges an
-     * `Illuminate\Http\UploadedFile` and `dto()` still receives one. `array_diff_key()`
-     * and `+` keep an integer key where a spread would renumber it: a property
-     * named `"2024"` is a valid payload.
+     * **The body is read from the body, never through `input()` or `getInputSource()`**, which answer with the query
+     * string on a `GET` or a `HEAD`. The uploads are merged the way Laravel's own `all()` merges them, with the text
+     * field winning on a shared name, so a file rule still judges an `Illuminate\Http\UploadedFile` and `dto()` still
+     * receives one. `array_diff_key()` and `+` keep an integer key where a spread would renumber it: a property named
+     * `"2024"` is a valid payload.
      *
-     * **`rules()` is untouched**: this changes the data the rules judge, and the
-     * rule set stays exactly what the contract says.
+     * **`rules()` is untouched**: this changes the data the rules judge, and the rule set stays exactly what the
+     * contract says.
      *
      * @see docs/guide/code-generation/request-validation.md — "Each field is read from where the contract put it"
      */
@@ -248,23 +234,18 @@ final readonly class FormRequestEmitter
     /**
      * `dto()`, or nothing for a request whose body is not an object.
      *
-     * **`validated()` keeps returning Laravel's array**: it is the framework's
-     * own method and has callers, so the DTO sits beside it under a name of
-     * ours. The DTO's properties are the body schema's, and a query parameter is
-     * not one of them: `validated()` carries both, and `from()` reads only what
-     * the body declares, so `validated('page')` is still where a query
-     * parameter is read.
+     * **`validated()` keeps returning Laravel's array**: it is the framework's own method and has callers, so the DTO
+     * sits beside it under a name of ours. The DTO's properties are the body schema's, and a query parameter is not one
+     * of them: `validated()` carries both, and `from()` reads only what the body declares, so `validated('page')` is
+     * still where a query parameter is read.
      *
-     * **It reads the validated data with `excludeUnvalidatedArrayKeys` off**, and
-     * puts the flag back. By default `validated()` leaves out an array that has
-     * child rules when none of its declared children was sent, so a required
-     * object sent as `{}` passes `present|array` and is then absent from the data
-     * `from()` reads, a list of objects with no declared key loses its elements, and
-     * an optional `{}` arrives as `Optional`. Kept as sent, the array carries the
-     * keys the contract does not declare too, and `from()` reads only the ones it
-     * does, so none reaches the DTO. The `assert` is for the static analysis of
-     * the class a consumer reads: `getValidatorInstance()` is typed as the
-     * contract, and the flag is on the validator Laravel builds.
+     * **It reads the validated data with `excludeUnvalidatedArrayKeys` off**, and puts the flag back. By default
+     * `validated()` leaves out an array that has child rules when none of its declared children was sent, so a required
+     * object sent as `{}` passes `present|array` and is then absent from the data `from()` reads, a list of objects
+     * with no declared key loses its elements, and an optional `{}` arrives as `Optional`. Kept as sent, the array
+     * carries the keys the contract does not declare too, and `from()` reads only the ones it does, so none reaches the
+     * DTO. The `assert` is for the static analysis of the class a consumer reads: `getValidatorInstance()` is typed as
+     * the contract, and the flag is on the validator Laravel builds.
      *
      * @see docs/guide/code-generation/request-validation.md — "The payload arrives as a DTO"
      */
@@ -299,14 +280,12 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * `contractNames()`, or nothing: the validated payload of a form body with each value PHP
-     * delivered under another name also under the name the contract writes, which is the key
-     * `from()` reads.
+     * `contractNames()`, or nothing: the validated payload of a form body with each value PHP delivered under another
+     * name also under the name the contract writes, which is the key `from()` reads.
      *
-     * **A form client's `user.name` reaches Laravel as `user_name`**, and the rules are keyed by
-     * what arrives, so `validated()` holds it there. The DTO's properties are the contract's, and
-     * one class serves a JSON body and a nested use too, so the name is put back here and not in
-     * the DTO. `validated()` is left as Laravel returns it.
+     * **A form client's `user.name` reaches Laravel as `user_name`**, and the rules are keyed by what arrives, so
+     * `validated()` holds it there. The DTO's properties are the contract's, and one class serves a JSON body and a
+     * nested use too, so the name is put back here and not in the DTO. `validated()` is left as Laravel returns it.
      */
     private function contractNames(RuleSet $set): string
     {
@@ -343,44 +322,34 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * The root checks, or nothing: a JSON body that is not an object is refused, and a
-     * closed root refuses the keys it does not declare.
+     * The root checks, or nothing: a JSON body that is not an object is refused, and a closed root refuses the keys it
+     * does not declare.
      *
-     * **A closure, and one emitted shape.** Laravel's `#[FailOnUnknownFields]`
-     * does the second from 12.x on, but not on the lowest Laravel this package
-     * supports, and an attribute behind a version gate with this closure
-     * underneath it anyway would be two shapes that have to stay equivalent. Both
-     * checks sit in the one closure, since a root that is not an object has no
-     * keys to compare, and answering for both would say the same thing twice.
+     * **A closure, and one emitted shape.** Laravel's `#[FailOnUnknownFields]` does the second from 12.x on, but not on
+     * the lowest Laravel this package supports, and an attribute behind a version gate with this closure underneath it
+     * anyway would be two shapes that have to stay equivalent. Both checks sit in the one closure, since a root that is
+     * not an object has no keys to compare, and answering for both would say the same thing twice.
      *
-     * **The first check is the contract's own for a typed object, and stricter for
-     * an untyped one.** Laravel reads a JSON body as `(array) json_decode(...)`, so
-     * `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has a key
-     * for, and an open root with nothing required would accept them. Only a JSON
-     * request is checked (a form cannot send a non-object). An empty content is not a
-     * non-object but an absent body: it is refused when the body is `required`, which no
-     * rule says when every property is optional, and accepted when it is not. That check
-     * holds for a form body too, and reads a request as absent when it is JSON or has no
-     * `Content-Type` (a request with none carries no form field either). A request with a
-     * form `Content-Type` has its body read from the form bag, whose fields need not show in
-     * the raw content, so it is not read as absent. A schema that allows `null`
-     * allows it here.
+     * **The first check is the contract's own for a typed object, and stricter for an untyped one.** Laravel reads a
+     * JSON body as `(array) json_decode(...)`, so `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has
+     * a key for, and an open root with nothing required would accept them. Only a JSON request is checked (a form
+     * cannot send a non-object). An empty content is not a non-object but an absent body: it is refused when the body
+     * is `required`, which no rule says when every property is optional, and accepted when it is not. That check holds
+     * for a form body too, and reads a request as absent when it is JSON or has no `Content-Type` (a request with none
+     * carries no form field either). A request with a form `Content-Type` has its body read from the form bag, whose
+     * fields need not show in the raw content, so it is not read as absent. A schema that allows `null` allows it here.
      *
-     * **The second reads the top-level keys from the body rather than from `all()`**, by
-     * the same `bodyInput()` `validationData()` reads: the JSON bag, or the form
-     * bag, and the uploaded files either way, never `getInputSource()`, which
-     * answers with the query string on a `GET` or a `HEAD`. The files are a bag of
-     * their own, so a closed root that left them out would let an undeclared upload
-     * through. The query string is not the body, and a nested object that closes
-     * itself already refuses its own extras through `array:` — so checking
-     * deeper here would repeat that, and would refuse the extras of a nested
-     * object that allows them.
+     * **The second reads the top-level keys from the body rather than from `all()`**, by the same `bodyInput()`
+     * `validationData()` reads: the JSON bag, or the form bag, and the uploaded files either way, never
+     * `getInputSource()`, which answers with the query string on a `GET` or a `HEAD`. The files are a bag of their own,
+     * so a closed root that left them out would let an undeclared upload through. The query string is not the body, and
+     * a nested object that closes itself already refuses its own extras through `array:` — so checking deeper here
+     * would repeat that, and would refuse the extras of a nested object that allows them.
      *
-     * **The refusal is Laravel's own rule**, through `addFailure()`, so its words are
-     * the ones in `lang/en/validation.php` and a project's own lines and
-     * translations apply, which a message written here could not honor: `prohibited`
-     * for an undeclared key, which is exactly what that rule says, and `array` for a
-     * root that is not an object, as a nested object that is not one is refused.
+     * **The refusal is Laravel's own rule**, through `addFailure()`, so its words are the ones in
+     * `lang/en/validation.php` and a project's own lines and translations apply, which a message written here could not
+     * honor: `prohibited` for an undeclared key, which is exactly what that rule says, and `array` for a root that is
+     * not an object, as a nested object that is not one is refused.
      */
     private function after(RuleSet $set): string
     {
@@ -461,10 +430,9 @@ final readonly class FormRequestEmitter
     /**
      * The rule set as the body of the returned array, one field per line.
      *
-     * Indented to sit inside a `return [` two levels deep, and emitted with
-     * `var_export` for the same reason every other literal in this namespace is:
-     * a field name may legally carry an apostrophe, and a hand-quoted literal
-     * would stop parsing.
+     * Indented to sit inside a `return [` two levels deep, and emitted with `var_export` for the same reason every
+     * other literal in this namespace is: a field name may legally carry an apostrophe, and a hand-quoted literal would
+     * stop parsing.
      */
     private function rules(RuleSet $set): string
     {
@@ -491,9 +459,8 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * One rule as PHP: a string literal, or `Rule::in()` over the values an
-     * enumeration allows — never `in:a,b`, which splits on a comma inside a
-     * value.
+     * One rule as PHP: a string literal, or `Rule::in()` over the values an enumeration allows — never `in:a,b`, which
+     * splits on a comma inside a value.
      */
     private function rule(string|InRule $rule): string
     {
@@ -530,10 +497,9 @@ final readonly class FormRequestEmitter
     /**
      * What the build knew and the reader cannot see.
      *
-     * **Everything the rule set could not express is here**, which is the half
-     * that makes an incomplete rule set honest rather than misleading. A reader
-     * asking "why is this field not enforced" gets the answer at the moment
-     * they ask it, in the file they already have open.
+     * **Everything the rule set could not express is here**, which is the half that makes an incomplete rule set honest
+     * rather than misleading. A reader asking "why is this field not enforced" gets the answer at the moment they ask
+     * it, in the file they already have open.
      *
      * @return non-empty-list<string>
      */
@@ -579,10 +545,9 @@ final readonly class FormRequestEmitter
     /**
      * Where to go from here.
      *
-     * **The first line is the one that matters.** Laravel runs a `FormRequest`
-     * because a method declared one, so a generated class nobody declares is
-     * emitted, correct, tested, and never executed. Naming the method that
-     * declares it is how a reader checks that in one jump.
+     * **The first line is the one that matters.** Laravel runs a `FormRequest` because a method declared one, so a
+     * generated class nobody declares is emitted, correct, tested, and never executed. Naming the method that declares
+     * it is how a reader checks that in one jump.
      *
      * @return non-empty-list<string>
      */

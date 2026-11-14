@@ -7,11 +7,9 @@ namespace Gcob\LaraSpecFirst\Support;
 /**
  * The one answer to "is this path absolute".
  *
- * Held in one place because it was answered in three, and one of the three was
- * wrong: a check for a leading separator alone treats `C:\specs\api.yaml` as
- * relative and joins it under the application root, producing a path nothing is
- * at. A concept with three implementations has the number of behaviours it has
- * copies.
+ * Held in one place because it was answered in three, and one of the three was wrong: a check for a leading separator
+ * alone treats `C:\specs\api.yaml` as relative and joins it under the application root, producing a path nothing is at.
+ * A concept with three implementations has the number of behaviours it has copies.
  *
  * @internal Not public API. A consumer has no reason to ask this.
  */

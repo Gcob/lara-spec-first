@@ -127,8 +127,12 @@ Two traps worth knowing before you go in:
   signatures become a compatibility contract. Flag such changes explicitly.
 - **Never format by hand; run the tool.** Do not rewrap prose, realign table columns, or count line widths yourself: it
   is slow, and the next command overwrites it anyway. Run `just format-md` after editing Markdown and `just format`
-  after editing PHP. The settings live in `.editorconfig`, `.prettierrc.json` and `pint.json`; the recipes are in the
-  `justfile`. Same for reviews: formatting is not a finding.
+  after editing PHP, which also reflows docblock prose to 120 columns through `scripts/format-docblocks.php`. A cramped
+  `@param` (under 40 columns left for its description) is a warning of that script, never an error;
+  `just docblock-report` lists them. In Claude Code, a `PostToolUse` hook (`.claude/settings.json`) runs the formatters
+  on each file right after an `Edit` or `Write`, so a file that changed under you is not a surprise: do not re-wrap it.
+  The settings live in `.editorconfig`, `.prettierrc.json` and `pint.json`; the recipes are in the `justfile`. Same for
+  reviews: formatting is not a finding.
 - **Let the docs build find your dead links.** Moving or renaming a document breaks every link into it.
   `just docs-build` fails on the first one and names the file, which is faster and more complete than grepping for the
   old path.

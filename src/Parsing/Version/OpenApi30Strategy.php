@@ -17,8 +17,8 @@ final class OpenApi30Strategy implements VersionStrategy
     /**
      * Root keys an OpenAPI 3.0 document must declare.
      *
-     * `paths` is required at this version, so a 3.0 document that registers no
-     * routes still has to say so with an empty `paths` object.
+     * `paths` is required at this version, so a 3.0 document that registers no routes still has to say so with an empty
+     * `paths` object.
      */
     private const REQUIRED_ROOT_KEYS = ['paths'];
 
@@ -42,16 +42,14 @@ final class OpenApi30Strategy implements VersionStrategy
     }
 
     /**
-     * `type` is one string at 3.0, and `nullable: true` beside it is how the
-     * version spells a value that may also be null.
+     * `type` is one string at 3.0, and `nullable: true` beside it is how the version spells a value that may also be
+     * null.
      *
-     * Both reach the same list the 3.1 strategy builds, which is the point:
-     * `type: string` with `nullable: true` and `type: [string, "null"]` are one
-     * contract written twice.
+     * Both reach the same list the 3.1 strategy builds, which is the point: `type: string` with `nullable: true` and
+     * `type: [string, "null"]` are one contract written twice.
      *
-     * A `nullable: true` with no `type` beside it adds nothing. It claims a
-     * value may be null while saying nothing about what else it may be, and a
-     * list holding only `null` would read as "this must be null", which is a
+     * A `nullable: true` with no `type` beside it adds nothing. It claims a value may be null while saying nothing
+     * about what else it may be, and a list holding only `null` would read as "this must be null", which is a
      * constraint the document did not write.
      *
      * @param  array<string, mixed>  $keywords
@@ -76,10 +74,9 @@ final class OpenApi30Strategy implements VersionStrategy
     /**
      * At 3.0, `exclusiveMinimum` is a boolean modifying the `minimum` beside it.
      *
-     * Normalized to the 3.1 spelling, so the bound moves: `minimum: 0` with
-     * `exclusiveMinimum: true` becomes an exclusive bound of 0 and no inclusive
-     * one. Written `false`, or written without a bound to modify, it says
-     * nothing and the inclusive bound stays where it is.
+     * Normalized to the 3.1 spelling, so the bound moves: `minimum: 0` with `exclusiveMinimum: true` becomes an
+     * exclusive bound of 0 and no inclusive one. Written `false`, or written without a bound to modify, it says nothing
+     * and the inclusive bound stays where it is.
      *
      * @param  array<string, mixed>  $keywords
      * @param  'Minimum'|'Maximum'  $side
@@ -96,11 +93,9 @@ final class OpenApi30Strategy implements VersionStrategy
     /**
      * `format: binary` leaves nothing behind once it has been read.
      *
-     * It is not a format a generator ever looks up — it is how 3.0 says "this
-     * is a file", which {@see self::isFilePart()} has already carried. Leaving
-     * it in `format` as well would be one fact in two places, and it would make
-     * a 3.0 schema differ from its 3.1 twin over a keyword the newer version
-     * does not have.
+     * It is not a format a generator ever looks up — it is how 3.0 says "this is a file", which
+     * {@see self::isFilePart()} has already carried. Leaving it in `format` as well would be one fact in two places,
+     * and it would make a 3.0 schema differ from its 3.1 twin over a keyword the newer version does not have.
      *
      * @param  array<string, mixed>  $keywords
      */
@@ -110,8 +105,7 @@ final class OpenApi30Strategy implements VersionStrategy
     }
 
     /**
-     * 3.0 names a file part with `format: binary`, the JSON Schema format
-     * vocabulary 3.1 dropped.
+     * 3.0 names a file part with `format: binary`, the JSON Schema format vocabulary 3.1 dropped.
      *
      * @param  array<string, mixed>  $keywords
      *

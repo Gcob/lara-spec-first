@@ -13,6 +13,20 @@ indent_size = 4
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# PHP: the width scripts/format-docblocks.php reflows docblock prose to. Pint has no
+# rule for it, so this is where the number lives, the same way Prettier reads it
+# for Markdown below.
+#
+# docblock_min_description_width is that script's own key, and editors ignore it. A
+# @param, @return, @throws or @var continues under the start of its description, so
+# a long type and name leave little room. A tag whose description has fewer columns
+# than this left on its first line is "cramped": `composer format:docblocks:check`
+# warns about it, `composer format:docblocks:report` lists them all, and neither
+# ever fails.
+[*.php]
+max_line_length = 120
+docblock_min_description_width = 40
+
 # Markdown: two trailing spaces are a hard line break, so they must survive.
 [*.md]
 trim_trailing_whitespace = false

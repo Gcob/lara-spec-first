@@ -25,6 +25,10 @@
 #
 # Pass --check to report which files need reformatting without writing to them;
 # it exits non-zero when any file differs.
+#
+# Pass file paths, relative to the repository root, to limit it to those files
+# instead of every Markdown file: `scripts/format-markdown.sh --check a.md b.md`.
+# The pre-commit hook and the editor hook use this to stay fast.
 
 set -eu
 
@@ -33,15 +37,19 @@ set -eu
 # surprise scripts/check-lowest.sh avoids for Pint. Bump it on purpose.
 PRETTIER="prettier@3.9.6"
 
-TARGET="**/*.md"
-
 MODE="--write"
 if [ "${1:-}" = "--check" ]; then
     MODE="--list-different"
+    shift
+fi
+
+# Whatever is left is a list of files; with none, every Markdown file.
+if [ "$#" -eq 0 ]; then
+    set -- "**/*.md"
 fi
 
 if command -v npx > /dev/null 2>&1; then
-    exec npx --yes "$PRETTIER" "$MODE" "$TARGET"
+    exec npx --yes "$PRETTIER" "$MODE" "$@"
 fi
 
 # No Node on this machine. Borrow one for the duration of the command rather than
@@ -54,7 +62,7 @@ if command -v docker > /dev/null 2>&1; then
         --volume "$(pwd):/work" \
         --workdir /work \
         --env HOME=/tmp \
-        node:22-alpine npx --yes "$PRETTIER" "$MODE" "$TARGET"
+        node:22-alpine npx --yes "$PRETTIER" "$MODE" "$@"
 fi
 
 echo "Neither Node nor Docker is available, so Markdown cannot be reformatted." >&2

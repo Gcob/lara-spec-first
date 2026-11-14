@@ -17,9 +17,8 @@ final class OpenApi31Strategy implements VersionStrategy
     /**
      * Root keys an OpenAPI 3.1 document must declare at least one of.
      *
-     * 3.1 made `paths` optional, so a document describing only webhooks or only
-     * reusable components is valid. It produces zero routes, which is an
-     * outcome rather than an error.
+     * 3.1 made `paths` optional, so a document describing only webhooks or only reusable components is valid. It
+     * produces zero routes, which is an outcome rather than an error.
      */
     private const REQUIRED_ROOT_KEYS = ['paths', 'webhooks', 'components'];
 
@@ -43,16 +42,13 @@ final class OpenApi31Strategy implements VersionStrategy
     }
 
     /**
-     * `type` is a string or a list of them at 3.1, and `"null"` inside that list
-     * is how the version spells nullability.
+     * `type` is a string or a list of them at 3.1, and `"null"` inside that list is how the version spells nullability.
      *
-     * The parser declares this attribute a string and does not enforce it, so a
-     * list arrives here unchecked — which is why reading it is our work rather
-     * than something that can be assumed done.
+     * The parser declares this attribute a string and does not enforce it, so a list arrives here unchecked — which is
+     * why reading it is our work rather than something that can be assumed done.
      *
-     * `nullable` is not read: 3.1 removed it, and a document writing it anyway
-     * is writing a 3.0 keyword under a 3.1 header. Honoring it would make this
-     * package accept a spelling the version does not have.
+     * `nullable` is not read: 3.1 removed it, and a document writing it anyway is writing a 3.0 keyword under a 3.1
+     * header. Honoring it would make this package accept a spelling the version does not have.
      *
      * @param  array<string, mixed>  $keywords
      * @return list<SchemaType>
@@ -67,9 +63,8 @@ final class OpenApi31Strategy implements VersionStrategy
     /**
      * At 3.1, `exclusiveMinimum` is a number standing on its own.
      *
-     * Already the normal form, so there is nothing to move: a document may
-     * write an exclusive bound, an inclusive one, or both, and each is read as
-     * written.
+     * Already the normal form, so there is nothing to move: a document may write an exclusive bound, an inclusive one,
+     * or both, and each is read as written.
      *
      * @param  array<string, mixed>  $keywords
      * @param  'Minimum'|'Maximum'  $side
@@ -86,10 +81,9 @@ final class OpenApi31Strategy implements VersionStrategy
     /**
      * 3.1 has `contentMediaType`, so it is read here and nowhere else.
      *
-     * Kept beside {@see self::isFilePart()} rather than folded into it: the two
-     * ask different questions of one keyword. Whether a part is a file is one
-     * thing, and which media types it must match is
-     * [what `mimetypes:` needs](../../../docs/guide/uploads.md#the-schema-names-the-file-part).
+     * Kept beside {@see self::isFilePart()} rather than folded into it: the two ask different questions of one keyword.
+     * Whether a part is a file is one thing, and which media types it must match is [what `mimetypes:`
+     * needs](../../../docs/guide/uploads.md#the-schema-names-the-file-part).
      *
      * @param  array<string, mixed>  $keywords
      */
@@ -101,11 +95,9 @@ final class OpenApi31Strategy implements VersionStrategy
     }
 
     /**
-     * `format: binary` left no trace in the normal form at 3.0, and it does not
-     * here either, for the same reason: it is how a file part is written, and
-     * {@see self::isFilePart()} has already carried it. Kept when a
-     * `contentEncoding` says the part is not a file, since then it is a format
-     * nothing else reads.
+     * `format: binary` left no trace in the normal form at 3.0, and it does not here either, for the same reason: it is
+     * how a file part is written, and {@see self::isFilePart()} has already carried it. Kept when a `contentEncoding`
+     * says the part is not a file, since then it is a format nothing else reads.
      *
      * @param  array<string, mixed>  $keywords
      */
@@ -115,18 +107,15 @@ final class OpenApi31Strategy implements VersionStrategy
     }
 
     /**
-     * 3.1 names a file part with `contentMediaType`, having dropped
-     * `format: binary` with the rest of the format vocabulary, and a document
-     * that declares 3.1 still writes `format: binary` for an upload: it is what
-     * many generators emit whatever version they declare. Both are read, so a
-     * part spelled the 3.0 way is not turned into a string every upload refuses.
+     * 3.1 names a file part with `contentMediaType`, having dropped `format: binary` with the rest of the format
+     * vocabulary, and a document that declares 3.1 still writes `format: binary` for an upload: it is what many
+     * generators emit whatever version they declare. Both are read, so a part spelled the 3.0 way is not turned into a
+     * string every upload refuses.
      *
-     * **Not when `contentEncoding` is beside it.** `type: string`,
-     * `contentEncoding: base64` and a `contentMediaType` is how 3.1 writes a
-     * file carried as text, which is a string with a description of what it
-     * decodes to, and `file` would refuse the very text the contract describes.
-     * That is `uploads.md`'s "a base64 part is a string", read here at the one
-     * place a 3.1 document can say it.
+     * **Not when `contentEncoding` is beside it.** `type: string`, `contentEncoding: base64` and a `contentMediaType`
+     * is how 3.1 writes a file carried as text, which is a string with a description of what it decodes to, and `file`
+     * would refuse the very text the contract describes. That is `uploads.md`'s "a base64 part is a string", read here
+     * at the one place a 3.1 document can say it.
      *
      * @param  array<string, mixed>  $keywords
      *

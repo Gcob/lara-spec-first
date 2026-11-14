@@ -10,21 +10,17 @@ use Gcob\LaraSpecFirst\Contract\SchemaType;
 /**
  * Everything the two versions normalize identically.
  *
- * The trait exists so that each strategy holds its *disagreements* and nothing
- * else: `minLength` means the same thing at both versions, and a reader
- * comparing the two files should find only the four places where they part
- * company.
+ * The trait exists so that each strategy holds its *disagreements* and nothing else: `minLength` means the same thing
+ * at both versions, and a reader comparing the two files should find only the four places where they part company.
  *
  * @see docs/guide/openapi-support.md — "The normal form a schema takes"
  */
 trait NormalizesSchemas
 {
     /**
-     * @param  array<string, mixed>  $keywords  one schema node, flattened by the
-     *                                          extractor: every value is either
-     *                                          a scalar, a plain array, or a
-     *                                          {@see Schema} a nested node was
-     *                                          already normalized into
+     * @param  array<string, mixed>  $keywords  one schema node, flattened by the extractor: every value is either a
+     *                                          scalar, a plain array, or a {@see Schema} a nested node was already
+     *                                          normalized into
      */
     public function normalizeSchema(array $keywords, ?string $name = null, ?string $source = null): Schema
     {
@@ -68,8 +64,7 @@ trait NormalizesSchemas
     }
 
     /**
-     * The type list, which is the one keyword whose *shape* differs rather than
-     * only its spelling.
+     * The type list, which is the one keyword whose *shape* differs rather than only its spelling.
      *
      * @param  array<string, mixed>  $keywords
      * @return list<SchemaType>
@@ -98,10 +93,9 @@ trait NormalizesSchemas
     /**
      * The media type of an encoded value, where the version has the keyword.
      *
-     * Null by default, because `contentMediaType` arrived with JSON Schema
-     * 2020-12 and 3.0 does not have it. A 3.0 document writing it anyway would
-     * otherwise be the one place the normal form's content depends on which
-     * version was read, which is the property the whole seam exists to remove.
+     * Null by default, because `contentMediaType` arrived with JSON Schema 2020-12 and 3.0 does not have it. A 3.0
+     * document writing it anyway would otherwise be the one place the normal form's content depends on which version
+     * was read, which is the property the whole seam exists to remove.
      *
      * @param  array<string, mixed>  $keywords
      */
@@ -120,10 +114,9 @@ trait NormalizesSchemas
     /**
      * Every type written, whatever the version wrote them as.
      *
-     * A value naming no type this package knows is dropped rather than refused:
-     * a type the document invented constrains nothing a generator can express,
-     * and refusing the contract over it would be this package having an opinion
-     * about a keyword it does not read.
+     * A value naming no type this package knows is dropped rather than refused: a type the document invented constrains
+     * nothing a generator can express, and refusing the contract over it would be this package having an opinion about
+     * a keyword it does not read.
      *
      * @param  list<mixed>  $written
      * @return list<SchemaType>
@@ -146,11 +139,9 @@ trait NormalizesSchemas
     /**
      * `enum` as written, with 3.1's `const` folded into it.
      *
-     * `const` is a one-value `enum` and is treated as one, which is the matrix's
-     * own wording. Both written at once keeps `enum`: `const` is the narrower
-     * claim, and a value satisfying it satisfies the list too only if the author
-     * wrote the two consistently — which is a contract question rather than a
-     * normalization one.
+     * `const` is a one-value `enum` and is treated as one, which is the matrix's own wording. Both written at once
+     * keeps `enum`: `const` is the narrower claim, and a value satisfying it satisfies the list too only if the author
+     * wrote the two consistently — which is a contract question rather than a normalization one.
      *
      * @param  array<string, mixed>  $keywords
      * @return list<mixed>|null
@@ -167,9 +158,8 @@ trait NormalizesSchemas
     /**
      * The examples, in the one shape a mocker reads.
      *
-     * 3.1's list wins over 3.0's single value when a document writes both: a
-     * document carrying the two has migrated halfway, and the newer half is the
-     * one stating the intention.
+     * 3.1's list wins over 3.0's single value when a document writes both: a document carrying the two has migrated
+     * halfway, and the newer half is the one stating the intention.
      *
      * @param  array<string, mixed>  $keywords
      * @return list<mixed>
@@ -186,9 +176,8 @@ trait NormalizesSchemas
     /**
      * Which properties another property's presence makes required.
      *
-     * Both halves are checked rather than trusted, and the whole entry is
-     * dropped when either is wrong: a malformed one states no constraint, and
-     * inventing half of one would state a constraint its author did not write.
+     * Both halves are checked rather than trusted, and the whole entry is dropped when either is wrong: a malformed one
+     * states no constraint, and inventing half of one would state a constraint its author did not write.
      *
      * @param  array<string, mixed>  $keywords
      * @return array<string, list<string>>
@@ -271,8 +260,8 @@ trait NormalizesSchemas
     /**
      * A number, read as a float whatever the document wrote it as.
      *
-     * `minimum: 0` and `minimum: 0.0` are one bound, and carrying the two PHP
-     * types forward would make two contracts out of one.
+     * `minimum: 0` and `minimum: 0.0` are one bound, and carrying the two PHP types forward would make two contracts
+     * out of one.
      *
      * @param  array<string, mixed>  $keywords
      */

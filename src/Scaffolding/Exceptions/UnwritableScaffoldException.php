@@ -10,9 +10,8 @@ use RuntimeException;
 /**
  * A scaffold could not be created, and the failure is named rather than returned.
  *
- * The same reasoning as the generated tree's write failures: a permission problem
- * that surfaces as a PHP warning and a half-finished run is worse than a message
- * naming the path.
+ * The same reasoning as the generated tree's write failures: a permission problem that surfaces as a PHP warning and a
+ * half-finished run is worse than a message naming the path.
  */
 final class UnwritableScaffoldException extends RuntimeException implements SpecException
 {
@@ -32,9 +31,8 @@ final class UnwritableScaffoldException extends RuntimeException implements Spec
     /**
      * A file appeared between planning and writing.
      *
-     * **The one refusal this class exists for**, rather than a race worth
-     * ignoring: `spec:make` creates files a developer owns, so overwriting one is
-     * the single thing it must never do — and the check that prevents it has to
+     * **The one refusal this class exists for**, rather than a race worth ignoring: `spec:make` creates files a
+     * developer owns, so overwriting one is the single thing it must never do — and the check that prevents it has to
      * be the one immediately before the write, not the one in the plan.
      */
     public static function alreadyThere(string $path): self

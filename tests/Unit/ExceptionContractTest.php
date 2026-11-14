@@ -7,10 +7,9 @@ use Gcob\LaraSpecFirst\Exceptions\SpecException;
 /**
  * Every class the package declares, derived from the file tree.
  *
- * Deliberately not filtered by filename: keying off a `*Exception.php`
- * convention would make this test depend on a rule nothing else asserts, and
- * the first exception named otherwise would slip through while the suite stayed
- * green. Asking PHP what is a Throwable costs the same and cannot drift.
+ * Deliberately not filtered by filename: keying off a `*Exception.php` convention would make this test depend on a rule
+ * nothing else asserts, and the first exception named otherwise would slip through while the suite stayed green. Asking
+ * PHP what is a Throwable costs the same and cannot drift.
  *
  * @return list<class-string>
  */

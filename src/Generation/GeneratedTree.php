@@ -14,29 +14,24 @@ use SplFileInfo;
 /**
  * The only thing that writes to disk, and the only thing that knows where.
  *
- * Everything above it works on relative paths, which is what makes the one
- * property this class owes testable in one place: **the build never writes
- * outside its own directory.** Stated without a clause on purpose. A rule with an
+ * Everything above it works on relative paths, which is what makes the one property this class owes testable in one
+ * place: **the build never writes outside its own directory.** Stated without a clause on purpose. A rule with an
  * exception erodes, and every later feature would have argued for its own.
  *
  * Two more properties come from here rather than from the emitters:
  *
- * **Idempotent.** A file whose contents already match is left alone, so a second
- * run in a row changes nothing at all — not even a modification time. If a build
- * produces a diff on an unchanged specification, that is a defect.
+ * **Idempotent.** A file whose contents already match is left alone, so a second run in a row changes nothing at all —
+ * not even a modification time. If a build produces a diff on an unchanged specification, that is a defect.
  *
- * **Pruned.** A controller for an operation the specification no longer has is
- * removed, because "rewritten from scratch" has to mean the tree matches the
- * contract rather than accumulating what it used to say. Only files carrying
- * {@see GeneratedFile::MARKER} are ever deleted, so a file somebody wrote inside
- * the generated tree survives a build even though it should not be there.
+ * **Pruned.** A controller for an operation the specification no longer has is removed, because "rewritten from
+ * scratch" has to mean the tree matches the contract rather than accumulating what it used to say. Only files carrying
+ * {@see GeneratedFile::MARKER} are ever deleted, so a file somebody wrote inside the generated tree survives a build
+ * even though it should not be there.
  *
- * **Empty directories are the one exception, and it is stated rather than left to
- * be discovered.** A directory carries no marker, so there is no way to tell one
- * the build created from one a person did — and leaving `Controllers/` behind
- * after its last controller was pruned reads as a bug. So an empty directory
- * inside the tree is removed whoever made it. Nothing that holds a file is
- * touched, which is the part that matters.
+ * **Empty directories are the one exception, and it is stated rather than left to be discovered.** A directory carries
+ * no marker, so there is no way to tell one the build created from one a person did — and leaving `Controllers/` behind
+ * after its last controller was pruned reads as a bug. So an empty directory inside the tree is removed whoever made
+ * it. Nothing that holds a file is touched, which is the part that matters.
  *
  * @see docs/guide/code-generation/index.md — "A build never destroys your work"
  */
@@ -93,10 +88,9 @@ final readonly class GeneratedTree
     /**
      * Join a relative path under the root, and prove it stayed there.
      *
-     * The check is on the resolved string rather than on `realpath()`, which
-     * returns false for a file that does not exist yet — every file on a first
-     * build. Segment-wise resolution is what makes it work before the write
-     * rather than after it, which is the only moment it is useful.
+     * The check is on the resolved string rather than on `realpath()`, which returns false for a file that does not
+     * exist yet — every file on a first build. Segment-wise resolution is what makes it work before the write rather
+     * than after it, which is the only moment it is useful.
      *
      * @throws EscapedTreeException
      */
@@ -125,14 +119,12 @@ final readonly class GeneratedTree
     }
 
     /**
-     * Everything this plan would do to the working tree, without touching it —
-     * the read-only half of {@see self::write()}, computed the same way so the
-     * two can never disagree about what counts as changed or stale.
+     * Everything this plan would do to the working tree, without touching it — the read-only half of
+     * {@see self::write()}, computed the same way so the two can never disagree about what counts as changed or stale.
      *
-     * **Empty directories are deliberately not reported.** `write()` removes
-     * one left behind by the last file pruned out of it, but that is cleanup
-     * with nothing to compare against — there is no "would this directory
-     * become empty" question worth a line in a diagnostic, only files.
+     * **Empty directories are deliberately not reported.** `write()` removes one left behind by the last file pruned
+     * out of it, but that is cleanup with nothing to compare against — there is no "would this directory become empty"
+     * question worth a line in a diagnostic, only files.
      *
      * @param  list<GeneratedFile>  $files
      */
@@ -200,9 +192,8 @@ final readonly class GeneratedTree
     }
 
     /**
-     * Every generated file under this tree that the plan no longer wants,
-     * relative to the root — read-only, so both `prune()` and `diff()` can
-     * share it.
+     * Every generated file under this tree that the plan no longer wants, relative to the root — read-only, so both
+     * `prune()` and `diff()` can share it.
      *
      * @param  array<string, true>  $keep  absolute paths the plan just wrote or left alone
      * @return list<string>
@@ -251,23 +242,19 @@ final readonly class GeneratedTree
     /**
      * Create the directory a file is about to go in, and prove it can be used.
      *
-     * The mode is `0777` because **the umask decides, not this number**: the
-     * process umask is subtracted from it, so a normal `022` yields `0755` and a
-     * shared-group `002` yields `0775`. Passing the permissive value is what
-     * defers the policy to the operator instead of overriding it, and it is
-     * exactly what Laravel's own generators pass — `GeneratorCommand` calls
-     * `makeDirectory($path, 0777, true, true)` for every `make:` command. Written
-     * out because `0777` reads alarming on its own, and a reader who stops to
-     * check should find the answer here rather than in a framework's source.
+     * The mode is `0777` because **the umask decides, not this number**: the process umask is subtracted from it, so a
+     * normal `022` yields `0755` and a shared-group `002` yields `0775`. Passing the permissive value is what defers
+     * the policy to the operator instead of overriding it, and it is exactly what Laravel's own generators pass —
+     * `GeneratorCommand` calls `makeDirectory($path, 0777, true, true)` for every `make:` command. Written out because
+     * `0777` reads alarming on its own, and a reader who stops to check should find the answer here rather than in a
+     * framework's source.
      *
-     * **Nothing is ever `chmod`-ed.** Files land at the umask default, and
-     * forcing a mode afterwards would override the same operator policy this
-     * defers to.
+     * **Nothing is ever `chmod`-ed.** Files land at the umask default, and forcing a mode afterwards would override the
+     * same operator policy this defers to.
      *
-     * The writability check is what turns a permission problem into a message
-     * naming the path. It races, in principle — the directory could become
-     * unwritable between here and the write — which is why the caller checks the
-     * write's own result as well.
+     * The writability check is what turns a permission problem into a message naming the path. It races, in principle —
+     * the directory could become unwritable between here and the write — which is why the caller checks the write's own
+     * result as well.
      *
      * @throws UnwritableTreeException
      */
@@ -296,8 +283,7 @@ final readonly class GeneratedTree
     /**
      * The closest directory above this path that already exists.
      *
-     * Terminates because `dirname()` of a filesystem root is that root, which
-     * always exists.
+     * Terminates because `dirname()` of a filesystem root is that root, which always exists.
      */
     private static function nearestExistingAncestor(string $directory): string
     {

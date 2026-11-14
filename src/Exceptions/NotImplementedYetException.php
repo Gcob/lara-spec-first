@@ -9,11 +9,10 @@ use RuntimeException;
 /**
  * A setting exists, the behaviour behind it does not.
  *
- * Thrown rather than ignored on purpose. A configuration key that is read and
- * quietly does nothing is worse than one that is missing: the developer who
- * sets it has every reason to believe it took effect, and the package that
- * accepted it has told them so. Refusing loudly keeps the gap between what is
- * documented and what is built visible from the inside, not only in a roadmap.
+ * Thrown rather than ignored on purpose. A configuration key that is read and quietly does nothing is worse than one
+ * that is missing: the developer who sets it has every reason to believe it took effect, and the package that accepted
+ * it has told them so. Refusing loudly keeps the gap between what is documented and what is built visible from the
+ * inside, not only in a roadmap.
  *
  * Every use of this names the phase that removes it.
  */

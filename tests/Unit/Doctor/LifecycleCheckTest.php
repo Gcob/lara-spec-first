@@ -14,9 +14,8 @@ use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 /**
- * Every date in this file is compared against a fixed "now" rather than the
- * day the suite happens to run: a lifecycle test that reads the system clock
- * is a test that turns red on its own, which is the very failure mode the
+ * Every date in this file is compared against a fixed "now" rather than the day the suite happens to run: a lifecycle
+ * test that reads the system clock is a test that turns red on its own, which is the very failure mode the
  * approaching-sunset rule is designed around.
  */
 function lifecycleNow(): DateTimeImmutable
@@ -91,12 +90,11 @@ it('treats a date that only parses by rolling into the next month as unreadable'
 });
 
 /**
- * The messages of a set of findings, so an assertion about *which* operations
- * were reported does not also assert the order they came back in.
+ * The messages of a set of findings, so an assertion about *which* operations were reported does not also assert the
+ * order they came back in.
  *
- * `check()` does return document order, and that order matters in the report —
- * but it is not what a test about date spellings is pinning, and indexing into
- * the list makes such a test fail on a change that is only ever a reordering.
+ * `check()` does return document order, and that order matters in the report — but it is not what a test about date
+ * spellings is pinning, and indexing into the list makes such a test fail on a change that is only ever a reordering.
  *
  * @param  list<Finding>  $findings
  */

@@ -9,18 +9,15 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 /**
  * Turns the planned controllers into the one file the runtime opens.
  *
- * **Registrations rather than data.** A manifest the package walked at boot would
- * mean the runtime deciding something the build already decided; what this emits
- * is the `Route::` calls themselves, with the controller named as a
- * `[Class::class, 'routeAction']` pair of plain strings. That pair is what keeps
- * `php artisan route:cache` able to produce a file the application can load.
+ * **Registrations rather than data.** A manifest the package walked at boot would mean the runtime deciding something
+ * the build already decided; what this emits is the `Route::` calls themselves, with the controller named as a
+ * `[Class::class, 'routeAction']` pair of plain strings. That pair is what keeps `php artisan route:cache` able to
+ * produce a file the application can load.
  *
- * **Document order is route order.** Laravel resolves the first route registered,
- * and OpenAPI defines no priority between `/users/me` and `/users/{id}`. Rather
- * than invent a sorting rule and hide it, the order the specification writes is
- * the order emitted here — so putting the specific path above the templated one
- * in the document is what makes it win. The cost is stated plainly: reordering
- * keys in a specification can change routing behavior.
+ * **Document order is route order.** Laravel resolves the first route registered, and OpenAPI defines no priority
+ * between `/users/me` and `/users/{id}`. Rather than invent a sorting rule and hide it, the order the specification
+ * writes is the order emitted here — so putting the specific path above the templated one in the document is what makes
+ * it win. The cost is stated plainly: reordering keys in a specification can change routing behavior.
  *
  * @see docs/guide/openapi-support.md — "The spec file's order wins"
  */
@@ -29,11 +26,9 @@ final readonly class RoutesEmitter
     /**
      * Laravel's router names a method per verb, except for HEAD.
      *
-     * `Route::head()` does not exist, because the framework derives HEAD from GET
-     * on its own. A specification that declares `head` explicitly still has to be
-     * routed rather than dropped, so it goes through `match()` — which is also
-     * the honest spelling, since it says the framework was not asked for its
-     * usual behavior here.
+     * `Route::head()` does not exist, because the framework derives HEAD from GET on its own. A specification that
+     * declares `head` explicitly still has to be routed rather than dropped, so it goes through `match()` — which is
+     * also the honest spelling, since it says the framework was not asked for its usual behavior here.
      */
     private const array VERB_METHODS = [
         'get' => 'get',
@@ -96,29 +91,22 @@ final readonly class RoutesEmitter
     /**
      * What to do when PHP cannot find one of the classes imported below.
      *
-     * A class-not-found on generated code is the most likely error anyone meets
-     * with this package, and the least informative one PHP knows how to raise —
-     * here in the one file the application loads at boot, so the whole
-     * application stops rather than one endpoint. Grouped above the block rather
-     * than repeated over each line: twenty operations should not mean twenty
-     * copies of one paragraph.
+     * A class-not-found on generated code is the most likely error anyone meets with this package, and the least
+     * informative one PHP knows how to raise — here in the one file the application loads at boot, so the whole
+     * application stops rather than one endpoint. Grouped above the block rather than repeated over each line: twenty
+     * operations should not mean twenty copies of one paragraph.
      *
-     * Two of the three situations behind it are named, and the third is not: the
-     * build having never run here, which running it fixes, and the operation
-     * having left the contract, which only the document's history explains.
-     * `x-controller` is absent from the list because a route points at a
-     * generated class today, and `spec:watch` is absent because printing a
-     * command nobody can run yet would be worse than saying nothing.
+     * Two of the three situations behind it are named, and the third is not: the build having never run here, which
+     * running it fixes, and the operation having left the contract, which only the document's history explains.
+     * `x-controller` is absent from the list because a route points at a generated class today, and `spec:watch` is
+     * absent because printing a command nobody can run yet would be worse than saying nothing.
      *
-     * **Above one sorted block, framework import included, rather than above a
-     * controllers-only block.** Two blocks would read marginally better and would
-     * put the note one formatter away from being wrong: an import-ordering rule —
-     * `ordered_imports` is in Pint's own Laravel preset — sorts the whole
-     * namespace block, so a consumer running it could move a line across the note
-     * and the build would move it back on the next run. The wording is therefore
-     * true whatever order the imports end up in, and it names the framework import
-     * as the exception rather than leaving a reader to infer that a
-     * class-not-found on `Route` is not a build the specification can repair.
+     * **Above one sorted block, framework import included, rather than above a controllers-only block.** Two blocks
+     * would read marginally better and would put the note one formatter away from being wrong: an import-ordering rule
+     * — `ordered_imports` is in Pint's own Laravel preset — sorts the whole namespace block, so a consumer running it
+     * could move a line across the note and the build would move it back on the next run. The wording is therefore true
+     * whatever order the imports end up in, and it names the framework import as the exception rather than leaving a
+     * reader to infer that a class-not-found on `Route` is not a build the specification can repair.
      *
      * @see docs/guide/code-generation/generated-file-anatomy.md — "A reference says what to do"
      */
@@ -193,11 +181,10 @@ final readonly class RoutesEmitter
     /**
      * What the build worked out while writing this file.
      *
-     * The empty case gets its own finding rather than reading `0 operation(s)`,
-     * because a reader holding an application with no routes is asking a question
-     * the count does not answer. It also says what the file is still doing there:
-     * a build that skipped writing it would leave the previous build's routes
-     * registered, which is drift the runtime would serve.
+     * The empty case gets its own finding rather than reading `0 operation(s)`, because a reader holding an application
+     * with no routes is asking a question the count does not answer. It also says what the file is still doing there: a
+     * build that skipped writing it would leave the previous build's routes registered, which is drift the runtime
+     * would serve.
      *
      * @return non-empty-list<string>
      */

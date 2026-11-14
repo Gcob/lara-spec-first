@@ -29,14 +29,11 @@ use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
 
 /**
- * `nginx -t` for your contract: what this package will honor, what it will
- * not, and the routing table that results.
+ * `nginx -t` for your contract: what this package will honor, what it will not, and the routing table that results.
  *
- * **Read-only, always.** It never writes a cache, never touches the
- * database, never mutates state — including the specification itself, and
- * including the generated tree {@see self::diagnose()}'s Routing outcome and
- * Drift sections only ever plan against, exactly as `spec:build` does before
- * it writes anything.
+ * **Read-only, always.** It never writes a cache, never touches the database, never mutates state — including the
+ * specification itself, and including the generated tree {@see self::diagnose()}'s Routing outcome and Drift sections
+ * only ever plan against, exactly as `spec:build` does before it writes anything.
  *
  * @see docs/guide/doctor.md
  * @see docs/guide/commands.md — "spec:doctor reports and writes nothing"
@@ -137,34 +134,27 @@ final class DoctorCommand extends Command
     }
 
     /**
-     * What Security and Lifecycle owe a reader when the operations they read
-     * are not the operations the document describes.
+     * What Security and Lifecycle owe a reader when the operations they read are not the operations the document
+     * describes.
      *
-     * **`clean` is a claim, and these two sections had no way to avoid making
-     * it.** Both read `ReadOutcome::$operations` and nothing else, so on a run
-     * with no document at all they find nothing and fall through to the
-     * formatter's `clean` — a section asserting it ran and found nothing, on a
-     * file that was never opened. That is the same defect
-     * {@see self::routingOutcome()} already refuses for Drift, and the reason
-     * `DoctorCommand` hands {@see DiagnosticReport} a `null` lifecycle outcome
-     * rather than one full of zeroes: `0 of 0` at least invites disbelief,
-     * where `clean` does not.
+     * **`clean` is a claim, and these two sections had no way to avoid making it.** Both read
+     * `ReadOutcome::$operations` and nothing else, so on a run with no document at all they find nothing and fall
+     * through to the formatter's `clean` — a section asserting it ran and found nothing, on a file that was never
+     * opened. That is the same defect {@see self::routingOutcome()} already refuses for Drift, and the reason
+     * `DoctorCommand` hands {@see DiagnosticReport} a `null` lifecycle outcome rather than one full of zeroes: `0 of 0`
+     * at least invites disbelief, where `clean` does not.
      *
-     * It matters most for Security, which docs/guide/doctor.md calls the one
-     * finding that can turn a documented-as-protected endpoint into a public
-     * one. A green-looking Security section is the last thing this report
-     * should print about a document it could not read.
+     * It matters most for Security, which docs/guide/doctor.md calls the one finding that can turn a
+     * documented-as-protected endpoint into a public one. A green-looking Security section is the last thing this
+     * report should print about a document it could not read.
      *
-     * Two states, because they are not the same answer: with no document these
-     * sections checked nothing, and with a document the pipeline could only
-     * partly read they checked less than their names promise. Both are said out
-     * loud, and `--json`'s `notes` carries the same answer — the property
-     * {@see DiagnosticReport::$notes} exists for.
+     * Two states, because they are not the same answer: with no document these sections checked nothing, and with a
+     * document the pipeline could only partly read they checked less than their names promise. Both are said out loud,
+     * and `--json`'s `notes` carries the same answer — the property {@see DiagnosticReport::$notes} exists for.
      *
-     * **Scoped to these two on purpose.** References, Support findings and
-     * Installation have the same shape and predate the change that built
-     * Security and Lifecycle; widening the rule to them is its own change, with
-     * its own reasoning about what each of them can honestly say.
+     * **Scoped to these two on purpose.** References, Support findings and Installation have the same shape and predate
+     * the change that built Security and Lifecycle; widening the rule to them is its own change, with its own reasoning
+     * about what each of them can honestly say.
      *
      * @return array<string, SectionNote>
      */
@@ -201,27 +191,21 @@ final class DoctorCommand extends Command
     }
 
     /**
-     * Routing outcome and Drift both need the same `BuildPlan` — one call to
-     * `BuildPlanner::plan()` shared between the two rather than one each —
-     * and both are skipped together the moment `generated.namespace` or the
-     * generated tree's own location cannot be resolved at all: there is
-     * nothing left for either section to compare against.
+     * Routing outcome and Drift both need the same `BuildPlan` — one call to `BuildPlanner::plan()` shared between the
+     * two rather than one each — and both are skipped together the moment `generated.namespace` or the generated tree's
+     * own location cannot be resolved at all: there is nothing left for either section to compare against.
      *
-     * **Drift needs one precondition more than Routing outcome does, and it is
-     * this method's to check.** A document the pipeline could not read in full
-     * yields fewer operations than it describes — none at all, when the parser
-     * refused it outright — so the plan built from it is legitimately short,
-     * and every generated file the plan no longer accounts for reads as
-     * something a build would prune. It would not: `spec:build` refuses the
-     * same document before writing anything. So one real fault became one real
-     * fault plus one false line per generated file, each of them stating an
-     * action that will not happen, with the line that matters scrolled off the
-     * top. Drift is the gap between a specification and a build that already
-     * happened; a specification that cannot be read is not one end of that gap.
+     * **Drift needs one precondition more than Routing outcome does, and it is this method's to check.** A document the
+     * pipeline could not read in full yields fewer operations than it describes — none at all, when the parser refused
+     * it outright — so the plan built from it is legitimately short, and every generated file the plan no longer
+     * accounts for reads as something a build would prune. It would not: `spec:build` refuses the same document before
+     * writing anything. So one real fault became one real fault plus one false line per generated file, each of them
+     * stating an action that will not happen, with the line that matters scrolled off the top. Drift is the gap between
+     * a specification and a build that already happened; a specification that cannot be read is not one end of that
+     * gap.
      *
-     * Said rather than silently dropped, per {@see DiagnosticReport::$notes}:
-     * a section that prints `clean` because it never ran is the same defect in
-     * the other direction.
+     * Said rather than silently dropped, per {@see DiagnosticReport::$notes}: a section that prints `clean` because it
+     * never ran is the same defect in the other direction.
      *
      * @return array{routes: list<RouteOutcome>, findings: list<Finding>, notes: array<string, SectionNote>}
      */
@@ -274,10 +258,9 @@ final class DoctorCommand extends Command
     }
 
     /**
-     * Independent of Routing outcome and Drift on purpose: neither needs a
-     * `BuildPlan`, so a document this package cannot build a plan from —
-     * where those two sections have nothing left to say — still gets its
-     * installation checked.
+     * Independent of Routing outcome and Drift on purpose: neither needs a `BuildPlan`, so a document this package
+     * cannot build a plan from — where those two sections have nothing left to say — still gets its installation
+     * checked.
      *
      * @return list<Finding>
      */

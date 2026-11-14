@@ -10,39 +10,31 @@ use Gcob\LaraSpecFirst\Exceptions\UnusableSettingException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\ParserUnsafeFault;
 
 /**
- * A specification, read end to end: what could be resolved, and every fault
- * that kept the rest of it from being honored.
+ * A specification, read end to end: what could be resolved, and every fault that kept the rest of it from being
+ * honored.
  *
- * The one thing every command reads a contract for, whatever it does next.
- * `spec:build` and `spec:make` refuse the moment `$faults` is not empty;
- * `spec:doctor` reports every one of them instead. Neither reads the pipeline
- * that produced this directly — {@see Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract}
- * is the only place that assembles one — which is what keeps the two from
- * ever disagreeing about which construct this package refuses.
+ * The one thing every command reads a contract for, whatever it does next. `spec:build` and `spec:make` refuse the
+ * moment `$faults` is not empty; `spec:doctor` reports every one of them instead. Neither reads the pipeline that
+ * produced this directly — {@see Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract} is the only place that assembles
+ * one — which is what keeps the two from ever disagreeing about which construct this package refuses.
  *
- * `$document` is null exactly when nothing could be known about the document
- * at all — see {@see DocumentReadResult}.
+ * `$document` is null exactly when nothing could be known about the document at all — see {@see DocumentReadResult}.
  *
- * **`$operations` may describe less than the document does, and `$neutralized`
- * is how a caller knows.** A refused remote reference is removed from the raw
- * document before the parser sees it — see
- * {@see Guards\RemoteReferenceGuard::walk()} for why that is the only safe
- * option — so a request body, a parameter or a response whose schema lived
- * behind that reference is extracted without it. `spec:build` and `spec:make`
- * never meet this: they stop at the first fault and generate nothing. A caller
- * that reports rather than refuses does, and owes its reader the distinction —
- * a routing table printed from a document that was rewritten is not the routing
- * table the specification describes, and printing it beside the faults that
- * rewrote it without saying so is the one way this result can mislead.
+ * **`$operations` may describe less than the document does, and `$neutralized` is how a caller knows.** A refused
+ * remote reference is removed from the raw document before the parser sees it — see
+ * {@see Guards\RemoteReferenceGuard::walk()} for why that is the only safe option — so a request body, a parameter or a
+ * response whose schema lived behind that reference is extracted without it. `spec:build` and `spec:make` never meet
+ * this: they stop at the first fault and generate nothing. A caller that reports rather than refuses does, and owes its
+ * reader the distinction — a routing table printed from a document that was rewritten is not the routing table the
+ * specification describes, and printing it beside the faults that rewrote it without saying so is the one way this
+ * result can mislead.
  *
- * **Reading a result is not a substitute for a `catch`.** The pipeline no
- * longer throws for a *document* fault, which is a narrower promise than "it
- * does not throw": {@see UnusableSettingException} still comes out of
- * {@see Guards\RemoteReferenceGuard::vendor()} when `remote_references.vendor_path`
- * is unusable, because that is this package being misconfigured rather than a
- * document being wrong, and no report of a document's faults would be the right
- * place to list it. Every caller — the doctor included — needs the outer
- * `catch (SpecException)` its commands already have.
+ * **Reading a result is not a substitute for a `catch`.** The pipeline no longer throws for a *document* fault, which
+ * is a narrower promise than "it does not throw": {@see UnusableSettingException} still comes out of
+ * {@see Guards\RemoteReferenceGuard::vendor()} when `remote_references.vendor_path` is unusable, because that is this
+ * package being misconfigured rather than a document being wrong, and no report of a document's faults would be the
+ * right place to list it. Every caller — the doctor included — needs the outer `catch (SpecException)` its commands
+ * already have.
  *
  * @see docs/guide/openapi-support.md — "Reading a document"
  */
@@ -51,10 +43,8 @@ final readonly class ReadOutcome implements ReadResult
     /**
      * @param  list<Operation>  $operations  every operation that could be extracted despite the other faults
      * @param  list<SpecException>  $faults  every fault this read encountered, blocking or not
-     * @param  bool  $neutralized  whether the document handed to the parser had a
-     *                             refused reference removed from it, so
-     *                             `$operations` may describe less than the
-     *                             specification on disk does
+     * @param  bool  $neutralized  whether the document handed to the parser had a refused reference removed from it, so
+     *                             `$operations` may describe less than the specification on disk does
      */
     public function __construct(
         public ?ParsableSpecDocument $document,
@@ -64,21 +54,17 @@ final readonly class ReadOutcome implements ReadResult
     ) {}
 
     /**
-     * Read a specification end to end: {@see SpecDocumentReader} first, then
-     * {@see OperationExtractor} over what it produced, skipped entirely when
-     * nothing could be known about the document at all.
+     * Read a specification end to end: {@see SpecDocumentReader} first, then {@see OperationExtractor} over what it
+     * produced, skipped entirely when nothing could be known about the document at all.
      *
-     * **The one place this assembly happens.** Every caller that needs a
-     * contract read — `Console\Concerns\ReadsTheContract`, shared by every
-     * command, and `Scaffolding\ExtensionInsertion`, which reads the edited
-     * copy back to verify it — goes through this rather than repeating the
-     * two-step call itself, which is what keeps them from ever assembling the
-     * two results differently.
+     * **The one place this assembly happens.** Every caller that needs a contract read —
+     * `Console\Concerns\ReadsTheContract`, shared by every command, and `Scaffolding\ExtensionInsertion`, which reads
+     * the edited copy back to verify it — goes through this rather than repeating the two-step call itself, which is
+     * what keeps them from ever assembling the two results differently.
      *
      * @param  bool  $updateRefs  see {@see SpecDocumentReader::read()}
      *
-     * @throws UnusableSettingException see the class docblock: a misconfigured
-     *                                  package is not a document fault
+     * @throws UnusableSettingException see the class docblock: a misconfigured package is not a document fault
      */
     public static function read(
         SpecDocumentReader $reader,

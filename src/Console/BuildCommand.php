@@ -21,14 +21,12 @@ use Illuminate\Contracts\Config\Repository;
 /**
  * Turns the specification into the PHP that serves it.
  *
- * **Ordered, and it stops.** Read the document, extract its operations, plan
- * every file in memory, and only then write. Nothing reaches the disk until the
- * whole contract has been understood, so a document this package refuses leaves
- * the working tree exactly as it was rather than half generated.
+ * **Ordered, and it stops.** Read the document, extract its operations, plan every file in memory, and only then write.
+ * Nothing reaches the disk until the whole contract has been understood, so a document this package refuses leaves the
+ * working tree exactly as it was rather than half generated.
  *
- * What it emits in this form is the routes and one controller per operation.
- * Response DTOs and request validation are the same command doing more later, not
- * a second command.
+ * What it emits in this form is the routes and one controller per operation. Response DTOs and request validation are
+ * the same command doing more later, not a second command.
  *
  * @see docs/guide/code-generation/index.md — "The build command: spec:build"
  * @see docs/guide/commands.md — "spec:build writes the generated tree"
@@ -139,18 +137,14 @@ final class BuildCommand extends Command
     /**
      * What the build did about validation, in at most two lines.
      *
-     * **An operation stating nothing about its input gets no class**, and
-     * saying so is the point rather than a caveat: a `rules()` returning an
-     * empty array enforces nothing, and a file that exists to enforce nothing
-     * is a file telling its reader something untrue. A reader who expected a
-     * request class for `DELETE /users/{id}` should learn here that there is
-     * none and why, rather than from an empty directory.
+     * **An operation stating nothing about its input gets no class**, and saying so is the point rather than a caveat:
+     * a `rules()` returning an empty array enforces nothing, and a file that exists to enforce nothing is a file
+     * telling its reader something untrue. A reader who expected a request class for `DELETE /users/{id}` should learn
+     * here that there is none and why, rather than from an empty directory.
      *
-     * **A constraint the rule set could not express is counted, never
-     * listed.** The findings themselves are in the generated file, which is
-     * where somebody asking "why is this field not enforced" already is, and
-     * reprinting a document's worth of them under a build is a wall nobody
-     * reads twice.
+     * **A constraint the rule set could not express is counted, never listed.** The findings themselves are in the
+     * generated file, which is where somebody asking "why is this field not enforced" already is, and reprinting a
+     * document's worth of them under a build is a wall nobody reads twice.
      *
      * @see docs/guide/code-generation/request-validation.md — "Nothing to validate, no class"
      */
@@ -198,16 +192,14 @@ final class BuildCommand extends Command
     /**
      * Name the command that implements an operation, rather than running it.
      *
-     * **The build never scaffolds**, so what it owes instead is ergonomics: the
-     * exact invocation, ready to copy. Printing one line per operation is the trap
-     * — a specification with two hundred unimplemented operations would answer
-     * with two hundred commands, which is not a list but a wall, arriving on the
-     * day somebody adopts this package.
+     * **The build never scaffolds**, so what it owes instead is ergonomics: the exact invocation, ready to copy.
+     * Printing one line per operation is the trap — a specification with two hundred unimplemented operations would
+     * answer with two hundred commands, which is not a list but a wall, arriving on the day somebody adopts this
+     * package.
      *
-     * **So it summarises by `tags`**, because the specification already carries
-     * the author's own grouping and inventing a second one would be worse than
-     * using theirs. This groups the printed list only; every file `spec:make`
-     * creates is still one controller for one operation.
+     * **So it summarises by `tags`**, because the specification already carries the author's own grouping and inventing
+     * a second one would be worse than using theirs. This groups the printed list only; every file `spec:make` creates
+     * is still one controller for one operation.
      *
      * @see docs/guide/code-generation/scaffolding.md — "The build names the command"
      */
@@ -271,8 +263,8 @@ final class BuildCommand extends Command
     /**
      * How a developer would name this operation to `spec:make`.
      *
-     * The `operationId` when it has one, and its method and path otherwise —
-     * quoted, because a path carries characters a shell would otherwise read.
+     * The `operationId` when it has one, and its method and path otherwise — quoted, because a path carries characters
+     * a shell would otherwise read.
      */
     private function nameOf(Operation $operation): string
     {

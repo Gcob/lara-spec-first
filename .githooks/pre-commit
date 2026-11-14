@@ -1,0 +1,98 @@
+#!/bin/sh
+# Refuse a commit whose staged PHP or Markdown files are not formatted.
+#
+# It checks and never rewrites: a hook that edits files at commit time changes
+# what you staged behind your back, and breaks a `git add -p` commit built by
+# hand. So it lists the files, prints the one command that fixes them, and
+# stops. Fix, stage again, commit again.
+#
+#   - PHP: the docblock formatter, `php scripts/format-docblocks.php --check`.
+#     Pint is not run here; `composer check` and CI already do. Its warnings about
+#     cramped tags (see the script) are shown and never block the commit.
+#   - Markdown: `scripts/format-markdown.sh --check`, only when Node is installed.
+#     Without it the check is skipped with a note rather than failing a commit
+#     over a missing tool, and a Docker download is too slow for a hook.
+#
+# It reads the working-tree copy of each staged file, so a file staged only in
+# part with `git add -p` is judged as a whole.
+#
+# Enable it once per clone:  git config core.hooksPath .githooks
+# Skip it once, knowingly:   git commit --no-verify
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# `-z` and `xargs -0` so a path with a space is one argument, not two.
+staged() {
+    git diff --cached --name-only -z --diff-filter=ACMR -- "$1"
+}
+
+unformatted_php=""
+unformatted_markdown=""
+warnings=""
+
+if [ -n "$(staged '*.php')" ]; then
+    if command -v php > /dev/null 2>&1; then
+        scratch=$(mktemp -d)
+        trap 'rm -rf "$scratch"' EXIT
+
+        # stdout is the list of files, one per line. stderr holds the warnings,
+        # which are shown below, and a summary line that is of no use here. The
+        # exit code goes to a file: xargs turns 1 and 2 into the same 123.
+        unformatted_php=$(staged '*.php' | xargs -0 sh -c 'php scripts/format-docblocks.php --check "$@" 2>> "$0/stderr"; echo $? >> "$0/status"' "$scratch")
+        warnings=$(grep '^warning: ' "$scratch/stderr" 2> /dev/null)
+
+        # 0 is clean and 1 is "files differ". Anything else means nothing was
+        # checked, and a commit must not pass in silence over that.
+        if grep -qv '^[01]$' "$scratch/status" 2> /dev/null || [ ! -s "$scratch/status" ]; then
+            status=$(grep -v '^[01]$' "$scratch/status" 2> /dev/null | head -n 1)
+            echo "pre-commit: the docblock check did not run (exit ${status:-unknown}), so staged PHP was not checked:" >&2
+            grep -v '^warning: ' "$scratch/stderr" 2> /dev/null | head -n 1 | sed 's/^/  /' >&2
+            unformatted_php=""
+        fi
+    else
+        echo "pre-commit: php is not installed, so the docblock check was skipped for staged PHP files." >&2
+    fi
+fi
+
+if [ -n "$(staged '*.md')" ]; then
+    if command -v npx > /dev/null 2>&1; then
+        unformatted_markdown=$(staged '*.md' | xargs -0 scripts/format-markdown.sh --check 2>/dev/null)
+    else
+        echo "pre-commit: Node is not installed, so staged Markdown was not checked." >&2
+    fi
+fi
+
+if [ -n "$warnings" ]; then
+    echo "pre-commit: cramped docblock tags, a warning and not a reason to stop (composer format:docblocks:report lists them all):" >&2
+    printf '%s\n' "$warnings" | sed 's/^warning: /  /' >&2
+fi
+
+[ -z "$unformatted_php$unformatted_markdown" ] && exit 0
+
+echo "pre-commit: these staged files are not formatted, so nothing was committed." >&2
+
+if [ -n "$unformatted_php" ]; then
+    echo "" >&2
+    echo "PHP docblocks:" >&2
+    printf '%s\n' "$unformatted_php" | sed 's/^/  /' >&2
+fi
+
+if [ -n "$unformatted_markdown" ]; then
+    echo "" >&2
+    echo "Markdown:" >&2
+    printf '%s\n' "$unformatted_markdown" | sed 's/^/  /' >&2
+fi
+
+echo "" >&2
+echo "Fix them, stage them again, then commit again:" >&2
+echo "" >&2
+
+if [ -n "$unformatted_php" ] && [ -n "$unformatted_markdown" ]; then
+    echo "  composer format && composer format:md" >&2
+elif [ -n "$unformatted_php" ]; then
+    echo "  composer format" >&2
+else
+    echo "  composer format:md" >&2
+fi
+
+exit 1

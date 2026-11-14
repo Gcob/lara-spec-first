@@ -10,25 +10,19 @@ use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
 use Gcob\LaraSpecFirst\Support\Path;
 
 /**
- * Two silent misconfigurations whose symptoms appear far from their cause:
- * the vendored reference directory gitignored out of a commit, and a
- * generated path or namespace that does not agree with what Composer
- * actually autoloads.
+ * Two silent misconfigurations whose symptoms appear far from their cause: the vendored reference directory gitignored
+ * out of a commit, and a generated path or namespace that does not agree with what Composer actually autoloads.
  *
- * Both findings are filed as document faults, and docs/guide/doctor.md's own
- * table is what makes that the right class rather than an exemption argued
- * here: a document fault is a fault only the project can fix, which includes
- * a rule this package requires of a promise the project itself made. Neither
- * of these is the document being invalid OpenAPI, and neither is a stance this
- * package takes on an otherwise-correct document — they are the project's own
- * configuration disagreeing with itself, which nobody but the project can
- * settle, and which wants the harder of the two exit codes.
+ * Both findings are filed as document faults, and docs/guide/doctor.md's own table is what makes that the right class
+ * rather than an exemption argued here: a document fault is a fault only the project can fix, which includes a rule
+ * this package requires of a promise the project itself made. Neither of these is the document being invalid OpenAPI,
+ * and neither is a stance this package takes on an otherwise-correct document — they are the project's own
+ * configuration disagreeing with itself, which nobody but the project can settle, and which wants the harder of the two
+ * exit codes.
  *
- * **Neither finding is ever raised on an inference this class cannot make.**
- * That rule is the whole design of both methods below, and each names the
- * cases it stays silent about — a false positive in this section sends a
- * developer looking for a misconfiguration that is not there, in a report
- * whose only value is that a reader trusts it.
+ * **Neither finding is ever raised on an inference this class cannot make.** That rule is the whole design of both
+ * methods below, and each names the cases it stays silent about — a false positive in this section sends a developer
+ * looking for a misconfiguration that is not there, in a report whose only value is that a reader trusts it.
  *
  * @see docs/guide/doctor.md — "What it checks"
  * @see docs/guide/doctor.md — "Two kinds of finding, never mixed"
@@ -53,26 +47,20 @@ final readonly class InstallationCheck
     }
 
     /**
-     * Whether `remote_references.vendor_path` is excluded by `.gitignore` —
-     * asked of `git` itself rather than a `.gitignore` parser reimplemented
-     * here, since git already resolves nested files, `core.excludesFile` and
-     * negation correctly and a second implementation would only be a source
-     * of false negatives.
+     * Whether `remote_references.vendor_path` is excluded by `.gitignore` — asked of `git` itself rather than a
+     * `.gitignore` parser reimplemented here, since git already resolves nested files, `core.excludesFile` and negation
+     * correctly and a second implementation would only be a source of false negatives.
      *
-     * **Never blocks the report.** Outside a git repository, or without a
-     * `git` executable to ask, this is "cannot be determined", not a fault —
-     * a deployed application with no `.git` directory is a real, legitimate
-     * state, not a misconfiguration.
+     * **Never blocks the report.** Outside a git repository, or without a `git` executable to ask, this is "cannot be
+     * determined", not a fault — a deployed application with no `.git` directory is a real, legitimate state, not a
+     * misconfiguration.
      *
-     * **A known limit, git's own rather than this method's: a directory-only
-     * pattern (`vendor-refs/`, trailing slash) can only be resolved once the
-     * directory actually exists on disk** — `git check-ignore` has to stat
-     * the path to know whether a directory-only rule even applies, so a
-     * project that named an allowed host but has not vendored anything yet
-     * gets a silent pass here even if its `.gitignore` would have hidden the
-     * directory the moment something landed in it. Verified directly against
-     * git, not assumed. The realistic case this section exists for — a
-     * directory that already holds a vendored copy — is unaffected.
+     * **A known limit, git's own rather than this method's: a directory-only pattern (`vendor-refs/`, trailing slash)
+     * can only be resolved once the directory actually exists on disk** — `git check-ignore` has to stat the path to
+     * know whether a directory-only rule even applies, so a project that named an allowed host but has not vendored
+     * anything yet gets a silent pass here even if its `.gitignore` would have hidden the directory the moment
+     * something landed in it. Verified directly against git, not assumed. The realistic case this section exists for —
+     * a directory that already holds a vendored copy — is unaffected.
      */
     private static function gitignoreFinding(string $basePath, string $vendorPath): ?Finding
     {
@@ -122,40 +110,29 @@ final readonly class InstallationCheck
     }
 
     /**
-     * Whether the configured `generated.path` and `generated.namespace`
-     * agree with what Composer's own PSR-4 map says — the same question
-     * {@see CustomControllerLookup} answers
-     * for a single class, asked here of the generated tree's root instead.
+     * Whether the configured `generated.path` and `generated.namespace` agree with what Composer's own PSR-4 map says —
+     * the same question {@see CustomControllerLookup} answers for a single class, asked here of the generated tree's
+     * root instead.
      *
-     * **`autoload-dev` counts.** Composer merges both maps into one
-     * classloader, so a project whose generated tree lives under a dev-only
-     * root — this package's own Workbench is one, and so is any consumer that
-     * generates into a test or tooling namespace — autoloads perfectly well
-     * while `autoload.psr-4` alone maps nothing. Reading one map and claiming
-     * "nothing would autoload the generated tree at all" was wrong about a
-     * layout Composer supports, in the loudest class of finding this report
-     * has.
+     * **`autoload-dev` counts.** Composer merges both maps into one classloader, so a project whose generated tree
+     * lives under a dev-only root — this package's own Workbench is one, and so is any consumer that generates into a
+     * test or tooling namespace — autoloads perfectly well while `autoload.psr-4` alone maps nothing. Reading one map
+     * and claiming "nothing would autoload the generated tree at all" was wrong about a layout Composer supports, in
+     * the loudest class of finding this report has.
      *
-     * **"Cannot be determined" is never a finding here either**, the same rule
-     * {@see self::gitignoreFinding()} follows and for the same reason. Two
-     * cases, and both are real layouts rather than mistakes:
+     * **"Cannot be determined" is never a finding here either**, the same rule {@see self::gitignoreFinding()} follows
+     * and for the same reason. Two cases, and both are real layouts rather than mistakes:
      *
-     * - **A `generated.path` that is absolute and outside the application
-     *   root.** `GeneratedRoutesLocator::directory()` supports that
-     *   deliberately — "a generated tree outside the application root is a
-     *   real layout in a monorepo" — and this method has no way to know which
-     *   `composer.json` governs a directory outside the one it is reading.
-     *   Comparing an out-of-tree absolute path against a relative PSR-4
-     *   directory can only ever mismatch, so it said "would not autoload"
-     *   about every monorepo that does exactly what the locator documents.
-     * - **No `composer.json` at `$basePath`, or one that parses to something
-     *   else.** Already handled below, and named here because it is the same
-     *   rule.
+     * - **A `generated.path` that is absolute and outside the application root.** `GeneratedRoutesLocator::directory()`
+     *   supports that deliberately — "a generated tree outside the application root is a real layout in a monorepo" —
+     *   and this method has no way to know which `composer.json` governs a directory outside the one it is reading.
+     *   Comparing an out-of-tree absolute path against a relative PSR-4 directory can only ever mismatch, so it said
+     *   "would not autoload" about every monorepo that does exactly what the locator documents.
+     * - **No `composer.json` at `$basePath`, or one that parses to something else.** Already handled below, and named
+     *   here because it is the same rule.
      *
-     * The consequence is stated rather than hidden: on those layouts this
-     * check is silent, and silence is not a pass. That is what the section's
-     * `[note]` line is for once this method has a way to say it — see
-     * docs/guide/doctor.md.
+     * The consequence is stated rather than hidden: on those layouts this check is silent, and silence is not a pass.
+     * That is what the section's `[note]` line is for once this method has a way to say it — see docs/guide/doctor.md.
      */
     private static function autoloadFinding(string $basePath, string $namespace, string $path): ?Finding
     {
@@ -230,12 +207,10 @@ final readonly class InstallationCheck
     }
 
     /**
-     * Both PSR-4 maps `composer.json` can carry, merged the way Composer
-     * merges them into one classloader.
+     * Both PSR-4 maps `composer.json` can carry, merged the way Composer merges them into one classloader.
      *
-     * `autoload` wins on a prefix both declare — which is Composer's own
-     * order — though a project declaring the same prefix in both is already
-     * saying something odd.
+     * `autoload` wins on a prefix both declare — which is Composer's own order — though a project declaring the same
+     * prefix in both is already saying something odd.
      *
      * @param  array<array-key, mixed>  $composerJson
      * @return array<array-key, mixed>
@@ -256,10 +231,9 @@ final readonly class InstallationCheck
     /**
      * Whether an absolute path sits inside `$basePath`.
      *
-     * Compared as strings after normalizing separators, not through
-     * `realpath()`: the generated tree may not exist yet — a fresh clone that
-     * has never built is the common case — and `realpath()` answers false for
-     * a path that is merely not there, which would read as "outside".
+     * Compared as strings after normalizing separators, not through `realpath()`: the generated tree may not exist yet
+     * — a fresh clone that has never built is the common case — and `realpath()` answers false for a path that is
+     * merely not there, which would read as "outside".
      */
     private static function isUnder(string $basePath, string $path): bool
     {
@@ -269,14 +243,11 @@ final readonly class InstallationCheck
     }
 
     /**
-     * The PSR-4 entry whose prefix matches the most of `$namespace` —
-     * Composer's own rule, so that a project mapping both `App\` and
-     * `App\Http\` is judged against the one it would actually use.
+     * The PSR-4 entry whose prefix matches the most of `$namespace` — Composer's own rule, so that a project mapping
+     * both `App\` and `App\Http\` is judged against the one it would actually use.
      *
-     * @param  array<array-key, mixed>  $psr4  keys are almost always strings, but a
-     *                                         purely numeric-looking one in
-     *                                         composer.json decodes to an int key,
-     *                                         same as any other PHP array
+     * @param  array<array-key, mixed>  $psr4  keys are almost always strings, but a purely numeric-looking one in
+     *                                         composer.json decodes to an int key, same as any other PHP array
      * @return ?array{0: string, 1: string}
      */
     private static function longestPrefix(array $psr4, string $namespace): ?array

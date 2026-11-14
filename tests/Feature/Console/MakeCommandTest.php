@@ -43,8 +43,8 @@ beforeAll(function (): void {
 });
 
 /**
- * Where the build `spec:make` runs writes, kept out of the application root so one
- * test's tree can never be what another one reads.
+ * Where the build `spec:make` runs writes, kept out of the application root so one test's tree can never be what
+ * another one reads.
  */
 function scaffoldGeneratedTree(): string
 {
@@ -335,8 +335,8 @@ it('builds even when every class was already there', function (): void {
 /**
  * Run the command with somebody at the keyboard, typing what they are told to.
  *
- * The prompt is a value rather than a yes or no, so what is piped here is the class
- * name a developer would have submitted.
+ * The prompt is a value rather than a yes or no, so what is piped here is the class name a developer would have
+ * submitted.
  *
  * @param  array<string, mixed>  $arguments
  */

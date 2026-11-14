@@ -10,12 +10,10 @@ use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 /**
  * The OpenAPI minor versions this package understands.
  *
- * The first thing the read pipeline decides, and what everything after it
- * dispatches on.
+ * The first thing the read pipeline decides, and what everything after it dispatches on.
  *
- * This is one of our own types on purpose: it is the value everything
- * downstream of the parser dispatches on, so nothing outside Parsing has to
- * touch the specification document or the parser's own representation of it.
+ * This is one of our own types on purpose: it is the value everything downstream of the parser dispatches on, so
+ * nothing outside Parsing has to touch the specification document or the parser's own representation of it.
  *
  * @see SpecDocumentReader for the order of the read pipeline
  * @see docs/guide/openapi-support.md — "Handling 3.0 and 3.1"
@@ -28,14 +26,12 @@ enum SpecVersion: string
     /**
      * Read the version out of a decoded specification document.
      *
-     * The document is a plain array rather than a parsed object because
-     * detection has to happen *before* the parser is handed anything: which
-     * version it is decides which strategy interprets it.
+     * The document is a plain array rather than a parsed object because detection has to happen *before* the parser is
+     * handed anything: which version it is decides which strategy interprets it.
      *
      * @param  array<string, mixed>  $document
      *
-     * @throws UnsupportedVersionException when the document declares a version
-     *                                     this package does not implement, or
+     * @throws UnsupportedVersionException when the document declares a version this package does not implement, or
      *                                     declares none at all.
      */
     public static function detect(array $document): self

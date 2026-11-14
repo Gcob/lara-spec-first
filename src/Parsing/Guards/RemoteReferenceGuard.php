@@ -22,37 +22,29 @@ use Throwable;
 /**
  * Resolves a `$ref` that would otherwise reach over the network.
  *
- * A disallowed host, a missing vendored copy, a fetch that failed, or a
- * circular chain of vendored references are collected as faults rather than
- * thrown — see {@see SpecDocumentReader} for why the whole pipeline reads this
- * way now. An allowed, already-vendored reference is still resolved exactly as
- * before: a committed copy under `vendor_path`, fetched only when
- * `--update-refs` asks for it, and the reference rewritten to point at that
- * local copy — which is why `cebe\openapi\` never dials out. See
- * [remote-references.md](../../../docs/guide/remote-references.md#the-parser-never-sees-a-url)
- * for the mechanism that makes the rewrite invisible to the parser.
+ * A disallowed host, a missing vendored copy, a fetch that failed, or a circular chain of vendored references are
+ * collected as faults rather than thrown — see {@see SpecDocumentReader} for why the whole pipeline reads this way now.
+ * An allowed, already-vendored reference is still resolved exactly as before: a committed copy under `vendor_path`,
+ * fetched only when `--update-refs` asks for it, and the reference rewritten to point at that local copy — which is why
+ * `cebe\openapi\` never dials out. See
+ * [remote-references.md](../../../docs/guide/remote-references.md#the-parser-never-sees-a-url) for the mechanism that
+ * makes the rewrite invisible to the parser.
  *
- * **A faulted reference is neutralized, never left as a network scheme
- * string.** Collecting a fault instead of throwing means the walk keeps going
- * — and if a disallowed `$ref: https://…` were left in place, `cebe\openapi\`
- * would try to resolve it itself the next time anything opens this document,
- * which is exactly the network access the allowlist exists to prevent. So the
- * `$ref` key is removed from the node that carried it, and whatever else that
- * node holds is kept and walked like any other. See {@see self::walk()} for why
- * the key alone rather than the whole Reference Object.
+ * **A faulted reference is neutralized, never left as a network scheme string.** Collecting a fault instead of throwing
+ * means the walk keeps going — and if a disallowed `$ref: https://…` were left in place, `cebe\openapi\` would try to
+ * resolve it itself the next time anything opens this document, which is exactly the network access the allowlist
+ * exists to prevent. So the `$ref` key is removed from the node that carried it, and whatever else that node holds is
+ * kept and walked like any other. See {@see self::walk()} for why the key alone rather than the whole Reference Object.
  *
- * **Nothing is written when a document could not be fully resolved.** A
- * vendored copy is only re-persisted when the walk over it collected no fault
- * of its own, and a vendored document that did fault is refused by its parent
- * as well — so the reference pointing into it is neutralized rather than
- * rewritten to a local path. Two properties depend on that pair, and the
- * reasoning lives at {@see self::vendor()}: a failing read leaves the
- * repository untouched, and reading twice reports the same faults twice.
+ * **Nothing is written when a document could not be fully resolved.** A vendored copy is only re-persisted when the
+ * walk over it collected no fault of its own, and a vendored document that did fault is refused by its parent as well —
+ * so the reference pointing into it is neutralized rather than rewritten to a local path. Two properties depend on that
+ * pair, and the reasoning lives at {@see self::vendor()}: a failing read leaves the repository untouched, and reading
+ * twice reports the same faults twice.
  *
- * Runs on the raw document, before the parser sees anything — the same
- * position this class always occupied — and now also on every document it
- * vendors along the way, so a reference inside a fetched document is vendored
- * too, one host allowlist check per hop.
+ * Runs on the raw document, before the parser sees anything — the same position this class always occupied — and now
+ * also on every document it vendors along the way, so a reference inside a fetched document is vendored too, one host
+ * allowlist check per hop.
  *
  * @internal Not public API — a step of the read pipeline.
  *
@@ -65,16 +57,12 @@ final readonly class RemoteReferenceGuard
     private array $allowedHosts;
 
     /**
-     * @param  list<string>  $allowedHosts  hosts a project has declared it trusts,
-     *                                      lowercased once here since DNS is
-     *                                      case-insensitive and a contract may
-     *                                      not spell a host the way this list does.
-     *                                      Reading it here rather than reaching for
-     *                                      Laravel's config keeps this class a plain
-     *                                      object that a unit test can construct.
-     * @param  ?string  $vendorRoot  absolute path vendored copies are read from and
-     *                               written to. Only required once `$allowedHosts`
-     *                               is non-empty — an empty allowlist never reaches it.
+     * @param  list<string>  $allowedHosts  hosts a project has declared it trusts, lowercased once here since DNS is
+     *                                      case-insensitive and a contract may not spell a host the way this list does.
+     *                                      Reading it here rather than reaching for Laravel's config keeps this class a
+     *                                      plain object that a unit test can construct.
+     * @param  ?string  $vendorRoot  absolute path vendored copies are read from and written to. Only required once
+     *                               `$allowedHosts` is non-empty — an empty allowlist never reaches it.
      */
     public function __construct(
         array $allowedHosts = [],
@@ -166,10 +154,9 @@ final readonly class RemoteReferenceGuard
     }
 
     /**
-     * Vendor one remote reference and return what should replace it: a path to
-     * the local copy, relative to the document that named it, with the
-     * original fragment reattached — or null, meaning the caller neutralizes
-     * the reference instead, with the fault already recorded here.
+     * Vendor one remote reference and return what should replace it: a path to the local copy, relative to the document
+     * that named it, with the original fragment reattached — or null, meaning the caller neutralizes the reference
+     * instead, with the fault already recorded here.
      *
      * @param  list<string>  $chain
      */
@@ -362,15 +349,13 @@ final readonly class RemoteReferenceGuard
     }
 
     /**
-     * Re-encode a vendored document that itself named a reference, so what is
-     * committed already points at its local siblings.
+     * Re-encode a vendored document that itself named a reference, so what is committed already points at its local
+     * siblings.
      *
-     * **Matches the format it was fetched as.** `persist()` used to always
-     * write YAML, which round-trips correctly — `cebe\openapi\` sniffs a
-     * leading `{` rather than trusting a file's extension — but silently broke
-     * the promise this package makes about the diff: a `.json` vendored copy
-     * would come back reformatted as YAML end to end, when only its own
-     * `$ref` values actually changed.
+     * **Matches the format it was fetched as.** `persist()` used to always write YAML, which round-trips correctly —
+     * `cebe\openapi\` sniffs a leading `{` rather than trusting a file's extension — but silently broke the promise
+     * this package makes about the diff: a `.json` vendored copy would come back reformatted as YAML end to end, when
+     * only its own `$ref` values actually changed.
      *
      * @param  array<array-key, mixed>  $data
      *
@@ -417,8 +402,8 @@ final readonly class RemoteReferenceGuard
     }
 
     /**
-     * Best-effort cleanup of a temp file this class wrote — never allowed to
-     * mask whatever the caller is already failing over.
+     * Best-effort cleanup of a temp file this class wrote — never allowed to mask whatever the caller is already
+     * failing over.
      */
     private static function forget(string $temp): void
     {
@@ -428,8 +413,7 @@ final readonly class RemoteReferenceGuard
     }
 
     /**
-     * @return array{0: string, 1: string} the URL, and any `#fragment` — kept
-     *                                     apart because only the URL is fetched
+     * @return array{0: string, 1: string} the URL, and any `#fragment` — kept apart because only the URL is fetched
      */
     private static function splitFragment(string $reference): array
     {
@@ -443,9 +427,8 @@ final readonly class RemoteReferenceGuard
     /**
      * A reference with a scheme leaves the filesystem.
      *
-     * Matched on the scheme rather than on a list of protocols: `https` is the
-     * one anybody writes, but the parser hands the string to a stream wrapper,
-     * and PHP has more of those than a denylist would ever keep up with.
+     * Matched on the scheme rather than on a list of protocols: `https` is the one anybody writes, but the parser hands
+     * the string to a stream wrapper, and PHP has more of those than a denylist would ever keep up with.
      */
     private static function reachesOverTheNetwork(string $reference): bool
     {

@@ -10,12 +10,11 @@ use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\GeneratedTree;
 
 /**
- * Whether the generated tree still matches the specification. The runtime
- * cannot notice that someone edited the spec and forgot to build, so this is
- * the only thing standing between that mistake and production.
+ * Whether the generated tree still matches the specification. The runtime cannot notice that someone edited the spec
+ * and forgot to build, so this is the only thing standing between that mistake and production.
  *
- * Shares the `BuildPlan` {@see RoutingOutcomeCheck} already built rather than
- * planning a second time — one `BuildPlanner::plan()` call for both sections.
+ * Shares the `BuildPlan` {@see RoutingOutcomeCheck} already built rather than planning a second time — one
+ * `BuildPlanner::plan()` call for both sections.
  *
  * @see docs/guide/doctor.md — "What it checks"
  * @see docs/guide/code-generation/index.md — "The runtime never sees the spec"

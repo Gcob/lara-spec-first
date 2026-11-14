@@ -10,29 +10,22 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 /**
  * The class name a generated controller takes, and where it came from.
  *
- * Three sources, and which one applied is a finding worth reporting rather than
- * an implementation detail: `x-controller` is a name chosen in order to name this
- * class, an `operationId` is a name chosen for something else, and a derived one
- * is a name nobody chose. Only the first is extendable, and {@see NameSource}
- * owns that reasoning.
+ * Three sources, and which one applied is a finding worth reporting rather than an implementation detail:
+ * `x-controller` is a name chosen in order to name this class, an `operationId` is a name chosen for something else,
+ * and a derived one is a name nobody chose. Only the first is extendable, and {@see NameSource} owns that reasoning.
  *
- * **A declared custom controller decides the generated parent's short name.** The
- * two classes share it — the parent inside the generated namespace, the child
- * wherever the document says — so a reader seeing `UserController extends
- * \App\Http\Generated\Controllers\UserController` needs no convention
- * explained to them.
+ * **A declared custom controller decides the generated parent's short name.** The two classes share it — the parent
+ * inside the generated namespace, the child wherever the document says — so a reader seeing
+ * `UserController extends \App\Http\Generated\Controllers\UserController` needs no convention explained to them.
  *
- * **A derived name includes the path's parameter names.** That is a departure
- * from an earlier rule which excluded them so that renaming `{id}` to `{userId}`
- * could not rename a class, and the departure has a reason: a generated
- * controller with no declared custom controller is `final`, so nothing may
- * extend it and no import can depend on it. The cost the old rule was protecting
- * against no longer exists, and what is left is that `GetUsersIdController`
- * tells a reader which endpoint it serves where `GetUsersParamController` does
- * not.
+ * **A derived name includes the path's parameter names.** That is a departure from an earlier rule which excluded them
+ * so that renaming `{id}` to `{userId}` could not rename a class, and the departure has a reason: a generated
+ * controller with no declared custom controller is `final`, so nothing may extend it and no import can depend on it.
+ * The cost the old rule was protecting against no longer exists, and what is left is that `GetUsersIdController` tells
+ * a reader which endpoint it serves where `GetUsersParamController` does not.
  *
- * Identity stays normalized regardless — that is a different question, asked for
- * rename detection rather than for naming.
+ * Identity stays normalized regardless — that is a different question, asked for rename detection rather than for
+ * naming.
  *
  * @see docs/guide/code-generation/generated-file-anatomy.md — "Deriving a name without operationId"
  */
@@ -42,8 +35,8 @@ final readonly class ControllerName
         public string $shortName,
         public NameSource $source,
         /**
-         * The fully-qualified name of the class that extends the generated
-         * parent, or null when the contract names none.
+         * The fully-qualified name of the class that extends the generated parent, or null when the contract names
+         * none.
          */
         public ?string $customController,
     ) {}
@@ -114,9 +107,8 @@ final readonly class ControllerName
     /**
      * Refuse a name PHP cannot carry, rather than emitting a file that will not parse.
      *
-     * Studly-casing already drops the separators an `operationId` is likely to
-     * use, so what survives here is genuinely unusable: a name that lost every
-     * character it had, or one that starts with a digit because the source did.
+     * Studly-casing already drops the separators an `operationId` is likely to use, so what survives here is genuinely
+     * unusable: a name that lost every character it had, or one that starts with a digit because the source did.
      *
      * @throws UnusableNameException
      */

@@ -25,17 +25,14 @@ use function Laravel\Prompts\text;
 /**
  * Creates the one kind of file this package does not own.
  *
- * **The only command that writes a class a developer will own, and it does it on
- * request, once.** The build never scaffolds — that is
- * [the invariant](../../docs/guide/code-generation/index.md#a-build-never-destroys-your-work)
- * rather than a preference — and a flag on the build would have made the invariant
- * conditional, which is how a hundred empty classes get committed by accident.
+ * **The only command that writes a class a developer will own, and it does it on request, once.** The build never
+ * scaffolds — that is [the invariant](../../docs/guide/code-generation/index.md#a-build-never-destroys-your-work)
+ * rather than a preference — and a flag on the build would have made the invariant conditional, which is how a hundred
+ * empty classes get committed by accident.
  *
- * **The singular form is the primitive and the other two are loops over it.**
- * `--tag` and `--all` create the same files the singular form would, one per
- * operation, because nothing this package creates is a grouped file. Two guards
- * keep the bulk forms honest: they are never the default, and they list what they
- * are about to create and ask first.
+ * **The singular form is the primitive and the other two are loops over it.** `--tag` and `--all` create the same files
+ * the singular form would, one per operation, because nothing this package creates is a grouped file. Two guards keep
+ * the bulk forms honest: they are never the default, and they list what they are about to create and ask first.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
  * @see docs/guide/code-generation/scaffolding.md — "Scaffolding is spec:make, not a build step"
@@ -141,13 +138,11 @@ final class MakeCommand extends Command
     }
 
     /**
-     * The operations the form named, read from the document as it is now — or
-     * null, having already reported the reading pipeline's first fault, if
-     * there is one.
+     * The operations the form named, read from the document as it is now — or null, having already reported the reading
+     * pipeline's first fault, if there is one.
      *
-     * @return list<Operation>|null never empty when it is not null: every form
-     *                              refuses rather than selecting nothing, so a
-     *                              caller reading `[0]` is safe
+     * @return list<Operation>|null never empty when it is not null: every form refuses rather than selecting nothing,
+     *                              so a caller reading `[0]` is safe
      */
     private function select(string $form, string $specPath, RemoteReferenceGuard $remote): ?array
     {
@@ -169,22 +164,18 @@ final class MakeCommand extends Command
     /**
      * Why the flag is `--yes` rather than `--force`.
      *
-     * Laravel's own generators use `--force` to mean *overwrite what is there*, and
-     * this command never overwrites a file a developer owns. Borrowing the word
-     * would promise the one thing it refuses. `--yes` says what it does: every
-     * question this command would have asked is answered with the answer it
-     * proposed.
+     * Laravel's own generators use `--force` to mean *overwrite what is there*, and this command never overwrites a
+     * file a developer owns. Borrowing the word would promise the one thing it refuses. `--yes` says what it does:
+     * every question this command would have asked is answered with the answer it proposed.
      *
-     * It changes no guard except the asking. The insertion still verifies itself on
-     * a copy, a file that exists is still left alone, and a name the project could
-     * not place is still refused — loudly, because a flag that says yes is not a
-     * flag that says do it anyway.
+     * It changes no guard except the asking. The insertion still verifies itself on a copy, a file that exists is still
+     * left alone, and a name the project could not place is still refused — loudly, because a flag that says yes is not
+     * a flag that says do it anyway.
      *
-     * **The one guard it does deliberately answer for is "nobody is here to name
-     * the class".** `--yes` is itself that name, given on the command line rather
-     * than at a prompt, so it edits the specification even under
-     * `--no-interaction` — where the same run without it would print the row and
-     * stop. That is the point of the flag existing at all.
+     * **The one guard it does deliberately answer for is "nobody is here to name the class".** `--yes` is itself that
+     * name, given on the command line rather than at a prompt, so it edits the specification even under
+     * `--no-interaction` — where the same run without it would print the row and stop. That is the point of the flag
+     * existing at all.
      */
     private function saysYes(): bool
     {
@@ -194,26 +185,19 @@ final class MakeCommand extends Command
     /**
      * Say the extension is missing, propose a name, and let the developer edit it.
      *
-     * **A value rather than a yes-or-no**, and that is a revision worth naming. The
-     * question used to be "insert this? [y/N]", which asked a developer to approve a
-     * class name they had no way to change — so the only way to use their own was to
-     * answer no, open the document and type it. The prompt is prefilled with the
-     * proposal instead: submitting it accepts, editing it uses theirs, and an empty
-     * submission leaves the document alone.
+     * **A value rather than a yes-or-no**, and that is a revision worth naming. The question used to be "insert this?
+     * [y/N]", which asked a developer to approve a class name they had no way to change — so the only way to use their
+     * own was to answer no, open the document and type it. The prompt is prefilled with the proposal instead:
+     * submitting it accepts, editing it uses theirs, and an empty submission leaves the document alone.
      *
-     * **Nothing is written without a person there, or `--yes` standing in for
-     * one.** A non-interactive run with no `--yes` prints the row and stops,
-     * because Artisan would otherwise answer the prompt with its own default and
-     * a script would edit a specification nobody agreed to edit. `--yes` is that
-     * agreement, given up front on the command line, so it edits even under
-     * `--no-interaction` — {@see self::saysYes()} for why that is not a
-     * contradiction.
+     * **Nothing is written without a person there, or `--yes` standing in for one.** A non-interactive run with no
+     * `--yes` prints the row and stops, because Artisan would otherwise answer the prompt with its own default and a
+     * script would edit a specification nobody agreed to edit. `--yes` is that agreement, given up front on the command
+     * line, so it edits even under `--no-interaction` — {@see self::saysYes()} for why that is not a contradiction.
      *
-     * **The proposal is derived rather than asked for.** It is the configured
-     * controller namespace plus the name the build would have generated anyway, so
-     * the common case is a keystroke. What ends up in the document is what was
-     * submitted; from then on the document decides, and the configured namespace
-     * never renames it.
+     * **The proposal is derived rather than asked for.** It is the configured controller namespace plus the name the
+     * build would have generated anyway, so the common case is a keystroke. What ends up in the document is what was
+     * submitted; from then on the document decides, and the configured namespace never renames it.
      *
      * @return bool whether the document now carries the extension
      */
@@ -342,12 +326,10 @@ final class MakeCommand extends Command
     }
 
     /**
-     * Which of the three forms was asked for, or null when that is not a question
-     * with one answer.
+     * Which of the three forms was asked for, or null when that is not a question with one answer.
      *
-     * **Refused rather than resolved by precedence.** Deciding that `--all` beats
-     * `--tag` would mean a mistyped invocation creating files across a whole
-     * contract while the developer believed they had scoped it to one tag.
+     * **Refused rather than resolved by precedence.** Deciding that `--all` beats `--tag` would mean a mistyped
+     * invocation creating files across a whole contract while the developer believed they had scoped it to one tag.
      */
     private function form(): ?string
     {
@@ -371,9 +353,8 @@ final class MakeCommand extends Command
     /**
      * The singular form: one operation, no confirmation.
      *
-     * A human named one thing and one file follows, which is the shape every
-     * Laravel developer already has the reflex for. The confirmation the bulk
-     * forms ask for would be noise here.
+     * A human named one thing and one file follows, which is the shape every Laravel developer already has the reflex
+     * for. The confirmation the bulk forms ask for would be noise here.
      *
      * @param  list<PlannedScaffold>  $planned
      */
@@ -405,9 +386,8 @@ final class MakeCommand extends Command
     /**
      * The bulk forms: list, ask, then create.
      *
-     * **The listing is the guard, and the confirmation defaults to no.** Creating
-     * files is this command's whole job, so bulk is legitimate — what is not is a
-     * developer discovering afterwards how many files "yes" meant.
+     * **The listing is the guard, and the confirmation defaults to no.** Creating files is this command's whole job, so
+     * bulk is legitimate — what is not is a developer discovering afterwards how many files "yes" meant.
      *
      * @param  list<PlannedScaffold>  $planned
      * @param  list<Operation>  $undeclarable
@@ -465,22 +445,18 @@ final class MakeCommand extends Command
     /**
      * Build, because a scaffold on its own does not connect anything.
      *
-     * **The `extends` is the reason, and it is not a nicety.** A developer adds
-     * `x-controller` to an operation and runs this command: the class it names has
-     * no generated parent yet, because the parent's name comes from that very
-     * extension and the build has not read it. So the file this command just wrote
-     * would not load, in the one moment the developer is looking at it. Running
-     * the build is what makes it load — and what points the route at it, since the
-     * route's target is resolved at build time.
+     * **The `extends` is the reason, and it is not a nicety.** A developer adds `x-controller` to an operation and runs
+     * this command: the class it names has no generated parent yet, because the parent's name comes from that very
+     * extension and the build has not read it. So the file this command just wrote would not load, in the one moment
+     * the developer is looking at it. Running the build is what makes it load — and what points the route at it, since
+     * the route's target is resolved at build time.
      *
-     * **This is not the invariant in reverse.** The rule is that the *build* never
-     * creates a class a developer will own; nothing says a command that creates one
-     * may not ask the build to catch up. The build writes only inside its own tree
-     * either way, and it is idempotent, so the cost of running it is a read.
+     * **This is not the invariant in reverse.** The rule is that the *build* never creates a class a developer will
+     * own; nothing says a command that creates one may not ask the build to catch up. The build writes only inside its
+     * own tree either way, and it is idempotent, so the cost of running it is a read.
      *
-     * Its output is left as it is rather than summarised: the routes and the
-     * unimplemented count are what a developer needs to see after this, and they
-     * are already the build's own words.
+     * Its output is left as it is rather than summarised: the routes and the unimplemented count are what a developer
+     * needs to see after this, and they are already the build's own words.
      */
     private function rebuild(): int
     {
@@ -496,9 +472,8 @@ final class MakeCommand extends Command
     /**
      * What a bulk run is not going to touch, and why.
      *
-     * Counted rather than listed once past a handful: a contract of two hundred
-     * operations would answer `--all` with a wall, which is the trap this
-     * command's own documentation warns about.
+     * Counted rather than listed once past a handful: a contract of two hundred operations would answer `--all` with a
+     * wall, which is the trap this command's own documentation warns about.
      *
      * @param  list<PlannedScaffold>  $planned
      * @param  list<Operation>  $undeclarable
@@ -533,8 +508,7 @@ final class MakeCommand extends Command
     }
 
     /**
-     * A path as a reader would want to see it: relative to the project, when it is
-     * inside one.
+     * A path as a reader would want to see it: relative to the project, when it is inside one.
      */
     private function readable(string $path): string
     {

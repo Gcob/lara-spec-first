@@ -9,11 +9,10 @@ use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 use RuntimeException;
 
 /**
- * The document declares a version this package implements, but does not have
- * the shape that version requires.
+ * The document declares a version this package implements, but does not have the shape that version requires.
  *
- * Distinct from UnsupportedVersionException on purpose: this is a document
- * fault, not a package limit, and the two are never reported as the same thing.
+ * Distinct from UnsupportedVersionException on purpose: this is a document fault, not a package limit, and the two are
+ * never reported as the same thing.
  *
  * @see docs/guide/doctor.md — "Two kinds of finding, never mixed"
  */
@@ -46,9 +45,8 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     /**
      * An extension this package defines carries a value it does not define.
      *
-     * Refused rather than defaulted, and refused rather than reported only
-     * because the doctor does not exist yet: a refusal can be relaxed into a
-     * finding without breaking anybody, and the reverse cannot.
+     * Refused rather than defaulted, and refused rather than reported only because the doctor does not exist yet: a
+     * refusal can be relaxed into a finding without breaking anybody, and the reverse cannot.
      *
      * @param  non-empty-list<string>  $allowed
      *
@@ -69,8 +67,7 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     /**
      * An extension this package defines carries something that is not text.
      *
-     * Its own message rather than the one above: listing allowed values would
-     * answer a question the author did not ask.
+     * Its own message rather than the one above: listing allowed values would answer a question the author did not ask.
      */
     public static function extensionNotAString(string $extension, string $type, string $endpoint): self
     {
@@ -83,13 +80,11 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     }
 
     /**
-     * An extension that names a PHP class carries something that could never be
-     * one.
+     * An extension that names a PHP class carries something that could never be one.
      *
-     * Refused where the document is read rather than where the class would be
-     * generated, because the value is the name itself: nothing this package does
-     * to it could make `App\Http\Controllers\User-Controller` into an identifier,
-     * so there is nothing later to find out.
+     * Refused where the document is read rather than where the class would be generated, because the value is the name
+     * itself: nothing this package does to it could make `App\Http\Controllers\User-Controller` into an identifier, so
+     * there is nothing later to find out.
      *
      * @see docs/guide/controllers.md — "The contract decides what is customizable"
      */

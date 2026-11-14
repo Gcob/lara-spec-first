@@ -26,9 +26,8 @@ uses(TestCase::class)->in('Feature');
 /**
  * Decode a specification fixture from tests/Fixtures.
  *
- * Fixtures are read as plain arrays rather than through any loader: everything
- * under Parsing works on the decoded document, and a test that had to boot a
- * loader to reach it would be testing two things at once.
+ * Fixtures are read as plain arrays rather than through any loader: everything under Parsing works on the decoded
+ * document, and a test that had to boot a loader to reach it would be testing two things at once.
  *
  * @return array<string, mixed>
  */
@@ -43,9 +42,8 @@ function specFixture(string $name): array
 /**
  * The path of a specification fixture, for the code that reads files itself.
  *
- * Beside specFixture() on purpose: the pair makes the choice visible — a test
- * working on a decoded document takes the array, a test exercising the reader
- * takes the path.
+ * Beside specFixture() on purpose: the pair makes the choice visible — a test working on a decoded document takes the
+ * array, a test exercising the reader takes the path.
  */
 function specFixturePath(string $name): string
 {
@@ -53,18 +51,14 @@ function specFixturePath(string $name): string
 }
 
 /**
- * Read a specification fixture through the whole reading engine — the pair
- * beside it above stop at the decoded array; this one goes all the way to the
- * operations a real build would see, references resolved included.
+ * Read a specification fixture through the whole reading engine — the pair beside it above stop at the decoded array;
+ * this one goes all the way to the operations a real build would see, references resolved included.
  *
- * **Throws the first fault the read collected, rather than returning it in a
- * list.** The reading pipeline itself no longer throws — see
- * {@see ReadOutcome} — but the conformance suite that is this helper's only
- * caller exists to pin what a given *input* produces, one fixture at a time,
- * not how the pipeline reports it. Every conformance fixture is designed to
- * carry exactly one problem, so re-throwing the first fault keeps every
- * `toThrow()` assertion across that suite reading exactly as it did before
- * the pipeline changed underneath it.
+ * **Throws the first fault the read collected, rather than returning it in a list.** The reading pipeline itself no
+ * longer throws — see {@see ReadOutcome} — but the conformance suite that is this helper's only caller exists to pin
+ * what a given *input* produces, one fixture at a time, not how the pipeline reports it. Every conformance fixture is
+ * designed to carry exactly one problem, so re-throwing the first fault keeps every `toThrow()` assertion across that
+ * suite reading exactly as it did before the pipeline changed underneath it.
  *
  * @return list<Operation>
  */
@@ -76,10 +70,9 @@ function extractFixture(string $name): array
 /**
  * The same read, for a document that has no fixture file of its own.
  *
- * A conformance case that varies one keyword across a dozen datasets is better
- * built in memory than committed a dozen times, and it still has to report
- * faults the way every `toThrow()` in that suite expects. One copy of the rule
- * lives here so the two cannot drift.
+ * A conformance case that varies one keyword across a dozen datasets is better built in memory than committed a dozen
+ * times, and it still has to report faults the way every `toThrow()` in that suite expects. One copy of the rule lives
+ * here so the two cannot drift.
  *
  * @return list<Operation>
  */
@@ -95,9 +88,8 @@ function extractDocumentAt(string $path): array
 }
 
 /**
- * The operation the golden request is generated from, and the one most cases of
- * the request and the DTO emitters use: enough shapes to exercise presence,
- * nullability and a finding. Here rather than in either test because both read it.
+ * The operation the golden request is generated from, and the one most cases of the request and the DTO emitters use:
+ * enough shapes to exercise presence, nullability and a finding. Here rather than in either test because both read it.
  */
 function goldenOperation(): Operation
 {
@@ -133,12 +125,10 @@ function goldenOperation(): Operation
 }
 
 /**
- * The requests of these operations, each knowing the input DTO its `dto()`
- * returns, and the plan of every DTO.
+ * The requests of these operations, each knowing the input DTO its `dto()` returns, and the plan of every DTO.
  *
- * What the build does in two steps: plan the DTOs from the requests, then tell
- * each request which one is its own. An operation with nothing to validate has
- * no request and is left out, as it is in a build.
+ * What the build does in two steps: plan the DTOs from the requests, then tell each request which one is its own. An
+ * operation with nothing to validate has no request and is left out, as it is in a build.
  *
  * @param  list<Operation>  $operations
  * @return array{requests: list<PlannedRequest>, plan: InputDtoPlan}

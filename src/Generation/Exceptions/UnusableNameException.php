@@ -11,10 +11,9 @@ use InvalidArgumentException;
 /**
  * A generated name PHP cannot carry, or two operations claiming one.
  *
- * Both are refusals rather than guesses. Emitting a file whose class name does
- * not parse would turn a contract problem into a syntax error three steps away
- * from its cause, and letting one generated class serve two operations would
- * mean the second silently wins.
+ * Both are refusals rather than guesses. Emitting a file whose class name does not parse would turn a contract problem
+ * into a syntax error three steps away from its cause, and letting one generated class serve two operations would mean
+ * the second silently wins.
  *
  * @see docs/guide/code-generation/generated-file-anatomy.md — "Naming, and the rename problem"
  */
@@ -45,9 +44,8 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     /**
      * Two `x-controller` values that reduce to one generated parent.
      *
-     * Its own message rather than the collision above, because the fix is a
-     * different one: these are names a developer chose, and the advice to change
-     * an `operationId` would send them looking for a key neither operation has.
+     * Its own message rather than the collision above, because the fix is a different one: these are names a developer
+     * chose, and the advice to change an `operationId` would send them looking for a key neither operation has.
      *
      * @see docs/guide/controllers.md — "Two classes, found by name"
      */
@@ -87,14 +85,12 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     /**
      * A path parameter the generated method cannot declare.
      *
-     * `routeAction` takes one parameter per path parameter, named the way the
-     * document names it, so a name that is legal in a route and illegal as a PHP
-     * variable has to be refused rather than written into a file that will not
+     * `routeAction` takes one parameter per path parameter, named the way the document names it, so a name that is
+     * legal in a route and illegal as a PHP variable has to be refused rather than written into a file that will not
      * parse.
      *
-     * One path naming the same parameter twice needs no factory here: a
-     * {@see PathTemplate} refuses that where the
-     * path is read, before anything asks what could be generated from it.
+     * One path naming the same parameter twice needs no factory here: a {@see PathTemplate} refuses that where the path
+     * is read, before anything asks what could be generated from it.
      *
      * @see docs/guide/controllers.md — "One controller, one routeAction"
      */
@@ -112,9 +108,8 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     /**
      * A path parameter named like the generated request's own parameter.
      *
-     * `routeAction` declares the request as `$request` ahead of the path's
-     * parameters, so `{request}` on an operation with something to validate
-     * would declare one variable twice, which PHP refuses at compile time.
+     * `routeAction` declares the request as `$request` ahead of the path's parameters, so `{request}` on an operation
+     * with something to validate would declare one variable twice, which PHP refuses at compile time.
      */
     public static function parameterShadowsRequest(string $identity): self
     {
@@ -141,13 +136,11 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     /**
      * Two operations whose generated requests would be one class.
      *
-     * **Its own factory rather than the one above, because it is reachable
-     * without that one firing and the advice differs.** A request's name comes
-     * from the `operationId` alone, while a controller's may come from
-     * `x-controller` — so two operations sharing an `operationId` and
-     * declaring different custom controllers collide here and nowhere else.
-     * Telling their author that two operations cannot share one generated
-     * *controller* would send them looking at the one thing that is fine.
+     * **Its own factory rather than the one above, because it is reachable without that one firing and the advice
+     * differs.** A request's name comes from the `operationId` alone, while a controller's may come from `x-controller`
+     * — so two operations sharing an `operationId` and declaring different custom controllers collide here and nowhere
+     * else. Telling their author that two operations cannot share one generated *controller* would send them looking at
+     * the one thing that is fine.
      */
     public static function requestClaimedTwice(string $shortName, string $first, string $second): self
     {
@@ -164,13 +157,11 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     /**
      * Two different schemas that would generate one input DTO class.
      *
-     * **Named by position, and by what each contributes to the class name.** The
-     * schema's name is not always what they share: `User` and `UserPartial` are two
-     * components with two names, and the partial type of the first is the full type of
-     * the second. Naming only the schemas blames them for a collision the generator's
-     * suffix made, so each side says which type it is, the base the name came from and
-     * the suffix added to it. An inline schema's position is the operation's, which is
-     * what a reader edits to resolve it.
+     * **Named by position, and by what each contributes to the class name.** The schema's name is not always what they
+     * share: `User` and `UserPartial` are two components with two names, and the partial type of the first is the full
+     * type of the second. Naming only the schemas blames them for a collision the generator's suffix made, so each side
+     * says which type it is, the base the name came from and the suffix added to it. An inline schema's position is the
+     * operation's, which is what a reader edits to resolve it.
      *
      * @param  array{position: string, base: string, origin: string, partial: bool}  $first
      * @param  array{position: string, base: string, origin: string, partial: bool}  $second
@@ -235,8 +226,7 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     }
 
     /**
-     * One schema read as a multipart body by one operation and as something
-     * else by another, with a file part in it.
+     * One schema read as a multipart body by one operation and as something else by another, with a file part in it.
      */
     public static function inputDtoServesFilesAndStrings(string $shortName, string $position): self
     {

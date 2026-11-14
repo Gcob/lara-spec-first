@@ -41,18 +41,15 @@ use Throwable;
 /**
  * Turns a read document into the operations of the contract.
  *
- * This is the crossing point. Everything above it works on arrays and our own
- * types; here, and only here, the OpenAPI parser is asked to resolve references
- * — and nothing it returns leaves this class. What comes out is `Contract\`.
+ * This is the crossing point. Everything above it works on arrays and our own types; here, and only here, the OpenAPI
+ * parser is asked to resolve references — and nothing it returns leaves this class. What comes out is `Contract\`.
  *
- * **An operation whose own construct is refused is skipped, not fatal to the
- * rest of the document.** A `trace` operation, a malformed extension, an
- * identity already claimed by an earlier operation — each is collected as a
- * fault and the loop moves on to the next operation, rather than the first one
- * stopping every operation after it. Handing the OpenAPI parser the document
- * at all is still all-or-nothing: if `cebe\openapi\` itself cannot build an
- * object model of the document, there is no per-operation loop to run yet, so
- * that failure is the whole result. See {@see ExtractionResult}.
+ * **An operation whose own construct is refused is skipped, not fatal to the rest of the document.** A `trace`
+ * operation, a malformed extension, an identity already claimed by an earlier operation — each is collected as a fault
+ * and the loop moves on to the next operation, rather than the first one stopping every operation after it. Handing the
+ * OpenAPI parser the document at all is still all-or-nothing: if `cebe\openapi\` itself cannot build an object model of
+ * the document, there is no per-operation loop to run yet, so that failure is the whole result. See
+ * {@see ExtractionResult}.
  *
  * @internal Not public API — reachable through the reading pipeline.
  *
@@ -63,9 +60,8 @@ final readonly class OperationExtractor
     /**
      * Keywords a schema may not carry at all, each for its own reason.
      *
-     * `$id` rebases how every relative reference under it resolves, and the four
-     * dynamic-scope keywords ask for a resolution this package does not do.
-     * Both are wrong-resolution risks rather than missing-feature ones, which is
+     * `$id` rebases how every relative reference under it resolves, and the four dynamic-scope keywords ask for a
+     * resolution this package does not do. Both are wrong-resolution risks rather than missing-feature ones, which is
      * what puts them at `Rejected` while their raw neighbours sit at `Ignored`.
      *
      * @see docs/guide/openapi-support.md — "Schemas"
@@ -79,18 +75,15 @@ final readonly class OperationExtractor
     ];
 
     /**
-     * The eleven keywords whose value *is* a schema and which the parser hands
-     * back raw, references and all.
+     * The eleven keywords whose value *is* a schema and which the parser hands back raw, references and all.
      *
-     * Ignored while they hold nothing but constraints, and refused the moment
-     * one of them holds a `$ref`: the parser leaves that pointer unresolved, so
-     * reading it as a schema produces a value that is wrong rather than one that
-     * is missing, and nothing downstream fails to say so.
+     * Ignored while they hold nothing but constraints, and refused the moment one of them holds a `$ref`: the parser
+     * leaves that pointer unresolved, so reading it as a schema produces a value that is wrong rather than one that is
+     * missing, and nothing downstream fails to say so.
      *
-     * `$defs` is not here, and the omission is the matrix's rather than an
-     * oversight: it is a container rather than a constraint, so a reference
-     * between definitions inside it is how the keyword is used. What is refused
-     * is the other direction, a reference aimed *into* one.
+     * `$defs` is not here, and the omission is the matrix's rather than an oversight: it is a container rather than a
+     * constraint, so a reference between definitions inside it is how the keyword is used. What is refused is the other
+     * direction, a reference aimed *into* one.
      *
      * @see docs/guide/openapi-support.md — "Schemas"
      */
@@ -111,15 +104,13 @@ final readonly class OperationExtractor
     /**
      * Keys whose contents are data rather than specification, inside a schema.
      *
-     * The same boundary {@see ReferenceCycleDetector} draws, applied one level
-     * down: a `$ref` written under one of these is a literal, and an API that
-     * itself deals in JSON Schema will have one. Refusing over it would turn
-     * away a valid contract, which for a refusal is the worst outcome available.
+     * The same boundary {@see ReferenceCycleDetector} draws, applied one level down: a `$ref` written under one of
+     * these is a literal, and an API that itself deals in JSON Schema will have one. Refusing over it would turn away a
+     * valid contract, which for a refusal is the worst outcome available.
      *
-     * `examples` joins the list here where the cycle detector has to tell two
-     * shapes apart by name: inside a schema it is 3.1's list of literal values
-     * and never a map of Example Objects, so its position answers the question
-     * the name cannot.
+     * `examples` joins the list here where the cycle detector has to tell two shapes apart by name: inside a schema it
+     * is 3.1's list of literal values and never a map of Example Objects, so its position answers the question the name
+     * cannot.
      *
      * @see docs/guide/openapi-support.md — "Reading a document"
      */
@@ -128,17 +119,13 @@ final readonly class OperationExtractor
     /**
      * Every schema keyword read into the normal form, flat and in one place.
      *
-     * The list is closed on purpose. A keyword the support matrix marks
-     * `Ignored` is absent here, so nothing can read it by accident, and the
-     * three the parser does not model — `const`, `examples` and
-     * `contentMediaType` — are present because they are honored despite coming
-     * back as raw values.
+     * The list is closed on purpose. A keyword the support matrix marks `Ignored` is absent here, so nothing can read
+     * it by accident, and the three the parser does not model — `const`, `examples` and `contentMediaType` — are
+     * present because they are honored despite coming back as raw values.
      *
-     * `oneOf`, `anyOf` and `not` are the absences worth naming, since a reader
-     * checking this list against the matrix will look for them: the parser does
-     * model them, so no unresolved pointer can hide in one, and the matrix
-     * ignores them because no Laravel rule expresses "exactly one of these
-     * shapes".
+     * `oneOf`, `anyOf` and `not` are the absences worth naming, since a reader checking this list against the matrix
+     * will look for them: the parser does model them, so no unresolved pointer can hide in one, and the matrix ignores
+     * them because no Laravel rule expresses "exactly one of these shapes".
      *
      * @see docs/guide/openapi-support.md — "Schemas"
      */
@@ -274,16 +261,12 @@ final readonly class OperationExtractor
     }
 
     /**
-     * Every field the document states for one operation, or the first fault
-     * that keeps it from being built at all.
+     * Every field the document states for one operation, or the first fault that keeps it from being built at all.
      *
-     * @param  array<array-key, mixed>  $shared  the Path Item's own parameters,
-     *                                           which OpenAPI says apply to
-     *                                           every operation under it
-     * @param  SchemaPosition  $pathItemAt  where the Path Item is written, which
-     *                                      is not always under `/paths` in the
-     *                                      root document: a Path Item may itself
-     *                                      be a reference into another file
+     * @param  array<array-key, mixed>  $shared  the Path Item's own parameters, which OpenAPI says apply to every
+     *                                           operation under it
+     * @param  SchemaPosition  $pathItemAt  where the Path Item is written, which is not always under `/paths` in the
+     *                                      root document: a Path Item may itself be a reference into another file
      *
      * @throws InvalidDocumentException
      */
@@ -359,14 +342,12 @@ final readonly class OperationExtractor
     /**
      * Every response the operation declares, keyed by status code as written.
      *
-     * **A response with no readable schema keeps its entry.** A `204` is a
-     * promise the contract makes, and dropping it for want of a schema would
-     * leave nothing able to tell "answers with no body" from "never declared".
+     * **A response with no readable schema keeps its entry.** A `204` is a promise the contract makes, and dropping it
+     * for want of a schema would leave nothing able to tell "answers with no body" from "never declared".
      *
-     * The keys are not interpreted: `200`, the 3.1 range `2XX` and `default`
-     * arrive as the strings the document wrote. Which one answers a given
-     * request is a question about serving a response, and settling it here
-     * would bake one reader's rule into what every reader consults.
+     * The keys are not interpreted: `200`, the 3.1 range `2XX` and `default` arrive as the strings the document wrote.
+     * Which one answers a given request is a question about serving a response, and settling it here would bake one
+     * reader's rule into what every reader consults.
      *
      * @return list<Response>
      *
@@ -429,13 +410,11 @@ final readonly class OperationExtractor
     /**
      * The `query` parameters, and only those.
      *
-     * A `path` parameter is the router's question, and `header` and `cookie`
-     * are an `Ignored` support level: reporting them is the doctor's work, and
-     * carrying them here would be offering a value nothing may read.
+     * A `path` parameter is the router's question, and `header` and `cookie` are an `Ignored` support level: reporting
+     * them is the doctor's work, and carrying them here would be offering a value nothing may read.
      *
-     * **Path Item parameters merge with the operation's, and the operation wins
-     * on a name they share.** That is OpenAPI's own rule rather than one this
-     * package invents, which is why it is a merge rather than a collision — and
+     * **Path Item parameters merge with the operation's, and the operation wins on a name they share.** That is
+     * OpenAPI's own rule rather than one this package invents, which is why it is a merge rather than a collision — and
      * the parser does not apply it, so this is where it happens.
      *
      * @param  array<array-key, mixed>  $shared
@@ -497,11 +476,9 @@ final readonly class OperationExtractor
     /**
      * A parameter's name, or null when the document did not write a usable one.
      *
-     * The parser's docblock types `name` as a string, and its own reader hands
-     * back whatever the document wrote — the same claim-rather-than-guarantee
-     * that {@see self::operationId()} already works around. Taken as `mixed`
-     * here so the check is real rather than a formality a static analyser can
-     * see through.
+     * The parser's docblock types `name` as a string, and its own reader hands back whatever the document wrote — the
+     * same claim-rather-than-guarantee that {@see self::operationId()} already works around. Taken as `mixed` here so
+     * the check is real rather than a formality a static analyser can see through.
      */
     private function parameterName(mixed $written): ?string
     {
@@ -509,15 +486,12 @@ final readonly class OperationExtractor
     }
 
     /**
-     * A keyed node of the parser's model, or nothing when the document wrote
-     * something else there.
+     * A keyed node of the parser's model, or nothing when the document wrote something else there.
      *
-     * **A document reaching here has been parsed, never validated**, so an
-     * attribute the parser declares a list of objects may hold whatever the
-     * author wrote — a string, a mapping, a null. The parser records an error
-     * and keeps the value; reporting it is
-     * [the doctor's work](../../docs/guide/doctor.md), and refusing to read the
-     * rest of the contract over it is not this class's call to make.
+     * **A document reaching here has been parsed, never validated**, so an attribute the parser declares a list of
+     * objects may hold whatever the author wrote — a string, a mapping, a null. The parser records an error and keeps
+     * the value; reporting it is [the doctor's work](../../docs/guide/doctor.md), and refusing to read the rest of the
+     * contract over it is not this class's call to make.
      *
      * @return array<array-key, mixed>
      */
@@ -531,28 +505,22 @@ final readonly class OperationExtractor
     /**
      * One schema, walked into the normal form and out of the parser's types.
      *
-     * **The walk is this class's and the interpretation is the strategy's**, and
-     * the split is not arbitrary: walking means holding `cebe\openapi\` objects,
-     * which nothing outside this namespace may do, while deciding what `type` or
-     * `exclusiveMinimum` means at a version is exactly what a strategy is for.
-     * So each node is flattened here — children first, already normalized — and
-     * handed over as a plain keyword map.
+     * **The walk is this class's and the interpretation is the strategy's**, and the split is not arbitrary: walking
+     * means holding `cebe\openapi\` objects, which nothing outside this namespace may do, while deciding what `type` or
+     * `exclusiveMinimum` means at a version is exactly what a strategy is for. So each node is flattened here —
+     * children first, already normalized — and handed over as a plain keyword map.
      *
-     * @param  SchemaPosition  $position  where this node is written, computed by
-     *                                    the raw walk rather than asked of the
+     * @param  SchemaPosition  $position  where this node is written, computed by the raw walk rather than asked of the
      *                                    parser — see {@see DocumentWalk}
-     * @param  array<string, array{0: string, 1: string|null}>  $open  the nodes
-     *                                                                 this descent is inside, each keyed
-     *                                                                 both by written position and by
-     *                                                                 object identity — two keys for one
-     *                                                                 node, see the body — and holding the
-     *                                                                 position and name a recursion marker
-     *                                                                 reports. Passed by value
-     *                                                                 rather than held on the instance: two
-     *                                                                 sibling properties may legitimately
-     *                                                                 point at one shared schema, and a set
-     *                                                                 that survived the first of them would
-     *                                                                 report the second as recursion
+     * @param  array<string, array{0: string, 1: string|null}>  $open  the nodes this descent is inside, each keyed both
+     *                                                                 by written position and by object identity — two
+     *                                                                 keys for one node, see the body — and holding the
+     *                                                                 position and name a recursion marker reports.
+     *                                                                 Passed by value rather than held on the instance:
+     *                                                                 two sibling properties may legitimately point at
+     *                                                                 one shared schema, and a set that survived the
+     *                                                                 first of them would report the second as
+     *                                                                 recursion
      *
      * @throws RejectedConstructException
      */
@@ -662,18 +630,14 @@ final readonly class OperationExtractor
     /**
      * Refuse a schema this package would otherwise read wrongly.
      *
-     * **Every refusal here is about a wrong value rather than a missing one**,
-     * which is the line the support matrix draws between `Rejected` and
-     * `Ignored`. A keyword that simply goes unread costs a feature; one of these
-     * would produce a schema that looks complete and is not, and nothing later
-     * fails to announce it.
+     * **Every refusal here is about a wrong value rather than a missing one**, which is the line the support matrix
+     * draws between `Rejected` and `Ignored`. A keyword that simply goes unread costs a feature; one of these would
+     * produce a schema that looks complete and is not, and nothing later fails to announce it.
      *
-     * Checked per node during the walk rather than once over the raw document,
-     * which has one consequence worth stating: a schema under
-     * `components.schemas` that no operation reaches is never examined. That is
-     * the right scope. A definition nothing references is not part of the
-     * contract this package serves, and refusing a document over it would be
-     * refusing something nobody reads.
+     * Checked per node during the walk rather than once over the raw document, which has one consequence worth stating:
+     * a schema under `components.schemas` that no operation reaches is never examined. That is the right scope. A
+     * definition nothing references is not part of the contract this package serves, and refusing a document over it
+     * would be refusing something nobody reads.
      *
      * @throws RejectedConstructException
      */
@@ -707,13 +671,11 @@ final readonly class OperationExtractor
     }
 
     /**
-     * The first reference written anywhere inside a raw keyword's value, or null
-     * when it holds none.
+     * The first reference written anywhere inside a raw keyword's value, or null when it holds none.
      *
-     * The first rather than all of them on purpose: one is enough to refuse the
-     * construct, and a document naming several has one problem rather than
-     * several. Data positions are stepped over, so the literal `$ref` an API
-     * about JSON Schema writes in an `example` is left alone.
+     * The first rather than all of them on purpose: one is enough to refuse the construct, and a document naming
+     * several has one problem rather than several. Data positions are stepped over, so the literal `$ref` an API about
+     * JSON Schema writes in an `example` is left alone.
      */
     private function referenceInside(mixed $value): ?string
     {
@@ -743,18 +705,16 @@ final readonly class OperationExtractor
     /**
      * Refuse a Path Item reference the parser will drop instead of resolving.
      *
-     * Verified against the vendored parser: a `$ref` into `components.pathItems`
-     * resolves to a plain value, leaves the Path Item with no operations, and
-     * records no error — the endpoint vanishes without a word. Checked on the
-     * raw document because by the time the parser is done the reference is gone
-     * and nothing distinguishes this from an empty Path Item.
+     * Verified against the vendored parser: a `$ref` into `components.pathItems` resolves to a plain value, leaves the
+     * Path Item with no operations, and records no error — the endpoint vanishes without a word. Checked on the raw
+     * document because by the time the parser is done the reference is gone and nothing distinguishes this from an
+     * empty Path Item.
      *
-     * The two other forms are fine and stay supported, which is why this is
-     * targeted rather than a blanket refusal of Path Item references.
+     * The two other forms are fine and stay supported, which is why this is targeted rather than a blanket refusal of
+     * Path Item references.
      *
-     * @return list<RejectedConstructException> one per offending path, so a
-     *                                          document naming several is
-     *                                          reported in one pass
+     * @return list<RejectedConstructException> one per offending path, so a document naming several is reported in one
+     *                                          pass
      */
     private function unfollowablePathItemFaults(ParsableSpecDocument $document): array
     {
@@ -782,21 +742,18 @@ final readonly class OperationExtractor
     /**
      * Refuse every reference aimed at a position inside a `$defs`.
      *
-     * **Read on the raw document, for the same reason the check above is**: by
-     * the time the parser is done the reference is gone, and so is the property
-     * that carried it. Nothing distinguishes what is left from a schema that
+     * **Read on the raw document, for the same reason the check above is**: by the time the parser is done the
+     * reference is gone, and so is the property that carried it. Nothing distinguishes what is left from a schema that
      * never declared the property.
      *
-     * Document-wide rather than per schema node, which is the opposite scope
-     * from {@see self::assertSchemaIsServable()} and deliberately so: that one
-     * refuses a *schema* this package would misread, so it only has to look at
-     * the schemas the contract actually reaches, while this one refuses a
-     * *reference*, and a reference is written wherever its author put it.
+     * Document-wide rather than per schema node, which is the opposite scope from {@see self::assertSchemaIsServable()}
+     * and deliberately so: that one refuses a *schema* this package would misread, so it only has to look at the
+     * schemas the contract actually reaches, while this one refuses a *reference*, and a reference is written wherever
+     * its author put it.
      *
      * @param  array<array-key, mixed>  $node
-     * @return list<RejectedConstructException> one per offending reference, so a
-     *                                          document writing several is
-     *                                          reported in one pass
+     * @return list<RejectedConstructException> one per offending reference, so a document writing several is reported
+     *                                          in one pass
      */
     private function referencesIntoDefinitions(array $node, string $pointer): array
     {
@@ -830,27 +787,20 @@ final readonly class OperationExtractor
     /**
      * Whether a reference points at a position inside a `$defs`.
      *
-     * **Read on the fragment only, never on the whole reference.** A file path
-     * may legitimately contain a `$defs` segment, and
-     * `schemas/$defs/thing.yaml#/Foo` points at `Foo` in a file whose directory
-     * happens to be named that. Refusing it would name a reason that is not the
-     * one, which is a worse failure than not refusing at all: the author is
-     * told to move a definition that is not where the message says it is.
+     * **Read on the fragment only, never on the whole reference.** A file path may legitimately contain a `$defs`
+     * segment, and `schemas/$defs/thing.yaml#/Foo` points at `Foo` in a file whose directory happens to be named that.
+     * Refusing it would name a reason that is not the one, which is a worse failure than not refusing at all: the
+     * author is told to move a definition that is not where the message says it is.
      *
-     * **The container counts as much as what is inside it**, so the test is two
-     * clauses rather than one. `#/…/Money/$defs` resolves to a plain array
-     * exactly as `#/…/Money/$defs/Amount` does, and it fails the same silent
-     * way: verified end to end, the read comes back with no fault and the
-     * property holding the reference simply gone. A refusal that missed the
-     * container would be one that misses the shape it advertises.
+     * **The container counts as much as what is inside it**, so the test is two clauses rather than one.
+     * `#/…/Money/$defs` resolves to a plain array exactly as `#/…/Money/$defs/Amount` does, and it fails the same
+     * silent way: verified end to end, the read comes back with no fault and the property holding the reference simply
+     * gone. A refusal that missed the container would be one that misses the shape it advertises.
      *
-     * **Known and accepted: a segment literally named `$defs` is read as the
-     * keyword wherever it sits.** A component called `$defs`, or a property of
-     * that name, is refused although neither is the keyword. Telling them apart
-     * means knowing where a pointer lands in the document, which is a walk this
-     * check would have to grow to do, for an input nobody writes. The message
-     * names the pointer, so an author who meets it can see what was read and
-     * rename.
+     * **Known and accepted: a segment literally named `$defs` is read as the keyword wherever it sits.** A component
+     * called `$defs`, or a property of that name, is refused although neither is the keyword. Telling them apart means
+     * knowing where a pointer lands in the document, which is a walk this check would have to grow to do, for an input
+     * nobody writes. The message names the pointer, so an author who meets it can see what was read and rename.
      */
     private function aimsIntoDefinitions(string $reference): bool
     {
@@ -866,13 +816,12 @@ final readonly class OperationExtractor
     /**
      * Hand the already-read document to the parser and resolve its references.
      *
-     * Built from the array the pipeline decoded rather than re-read from disk:
-     * the file has already been decoded once, and letting the parser read it
-     * again would mean the guards ran on one document while the parser worked
-     * on whatever it found the second time.
+     * Built from the array the pipeline decoded rather than re-read from disk: the file has already been decoded once,
+     * and letting the parser read it again would mean the guards ran on one document while the parser worked on
+     * whatever it found the second time.
      *
-     * The path still matters, because a reference relative to the file can only
-     * be resolved against where that file sits.
+     * The path still matters, because a reference relative to the file can only be resolved against where that file
+     * sits.
      *
      * @throws ParserFailedException
      */
@@ -902,9 +851,8 @@ final readonly class OperationExtractor
     /**
      * `operationId` as written, or null.
      *
-     * Never derived here: what an unnamed operation should be called is a
-     * question about generated code, and answering it in the contract would bake
-     * one generator's convention into the thing every generator reads.
+     * Never derived here: what an unnamed operation should be called is a question about generated code, and answering
+     * it in the contract would bake one generator's convention into the thing every generator reads.
      */
     private function operationId(ParsedOperation $operation): ?string
     {
@@ -919,15 +867,13 @@ final readonly class OperationExtractor
     /**
      * The custom controller `x-controller` names, as written.
      *
-     * **Checked here rather than where the class is generated, because the value
-     * is a class name rather than something turned into one.** An `operationId`
-     * becomes a class name by a rule this package owns, so a value that cannot
-     * survive that rule is a generation refusal; `x-controller` is the name
-     * itself, and one that PHP could never carry is a fault in the document —
-     * detectable before anything is generated, and reported as what it is.
+     * **Checked here rather than where the class is generated, because the value is a class name rather than something
+     * turned into one.** An `operationId` becomes a class name by a rule this package owns, so a value that cannot
+     * survive that rule is a generation refusal; `x-controller` is the name itself, and one that PHP could never carry
+     * is a fault in the document — detectable before anything is generated, and reported as what it is.
      *
-     * Not resolved, only read: whether a class of that name exists is a question
-     * for the build, and the contract says the same thing either way.
+     * Not resolved, only read: whether a class of that name exists is a question for the build, and the contract says
+     * the same thing either way.
      *
      * @throws InvalidDocumentException
      *
@@ -980,8 +926,7 @@ final readonly class OperationExtractor
     /**
      * How strong a promise the operation carries, resolved the same way.
      *
-     * The audience is passed in rather than read again: it is the discriminator
-     * that decides what silence means here.
+     * The audience is passed in rather than read again: it is the discriminator that decides what silence means here.
      *
      * @throws InvalidDocumentException
      */
@@ -1004,10 +949,8 @@ final readonly class OperationExtractor
     /**
      * The date `x-sunset` states, normalized to one spelling and not validated.
      *
-     * YAML decodes an unquoted date to a Unix timestamp, so `2026-06-01` and
-     * `"2026-06-01"` reach us as an int and as a string while stating one
-     * promise. Validating the date itself is a doctor rule, not a reason to
-     * refuse a contract.
+     * YAML decodes an unquoted date to a Unix timestamp, so `2026-06-01` and `"2026-06-01"` reach us as an int and as a
+     * string while stating one promise. Validating the date itself is a doctor rule, not a reason to refuse a contract.
      *
      * @throws InvalidDocumentException
      *
@@ -1038,8 +981,8 @@ final readonly class OperationExtractor
     /**
      * Read a written date, or null when it is not one.
      *
-     * Deliberately stricter than PHP's own parsing, which accepts `next tuesday`
-     * and would resolve it against the day the build happens to run.
+     * Deliberately stricter than PHP's own parsing, which accepts `next tuesday` and would resolve it against the day
+     * the build happens to run.
      */
     private function asMoment(string $value): ?string
     {
@@ -1065,8 +1008,7 @@ final readonly class OperationExtractor
     /**
      * The one spelling this package writes for a moment.
      *
-     * A date carrying a time is a different promise, so it is not flattened into
-     * a plain one.
+     * A date carrying a time is a different promise, so it is not flattened into a plain one.
      */
     private function asOneSpelling(DateTimeImmutable $moment): string
     {
@@ -1078,8 +1020,7 @@ final readonly class OperationExtractor
     }
 
     /**
-     * The security requirements as the document states them, in three states:
-     * inherited, explicitly none, or a list.
+     * The security requirements as the document states them, in three states: inherited, explicitly none, or a list.
      *
      * @return list<SecurityRequirement>|null
      */

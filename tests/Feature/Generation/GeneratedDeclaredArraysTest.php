@@ -25,8 +25,8 @@ use Illuminate\Support\Facades\Route;
 const DECLARED_ARRAYS_NAMESPACE = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\DeclaredArrays';
 
 /**
- * Generate the fixture's requests and DTOs, write them under a temporary directory
- * and load them. Once per run: the second call finds the classes declared.
+ * Generate the fixture's requests and DTOs, write them under a temporary directory and load them. Once per run: the
+ * second call finds the classes declared.
  */
 function loadDeclaredArrays(): void
 {

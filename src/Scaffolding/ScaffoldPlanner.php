@@ -12,10 +12,9 @@ use Gcob\LaraSpecFirst\Generation\RequestName;
 /**
  * Works out which files `spec:make` would create for a set of operations.
  *
- * **The selection is somebody else's job and the writing is somebody else's job.**
- * What is decided here is only what the answer *would* be — which class, at which
- * path, extending which parent, and whether it is already there — so that the
- * command can print that answer and ask before any of it happens.
+ * **The selection is somebody else's job and the writing is somebody else's job.** What is decided here is only what
+ * the answer *would* be — which class, at which path, extending which parent, and whether it is already there — so that
+ * the command can print that answer and ask before any of it happens.
  *
  * @see docs/guide/code-generation/scaffolding.md — "Scaffolding is spec:make, not a build step"
  */
@@ -24,10 +23,9 @@ final readonly class ScaffoldPlanner
     private CustomControllerLookup $lookup;
 
     /**
-     * @param  string  $namespace  the configured generated root namespace, which is
-     *                             where the parent a scaffold extends lives
-     * @param  CustomControllerLookup|null  $lookup  how a class name becomes a path;
-     *                                               the running application's
+     * @param  string  $namespace  the configured generated root namespace, which is where the parent a scaffold extends
+     *                             lives
+     * @param  CustomControllerLookup|null  $lookup  how a class name becomes a path; the running application's
      *                                               autoloader by default
      */
     public function __construct(
@@ -77,12 +75,11 @@ final readonly class ScaffoldPlanner
     }
 
     /**
-     * The operations a scaffold cannot be planned for, and there is only one
-     * reason: the contract has not said their controller is customizable.
+     * The operations a scaffold cannot be planned for, and there is only one reason: the contract has not said their
+     * controller is customizable.
      *
-     * Returned rather than refused, because in bulk this is ordinary. A contract
-     * of two hundred operations where three declare `x-controller` should scaffold
-     * three files and say what it did about the rest — not stop at the fourth.
+     * Returned rather than refused, because in bulk this is ordinary. A contract of two hundred operations where three
+     * declare `x-controller` should scaffold three files and say what it did about the rest — not stop at the fourth.
      *
      * @param  list<Operation>  $operations
      * @return list<Operation>
@@ -98,10 +95,9 @@ final readonly class ScaffoldPlanner
     /**
      * The operations that declare a controller no PSR-4 prefix in this project maps.
      *
-     * Collected rather than thrown, for the same reason `undeclarable()` is: a
-     * contract of two hundred operations where one `x-controller` has a typo'd
-     * namespace should scaffold the rest and say what it did about that one — not
-     * stop before listing or asking about any of them.
+     * Collected rather than thrown, for the same reason `undeclarable()` is: a contract of two hundred operations where
+     * one `x-controller` has a typo'd namespace should scaffold the rest and say what it did about that one — not stop
+     * before listing or asking about any of them.
      *
      * @param  list<Operation>  $operations
      * @return list<Operation>

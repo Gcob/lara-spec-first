@@ -7,15 +7,12 @@ namespace Gcob\LaraSpecFirst\Generation;
 /**
  * Turns one planned input DTO into the PHP of its class.
  *
- * **A `final readonly` class with a promoted constructor, a `from()` and a
- * `toArray()`, and nothing else**, written in full by the build. There is no
- * runtime engine to discover what the class is: the build read the schema, so
- * the cast, the key and the nested `from()` are plain lines of PHP and the class
- * explains itself to anyone who opens it.
+ * **A `final readonly` class with a promoted constructor, a `from()` and a `toArray()`, and nothing else**, written in
+ * full by the build. There is no runtime engine to discover what the class is: the build read the schema, so the cast,
+ * the key and the nested `from()` are plain lines of PHP and the class explains itself to anyone who opens it.
  *
- * **Extends nothing, and depends on nothing but `Optional`.** `Arrayable` and
- * `JsonSerializable` are interfaces, so a DTO returned from a controller becomes
- * a JSON response through Laravel's own router with nothing registered, and the
+ * **Extends nothing, and depends on nothing but `Optional`.** `Arrayable` and `JsonSerializable` are interfaces, so a
+ * DTO returned from a controller becomes a JSON response through Laravel's own router with nothing registered, and the
  * one class of this package a generated DTO imports is `Optional`.
  *
  * @see docs/guide/code-generation/dto-anatomy.md — "One class, three members"
@@ -79,10 +76,9 @@ final readonly class InputDtoEmitter
     }
 
     /**
-     * The import block: the two interfaces always, and the rest only when a
-     * property uses it. An unused import is something a consumer's formatter
-     * removes, and a formatter with something to remove is a formatter fighting
-     * the next build.
+     * The import block: the two interfaces always, and the rest only when a property uses it. An unused import is
+     * something a consumer's formatter removes, and a formatter with something to remove is a formatter fighting the
+     * next build.
      */
     private function useStatements(PlannedInputDto $dto): string
     {
@@ -108,8 +104,7 @@ final readonly class InputDtoEmitter
     }
 
     /**
-     * The promoted constructor, with the docblock for the properties whose
-     * declared type says less than the schema did.
+     * The promoted constructor, with the docblock for the properties whose declared type says less than the schema did.
      *
      * @param  list<InputDtoProperty>  $properties
      */
@@ -147,8 +142,8 @@ final readonly class InputDtoEmitter
     /**
      * A property's type as PHP declares it.
      *
-     * `mixed` is its own union and refuses to be in one, so an optional `mixed`
-     * is declared `mixed` and says `Optional|mixed` in its docblock.
+     * `mixed` is its own union and refuses to be in one, so an optional `mixed` is declared `mixed` and says
+     * `Optional|mixed` in its docblock.
      */
     private function declared(InputDtoProperty $property): string
     {
@@ -166,8 +161,7 @@ final readonly class InputDtoEmitter
     }
 
     /**
-     * What the docblock says about a property, or null when the declared type
-     * already says all of it.
+     * What the docblock says about a property, or null when the declared type already says all of it.
      */
     private function doc(InputDtoProperty $property): ?string
     {
@@ -273,13 +267,11 @@ final readonly class InputDtoEmitter
     }
 
     /**
-     * Where to go from here: the type's own interface, then each request whose
-     * `dto()` builds it.
+     * Where to go from here: the type's own interface, then each request whose `dto()` builds it.
      *
-     * **Backticks, and they are load-bearing**, for the reason the request's own
-     * navigation gives: Pint rewrites a bare fully-qualified name in a docblock
-     * into an import, and an import of a class this file never mentions in code
-     * is one the build and a formatter would rewrite against each other.
+     * **Backticks, and they are load-bearing**, for the reason the request's own navigation gives: Pint rewrites a bare
+     * fully-qualified name in a docblock into an import, and an import of a class this file never mentions in code is
+     * one the build and a formatter would rewrite against each other.
      *
      * @return non-empty-list<string>
      */
