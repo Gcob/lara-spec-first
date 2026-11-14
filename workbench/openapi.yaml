@@ -79,6 +79,10 @@ paths:
             tags: [Posts]
             parameters:
                 - { name: page, in: query, schema: { type: integer } }
+                # `?drafts=true` is how OpenAPI writes a boolean in a query string. The
+                # generated request accepts it, and says in its findings that
+                # `validated('drafts')` holds the string as sent.
+                - { name: drafts, in: query, schema: { type: boolean } }
                 # Read and never turned into a rule: what a missing credential
                 # deserves is a 401 and a rule set answers with a 422. The
                 # doctor counts it and exits non-zero until you acknowledge it.
@@ -245,9 +249,14 @@ components:
         # Laravel rule means the same thing.
         NewPost:
             type: object
-            required: [title, body]
+            required: [id, title, body]
             additionalProperties: false
             properties:
+                # `required` on a `readOnly` property is about responses, so a create
+                # without it is valid: the request has no presence rule for `id`.
+                id:
+                    type: integer
+                    readOnly: true
                 title:
                     type: string
                     maxLength: 120
