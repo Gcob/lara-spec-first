@@ -1,0 +1,40 @@
+# A recursive pair where the way back is required: every `Book` has an `author`, and every `Author` may hold books. The
+# contract can only be satisfied by a tree that ends on an `Author` with no books, so a payload that stops there is
+# valid and one that reaches the depth through a `Book` with no `author` is not.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /authors:
+    post:
+      operationId: createAuthor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Author'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Author:
+      type: object
+      x-max-depth: 2
+      properties:
+        name:
+          type: string
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+    Book:
+      type: object
+      required: [author]
+      properties:
+        title:
+          type: string
+        author:
+          $ref: '#/components/schemas/Author'

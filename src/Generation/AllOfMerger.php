@@ -123,8 +123,60 @@ final readonly class AllOfMerger
             writeOnly: $a->writeOnly || $b->writeOnly,
             isFilePart: $a->isFilePart || $b->isFilePart,
             contentMediaType: self::same($a->contentMediaType, $b->contentMediaType, '`contentMediaType`', $refuse),
+            allOf: self::unfoldedMarkers($a, $b),
             recursesTo: $a->recursesTo ?? $b->recursesTo,
+            maxDepth: self::depth($a, $b),
         );
+    }
+
+    /**
+     * The recursion markers a combination cannot fold into one, so the merged schema still holds them as branches.
+     *
+     * A schema points back at one ancestor, so two branches that each write a marker under one name, to two different
+     * components, leave a merged schema that can carry only the first. Dropping the other would validate the merged
+     * field as if the contract did not ask for it, so it stays as a branch, which is how a walk knows it cannot unroll
+     * that field and says so.
+     *
+     * @return list<Schema>
+     */
+    private static function unfoldedMarkers(Schema $a, Schema $b): array
+    {
+        $unfolded = [...$a->allOf, ...$b->allOf];
+
+        if ($a->recursesTo !== null && $b->recursesTo !== null && $a->recursesTo !== $b->recursesTo) {
+            $unfolded[] = Schema::recursion($b->recursesTo, $b->name);
+        }
+
+        return $unfolded;
+    }
+
+    /**
+     * The `x-max-depth` of two schemas combined, which follows the name as `source` does: a depth belongs to the schema
+     * that states it. A component's own inline branch is part of that component, so its depth counts; a named branch is
+     * another component that is only included, and its depth would leak into this one.
+     */
+    private static function depth(Schema $a, Schema $b): ?int
+    {
+        return match (true) {
+            $a->name !== null => $a->maxDepth ?? ($b->name === null ? $b->maxDepth : null),
+            $b->name !== null => $b->maxDepth,
+            default => $a->maxDepth ?? $b->maxDepth,
+        };
+    }
+
+    /**
+     * What a recursion marker's site writes besides the marker, as a schema of its own, or null when it writes nothing.
+     *
+     * `allOf: [{$ref: Node}, {required: [label]}]` is a marker with a constraint beside it, and the constraint holds at
+     * every level the marker is crossed at. The site arrives merged (marker and constraint as one schema), and what the
+     * walk expands there is the ancestor with this beside it, so it is the marker itself that is taken out: a copy that
+     * kept `recursesTo` would be a marker again, and never end.
+     */
+    public static function besideMarker(Schema $site): ?Schema
+    {
+        $rest = new Schema(...[...get_object_vars($site), 'name' => null, 'recursesTo' => null, 'source' => null, 'ignored' => []]);
+
+        return $rest == new Schema ? null : $rest;
     }
 
     /**
@@ -304,6 +356,7 @@ final readonly class AllOfMerger
             isFilePart: $schema->isFilePart,
             contentMediaType: $schema->contentMediaType,
             recursesTo: $schema->recursesTo,
+            maxDepth: $schema->maxDepth,
             source: $schema->source,
         );
     }

@@ -1,0 +1,44 @@
+# Two recursive schemas in one operation: a binary tree whose stated depth does not fit the ceiling, and a chain whose
+# stated depth does. The depth is lowered evenly for the operation, so the tree is cut and the chain keeps its own.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tree:
+                  $ref: '#/components/schemas/Tree'
+                meta:
+                  $ref: '#/components/schemas/Meta'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Tree:
+      type: object
+      x-max-depth: 20
+      properties:
+        value:
+          type: string
+        left:
+          $ref: '#/components/schemas/Tree'
+        right:
+          $ref: '#/components/schemas/Tree'
+    Meta:
+      type: object
+      x-max-depth: 2
+      properties:
+        note:
+          type: string
+        up:
+          $ref: '#/components/schemas/Meta'

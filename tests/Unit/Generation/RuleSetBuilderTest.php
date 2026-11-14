@@ -12,6 +12,7 @@ use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 
 /*
  * One rule set, asserted rule by rule.
@@ -64,7 +65,7 @@ function operationWithInput(
  *
  * @param  array<string, Schema>  $properties
  * @param  list<string>  $required
- * @return array<string, list<string|InRule>>
+ * @return array<string, list<string|InRule|NullOrAbsent>>
  */
 function rulesFor(array $properties, array $required = [], string $method = 'post'): array
 {
@@ -458,7 +459,7 @@ it('reports a media type it does not read rather than refusing it', function ():
 /**
  * The rules one field gets, alone in an otherwise empty object body.
  *
- * @return list<string|InRule>
+ * @return list<string|InRule|NullOrAbsent>
  */
 function fieldRules(Schema $field): array
 {
@@ -934,7 +935,7 @@ it('reports a body whose own schema is not an object', function (): void {
  * The rules and findings of one multipart property.
  *
  * @param  array<int, string>  $mediaTypes
- * @return array{0: array<string, list<string|InRule>>, 1: string}
+ * @return array{0: array<string, list<string|InRule|NullOrAbsent>>, 1: string}
  */
 function filePartRules(Schema $part, bool $required = true, array $mediaTypes = ['multipart/form-data'], string $method = 'post'): array
 {
@@ -1883,4 +1884,568 @@ it('records nothing for a keyword that became a rule', function (): void {
     ])]));
 
     expect($set->unenforced)->toBe([]);
+});
+
+// A recursive schema is validated down to the depth it states with `x-max-depth`, and a
+// payload deeper than that is refused. A level is one crossing of the recursion marker,
+// the expected keys below are written out by hand rather than derived from the schema,
+// and the cases are the ones the rule set could get wrong: the default, a stated depth,
+// zero, a list, a recursive pair whose sides disagree, and an `allOf`.
+//
+// @see docs/guide/code-generation/request-validation.md — "A recursive schema is validated to a stated depth"
+
+/**
+ * `Address`, which holds one `Address` as `parent`, the way a component that refers to itself reaches the rule set.
+ */
+function recursiveAddress(?int $maxDepth = null, bool $parentRequired = false, bool $nullable = false): Schema
+{
+    return new Schema(
+        name: 'Address',
+        types: $nullable ? [SchemaType::Object, SchemaType::Null] : [SchemaType::Object],
+        properties: [
+            'city' => new Schema(types: [SchemaType::String]),
+            'parent' => Schema::recursion('#/components/schemas/Address', 'Address'),
+        ],
+        required: $parentRequired ? ['parent'] : [],
+        maxDepth: $maxDepth,
+        source: '#/components/schemas/Address',
+    );
+}
+
+it('validates a recursion down to the depth the schema states and refuses what is below', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 2)]));
+
+    expect($set->rules)->toBe([
+        'city' => ['sometimes', 'string'],
+        'parent' => ['sometimes', 'array'],
+        'parent.city' => ['sometimes', 'string'],
+        'parent.parent' => ['sometimes', 'array'],
+        'parent.parent.city' => ['sometimes', 'string'],
+        'parent.parent.parent' => ['missing'],
+    ]);
+});
+
+it('reads three levels when the schema states no depth', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]));
+
+    expect(array_keys($set->rules))->toBe([
+        'city',
+        'parent',
+        'parent.city',
+        'parent.parent',
+        'parent.parent.city',
+        'parent.parent.parent',
+        'parent.parent.parent.city',
+        'parent.parent.parent.parent',
+    ])->and($set->rules['parent.parent.parent'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['parent.parent.parent.parent'])->toBe(['missing']);
+});
+
+it('refuses the recursive field itself when the schema states a depth of zero', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 0)]));
+
+    expect($set->rules)->toBe([
+        'city' => ['sometimes', 'string'],
+        'parent' => ['missing'],
+    ]);
+});
+
+// `missing` says the key is absent. A required field that cannot be null keeps the presence the contract asks of it
+// beside `missing`, so a payload that reaches the cut is refused, where `missing` alone would have let it through
+// looser than the contract. Below the root that presence is the parent's `required_array_keys`, which the unrolled
+// level already carries (a child's own presence is `sometimes`, so a tree that stops earlier is unaffected), and an
+// optional field carries `missing` alone.
+it('keeps the presence a required recursive field asks for beside the cut', function (): void {
+    $requiredAtOnce = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 0,
+        parentRequired: true,
+    )]));
+    $optionalAtOnce = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 0,
+    )]));
+    $requiredBelow = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 1,
+        parentRequired: true,
+    )]));
+
+    expect($requiredAtOnce->rules['parent'])->toBe(['present', 'missing'])
+        ->and($optionalAtOnce->rules['parent'])->toBe(['missing'])
+        ->and($requiredBelow->rules['parent'])->toBe(['present', 'array', 'required_array_keys:parent'])
+        ->and($requiredBelow->rules['parent.parent'])->toBe(['missing']);
+});
+
+// A schema that allows `null` allows it at the cut as well, and nothing else: no Laravel rule says "null or absent"
+// (`missing` refuses `null`, `prohibited` lets `""` and `[]` through), so the field carries the package's own.
+// What the contract asks of the key stays beside it.
+it('lets a nullable recursive field be null at the cut and nothing else', function (): void {
+    $optional = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 1,
+        nullable: true,
+    )]));
+    $required = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 0,
+        parentRequired: true,
+        nullable: true,
+    )]));
+
+    expect($optional->rules['parent.parent'])->toEqual(['sometimes', new NullOrAbsent])
+        ->and($required->rules['parent'])->toEqual(['present', new NullOrAbsent]);
+});
+
+it('reads the rule at a list element cut as the rule alone', function (): void {
+    $node = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object, SchemaType::Null],
+        properties: [
+            'children' => new Schema(
+                types: [SchemaType::Array],
+                items: Schema::recursion('#/components/schemas/Node', 'Node'),
+            ),
+        ],
+        maxDepth: 1,
+        source: '#/components/schemas/Node',
+    );
+
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]));
+
+    expect($set->rules['children.*.children.*'])->toEqual([new NullOrAbsent]);
+});
+
+it('unrolls a recursion through a list element', function (): void {
+    $node = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        properties: [
+            'children' => new Schema(
+                types: [SchemaType::Array],
+                items: Schema::recursion('#/components/schemas/Node', 'Node'),
+            ),
+        ],
+        maxDepth: 1,
+        source: '#/components/schemas/Node',
+    );
+
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]));
+
+    expect($set->rules)->toBe([
+        'children' => ['sometimes', 'array', 'list'],
+        'children.*' => ['array'],
+        'children.*.children' => ['sometimes', 'array', 'list'],
+        'children.*.children.*' => ['missing'],
+    ]);
+});
+
+// The limit at a marker is the depth of the schema it points to, so the two sides of a
+// pair never have to agree, and the same pair reached from either side reads each side's
+// own limit.
+it('reads the limit at a marker from the schema it points to', function (): void {
+    $author = static fn (Schema $book): Schema => new Schema(
+        name: 'Author',
+        types: [SchemaType::Object],
+        properties: ['books' => new Schema(types: [SchemaType::Array], items: $book)],
+        maxDepth: 1,
+        source: '#/components/schemas/Author',
+    );
+    $book = static fn (Schema $author): Schema => new Schema(
+        name: 'Book',
+        types: [SchemaType::Object],
+        properties: ['author' => $author],
+        maxDepth: 2,
+        source: '#/components/schemas/Book',
+    );
+    $authorMarker = Schema::recursion('#/components/schemas/Author', 'Author');
+    $bookMarker = Schema::recursion('#/components/schemas/Book', 'Book');
+
+    $fromAuthor = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $author($book($authorMarker))]));
+    $fromBook = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $book($author($bookMarker))]));
+
+    expect(array_keys($fromAuthor->rules))->toBe([
+        'books',
+        'books.*',
+        'books.*.author',
+        'books.*.author.books',
+        'books.*.author.books.*',
+        'books.*.author.books.*.author',
+    ])->and($fromAuthor->rules['books.*.author'])->toBe(['sometimes', 'array'])
+        ->and($fromAuthor->rules['books.*.author.books.*.author'])->toBe(['missing'])
+        ->and(array_keys($fromBook->rules))->toBe([
+            'author',
+            'author.books',
+            'author.books.*',
+            'author.books.*.author',
+            'author.books.*.author.books',
+            'author.books.*.author.books.*',
+            'author.books.*.author.books.*.author',
+            'author.books.*.author.books.*.author.books',
+            'author.books.*.author.books.*.author.books.*',
+        ])->and($fromBook->rules['author.books.*.author.books.*'])->toBe(['array'])
+        ->and($fromBook->rules['author.books.*.author.books.*.author.books.*'])->toBe(['missing']);
+});
+
+// The merged schema is what a marker re-enters, and it carries the component's own depth.
+it('takes the depth from the component and not from a branch of its allOf', function (): void {
+    $base = new Schema(
+        name: 'Base',
+        types: [SchemaType::Object],
+        properties: ['id' => new Schema(types: [SchemaType::Integer])],
+        maxDepth: 9,
+        source: '#/components/schemas/Base',
+    );
+    $node = new Schema(
+        name: 'Node',
+        allOf: [
+            $base,
+            new Schema(properties: ['next' => Schema::recursion('#/components/schemas/Node', 'Node')]),
+        ],
+        maxDepth: 1,
+        source: '#/components/schemas/Node',
+    );
+
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]));
+
+    expect(array_keys($set->rules))->toBe(['id', 'next', 'next.id', 'next.next'])
+        ->and($set->rules['next.next'])->toBe(['missing']);
+});
+
+// The cut refuses something the contract allows, which the principle permits when the
+// generated file says so, and names the lever.
+it('says in one finding that a deeper payload is refused and names x-max-depth as the lever', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 2)]));
+    $findings = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, '`x-max-depth`')));
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0])
+        ->toContain('`Address`')
+        ->toContain('`x-max-depth: 2`')
+        ->toContain('`parent.parent.parent`')
+        ->toContain('`missing`')
+        ->toContain('absent')
+        ->toContain('`null` passes only where the schema is nullable')
+        ->toContain('422');
+});
+
+it('says the depth is the default when the schema states none', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]));
+    $finding = implode("\n", $set->findings);
+
+    expect($finding)->toContain('states no `x-max-depth`')
+        ->toContain('3 levels')
+        ->toContain('`parent.parent.parent.parent`');
+});
+
+it('says nothing about a recursion it never had to cut', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'address' => new Schema(types: [SchemaType::Object]),
+    ])]));
+
+    expect(implode('', $set->findings))->not->toContain('x-max-depth');
+});
+
+it('counts the fields it refuses once, in the finding, however many the recursion branches into', function (): void {
+    $tree = new Schema(
+        name: 'Tree',
+        types: [SchemaType::Object],
+        properties: [
+            'left' => Schema::recursion('#/components/schemas/Tree', 'Tree'),
+            'right' => Schema::recursion('#/components/schemas/Tree', 'Tree'),
+        ],
+        maxDepth: 2,
+        source: '#/components/schemas/Tree',
+    );
+
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $tree]));
+    $cut = array_keys(array_filter($set->rules, static fn (array $rules): bool => in_array('missing', $rules, true)));
+
+    expect($cut)->toBe([
+        'left.left.left',
+        'left.left.right',
+        'left.right.left',
+        'left.right.right',
+        'right.left.left',
+        'right.left.right',
+        'right.right.left',
+        'right.right.right',
+    ])->and(implode('', $set->findings))->toContain('`left.left.left` and 7 more');
+});
+
+// The doctor gates on keywords the contract wrote that nothing enforces. `x-max-depth` is read
+// and acted on, and the cut is a rule: there is nothing for the doctor to name.
+it('leaves the doctor nothing to report for a recursion it cut', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]));
+
+    expect($set->unenforced)->toBe([]);
+});
+
+// Nothing to unroll when the ancestor is not one the walk holds: it is written inline, so it
+// has no name to be found by. Presence and a finding, as before.
+it('keeps presence and a finding for a recursion through a schema it cannot name', function (): void {
+    $inline = new Schema(
+        types: [SchemaType::Object],
+        properties: ['next' => Schema::recursion('#/paths/~1things/post/requestBody/content/application~1json/schema')],
+    );
+
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $inline]));
+
+    expect($set->rules)->toBe(['next' => ['sometimes']])
+        ->and(implode('', $set->findings))->toContain('points back at');
+});
+
+// The same thing from a document, not from objects built to look like one: the marker the
+// extractor cuts must name a position the schema it points to is found under, whether that
+// schema is written in the document or in another file, and whichever version wrote the depth.
+it('unrolls a recursion read from a document', function (string $fixture, array $keys): void {
+    $operation = extractFixture($fixture)[0];
+
+    expect(array_keys(RuleSetBuilder::for($operation)->rules))->toBe($keys);
+})->with([
+    'a schema in the document, no depth stated' => ['recursive-schema-in-body.yaml', [
+        'name', 'children', 'children.*',
+        'children.*.name', 'children.*.children', 'children.*.children.*',
+        'children.*.children.*.name', 'children.*.children.*.children', 'children.*.children.*.children.*',
+        'children.*.children.*.children.*.name', 'children.*.children.*.children.*.children',
+        'children.*.children.*.children.*.children.*',
+    ]],
+    'a schema in another file' => ['external-recursion/main.yaml', [
+        'name', 'children', 'children.*',
+        'children.*.name', 'children.*.children', 'children.*.children.*',
+        'children.*.children.*.name', 'children.*.children.*.children', 'children.*.children.*.children.*',
+        'children.*.children.*.children.*.name', 'children.*.children.*.children.*.children',
+        'children.*.children.*.children.*.children.*',
+    ]],
+    'a depth stated at 3.0' => ['max-depth-3.0.yaml', [
+        'city', 'parent', 'parent.city', 'parent.parent', 'parent.parent.city', 'parent.parent.parent',
+    ]],
+    'a depth stated at 3.1' => ['max-depth-3.1.yaml', [
+        'city', 'parent', 'parent.city', 'parent.parent', 'parent.parent.city', 'parent.parent.parent',
+    ]],
+]);
+
+// An `allOf` around a recursion, read from a document at both versions. What the wrapper states belongs to its own
+// level, and what is written beside a marker belongs to every level the marker is crossed at. The expected keys and
+// rules are written out by hand from `recursion-allof-*.yaml`.
+
+/**
+ * The operation of a fixture with the given `operationId`.
+ */
+function fixtureOperation(string $fixture, string $operationId): Operation
+{
+    foreach (extractFixture($fixture) as $operation) {
+        if ($operation->operationId === $operationId) {
+            return $operation;
+        }
+    }
+
+    throw new RuntimeException(sprintf('`%s` has no operation `%s`.', $fixture, $operationId));
+}
+
+it('keeps what a wrapper around a recursive component states at the wrapper level', function (string $fixture): void {
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createCategory'));
+
+    expect($set->rules['name'])->toBe(['present', 'string'])
+        ->and($set->rules['children.*'])->toBe(['array'])
+        ->and($set->rules['children.*.children.*'])->toBe(['array'])
+        ->and($set->rules['children.*.children.*.children.*'])->toBe(['array'])
+        ->and($set->rules['children.*.children.*.children.*.children.*'])->toBe(['missing'])
+        ->and(count($set->rules))->toBe(16);
+})->with([
+    'OpenAPI 3.0' => ['recursion-allof-3.0.yaml'],
+    'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
+]);
+
+it('applies what is written beside a marker at every level the marker is crossed at', function (string $fixture): void {
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNode'));
+
+    expect($set->rules)->toBe([
+        'label' => ['sometimes', 'string'],
+        'next' => ['sometimes', 'array', 'required_array_keys:label'],
+        'next.label' => ['sometimes', 'string'],
+        'next.next' => ['sometimes', 'array', 'required_array_keys:label'],
+        'next.next.label' => ['sometimes', 'string'],
+        'next.next.next' => ['missing'],
+    ]);
+})->with([
+    'OpenAPI 3.0' => ['recursion-allof-3.0.yaml'],
+    'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
+]);
+
+it('unrolls a recursive component a named allOf includes', function (string $fixture): void {
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNamedCategory'));
+
+    expect($set->rules['children.*'])->toBe(['array'])
+        ->and($set->rules['children.*.children.*.children.*.children.*'])->toBe(['missing'])
+        ->and(count($set->rules))->toBe(16)
+        ->and(implode('', $set->findings))->not->toContain('points back at');
+})->with([
+    'OpenAPI 3.0' => ['recursion-allof-3.0.yaml'],
+    'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
+]);
+
+it('unrolls a recursive component wrapped on a field, and keeps the wrapper to the wrapped level', function (string $fixture): void {
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createTree'));
+
+    expect($set->rules['root'])->toBe(['sometimes', 'array', 'required_array_keys:extra'])
+        ->and($set->rules['root.next'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['root.next.next.next'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['root.next.next.next.next'])->toBe(['missing']);
+})->with([
+    'OpenAPI 3.0' => ['recursion-allof-3.0.yaml'],
+    'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
+]);
+
+// A depth written in the component's own inline branch is the component's: the finding must not tell its author the
+// schema states none, and the included component's own depth (9) must not be the one used.
+it('reads an x-max-depth written in a component\'s own inline allOf branch', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-depth-in-allof-branch.yaml', 'createNode'));
+
+    expect(array_keys($set->rules))->toBe(['id', 'next', 'next.id', 'next.next'])
+        ->and($set->rules['next.next'])->toBe(['missing'])
+        ->and(implode('', $set->findings))->toContain('`x-max-depth: 1`')
+        ->and(implode('', $set->findings))->not->toContain('states no `x-max-depth`');
+});
+
+// The finding says what a payload below the depth gets: `null` passes only when the schema is nullable, and the
+// count of levels agrees with its noun.
+it('says null passes below the depth only when the schema is nullable', function (bool $nullable, string $says, string $notSays): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 2,
+        nullable: $nullable,
+    )]));
+    $finding = implode("\n", $set->findings);
+
+    expect($finding)->toContain($says)
+        ->and($finding)->not->toContain($notSays);
+})->with([
+    'a nullable schema' => [true, '`null` passes because `Address` is nullable', '`null` passes only'],
+    'a schema that is not nullable' => [false, '`null` passes only where the schema is nullable, and `Address` is not', 'because `Address` is nullable'],
+]);
+
+// An empty list of the recursive schema carries nothing, and the cut is on its elements, so it passes: the finding says
+// so for a list, and does not call `[]` a 422 where the cut is a list element.
+it('says an empty list of the recursive schema passes at the cut', function (): void {
+    $node = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        properties: [
+            'children' => new Schema(
+                types: [SchemaType::Array],
+                items: Schema::recursion('#/components/schemas/Node', 'Node'),
+            ),
+        ],
+        maxDepth: 1,
+        source: '#/components/schemas/Node',
+    );
+
+    $finding = implode("\n", RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]))->findings);
+
+    expect($finding)->toContain('An empty list of `Node` passes')
+        ->and($finding)->not->toContain('`[]` answer 422');
+});
+
+it('says one level, not 1 levels', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 1)]));
+    $finding = implode("\n", $set->findings);
+
+    expect($finding)->toContain('1 level deep')
+        ->and($finding)->not->toContain('1 levels');
+});
+
+// A recursion that branches grows as `k` to the power of the depth, so a depth that reads as reasonable for a tree is
+// more rules than a request should evaluate, and then more than a process holds. When the stated depth does not fit
+// the ceiling, the depth is lowered evenly for the operation and every branch is cut at the same level.
+//
+// By hand, for `Tree` (`value`, `left`, `right`): an expansion at crossing `c` below an applied depth `N` writes its own
+// key, `value`, and two markers, so `T(c) = 2 + 2 T(c + 1)` and `T(N) = 1` (the cut key), which is `3 * 2^(N - c) - 2`.
+// The root's `left` and `right` are crossing 0, so the unrolled keys are `2 * T(0) = 6 * 2^N - 4`: 764 at N = 7, which
+// fits 1,000, and 1,532 at N = 8, which does not. The rule set is those and the root's `value`: 765.
+it('lowers the depth evenly until the rules fit the ceiling, and says so', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'));
+    $cut = array_keys(array_filter($set->rules, static fn (array $rules): bool => $rules === ['missing']));
+    $findings = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'ceiling')));
+
+    expect(count($set->rules))->toBe(765)
+        ->and($set->rules[str_repeat('left.', 6).'left'])->toBe(['sometimes', 'array'])
+        ->and($set->rules[str_repeat('left.', 7).'left'])->toBe(['missing'])
+        ->and($set->rules[str_repeat('right.', 7).'right'])->toBe(['missing'])
+        ->and($cut)->toHaveCount(2 ** 8)
+        ->and($findings)->toHaveCount(1)
+        ->and($findings[0])
+        ->toContain('`Tree`')
+        ->toContain('`x-max-depth: 20`')
+        ->toContain('1000')
+        ->toContain('7 levels deep')
+        ->toContain('on every branch')
+        ->toContain('`x-max-depth`');
+});
+
+it('leaves no branch with its presence rule alone once the depth is lowered', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'));
+    $presenceOnly = array_filter($set->rules, static fn (array $rules): bool => $rules === ['sometimes']);
+
+    expect($presenceOnly)->toBe([])
+        ->and(implode('', $set->findings))->not->toContain('presence rule');
+});
+
+// The depth is lowered for the operation, as one cap on every recursive schema: a schema whose own depth is under it
+// keeps it, and says nothing about a ceiling.
+it('lowers only the schemas that are deeper than the depth that fits', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-two-schemas.yaml', 'createThing'));
+    $about = static fn (string $schema): string => implode("\n", array_filter(
+        $set->findings,
+        static fn (string $finding): bool => str_starts_with($finding, '`'.$schema.'` recurses'),
+    ));
+
+    expect($set->rules['meta.up.up.up'])->toBe(['missing'])
+        ->and(array_key_exists('meta.up.up.up.up', $set->rules))->toBeFalse()
+        ->and($set->rules['tree.'.str_repeat('left.', 6).'left'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['tree.'.str_repeat('left.', 7).'left'])->toBe(['missing'])
+        ->and($about('Meta'))->toContain('`x-max-depth: 2`')
+        ->and($about('Meta'))->not->toContain('ceiling')
+        ->and($about('Tree'))->toContain('ceiling');
+});
+
+// By hand, for `Tree` and `Chain` (`note`, `next`) stated at 20 in one operation. A chain applied at `N` writes two keys
+// for each of its `N` expansions and one for the cut, `2 N + 1`, and the tree writes `6 * 2^N - 4`. At a shared cap of 7
+// that is 764 + 15 = 779 keys, which fits 1,000, and at 8 it is 1,532 + 17, which does not. The two are tied on 8, so the
+// one with the most keys, the tree, is lowered to 7: 764 + 17 = 781 fits, and the chain keeps 8. The four keys the
+// two roots hold without recursing are not unrolled, so the rule set is 785.
+it('lowers the heavier of two tied schemas first, and only as far as the rules need', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-tie.yaml', 'createThing'));
+    $about = static fn (string $schema): string => implode("\n", array_filter(
+        $set->findings,
+        static fn (string $finding): bool => str_starts_with($finding, '`'.$schema.'` recurses'),
+    ));
+
+    expect($set->rules['tree.'.str_repeat('left.', 6).'left'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['tree.'.str_repeat('left.', 7).'left'])->toBe(['missing'])
+        ->and($set->rules['chain.'.str_repeat('next.', 7).'next'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['chain.'.str_repeat('next.', 8).'next'])->toBe(['missing'])
+        ->and(count($set->rules))->toBe(4 + 764 + 17)
+        ->and($about('Tree'))->toContain('`x-max-depth: 20`')->toContain('7 levels deep')
+        ->and($about('Chain'))->toContain('`x-max-depth: 20`')->toContain('8 levels deep');
+});
+
+// The `and`, `or` and `not` filter of a search endpoint, with no depth stated. By hand: an expansion writes its own
+// key, three scalars and `and` and `or`, then crosses three markers, so the root's 5 keys and three crossings of 105
+// make 320, which is under the ceiling and so unrolled in full.
+it('unrolls the default depth of a search filter in full, under the ceiling', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-filter.yaml', 'search'));
+
+    expect(count($set->rules))->toBe(320)
+        ->toBeLessThan(RuleSetBuilder::MAX_UNROLLED_KEYS)
+        ->and(implode('', $set->findings))->not->toContain('ceiling');
+});
+
+// A field that two branches of an `allOf` write as a marker to two different components is one field that has to
+// satisfy both, and a rule set that unrolled one of them would silently drop the other. It keeps the presence rule it
+// always had and the finding that nothing below it is validated, naming both.
+it('keeps presence and a finding for a field that two allOf branches point back from', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-allof-two-markers.yaml', 'createThing'));
+
+    expect($set->rules)->toBe([
+        'part' => ['sometimes'],
+        'a' => ['sometimes', 'string'],
+        'b' => ['sometimes', 'integer'],
+    ])->and(implode("\n", $set->findings))
+        ->toContain('`part` points back at `#/components/schemas/Left` and `#/components/schemas/Right`')
+        ->toContain('nothing below it is validated');
 });

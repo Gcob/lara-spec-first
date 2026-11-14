@@ -223,10 +223,12 @@ It still exists, with both of its types, so a property added to the contract lat
 there. The payload is not in it: the generated file's findings say to read the body from the request itself, with
 `$request->json()->all()` for a JSON body.
 
-**A node that recurses is `mixed` too, and the reason is that nothing validated it.** No rule set reaches an infinite
-depth, so the rules stop at the point a schema repeats its ancestor: `address.parent` has no rule beyond `sometimes`.
-Building the ancestor's DTO from it would build a typed object from input nothing checked, and a `parent: "oops"` would
-be a `TypeError` in `from()` and a 500 where the request owed a 422. The value reaches the controller as it arrived.
+**A node that recurses is `mixed` too, for now.** The request
+[validates it down to `x-max-depth`](./request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth) and
+refuses what is below, so the input is checked. The DTO has not caught up: `address.parent` is read as it arrived, and
+typing it as the ancestor's class, to the same depth, is the second part of
+[#100](https://github.com/Gcob/lara-spec-first/issues/100). **Open
+([#100](https://github.com/Gcob/lara-spec-first/issues/100)):** this paragraph and the next one are rewritten there.
 
 **A schema in a recursive pair is `mixed` where it is nested.** `Author` holds `Book`s and `Book` holds an `Author`:
 each is expanded to a different depth depending on where the build enters it, and so are the rules that validate it. One

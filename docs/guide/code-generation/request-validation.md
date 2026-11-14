@@ -8,9 +8,10 @@ covers: >
     becomes which Laravel rule and what happens to the ones that map to nothing, why nothing rewrites the rule set at
     request time, why the generated request is `final` and where the three things a developer would extend it for
     already live, why the validated payload reaches the controller as a DTO and what an absent field is in it, where
-    each field is read from (the body for a body field, the query string for a declared `query` parameter), which media
-    types are read and why one operation declares one of them, what an operation with nothing to validate gets, and how
-    the request reaches `routeAction` without changing what a custom child may override.
+    each field is read from (the body for a body field, the query string for a declared `query` parameter), how deep a
+    recursive schema is validated and what a deeper payload gets, which media types are read and why one operation
+    declares one of them, what an operation with nothing to validate gets, and how the request reaches `routeAction`
+    without changing what a custom child may override.
 read_before: >
     Implementing the `FormRequest` emitter, or changing what `routeAction` declares.
 tags: [code-generation, openapi, decisions, scope, laravel]
@@ -35,6 +36,10 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 > - A request whose body is an object has `dto()`, which returns the body as
 >   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()`, and `validated()` itself keeps
 >   returning Laravel's array.
+> - A recursive schema is validated down to the depth it states with `x-max-depth` (three when it says nothing), and a
+>   payload deeper than that is refused, with a finding in the generated file that names the extension. Unrolling is
+>   capped at 1,000 rule keys per operation: a deeper branching schema is cut at one lower level on every branch, with a
+>   finding, so it never costs a build.
 > - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one. A
 >   rule is never stricter than the contract either, unless matching it exactly would be far too complex in Laravel, and
 >   then the generated file says so in a finding.
@@ -57,13 +62,13 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
 | Every row of [the mapping table](#every-constraint-maps-or-reports): types, bounds, `format`, `enum`, arrays | A `format` no Laravel rule means the same as, `uri` the most common                            |
 | `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`                | A `pattern` across [the ECMA-262 / PCRE boundary](../openapi-support.md#strings-and-numbers)   |
-| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | A recursive schema below the point it repeats, since no rule set reaches infinity              |
-| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A file part's `encoding.<part>.contentType`, which [`uploads.md`](../uploads.md) names as open |
-| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for          |
-|                                                                                                              | A `query` name PHP rewrites (`user.name`, `a b`, `page[size]`), which no rule key can find     |
-|                                                                                                              | A form client's value for a top-level name PHP rewrites, in a body that is JSON too            |
+| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | A file part's `encoding.<part>.contentType`, which [`uploads.md`](../uploads.md) names as open |
+| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for          |
+| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A `query` name PHP rewrites (`user.name`, `a b`, `page[size]`), which no rule key can find     |
+| A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)        | A form client's value for a top-level name PHP rewrites, in a body that is JSON too            |
 |                                                                                                              | Two top-level names a form delivers under one key, which no rule can tell apart                |
-| A `query` parameter, with its own `required`                                                                 | A bound on a field that states no single type                                                  |
+|                                                                                                              | A bound on a field that states no single type                                                  |
+| A `query` parameter, with its own `required`                                                                 |                                                                                                |
 | A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                                |
 | [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size |                                                                                                |
 
@@ -464,7 +469,8 @@ contract when it is not way too complicated to integrate in Laravel_.
   rule is allowed, and the generated file says so in a finding on the field.** A rule that is stricter in silence is a
   defect, and a stricter rule with its finding is a decision somebody can read. The cases today:
   [a boolean in a body that is JSON and a form at once](#every-constraint-maps-or-reports) keeps `boolean`, a file
-  part's `mimetypes` refuses [a file named like PHP](../uploads.md#the-schema-names-the-file-part), and
+  part's `mimetypes` refuses [a file named like PHP](../uploads.md#the-schema-names-the-file-part),
+  [a recursive schema is refused below its depth](#a-recursive-schema-is-validated-to-a-stated-depth), and
   `ConvertEmptyStringsToNull` makes a non-nullable string refuse `""`, which is the framework's and not a rule here, so
   [it is stated above](#patch-empties-the-required-list) rather than reported per field.
 
@@ -654,6 +660,143 @@ the request does what the contract says there, since `required` takes effect on 
 says it in a finding and the doctor has nothing to report. The `Ignored` keywords are not in a rule set at all, since
 nothing reads them, and the reading collects them with their position instead. See
 [the doctor's Support findings](../doctor.md#what-it-checks).
+
+### A recursive schema is validated to a stated depth
+
+**A schema that refers to itself, directly or through another one, is validated down to the depth it states, and a
+payload deeper than that is refused.** No rule set reaches an infinite depth, so the build unrolls the recursion into as
+many levels as the schema asks for. The depth is `x-max-depth` on the recursive component, a whole number of zero or
+more, and `3` when the schema says nothing. It is the package's first schema-level extension, read the same way at 3.0
+and 3.1, and a value that is not a whole number is refused where the document is read, as the lifecycle extensions are.
+There is no config key: the contract owns the shape of a payload.
+
+```yaml
+# workbench/openapi.yaml
+Comment:
+    type: object
+    x-max-depth: 2
+    required: [body]
+    properties:
+        body: { type: string, maxLength: 500 }
+        replies:
+            type: array
+            items: { $ref: "#/components/schemas/Comment" }
+```
+
+```php
+// app/Http/Generated/Requests/CreateCommentRequest.php
+'body' => ['present', 'string', 'max:500'],
+'replies' => ['sometimes', 'array', 'list'],
+'replies.*' => ['array', 'required_array_keys:body'],
+'replies.*.body' => ['sometimes', 'string', 'max:500'],
+'replies.*.replies' => ['sometimes', 'array', 'list'],
+'replies.*.replies.*' => ['array', 'required_array_keys:body'],
+'replies.*.replies.*.body' => ['sometimes', 'string', 'max:500'],
+'replies.*.replies.*.replies' => ['sometimes', 'array', 'list'],
+'replies.*.replies.*.replies.*' => ['missing'],
+```
+
+**A level is one crossing of the recursion**, so `x-max-depth: 2` lets a payload re-enter `Comment` twice: a reply, and
+a reply to that reply. **The limit at a crossing is the depth of the schema it re-enters**, counted per schema. A
+recursive pair (`Author` holds `Book`s and `Book` holds an `Author`) therefore never has to agree with itself: entered
+at `Author`, the pair reads `Author`'s depth, and entered at `Book`, it reads `Book`'s. Each operation unrolls from the
+schema its own body starts at, so the same pair can be validated to two depths by two operations and neither is wrong.
+
+**Below the depth the field must be absent, or `null` when the schema allows it, which makes a deeper payload a 422.**
+The alternatives were to stop validating there, which brings back what a typed
+[input DTO](#the-payload-arrives-as-a-dto) turns into a 500 (a `parent: "oops"` below the last rule), or to refuse a
+contract that states no depth at build time, which turns away a contract that is valid. The rule is chosen by what the
+recursive schema allows:
+
+| The recursive schema | Rules below the depth                             | What passes               | What answers 422                    |
+| -------------------- | ------------------------------------------------- | ------------------------- | ----------------------------------- |
+| Not nullable         | `missing`, beside the presence the contract asks  | The key absent            | `null`, `""`, `[]`, `{}`, any value |
+| Nullable             | The contract's presence rule, then `NullOrAbsent` | The key absent, or `null` | `[]`, `{}`, any other value         |
+
+**The table is for a field that holds the recursive schema. A list of it is cut on its elements**, so an empty list
+passes in both rows: it carries no data, and the depth exists to limit how much data a payload carries. A list with one
+element below the depth answers 422 on that element.
+
+**Not `prohibited`, which is "missing or empty"**: it lets `null`, `""` and `[]` through, and a typed DTO would then be
+built from an empty array. `missing` is the key being absent. **What the contract asks of the key stays beside it when
+the schema is not nullable**: a required field at the cut is `present` and `missing` at once, which no payload
+satisfies, and that is the contract's own tree, which a required non-nullable recursion never ends. Below the root the
+presence is the parent object's `required_array_keys`, which the level above already carries, and a child's own presence
+is `sometimes`, so a tree that stops earlier is untouched. **A nullable schema needs a rule of the package's own**,
+`Gcob\LaraSpecFirst\Validation\NullOrAbsent`, imported by the generated request the way a generated DTO imports
+`Optional`: `missing` refuses the `null` the contract allows, `prohibited` lets `""` and `[]` through, and `nullable`
+does not skip an implicit rule, so no rule Laravel ships says "null or absent". The class is implicit, so Laravel calls
+it for an absent key and for `""` too. **What the contract asks of the key stays beside it** (`present` for a required
+one), so the last validated level of a required nullable recursion can write `"parent": null` and pass. **Over HTTP `""`
+is `null` by then**: Laravel's `ConvertEmptyStringsToNull` middleware runs before any rule, so a nullable field takes
+`""` for the `null` it allows and a non-nullable one refuses it like any other value. Execution tests pin each cell of
+the table.
+
+**That is stricter than the contract, and the generated file says so.** A payload five levels deep is valid against a
+schema that states no limit, so this is the exception [the principle](#every-constraint-maps-or-reports) allows when
+matching the contract exactly is far too complex in Laravel. **Each recursive schema the walk cuts gets one finding**
+(`Comment` and `Address` in one request are two, among the file's others), and it names the schema, the depth it
+applied, whether the schema stated it, the first field it refuses and how many more, which rule it carries there, what
+`null` does (it passes only where the schema is nullable), whether an empty list passes, and `x-max-depth` as the lever.
+
+**The rules unroll in `RuleSetBuilder`, and the contract's normal form does not change.** A recursion marker still
+carries the position of the schema it points back at (`recursesTo`), and the builder keeps the definitions of the named
+schemas it is inside of on a stack: a marker finds its ancestor there, by position, and expands it once more. A schema
+in another file is found the same way.
+
+**What goes on the stack is the component as the document writes it, never the schema that wraps it.** An `allOf` is an
+intersection, so a constraint belongs to the level of the schema that wrote it:
+
+- **A wrapper's constraints stay at the wrapper's level.** A body written as
+  `allOf: [Category, {required: [name, slug]}]` requires `name` and `slug` on the root only. A child of a `Category` is
+  a plain `Category`, so `{"name": "Root", "slug": "root", "children": [{"name": "Child"}]}` passes, as it did before
+  the unrolling. The same goes for a field written that way, and for a named `CreateCategory: allOf: [Category, ...]`,
+  whose `Category` is unrolled like any other.
+- **What is written beside a marker applies at every level that marker is crossed at.**
+  `next: allOf: [Node, {required: [label]}]` asks for `label` on `next`, and on `next.next`, down to the depth. The
+  unrolled level is the ancestor with that constraint beside it, which is also what the contract says: every `next` is
+  that intersection.
+- **`x-max-depth` written in a component's own inline `allOf` branch is the component's**, since the branch is part of
+  it. One written on a component that is only included stays with that component.
+
+**Two shapes keep the presence rule and the finding they had before the unrolling**, and the finding says that nothing
+below the field is validated:
+
+- **A recursion through a schema with no name.** An inline schema has no position a marker can be found by.
+- **A field that is two markers at once**: two branches of an `allOf` that each write a field of one name pointing back
+  at a different component. The walk follows one ancestor, and unrolling it would drop the other without a word. The
+  finding names both.
+
+**Unrolling is capped at 1,000 rule keys per operation, and when the stated depths do not fit, they are lowered, the
+deepest schema first.** A schema that recurses once per level (`Comment`, `Address`) adds one copy of its rules per
+level, so the default of three levels gives the repository's own recursive fixtures 12 rules for a two-field `Node`
+where the walk used to give 3. A schema that recurses `k` times per level grows as `k` to the power of the depth: two
+children (`left` and `right`) refuse `2` to the power of the depth plus one fields at the cut, 16 at the default depth,
+and every level above them carries its own rules. That is harmless at the default depth and fatal at a depth a contract
+plausibly states for a tree: a binary tree at `x-max-depth: 20` is over three million keys, which exhausts a gigabyte
+before the build ends, and a request evaluates every key it holds. So the walk counts the keys it writes by unrolling
+(the ones a schema holds without recursing do not count), and **a walk that passes 1,000 is thrown away and redone with
+the depths lowered, until the rules fit**.
+
+**Evenly is per schema.** A schema has one applied depth, so every branch of it (`left` and `right` alike) is cut at the
+same level and none is left unvalidated. Across the schemas of one operation, the deepest applied depth is lowered
+first, one level at a time, and a tie goes to the schema that wrote the most keys; a schema whose depth is under the one
+that fits keeps its own. The build reaches that state without taking the steps: it finds by halving the deepest depth
+that every schema can share and still fit, and then lowers, one by one and heaviest first, the schemas that sit one
+level above it, until the rules fit. A failed attempt stops at the ceiling, so the build costs about the ceiling and
+never the tree, whatever depth the contract states. A recursive pair is counted as two schemas, each lowered on its own.
+
+**That makes the request stricter than the stated depth, and the finding says so**: it is the same cut finding, worded
+for each schema it lowered with the stated depth, the ceiling, the depth that applies, and `x-max-depth` as the lever.
+**The ceiling never refuses a contract**, and at a cap of zero nothing is unrolled, which always fits. The ceiling is a
+number of keys because that is what a request pays for; the filter every search endpoint has (`and`, `or`, `not` over
+itself) is 315 unrolled keys at the default depth, and a binary tree at depth 6 is 381, so a contract stays far under it
+unless it asks for a branching schema to go deep. A binary tree stated at 20 is validated 7 levels deep (764 unrolled
+keys; 8 levels would be 1,532).
+
+**The input DTO still reads a recursive node as `mixed`**, see
+[`dto-anatomy.md`](./dto-anatomy.md#what-each-schema-type-becomes). The request now validates it to the depth, and
+typing the DTO to the same depth is [#100](https://github.com/Gcob/lara-spec-first/issues/100)'s second part.
 
 ## The generated request is `final`
 

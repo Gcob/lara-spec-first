@@ -1,0 +1,30 @@
+# A recursive schema that states its own depth with `x-max-depth`, the package's
+# one schema-level extension. Written at both versions: the keyword is an
+# extension, so it reaches the contract the same way whichever one read it.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /addresses:
+    post:
+      operationId: createAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Address'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Address:
+      type: object
+      x-max-depth: 2
+      properties:
+        city:
+          type: string
+        parent:
+          $ref: '#/components/schemas/Address'

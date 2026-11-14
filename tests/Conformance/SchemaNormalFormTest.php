@@ -118,6 +118,21 @@ it('cuts a recursive schema and names where it cut', function (): void {
         ->and($children->items?->types)->toBe([]);
 });
 
+// `x-max-depth` is an extension, so no parser models it and the normal form reads it
+// from the extensions each schema carries. It is the package's first schema-level one,
+// which is why both versions are pinned: nothing about it may depend on which one read it.
+it('reads the depth a recursive schema states, whichever version wrote it', function (string $fixture): void {
+    $address = bodySchemaOf($fixture);
+
+    expect($address->maxDepth)->toBe(2)
+        ->and($address->properties['parent']->recursesTo)->toBe('#/components/schemas/Address')
+        ->and($address->properties['city']->maxDepth)->toBeNull();
+})->with(['max-depth-3.0.yaml', 'max-depth-3.1.yaml']);
+
+it('leaves the depth null when the schema states none', function (): void {
+    expect(bodySchemaOf('recursive-schema-in-body.yaml')->maxDepth)->toBeNull();
+});
+
 // A keyword written with `null` as its value is written, not absent, and both
 // of these say something a generator reads: `const: null` constrains the value
 // to null, and an example of null is a declared example rather than a missing

@@ -58,6 +58,28 @@ it('writes the rule set as rules() returns it', function (): void {
 });
 
 // An array, never `in:a,b`: the string form splits on a comma inside a value.
+it('writes the rule for a nullable recursive field below its depth, and imports it', function (): void {
+    $address = new Schema(
+        name: 'Address',
+        types: [SchemaType::Object, SchemaType::Null],
+        properties: ['parent' => Schema::recursion('#/components/schemas/Address', 'Address')],
+        maxDepth: 1,
+        source: '#/components/schemas/Address',
+    );
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/addresses'),
+        operationId: 'createAddress',
+        requestBody: new RequestBody(['application/json' => $address], true),
+    ));
+
+    expect($emitted)
+        ->toContain('use Gcob\\LaraSpecFirst\\Validation\\NullOrAbsent;')
+        ->toContain("'parent.parent' => ['sometimes', new NullOrAbsent],")
+        ->and($emitted)->not->toContain('use Illuminate\\Validation\\Rule;');
+});
+
 it('writes an enumeration as Rule::in over an array, and imports Rule', function (): void {
     expect(emittedRequest(goldenOperation()))
         ->toContain("'role' => ['sometimes', 'string', Rule::in(['admin', 'member'])],")

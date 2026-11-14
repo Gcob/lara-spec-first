@@ -560,6 +560,7 @@ final readonly class OperationExtractor
      *                                                                 recursion
      *
      * @throws RejectedConstructException
+     * @throws InvalidDocumentException
      */
     private function schema(
         ParsedSchema $node,
@@ -626,6 +627,16 @@ final readonly class OperationExtractor
             // ones, which happens exactly when that key was written as `null`,
             // so `isset()` being false here *is* the null.
             $keywords[$keyword] = isset($node->$keyword) ? $node->$keyword : null;
+        }
+
+        $depth = $node->getExtensions()['x-max-depth'] ?? null;
+
+        if ($depth !== null) {
+            if (! is_int($depth) || $depth < 0) {
+                throw InvalidDocumentException::extensionNotADepth('x-max-depth', $depth, $walk->pointer($position));
+            }
+
+            $keywords['x-max-depth'] = $depth;
         }
 
         foreach (['properties', 'allOf'] as $keyword) {

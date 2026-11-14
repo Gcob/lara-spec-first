@@ -24,6 +24,23 @@ tags: [versions, conventions, planning]
 
 ### Changed
 
+- **A recursive request schema is validated down to a depth, and a deeper payload answers 422.** A schema that refers to
+  itself (a tree, a comment thread, an `Address` holding an `Address`) used to stop at the point it repeated, so
+  `parent: "oops"` passed and nothing below the first repeat was checked. The generated request now unrolls the
+  recursion into the depth the schema states with `x-max-depth` (three when it states none), validates every level, and
+  requires the field below the last one to be absent, or `null` when the schema is nullable, and refuses an empty value
+  there otherwise. **A request that answered 200 before may now answer 422**: a payload with a wrong value in a
+  recursive node, and a payload nested deeper than the depth. The first is the contract being enforced, the second is
+  stricter than the contract, which the generated file says in a finding that names `x-max-depth`. A contract whose
+  recursion is deeper than three levels in real traffic states the depth it needs. The rule set grows with the depth: a
+  schema that recurses once per level gets one more copy of its rules for each level, and a schema that recurses more
+  than once per level gets that many times more. **Unrolling is capped at 1,000 rule keys per operation**: when the
+  stated depths do not fit, they are lowered until they do, the deepest schema first, every branch of a schema is cut at
+  its own level, and a finding names for each lowered schema the stated depth, the depth that applies and `x-max-depth`,
+  so a build never runs out of memory on a branching schema. An empty list of the recursive schema passes at the cut,
+  and a required field that cannot be `null` keeps its presence beside it. An `allOf` around a recursion keeps each
+  constraint at the level that wrote it.
+  [Request validation](./docs/guide/code-generation/request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth).
 - **`spec:doctor` now exits `2` on a request schema that writes an `Ignored` keyword**: `default`, `deprecated`,
   `oneOf`, `anyOf`, `not`, `discriminator`, `minProperties`, `prefixItems` and the rest of the
   [matrix's `Ignored` schema rows](./docs/guide/openapi-support.md#schemas). `default` and `deprecated` alone appear in
@@ -69,6 +86,11 @@ rather than one that was missing, and nothing downstream failed to say so.
 
 ### Added
 
+- **`x-max-depth`**, the package's first schema-level extension: how many times a payload may re-enter a recursive
+  schema. A whole number of zero or more, written on the recursive component and read the same way at 3.0 and 3.1, and
+  refused where the document is read when it is anything else. `Contract\Schema` carries it as `maxDepth`.
+- **`Gcob\LaraSpecFirst\Validation\NullOrAbsent`** is public API: a rule a generated request imports for a nullable
+  recursive field below its depth, which accepts an absent key or `null` and nothing else.
 - **`spec:build` emits one `FormRequest` per operation that states anything about its input**, into the `Requests`
   sub-namespace of the generated tree, pruned like every other generated file. The rule set is the request body and the
   `query` parameters merged by field name; the scalar types, nullability and presence are mapped, and every keyword the
@@ -98,10 +120,11 @@ rather than one that was missing, and nothing downstream failed to say so.
   `POST` and a `PUT`, the partial one for a `PATCH` and for a body that may be absent. It is `dto()` and not `data()`
   because `Illuminate\Http\Request` owns a protected `data()` that its typed accessors read through. `validated()` is
   untouched, and a request with no object body has no `dto()`.
-- **A node that recurses is `mixed` on the DTO**, since no rule validates anything below it. A `date-time` is written
-  back by `toArray()` with its fraction (microseconds), a component name with dots derives its class name by dropping
-  them, and two operations reaching one named schema share its DTO, a 3.0 `$ref` wrapper carrying only an `example` or a
-  `readOnly` beside it included. A wrapper that adds `required` or `properties` is a schema of its own.
+- **A node that recurses is `mixed` on the DTO**, until the DTO is typed to the depth the request validates. A
+  `date-time` is written back by `toArray()` with its fraction (microseconds), a component name with dots derives its
+  class name by dropping them, and two operations reaching one named schema share its DTO, a 3.0 `$ref` wrapper carrying
+  only an `example` or a `readOnly` beside it included. A wrapper that adds `required` or `properties` is a schema of
+  its own.
 - **A schema in a recursive pair (`Author` and `Book`) is `mixed` where it is nested**, a required key Laravel cannot
   name is optional in the DTO, an enumeration value that could close a docblock is not written there, and a closed root
   keeps a declared integer key such as `"2024"`.

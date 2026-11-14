@@ -269,6 +269,23 @@ it('refuses an x-controller that is not text at all', function (): void {
         ->and($result->faults[0]->getMessage())->toContain('reads it as text');
 });
 
+// Refused rather than defaulted, as the lifecycle extensions are: a depth nobody could
+// read is a contract that says something this package would silently not do.
+it('refuses an x-max-depth that is not a whole number of levels', function (string $fixture): void {
+    $result = extractionFrom($fixture);
+
+    expect($result->faults)->toHaveCount(1)
+        ->and($result->faults[0])->toBeInstanceOf(InvalidDocumentException::class)
+        ->and($result->faults[0]->getMessage())
+        ->toContain('`x-max-depth`')
+        ->toContain('#/components/schemas/Address')
+        ->toContain('whole number');
+})->with([
+    'text' => 'max-depth-not-an-integer.yaml',
+    'a negative number' => 'max-depth-negative.yaml',
+    'a fraction' => 'max-depth-a-fraction.yaml',
+]);
+
 // --- Collecting more than one fault in a single pass, the reason this class
 // stopped throwing at the first one. ---
 

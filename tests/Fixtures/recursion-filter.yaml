@@ -1,0 +1,41 @@
+# A search filter that combines other filters with `and`, `or` and `not`, and states no depth. It recurses three times
+# per level, so the default depth is the case that has to stay under the ceiling without anyone asking.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /search:
+    post:
+      operationId: search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Filter'
+      responses:
+        '200':
+          description: Found
+components:
+  schemas:
+    Filter:
+      type: object
+      properties:
+        field:
+          type: string
+        op:
+          type: string
+          enum: [eq, ne, gt, lt]
+        value:
+          type: string
+        and:
+          type: array
+          items:
+            $ref: '#/components/schemas/Filter'
+        or:
+          type: array
+          items:
+            $ref: '#/components/schemas/Filter'
+        not:
+          $ref: '#/components/schemas/Filter'

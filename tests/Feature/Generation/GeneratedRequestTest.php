@@ -14,6 +14,7 @@ use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
+use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
@@ -133,14 +134,14 @@ it('hands a boolean query parameter to validated() as the string it was sent', f
  * The emitter writes an `InRule` as `Rule::in([...])`; the validator needs the framework's object, so the same
  * translation happens here.
  *
- * @param  array<string, list<string|InRule>>  $built
+ * @param  array<string, list<string|InRule|NullOrAbsent>>  $built
  * @return array<string, list<mixed>>
  */
 function frameworkRules(array $built): array
 {
     return array_map(
         static fn (array $list): array => array_map(
-            static fn (string|InRule $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
+            static fn (string|InRule|NullOrAbsent $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
             $list,
         ),
         $built,
@@ -224,6 +225,180 @@ it('refuses an empty string for a non-nullable string, because Laravel turns it 
 
     expect(statusForBuiltRules($body, ['title' => '']))->toBe(422);
 });
+
+/**
+ * A schema that holds one of itself as `next`, nullable or not, required or not, validated one level deep.
+ */
+function chain(bool $nullable, bool $required): Schema
+{
+    return new Schema(
+        name: 'Chain',
+        types: $nullable ? [SchemaType::Object, SchemaType::Null] : [SchemaType::Object],
+        properties: ['next' => Schema::recursion('#/components/schemas/Chain', 'Chain')],
+        required: $required ? ['next'] : [],
+        maxDepth: 1,
+        source: '#/components/schemas/Chain',
+    );
+}
+
+// Below the depth a field is what the contract allows and the request still can't validate: absent, or `null` when
+// the schema says so. Sent through the rules the builder emits, level 1 is `next`, and `next.next` is the cut.
+it('accepts at the depth a field that is absent, or null when the schema is nullable', function (array $payload): void {
+    expect(statusForBuiltRules(chain(nullable: true, required: false), $payload))->toBe(200);
+})->with([
+    'absent' => [['next' => []]],
+    'null' => [['next' => ['next' => null]]],
+    'nothing at all' => [[]],
+]);
+
+// The case `missing` broke: the last validated level writes `"next": null`, which the contract allows when it
+// asks for the key and allows `null`.
+it('lets the last validated level of a required nullable recursion end in null', function (): void {
+    $chain = chain(nullable: true, required: true);
+
+    expect(statusForBuiltRules($chain, ['next' => ['next' => null]]))->toBe(200)
+        ->and(statusForBuiltRules($chain, ['next' => null]))->toBe(200)
+        ->and(statusForBuiltRules($chain, ['next' => []]))->toBe(422);
+});
+
+it('refuses anything else at the depth, whether or not the schema is nullable', function (bool $nullable, mixed $value): void {
+    $payload = ['next' => ['next' => $value]];
+
+    expect(statusForBuiltRules(chain($nullable, required: false), $payload))->toBe(422);
+})->with([
+    'a nullable one, an empty list' => [true, []],
+    'a nullable one, an empty object' => [true, new stdClass],
+    'a nullable one, a string' => [true, 'x'],
+    'a nullable one, a full object' => [true, ['next' => null]],
+    'a non-nullable one, an empty list' => [false, []],
+    'a non-nullable one, an empty object' => [false, new stdClass],
+    'a non-nullable one, a string' => [false, 'x'],
+    'a non-nullable one, a full object' => [false, ['next' => null]],
+    'a non-nullable one, null' => [false, null],
+]);
+
+it('lets a non-nullable recursive field be absent at the depth', function (): void {
+    expect(statusForBuiltRules(chain(nullable: false, required: false), ['next' => []]))->toBe(200);
+});
+
+// Laravel's `ConvertEmptyStringsToNull` runs before any rule, so `""` reaches the rules as `null`: a nullable field
+// takes it for the `null` it allows, and a non-nullable one refuses it like any other value.
+it('reads an empty string at the depth as the null Laravel turns it into', function (): void {
+    expect(statusForBuiltRules(chain(nullable: true, required: false), ['next' => ['next' => '']]))->toBe(200)
+        ->and(statusForBuiltRules(chain(nullable: false, required: false), ['next' => ['next' => '']]))->toBe(422);
+});
+
+/**
+ * The JSON body schema of one operation of a fixture, read the way a build reads it, so a test drives the rules a real
+ * contract produces rather than a schema built to look like one.
+ */
+function bodyOfFixture(string $fixture, string $operationId): Schema
+{
+    foreach (extractFixture($fixture) as $operation) {
+        if ($operation->operationId === $operationId) {
+            $body = $operation->requestBody;
+            assert($body instanceof RequestBody);
+
+            return $body->content['application/json'];
+        }
+    }
+
+    throw new RuntimeException(sprintf('`%s` has no operation `%s`.', $fixture, $operationId));
+}
+
+// An `allOf` around a recursion is an intersection: the constraints a wrapper writes hold for the wrapper's own level,
+// and the ones written beside a marker hold at every level that marker is crossed at. Each payload below is judged by
+// the contract in `recursion-allof-*.yaml` (a child of a `Category` is a plain `Category`, so it needs neither
+// `name` nor `slug`), at both versions, through the rules the builder emits.
+it('answers a payload the way the contract reads an allOf around a recursion', function (
+    string $version,
+    string $operationId,
+    array $payload,
+    int $status,
+): void {
+    expect(statusForBuiltRules(bodyOfFixture('recursion-allof-'.$version.'.yaml', $operationId), $payload))->toBe($status);
+})->with(function (): array {
+    $cases = [
+        'a body wrapping the component: a bare child is valid' => ['createCategory', ['name' => 'Root', 'slug' => 'root', 'children' => [['name' => 'Child']]], 200],
+        'a body wrapping the component: the root still needs its slug' => ['createCategory', ['name' => 'Root', 'children' => []], 422],
+        'a body wrapping the component: a wrong value in a child' => ['createCategory', ['name' => 'Root', 'slug' => 'root', 'children' => [['children' => 'oops']]], 422],
+        'a named allOf over the component: a bare child is valid' => ['createNamedCategory', ['name' => 'Root', 'slug' => 'root', 'children' => [['name' => 'Child']]], 200],
+        'a named allOf over the component: a wrong value in a child' => ['createNamedCategory', ['name' => 'Root', 'slug' => 'root', 'children' => [['children' => 'oops']]], 422],
+        'a named allOf over the component: the root still needs its slug' => ['createNamedCategory', ['name' => 'Root', 'children' => []], 422],
+        'a marker with a required beside it: every level named' => ['createNode', ['label' => 'a', 'next' => ['label' => 'b']], 200],
+        'a marker with a required beside it: the first level lacks it' => ['createNode', ['next' => []], 422],
+        'a marker with a required beside it: the second level lacks it' => ['createNode', ['label' => 'a', 'next' => ['label' => 'b', 'next' => []]], 422],
+        'a marker with a required beside it: two levels, both named' => ['createNode', ['label' => 'a', 'next' => ['label' => 'b', 'next' => ['label' => 'c']]], 200],
+        'a marker with a required beside it: a third level is below the depth' => ['createNode', ['label' => 'a', 'next' => ['label' => 'b', 'next' => ['label' => 'c', 'next' => ['label' => 'd']]]], 422],
+        'a field wrapping the component: a bare next is valid' => ['createTree', ['root' => ['extra' => 'x', 'next' => []]], 200],
+        'a field wrapping the component: the wrapped level still needs its extra' => ['createTree', ['root' => ['next' => []]], 422],
+        'a field wrapping the component: a wrong value below' => ['createTree', ['root' => ['extra' => 'x', 'next' => ['next' => 'oops']]], 422],
+    ];
+    $datasets = [];
+
+    foreach (['3.0', '3.1'] as $version) {
+        foreach ($cases as $name => [$operationId, $payload, $status]) {
+            $datasets[$name.' (OpenAPI '.$version.')'] = [$version, $operationId, $payload, $status];
+        }
+    }
+
+    return $datasets;
+});
+
+// The depth is lowered evenly when the stated one does not fit the ceiling, so a binary tree stated at 20 is cut at the
+// same level on `left` and on `right`: 7 crossings by hand (see `RuleSetBuilderTest`). A chain of 7 passes on both
+// sides, a chain of 8 is below the depth on both, and a wrong value within the depth is refused on both.
+it('cuts a tree whose depth was lowered at the same level on every branch', function (string $side): void {
+    $tree = bodyOfFixture('recursion-binary-tree-deep.yaml', 'createTree');
+    $chain = static function (int $levels, mixed $end = []) use ($side): array {
+        $payload = $end;
+
+        for ($level = 0; $level < $levels; $level++) {
+            $payload = [$side => $payload];
+        }
+
+        return $payload;
+    };
+
+    expect(statusForBuiltRules($tree, $chain(7)))->toBe(200)
+        ->and(statusForBuiltRules($tree, $chain(8)))->toBe(422)
+        ->and(statusForBuiltRules($tree, [$side => 'oops']))->toBe(422)
+        ->and(statusForBuiltRules($tree, $chain(2, 'oops')))->toBe(422);
+})->with(['left', 'right']);
+
+// A list is cut on its elements, so a list that is empty carries nothing and passes at the last level, while one
+// element below it is refused.
+it('lets an empty recursive list through at the cut and refuses an element there', function (): void {
+    $node = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        properties: [
+            'children' => new Schema(
+                types: [SchemaType::Array],
+                items: Schema::recursion('#/components/schemas/Node', 'Node'),
+            ),
+        ],
+        maxDepth: 1,
+        source: '#/components/schemas/Node',
+    );
+
+    expect(statusForBuiltRules($node, ['children' => [['children' => []]]]))->toBe(200)
+        ->and(statusForBuiltRules($node, ['children' => [['children' => [[]]]]]))->toBe(422);
+});
+
+// A required field the schema cannot be null on is a way back the contract insists on. A payload that reaches the cut
+// through a `Book` with no `author` is refused, as `required` says, and a payload that ends earlier, on an `Author`
+// with no books, is untouched: the presence is asked of the parent, which a shorter tree does not have.
+it('refuses a tree that reaches the cut without its required way back, and not one that ends early', function (array $payload, int $status): void {
+    expect(statusForBuiltRules(bodyOfFixture('recursion-required-pair.yaml', 'createAuthor'), $payload))->toBe($status);
+})->with([
+    'nothing' => [[], 200],
+    'no books' => [['books' => []], 200],
+    'a book with no author, at the root' => [['books' => [['title' => 'x']]], 422],
+    'two levels, ending on an author with no books' => [['books' => [['author' => ['books' => [['author' => []]]]]]], 200],
+    'the last book has no author' => [['books' => [['author' => ['books' => [['title' => 'x']]]]]], 422],
+    'a book reaching the cut' => [['books' => [['author' => ['books' => [['author' => ['books' => [['author' => []]]]]]]]]], 422],
+]);
 
 /*
  * Part 2's table, against the framework rather than against a string: one

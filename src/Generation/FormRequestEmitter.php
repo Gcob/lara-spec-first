@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
+use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 
 /**
  * Turns one operation's input into the PHP of its generated `FormRequest`.
@@ -95,6 +96,10 @@ final readonly class FormRequestEmitter
 
         if ($set->usesInRule()) {
             $imports[] = $this->import(self::RULE_CLASS);
+        }
+
+        if ($set->usesNullOrAbsent()) {
+            $imports[] = $this->import(NullOrAbsent::class);
         }
 
         if ($set->closedKeys !== null || $set->jsonRoot || $planned->dto !== null) {
@@ -462,10 +467,14 @@ final readonly class FormRequestEmitter
      * One rule as PHP: a string literal, or `Rule::in()` over the values an enumeration allows — never `in:a,b`, which
      * splits on a comma inside a value.
      */
-    private function rule(string|InRule $rule): string
+    private function rule(string|InRule|NullOrAbsent $rule): string
     {
         if (is_string($rule)) {
             return $this->literal($rule);
+        }
+
+        if ($rule instanceof NullOrAbsent) {
+            return 'new NullOrAbsent';
         }
 
         return 'Rule::in(['.implode(', ', array_map(

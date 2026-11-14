@@ -61,6 +61,7 @@ trait NormalizesSchemas
             writeOnly: ($keywords['writeOnly'] ?? null) === true,
             isFilePart: $this->isFilePart($keywords),
             contentMediaType: $this->contentMediaType($keywords),
+            maxDepth: is_int($keywords['x-max-depth'] ?? null) ? $keywords['x-max-depth'] : null,
             source: $source,
             ignored: $ignored,
         );

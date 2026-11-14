@@ -1,0 +1,98 @@
+# A recursion reached through an `allOf`, in the four shapes a contract writes it: a body that wraps a recursive
+# component with `required`, a recursion marker with constraints written beside it, a named `allOf` over the
+# component, and a field that wraps one. The constraints of a wrapper belong to the wrapper's own level, and the ones
+# beside a marker belong to every level that marker is crossed at.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /categories:
+    post:
+      operationId: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Category'
+                - required: [name, slug]
+      responses:
+        '201':
+          description: Created
+  /named-categories:
+    post:
+      operationId: createNamedCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategory'
+      responses:
+        '201':
+          description: Created
+  /nodes:
+    post:
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Node'
+      responses:
+        '201':
+          description: Created
+  /trees:
+    post:
+      operationId: createTree
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                root:
+                  allOf:
+                    - $ref: '#/components/schemas/Tree'
+                    - required: [extra]
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Category:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+    CreateCategory:
+      allOf:
+        - $ref: '#/components/schemas/Category'
+        - required: [name, slug]
+    Node:
+      type: object
+      x-max-depth: 2
+      properties:
+        label:
+          type: string
+        next:
+          allOf:
+            - $ref: '#/components/schemas/Node'
+            - required: [label]
+    Tree:
+      type: object
+      properties:
+        extra:
+          type: string
+        next:
+          $ref: '#/components/schemas/Tree'

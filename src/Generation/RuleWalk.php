@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Generation;
 
+use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
+
 /**
  * What one walk over an operation's input has produced so far.
  *
@@ -16,7 +19,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 final class RuleWalk
 {
     /**
-     * @var array<string, list<string|InRule>>
+     * @var array<string, list<string|InRule|NullOrAbsent>>
      */
     public array $rules = [];
 
@@ -126,6 +129,120 @@ final class RuleWalk
      * once however many parts it has.
      */
     public bool $phpUploadNamed = false;
+
+    /**
+     * The definitions of the named schemas the walk is inside of, outermost first: the path from the body down to the
+     * field in hand. A recursion marker names the ancestor it points back at, and this is where that ancestor is found
+     * to be expanded again.
+     *
+     * **A definition is the component as the document writes it** (its own `allOf` merged in, and nothing of the schema
+     * that wraps or includes it), so a marker re-enters what the contract says the component is. The merged schema of a
+     * wrapper is the wrong thing to keep here: it carries the wrapper's own constraints, which belong to the wrapper's
+     * level alone.
+     *
+     * @var list<Schema>
+     */
+    public array $ancestors = [];
+
+    /**
+     * How many times the path in hand has re-entered each recursive schema, by its position (`recursesTo`). The limit
+     * is the `x-max-depth` of the schema re-entered, so each one counts on its own.
+     *
+     * @var array<string, int>
+     */
+    public array $crossings = [];
+
+    /**
+     * Each recursive schema the walk had to cut at its depth, by its position: the name it is reported under, the depth
+     * it was cut at, the depth it asked for (more than that when the ceiling lowered it), whether the schema stated it,
+     * whether it allows `null`, and the rule keys that refuse what is below, in the order they were met. One finding is
+     * written for each, once the walk is over, because only then is the count known.
+     *
+     * @var array<string, array{name: string, depth: int, requested: int, stated: bool, nullable: bool, keys: list<string>}>
+     */
+    public array $cuts = [];
+
+    /**
+     * The depth no recursive schema is validated below in this walk, or null for the depths the contract states. The
+     * ceiling lowers it for the whole operation, so a tree is cut at one level on every branch, and a schema whose own
+     * depth is under it keeps its own.
+     */
+    public ?int $depthCap = null;
+
+    /**
+     * The depth a single recursive schema is held to beside {@see self::$depthCap}, by its position: what tells two
+     * schemas apart that the common cap leaves tied.
+     *
+     * @var array<string, int>
+     */
+    public array $caps = [];
+
+    /**
+     * The depth each recursive schema asked for, by its position, before any cap: the contract's own, or the default.
+     *
+     * @var array<string, int>
+     */
+    public array $requested = [];
+
+    /**
+     * How many rule keys each recursive schema wrote by its own expansions, the ones its nested schemas wrote not
+     * counted, by its position. What ties are broken by.
+     *
+     * @var array<string, int>
+     */
+    public array $keysBy = [];
+
+    /**
+     * The sum of {@see self::$keysBy}, which is what lets one expansion tell its own keys from its nested ones.
+     */
+    public int $attributed = 0;
+
+    /**
+     * The deepest limit a recursive schema asked for in this walk, before the cap: where a search for the depth that
+     * fits starts from.
+     */
+    public int $deepest = 0;
+
+    /**
+     * Whether the unrolled keys went past the ceiling. A walk that did is not a rule set: it stops expanding at once
+     * and its result is thrown away, so the build never holds more than a ceiling's worth of keys plus one level.
+     */
+    public bool $exceeded = false;
+
+    /**
+     * How many rule keys the expansions that are over have written. A rule key an expansion writes is counted once, by
+     * the outermost one, so the ceiling is a number of keys and not a number of expansions.
+     */
+    public int $unrolled = 0;
+
+    /**
+     * How many rule keys there were when the expansion in progress started, or null between two expansions. A marker
+     * met inside an expansion is part of it, and it is the outermost one that counts what they all wrote.
+     */
+    public ?int $expansionStart = null;
+
+    /**
+     * The rule keys written by unrolling so far, the expansion in progress included.
+     */
+    public function unrolledKeys(): int
+    {
+        return $this->unrolled + ($this->expansionStart === null ? 0 : count($this->rules) - $this->expansionStart);
+    }
+
+    /**
+     * The expanded ancestor a recursion marker points back at, or null when no schema the walk is inside is written at
+     * that position (an inline one has no name to be found by).
+     */
+    public function ancestor(string $position): ?Schema
+    {
+        foreach (array_reverse($this->ancestors) as $schema) {
+            if ($schema->source === $position) {
+                return $schema;
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Record that a keyword was read on a field and nothing enforces it, once per field.

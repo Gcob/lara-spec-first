@@ -278,12 +278,71 @@ it('refuses what the rule set refuses before any DTO exists', function (): void 
         ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['age']);
 });
 
-// The rules stop at a recursion, so this passes validation. A DTO built from it
-// would be a `TypeError` in `from()` and a 500 where the request owed an answer:
-// the node is `mixed` and reaches the controller as it arrived.
-it('lets an unvalidated recursive node through without a 500', function (): void {
+/**
+ * An `Address` that holds `$levels` more of itself as `parent`, each with the street the schema requires.
+ *
+ * @return array<string, mixed>
+ */
+function addressDeep(int $levels): array
+{
+    $address = ['street' => 'level '.$levels];
+
+    for ($level = $levels - 1; $level >= 0; $level--) {
+        $address = ['street' => 'level '.$level, 'parent' => $address];
+    }
+
+    return $address;
+}
+
+// The rules used to stop at the recursion, so `parent: "oops"` passed validation and the node
+// reached the controller as it arrived. `Address` states no `x-max-depth`, so the request reads
+// three levels of `parent`, and a value that is not an address is refused there with a 422.
+it('refuses a recursive node that is not the schema it points back at', function (): void {
     [$status, $body] = patchUser(['address' => ['street' => 'x', 'parent' => 'oops']]);
 
-    expect($status)->toBe(200)
-        ->and($body['array'])->toBe(['address' => ['street' => 'x', 'parent' => 'oops']]);
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['address.parent']);
 });
+
+it('validates a recursion down to the depth the schema states and hands the node on as it arrived', function (): void {
+    $payload = ['address' => addressDeep(3)];
+
+    [$status, $body] = patchUser($payload);
+
+    expect($status)->toBe(200)
+        ->and($body['array'])->toBe($payload);
+});
+
+it('refuses a node that is wrong at the last level the schema validates', function (): void {
+    $payload = ['address' => addressDeep(2)];
+    $payload['address']['parent']['parent']['parent'] = 'oops';
+
+    [$status, $body] = patchUser($payload);
+
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['address.parent.parent.parent']);
+});
+
+// A deeper payload is stricter than the contract, which is what the finding in the generated file says.
+it('refuses a payload deeper than the depth, on the first field below it', function (): void {
+    [$status, $body] = patchUser(['address' => addressDeep(4)]);
+
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['address.parent.parent.parent.parent']);
+});
+
+// Laravel's `missing` asks for the key to be absent, so an empty value is refused at the cut as well: a
+// typed DTO is never built from `[]` below the depth. `prohibited` let all three through.
+it('refuses an empty value at the depth as it refuses any other', function (mixed $empty): void {
+    $payload = ['address' => addressDeep(3)];
+    $payload['address']['parent']['parent']['parent']['parent'] = $empty;
+
+    [$status, $body] = patchUser($payload);
+
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['address.parent.parent.parent.parent']);
+})->with([
+    'null' => [null],
+    'an empty string' => [''],
+    'an empty list' => [[]],
+]);
