@@ -155,7 +155,7 @@ card-context card:
     @npm run --silent card-context -- {{card}}
 
 # The two release recipes run on the host and wrap a script, not a Composer
-# script: they need git, gh and a terminal, and the PHP image has none of them.
+# script: they need gh, a terminal and the maintainer's own git, and the PHP image has no gh.
 # The logic, and the checks that stop an accidental tag, live in the scripts.
 # The process is in docs/contributing/releasing.md.
 

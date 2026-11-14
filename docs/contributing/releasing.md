@@ -39,8 +39,8 @@ and the logic behind them is in
 [the branch names](../../CONTRIBUTING.md#branch-names). Its pull request is the one place the entry is reviewed, and the
 pull request is merged before anything is tagged.
 
-**The tag is `v{version}`, annotated, on the merge commit.** The version in the changelog heading, the tag and the
-GitHub release are the same string.
+**The tag is `v{version}`, annotated, on the tip of `origin/main`, which must be the release pull request's merge
+commit.** The version in the changelog heading, the tag and the GitHub release are the same string.
 
 ## Before the tag
 
@@ -76,6 +76,9 @@ clean working tree, CI green on the tip of `origin/main`, every `Ready when` box
 card with no `Ready when` section, or one with no box in it, is red as well: a card that lists nothing does not say what
 blocks the release.
 
+**`release-prep` runs for real without a flag, and `release` is a dry run without one, on purpose.** Preparing a branch
+is reversible: close the pull request and delete the branch. A tag is not, and `release` makes you add `--publish`.
+
 **Run it in a worktree, or from a clean `main`.** The real run switches the checkout it runs in to the release branch
 and leaves it there, so it refuses a dirty tree, and a hook that refuses the commit leaves the branch behind with
 `CHANGELOG.md` edited. In a worktree made for the release, that costs nothing.
@@ -93,7 +96,7 @@ and leaves it there, so it refuses a dirty tree, and a hook that refuses the com
 
 **The heading's date must be the day the tag is cut.** The script writes the day it ran. A release pull request that
 merges a few days later carries a date that is wrong, so the script warns about it twice, in its output and in the pull
-request, and the date is fixed before the merge.
+request, and `release` refuses to tag until the date is today's (see [the checks](#the-tag-is-the-maintainers)).
 
 **`--dry-run` writes nothing.** It does not even fetch, so it compares what origin says `main` is with what the checkout
 remembers, and says to fetch when they differ.
@@ -125,14 +128,19 @@ when any check is red. An exit code of 0 means the real run would go through.
 
 **The checks are the same in both modes:**
 
-1. The version is valid (`X.Y.Z`).
+1. The version is valid (`X.Y.Z`, or `X.Y.Z-rc.1` for a pre-release, which the GitHub release marks as one).
 2. The tag `v<version>` does not exist, here or on origin.
 3. The working tree is clean.
 4. `HEAD` is the tip of `origin/main`, as origin reports it.
 5. CI is green on that commit.
-6. `CHANGELOG.md` has a `## [<version>] - ` heading with an entry under it.
+6. `CHANGELOG.md` has a `## [<version>] - ` heading with an entry under it, and the heading's date is today. A release
+   pull request that merged days ago fails here: edit the date through a pull request, merge it, and run again.
 7. `gh` is logged in as `Gcob`.
-8. `gh` reads the repository from `origin`, which is what the release links are pinned with.
+8. `gh` reads the repository `origin` is configured with: the `owner/repo` it names must equal the one parsed from
+   `origin`'s address, and the release links are pinned with it.
+9. `[Unreleased]` is empty at `HEAD`. The tag goes on the tip of `origin/main`, so nothing may merge between the release
+   pull request and the tag. A change that merged after it would be tagged with no entry, and this check is red until it
+   is written into the version's entry.
 
 **`--publish` then asks a person.** With every check green, it shows who the tag will be created by (the git identity of
 the checkout) and waits for the version to be typed at a terminal. The identity is shown rather than checked because a
