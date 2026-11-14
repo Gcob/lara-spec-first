@@ -308,26 +308,28 @@ it('refuses a recursive node that is not the schema it points back at', function
 });
 
 /**
- * A request class the build would write for a fixture contract, loaded under a namespace of its own.
+ * The files the build would write for a fixture contract, with the classes loaded under a namespace of its own.
  *
- * The golden files cover a recursion that is not nullable. These cover the two shapes that behave differently at the
- * cut (a list, and a schema that allows `null`), and a golden file for each would be one nothing else reads.
+ * The golden files cover a recursion that is not nullable. These cover the shapes that behave differently at the cut (a
+ * list, and a schema that allows `null`) and a recursive pair, and a golden file for each would be one nothing else
+ * reads. A namespace is loaded once, whatever the number of tests that ask for it.
  *
- * @return string the namespace of the generated classes
+ * @param  bool  $reversed  the operations in the opposite order, which must write the same classes
+ * @return array<string, string> the contents of each file, by its path under the generated root
  */
-function generatedRecursion(): string
+function generatedFrom(string $fixture, string $namespace, bool $reversed = false): array
 {
-    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\RecursionDepth';
-    static $loaded = false;
+    static $files = [];
 
-    if ($loaded) {
-        return $namespace;
+    if (isset($files[$namespace])) {
+        return $files[$namespace];
     }
 
-    ['requests' => $requests, 'plan' => $plan] = plannedRequests(extractFixture('recursion-dto-depth.yaml'));
-    $dataEmitter = new InputDtoEmitter($namespace, 'tests/Fixtures/recursion-dto-depth.yaml');
-    $requestEmitter = new FormRequestEmitter($namespace, 'tests/Fixtures/recursion-dto-depth.yaml');
-    $files = [
+    $operations = extractFixture($fixture);
+    ['requests' => $requests, 'plan' => $plan] = plannedRequests($reversed ? array_reverse($operations) : $operations);
+    $dataEmitter = new InputDtoEmitter($namespace, 'tests/Fixtures/'.$fixture);
+    $requestEmitter = new FormRequestEmitter($namespace, 'tests/Fixtures/'.$fixture);
+    $generated = [
         ...array_map($dataEmitter->emit(...), $plan->dtos),
         ...array_map($requestEmitter->emit(...), $requests),
     ];
@@ -336,28 +338,29 @@ function generatedRecursion(): string
     mkdir($directory);
 
     try {
-        foreach ($files as $index => $file) {
+        foreach ($generated as $index => $file) {
             file_put_contents($path = $directory.'/'.$index.'.php', $file->contents);
             require $path;
+            $files[$namespace][$file->relativePath] = $file->contents;
         }
     } finally {
         array_map(unlink(...), glob($directory.'/*.php') ?: []);
         rmdir($directory);
     }
 
-    $loaded = true;
+    ksort($files[$namespace]);
 
-    return $namespace;
+    return $files[$namespace];
 }
 
 /**
- * A class the build wrote for the recursion fixture, by its name under the generated namespace.
+ * A class the build wrote for a fixture, by its name under the generated namespace.
  *
  * @return class-string
  */
-function generatedClass(string $relativeName): string
+function generatedClass(string $namespace, string $relativeName): string
 {
-    $class = generatedRecursion().'\\'.$relativeName;
+    $class = $namespace.'\\'.$relativeName;
 
     if (! class_exists($class)) {
         throw new RuntimeException('The build wrote no class '.$class);
@@ -423,9 +426,11 @@ function dtoAt(object $dto, string|int ...$path): mixed
 // golden files do not hold are built from the fixture: a nullable schema, where `null` is the value that ends a tree,
 // and a list, where an empty one does.
 it('builds nested input DTOs down to the depth', function (): void {
-    $tree = generatedClass('Requests\\CreateTreeRequest');
-    $node = generatedClass('Data\\NodeInputDto');
-    $category = generatedClass('Data\\CategoryInputDto');
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\RecursionDepth';
+    generatedFrom('recursion-dto-depth.yaml', $namespace);
+    $tree = generatedClass($namespace, 'Requests\\CreateTreeRequest');
+    $node = generatedClass($namespace, 'Data\\NodeInputDto');
+    $category = generatedClass($namespace, 'Data\\CategoryInputDto');
 
     $user = dtoOfPost(UpdateUserRequest::class, ['address' => addressDeep(3)]);
 
@@ -448,7 +453,7 @@ it('builds nested input DTOs down to the depth', function (): void {
 
     expect(dtoAt($absent, 'tree', 'next', 'next'))->toBeInstanceOf(Optional::class);
 
-    $categories = dtoOfPost(generatedClass('Requests\\CreateCategoryRequest'), [
+    $categories = dtoOfPost(generatedClass($namespace, 'Requests\\CreateCategoryRequest'), [
         'name' => 'a',
         'children' => [['name' => 'b', 'children' => [['name' => 'c', 'children' => []]]]],
     ]);
@@ -457,6 +462,77 @@ it('builds nested input DTOs down to the depth', function (): void {
         ->and(get_debug_type(dtoAt($categories, 'children', 0)))->toBe($category)
         ->and(get_debug_type(dtoAt($categories, 'children', 0, 'children', 0)))->toBe($category)
         ->and(dtoAt($categories, 'children', 0, 'children', 0, 'children'))->toBe([]);
+});
+
+// The ceiling lowers a depth the contract states (20 on a binary tree) to the one the rules fit (7 crossings, see
+// `RuleSetBuilderTest`), and the DTO is typed down to that applied depth, on both sides: the last level the request
+// validates is a `TreeInputDto`, and the key below it is the cut.
+it('types a tree whose depth was lowered down to the applied depth', function (string $side): void {
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\TreeCeiling';
+    generatedFrom('recursion-binary-tree-deep.yaml', $namespace);
+    $tree = generatedClass($namespace, 'Data\\TreeInputDto');
+
+    $payload = ['value' => 'level 7'];
+
+    for ($level = 6; $level >= 0; $level--) {
+        $payload = ['value' => 'level '.$level, $side => $payload];
+    }
+
+    $dto = dtoOfPost(generatedClass($namespace, 'Requests\\CreateTreeRequest'), $payload);
+
+    for ($level = 1; $level <= 7; $level++) {
+        $path = array_fill(0, $level, $side);
+
+        expect(get_debug_type(dtoAt($dto, ...$path)))->toBe($tree)
+            ->and(dtoAt($dto, ...[...$path, 'value']))->toBe('level '.$level);
+    }
+
+    expect(dtoAt($dto, ...array_fill(0, 8, $side)))->toBeInstanceOf(Optional::class);
+})->with(['left', 'right']);
+
+// A recursive pair is entered from both sides, by two operations. The build is run in both orders and the classes of each
+// are loaded and executed: the same bytes, and `dto()` reads each side of the pair as the other's class.
+it('executes a recursive pair the same in both orders', function (): void {
+    $authorsFirst = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\PairAuthorsFirst';
+    $booksFirst = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\PairBooksFirst';
+
+    $first = generatedFrom('recursion-pair.yaml', $authorsFirst);
+    $second = generatedFrom('recursion-pair.yaml', $booksFirst, reversed: true);
+
+    expect(array_keys($first))->toBe([
+        'Data/AuthorInputDto.php',
+        'Data/AuthorPartialInputDto.php',
+        'Data/BookInputDto.php',
+        'Data/BookPartialInputDto.php',
+        'Requests/CreateAuthorRequest.php',
+        'Requests/CreateBookRequest.php',
+    ])
+        ->and(str_replace($booksFirst, $authorsFirst, implode("\n", $second)))->toBe(implode("\n", $first));
+
+    foreach ([$authorsFirst, $booksFirst] as $namespace) {
+        $author = generatedClass($namespace, 'Data\\AuthorInputDto');
+        $book = generatedClass($namespace, 'Data\\BookInputDto');
+
+        $fromAuthor = dtoOfPost(generatedClass($namespace, 'Requests\\CreateAuthorRequest'), [
+            'name' => 'Ada',
+            'books' => [['title' => 'Notes', 'author' => ['name' => 'Charles', 'books' => []]]],
+        ]);
+
+        expect(get_debug_type($fromAuthor))->toBe($author)
+            ->and(get_debug_type(dtoAt($fromAuthor, 'books', 0)))->toBe($book)
+            ->and(get_debug_type(dtoAt($fromAuthor, 'books', 0, 'author')))->toBe($author)
+            ->and(dtoAt($fromAuthor, 'books', 0, 'author', 'books'))->toBe([]);
+
+        $fromBook = dtoOfPost(generatedClass($namespace, 'Requests\\CreateBookRequest'), [
+            'title' => 'Notes',
+            'author' => ['name' => 'Ada', 'books' => [['title' => 'More']]],
+        ]);
+
+        expect(get_debug_type($fromBook))->toBe($book)
+            ->and(get_debug_type(dtoAt($fromBook, 'author')))->toBe($author)
+            ->and(get_debug_type(dtoAt($fromBook, 'author', 'books', 0)))->toBe($book)
+            ->and(dtoAt($fromBook, 'author', 'books', 0, 'author'))->toBeInstanceOf(Optional::class);
+    }
 });
 
 it('refuses a node that is wrong at the last level the schema validates', function (): void {
