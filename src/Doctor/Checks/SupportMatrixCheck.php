@@ -14,6 +14,7 @@ use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
@@ -196,7 +197,21 @@ final readonly class SupportMatrixCheck
                 );
             }
 
-            foreach (self::unenforcedKeywords($operation) as $keyword => $fields) {
+            $ruleSet = self::ruleSet($operation);
+
+            // A fault in the document the rule set could read nothing from, and so is looser than the contract for:
+            // the author's to fix, which is what separates it from the package limits around it.
+            foreach ($ruleSet->documentFaults ?? [] as $fault) {
+                $findings[] = new Finding(
+                    FindingClass::DocumentFault,
+                    self::SECTION,
+                    SupportLevel::Partial,
+                    DocumentPointer::forOperation($operation),
+                    sprintf('%s: %s', $operation->label(), $fault),
+                );
+            }
+
+            foreach ($ruleSet->unenforced ?? [] as $keyword => $fields) {
                 $findings[] = new Finding(
                     FindingClass::PackageLimit,
                     self::SECTION,
@@ -271,16 +286,15 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * What the operation's rule set read and enforced nothing for, or nothing when it cannot be built.
-     *
-     * @return array<string, list<string>>
+     * The operation's rule set, or null when it cannot be built: its conflict is `Routing outcome`'s to report, and
+     * what a rule set would have said is left out rather than guessed.
      */
-    private static function unenforcedKeywords(Operation $operation): array
+    private static function ruleSet(Operation $operation): ?RuleSet
     {
         try {
-            return RuleSetBuilder::for($operation)->unenforced;
+            return RuleSetBuilder::for($operation);
         } catch (ConflictingInputException) {
-            return [];
+            return null;
         }
     }
 

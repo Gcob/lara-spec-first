@@ -432,12 +432,8 @@ it('has no response for a status the document never declared', function (): void
 it('reads encoding contentType from the raw document', function (): void {
     $body = extractionFrom('encoding.yaml')->operations[0]->requestBody;
 
-    expect($body?->encoding)->toBe(['multipart/form-data' => ['avatar' => 'image/png, image/jpeg']])
-        ->and($body?->contentType('multipart/form-data', 'avatar'))->toBe('image/png, image/jpeg')
-        ->and($body?->contentType('multipart/form-data', 'caption'))->toBeNull()
-        ->and($body?->contentType('multipart/form-data', 'document'))->toBeNull()
-        ->and($body?->contentType('multipart/form-data', 'absent'))->toBeNull()
-        ->and($body?->contentType('application/json', 'avatar'))->toBeNull();
+    // `caption` and `document` write no `contentType`, so they have no entry, and no other media type has one.
+    expect($body?->encoding)->toBe(['multipart/form-data' => ['avatar' => 'image/png, image/jpeg']]);
 });
 
 // A `contentType` that is not a string is still something the author wrote, so it stays in the contract as written
@@ -446,10 +442,20 @@ it('reads encoding contentType from the raw document', function (): void {
 it('reads encoding contentType from the raw document, a value that is not a string included', function (): void {
     $body = extractionFrom('encoding.yaml')->operations[3]->requestBody;
 
-    expect($body?->encoding)->toBe(['multipart/form-data' => ['avatar' => ['image/png', 'image/jpeg'], 'caption' => 5]])
-        ->and($body?->contentType('multipart/form-data', 'avatar'))->toBeNull()
-        ->and($body?->contentType('multipart/form-data', 'caption'))->toBeNull();
+    expect($body?->encoding)->toBe(['multipart/form-data' => ['avatar' => ['image/png', 'image/jpeg'], 'caption' => 5]]);
 });
+
+// The one path where reading the raw document could read nothing: the request body is a reference, and `encoding` sits
+// where it lands, in this document or in another file.
+it('reads encoding under a request body behind a $ref', function (string $operation): void {
+    $operations = extractionFrom('encoding-ref/spec.yaml')->operations;
+    $body = array_values(array_filter($operations, static fn ($candidate): bool => $candidate->operationId === $operation))[0]->requestBody;
+
+    expect($body?->encoding)->toBe(['multipart/form-data' => ['avatar' => 'image/png, image/jpeg']]);
+})->with([
+    'in the document' => ['uploadLocal'],
+    'in another file' => ['uploadFromFile'],
+]);
 
 it('carries no encoding for a body that writes none', function (): void {
     expect(extractionFrom('encoding.yaml')->operations[2]->requestBody?->encoding)->toBe([]);

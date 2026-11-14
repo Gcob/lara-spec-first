@@ -1,0 +1,37 @@
+# A request body behind a `$ref`, in this document and in another file, with `encoding` written on it. The raw node is
+# read where the reference lands, so a body that is not written inline reads the same as one that is.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /local:
+    post:
+      operationId: uploadLocal
+      requestBody:
+        $ref: '#/components/requestBodies/Upload'
+      responses:
+        '201':
+          description: Created
+  /file:
+    post:
+      operationId: uploadFromFile
+      requestBody:
+        $ref: 'bodies.yaml#/Upload'
+      responses:
+        '201':
+          description: Created
+components:
+  requestBodies:
+    Upload:
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              avatar:
+                type: string
+                format: binary
+          encoding:
+            avatar:
+              contentType: image/png, image/jpeg

@@ -1491,6 +1491,17 @@ it('accepts a real file whose declared text type its content sniffs as another',
     'JSON' => ['application/json', '{"a":1,"b":[1,2]}'],
 ]);
 
+// `mimetypes:text/*` matches on the first half of the sniffed type, so it holds for every real text file, unlike a
+// named text type.
+it('accepts a real text file under a text wildcard and refuses a PNG', function (): void {
+    $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+    $encoding = ['multipart/form-data' => ['field' => 'text/*']];
+
+    expect(statusForUpload(oneField(filePart()), ['field' => realUpload("name,age\nada,36\n")], encoding: $encoding))->toBe(200)
+        ->and(statusForUpload(oneField(filePart()), ['field' => realUpload('<?xml version="1.0"?><a><b>1</b></a>')], encoding: $encoding))->toBe(200)
+        ->and(statusForUpload(oneField(filePart()), ['field' => realUpload($png)], encoding: $encoding))->toBe(422);
+});
+
 it('still refuses a real file that is not the binary type declared', function (): void {
     $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
 

@@ -52,6 +52,10 @@ final readonly class RuleSet
      *                                                   Data where `findings` is prose, so a report can group, count
      *                                                   and gate on it without reading a sentence, and narrower on
      *                                                   purpose: a finding that is only information has no entry here
+     * @param  list<string>  $documentFaults  what the document writes that is wrong and nothing was read from (an
+     *                                        `encoding` entry for a part the body does not declare, a `contentType`
+     *                                        that is not a string): findings too, and data besides so the doctor can
+     *                                        report them as document faults
      */
     public function __construct(
         public array $rules = [],
@@ -67,6 +71,7 @@ final readonly class RuleSet
         public bool $requiredRoot = false,
         public string $rootKey = 'body',
         public array $unenforced = [],
+        public array $documentFaults = [],
     ) {}
 
     /**

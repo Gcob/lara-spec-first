@@ -1061,6 +1061,8 @@ it('narrows a file part from encoding', function (
             ['The `encoding` of `avatar` declares `contentType: image/png, text/csv`, and no `mimetypes` rule is emitted for it',
                 'a rule listing it would refuse every real file of that type'],
             ['encoding' => ['`avatar`']]],
+        'a text wildcard, which Laravel matches' => [['avatar' => $file], ['avatar' => 'image/png, Text/*'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png,text/*']], [], []],
         'no contentType, so contentMediaType applies' => [['avatar' => $gif], [], $multipart,
             ['avatar' => ['sometimes', 'file', 'mimetypes:image/gif']], [], []],
         'a contentType for another part, so contentMediaType applies' => [['avatar' => $gif, 'note' => $text], ['note' => 'text/plain'], $multipart,
@@ -1113,6 +1115,18 @@ it('narrows a file part from encoding', function (
                 'tags' => ['sometimes', 'array', 'list'], 'tags.*' => ['string'], 'rows' => ['sometimes', 'array', 'list'], 'rows.*' => ['array'],
                 'doc' => ['sometimes', 'file']],
             [], []],
+        // The versions disagree (3.1.0 gives a primitive `application/octet-stream`, 3.0 and 3.1.1 `text/plain`), so a
+        // contract is never asked which one it meant: every type written being one of them is silent.
+        'the default of another version, spelled out' => [
+            ['note' => $text, 'count' => new Schema(types: [SchemaType::Integer]), 'free' => new Schema],
+            ['note' => 'application/octet-stream', 'count' => 'text/plain, application/octet-stream', 'free' => 'application/octet-stream'],
+            $multipart,
+            ['note' => ['sometimes', 'string'], 'count' => ['sometimes', 'integer'], 'free' => ['sometimes']],
+            [], []],
+        'a file part in a form, with the default 3.1.1 gives a string' => [['avatar' => $file], ['avatar' => 'text/plain'], ['application/x-www-form-urlencoded'],
+            ['avatar' => ['sometimes', 'string']], [], ['format' => ['`avatar`']]],
+        'an object is not given a primitive default' => [['data' => objectSchema([])], ['data' => 'text/plain'], $multipart,
+            ['data' => ['sometimes', 'array']], ['The `encoding` of `data` declares `contentType: text/plain`'], ['encoding' => ['`data`']]],
         'a default beside another type is not the default' => [['note' => $text], ['note' => 'text/plain, image/png'], $multipart,
             ['note' => ['sometimes', 'string']], ['The `encoding` of `note` declares'], ['encoding' => ['`note`']]],
         'a plain part in a form' => [['name' => $text], ['name' => 'text/csv'], ['application/x-www-form-urlencoded'],
@@ -1328,7 +1342,6 @@ it('emits no mimetypes for a type the content cannot be sniffed as', function (s
 })->with([
     'text/csv',
     'text/markdown',
-    'text/*',
     'Text/CSV; charset=utf-8',
     'application/json',
     'application/xml',
@@ -1341,7 +1354,8 @@ it('keeps mimetypes for a binary type the content is sniffed as', function (stri
     [$rules] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: $declared));
 
     expect($rules['avatar'])->toBe(['required', 'file', 'mimetypes:'.$declared]);
-})->with(['image/png', 'application/pdf', 'application/zip', 'image/svg+xml']);
+    // A wildcard is matched on the type's first half, which a text file's sniffed type has: `text/*` holds for a real CSV.
+})->with(['image/png', 'application/pdf', 'application/zip', 'image/svg+xml', 'text/*']);
 
 // JSON Schema applies `properties` to objects only, and a body that names properties
 // is an object whether or not it says `type: object`: generators that omit the type

@@ -47,15 +47,4 @@ final readonly class RequestBody
     {
         return array_keys($this->content);
     }
-
-    /**
-     * The `contentType` the document wrote for one part of one media type, as written, or null when it wrote none or
-     * wrote something that is not a string (that one is in {@see self::$encoding}, as written).
-     */
-    public function contentType(string $mediaType, string $part): ?string
-    {
-        $written = $this->encoding[$mediaType][$part] ?? null;
-
-        return is_string($written) ? $written : null;
-    }
 }

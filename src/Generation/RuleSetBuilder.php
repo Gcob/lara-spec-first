@@ -325,7 +325,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults);
     }
 
     /**
@@ -591,12 +591,13 @@ final readonly class RuleSetBuilder
      * specification says. A part is read as a file only when the body is multipart alone, and then only multipart's
      * `encoding` is read. When the body declares both, the part is not a file and what is written is only reported: a
      * part written under both is read as the two lists joined (multipart's first), so the report names both and says
-     * nothing only when neither is the part's default.
+     * nothing only when every type written is the part's default.
      *
      * **A part the schema does not declare is a fault in the document**, not a limit of this package, so it is said in
-     * the generated file and left out of the doctor's `unenforced`. So is a `contentType` that is not a string (a YAML
-     * list, a number): the specification says one comma-separated string, so nothing is read from it, and the part
-     * keeps what `contentMediaType` says. A string written under the other media type is still read.
+     * the generated file and reported by the doctor as a document fault (never as `unenforced`, which is a limit of
+     * this package). So is a `contentType` that is not a string (a YAML list, a number): the specification says one
+     * comma-separated string, so nothing is read from it, and the part keeps what `contentMediaType` says. A string
+     * written under the other media type is still read.
      *
      * @return array<string, string> a part name => the `contentType` as written
      */
@@ -631,22 +632,22 @@ final readonly class RuleSetBuilder
         ));
 
         if ($undeclared !== []) {
-            $walk->findings[] = sprintf(
+            $walk->fault(sprintf(
                 '`encoding` names %s, which the body does not declare under `properties`: that is a fault in the '
                     .'document, and nothing is read from it.',
                 self::list($undeclared),
-            );
+            ));
 
             $written = array_diff_key($written, array_flip($undeclared));
             $mistyped = array_diff_key($mistyped, array_flip($undeclared));
         }
 
         foreach (array_keys($mistyped) as $part) {
-            $walk->findings[] = sprintf(
+            $walk->fault(sprintf(
                 '`encoding` writes a `contentType` for `%s` that is not a string: that is a fault in the document, '
                     .'and nothing is read from it.',
                 $part,
-            );
+            ));
         }
 
         return array_map(static fn (array $lists): string => implode(', ', $lists), $written);
@@ -1648,8 +1649,9 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Say that a `contentType` on a part this request does not read as a file is not enforced, unless it is the type
-     * OpenAPI gives that part when it writes none: a contract that spells out its default has said nothing new.
+     * Say that a `contentType` on a part this request does not read as a file is not enforced, unless every type it
+     * lists is one OpenAPI gives that part when it writes none ({@see self::defaultPartTypes()}): a contract that
+     * spells out its default has said nothing new. A list with nothing in it says nothing either.
      *
      * @throws ConflictingInputException
      */
@@ -1657,7 +1659,7 @@ final readonly class RuleSetBuilder
     {
         $types = self::contentTypes($contentType);
 
-        if ($types === [] || $types === [self::defaultPartType($schema, $walk, $label)]) {
+        if (array_diff($types, self::defaultPartTypes($schema, $walk, $label)) === []) {
             return;
         }
 
@@ -1680,28 +1682,38 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The `contentType` OpenAPI gives a part that writes none: `application/octet-stream` for a binary string,
-     * `application/json` for an object, `text/plain` for any other primitive, and an array's items' type for an array.
-     * Null when the schema says too little to have one.
+     * The `contentType`s OpenAPI gives a part that writes none, so that spelling one out says nothing new.
+     *
+     * **The versions disagree, and a contract that spells out a default is not asked which one it meant.** 3.0.x gives
+     * `application/octet-stream` to a binary string, `text/plain` to any other primitive, `application/json` to an
+     * object and the items' type to an array. 3.1.0 gives `application/json` to an object, the items' type to an array
+     * and `application/octet-stream` to all other cases, primitives included. 3.1.1 gives `text/plain` to a string with
+     * no `contentEncoding` and to a number, an integer or a boolean, `application/octet-stream` to a part with no
+     * `type` or a string with a `contentEncoding`, and the same for an object and an array. This takes the union where
+     * they differ (a primitive: both `text/plain` and `application/octet-stream`; a binary part: both too, since 3.1.1
+     * reads a `string` with `contentMediaType` as `text/plain`), which reports less and never more. The rule set knows
+     * no version, and a default is no constraint, so a union costs a missed finding on a type nothing enforces anyway.
+     *
+     * @return list<string>
      *
      * @throws ConflictingInputException
      */
-    private static function defaultPartType(Schema $schema, RuleWalk $walk, string $label): ?string
+    private static function defaultPartTypes(Schema $schema, RuleWalk $walk, string $label): array
     {
         if ($schema->isFilePart) {
-            return 'application/octet-stream';
+            return ['application/octet-stream', 'text/plain'];
         }
 
         if (self::isObjectBody($schema)) {
-            return 'application/json';
+            return ['application/json'];
         }
 
         return match ($schema->soleType()) {
-            SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean => 'text/plain',
+            SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean => ['text/plain', 'application/octet-stream'],
             SchemaType::Array => $schema->items === null
-                ? null
-                : self::defaultPartType(AllOfMerger::merge($schema->items, $walk->identity, $label.'[]'), $walk, $label.'[]'),
-            default => null,
+                ? ['application/octet-stream']
+                : self::defaultPartTypes(AllOfMerger::merge($schema->items, $walk->identity, $label.'[]'), $walk, $label.'[]'),
+            default => ['application/octet-stream'],
         };
     }
 
@@ -1711,14 +1723,17 @@ final readonly class RuleSetBuilder
      *
      * Measured on libmagic 5.41, with real files (a faked upload reports the type it is given and hides this): a CSV, a
      * Markdown file and a YAML file sniff as `text/plain`, an XML file as `text/xml` where the contract says
-     * `application/xml`, and a JSON file as `application/json` on this version and `text/plain` on older ones. `text/*`
-     * is the class, and the textual `application/*` types are the same class: libmagic reads their content, and a
-     * content with a name of its own (`application/ld+json`) still comes back as the generic one. `image/svg+xml`,
-     * `application/pdf` and the binary types sniff as themselves and keep their rule.
+     * `application/xml`, and a JSON file as `application/json` on this version and `text/plain` on older ones. Text
+     * types are the class (`text/*` itself apart, which Laravel matches by its first half), and the textual
+     * `application/*` types are the same class: libmagic reads their content, and a content with a name of its own
+     * (`application/ld+json`) still comes back as the generic one. `image/svg+xml`, `application/pdf` and the binary
+     * types sniff as themselves and keep their rule.
      */
     private static function isSniffedAsAnotherType(string $mediaType): bool
     {
-        return str_starts_with($mediaType, 'text/')
+        // `text/*` is the one text entry a rule can hold: Laravel matches a wildcard on the first half of the sniffed type
+        // (`text/plain`, `text/xml`), so it holds for every real text file, where a named type does not.
+        return ($mediaType !== 'text/*' && str_starts_with($mediaType, 'text/'))
             || in_array($mediaType, ['application/json', 'application/xml', 'application/yaml', 'application/x-yaml'], true)
             || (
                 $mediaType !== 'image/svg+xml'
