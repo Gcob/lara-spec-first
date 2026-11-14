@@ -119,7 +119,7 @@ final class CreateUserRequest extends FormRequest
             function (Validator $validator): void {
                 foreach (array_keys($this->bodyInput()) as $key) {
                     if (! in_array((string) $key, self::BODY_KEYS, true)) {
-                        $validator->errors()->add((string) $key, 'The '.$key.' field is not part of this contract.');
+                        $validator->addFailure((string) $key, 'prohibited');
                     }
                 }
             },

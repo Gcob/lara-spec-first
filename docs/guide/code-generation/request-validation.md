@@ -461,6 +461,11 @@ uploaded files of a multipart one included) by the
 not mistaken for an undeclared field. Without it an undeclared field is simply absent from `validated()`, so it never
 reaches a model either way; what the contract asked for and would not get is the request being refused.
 
+**The refusal is Laravel's own `prohibited` message**, raised with `$validator->addFailure($key, 'prohibited')`, so an
+undeclared key answers `The extra field is prohibited.` from `lang/en/validation.php`. A project's own wording and its
+translations apply to it as they do to every other rule, which a sentence written into the generated class could not
+honor, and the generated file's findings already say that messages come from there.
+
 **Top-level keys only, and that is what lets the check run whenever the root closes itself.** Every nested object that
 closes itself already refuses its own extras through `array:` on its own key, so the root's check has nothing to add
 below the first level — and checking deeper would refuse the extras of a nested object that allows them, which a

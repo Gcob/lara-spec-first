@@ -269,6 +269,11 @@ final readonly class FormRequestEmitter
      * itself already refuses its own extras through `array:` — so checking
      * deeper here would repeat that, and would refuse the extras of a nested
      * object that allows them.
+     *
+     * **The refusal is Laravel's `prohibited`**, through `addFailure()`, so its
+     * words are the ones in `lang/en/validation.php` and a project's own lines
+     * and translations apply, which a message written here could not honor. An
+     * undeclared key is exactly what that rule says: a field that is not allowed.
      */
     private function after(RuleSet $set): string
     {
@@ -287,7 +292,7 @@ final readonly class FormRequestEmitter
                         function (Validator $validator): void {
                             foreach (array_keys($this->bodyInput()) as $key) {
                                 if (! in_array((string) $key, self::BODY_KEYS, true)) {
-                                    $validator->errors()->add((string) $key, 'The '.$key.' field is not part of this contract.');
+                                    $validator->addFailure((string) $key, 'prohibited');
                                 }
                             }
                         },

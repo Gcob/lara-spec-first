@@ -507,6 +507,20 @@ it('refuses a top-level key the body does not declare', function (): void {
         ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['extra']);
 });
 
+// The message comes from `lang/en/validation.php` like every other, so a project's
+// own wording and translations apply to the closed root too.
+it('words the refusal of an undeclared key from the validation language lines', function (): void {
+    [$status, $body] = sendGeneratedRequest(['email' => 'someone@example.test', 'extra' => 1]);
+
+    expect($status)->toBe(422)
+        ->and($body['errors'])->toBe(['extra' => ['The extra field is prohibited.']]);
+
+    app('translator')->addLines(['validation.prohibited' => 'Le champ :attribute est interdit.'], 'en');
+
+    expect(sendGeneratedRequest(['email' => 'someone@example.test', 'extra' => 1])[1]['errors'])
+        ->toBe(['extra' => ['Le champ extra est interdit.']]);
+});
+
 // The serializations OpenAPI writes for an array query parameter, through a
 // real request: none is refused, because no rule about the shape is emitted.
 it('accepts an array query parameter in the serializations OpenAPI writes', function (string $query): void {
