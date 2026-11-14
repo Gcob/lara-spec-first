@@ -1566,7 +1566,8 @@ final readonly class RuleSetBuilder
      *
      * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name
      * and a declared one that is equal to what it becomes, or a bracketed name under a declared
-     * top-level one. None of them gets a rule, and one finding names them.
+     * top-level one. None of them gets a rule, and one finding names them. A body that is JSON as well
+     * gets the same, since a rule for the declared name would judge the array a form builds.
      *
      * **A body that is JSON as well keeps the rule keyed by the name the contract writes**, since a
      * JSON client sends exactly that, and the value a form client sends under the other name is not
@@ -1606,38 +1607,6 @@ final readonly class RuleSetBuilder
             }
         }
 
-        if ($walk->mixedBody) {
-            foreach ($names as $name) {
-                if (! self::phpRewrites($name)) {
-                    continue;
-                }
-
-                $path = $paths[$name];
-                $asked = in_array($name, $schema->required, true) || in_array($name, $dependent, true);
-
-                $walk->unchecked[$name] = 'the body is also JSON, and one rule set cannot hold both the name the contract writes and the one PHP gives it';
-                $walk->findings[] = sprintf(
-                    '`%1$s` is a property of a body that is JSON and a form at once. Its rule keeps the name the contract '
-                        .'writes, which a JSON client sends. A form client sends it as `%1$s`, which PHP delivers %2$s, '
-                        .'so its value is not checked there.%3$s',
-                    $name,
-                    $path === null ? 'under no name' : 'as `'.self::pathKey($path).'`',
-                    $asked
-                        ? ' The contract requires it, and a presence rule keyed by the JSON name would refuse every '
-                            .'form client, so it is not asked for from a JSON client either: one rule set serves both '
-                            .'and `rules()` does not branch on the media type, so a JSON body that leaves it out is '
-                            .'accepted, which the contract refuses.'
-                        : '',
-                );
-
-                if ($path !== null) {
-                    $walk->deliveredKeys[$name] = self::pathKey($path);
-                }
-            }
-
-            return;
-        }
-
         // The key each name answers to, which is its own for a name PHP leaves alone.
         $effective = [];
 
@@ -1650,6 +1619,11 @@ final readonly class RuleSetBuilder
 
         foreach ($names as $name) {
             $key = $effective[$name];
+
+            // Beside JSON, a name a form delivers nowhere keeps its JSON rule, and says so below.
+            if ($key === null && $walk->mixedBody) {
+                continue;
+            }
 
             if ($key === null) {
                 $walk->unchecked[$name] = 'PHP delivers nothing under that name';
@@ -1717,6 +1691,38 @@ final readonly class RuleSetBuilder
                 $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
                 $walk->withheld[$member] = true;
             }
+        }
+
+        if ($walk->mixedBody) {
+            foreach ($names as $name) {
+                if (isset($collided[$name]) || ! self::phpRewrites($name)) {
+                    continue;
+                }
+
+                $path = $paths[$name];
+                $asked = in_array($name, $schema->required, true) || in_array($name, $dependent, true);
+
+                $walk->unchecked[$name] = 'the body is also JSON, and one rule set cannot hold both the name the contract writes and the one PHP gives it';
+                $walk->findings[] = sprintf(
+                    '`%1$s` is a property of a body that is JSON and a form at once. Its rule keeps the name the contract '
+                        .'writes, which a JSON client sends. A form client sends it as `%1$s`, which PHP delivers %2$s, '
+                        .'so its value is not checked there.%3$s',
+                    $name,
+                    $path === null ? 'under no name' : 'as `'.self::pathKey($path).'`',
+                    $asked
+                        ? ' The contract requires it, and a presence rule keyed by the JSON name would refuse every '
+                            .'form client, so it is not asked for from a JSON client either: one rule set serves both '
+                            .'and `rules()` does not branch on the media type, so a JSON body that leaves it out is '
+                            .'accepted, which the contract refuses.'
+                        : '',
+                );
+
+                if ($path !== null) {
+                    $walk->deliveredKeys[$name] = self::pathKey($path);
+                }
+            }
+
+            return;
         }
 
         foreach ($names as $name) {

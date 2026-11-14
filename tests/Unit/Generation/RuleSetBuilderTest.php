@@ -1365,6 +1365,31 @@ it('gives no rule to a bracketed name delivered below a declared top-level name'
         ->and(implode("\n", $set->findings))->toContain('`page[size]` is delivered by a form as `page.size`, below the key `page` that `page` uses');
 });
 
+// The same collisions in a body that is JSON too: a rule for `page` judges the array a form builds from
+// `page[size]`, so a valid form client would be refused. The names go without a rule, as in a form alone.
+it('gives colliding names no rule when the body is also JSON, and names both', function (array $properties, array $names, string $finding): void {
+    $schema = objectSchema([...$properties, 'plain' => new Schema(types: [SchemaType::String])]);
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $schema,
+        'multipart/form-data' => $schema,
+    ]));
+
+    expect($set->rules)->toBe(['plain' => ['sometimes', 'string']])
+        ->and(array_keys($set->uncheckedNames))->toEqual($names)
+        ->and(implode("\n", $set->findings))->toContain($finding);
+})->with([
+    'a bracketed name below a declared one' => [
+        ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+        ['page[size]', 'page'],
+        '`page[size]` is delivered by a form as `page.size`, below the key `page` that `page` uses',
+    ],
+    'a rewritten and a plain name' => [
+        ['user.name' => new Schema(types: [SchemaType::String]), 'user_name' => new Schema(types: [SchemaType::String])],
+        ['user.name', 'user_name'],
+        '`user.name` and `user_name` reach Laravel under one name, `user_name`',
+    ],
+]);
+
 it('lets two bracketed names share the top-level key they are delivered below', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page[size]' => new Schema(types: [SchemaType::Integer]), 'page[number]' => new Schema(types: [SchemaType::Integer])],

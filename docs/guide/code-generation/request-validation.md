@@ -152,7 +152,9 @@ as one key, and so do `page` and `page[size]` (the second is `page => [size => .
 the data cannot say which one was sent. Neither gets a rule, none takes part in `required_with` or `dependentRequired`
 (a `dependentRequired` it triggers says which dependency it loses), and their DTO properties are `Optional`. Two names
 that differ only by a character PHP rewrites also derive one PHP property name, so the DTO refuses them with its own
-error before this finding is reached; it is the bracketed case that gets here in a build.
+error before this finding is reached; it is the bracketed case that gets here in a build. The same holds when the body
+is JSON as well: a rule for `page` would judge the array a form builds from `page[size]=3`, and a valid form client
+would be refused, so the JSON client loses the rule on `page` too, and the finding says neither name has one.
 
 **A body that is JSON and a form at once keeps the rule for the name the contract writes, and a form client's value is
 not checked.** A JSON client sends `user.name` exactly, and a rule keyed by it is right for that client. A form client

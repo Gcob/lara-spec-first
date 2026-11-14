@@ -1250,6 +1250,25 @@ it('checks a JSON client on the name the contract writes and lets a form client 
         ->toBe([200, ['plain' => 'x']]);
 });
 
+// `page` and `page[size]` in a body that is JSON and a form: a rule on `page` would judge the array a
+// form builds from `page[size]=3` and refuse it, so neither has one.
+it('does not refuse a form client for a name that collides with another in a mixed body', function (): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer]), 'plain' => new Schema(types: [SchemaType::String])],
+    );
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/mixed-collide'),
+        operationId: 'sendMixedCollision',
+        requestBody: new RequestBody(['application/json' => $schema, 'multipart/form-data' => $schema], true),
+    ));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3'], 'plain' => 'x'])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', json: ['page' => 1, 'page[size]' => 3, 'plain' => 'x'])[0])->toBe(200);
+});
+
 // An optional body asks for what it requires once any key is sent, and a form sends `user.name`
 // as `user_name`.
 it('waits on the key a form delivers when the body is optional', function (): void {
