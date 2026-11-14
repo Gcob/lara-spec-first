@@ -1,0 +1,72 @@
+# `encoding.<part>.contentType` narrows a file part, so nothing is owed for `/avatars`. A part the request does not
+# read as a file leaves it unenforced, which the doctor names (`/profiles`), unless the type is the one OpenAPI gives
+# that part anyway (`/defaults`).
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /avatars:
+    post:
+      operationId: uploadAvatar
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+            encoding:
+              avatar:
+                contentType: image/png, image/jpeg
+      responses:
+        '201':
+          description: Created
+  /profiles:
+    post:
+      operationId: createProfile
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+            encoding:
+              name:
+                contentType: image/png
+      responses:
+        '201':
+          description: Created
+  /defaults:
+    post:
+      operationId: createDefaults
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                meta:
+                  type: object
+                  properties:
+                    a:
+                      type: string
+                note:
+                  type: string
+                document:
+                  type: string
+                  format: binary
+            encoding:
+              meta:
+                contentType: application/json
+              note:
+                contentType: text/plain
+              document:
+                contentType: application/octet-stream
+      responses:
+        '201':
+          description: Created

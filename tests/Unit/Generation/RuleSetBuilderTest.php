@@ -42,6 +42,7 @@ function objectSchema(array $properties, array $required = []): Schema
  *
  * @param  array<string, Schema>  $content
  * @param  list<QueryParameter>  $query
+ * @param  array<string, array<string, string>>  $encoding  media type, then part, then its `contentType`
  */
 function operationWithInput(
     string $method = 'post',
@@ -49,13 +50,14 @@ function operationWithInput(
     bool $bodyRequired = true,
     array $query = [],
     string $path = '/things',
+    array $encoding = [],
 ): Operation {
     return new Operation(
         index: 0,
         method: HttpMethod::from($method),
         path: PathTemplate::fromString($path),
         operationId: 'doThing',
-        requestBody: $content === [] ? null : new RequestBody($content, $bodyRequired),
+        requestBody: $content === [] ? null : new RequestBody($content, $bodyRequired, $encoding),
         queryParameters: $query,
     );
 }
@@ -1002,13 +1004,125 @@ it('reports the minimum size of a file, which no rule carries', function (): voi
     expect($findings)->toContain('`avatar` states `minLength`');
 });
 
-// `encoding` never reaches the contract (card #90), and the walk cannot tell a
-// part that has one from a part that has none, so every file part says so.
-it('says that encoding is not read for every file part', function (): void {
-    [, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png'));
+/*
+ * `encoding.<part>.contentType`: what narrows a file part, ahead of `contentMediaType`.
+ *
+ * Only a top-level part of a multipart body is read, by the name the contract writes. A part the body does not read as
+ * a file (a non-file part, a mixed body, a form) is reported unless its type is OpenAPI's default for it, and the
+ * document's own faults (a part the schema does not declare) go in the generated file alone.
+ */
+it('narrows a file part from encoding', function (
+    array $properties,
+    array $encoding,
+    array $mediaTypes,
+    array $rules,
+    array $says,
+    array $unenforced,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: array_fill_keys($mediaTypes, objectSchema($properties)),
+        encoding: ['multipart/form-data' => $encoding, 'application/x-www-form-urlencoded' => $encoding],
+    ));
+    $findings = implode("\n", $set->findings);
 
-    expect($findings)->toContain('`avatar` is a file part')
-        ->toContain('`encoding.<part>.contentType` beside the body is not read');
+    expect($set->rules)->toBe($rules)
+        ->and($set->unenforced)->toEqual($unenforced)
+        ->and($findings)->not->toContain('`encoding.<part>.contentType` beside the body is not read');
+
+    foreach ($says as $sentence) {
+        expect($findings)->toContain($sentence);
+    }
+})->with(function (): array {
+    $file = new Schema(types: [SchemaType::String], isFilePart: true);
+    $gif = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/gif');
+    $text = new Schema(types: [SchemaType::String]);
+    $multipart = ['multipart/form-data'];
+
+    return [
+        'a list' => [['avatar' => $file], ['avatar' => 'image/png, image/jpeg'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png,image/jpeg']], ['A `mimetypes` rule'], []],
+        'a single type' => [['avatar' => $file], ['avatar' => 'image/png'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png']], [], []],
+        'a wildcard' => [['avatar' => $file], ['avatar' => 'image/*'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/*']], [], []],
+        'parameters, case and spaces dropped' => [['avatar' => $file], ['avatar' => ' Image/PNG; q=0.8 ,image/jpeg;q=0.5'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png,image/jpeg']], [], []],
+        'a type written twice' => [['avatar' => $file], ['avatar' => 'image/png, IMAGE/png;q=0.5, image/jpeg'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png,image/jpeg']], [], []],
+        'any bytes in a list' => [['avatar' => $file], ['avatar' => 'image/png, application/octet-stream'], $multipart,
+            ['avatar' => ['sometimes', 'file']], [], []],
+        'the any-type wildcard in a list' => [['avatar' => $file], ['avatar' => '*/*; q=0.1, image/png'], $multipart,
+            ['avatar' => ['sometimes', 'file']], [], []],
+        'any bytes beside a text type' => [['avatar' => $file], ['avatar' => 'text/csv, application/octet-stream'], $multipart,
+            ['avatar' => ['sometimes', 'file']], [], []],
+        'a text type in a list' => [['avatar' => $file], ['avatar' => 'image/png, text/csv'], $multipart,
+            ['avatar' => ['sometimes', 'file']],
+            ['The `encoding` of `avatar` declares `contentType: image/png, text/csv`, and no `mimetypes` rule is emitted for it'],
+            ['encoding' => ['`avatar`']]],
+        'no contentType, so contentMediaType applies' => [['avatar' => $gif], [], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/gif']], [], []],
+        'a contentType for another part, so contentMediaType applies' => [['avatar' => $gif, 'note' => $text], ['note' => 'text/plain'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/gif'], 'note' => ['sometimes', 'string']], [], []],
+        'a blank contentType, so contentMediaType applies' => [['avatar' => $gif], ['avatar' => ' , '], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/gif']], [], []],
+        'encoding over contentMediaType' => [['avatar' => $gif], ['avatar' => 'image/png'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png']], [], []],
+        'encoding over contentMediaType, though it is looser' => [['avatar' => $gif], ['avatar' => 'application/octet-stream'], $multipart,
+            ['avatar' => ['sometimes', 'file']], [], []],
+        'encoding over a contentMediaType no rule can match' => [
+            ['avatar' => new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'text/csv')],
+            ['avatar' => 'image/png'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png']], [], []],
+        'an array of files' => [
+            ['avatar' => new Schema(types: [SchemaType::Array], items: $gif)],
+            ['avatar' => 'image/png'], $multipart,
+            ['avatar' => ['sometimes', 'array', 'list'], 'avatar.*' => ['file', 'mimetypes:image/png']], [], []],
+        'an array of non-files' => [
+            ['tags' => new Schema(types: [SchemaType::Array], items: $text)],
+            ['tags' => 'image/png'], $multipart,
+            ['tags' => ['sometimes', 'array', 'list'], 'tags.*' => ['string']],
+            ['The `encoding` of `tags` declares `contentType: image/png`'], ['encoding' => ['`tags`']]],
+        'a non-file part' => [['name' => $text], ['name' => 'image/png'], $multipart,
+            ['name' => ['sometimes', 'string']],
+            ['The `encoding` of `name` declares `contentType: image/png`', 'not a file part'], ['encoding' => ['`name`']]],
+        'a nested object, which is a part of its own' => [
+            ['meta' => objectSchema(['doc' => $file])], ['meta' => 'image/png'], $multipart,
+            ['meta' => ['sometimes', 'array'], 'meta.doc' => ['sometimes', 'file']],
+            ['The `encoding` of `meta` declares `contentType: image/png`'], ['encoding' => ['`meta`']]],
+        'a nested part is not named by its own name' => [
+            ['meta' => objectSchema(['doc' => $file])], ['doc' => 'image/png'], $multipart,
+            ['meta' => ['sometimes', 'array'], 'meta.doc' => ['sometimes', 'file']],
+            ['`encoding` names `doc`, which the body does not declare'], []],
+        'a part the schema does not declare' => [['avatar' => $file], ['avatar' => 'image/png', 'ghost' => 'image/png'], $multipart,
+            ['avatar' => ['sometimes', 'file', 'mimetypes:image/png']],
+            ['`encoding` names `ghost`, which the body does not declare'], []],
+        'the defaults OpenAPI gives, spelled out' => [
+            [
+                'data' => objectSchema([]),
+                'note' => $text,
+                'count' => new Schema(types: [SchemaType::Integer]),
+                'tags' => new Schema(types: [SchemaType::Array], items: $text),
+                'rows' => new Schema(types: [SchemaType::Array], items: objectSchema([])),
+                'doc' => $file,
+            ],
+            ['data' => 'application/json; charset=utf-8', 'note' => 'text/plain', 'count' => 'Text/Plain', 'tags' => 'text/plain', 'rows' => 'application/json', 'doc' => 'application/octet-stream'],
+            $multipart,
+            ['data' => ['sometimes', 'array'], 'note' => ['sometimes', 'string'], 'count' => ['sometimes', 'integer'],
+                'tags' => ['sometimes', 'array', 'list'], 'tags.*' => ['string'], 'rows' => ['sometimes', 'array', 'list'], 'rows.*' => ['array'],
+                'doc' => ['sometimes', 'file']],
+            [], []],
+        'a default beside another type is not the default' => [['note' => $text], ['note' => 'text/plain, image/png'], $multipart,
+            ['note' => ['sometimes', 'string']], ['The `encoding` of `note` declares'], ['encoding' => ['`note`']]],
+        'a form' => [['name' => $text], ['name' => 'text/csv'], ['application/x-www-form-urlencoded'],
+            ['name' => ['sometimes', 'string']],
+            ['The `encoding` of `name` declares `contentType: text/csv`', 'form-encoded'], ['encoding' => ['`name`']]],
+        'a mixed body' => [['avatar' => $file], ['avatar' => 'image/png'], ['multipart/form-data', 'application/json'],
+            ['avatar' => ['sometimes', 'string']],
+            ['The `encoding` of `avatar` declares `contentType: image/png`', 'also JSON'],
+            ['encoding' => ['`avatar`'], 'format' => ['`avatar`']]],
+        'JSON, where encoding does not apply' => [['avatar' => $file], ['avatar' => 'image/png'], ['application/json'],
+            ['avatar' => ['sometimes', 'string']], [], ['format' => ['`avatar`']]],
+    ];
 });
 
 it('asks for an optional file part with sometimes, and a nullable one with present', function (): void {

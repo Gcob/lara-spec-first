@@ -43,6 +43,14 @@ final readonly class SupportMatrixCheck
     private const SECTION = 'Support findings';
 
     /**
+     * The section of docs/guide/openapi-support.md a keyword the rule set left unenforced is rated in, when it is not a
+     * schema keyword: `encoding` belongs to the request body, not to its schema.
+     */
+    private const UNENFORCED_SECTIONS = [
+        'encoding' => 'Parameters, bodies, responses',
+    ];
+
+    /**
      * What is left of the Deferred lot: response declarations, and nothing else.
      *
      * **`query` and `requestBody` left it when a rule set was first built from them.** They are `Partial` in
@@ -197,12 +205,13 @@ final readonly class SupportMatrixCheck
                     sprintf(
                         '%s writes `%s` where the generated request enforces nothing for it: %s. The support matrix '.
                         'may rate `%s` as honored in general, and on these fields it is left out of the rules. See '.
-                        'docs/guide/openapi-support.md, "Schemas". This is a fact about this package, not a defect '.
+                        'docs/guide/openapi-support.md, "%s". This is a fact about this package, not a defect '.
                         'in your contract.',
                         $operation->label(),
                         $keyword,
                         implode(', ', $fields),
                         $keyword,
+                        self::UNENFORCED_SECTIONS[$keyword] ?? 'Schemas',
                     ),
                 );
             }

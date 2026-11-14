@@ -291,6 +291,25 @@ it('names what a Partial keyword leaves unenforced, and exits 2', function (): v
         ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
 });
 
+// `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not
+// read as a file is left out of the rules, and that is a package limit it names: a keyword the matrix rates as honored
+// in general. Its own section is "Parameters, bodies, responses", not "Schemas". The type OpenAPI gives a part anyway
+// (`application/json` on an object, `text/plain` on a primitive, `application/octet-stream` on a file) is no news.
+it('reports encoding on a part that is not a file', function (): void {
+    [$exit, $report] = doctorJson('doctor-encoding.yaml');
+
+    $partial = doctorSupportFindings($report, 'partial');
+
+    expect($exit)->toBe(2)
+        ->and($partial)->toHaveCount(1)
+        ->and($partial[0]['class'])->toBe('package_limit')
+        ->and($partial[0]['pointer'])->toBe('#/paths/~1profiles/post')
+        ->and($partial[0]['message'])->toContain('post /profiles writes `encoding`')
+        ->and($partial[0]['message'])->toContain('`name`')
+        ->and($partial[0]['message'])->toContain('"Parameters, bodies, responses"')
+        ->and($partial[0]['message'])->not->toContain('"Schemas"');
+});
+
 // Acceptance 2: a keyword a response writes is not named, and the responses are
 // still the one Deferred count, which does not gate.
 it('names no keyword a response schema writes, and keeps responses as one deferred count', function (): void {
