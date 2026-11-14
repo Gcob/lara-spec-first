@@ -213,13 +213,21 @@ are both `[]` with it, and anything but an object is answered with Laravel's `ar
 that allows `null` allows it here. Only a request that is JSON is checked: a form cannot send a non-object, so a body
 read only as a form has no such check.
 
+**`[]` is a list, so it is refused for an object body, and a client has to send `{}`.** It is also what PHP's
+`json_encode([])` writes, and so what Laravel's `postJson($uri)` and Guzzle's `'json' => []` send when they are given an
+empty array. To send an empty object, give them `new stdClass` (or `(object) []`), or send the raw content `{}`. A test
+of a consumer's own that posts an empty array to an object body will see this 422.
+
+**The key is `body`, unless the contract has a top-level name that is `body`.** A property named `body` is answered on
+the `body` key too, and the client could not tell which of the two is wrong, so the failure goes on `_body` then (and
+`__body`, and so on, until no name of the contract is it). The key is written in the generated `after()`.
+
 **An empty content is an absent body, and the body's `required` decides.** A required body sent as nothing is refused on
 the body's own key, with Laravel's `required` message, since no rule says so when every property is optional (they are
 all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one, that passes either way. A
-body read only as JSON is checked whatever the request's `Content-Type`, so a client that sends nothing and names no
-media type is refused too. A body that is a form as well is checked only when the request is JSON, because a form's
-fields need not show in the raw content (PHP leaves `php://input` empty for `multipart/form-data`): an empty form
-request to such a body is accepted when nothing is required.
+request that is JSON is checked: any other request has its body read from the form bag, whose fields need not show in
+the raw content (PHP leaves `php://input` empty for `multipart/form-data`), so a request that names no JSON media type
+and sends nothing is not read as an absent body.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body
@@ -481,9 +489,10 @@ where `true` arrives already typed. Four things come with it:
   [its `from()`](./dto-anatomy.md#what-each-schema-type-becomes) reads the text with
   `filter_var(..., FILTER_VALIDATE_BOOL)`, since `(bool) 'false'` is `true`. A `query` parameter is not on the DTO, so
   the finding names the read that works there:
-  `$request->has('notify') ? filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL) : null`. `has()` comes
-  first because `filter_var(null, FILTER_VALIDATE_BOOL)` is `false`, with or without `FILTER_NULL_ON_FAILURE`, so an
-  optional parameter that was not sent would read as `false`.
+  `$request->query->has('notify') ? filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL) : null`. `has()`
+  comes first because `filter_var(null, FILTER_VALIDATE_BOOL)` is `false`, with or without `FILTER_NULL_ON_FAILURE`, so
+  an optional parameter that was not sent would read as `false`. It is asked of the query bag, since the request's own
+  `has()` reads the body too, where an open body carrying a `notify` key would make an unsent parameter read as `false`.
 - **`"1"` and `"0"` are accepted although the contract writes `true` and `false`.** It is the maintainer's decision,
   kept because the four spellings are what a client of a query string or a form already sends, and the finding on the
   field says it accepts the two more.

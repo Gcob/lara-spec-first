@@ -1499,29 +1499,22 @@ it('refuses an empty content when the body is required', function (bool $typed, 
     'blanks' => ["  \n"],
 ]);
 
-it('refuses a required JSON body that arrives with no content type at all', function (): void {
+// Only a JSON request is read as an absent body: a request that is not JSON has its body read from
+// the form bag, and a form's fields need not show in the raw content.
+it('does not read an empty content as an absent body when the request is not JSON', function (): void {
     $class = emittedRequestClass(postWithOptionalJsonObject());
-    Route::post('/_generated/no-body', fn () => response()->json(app($class)->validated()));
+    Route::post('/_generated/form-to-json', fn () => response()->json(app($class)->validated()));
 
-    $status = app(HttpKernel::class)->handle(Request::create('/_generated/no-body', 'POST', [], [], [], ['HTTP_ACCEPT' => 'application/json']))->getStatusCode();
+    $send = static fn (array $parameters): int => app(HttpKernel::class)->handle(Request::create(
+        '/_generated/form-to-json',
+        'POST',
+        $parameters,
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json'],
+    ))->getStatusCode();
 
-    expect($status)->toBe(422);
-});
-
-// A form can carry fields that never show in the raw content (multipart leaves `php://input` empty),
-// so an empty content says nothing about a body that is a form too.
-it('does not read an empty content as an absent body when the body is also a form', function (): void {
-    $schema = new Schema(types: [SchemaType::Object], properties: ['q' => new Schema(types: [SchemaType::String])]);
-    $class = emittedRequestClass(new Operation(
-        index: 0,
-        method: HttpMethod::Post,
-        path: PathTemplate::fromString('/mixed-required'),
-        operationId: 'sendMixedRequired',
-        requestBody: new RequestBody(['application/json' => $schema, 'multipart/form-data' => $schema], true),
-    ));
-
-    expect(sendThroughEmitted($class, 'POST', parameters: ['q' => 'x'])[0])->toBe(200)
-        ->and(statusForRawJson($class, ''))->toBe(422);
+    expect($send(['q' => 'x']))->toBe(200);
 });
 
 it('accepts a null body when the schema is nullable', function (): void {
@@ -1579,7 +1572,7 @@ it('reads an optional boolean query parameter as null when it is absent, with th
     Route::get('/_generated/optional-notify', function () use ($class) {
         $request = app($class);
 
-        return response()->json(['notify' => $request->has('notify') ? filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL) : null]);
+        return response()->json(['notify' => $request->query->has('notify') ? filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL) : null]);
     });
 
     $notify = static fn (string $query): mixed => json_decode((string) app(HttpKernel::class)->handle(Request::create(
@@ -1593,3 +1586,63 @@ it('reads an optional boolean query parameter as null when it is absent, with th
         ->and($notify('?notify=true'))->toBeTrue()
         ->and($notify('?notify=0'))->toBeFalse();
 });
+
+// `has()` reads the body as well as the query string, so an open body carrying a key named like the
+// parameter would make an unsent one read as `false`.
+it('reads an unsent boolean query parameter as null even when the body carries a key of that name', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'sendThings',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['q' => new Schema(types: [SchemaType::String])],
+        )], false),
+        queryParameters: [new QueryParameter('notify', new Schema(types: [SchemaType::Boolean]))],
+    ));
+
+    Route::post('/_generated/body-notify', function () use ($class) {
+        $request = app($class);
+
+        return response()->json(['notify' => $request->query->has('notify') ? filter_var($request->validated('notify'), FILTER_VALIDATE_BOOL) : null]);
+    });
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/body-notify',
+        'POST',
+        server: ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        content: '{"notify":true}',
+    ));
+
+    expect(json_decode((string) $response->getContent(), true)['notify'])->toBeNull();
+});
+
+// A property named `body` answers on the `body` key too, so the root's own failure must not use it
+// when the contract has one: the client could not tell which of the two is wrong.
+it('answers a required body sent empty on a key no property of the contract has', function (string $property, string $key): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/posts'),
+        operationId: 'sendPost',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: [$property => new Schema(types: [SchemaType::String])],
+        )], true),
+    ));
+    Route::post('/_generated/empty-post', fn () => response()->json(app($class)->validated()));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/empty-post',
+        'POST',
+        server: ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        content: '',
+    ));
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and(array_keys(json_decode((string) $response->getContent(), true)['errors']))->toBe([$key]);
+})->with([
+    'no property named like it' => ['title', 'body'],
+    'a property named body' => ['body', '_body'],
+]);

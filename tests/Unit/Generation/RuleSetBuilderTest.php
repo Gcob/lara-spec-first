@@ -1186,7 +1186,7 @@ it('reads a boolean query parameter as the spellings a query string can carry', 
         ->and(implode("\n", $set->findings))->toContain('`"1"` and `"0"` are accepted too')
         // `filter_var(null, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE)` is `false`, so an absent
         // parameter would read as `false`: the suggested read asks `has()` first.
-        ->and(implode("\n", $set->findings))->toContain('`$request->has(\'notify\') ? filter_var($request->validated(\'notify\'), FILTER_VALIDATE_BOOL) : null`')
+        ->and(implode("\n", $set->findings))->toContain('`$request->query->has(\'notify\') ? filter_var($request->validated(\'notify\'), FILTER_VALIDATE_BOOL) : null`')
         ->and(implode("\n", $set->findings))->toContain('`null` when it was not sent');
 });
 

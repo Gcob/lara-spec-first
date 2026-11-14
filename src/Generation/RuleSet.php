@@ -69,9 +69,9 @@ final readonly class RuleSet
      * @param  bool  $requiredRoot  whether the body is required, so the request
      *                              refuses an empty content: no rule does when
      *                              every property is optional
-     * @param  bool  $formRoot  whether the body is read from a form as well,
-     *                          whose fields an empty raw content says nothing
-     *                          about
+     * @param  string  $rootKey  the key the request's own failures about the body
+     *                           are answered on, which no top-level name of the
+     *                           contract is
      */
     public function __construct(
         public array $rules = [],
@@ -85,7 +85,7 @@ final readonly class RuleSet
         public array $formPaths = [],
         public array $uncheckedNames = [],
         public bool $requiredRoot = false,
-        public bool $formRoot = false,
+        public string $rootKey = 'body',
     ) {}
 
     /**

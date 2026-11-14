@@ -163,7 +163,6 @@ final readonly class RuleSetBuilder
         // A query string carries no file, so the parameters below are never read
         // as one, whatever the body is.
         $multipart = $walk->multipart;
-        $formRoot = $walk->formBody;
         $walk->multipart = false;
         $walk->textSource = 'query string';
         $walk->mixedBody = false;
@@ -234,7 +233,7 @@ final readonly class RuleSetBuilder
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $formRoot);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey);
     }
 
     /**
@@ -375,6 +374,7 @@ final readonly class RuleSetBuilder
         $walk->jsonRoot = $walk->jsonBody;
         $walk->nullableRoot = $schema->isNullable();
         $walk->requiredRoot = $body->required;
+        $walk->rootKey = self::rootKey($schema);
 
         // The root goes through the same sweep a field does, minus what the
         // object walk below acts on. Without it a keyword written on the
@@ -464,6 +464,28 @@ final readonly class RuleSetBuilder
         }
 
         return array_values(array_unique($closed));
+    }
+
+    /**
+     * The key the request's own failures about the body itself are answered on: `body`, unless the
+     * contract has a top-level name that is that, in which case the client could not tell which of
+     * the two is wrong, and the same key with `_` in front until none is.
+     */
+    private static function rootKey(Schema $schema): string
+    {
+        $declared = [...array_map('strval', array_keys($schema->properties)), ...$schema->required];
+
+        foreach ($schema->dependentRequired as $trigger => $names) {
+            array_push($declared, (string) $trigger, ...array_map('strval', $names));
+        }
+
+        $key = 'body';
+
+        while (in_array($key, $declared, true)) {
+            $key = '_'.$key;
+        }
+
+        return $key;
     }
 
     /**
@@ -982,7 +1004,7 @@ final readonly class RuleSetBuilder
                 '%1$s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
                     .'Laravel\'s `boolean` refuses it. It accepts %4$s.%2$s '
                     .'`validated(\'%3$s\')` holds the string as sent, and `"false"` is a truthy string in PHP: '
-                    .'read it with `$request->has(\'%3$s\') ? filter_var($request->validated(\'%3$s\'), '
+                    .'read it with `$request->query->has(\'%3$s\') ? filter_var($request->validated(\'%3$s\'), '
                     .'FILTER_VALIDATE_BOOL) : null`, which is `null` when it was not sent.',
                 $label,
                 $tooMany,

@@ -67,6 +67,11 @@ final class RuleWalk
     public bool $requiredRoot = false;
 
     /**
+     * The key the request's failures about the body itself are answered on.
+     */
+    public string $rootKey = 'body';
+
+    /**
      * Whether the body is read from JSON and from a form at once, which no one
      * boolean rule serves.
      */

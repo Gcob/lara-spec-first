@@ -125,9 +125,12 @@ final readonly class FormRequestEmitter
     /**
      * The constants the generated class reads its keys from, or nothing.
      *
-     * `BODY_KEYS` is the closed-root check's, and `QUERY_KEYS` is what
-     * `validationData()` takes from the query string. Both are names as the
-     * document writes them, which is how PHP's own bags key them.
+     * `BODY_KEYS` is the closed-root check's, `FORM_NAMES` is where `dto()` finds
+     * a form value under a name PHP rewrote, and `QUERY_KEYS` is what
+     * `validationData()` takes from the query string. `QUERY_KEYS` and
+     * `FORM_NAMES` are keyed by the names the document writes. `BODY_KEYS` holds the
+     * names the body arrives under, which is how PHP's own bags key them: the
+     * name the document writes, and for a form the one PHP gives it.
      */
     private function keyConstants(RuleSet $set): string
     {
@@ -356,9 +359,10 @@ final readonly class FormRequestEmitter
      * for, and an open root with nothing required would accept them. Only a JSON
      * request is checked (a form cannot send a non-object). An empty content is not a
      * non-object but an absent body: it is refused when the body is `required`, which no
-     * rule says when every property is optional, and accepted when it is not. A body that
-     * is a form too is only read as absent when the request is JSON, since a form's fields
-     * need not show in the raw content. A schema that allows `null` allows it here.
+     * rule says when every property is optional, and accepted when it is not. Only a JSON
+     * request is read as absent: a request that is not JSON has its body read from the
+     * form bag, whose fields need not show in the raw content. A schema that allows `null`
+     * allows it here.
      *
      * **The second reads the top-level keys from the body rather than from `all()`**, by
      * the same `bodyInput()` `validationData()` reads: the JSON bag, or the form
@@ -389,8 +393,8 @@ final readonly class FormRequestEmitter
                 '                $content = $this->getContent();',
                 '',
                 ...($set->requiredRoot ? [
-                    '                if (trim($content) === \'\''.($set->formRoot ? ' && $this->isJson()' : '').') {',
-                    '                    $validator->addFailure(\'body\', \'required\');',
+                    '                if ($this->isJson() && trim($content) === \'\') {',
+                    '                    $validator->addFailure('.$this->literal($set->rootKey).', \'required\');',
                     ...($set->closedKeys === null ? [] : ['', '                    return;']),
                     '                }',
                     '',
@@ -398,7 +402,7 @@ final readonly class FormRequestEmitter
                 '                // Why: decoded without `assoc`, because `{}` and `[]` are both `[]` with it.',
                 '                if ($this->isJson() && trim($content) !== \'\' && ! is_object(json_decode($content))'
                     .($set->nullableRoot ? ' && trim($content) !== \'null\'' : '').') {',
-                '                    $validator->addFailure(\'body\', \'array\');',
+                '                    $validator->addFailure('.$this->literal($set->rootKey).', \'array\');',
                 ...($set->closedKeys === null ? [] : ['', '                    return;']),
                 '                }',
             ];
