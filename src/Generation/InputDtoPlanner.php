@@ -288,15 +288,29 @@ final class InputDtoPlanner
             // without it. The DTO is shared by every operation that reaches the
             // schema, whether as a body or inside another, so its shape cannot
             // depend on which came first: the key is optional in both.
+            //
+            // A required `readOnly` property is the other case: the request emits no
+            // presence rule for it, since `required` there is about responses, so a
+            // body without it reaches `from()` all the same.
+            $readOnly = AllOfMerger::merge($property, $this->identity, '`'.$key.'`')->readOnly;
             $optional = $partial
                 || ! in_array($key, $merged->required, true)
-                || RuleSetBuilder::breaksKeyList($key);
+                || RuleSetBuilder::breaksKeyList($key)
+                || $readOnly;
 
-            if (! $partial && $optional && in_array($key, $merged->required, true)) {
+            if (! $partial && RuleSetBuilder::breaksKeyList($key) && in_array($key, $merged->required, true)) {
                 $this->registry[$shortName]['findings'][] = sprintf(
                     '`%s` is required by the schema, but its name has a `.` or a `,`, which Laravel cannot '
                         .'name in `required_array_keys` when the object is nested, so the property is `Optional` '
                         .'here whatever the rules say at the root.',
+                    $key,
+                );
+            }
+
+            if (! $partial && $readOnly && in_array($key, $merged->required, true)) {
+                $this->registry[$shortName]['findings'][] = sprintf(
+                    '`%s` is required by the schema and `readOnly`, so a request does not have to carry it: '
+                        .'the property is `Optional` here.',
                     $key,
                 );
             }

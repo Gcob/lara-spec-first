@@ -10,6 +10,7 @@ use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\FormRequestEmitter;
+use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
@@ -788,6 +789,13 @@ function emittedRequestClass(Operation $operation): string
     require $path;
     unlink($path);
 
+    // `dto()` names a class the build writes beside the request, so it has to exist.
+    foreach (plannedRequests([$operation])['plan']->dtos as $dto) {
+        file_put_contents($path, (new InputDtoEmitter($namespace, 'tests/emitted.yaml'))->emit($dto)->contents);
+        require $path;
+        unlink($path);
+    }
+
     /** @var class-string<FormRequest> $class */
     $class = $namespace.'\\Requests\\'.$planned->name->shortName;
 
@@ -819,6 +827,34 @@ function sendThroughEmitted(string $class, string $method, string $query = '', ?
         $files,
         ['HTTP_ACCEPT' => 'application/json'] + ($json === null ? [] : ['CONTENT_TYPE' => 'application/json']),
         $json === null ? null : (string) json_encode($json),
+    ));
+
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), $decoded];
+}
+
+/**
+ * One request through the real kernel to a route that answers with what `dto()`
+ * built, so a body that passes validation and then breaks the DTO shows as a 500.
+ *
+ * @param  class-string<FormRequest>  $class
+ * @param  array<array-key, mixed>  $json
+ * @return array{0: int, 1: array<string, mixed>}
+ */
+function dtoThroughEmitted(string $class, string $method, array $json): array
+{
+    Route::match([$method], '/_generated/emitted-dto', fn () => response()->json(app($class)->dto()->toArray()));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/emitted-dto',
+        $method,
+        [],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        (string) json_encode($json),
     ));
 
     /** @var array<string, mixed> $decoded */
@@ -992,6 +1028,40 @@ it('accepts a request without a required readOnly property, and still judges it 
         ->and(statusForBuiltRules($body, ['id' => 7, 'name' => 'Ada']))->toBe(200)
         ->and(statusForBuiltRules($body, ['id' => 'x', 'name' => 'Ada']))->toBe(422)
         ->and(statusForBuiltRules($body, ['id' => 7]))->toBe(422);
+});
+
+// The request drops the presence rule of a required `readOnly` property, so a body without
+// it reaches `dto()`: the DTO has to read it as absent rather than fail on a missing key.
+it('builds the DTO of a body that left out a required readOnly property, at the root and nested', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/posts'),
+        operationId: 'createPost',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+                'title' => new Schema(types: [SchemaType::String]),
+                'address' => new Schema(
+                    types: [SchemaType::Object],
+                    properties: [
+                        'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+                        'city' => new Schema(types: [SchemaType::String]),
+                    ],
+                    required: ['id', 'city'],
+                ),
+            ],
+            required: ['id', 'title', 'address'],
+        )], true),
+    ));
+
+    expect(dtoThroughEmitted($class, 'POST', ['title' => 'A', 'address' => ['city' => 'Paris']]))
+        ->toBe([200, ['title' => 'A', 'address' => ['city' => 'Paris']]])
+        // `toEqual`: a DTO writes its optional properties after the required ones.
+        ->and(dtoThroughEmitted($class, 'POST', ['id' => 7, 'title' => 'A', 'address' => ['id' => 3, 'city' => 'Paris']]))
+        ->toEqual([200, ['id' => 7, 'title' => 'A', 'address' => ['id' => 3, 'city' => 'Paris']]])
+        ->and(dtoThroughEmitted($class, 'POST', ['title' => 'A', 'address' => []])[0])->toBe(422);
 });
 
 // PHP turns `.` and a space in a query name into `_` and `page[size]` into a

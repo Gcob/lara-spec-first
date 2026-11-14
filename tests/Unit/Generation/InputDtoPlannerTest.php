@@ -578,6 +578,25 @@ it('makes a nested required key optional when the rules cannot enforce it', func
     expect(array_map($optional, dtoNamed($plan, 'DoThingAddressInputDto')->properties))->toBe([true, false]);
 });
 
+// The request emits no presence rule for a required `readOnly` property, so a body can reach
+// `from()` without it, at the root and in a nested object alike.
+it('makes a required readOnly property optional, at the root and nested', function (): void {
+    $id = new Schema(types: [SchemaType::Integer], readOnly: true);
+    $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(
+        ['id' => $id, 'name' => dtoString(), 'address' => dtoSchema(['id' => $id, 'city' => dtoString()], ['id', 'city'])],
+        ['id', 'name', 'address'],
+    )])]);
+
+    $optional = static fn (string $class): array => array_map(
+        static fn ($property): bool => $property->optional,
+        dtoNamed($plan, $class)->properties,
+    );
+
+    expect($optional('DoThingInputDto'))->toBe([true, false, false])
+        ->and($optional('DoThingAddressInputDto'))->toBe([true, false])
+        ->and(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))->toContain('`id` is required by the schema and `readOnly`');
+});
+
 // Shared by every operation that reaches the schema, so the shape cannot depend on
 // whether the root or a nested use came first: the key is optional in both.
 it('gives a schema one shape whichever operation reaches it first', function (bool $rootFirst): void {
