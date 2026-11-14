@@ -58,19 +58,19 @@ how the class reaches the controller that needs `$validated`.
 `spec:build` emits one `final` `FormRequest` per operation that states anything about its input, into the `Requests`
 sub-namespace of the generated tree, and declares it as `routeAction`'s first parameter. What a rule set contains today:
 
-| Built                                                                                                        | Reported and not enforced                                                                      |
-| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Every row of [the mapping table](#every-constraint-maps-or-reports): types, bounds, `format`, `enum`, arrays | A `format` no Laravel rule means the same as, `uri` the most common                            |
-| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`                | A `pattern` across [the ECMA-262 / PCRE boundary](../openapi-support.md#strings-and-numbers)   |
-| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | A file part's `encoding.<part>.contentType`, which [`uploads.md`](../uploads.md) names as open |
-| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for          |
-| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A `query` name PHP rewrites (`user.name`, `a b`, `page[size]`), which no rule key can find     |
-| A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)        | A form client's value for a top-level name PHP rewrites, in a body that is JSON too            |
-|                                                                                                              | Two top-level names a form delivers under one key, which no rule can tell apart                |
-|                                                                                                              | A bound on a field that states no single type                                                  |
-| A `query` parameter, with its own `required`                                                                 |                                                                                                |
-| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                                |
-| [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size |                                                                                                |
+| Built                                                                                                        | Reported and not enforced                                                                                               |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Every row of [the mapping table](#every-constraint-maps-or-reports): types, bounds, `format`, `enum`, arrays | A `format` no Laravel rule means the same as, `uri` the most common                                                     |
+| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`                | A `pattern` across [the ECMA-262 / PCRE boundary](../openapi-support.md#strings-and-numbers)                            |
+| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | An `encoding` `contentType` no rule can hold: a text type, or a part that is not a file ([`uploads.md`](../uploads.md)) |
+| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for                                   |
+| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A `query` name PHP rewrites (`user.name`, `a b`, `page[size]`), which no rule key can find                              |
+| A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)        | A form client's value for a top-level name PHP rewrites, in a body that is JSON too                                     |
+|                                                                                                              | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
+|                                                                                                              | A bound on a field that states no single type                                                                           |
+| A `query` parameter, with its own `required`                                                                 |                                                                                                                         |
+| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                                                         |
+| [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size |                                                                                                                         |
 
 **A body declared only in media types this package does not read gets no class**, the same as an operation stating
 nothing, and `spec:build` warns about it on a line of its own: unlike that operation, this one states something nobody

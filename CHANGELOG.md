@@ -73,9 +73,18 @@ tags: [versions, conventions, planning]
   until the consumer acknowledges it. Every move on the exit-code axis is major in either direction, which is why a docs
   change is recorded here. The doctor still counts them beside `query` under one `Deferred` label until a parameter
   becomes a rule, so nothing about today's output changed.
-- **`Media type encoding` and `contentMediaType` moved up to `Partial`**, both read for what makes a
-  `multipart/form-data` part a file. Moving up the ladder cannot break a contract that worked before, so this half is
-  minor.
+- **`contentMediaType` moved up to `Partial`**, read for what makes a `multipart/form-data` part a file and for the
+  types its `mimetypes:` carries. `Media type encoding` moved from `Deferred` to `Partial` too, and that move changes
+  what a contract gets, which the next entry says.
+- **A file part whose `encoding` lists types refuses every other type, and `spec:doctor` can exit `2` for `encoding`**
+  ([#90](https://github.com/Gcob/lara-spec-first/issues/90)). A `multipart/form-data` part with
+  `encoding.<part>.contentType: image/png, image/jpeg` now answers `422` to any other type, **including a part that had
+  no `mimetypes` before**: a 3.0 contract has no `contentMediaType`, so every file passed until now. `encoding` also
+  wins over a looser `contentMediaType`. The doctor names `encoding` as not enforced, and exits `2`, for a `contentType`
+  on a part that is not read as a file (unless it is the default OpenAPI gives that part) and for a text type on a file
+  part, so **a contract that writes one and was green may now be red until it is acknowledged**. A malformed `encoding`
+  (a `contentType` that is not a string, an entry for a part the body does not declare) is a document fault and exits
+  `1`.
 - **`Local $ref within the document` moved down**, which the row itself announced as "a major, on the release that reads
   schemas". A reference aimed at a position inside a `$defs` is now refused. It used to be accepted and it never worked:
   the parser does not model that keyword, so the target was a plain array it could not build a schema from, and the
@@ -117,8 +126,19 @@ rather than one that was missing, and nothing downstream failed to say so.
   in kilobytes from `maxLength`, as an exact decimal (`max:2.44140625` is 2500 bytes, which Laravel's `max` takes).
   `application/octet-stream` and `*/*` add no `mimetypes`, which would refuse every upload but an octet stream. A
   required part is `required`, so an empty upload slot is refused. Beside another media type, or in a JSON body, the
-  part is a string. `encoding.<part>.contentType` is not read yet, and every file part says so in its generated file's
-  findings ([#90](https://github.com/Gcob/lara-spec-first/issues/90)). A closed root also refuses an undeclared upload.
+  part is a string. A closed root also refuses an undeclared upload.
+- **`encoding.<part>.contentType` narrows a file part** ([#90](https://github.com/Gcob/lara-spec-first/issues/90)). The
+  contract carries it as written, and the generated request turns the list into `mimetypes:` on a top-level part of a
+  `multipart/form-data` body, and on `part.*` for an array of files, ahead of `contentMediaType` and even when it is
+  looser. Each entry is cut at its `;`, trimmed, lower-cased and de-duplicated, wildcards kept.
+  `application/octet-stream` or `*/*` in the list adds no `mimetypes`, and a named text type adds none and is reported
+  (`text/*` keeps its rule, which Laravel matches on the first half of the sniffed type). A `contentType` on a part that
+  is not read as a file (a form-encoded body is only reported, never narrowed), other than a default OpenAPI gives that
+  part, is reported. A `contentType` that is not a string (a YAML list) and a part the body does not declare are faults
+  in the document, in the generated file and in `spec:doctor`, which exits `1` for them. `encoding` beside
+  `application/json` is ignored, and `headers`, `style`, `explode` and `allowReserved` are still not read. The finding
+  that every file part said `encoding` was not read is gone. What this changes for an existing contract is under
+  `Changed`.
 - **`spec:build` writes the input DTOs.** One `final readonly` class per request body that is an object, in the `Data`
   sub-namespace: a promoted constructor, `from()`, `toArray()`, `Arrayable` and `JsonSerializable`. Each body gets a
   full type and a `Partial` one, `NewUserInputDto` and `NewUserPartialInputDto`, named after the schema and never after

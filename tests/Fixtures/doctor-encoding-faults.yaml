@@ -1,0 +1,68 @@
+# A malformed `encoding` drops a restriction its author wrote, so the request is looser than the contract says, and the
+# document is what is wrong: a YAML list where the specification says one comma-separated string (`/lists`), and an
+# entry for a part the schema does not declare, `meta.doc` for a property nested in `meta` (`/nested`). `/fine` writes
+# neither, so nothing is owed for it.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /lists:
+    post:
+      operationId: uploadList
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+            encoding:
+              avatar:
+                contentType:
+                  - image/png
+                  - image/jpeg
+      responses:
+        '201':
+          description: Created
+  /nested:
+    post:
+      operationId: uploadNested
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                meta:
+                  type: object
+                  properties:
+                    doc:
+                      type: string
+                      format: binary
+            encoding:
+              meta.doc:
+                contentType: application/pdf
+      responses:
+        '201':
+          description: Created
+  /fine:
+    post:
+      operationId: uploadFine
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+            encoding:
+              avatar:
+                contentType: image/png
+      responses:
+        '201':
+          description: Created

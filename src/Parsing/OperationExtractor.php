@@ -357,23 +357,63 @@ final readonly class OperationExtractor
         }
 
         $content = [];
+        $encoding = [];
         $contentAt = $walk->child($walk->child($at, 'requestBody'), 'content');
 
         foreach ($this->listOf($body, 'content') as $mediaType => $media) {
             if ($media instanceof ParsedMediaType && $media->schema instanceof ParsedSchema) {
+                $mediaAt = $walk->child($contentAt, (string) $mediaType);
                 $content[(string) $mediaType] = $this->schema(
                     $media->schema,
                     $strategy,
                     $walk,
-                    $walk->child($walk->child($contentAt, (string) $mediaType), 'schema'),
+                    $walk->child($mediaAt, 'schema'),
                 );
+
+                $contentTypes = $this->encodedContentTypes($walk, $mediaAt);
+
+                if ($contentTypes !== []) {
+                    $encoding[(string) $mediaType] = $contentTypes;
+                }
             }
         }
 
         // A body declaring no readable schema says nothing this package can
         // generate from, and an empty RequestBody would read as "a body with no
         // constraints" rather than as the silence it is.
-        return $content === [] ? null : new RequestBody($content, $body->required === true);
+        return $content === [] ? null : new RequestBody($content, $body->required === true, $encoding);
+    }
+
+    /**
+     * The `contentType` each part of a media type writes under `encoding`, as written.
+     *
+     * **Read off the raw document, not off the parser's node.** The parser fills in a `contentType` the author never
+     * wrote (`application/octet-stream` for a binary, `text/plain` for a primitive, `application/json` for an object),
+     * and only when the schema is inline: reading it would put values in the contract that the document does not hold,
+     * and read one body two ways depending on whether it sits behind a `$ref`.
+     *
+     * **A value that is not a string is kept as written.** The specification says one comma-separated string, and a
+     * YAML list is the natural mistake. Dropping it here would make the part look as if it wrote no `contentType`, and
+     * the request would say nothing about a restriction the author wrote. Only `null` is dropped: a key with nothing in
+     * it writes none.
+     *
+     * The Encoding Object is the same in 3.0 and 3.1, so no {@see VersionStrategy} method is involved.
+     *
+     * @return array<string, mixed>
+     */
+    private function encodedContentTypes(DocumentWalk $walk, SchemaPosition $mediaAt): array
+    {
+        // Built, not walked to: a part named `$ref` is a part, and following it would read somewhere else.
+        $raw = $walk->rawAt(new SchemaPosition($mediaAt->file, $mediaAt->pointer.'/encoding')) ?? [];
+        $contentTypes = [];
+
+        foreach ($raw as $part => $entry) {
+            if (is_array($entry) && ($entry['contentType'] ?? null) !== null) {
+                $contentTypes[(string) $part] = $entry['contentType'];
+            }
+        }
+
+        return $contentTypes;
     }
 
     /**

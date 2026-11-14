@@ -52,9 +52,6 @@ use Illuminate\Validation\Validator;
  *     refuses a file whose name ends in a PHP extension (`php`, `phtml`, `phar` and the like)
  *     whatever its type, a security default no rule turns off, and matching the contract there
  *     would mean overriding it from a generated class.
- *   - `avatar` is a file part. Its types are read from `contentMediaType` alone: an
- *     `encoding.<part>.contentType` beside the body is not read, so a restriction written there is
- *     not enforced.
  *   - `anything` states no type, so no type rule is emitted for it.
  *   - `Address` recurses, and it states no `x-max-depth`, so the request validates it 3 levels
  *     deep, the package's default. `address.parent.parent.parent.parent` is `missing` (the field

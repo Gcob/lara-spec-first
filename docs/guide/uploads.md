@@ -77,19 +77,53 @@ reaching a generator carries neither spelling: it carries
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `format: binary`, or `contentMediaType`        | `file`, in a body that is `multipart/form-data` alone                                                                                                                  |
 | `contentMediaType`                             | `mimetypes:` with the declared type, `image/*` included, since Laravel matches a wildcard, except a text type                                                          |
+| `encoding.<part>.contentType`                  | `mimetypes:` with each type of the list, ahead of `contentMediaType`, except `application/octet-stream`, `*/*` or a text type                                          |
 | `maxLength` on a binary part                   | `max:` in kilobytes, the contract's bytes over 1024, as the exact decimal                                                                                              |
 | The part is in the body root's `required` list | `required` beside the file rules, `present` when the schema says the property may be `null`, and `present_with` naming the other keys when the body itself is optional |
 | The part is not in it                          | `sometimes`, and nothing about `null` unless the schema itself says the property is nullable                                                                           |
 | `items` whose schema is a binary part          | The file rules under `part.*`, plus `min` and `max` from `minItems` and `maxItems`                                                                                     |
 
-**Only `contentMediaType` is read for the types today, and `encoding` is the Open half.** OpenAPI also lets a multipart
-body state `encoding.<part>.contentType`, which wins over `contentMediaType`. `RequestBody` holds one schema per media
-type and nothing else, so `encoding` never reaches the contract, and a restriction written there is not enforced. The
-build cannot tell a part with an `encoding` from one without, so **every file part says so in its generated file's
-findings**, and the code carries a marker for the card that removes the finding.
+**`encoding.<part>.contentType` replaces `contentMediaType` for the types.** OpenAPI lets a multipart body state the
+types of a part beside the schema, and for 3.0 that is the only place it can, since 3.0 has no `contentMediaType`. The
+contract carries the string as written, and the rule set reads it for a file part: the list is split on commas, each
+entry is cut at its `;` and lower-cased, a duplicate is dropped, and what is left is the part's `mimetypes:`, wildcards
+(`image/*`) kept. `image/png, image/jpeg` is `mimetypes:image/png,image/jpeg`. It wins even when it is looser than
+`contentMediaType`, with no finding: it is the one the contract puts nearest the part, and the author who wrote both
+meant the one that wins. A `contentType` that is empty once cleaned counts as not written, so `contentMediaType`
+applies.
 
-**Open ([#90](https://github.com/Gcob/lara-spec-first/issues/90)):** carrying `encoding` into the contract, so that
-`contentType` is read first and the finding goes away.
+**What `encoding` never does is make a part a file.** `format: binary` or `contentMediaType` still does that, so the
+input DTO and the rest of the generated tree read the part as before. It is read on the top-level parts of the body, and
+on `part.*` for an array of files; a part nested inside an object has no `encoding` of its own in OpenAPI, so there is
+nothing to read. It narrows a part under `multipart/form-data` alone. Under `application/x-www-form-urlencoded`, the
+other media type OpenAPI gives it to, a part is a string and a `contentType` is only reported (below), and an `encoding`
+beside `application/json` is ignored without a word. A part written under both multipart and form-encoded, in a body
+that declares both, is not a file either: the two lists are read as one, multipart's first, and it is reported unless
+every type written is the part's default. Only `contentType` is read: `headers`, `style`, `explode` and `allowReserved`
+are not.
+
+**A type that would make the rule stricter than the contract, or cannot be enforced, adds no `mimetypes`.** One
+`application/octet-stream` or `*/*` anywhere in the list means "any bytes", so the whole list adds nothing (the
+paragraph on "any bytes" below gives the reason). A text type adds none either, the generated file says so, and the
+doctor names `encoding` as not enforced, as it does for a text `contentMediaType` (the paragraph on text types below
+gives the reason). The rest of the list is not kept with the text entry dropped, since that would refuse the CSV the
+contract accepts.
+
+**An `encoding` the request cannot act on is reported, never dropped quietly.** A part the body does not declare under
+`properties` (`meta.doc` for a property nested in `meta`, which has no `encoding` of its own) is a fault in the
+document: the generated file says so, nothing is read from it, and `spec:doctor` reports it as a document fault, with
+the operation as its position, and exits `1`. A `contentType` on a part that is not read as a file (a string, a number,
+an object, a list of tags, or any part of a body that is JSON or form-encoded too, where a file part is a string) leaves
+a finding in the generated file, and the doctor names `encoding` among what is not enforced. A `contentType` that is not
+a string (a YAML list is the usual slip, since the specification says one comma-separated string) is a fault in the
+document too, with the same two answers: the generated file says so and the doctor exits `1`, nothing is read from it,
+and the part keeps what `contentMediaType` says. Both are the document's to fix because the request is looser than the
+contract for them, which a green doctor must never mean. **The one exception is the default:** a `contentType` whose
+every type is one OpenAPI already assumes for that part (`application/json` on an object, `text/plain` or
+`application/octet-stream` on a primitive or a file, and for an array the defaults of its items) says nothing the
+contract had not, so it adds no finding and exits no differently from a contract that wrote nothing. The versions
+disagree on the default of a primitive (3.0 and 3.1.1 say `text/plain`, 3.1.0 says `application/octet-stream`), and the
+rule set knows no version, so it accepts both.
 
 **A file is a file only in a body that is `multipart/form-data` alone.** JSON carries no files, so a `format: binary`
 property in a JSON or form-encoded body is a string like any other, and the rule set says it states a keyword nothing
@@ -111,10 +145,12 @@ turn a contract that restricts nothing into one that refuses every upload but an
 the one libmagic sniffs from the content, and a text file never sniffs as the type the contract names. Measured on
 libmagic 5.41 with real files, which a faked upload cannot show since `UploadedFile::fake()` reports the type it is
 given: a CSV, a Markdown file and a YAML file are `text/plain`, an XML file is `text/xml` where the contract says
-`application/xml`, and a JSON file is `application/json` on this version and `text/plain` on older ones. So `text/*`,
-`application/json`, `application/xml`, `application/yaml`, `application/x-yaml` and any `+json` or `+xml` suffix type
-(`image/svg+xml` excepted, which sniffs as itself) get no rule, and the file part's findings name the type. A binary
-type (`image/png`, `application/pdf`, `application/zip`) sniffs as itself and keeps its rule.
+`application/xml`, and a JSON file is `application/json` on this version and `text/plain` on older ones. So `text/csv`
+and every other named text type, `application/json`, `application/xml`, `application/yaml`, `application/x-yaml` and any
+`+json` or `+xml` suffix type (`image/svg+xml` excepted, which sniffs as itself) get no rule, and the file part's
+findings name the type. A binary type (`image/png`, `application/pdf`, `application/zip`) sniffs as itself and keeps its
+rule. **`text/*` keeps its rule too:** Laravel matches a wildcard on the first half of the sniffed type, so
+`mimetypes:text/*` holds for the `text/plain` and the `text/xml` a real text file sniffs as.
 
 **Presence is read the same way as for any other property, with one difference in the name.** The body root's `required`
 list decides it, and a required file part is `required` where a required string is `present`: Laravel's `required` is

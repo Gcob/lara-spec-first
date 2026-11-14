@@ -786,15 +786,16 @@ it('requires the rest of an optional body when a key is sent blank', function ()
  * @param  array<string, mixed>  $files  uploads, by part name
  * @param  array<string, mixed>  $fields  text parts, by name
  * @param  list<string>  $mediaTypes  the media types the body declares
+ * @param  array<string, array<string, string>>  $encoding  the body's `encoding`: media type, part, `contentType`
  */
-function statusForUpload(Schema $body, array $files, array $fields = [], array $mediaTypes = ['multipart/form-data'], HttpMethod $method = HttpMethod::Post): int
+function statusForUpload(Schema $body, array $files, array $fields = [], array $mediaTypes = ['multipart/form-data'], HttpMethod $method = HttpMethod::Post, array $encoding = []): int
 {
     $built = RuleSetBuilder::for(new Operation(
         index: 0,
         method: $method,
         path: PathTemplate::fromString('/_generated/upload'),
         operationId: 'upload',
-        requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), true),
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), true, $encoding),
     ))->rules;
 
     $rules = frameworkRules($built);
@@ -1490,11 +1491,36 @@ it('accepts a real file whose declared text type its content sniffs as another',
     'JSON' => ['application/json', '{"a":1,"b":[1,2]}'],
 ]);
 
+// `mimetypes:text/*` matches on the first half of the sniffed type, so it holds for every real text file, unlike a
+// named text type.
+it('accepts a real text file under a text wildcard and refuses a PNG', function (): void {
+    $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+    $encoding = ['multipart/form-data' => ['field' => 'text/*']];
+
+    expect(statusForUpload(oneField(filePart()), ['field' => realUpload("name,age\nada,36\n")], encoding: $encoding))->toBe(200)
+        ->and(statusForUpload(oneField(filePart()), ['field' => realUpload('<?xml version="1.0"?><a><b>1</b></a>')], encoding: $encoding))->toBe(200)
+        ->and(statusForUpload(oneField(filePart()), ['field' => realUpload($png)], encoding: $encoding))->toBe(422);
+});
+
 it('still refuses a real file that is not the binary type declared', function (): void {
     $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
 
     expect(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload($png)]))->toBe(200)
         ->and(statusForUpload(oneField(filePart('image/png')), ['field' => realUpload("name,age\nada,36\n")]))->toBe(422);
+});
+
+// `encoding` is what the contract writes beside the part, so it narrows the part the way `contentMediaType` does,
+// through the framework and on the real bytes: a GIF is not one of the two types listed.
+it('accepts the media types encoding lists', function (): void {
+    $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+    $jpeg = base64_decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2Q==');
+    $gif = base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+    $body = oneField(filePart());
+    $encoding = ['multipart/form-data' => ['field' => 'image/png, image/jpeg']];
+
+    expect(statusForUpload($body, ['field' => realUpload($png)], encoding: $encoding))->toBe(200)
+        ->and(statusForUpload($body, ['field' => realUpload($jpeg)], encoding: $encoding))->toBe(200)
+        ->and(statusForUpload($body, ['field' => realUpload($gif)], encoding: $encoding))->toBe(422);
 });
 
 it('validates a body that names properties without saying type: object', function (): void {

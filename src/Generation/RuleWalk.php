@@ -38,6 +38,15 @@ final class RuleWalk
     public array $unenforced = [];
 
     /**
+     * What the document writes that is wrong, and the walk read nothing from: the sentences of the findings that are a
+     * fault in the document rather than a limit of this package. The doctor reports each one as a document fault, since
+     * the rule set is looser than the contract for it and the author is the one who can fix that.
+     *
+     * @var list<string>
+     */
+    public array $faults = [];
+
+    /**
      * Whether `multipart/form-data` is the only media type the rule set is read from, which is the one body a part can
      * be a file in.
      */
@@ -242,6 +251,15 @@ final class RuleWalk
         }
 
         return null;
+    }
+
+    /**
+     * Record a fault in the document: a finding in the generated file, and a document fault for the doctor.
+     */
+    public function fault(string $message): void
+    {
+        $this->findings[] = $message;
+        $this->faults[] = $message;
     }
 
     /**

@@ -26,8 +26,8 @@ use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
  * **What it translates is the whole table** in request-validation.md: types, nullability and presence, the bounds on
  * strings, numbers and arrays, the `format` values Laravel has a rule of the same meaning for, enumerations, patterns
  * inside the ECMA-262 / PCRE boundary, nested objects and array elements under dotted keys, `allOf` merged,
- * `dependentRequired`, an optional body's "all or none", and the file parts of a multipart body. What it does not — an
- * `encoding` beside a file part, a pattern across the boundary, a `format` Laravel would read differently, a recursive
+ * `dependentRequired`, an optional body's "all or none", and the file parts of a multipart body, narrowed by their
+ * `encoding`. What it does not — a pattern across the boundary, a `format` Laravel would read differently, a recursive
  * schema's infinite depth — leaves a finding.
  *
  * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
@@ -325,7 +325,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults);
     }
 
     /**
@@ -486,6 +486,7 @@ final readonly class RuleSetBuilder
             '',
             $schema,
             self::rootPresence($operation, $schema, $body, $walk),
+            self::encodedParts($body, $schema, $walk),
         );
 
         self::leave($walk, $outside);
@@ -580,6 +581,76 @@ final readonly class RuleSetBuilder
         }
 
         return array_values(array_unique($closed));
+    }
+
+    /**
+     * The `contentType` the document wrote for each top-level part, by the name it writes the part under.
+     *
+     * **Only the media types `encoding` applies to** (`multipart/form-data` and `application/x-www-form-urlencoded`,
+     * which OpenAPI names), and only those the body declares: `encoding` beside `application/json` is ignored, as the
+     * specification says. A part is read as a file only when the body is multipart alone, and then only multipart's
+     * `encoding` is read. When the body declares both, the part is not a file and what is written is only reported: a
+     * part written under both is read as the two lists joined (multipart's first), so the report names both and says
+     * nothing only when every type written is the part's default.
+     *
+     * **A part the schema does not declare is a fault in the document**, not a limit of this package, so it is said in
+     * the generated file and reported by the doctor as a document fault (never as `unenforced`, which is a limit of
+     * this package). So is a `contentType` that is not a string (a YAML list, a number): the specification says one
+     * comma-separated string, so nothing is read from it, and the part keeps what `contentMediaType` says. A string
+     * written under the other media type is still read.
+     *
+     * @return array<string, string> a part name => the `contentType` as written
+     */
+    private static function encodedParts(RequestBody $body, Schema $schema, RuleWalk $walk): array
+    {
+        $written = [];
+        $mistyped = [];
+
+        foreach ([self::MULTIPART, 'application/x-www-form-urlencoded'] as $mediaType) {
+            if (! isset($body->content[$mediaType])) {
+                continue;
+            }
+
+            foreach ($body->encoding[$mediaType] ?? [] as $part => $contentType) {
+                $part = (string) $part;
+
+                if (! is_string($contentType)) {
+                    $mistyped[$part] = true;
+
+                    continue;
+                }
+
+                if (! in_array($contentType, $written[$part] ?? [], true)) {
+                    $written[$part][] = $contentType;
+                }
+            }
+        }
+
+        $undeclared = array_values(array_filter(
+            array_map('strval', array_keys($written + $mistyped)),
+            static fn (string $part): bool => ! isset($schema->properties[$part]),
+        ));
+
+        if ($undeclared !== []) {
+            $walk->fault(sprintf(
+                '`encoding` names %s, which the body does not declare under `properties`: that is a fault in the '
+                    .'document, and nothing is read from it.',
+                self::list($undeclared),
+            ));
+
+            $written = array_diff_key($written, array_flip($undeclared));
+            $mistyped = array_diff_key($mistyped, array_flip($undeclared));
+        }
+
+        foreach (array_keys($mistyped) as $part) {
+            $walk->fault(sprintf(
+                '`encoding` writes a `contentType` for `%s` that is not a string: that is a fault in the document, '
+                    .'and nothing is read from it.',
+                $part,
+            ));
+        }
+
+        return array_map(static fn (array $lists): string => implode(', ', $lists), $written);
     }
 
     /**
@@ -685,6 +756,8 @@ final readonly class RuleSetBuilder
      * @param  callable(string, Schema): string  $presence  how a named property
      *                                                      is asked for, before
      *                                                      `dependentRequired`
+     * @param  array<string, string>  $contentTypes  the `encoding` of the body's top-level parts, by name: only the
+     *                                               root passes one, so a nested property is never narrowed by it
      *
      * @throws ConflictingInputException
      */
@@ -693,6 +766,7 @@ final readonly class RuleSetBuilder
         string $prefix,
         Schema $schema,
         callable $presence,
+        array $contentTypes = [],
     ): void {
         $dependents = self::dependents($schema, $walk, $prefix);
 
@@ -738,7 +812,7 @@ final readonly class RuleSetBuilder
                 $asked = 'sometimes';
             }
 
-            self::field($walk, self::fieldKey($name, $walk, $prefix), '`'.$prefix.$name.'`', $property, $asked);
+            self::field($walk, self::fieldKey($name, $walk, $prefix), '`'.$prefix.$name.'`', $property, $asked, $contentTypes[$name] ?? null);
         }
 
         // A name the contract requires, or makes required by
@@ -849,6 +923,9 @@ final readonly class RuleSetBuilder
      *
      * @param  string  $presence  how the key itself is asked for, or the empty string for an array element, which
      *                            exists by being in the array
+     * @param  string|null  $contentType  the `encoding.<part>.contentType` the document wrote for this field, which
+     *                                    only a top-level part of the body, or an item of one, is ever given. A file
+     *                                    part narrows its types from it, and a field that is not one reports it
      *
      * @throws ConflictingInputException
      */
@@ -858,9 +935,15 @@ final readonly class RuleSetBuilder
         string $label,
         Schema $written,
         string $presence,
+        ?string $contentType = null,
     ): void {
         $schema = AllOfMerger::merge($written, $walk->identity, $label);
         $rules = $presence === '' ? [] : [$presence];
+
+        if ($contentType !== null && ! self::readsEncoding($schema, $walk, $label)) {
+            self::reportUnreadEncoding($walk, $label, $schema, $contentType);
+            $contentType = null;
+        }
 
         if ($schema->recursesTo !== null) {
             self::recursion($walk, $key, $label, $schema, $presence);
@@ -897,7 +980,7 @@ final readonly class RuleSetBuilder
                 $rules[0] = 'required';
             }
 
-            self::fileRules($schema, $label, $rules, $handled, $walk);
+            self::fileRules($schema, $label, $rules, $handled, $walk, $contentType);
         } else {
             switch ($type) {
                 case SchemaType::String:
@@ -1034,7 +1117,7 @@ final readonly class RuleSetBuilder
 
         if ($children === 'items') {
             if ($schema->items !== null) {
-                self::field($walk, $key.'.*', $label.'[]', $schema->items, '');
+                self::field($walk, $key.'.*', $label.'[]', $schema->items, '', $contentType);
             }
 
             if ($schema->uniqueItems) {
@@ -1438,52 +1521,72 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * What a file part becomes: `file`, the types its `contentMediaType` names, and a size in kilobytes.
+     * What a file part becomes: `file`, the types it names, and a size in kilobytes.
      *
      * **`file` instead of `string`**, because `string` refuses an upload, which is worse than leaving the rule out.
      *
-     * **`mimetypes:` and only from `contentMediaType`.** `encoding.<part>.contentType` wins over it in `uploads.md`,
-     * but `RequestBody` holds one schema per media type and nothing else, so `encoding` never reaches the contract.
-     * Every file part says so, because this walk cannot tell a part with an `encoding` from one without.
-     *
-     * TODO (#90): read `encoding.<part>.contentType` once it is in the contract, and drop the finding below.
+     * **The types come from `encoding.<part>.contentType` when the contract writes one, and from `contentMediaType`
+     * otherwise.** `encoding` wins even when it is looser, with no finding: it is the one the contract puts nearest the
+     * upload (`uploads.md`). A list is split on commas, each entry cut at its parameters and lower-cased, and the
+     * result is `mimetypes:a,b`; `image/*` stays, since Laravel matches wildcards. A `contentType` that is blank after
+     * that says nothing, so `contentMediaType` applies.
      *
      * **A text type is not one to match either, and a finding says so.** See {@see self::isSniffedAsAnotherType()}:
-     * `mimetypes:text/csv` refuses every real CSV.
+     * `mimetypes:text/csv` refuses every real CSV. One text type in a list drops the whole rule (a rule for the others
+     * would refuse the CSV the contract accepts), and `encoding` is recorded as unenforced on the field.
      *
      * **`application/octet-stream` and the any-type wildcard are not types to match.** They are how a contract says
      * "any bytes", and `mimetypes` inspects the file's real type, so it would turn away every upload that is not
-     * literally an octet stream: a rule stricter than the contract, in the direction of refusing valid payloads.
+     * literally an octet stream: a rule stricter than the contract, in the direction of refusing valid payloads. One of
+     * them in a list does the same, since the rest of the list adds nothing the contract refuses.
      *
      * **`maxLength` is bytes and `max` is kilobytes, and the ceiling is exact.** Laravel's `max` takes a decimal, so
      * 2500 bytes is `max:2.44140625`.
      *
      * @param  list<string|InRule|NullOrAbsent>  $rules
      * @param  list<string>  $handled
+     * @param  string|null  $contentType  the `encoding` the document wrote for this part, as written
      *
      * @see docs/guide/uploads.md — "The schema names the file part"
      */
-    private static function fileRules(Schema $schema, string $label, array &$rules, array &$handled, RuleWalk $walk): void
+    private static function fileRules(Schema $schema, string $label, array &$rules, array &$handled, RuleWalk $walk, ?string $contentType = null): void
     {
         $rules[] = 'file';
         array_push($handled, 'isFilePart', 'contentMediaType', 'maxLength');
 
-        // Parameters (`; charset=...`) are not part of the type Laravel reads.
-        $mediaType = $schema->contentMediaType === null
-            ? ''
-            : strtolower(trim(explode(';', $schema->contentMediaType)[0]));
+        $types = $contentType === null ? [] : self::contentTypes($contentType);
+        $encoded = $types !== [];
 
-        if (self::isSniffedAsAnotherType($mediaType)) {
-            $walk->findings[] = sprintf(
-                '%s declares `contentMediaType: %s`, and no `mimetypes` rule is emitted for it: Laravel reads '
-                    .'the type libmagic sniffs from the content, which is never that one for a text file, so '
-                    .'the rule would refuse every real upload.',
-                $label,
-                $mediaType,
-            );
-            $walk->leaveUnenforced('contentMediaType', $label);
-        } elseif ($mediaType !== '' && ! in_array($mediaType, ['application/octet-stream', '*/*'], true)) {
-            $rules[] = 'mimetypes:'.$mediaType;
+        if (! $encoded) {
+            // Parameters (`; charset=...`) are not part of the type Laravel reads.
+            $types = $schema->contentMediaType === null ? [] : self::contentTypes($schema->contentMediaType, false);
+        }
+
+        $sniffed = array_values(array_filter($types, self::isSniffedAsAnotherType(...)));
+
+        if (array_intersect($types, ['application/octet-stream', '*/*']) !== []) {
+            // Any bytes: nothing to match.
+        } elseif ($sniffed !== []) {
+            $walk->findings[] = $encoded
+                ? sprintf(
+                    'The `encoding` of %s declares `contentType: %s`, and no `mimetypes` rule is emitted for it: Laravel '
+                        .'reads the type libmagic sniffs from the content, which is never `%s` for a text file, so a rule '
+                        .'listing it would refuse every real file of that type, and the list is left out whole rather '
+                        .'than refuse them.',
+                    $label,
+                    trim((string) $contentType),
+                    $sniffed[0],
+                )
+                : sprintf(
+                    '%s declares `contentMediaType: %s`, and no `mimetypes` rule is emitted for it: Laravel reads the '
+                        .'type libmagic sniffs from the content, which is never that one for a text file, so the rule '
+                        .'would refuse every real upload.',
+                    $label,
+                    $sniffed[0],
+                );
+            $walk->leaveUnenforced($encoded ? 'encoding' : 'contentMediaType', $label);
+        } elseif ($types !== []) {
+            $rules[] = 'mimetypes:'.implode(',', $types);
             // The one stricter-than-the-contract case here, and the exception the principle
             // allows: Laravel's `mimetypes` refuses a file whose name ends in a PHP extension
             // whatever its type, and nothing short of overriding that security default
@@ -1503,13 +1606,115 @@ final readonly class RuleSetBuilder
         if ($schema->maxLength !== null) {
             $rules[] = 'max:'.self::number($schema->maxLength / 1024);
         }
+    }
+
+    /**
+     * The media types a `contentType` (or a `contentMediaType`) names: split on commas, each cut at its parameters,
+     * trimmed and lower-cased, a type written twice kept once, a blank entry dropped.
+     *
+     * @param  bool  $list  whether commas separate several types: a `contentMediaType` is one
+     * @return list<string>
+     */
+    private static function contentTypes(string $written, bool $list = true): array
+    {
+        $types = [];
+
+        foreach ($list ? explode(',', $written) : [$written] as $entry) {
+            $type = strtolower(trim(explode(';', $entry)[0]));
+
+            if ($type !== '' && ! in_array($type, $types, true)) {
+                $types[] = $type;
+            }
+        }
+
+        return $types;
+    }
+
+    /**
+     * Whether `encoding.<part>.contentType` is something a field acts on: a file part, or an array whose items are one.
+     * `encoding` never makes a part a file ({@see self::isFile()} does not read it), so it is read only where the
+     * schema and the body already say file.
+     *
+     * @throws ConflictingInputException
+     */
+    private static function readsEncoding(Schema $schema, RuleWalk $walk, string $label): bool
+    {
+        if (self::isFile($schema, $walk->multipart)) {
+            return true;
+        }
+
+        return $schema->soleType() === SchemaType::Array
+            && $schema->items !== null
+            && self::isFile(AllOfMerger::merge($schema->items, $walk->identity, $label.'[]'), $walk->multipart);
+    }
+
+    /**
+     * Say that a `contentType` on a part this request does not read as a file is not enforced, unless every type it
+     * lists is one OpenAPI gives that part when it writes none ({@see self::defaultPartTypes()}): a contract that
+     * spells out its default has said nothing new. A list with nothing in it says nothing either.
+     *
+     * @throws ConflictingInputException
+     */
+    private static function reportUnreadEncoding(RuleWalk $walk, string $label, Schema $schema, string $contentType): void
+    {
+        $types = self::contentTypes($contentType);
+
+        if (array_diff($types, self::defaultPartTypes($schema, $walk, $label)) === []) {
+            return;
+        }
 
         $walk->findings[] = sprintf(
-            '%s is a file part. Its types are read from `contentMediaType` alone: an '
-                .'`encoding.<part>.contentType` beside the body is not read, so a restriction written '
-                .'there is not enforced.',
+            'The `encoding` of %s declares `contentType: %s`, and no rule is emitted for it: only a file part of a '
+                .'multipart body is narrowed by it, and %s.',
             $label,
+            trim($contentType),
+            // What is true of this part: a schema that is no file is said not to be one, whatever the body, and only a
+            // file part is a string because of the body it sits in.
+            match (true) {
+                $schema->soleType() === SchemaType::Array && ! ($schema->items !== null && $schema->items->isFilePart) => 'its items are not a file part',
+                ! $schema->isFilePart && $schema->soleType() !== SchemaType::Array => 'it is not a file part',
+                $walk->multipart => 'it is not read as a file part',
+                $walk->jsonBody => 'the body is also JSON, which reads a file part as a string',
+                default => 'a form-encoded body is read as text',
+            },
         );
+        $walk->leaveUnenforced('encoding', $label);
+    }
+
+    /**
+     * The `contentType`s OpenAPI gives a part that writes none, so that spelling one out says nothing new.
+     *
+     * **The versions disagree, and a contract that spells out a default is not asked which one it meant.** 3.0.x gives
+     * `application/octet-stream` to a binary string, `text/plain` to any other primitive, `application/json` to an
+     * object and the items' type to an array. 3.1.0 gives `application/json` to an object, the items' type to an array
+     * and `application/octet-stream` to all other cases, primitives included. 3.1.1 gives `text/plain` to a string with
+     * no `contentEncoding` and to a number, an integer or a boolean, `application/octet-stream` to a part with no
+     * `type` or a string with a `contentEncoding`, and the same for an object and an array. This takes the union where
+     * they differ (a primitive: both `text/plain` and `application/octet-stream`; a binary part: both too, since 3.1.1
+     * reads a `string` with `contentMediaType` as `text/plain`), which reports less and never more. The rule set knows
+     * no version, and a default is no constraint, so a union costs a missed finding on a type nothing enforces anyway.
+     *
+     * @return list<string>
+     *
+     * @throws ConflictingInputException
+     */
+    private static function defaultPartTypes(Schema $schema, RuleWalk $walk, string $label): array
+    {
+        if ($schema->isFilePart) {
+            return ['application/octet-stream', 'text/plain'];
+        }
+
+        if (self::isObjectBody($schema)) {
+            return ['application/json'];
+        }
+
+        return match ($schema->soleType()) {
+            SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean => ['text/plain', 'application/octet-stream'],
+            SchemaType::Array => $schema->items === null
+                ? ['application/octet-stream']
+                : self::defaultPartTypes(AllOfMerger::merge($schema->items, $walk->identity, $label.'[]'), $walk, $label.'[]'),
+            default => ['application/octet-stream'],
+        };
     }
 
     /**
@@ -1518,14 +1723,17 @@ final readonly class RuleSetBuilder
      *
      * Measured on libmagic 5.41, with real files (a faked upload reports the type it is given and hides this): a CSV, a
      * Markdown file and a YAML file sniff as `text/plain`, an XML file as `text/xml` where the contract says
-     * `application/xml`, and a JSON file as `application/json` on this version and `text/plain` on older ones. `text/*`
-     * is the class, and the textual `application/*` types are the same class: libmagic reads their content, and a
-     * content with a name of its own (`application/ld+json`) still comes back as the generic one. `image/svg+xml`,
-     * `application/pdf` and the binary types sniff as themselves and keep their rule.
+     * `application/xml`, and a JSON file as `application/json` on this version and `text/plain` on older ones. Text
+     * types are the class (`text/*` itself apart, which Laravel matches by its first half), and the textual
+     * `application/*` types are the same class: libmagic reads their content, and a content with a name of its own
+     * (`application/ld+json`) still comes back as the generic one. `image/svg+xml`, `application/pdf` and the binary
+     * types sniff as themselves and keep their rule.
      */
     private static function isSniffedAsAnotherType(string $mediaType): bool
     {
-        return str_starts_with($mediaType, 'text/')
+        // `text/*` is the one text entry a rule can hold: Laravel matches a wildcard on the first half of the sniffed type
+        // (`text/plain`, `text/xml`), so it holds for every real text file, where a named type does not.
+        return ($mediaType !== 'text/*' && str_starts_with($mediaType, 'text/'))
             || in_array($mediaType, ['application/json', 'application/xml', 'application/yaml', 'application/x-yaml'], true)
             || (
                 $mediaType !== 'image/svg+xml'

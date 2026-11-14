@@ -14,6 +14,7 @@ use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
@@ -41,6 +42,14 @@ use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 final readonly class SupportMatrixCheck
 {
     private const SECTION = 'Support findings';
+
+    /**
+     * The section of docs/guide/openapi-support.md a keyword the rule set left unenforced is rated in, when it is not a
+     * schema keyword: `encoding` belongs to the request body, not to its schema.
+     */
+    private const UNENFORCED_SECTIONS = [
+        'encoding' => 'Parameters, bodies, responses',
+    ];
 
     /**
      * What is left of the Deferred lot: response declarations, and nothing else.
@@ -188,7 +197,21 @@ final readonly class SupportMatrixCheck
                 );
             }
 
-            foreach (self::unenforcedKeywords($operation) as $keyword => $fields) {
+            $ruleSet = self::ruleSet($operation);
+
+            // A fault in the document the rule set could read nothing from, and so is looser than the contract for:
+            // the author's to fix, which is what separates it from the package limits around it.
+            foreach ($ruleSet->documentFaults ?? [] as $fault) {
+                $findings[] = new Finding(
+                    FindingClass::DocumentFault,
+                    self::SECTION,
+                    SupportLevel::Partial,
+                    DocumentPointer::forOperation($operation),
+                    sprintf('%s: %s', $operation->label(), $fault),
+                );
+            }
+
+            foreach ($ruleSet->unenforced ?? [] as $keyword => $fields) {
                 $findings[] = new Finding(
                     FindingClass::PackageLimit,
                     self::SECTION,
@@ -197,12 +220,13 @@ final readonly class SupportMatrixCheck
                     sprintf(
                         '%s writes `%s` where the generated request enforces nothing for it: %s. The support matrix '.
                         'may rate `%s` as honored in general, and on these fields it is left out of the rules. See '.
-                        'docs/guide/openapi-support.md, "Schemas". This is a fact about this package, not a defect '.
+                        'docs/guide/openapi-support.md, "%s". This is a fact about this package, not a defect '.
                         'in your contract.',
                         $operation->label(),
                         $keyword,
                         implode(', ', $fields),
                         $keyword,
+                        self::UNENFORCED_SECTIONS[$keyword] ?? 'Schemas',
                     ),
                 );
             }
@@ -262,16 +286,15 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * What the operation's rule set read and enforced nothing for, or nothing when it cannot be built.
-     *
-     * @return array<string, list<string>>
+     * The operation's rule set, or null when it cannot be built: its conflict is `Routing outcome`'s to report, and
+     * what a rule set would have said is left out rather than guessed.
      */
-    private static function unenforcedKeywords(Operation $operation): array
+    private static function ruleSet(Operation $operation): ?RuleSet
     {
         try {
-            return RuleSetBuilder::for($operation)->unenforced;
+            return RuleSetBuilder::for($operation);
         } catch (ConflictingInputException) {
-            return [];
+            return null;
         }
     }
 

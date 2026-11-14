@@ -1,0 +1,108 @@
+# What a multipart body writes under `encoding`, and what it leaves unwritten.
+#
+# `/inline` and `/referenced` write one body twice: the parser invents a
+# contentType for a part (`application/octet-stream` for a binary, `text/plain`
+# for a primitive) only when the schema is inline, so the same document would
+# read two ways if the contract took what the parser hands back.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /inline:
+    post:
+      operationId: uploadInline
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                caption:
+                  type: string
+                document:
+                  type: string
+                  format: binary
+            encoding:
+              avatar:
+                contentType: image/png, image/jpeg
+              caption:
+                style: form
+              document:
+                headers:
+                  X-Rate-Limit:
+                    schema:
+                      type: integer
+      responses:
+        '201':
+          description: Created
+  /referenced:
+    post:
+      operationId: uploadReferenced
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Upload'
+            encoding:
+              avatar:
+                contentType: image/png, image/jpeg
+              caption:
+                style: form
+              document:
+                headers:
+                  X-Rate-Limit:
+                    schema:
+                      type: integer
+      responses:
+        '201':
+          description: Created
+  /plain:
+    post:
+      operationId: uploadPlain
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Upload'
+      responses:
+        '201':
+          description: Created
+  # A `contentType` the spec says is one comma-separated string. A YAML list and a number are what a person writes by
+  # mistake, and the contract keeps them as written so a rule can say it did not read them.
+  /mistyped:
+    post:
+      operationId: uploadMistyped
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Upload'
+            encoding:
+              avatar:
+                contentType:
+                  - image/png
+                  - image/jpeg
+              caption:
+                contentType: 5
+              document:
+                contentType: ~
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Upload:
+      type: object
+      properties:
+        avatar:
+          type: string
+          format: binary
+        caption:
+          type: string
+        document:
+          type: string
+          format: binary

@@ -291,6 +291,46 @@ it('names what a Partial keyword leaves unenforced, and exits 2', function (): v
         ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
 });
 
+// `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not
+// read as a file is left out of the rules, and that is a package limit it names: a keyword the matrix rates as honored
+// in general. Its own section is "Parameters, bodies, responses", not "Schemas". The type OpenAPI gives a part anyway
+// (`application/json` on an object, `text/plain` on a primitive, `application/octet-stream` on a file) is no news.
+it('reports encoding on a part that is not a file', function (): void {
+    [$exit, $report] = doctorJson('doctor-encoding.yaml');
+
+    $partial = doctorSupportFindings($report, 'partial');
+
+    expect($exit)->toBe(2)
+        ->and($partial)->toHaveCount(1)
+        ->and($partial[0]['class'])->toBe('package_limit')
+        ->and($partial[0]['pointer'])->toBe('#/paths/~1profiles/post')
+        ->and($partial[0]['message'])->toContain('post /profiles writes `encoding`')
+        ->and($partial[0]['message'])->toContain('`name`')
+        ->and($partial[0]['message'])->toContain('"Parameters, bodies, responses"')
+        ->and($partial[0]['message'])->not->toContain('"Schemas"');
+});
+
+// A malformed `encoding` is a fault in the document, and the doctor's zero exit promises nothing was dropped without
+// a decision: the request is looser than the contract (a YAML list narrows nothing, an entry for a part the schema
+// does not declare is never read), so the exit is the document's, `1`, with the operation as the position.
+it('reports a malformed encoding as a document fault', function (): void {
+    [$exit, $report] = doctorJson('doctor-encoding-faults.yaml');
+
+    $faults = array_values(array_filter(
+        $report['findings'],
+        static fn (array $finding): bool => $finding['class'] === 'document_fault',
+    ));
+
+    expect($exit)->toBe(1)
+        ->and($faults)->toHaveCount(2)
+        ->and(array_column($faults, 'section'))->toBe(['Support findings', 'Support findings'])
+        ->and(array_column($faults, 'pointer'))->toBe(['#/paths/~1lists/post', '#/paths/~1nested/post'])
+        ->and($faults[0]['message'])->toContain('post /lists')
+        ->and($faults[0]['message'])->toContain('`contentType` for `avatar` that is not a string')
+        ->and($faults[1]['message'])->toContain('post /nested')
+        ->and($faults[1]['message'])->toContain('`meta.doc`, which the body does not declare');
+});
+
 // Acceptance 2: a keyword a response writes is not named, and the responses are
 // still the one Deferred count, which does not gate.
 it('names no keyword a response schema writes, and keeps responses as one deferred count', function (): void {
