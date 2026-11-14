@@ -16,30 +16,25 @@ use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\LifecycleOutcome;
 
 /**
- * The rules the lifecycle extensions this package defines are worth defining
- * for: a deprecation is a commitment with a date attached, a date that has
- * passed is an endpoint still being served after its own removal, and a date
- * nothing can read is a promise no consumer can plan around.
+ * The rules the lifecycle extensions this package defines are worth defining for: a deprecation is a commitment with a
+ * date attached, a date that has passed is an endpoint still being served after its own removal, and a date nothing can
+ * read is a promise no consumer can plan around.
  *
  * Two halves, deliberately not one:
  *
- *   - {@see self::check()} returns findings, and every one of them gates the
- *     exit code. All three are document faults — only the author of the
- *     contract can fix any of them.
- *   - {@see self::outcome()} returns what the section reports when nothing is
- *     wrong: the `beta` listing, the sunsets coming up, and the protection
- *     report. See {@see LifecycleOutcome} for why an approaching date belongs
- *     there rather than among the findings.
+ *   - {@see self::check()} returns findings, and every one of them gates the exit code. All three are document faults —
+ *     only the author of the contract can fix any of them.
+ *   - {@see self::outcome()} returns what the section reports when nothing is wrong: the `beta` listing, the sunsets
+ *     coming up, and the protection report. See {@see LifecycleOutcome} for why an approaching date belongs there
+ *     rather than among the findings.
  *
- * **One rule from docs/guide/lifecycle.md is deliberately absent here**: an
- * unrecognized `x-lifecycle` value. `Parsing\OperationExtractor` already
- * refuses it, so it reaches the report as a fault the reading pipeline
- * collected and lands under Document validity, where every other refusal of
- * that class lands. Reporting it again here would be the same problem stated
- * twice in one report.
+ * **One rule from docs/guide/lifecycle.md is deliberately absent here**: an unrecognized `x-lifecycle` value.
+ * `Parsing\OperationExtractor` already refuses it, so it reaches the report as a fault the reading pipeline collected
+ * and lands under Document validity, where every other refusal of that class lands. Reporting it again here would be
+ * the same problem stated twice in one report.
  *
- * `public` + `stable` without an `operationId` is absent for the same kind of
- * reason: it is already {@see SupportMatrixCheck::missingOperationId()}.
+ * `public` + `stable` without an `operationId` is absent for the same kind of reason: it is already
+ * {@see SupportMatrixCheck::missingOperationId()}.
  *
  * @see docs/guide/lifecycle.md — "What the doctor enforces"
  */
@@ -48,28 +43,22 @@ final readonly class LifecycleCheck
     private const SECTION = 'Lifecycle';
 
     /**
-     * What the horizon falls back to when configuration says nothing usable.
-     * A doctor that refuses to run over its own configuration would be a poor
-     * diagnostic tool.
+     * What the horizon falls back to when configuration says nothing usable. A doctor that refuses to run over its own
+     * configuration would be a poor diagnostic tool.
      */
     public const DEFAULT_HORIZON_DAYS = 90;
 
     /**
-     * The configured horizon, or the default when the configured value is not
-     * a whole number of days.
+     * The configured horizon, or the default when the configured value is not a whole number of days.
      *
-     * **A whole number, deliberately, and not merely "something numeric".**
-     * `90.5` and `1e2` are numeric and would be silently truncated into a
-     * different horizon than the one written, which is the kind of quiet
-     * reinterpretation a configuration file should never do. A string of
-     * digits is accepted because an environment variable has no other way to
-     * carry an integer.
+     * **A whole number, deliberately, and not merely "something numeric".** `90.5` and `1e2` are numeric and would be
+     * silently truncated into a different horizon than the one written, which is the kind of quiet reinterpretation a
+     * configuration file should never do. A string of digits is accepted because an environment variable has no other
+     * way to carry an integer.
      *
-     * Anything else — a float, a negative count of days, a typo — falls back
-     * rather than refusing to run: this key only ever decides what is
-     * *mentioned*, so a diagnostic tool that would not diagnose because of it
-     * is the worse failure of the two. `0` is a real value, not a fallback:
-     * it prints no upcoming date at all.
+     * Anything else — a float, a negative count of days, a typo — falls back rather than refusing to run: this key only
+     * ever decides what is *mentioned*, so a diagnostic tool that would not diagnose because of it is the worse failure
+     * of the two. `0` is a real value, not a fallback: it prints no upcoming date at all.
      */
     public static function horizonDays(mixed $configured): int
     {
@@ -130,9 +119,8 @@ final readonly class LifecycleCheck
 
     /**
      * @param  list<Operation>  $operations
-     * @param  int  $horizonDays  how far ahead a removal date is worth mentioning.
-     *                            `0` prints no upcoming date at all, and changes
-     *                            nothing about the rules that gate
+     * @param  int  $horizonDays  how far ahead a removal date is worth mentioning. `0` prints no upcoming date at all,
+     *                            and changes nothing about the rules that gate
      */
     public static function outcome(array $operations, DateTimeImmutable $now, int $horizonDays): LifecycleOutcome
     {
@@ -171,17 +159,14 @@ final readonly class LifecycleCheck
     }
 
     /**
-     * The moment an already-normalized `x-sunset` states, or null when the
-     * document wrote something no date can be read out of.
+     * The moment an already-normalized `x-sunset` states, or null when the document wrote something no date can be read
+     * out of.
      *
-     * `Parsing\OperationExtractor` has already done the reading: a value it
-     * could make sense of arrives in one of exactly two spellings — `Y-m-d`
-     * when the moment lands on midnight UTC, `DateTimeInterface::ATOM`
-     * otherwise — and a value it could not arrives verbatim, precisely so this
-     * section can report it rather than the pipeline refusing the whole
-     * contract over a date. So this accepts those two spellings and nothing
-     * else — it is not a second, looser parser sitting beside the first, which
-     * is what accepting whatever `new DateTimeImmutable()` swallows would make
+     * `Parsing\OperationExtractor` has already done the reading: a value it could make sense of arrives in one of
+     * exactly two spellings — `Y-m-d` when the moment lands on midnight UTC, `DateTimeInterface::ATOM` otherwise — and
+     * a value it could not arrives verbatim, precisely so this section can report it rather than the pipeline refusing
+     * the whole contract over a date. So this accepts those two spellings and nothing else — it is not a second, looser
+     * parser sitting beside the first, which is what accepting whatever `new DateTimeImmutable()` swallows would make
      * it.
      */
     private static function moment(?string $sunset): ?DateTimeImmutable

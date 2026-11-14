@@ -18,12 +18,10 @@ use Illuminate\Contracts\Config\Repository;
 /**
  * How a command finds the contract and reads it.
  *
- * **Shared because it has to be identical, not because it is convenient.** Two
- * commands that resolved the specification differently would disagree about which
- * document the project has — `spec:build` generating from one file while
- * `spec:make` scaffolds against another is a defect nobody would suspect until
- * the class names stopped matching. The same argument applies to the reading
- * pipeline: every guard runs for every command, or the strict one is the only one
+ * **Shared because it has to be identical, not because it is convenient.** Two commands that resolved the specification
+ * differently would disagree about which document the project has — `spec:build` generating from one file while
+ * `spec:make` scaffolds against another is a defect nobody would suspect until the class names stopped matching. The
+ * same argument applies to the reading pipeline: every guard runs for every command, or the strict one is the only one
  * that is strict.
  *
  * @see docs/guide/openapi-support.md — "Reading a document"
@@ -33,19 +31,15 @@ trait ReadsTheContract
     /**
      * The contract, read end to end — see {@see ReadOutcome}.
      *
-     * **The seam a command that reports rather than refuses reads through.**
-     * `operationsOrFail()` below is its only caller today, and every command in
-     * this package goes through that one instead, because every command in this
-     * package stops at the first fault. This method exists separately for the
-     * caller that does not: {@see ReadOutcome}
-     * carries the whole fault list and the flag saying whether the document was
-     * rewritten, and neither survives `operationsOrFail()`'s narrowing to a
-     * list of operations.
+     * **The seam a command that reports rather than refuses reads through.** `operationsOrFail()` below is its only
+     * caller today, and every command in this package goes through that one instead, because every command in this
+     * package stops at the first fault. This method exists separately for the caller that does not: {@see ReadOutcome}
+     * carries the whole fault list and the flag saying whether the document was rewritten, and neither survives
+     * `operationsOrFail()`'s narrowing to a list of operations.
      *
-     * @param  bool  $updateRefs  fetch and vendor an allowed remote reference —
-     *                            `spec:build --update-refs`'s one entry point into
-     *                            the reading pipeline. Every other caller leaves it
-     *                            false and stays frozen, exactly as today.
+     * @param  bool  $updateRefs  fetch and vendor an allowed remote reference — `spec:build --update-refs`'s one entry
+     *                            point into the reading pipeline. Every other caller leaves it false and stays frozen,
+     *                            exactly as today.
      */
     protected function readContract(string $specPath, RemoteReferenceGuard $remote, bool $updateRefs = false): ReadOutcome
     {
@@ -57,14 +51,13 @@ trait ReadsTheContract
     }
 
     /**
-     * The operations the contract describes, in document order — or null,
-     * having already reported the first fault, the moment there is one.
+     * The operations the contract describes, in document order — or null, having already reported the first fault, the
+     * moment there is one.
      *
-     * **This is where `spec:build` and `spec:make` keep today's behaviour**:
-     * the reading pipeline itself no longer refuses, so its callers are the
-     * ones that decide a single fault is enough to stop — the same message a
-     * caught `SpecException` used to carry, from the same exception object,
-     * just read off {@see ReadOutcome::$faults} instead of caught off a throw.
+     * **This is where `spec:build` and `spec:make` keep today's behaviour**: the reading pipeline itself no longer
+     * refuses, so its callers are the ones that decide a single fault is enough to stop — the same message a caught
+     * `SpecException` used to carry, from the same exception object, just read off {@see ReadOutcome::$faults} instead
+     * of caught off a throw.
      *
      * @return list<Operation>|null
      */
@@ -82,21 +75,17 @@ trait ReadsTheContract
     }
 
     /**
-     * Render a refusal the way this package renders every one of them, in the
-     * one place that decides how.
+     * Render a refusal the way this package renders every one of them, in the one place that decides how.
      *
-     * **Shared with each command's outer `catch (SpecException)` on purpose.**
-     * Printing the message and returning `FAILURE` is the same act whether the
-     * fault was read off a {@see ReadOutcome} or caught off a throw, and the
-     * two rendering it separately is exactly the divergence
-     * {@see ReadOutcome}'s own docblock argues against for the read itself.
+     * **Shared with each command's outer `catch (SpecException)` on purpose.** Printing the message and returning
+     * `FAILURE` is the same act whether the fault was read off a {@see ReadOutcome} or caught off a throw, and the two
+     * rendering it separately is exactly the divergence {@see ReadOutcome}'s own docblock argues against for the read
+     * itself.
      *
-     * `$others` is the number of faults this read found beyond the one being
-     * printed. **Counted rather than swallowed**: refusing at the first fault is
-     * the behaviour `spec:build` and `spec:make` have always had and keep, but
-     * the pipeline now knows there are five where it used to know one, and
-     * saying nothing at all about the other four reads as a regression rather
-     * than as parity.
+     * `$others` is the number of faults this read found beyond the one being printed. **Counted rather than
+     * swallowed**: refusing at the first fault is the behaviour `spec:build` and `spec:make` have always had and keep,
+     * but the pipeline now knows there are five where it used to know one, and saying nothing at all about the other
+     * four reads as a regression rather than as parity.
      */
     protected function reportFault(SpecException $fault, int $others = 0): int
     {
@@ -119,8 +108,8 @@ trait ReadsTheContract
     }
 
     /**
-     * The flag wins over configuration, and both are resolved against the
-     * application root unless they are already absolute.
+     * The flag wins over configuration, and both are resolved against the application root unless they are already
+     * absolute.
      */
     protected function specPath(Repository $config): string
     {
@@ -141,10 +130,9 @@ trait ReadsTheContract
     /**
      * A configured value the command cannot proceed without.
      *
-     * Read as `mixed` and checked, rather than annotated as a string: a config
-     * repository promises nothing about a key's type, and the values an
-     * annotation would have declared impossible are exactly the ones worth a
-     * message — a key set to null, to a list, or emptied by hand.
+     * Read as `mixed` and checked, rather than annotated as a string: a config repository promises nothing about a
+     * key's type, and the values an annotation would have declared impossible are exactly the ones worth a message — a
+     * key set to null, to a list, or emptied by hand.
      *
      * @throws UnusableSettingException
      */
@@ -160,8 +148,8 @@ trait ReadsTheContract
     }
 
     /**
-     * Say a specification is not where it was looked for, in the words both
-     * commands owe a reader: the path, the setting, and the flag.
+     * Say a specification is not where it was looked for, in the words both commands owe a reader: the path, the
+     * setting, and the flag.
      */
     protected function reportMissingSpecification(string $specPath): void
     {

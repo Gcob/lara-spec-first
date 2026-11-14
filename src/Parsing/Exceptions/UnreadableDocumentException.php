@@ -10,9 +10,8 @@ use RuntimeException;
 /**
  * The specification file could not be turned into a document at all.
  *
- * Missing, unreadable, malformed, or decoding to something that is not a
- * mapping. Everything here happens before any OpenAPI rule applies, so it is
- * deliberately separate from the exceptions that judge a document's contents.
+ * Missing, unreadable, malformed, or decoding to something that is not a mapping. Everything here happens before any
+ * OpenAPI rule applies, so it is deliberately separate from the exceptions that judge a document's contents.
  */
 final class UnreadableDocumentException extends RuntimeException implements SpecException
 {

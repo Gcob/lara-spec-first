@@ -8,12 +8,11 @@ use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use RuntimeException;
 
 /**
- * An allowed remote reference has no vendored copy, and the build was not asked
- * to fetch one.
+ * An allowed remote reference has no vendored copy, and the build was not asked to fetch one.
  *
- * The build is frozen by default: a missing vendored copy is an error naming the
- * flag to run, never an implicit fetch. Once a copy exists, this exception never
- * fires again for that reference — resolution reads the committed file instead.
+ * The build is frozen by default: a missing vendored copy is an error naming the flag to run, never an implicit fetch.
+ * Once a copy exists, this exception never fires again for that reference — resolution reads the committed file
+ * instead.
  *
  * @see docs/guide/remote-references.md — "A reference is a dependency"
  * @see docs/guide/code-generation/index.md — "The build is frozen by default"

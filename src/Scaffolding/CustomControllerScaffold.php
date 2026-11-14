@@ -13,23 +13,19 @@ use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnwritableScaffoldException;
 /**
  * Writes the one file this package creates that a developer will own.
  *
- * **Everything about it is the opposite of a generated file, deliberately.** No
- * marker, no "DO NOT EDIT", no provenance block, no findings: this file is the
- * developer's from the moment it exists, and a build must never touch it again.
- * What it carries instead is a comment about the one line they did not write —
- * the `extends` — and then it gets out of the way.
+ * **Everything about it is the opposite of a generated file, deliberately.** No marker, no "DO NOT EDIT", no provenance
+ * block, no findings: this file is the developer's from the moment it exists, and a build must never touch it again.
+ * What it carries instead is a comment about the one line they did not write — the `extends` — and then it gets out of
+ * the way.
  *
- * **It writes `routeAction` with the signature the parent declares, and one line
- * in it.** Writing the method is what a developer expects from a `make`: the
- * signature is the fiddly part, PHP will not let them widen it, and copying it out
+ * **It writes `routeAction` with the signature the parent declares, and one line in it.** Writing the method is what a
+ * developer expects from a `make`: the signature is the fiddly part, PHP will not let them widen it, and copying it out
  * of a comment is work a generator should have done.
  *
- * **The one line is a call to the parent, and that is not decoration.** A method
- * with a genuinely empty body returns `null`, which Laravel renders as an empty
- * `200` — so a scaffold with an empty body would quietly turn the operation's
- * honest `501` into a lie, in the one command whose whole job is to help. The
- * parent call keeps the 501 until the developer replaces it, and replacing it is
- * exactly what implementing the operation means.
+ * **The one line is a call to the parent, and that is not decoration.** A method with a genuinely empty body returns
+ * `null`, which Laravel renders as an empty `200` — so a scaffold with an empty body would quietly turn the operation's
+ * honest `501` into a lie, in the one command whose whole job is to help. The parent call keeps the 501 until the
+ * developer replaces it, and replacing it is exactly what implementing the operation means.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
  * @see docs/guide/code-generation/generated-file-anatomy.md — "A reference says what to do"
@@ -125,14 +121,13 @@ final readonly class CustomControllerScaffold
     /**
      * What to do when PHP cannot find the parent.
      *
-     * **Written once, by the command that creates the file, and never again.** The
-     * build [never writes outside its own directories](../../docs/guide/code-generation/index.md),
-     * and that rule has no exception for a helpful comment — so from here on the
-     * comment belongs to the developer, including the freedom to delete it.
+     * **Written once, by the command that creates the file, and never again.** The build [never writes outside its own
+     * directories](../../docs/guide/code-generation/index.md), and that rule has no exception for a helpful comment —
+     * so from here on the comment belongs to the developer, including the freedom to delete it.
      *
-     * Three lines because three situations sit behind them, and the first answer
-     * is a command rather than an explanation: the build has not run here, the
-     * `x-controller` no longer points at this class, or the operation is gone.
+     * Three lines because three situations sit behind them, and the first answer is a command rather than an
+     * explanation: the build has not run here, the `x-controller` no longer points at this class, or the operation is
+     * gone.
      *
      * @return list<string>
      */
@@ -145,12 +140,10 @@ final readonly class CustomControllerScaffold
     }
 
     /**
-     * The method, its signature, and the line that keeps the operation honest until
-     * it is replaced.
+     * The method, its signature, and the line that keeps the operation honest until it is replaced.
      *
-     * The signature comes from {@see RouteActionSignature}, the same place the
-     * generated parent reads it: PHP forbids an override from widening, so this
-     * is not a suggestion the developer may reword — and two derivations of one
+     * The signature comes from {@see RouteActionSignature}, the same place the generated parent reads it: PHP forbids
+     * an override from widening, so this is not a suggestion the developer may reword — and two derivations of one
      * signature is how a scaffold ends up being a fatal error at load.
      *
      * @return list<string>

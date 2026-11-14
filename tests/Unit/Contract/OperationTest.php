@@ -64,10 +64,9 @@ function constructorFieldsOf(string $class): array
 /**
  * An operation with every field set to something distinguishable.
  *
- * Nothing is left at its default on purpose: the copy check below reads the
- * constructor with reflection, and a field left at its default would compare
- * equal whether it was copied or dropped, which is the failure the check exists
- * to catch.
+ * Nothing is left at its default on purpose: the copy check below reads the constructor with reflection, and a field
+ * left at its default would compare equal whether it was copied or dropped, which is the failure the check exists to
+ * catch.
  */
 function operationWithEveryField(): Operation
 {

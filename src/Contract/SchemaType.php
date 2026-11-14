@@ -7,13 +7,12 @@ namespace Gcob\LaraSpecFirst\Contract;
 /**
  * One of the seven types a JSON Schema instance can have.
  *
- * The values are JSON Schema's own spelling rather than PHP's, because that is
- * what the document wrote and what every message about it has to name back.
+ * The values are JSON Schema's own spelling rather than PHP's, because that is what the document wrote and what every
+ * message about it has to name back.
  *
- * `Null` is a type here rather than a flag beside one, which is the position
- * this package takes on nullability: 3.0's `nullable: true` and 3.1's
- * `type: [string, "null"]` both end up as this case inside {@see Schema::$types},
- * and nothing downstream has a second axis to forget about.
+ * `Null` is a type here rather than a flag beside one, which is the position this package takes on nullability: 3.0's
+ * `nullable: true` and 3.1's `type: [string, "null"]` both end up as this case inside {@see Schema::$types}, and
+ * nothing downstream has a second axis to forget about.
  *
  * @see docs/guide/openapi-support.md — "The normal form a schema takes"
  */

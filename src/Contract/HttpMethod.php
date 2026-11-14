@@ -7,9 +7,8 @@ namespace Gcob\LaraSpecFirst\Contract;
 /**
  * The HTTP methods an operation can be written under and this package can serve.
  *
- * `trace` is deliberately absent. OpenAPI defines it on a Path Item, but Laravel
- * has no TRACE verb, so an operation written under it cannot become a route —
- * and this package honors only what it can route, which means a `trace`
+ * `trace` is deliberately absent. OpenAPI defines it on a Path Item, but Laravel has no TRACE verb, so an operation
+ * written under it cannot become a route — and this package honors only what it can route, which means a `trace`
  * operation is refused where the document is read rather than carried this far.
  *
  * @see docs/guide/openapi-support.md — "`trace` cannot be routed"

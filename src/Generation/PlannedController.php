@@ -9,26 +9,20 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 /**
  * An operation paired with the name its generated controller will take.
  *
- * Exists because both the controller file and the routes file need that pairing,
- * and deriving the name twice would be two chances to derive it differently. The
- * same now goes for the third fact here: whether the custom controller the
- * contract names has been written yet. The controller's docblock and the route's
- * target both depend on it, and asking the filesystem twice would let one file
- * say what the other contradicts.
+ * Exists because both the controller file and the routes file need that pairing, and deriving the name twice would be
+ * two chances to derive it differently. The same now goes for the third fact here: whether the custom controller the
+ * contract names has been written yet. The controller's docblock and the route's target both depend on it, and asking
+ * the filesystem twice would let one file say what the other contradicts.
  */
 final readonly class PlannedController
 {
     /**
-     * @param  bool  $customControllerExists  whether a file for {@see ControllerName::$customController}
-     *                                        can be found, resolved once per build
-     * @param  RequestName|null  $request  the generated request `routeAction`
-     *                                     declares, or null for an operation
-     *                                     with nothing to validate. Part of the
-     *                                     pairing for the same reason the name
-     *                                     is: the controller declares it, a
-     *                                     scaffolded child has to match the
-     *                                     declaration, and deriving it twice is
-     *                                     two chances to derive it differently
+     * @param  bool  $customControllerExists  whether a file for {@see ControllerName::$customController} can be found,
+     *                                        resolved once per build
+     * @param  RequestName|null  $request  the generated request `routeAction` declares, or null for an operation with
+     *                                     nothing to validate. Part of the pairing for the same reason the name is: the
+     *                                     controller declares it, a scaffolded child has to match the declaration, and
+     *                                     deriving it twice is two chances to derive it differently
      */
     public function __construct(
         public Operation $operation,
@@ -48,14 +42,12 @@ final readonly class PlannedController
     /**
      * The class the route registers, which is the child when there is one.
      *
-     * **Resolved here, at build time, rather than by the router.** The
-     * registration has to stay a pair of plain strings for `route:cache`, so the
-     * choice cannot be deferred to a request — and there is nothing to defer: the
+     * **Resolved here, at build time, rather than by the router.** The registration has to stay a pair of plain strings
+     * for `route:cache`, so the choice cannot be deferred to a request — and there is nothing to defer: the
      * specification named the child, and either its file is there or it is not.
      *
-     * The generated parent answers until then, which is what keeps an operation
-     * whose custom controller has not been written yet at
-     * [501 rather than a fatal](../../docs/guide/code-generation/scaffolding.md).
+     * The generated parent answers until then, which is what keeps an operation whose custom controller has not been
+     * written yet at [501 rather than a fatal](../../docs/guide/code-generation/scaffolding.md).
      */
     public function routeTarget(string $namespace): string
     {

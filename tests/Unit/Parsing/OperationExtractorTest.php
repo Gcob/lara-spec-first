@@ -17,10 +17,9 @@ use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 
 /**
- * The read is assumed clean here: every fixture this helper is used against
- * has a readable document, so unwrapping straight to the extractor's own
- * result is what keeps every existing assertion below reading exactly as it
- * did before this class stopped throwing.
+ * The read is assumed clean here: every fixture this helper is used against has a readable document, so unwrapping
+ * straight to the extractor's own result is what keeps every existing assertion below reading exactly as it did before
+ * this class stopped throwing.
  */
 function extractionFrom(string $fixture): ExtractionResult
 {

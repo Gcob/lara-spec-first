@@ -47,9 +47,8 @@ beforeEach(function (): void {
 });
 
 /**
- * One JSON request through the real kernel, as the rest of this suite sends
- * one: `$this->postJson()` is the Laravel idiom and Pest's closure binding
- * hides it from static analysis, so the kernel is called directly instead.
+ * One JSON request through the real kernel, as the rest of this suite sends one: `$this->postJson()` is the Laravel
+ * idiom and Pest's closure binding hides it from static analysis, so the kernel is called directly instead.
  *
  * @param  array<string, mixed>|object  $payload  an object for a body that is `{}`, since an empty array is `[]`
  * @return array{0: int, 1: array<string, mixed>}
@@ -131,8 +130,8 @@ it('hands a boolean query parameter to validated() as the string it was sent', f
 /**
  * The rules as the validator takes them.
  *
- * The emitter writes an `InRule` as `Rule::in([...])`; the validator needs the
- * framework's object, so the same translation happens here.
+ * The emitter writes an `InRule` as `Rule::in([...])`; the validator needs the framework's object, so the same
+ * translation happens here.
  *
  * @param  array<string, list<string|InRule>>  $built
  * @return array<string, list<mixed>>
@@ -149,9 +148,8 @@ function frameworkRules(array $built): array
 }
 
 /**
- * Send one JSON payload at a route validated by exactly what `RuleSetBuilder`
- * emits for a body schema — the builder's output, not a hand-written copy of
- * it, so a regression in the builder fails here.
+ * Send one JSON payload at a route validated by exactly what `RuleSetBuilder` emits for a body schema — the builder's
+ * output, not a hand-written copy of it, so a regression in the builder fails here.
  *
  * @param  array<string, mixed>  $payload
  */
@@ -772,8 +770,8 @@ it('keeps a base64 string a string', function (): void {
 /**
  * Write the request the emitter produces for `$operation`, load it, and name it.
  *
- * Emitted rather than copied, so the class under test is what a build writes.
- * Each call gets a namespace of its own, since a class cannot be declared twice.
+ * Emitted rather than copied, so the class under test is what a build writes. Each call gets a namespace of its own,
+ * since a class cannot be declared twice.
  *
  * @return class-string<FormRequest>
  */
@@ -803,8 +801,8 @@ function emittedRequestClass(Operation $operation): string
 }
 
 /**
- * One request through the real kernel to a route that answers with what the
- * generated request validated, files reduced to their class name.
+ * One request through the real kernel to a route that answers with what the generated request validated, files reduced
+ * to their class name.
  *
  * @param  class-string<FormRequest>  $class
  * @param  array<string, mixed>  $parameters  form fields, for a request that is not JSON
@@ -836,8 +834,8 @@ function sendThroughEmitted(string $class, string $method, string $query = '', ?
 }
 
 /**
- * One request through the real kernel to a route that answers with what `dto()`
- * built, so a body that passes validation and then breaks the DTO shows as a 500.
+ * One request through the real kernel to a route that answers with what `dto()` built, so a body that passes validation
+ * and then breaks the DTO shows as a 500.
  *
  * @param  class-string<FormRequest>  $class
  * @param  array<array-key, mixed>  $json  the body, for a JSON request
@@ -1293,8 +1291,8 @@ it('waits on the key a form delivers when the body is optional', function (): vo
 /**
  * A real file on disk, whose type `mimetypes` has to sniff from its content.
  *
- * `UploadedFile::fake()` reports the type it is given and hides exactly this: a
- * fake `.csv` is `text/csv` whatever it holds, and a real one is `text/plain`.
+ * `UploadedFile::fake()` reports the type it is given and hides exactly this: a fake `.csv` is `text/csv` whatever it
+ * holds, and a real one is `text/plain`.
  */
 function realUpload(string $content, string $name = 'upload'): UploadedFile
 {

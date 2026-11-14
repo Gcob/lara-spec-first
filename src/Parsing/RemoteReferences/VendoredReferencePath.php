@@ -9,16 +9,13 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\RemoteReferenceException;
 /**
  * Where a remote reference's vendored copy lives on disk.
  *
- * One directory per host, the URL's path beneath it — self-documenting,
- * greppable, and reviewable, and it must be deterministic: fetching the same
- * URL twice has to land in the same file, or the whole scheme leaks.
+ * One directory per host, the URL's path beneath it — self-documenting, greppable, and reviewable, and it must be
+ * deterministic: fetching the same URL twice has to land in the same file, or the whole scheme leaks.
  *
- * **Query strings are folded into the filename**, via a short stable hash,
- * rather than supported literally. That is a narrow answer to a case
- * `docs/guide/remote-references.md` leaves `Open` (query strings, very long
- * paths, and case-insensitive filesystems all complicate a path-mirroring
- * layout) — not a general solution, just one that never silently collides two
- * different URLs onto one file.
+ * **Query strings are folded into the filename**, via a short stable hash, rather than supported literally. That is a
+ * narrow answer to a case `docs/guide/remote-references.md` leaves `Open` (query strings, very long paths, and
+ * case-insensitive filesystems all complicate a path-mirroring layout) — not a general solution, just one that never
+ * silently collides two different URLs onto one file.
  *
  * @internal Not public API — a detail of how vendoring lays out its directory.
  *
@@ -27,8 +24,7 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\RemoteReferenceException;
 final readonly class VendoredReferencePath
 {
     /**
-     * @throws RemoteReferenceException the URL's path carries a `.` or `..`
-     *                                  segment, which would otherwise let a
+     * @throws RemoteReferenceException the URL's path carries a `.` or `..` segment, which would otherwise let a
      *                                  reference write outside `$vendorRoot`
      */
     public static function forUrl(string $vendorRoot, string $url): string
@@ -97,10 +93,9 @@ final readonly class VendoredReferencePath
     }
 
     /**
-     * Insert a short hash of the query string before the file extension, or at
-     * the end when the last segment has none — so `user.yaml?x=1` and
-     * `user.yaml?x=2` vendor to two different, stable filenames instead of one
-     * overwriting the other.
+     * Insert a short hash of the query string before the file extension, or at the end when the last segment has none —
+     * so `user.yaml?x=1` and `user.yaml?x=2` vendor to two different, stable filenames instead of one overwriting the
+     * other.
      */
     private static function withQueryHash(string $lastSegment, string $query): string
     {

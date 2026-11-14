@@ -18,20 +18,17 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 
 /**
- * The routes that will exist, in order, mapped to their controller — plus
- * shadowing, where an earlier templated path swallows a later one.
+ * The routes that will exist, in order, mapped to their controller — plus shadowing, where an earlier templated path
+ * swallows a later one.
  *
- * **Shadowing covers a later template, not only a later literal path**, and
- * the templated case is the worse of the two: `GET /{owner}/{repo}` matches
- * every two-segment GET, so a `GET /users/{id}` written after it is a whole
- * resource that will never be reached, not one endpoint. The check used to
- * skip any later operation whose own path was templated, which left exactly
- * the shape real specifications make this mistake in reported as clean.
+ * **Shadowing covers a later template, not only a later literal path**, and the templated case is the worse of the two:
+ * `GET /{owner}/{repo}` matches every two-segment GET, so a `GET /users/{id}` written after it is a whole resource that
+ * will never be reached, not one endpoint. The check used to skip any later operation whose own path was templated,
+ * which left exactly the shape real specifications make this mistake in reported as clean.
  *
- * **Never writes.** It plans exactly as `spec:build` does —
- * {@see BuildPlanner::plan()}, the same class the build itself calls — and
- * stops there; {@see GeneratedTree::write()} is never reached from here or
- * from anywhere else in this namespace.
+ * **Never writes.** It plans exactly as `spec:build` does — {@see BuildPlanner::plan()}, the same class the build
+ * itself calls — and stops there; {@see GeneratedTree::write()} is never reached from here or from anywhere else in
+ * this namespace.
  *
  * @see docs/guide/doctor.md — "What it checks"
  */
@@ -42,10 +39,9 @@ final readonly class RoutingOutcomeCheck
     /**
      * The single path segment a later template's parameters are probed with.
      *
-     * Named rather than inlined because its one requirement is worth stating:
-     * it must be a segment no specification would write as a literal, since a
-     * literal segment in the earlier template matches only a request segment
-     * equal to it.
+     * Named rather than inlined because its one requirement is worth stating: it must be a segment no specification
+     * would write as a literal, since a literal segment in the earlier template matches only a request segment equal to
+     * it.
      */
     private const PROBE_SEGMENT = 'lsf-probe';
 
@@ -89,27 +85,21 @@ final readonly class RoutingOutcomeCheck
     }
 
     /**
-     * An earlier templated path that would match every request a later one
-     * was meant to answer — the later operation would never be reached,
-     * because Laravel keeps the document's own order and the first match wins.
+     * An earlier templated path that would match every request a later one was meant to answer — the later operation
+     * would never be reached, because Laravel keeps the document's own order and the first match wins.
      *
-     * **The earlier route is compiled once per candidate, not once per pair.**
-     * `new Route(...)` inside the inner loop turned an n-operation document
-     * into up to n²/2 compilations; hoisting it makes that n, and makes this
-     * method shorter rather than longer.
+     * **The earlier route is compiled once per candidate, not once per pair.** `new Route(...)` inside the inner loop
+     * turned an n-operation document into up to n²/2 compilations; hoisting it makes that n, and makes this method
+     * shorter rather than longer.
      *
-     * **What this does and does not catch.** A later path is tested by
-     * substituting one sample segment for each of its own parameters, so a
-     * template fully swallowed by an earlier one is found. A *partial* overlap
-     * is not, and that is deliberate rather than missing: `GET /users/{id}`
-     * written before `GET /{a}/{b}` shadows the second only for requests whose
-     * first segment is `users`, and reporting a route that is reachable for
-     * every other value as "will never be reached" would be false. Being
-     * unreachable for some inputs is a different finding, and one this section
+     * **What this does and does not catch.** A later path is tested by substituting one sample segment for each of its
+     * own parameters, so a template fully swallowed by an earlier one is found. A *partial* overlap is not, and that is
+     * deliberate rather than missing: `GET /users/{id}` written before `GET /{a}/{b}` shadows the second only for
+     * requests whose first segment is `users`, and reporting a route that is reachable for every other value as "will
+     * never be reached" would be false. Being unreachable for some inputs is a different finding, and one this section
      * does not make.
      *
-     * @param  list<PlannedController>  $controllers  in document order, exactly
-     *                                                as the build would emit routes
+     * @param  list<PlannedController>  $controllers  in document order, exactly as the build would emit routes
      * @return list<Finding>
      */
     private static function shadowing(array $controllers): array
@@ -168,17 +158,14 @@ final readonly class RoutingOutcomeCheck
     }
 
     /**
-     * Whether the already-compiled earlier route would match a request for the
-     * later path — the real Symfony route compiler Laravel itself uses, rather
-     * than a regex reinvented for this one check.
+     * Whether the already-compiled earlier route would match a request for the later path — the real Symfony route
+     * compiler Laravel itself uses, rather than a regex reinvented for this one check.
      *
-     * **A later template is probed with a sample segment per parameter.** A
-     * route pattern is not a request, and the compiler only answers about
-     * requests, so `/{owner}/{repo}` is asked about `/lsf-probe/lsf-probe`
-     * instead. The token only has to be a legal single segment: Laravel's
-     * default parameter pattern accepts anything without a `/`, and a literal
-     * segment in the earlier template can only match a request segment equal to
-     * it — which this one is not.
+     * **A later template is probed with a sample segment per parameter.** A route pattern is not a request, and the
+     * compiler only answers about requests, so `/{owner}/{repo}` is asked about `/lsf-probe/lsf-probe` instead. The
+     * token only has to be a legal single segment: Laravel's default parameter pattern accepts anything without a `/`,
+     * and a literal segment in the earlier template can only match a request segment equal to it — which this one is
+     * not.
      */
     private static function shadows(Route $earlierRoute, string $verb, string $laterTemplate): bool
     {
@@ -196,9 +183,8 @@ final readonly class RoutingOutcomeCheck
     /**
      * One concrete request path a route of this template would serve.
      *
-     * Every `{name}` — optional `{name?}` included, since an omitted optional
-     * segment is a shorter path the earlier route would be asked about
-     * separately — becomes the same probe token.
+     * Every `{name}` — optional `{name?}` included, since an omitted optional segment is a shorter path the earlier
+     * route would be asked about separately — becomes the same probe token.
      */
     private static function probePath(string $template): string
     {

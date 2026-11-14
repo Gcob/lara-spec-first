@@ -54,12 +54,10 @@ function operations(array $rows): array
 }
 
 /**
- * A class this repository really autoloads, standing in for a custom controller a
- * project has written.
+ * A class this repository really autoloads, standing in for a custom controller a project has written.
  *
- * Real rather than plausible, because the question the plan asks about an
- * `x-controller` value is whether the autoloader can find a file for it — and a
- * fake would only prove that a fake answers.
+ * Real rather than plausible, because the question the plan asks about an `x-controller` value is whether the
+ * autoloader can find a file for it — and a fake would only prove that a fake answers.
  */
 function writtenController(): string
 {

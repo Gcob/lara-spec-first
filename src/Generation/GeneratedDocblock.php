@@ -7,35 +7,29 @@ namespace Gcob\LaraSpecFirst\Generation;
 /**
  * The header every generated class carries, assembled once.
  *
- * **Every file the build emits explains itself**, and that is a requirement
- * rather than a courtesy. A banner saying "generated, do not edit" answers who
- * owns the file, which is settled elsewhere, and it is not what a reader
- * opening the file actually needs. Three things are: where this came from, what
- * the build worked out while emitting it, and where to go next.
+ * **Every file the build emits explains itself**, and that is a requirement rather than a courtesy. A banner saying
+ * "generated, do not edit" answers who owns the file, which is settled elsewhere, and it is not what a reader opening
+ * the file actually needs. Three things are: where this came from, what the build worked out while emitting it, and
+ * where to go next.
  *
- * The audience is deliberately both a person and a coding agent. An agent reads
- * a handful of files rather than a codebase, cannot infer a convention from ten
- * sibling examples, and has no way to know that the interesting behavior lives
- * three directories away unless the file says so. Every guess it has to make is
- * a chance to write something plausible and wrong into an application.
+ * The audience is deliberately both a person and a coding agent. An agent reads a handful of files rather than a
+ * codebase, cannot infer a convention from ten sibling examples, and has no way to know that the interesting behavior
+ * lives three directories away unless the file says so. Every guess it has to make is a chance to write something
+ * plausible and wrong into an application.
  *
- * Here rather than in one emitter because the second emitter arrived: a
- * controller and a request carry the same three sections, and two copies of the
- * whitespace rules below would be two chances for a consumer's formatter to
- * find something to change in one of them.
+ * Here rather than in one emitter because the second emitter arrived: a controller and a request carry the same three
+ * sections, and two copies of the whitespace rules below would be two chances for a consumer's formatter to find
+ * something to change in one of them.
  *
  * @see docs/guide/code-generation/generated-file-anatomy.md — "Every generated file explains itself"
  */
 final readonly class GeneratedDocblock
 {
     /**
-     * @param  non-empty-list<string>  $provenance  where this came from, one line
-     *                                              each and already escaped
-     * @param  non-empty-list<string>  $findings  what the build knew and the
-     *                                            reader cannot see, wrapped here
-     * @param  non-empty-list<string>  $navigation  where to go next, already
-     *                                              wrapped; an empty string is a
-     *                                              blank line inside the block
+     * @param  non-empty-list<string>  $provenance  where this came from, one line each and already escaped
+     * @param  non-empty-list<string>  $findings  what the build knew and the reader cannot see, wrapped here
+     * @param  non-empty-list<string>  $navigation  where to go next, already wrapped; an empty string is a blank line
+     *                                              inside the block
      */
     public static function render(array $provenance, array $findings, array $navigation): string
     {

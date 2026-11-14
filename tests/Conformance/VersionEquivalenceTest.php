@@ -40,9 +40,8 @@ it('reads the pair as the two different versions they claim to be', function ():
 /**
  * Every schema keyword, read back as plain data.
  *
- * A `Contract\Schema` is a tree, and the comparison has to reach its leaves:
- * the version differences are concentrated there rather than in the operation
- * around it.
+ * A `Contract\Schema` is a tree, and the comparison has to reach its leaves: the version differences are concentrated
+ * there rather than in the operation around it.
  *
  * @return array<string, mixed>|null
  */

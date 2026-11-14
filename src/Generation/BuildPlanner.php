@@ -12,15 +12,13 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 /**
  * Works out every file the build will write, before any of it is written.
  *
- * **The separation is the point, not a structure for its own sake.** A build that
- * emitted as it went would leave a half-generated tree behind the first operation
- * it could not handle, and half-generated output from a broken contract is worse
- * than no output: it analyses, it autocompletes, and it lies. Planning everything
- * first means a refusal costs nothing — the working tree is exactly as it was.
+ * **The separation is the point, not a structure for its own sake.** A build that emitted as it went would leave a
+ * half-generated tree behind the first operation it could not handle, and half-generated output from a broken contract
+ * is worse than no output: it analyses, it autocompletes, and it lies. Planning everything first means a refusal costs
+ * nothing — the working tree is exactly as it was.
  *
- * It also makes the whole of the build's decision-making testable without a
- * filesystem, which is where the interesting parts are: names, collisions, and
- * the paths Laravel cannot route.
+ * It also makes the whole of the build's decision-making testable without a filesystem, which is where the interesting
+ * parts are: names, collisions, and the paths Laravel cannot route.
  *
  * @see docs/guide/code-generation/index.md — "The build command: spec:build"
  */
@@ -29,13 +27,10 @@ final readonly class BuildPlanner
     private CustomControllerLookup $lookup;
 
     /**
-     * @param  CustomControllerLookup|null  $lookup  how the plan learns whether a
-     *                                               custom controller has been
-     *                                               written yet; the running
-     *                                               application's autoloader by
-     *                                               default, and injectable so a
-     *                                               test can state the answer
-     *                                               instead of arranging a file
+     * @param  CustomControllerLookup|null  $lookup  how the plan learns whether a custom controller has been written
+     *                                               yet; the running application's autoloader by default, and
+     *                                               injectable so a test can state the answer instead of arranging a
+     *                                               file
      */
     public function __construct(
         private string $namespace,
@@ -162,12 +157,10 @@ final readonly class BuildPlanner
     /**
      * Refuse a custom controller that would live inside the generated tree.
      *
-     * Two things go wrong at once, and either would be enough. The generated
-     * parent takes the same short name inside the generated namespace, so a child
-     * declared there *is* its own parent — a class extending itself, which PHP
-     * refuses at load. And a project's own classes belong outside a directory
-     * whose entire contract is that a build rewrites it and a `.gitignore` may
-     * discard it: putting work there is how a consumer loses their work.
+     * Two things go wrong at once, and either would be enough. The generated parent takes the same short name inside
+     * the generated namespace, so a child declared there *is* its own parent — a class extending itself, which PHP
+     * refuses at load. And a project's own classes belong outside a directory whose entire contract is that a build
+     * rewrites it and a `.gitignore` may discard it: putting work there is how a consumer loses their work.
      *
      * @throws UnusableNameException
      *
@@ -185,11 +178,10 @@ final readonly class BuildPlanner
     /**
      * Refuse a path Laravel would accept and never match.
      *
-     * Both checks exist because the framework fails silently or fails late. An
-     * unsupported character makes the placeholder literal text, so the endpoint
-     * 404s forever with nothing reporting it. An over-long name throws from the
-     * route compiler, which runs while the application boots — so the failure
-     * arrives far from the specification that caused it.
+     * Both checks exist because the framework fails silently or fails late. An unsupported character makes the
+     * placeholder literal text, so the endpoint 404s forever with nothing reporting it. An over-long name throws from
+     * the route compiler, which runs while the application boots — so the failure arrives far from the specification
+     * that caused it.
      *
      * @throws UnroutablePathException
      */

@@ -9,18 +9,16 @@ use Gcob\LaraSpecFirst\Contract\Exceptions\InvalidPathTemplateException;
 /**
  * A path as the specification writes it, plus the form used to identify it.
  *
- * The two are not the same, and the difference is a decision rather than a
- * convenience: **the names of path parameters are not part of an operation's
- * identity.** Renaming `/users/{id}` to `/users/{userId}` changes nothing a
- * client can observe — the URL on the wire is identical and the name is
- * documentation — so `$normalized` reduces every parameter to its position.
+ * The two are not the same, and the difference is a decision rather than a convenience: **the names of path parameters
+ * are not part of an operation's identity.** Renaming `/users/{id}` to `/users/{userId}` changes nothing a client can
+ * observe — the URL on the wire is identical and the name is documentation — so `$normalized` reduces every parameter
+ * to its position.
  *
- * That is what lets a rename be reported as a rename instead of as a deletion
- * and an addition, and what keeps such an edit out of a contract diff entirely.
+ * That is what lets a rename be reported as a rename instead of as a deletion and an addition, and what keeps such an
+ * edit out of a contract diff entirely.
  *
- * It also means `/users/{id}` and `/users/{slug}` normalize alike and collide.
- * That is correct: those two paths already collide in any router, so surfacing
- * it is a service rather than a limitation.
+ * It also means `/users/{id}` and `/users/{slug}` normalize alike and collide. That is correct: those two paths already
+ * collide in any router, so surfacing it is a service rather than a limitation.
  *
  * @see docs/guide/code-generation/generated-file-anatomy.md — "Identity is the path and method"
  */
@@ -53,8 +51,7 @@ final readonly class PathTemplate
     }
 
     /**
-     * Whether two paths address the same endpoint, whatever their parameters are
-     * called.
+     * Whether two paths address the same endpoint, whatever their parameters are called.
      */
     public function isSameEndpointAs(self $other): bool
     {

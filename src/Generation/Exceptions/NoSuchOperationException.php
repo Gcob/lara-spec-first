@@ -10,10 +10,9 @@ use InvalidArgumentException;
 /**
  * `spec:make` was given a name or a tag the contract does not carry.
  *
- * Refused rather than treated as an empty selection, because the two mean opposite
- * things to whoever typed it: a command that scaffolded nothing and said
- * "created 0 files" reads as *there was nothing to do*, when what happened is that
- * the name was wrong.
+ * Refused rather than treated as an empty selection, because the two mean opposite things to whoever typed it: a
+ * command that scaffolded nothing and said "created 0 files" reads as *there was nothing to do*, when what happened is
+ * that the name was wrong.
  */
 final class NoSuchOperationException extends InvalidArgumentException implements SpecException
 {

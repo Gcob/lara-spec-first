@@ -15,44 +15,34 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 /**
  * One operation's request body and `query` parameters, as one Laravel rule set.
  *
- * **Every constraint maps or reports**, and the second half is what makes this
- * safe to ship before the first is finished. A keyword this class does not yet
- * translate leaves a finding naming it and the field it was written on, so a
- * rule set that is incomplete says so in the file a reader opens. What is never
- * emitted is a looser rule that almost matches: accepting a payload the
- * contract refuses is a wrong answer where a report is a missing one, and only
- * the second is recoverable. Nor is a rule emitted that
- * is stricter than the contract, refusing what it accepts, unless matching it
- * exactly would be far too complex in Laravel, and then a finding says so.
+ * **Every constraint maps or reports**, and the second half is what makes this safe to ship before the first is
+ * finished. A keyword this class does not yet translate leaves a finding naming it and the field it was written on, so
+ * a rule set that is incomplete says so in the file a reader opens. What is never emitted is a looser rule that almost
+ * matches: accepting a payload the contract refuses is a wrong answer where a report is a missing one, and only the
+ * second is recoverable. Nor is a rule emitted that is stricter than the contract, refusing what it accepts, unless
+ * matching it exactly would be far too complex in Laravel, and then a finding says so.
  *
- * **What it translates is the whole table** in request-validation.md: types,
- * nullability and presence, the bounds on strings, numbers and arrays, the
- * `format` values Laravel has a rule of the same meaning for, enumerations,
- * patterns inside the ECMA-262 / PCRE boundary, nested objects and array
- * elements under dotted keys, `allOf` merged, `dependentRequired`, an
- * optional body's "all or none", and the file parts of a multipart body. What
- * it does not — an `encoding` beside a file part, a pattern across the
- * boundary, a `format` Laravel would read differently, a recursive schema's
- * infinite depth — leaves a finding.
+ * **What it translates is the whole table** in request-validation.md: types, nullability and presence, the bounds on
+ * strings, numbers and arrays, the `format` values Laravel has a rule of the same meaning for, enumerations, patterns
+ * inside the ECMA-262 / PCRE boundary, nested objects and array elements under dotted keys, `allOf` merged,
+ * `dependentRequired`, an optional body's "all or none", and the file parts of a multipart body. What it does not — an
+ * `encoding` beside a file part, a pattern across the boundary, a `format` Laravel would read differently, a recursive
+ * schema's infinite depth — leaves a finding.
  *
  * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
  */
 final readonly class RuleSetBuilder
 {
     /**
-     * RFC 3339's `date-time` grammar, as a pattern: a fraction of any length,
-     * `T` and `Z` in either case, an offset with hours below 24.
+     * RFC 3339's `date-time` grammar, as a pattern: a fraction of any length, `T` and `Z` in either case, an offset
+     * with hours below 24.
      *
-     * **A pattern rather than `date_format`**, because `date_format` passes
-     * only on an exact round trip through one of PHP's format strings, and
-     * PHP has no variable-width fraction: six patterns covered 0, 3 and 6
-     * digits and refused the 7 .NET writes and the 9 Go does. ASCII classes
-     * and no `u`, since every character here is ASCII, and `D` so a trailing
-     * newline is refused. Laravel's `date` beside it is what refuses a
-     * February 30th, which a grammar cannot see. Measured on the validator:
-     * fractions of 1, 3, 5, 7 and 9 digits pass, as do lower case and
-     * `-00:00`; `02-30`, `24:00:00`, `+24:00`, a missing offset and a
-     * trailing newline are refused.
+     * **A pattern rather than `date_format`**, because `date_format` passes only on an exact round trip through one of
+     * PHP's format strings, and PHP has no variable-width fraction: six patterns covered 0, 3 and 6 digits and refused
+     * the 7 .NET writes and the 9 Go does. ASCII classes and no `u`, since every character here is ASCII, and `D` so a
+     * trailing newline is refused. Laravel's `date` beside it is what refuses a February 30th, which a grammar cannot
+     * see. Measured on the validator: fractions of 1, 3, 5, 7 and 9 digits pass, as do lower case and `-00:00`;
+     * `02-30`, `24:00:00`, `+24:00`, a missing offset and a trailing newline are refused.
      *
      * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
      */
@@ -60,9 +50,8 @@ final readonly class RuleSetBuilder
         .'([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$/D';
 
     /**
-     * The `format` values Laravel has a rule of the same meaning for, and the
-     * rule. Anything else is reported: `uri` most visibly, since Laravel's
-     * `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows.
+     * The `format` values Laravel has a rule of the same meaning for, and the rule. Anything else is reported: `uri`
+     * most visibly, since Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows.
      */
     private const FORMAT_RULES = [
         'date' => ['date_format:Y-m-d'],
@@ -74,17 +63,15 @@ final readonly class RuleSetBuilder
     ];
 
     /**
-     * The one body media type a part can be a file in, so the one a file part
-     * is read as one for.
+     * The one body media type a part can be a file in, so the one a file part is read as one for.
      */
     private const MULTIPART = 'multipart/form-data';
 
     /**
      * The media types a generated rule set covers.
      *
-     * All three arrive through `all()`, so one rule set covers them and the
-     * order here is only the order a tie is broken in. What changes between
-     * them is whether a part can be a file, which is `uploads.md`'s subject.
+     * All three arrive through `all()`, so one rule set covers them and the order here is only the order a tie is
+     * broken in. What changes between them is whether a part can be a file, which is `uploads.md`'s subject.
      *
      * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
      */
@@ -97,18 +84,14 @@ final readonly class RuleSetBuilder
     /**
      * Every keyword a rule could come from, by the property that carries it.
      *
-     * The list is closed and checked per field against what the walk actually
-     * acted on, which is what makes a finding a measurement rather than a
-     * reminder: a keyword stated on a field and absent from that field's
-     * handled set is named, whatever the reason it was not translated. A
-     * keyword added to {@see Schema} and not here is a keyword nothing
-     * reports, and that is the silence this mechanism exists against.
+     * The list is closed and checked per field against what the walk actually acted on, which is what makes a finding a
+     * measurement rather than a reminder: a keyword stated on a field and absent from that field's handled set is
+     * named, whatever the reason it was not translated. A keyword added to {@see Schema} and not here is a keyword
+     * nothing reports, and that is the silence this mechanism exists against.
      *
-     * `writeOnly` and `examples` are absent on purpose: the support matrix
-     * ignores them as rules rather than deferring them, so there is nothing
-     * coming for a finding to promise. `readOnly` is read, and absent for a
-     * different reason: it changes the presence of a required property
-     * rather than adding a rule, and says so in its own finding.
+     * `writeOnly` and `examples` are absent on purpose: the support matrix ignores them as rules rather than deferring
+     * them, so there is nothing coming for a finding to promise. `readOnly` is read, and absent for a different reason:
+     * it changes the presence of a required property rather than adding a rule, and says so in its own finding.
      */
     private const RULE_KEYWORDS = [
         'format',
@@ -136,9 +119,8 @@ final readonly class RuleSetBuilder
     ];
 
     /**
-     * @throws ConflictingInputException the body and a query parameter naming one field,
-     *                                   two media types over two schemas, or an
-     *                                   `allOf` whose branches disagree
+     * @throws ConflictingInputException the body and a query parameter naming one field, two media types over two
+     *                                   schemas, or an `allOf` whose branches disagree
      */
     public static function for(Operation $operation): RuleSet
     {
@@ -238,8 +220,7 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The one schema the rule set is built from, or null when the body states
-     * none this package reads.
+     * The one schema the rule set is built from, or null when the body states none this package reads.
      *
      * @param  list<string>  $findings
      *
@@ -293,9 +274,8 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether a file part is written anywhere in a schema, a nested one and an
-     * `allOf` branch included. A recursion marker has nothing under it, so it
-     * ends the walk.
+     * Whether a file part is written anywhere in a schema, a nested one and an `allOf` branch included. A recursion
+     * marker has nothing under it, so it ends the walk.
      */
     private static function hasFilePart(Schema $schema): bool
     {
@@ -315,10 +295,9 @@ final readonly class RuleSetBuilder
     /**
      * Refuse two media types describing two different shapes.
      *
-     * Compared by value rather than by identity, because two media types
-     * pointing at one `$ref` are not guaranteed to reach here as one object,
-     * and two identical inline schemas are not a conflict either: what the
-     * document said is the same thing twice.
+     * Compared by value rather than by identity, because two media types pointing at one `$ref` are not guaranteed to
+     * reach here as one object, and two identical inline schemas are not a conflict either: what the document said is
+     * the same thing twice.
      *
      * @param  array<string, Schema>  $read
      *
@@ -348,8 +327,8 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Every rule the body's own schema produces, and the top-level keys it
-     * closes the payload to, or null when it does not.
+     * Every rule the body's own schema produces, and the top-level keys it closes the payload to, or null when it does
+     * not.
      *
      * @return list<string>|null
      *
@@ -493,9 +472,9 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The key the request's own failures about the body itself are answered on: `body`, unless the
-     * contract has a top-level name that is that, or a `query` parameter (which is merged into the same data), in which case the client could not tell which of
-     * the two is wrong, and the same key with `_` in front until none is.
+     * The key the request's own failures about the body itself are answered on: `body`, unless the contract has a
+     * top-level name that is that, or a `query` parameter (which is merged into the same data), in which case the
+     * client could not tell which of the two is wrong, and the same key with `_` in front until none is.
      */
     private static function rootKey(Schema $schema, Operation $operation): string
     {
@@ -531,14 +510,11 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether the body's schema is read as an object: it says so, or it names
-     * `properties` and says no type.
+     * Whether the body's schema is read as an object: it says so, or it names `properties` and says no type.
      *
-     * JSON Schema applies `properties` to objects only, and a body that names
-     * some is an object whether or not it spells `type: object`, which
-     * generators that omit the type are common enough to matter. Only the
-     * body's root: a nested field with the same shape would be refused a
-     * string the contract accepts, so it keeps no type rule.
+     * JSON Schema applies `properties` to objects only, and a body that names some is an object whether or not it
+     * spells `type: object`, which generators that omit the type are common enough to matter. Only the body's root: a
+     * nested field with the same shape would be refused a string the contract accepts, so it keeps no type rule.
      */
     public static function isObjectBody(Schema $schema): bool
     {
@@ -547,19 +523,16 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * How each of the root's properties is asked for, which is where the
-     * method and the body's own `required` flag meet.
+     * How each of the root's properties is asked for, which is where the method and the body's own `required` flag
+     * meet.
      *
-     * - A `PATCH` is a partial update, so the schema's list describes a
-     *   representation the client is not sending all of: every property is
-     *   `sometimes`.
-     * - An optional body may be absent entirely, and a plain presence rule
-     *   would then refuse a request the contract allows. What the contract
-     *   means is "a body or none", and `*_with` naming every other key the
-     *   body may carry says exactly that: nothing sent, nothing required; any
-     *   key sent — a required one or an optional one — and the required ones
-     *   follow. Naming only the required siblings would accept a body made of
-     *   optional keys alone, which the contract refuses.
+     * - A `PATCH` is a partial update, so the schema's list describes a representation the client is not sending all
+     *   of: every property is `sometimes`.
+     * - An optional body may be absent entirely, and a plain presence rule would then refuse a request the contract
+     *   allows. What the contract means is "a body or none", and `*_with` naming every other key the body may carry
+     *   says exactly that: nothing sent, nothing required; any key sent — a required one or an optional one — and the
+     *   required ones follow. Naming only the required siblings would accept a body made of optional keys alone, which
+     *   the contract refuses.
      * - Otherwise the schema's list is read as written.
      *
      * @return callable(string, Schema): string
@@ -596,8 +569,7 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Every property of one object, keyed under its parent, with the presence
-     * a caller decides for the required ones.
+     * Every property of one object, keyed under its parent, with the presence a caller decides for the required ones.
      *
      * @param  callable(string, Schema): string  $presence  how a named property
      *                                                      is asked for, before
@@ -704,8 +676,8 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * `dependentRequired`, read the other way round: for each property it
-     * names, the keys whose presence makes it required.
+     * `dependentRequired`, read the other way round: for each property it names, the keys whose presence makes it
+     * required.
      *
      * @return array<string, list<string>> a dependent name => trigger rule keys
      */
@@ -748,12 +720,10 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * One field, every rule it produces, and a finding for everything it
-     * states that none of them carries.
+     * One field, every rule it produces, and a finding for everything it states that none of them carries.
      *
-     * @param  string  $presence  how the key itself is asked for, or the empty
-     *                            string for an array element, which exists by
-     *                            being in the array
+     * @param  string  $presence  how the key itself is asked for, or the empty string for an array element, which
+     *                            exists by being in the array
      *
      * @throws ConflictingInputException
      */
@@ -997,17 +967,15 @@ final readonly class RuleSetBuilder
     /**
      * The rule for a boolean whose value arrives as text.
      *
-     * **Laravel's `boolean` refuses `"true"` and `"false"`**, and those are how
-     * OpenAPI's default `form` style writes a boolean in a query string
-     * (`?notify=true`), and how a form or multipart body carries one. Refusing
-     * them answers 422 to every generated client for a contract it follows, so
-     * `true`, `false`, `1` and `0` are accepted, as text. `false` is not in the
-     * list as a PHP value: `Rule::in` compares `(string) false`, which is the
-     * empty string, and that would accept the `null` an empty value becomes.
-     * `validated()` holds the string as sent, which the finding says.
+     * **Laravel's `boolean` refuses `"true"` and `"false"`**, and those are how OpenAPI's default `form` style writes a
+     * boolean in a query string (`?notify=true`), and how a form or multipart body carries one. Refusing them answers
+     * 422 to every generated client for a contract it follows, so `true`, `false`, `1` and `0` are accepted, as text.
+     * `false` is not in the list as a PHP value: `Rule::in` compares `(string) false`, which is the empty string, and
+     * that would accept the `null` an empty value becomes. `validated()` holds the string as sent, which the finding
+     * says.
      *
-     * An enumeration of booleans is read as every spelling of its values, since
-     * `Rule::in([true])` would accept `1` and refuse `true`.
+     * An enumeration of booleans is read as every spelling of its values, since `Rule::in([true])` would accept `1` and
+     * refuse `true`.
      *
      * @param  list<string>  $handled
      */
@@ -1066,9 +1034,8 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether a schema is read as a file: the schema says so, the body is
-     * `multipart/form-data` alone, and the schema does not also say it is some
-     * other type, since the other type is what its rules would answer to.
+     * Whether a schema is read as a file: the schema says so, the body is `multipart/form-data` alone, and the schema
+     * does not also say it is some other type, since the other type is what its rules would answer to.
      *
      * @internal Public so the input DTO asks the question the rules did.
      */
@@ -1080,33 +1047,25 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * What a file part becomes: `file`, the types its `contentMediaType` names,
-     * and a size in kilobytes.
+     * What a file part becomes: `file`, the types its `contentMediaType` names, and a size in kilobytes.
      *
-     * **`file` instead of `string`**, because `string` refuses an upload, which
-     * is worse than leaving the rule out.
+     * **`file` instead of `string`**, because `string` refuses an upload, which is worse than leaving the rule out.
      *
-     * **`mimetypes:` and only from `contentMediaType`.** `encoding.<part>.contentType`
-     * wins over it in `uploads.md`, but `RequestBody` holds one schema per media
-     * type and nothing else, so `encoding` never reaches the contract. Every
-     * file part says so, because this walk cannot tell a part with an
-     * `encoding` from one without.
+     * **`mimetypes:` and only from `contentMediaType`.** `encoding.<part>.contentType` wins over it in `uploads.md`,
+     * but `RequestBody` holds one schema per media type and nothing else, so `encoding` never reaches the contract.
+     * Every file part says so, because this walk cannot tell a part with an `encoding` from one without.
      *
-     * TODO (#90): read `encoding.<part>.contentType` once it is in the contract,
-     * and drop the finding below.
+     * TODO (#90): read `encoding.<part>.contentType` once it is in the contract, and drop the finding below.
      *
-     * **A text type is not one to match either, and a finding says so.** See
-     * {@see self::isSniffedAsAnotherType()}: `mimetypes:text/csv` refuses every
-     * real CSV.
+     * **A text type is not one to match either, and a finding says so.** See {@see self::isSniffedAsAnotherType()}:
+     * `mimetypes:text/csv` refuses every real CSV.
      *
-     * **`application/octet-stream` and the any-type wildcard are not types to
-     * match.** They are how a contract says "any bytes", and `mimetypes`
-     * inspects the file's real type, so it would turn away every upload that
-     * is not literally an octet stream: a rule stricter than the contract, in
-     * the direction of refusing valid payloads.
+     * **`application/octet-stream` and the any-type wildcard are not types to match.** They are how a contract says
+     * "any bytes", and `mimetypes` inspects the file's real type, so it would turn away every upload that is not
+     * literally an octet stream: a rule stricter than the contract, in the direction of refusing valid payloads.
      *
-     * **`maxLength` is bytes and `max` is kilobytes, and the ceiling is exact.**
-     * Laravel's `max` takes a decimal, so 2500 bytes is `max:2.44140625`.
+     * **`maxLength` is bytes and `max` is kilobytes, and the ceiling is exact.** Laravel's `max` takes a decimal, so
+     * 2500 bytes is `max:2.44140625`.
      *
      * @param  list<string|InRule>  $rules
      * @param  list<string>  $handled
@@ -1162,18 +1121,15 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether a media type is one libmagic never reports for a file of that
-     * type, so that `mimetypes` would refuse every real one.
+     * Whether a media type is one libmagic never reports for a file of that type, so that `mimetypes` would refuse
+     * every real one.
      *
-     * Measured on libmagic 5.41, with real files (a faked upload reports the
-     * type it is given and hides this): a CSV, a Markdown file and a YAML file
-     * sniff as `text/plain`, an XML file as `text/xml` where the contract says
-     * `application/xml`, and a JSON file as `application/json` on this version
-     * and `text/plain` on older ones. `text/*` is the class, and the textual
-     * `application/*` types are the same class: libmagic reads their content,
-     * and a content with a name of its own (`application/ld+json`) still comes
-     * back as the generic one. `image/svg+xml`, `application/pdf` and the
-     * binary types sniff as themselves and keep their rule.
+     * Measured on libmagic 5.41, with real files (a faked upload reports the type it is given and hides this): a CSV, a
+     * Markdown file and a YAML file sniff as `text/plain`, an XML file as `text/xml` where the contract says
+     * `application/xml`, and a JSON file as `application/json` on this version and `text/plain` on older ones. `text/*`
+     * is the class, and the textual `application/*` types are the same class: libmagic reads their content, and a
+     * content with a name of its own (`application/ld+json`) still comes back as the generic one. `image/svg+xml`,
+     * `application/pdf` and the binary types sniff as themselves and keep their rule.
      */
     private static function isSniffedAsAnotherType(string $mediaType): bool
     {
@@ -1235,8 +1191,8 @@ final readonly class RuleSetBuilder
     /**
      * What an integer's or a number's own keywords become.
      *
-     * Beside `integer` or `numeric`, `min` and `max` compare the value, and
-     * `gt` and `lt` take a number as readily as a field name.
+     * Beside `integer` or `numeric`, `min` and `max` compare the value, and `gt` and `lt` take a number as readily as a
+     * field name.
      *
      * @param  list<string|InRule>  $rules
      * @param  list<string>  $handled
@@ -1262,8 +1218,7 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * A number as a rule parameter: `1` rather than `1.0`, and a fraction as
-     * PHP prints one.
+     * A number as a rule parameter: `1` rather than `1.0`, and a fraction as PHP prints one.
      */
     private static function number(int|float $value): string
     {
@@ -1277,13 +1232,11 @@ final readonly class RuleSetBuilder
     /**
      * `distinct:strict`, or null where it would not mean `uniqueItems`.
      *
-     * Two shapes break it, both measured on Laravel's validator. Under a
-     * wildcard, `distinct` turns every `*` into a pattern and compares across
-     * every element of the outer list, so `[{tags: [a]}, {tags: [a]}]` is
-     * refused although each list is unique. And on elements that are objects
-     * or arrays it flattens them with dots and never compares the elements
-     * themselves, so `[{a: 1}, {a: 1}]` passes. It also lets two nulls
-     * through. A null leaves the keyword to the sweep, which reports it.
+     * Two shapes break it, both measured on Laravel's validator. Under a wildcard, `distinct` turns every `*` into a
+     * pattern and compares across every element of the outer list, so `[{tags: [a]}, {tags: [a]}]` is refused although
+     * each list is unique. And on elements that are objects or arrays it flattens them with dots and never compares the
+     * elements themselves, so `[{a: 1}, {a: 1}]` passes. It also lets two nulls through. A null leaves the keyword to
+     * the sweep, which reports it.
      */
     private static function uniquenessRule(string $key, Schema $schema, RuleWalk $walk, string $label): ?string
     {
@@ -1304,12 +1257,10 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether a key name cannot appear in a rule's list of key names: a comma
-     * splits the list, and a dot is read as nesting before the rule sees the
-     * data.
+     * Whether a key name cannot appear in a rule's list of key names: a comma splits the list, and a dot is read as
+     * nesting before the rule sees the data.
      *
-     * @internal Public so the input DTO asks the question the rules did, and the
-     *           two cannot drift apart.
+     * @internal Public so the input DTO asks the question the rules did, and the two cannot drift apart.
      */
     public static function breaksKeyList(string $name): bool
     {
@@ -1326,8 +1277,8 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether the field states no type and every allowed value is a string,
-     * which is the contract saying the field is one.
+     * Whether the field states no type and every allowed value is a string, which is the contract saying the field is
+     * one.
      */
     private static function isStringEnumeration(Schema $schema): bool
     {
@@ -1370,21 +1321,16 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The rule a key the contract requires gets, which is not always Laravel's
-     * `required`.
+     * The rule a key the contract requires gets, which is not always Laravel's `required`.
      *
-     * **JSON Schema's `required` asks for the key; Laravel's asks for a
-     * non-empty value.** It refuses `null`, `""`, `[]` and `{}` whatever else
-     * the field declares, so a required string the contract lets be empty, a
-     * required array it lets hold nothing, or any field that may be null would
-     * answer 422 to a payload the contract accepts. `present` asks for the key
-     * and nothing else, and the type rule beside it judges any value that is
-     * not blank.
+     * **JSON Schema's `required` asks for the key; Laravel's asks for a non-empty value.** It refuses `null`, `""`,
+     * `[]` and `{}` whatever else the field declares, so a required string the contract lets be empty, a required array
+     * it lets hold nothing, or any field that may be null would answer 422 to a payload the contract accepts. `present`
+     * asks for the key and nothing else, and the type rule beside it judges any value that is not blank.
      *
-     * `required` is kept for the three types whose own rule refuses every
-     * empty value anyway — an integer, a number, a boolean cannot be `""` or
-     * `[]` — because there the two say the same thing and `required` is what
-     * a reader expects to see.
+     * `required` is kept for the three types whose own rule refuses every empty value anyway — an integer, a number, a
+     * boolean cannot be `""` or `[]` — because there the two say the same thing and `required` is what a reader expects
+     * to see.
      *
      * @see docs/guide/code-generation/request-validation.md — "PATCH empties the required list"
      */
@@ -1402,8 +1348,7 @@ final readonly class RuleSetBuilder
     /**
      * What one field states that none of its rules carries.
      *
-     * @param  list<string>  $handled  the keywords the walk acted on for this
-     *                                 field, whether by a rule or by a finding
+     * @param  list<string>  $handled  the keywords the walk acted on for this field, whether by a rule or by a finding
      *                                 of its own
      * @return list<string>
      */
@@ -1420,11 +1365,10 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Why a field got no type rule, or null when the reason is reported
-     * elsewhere.
+     * Why a field got no type rule, or null when the reason is reported elsewhere.
      *
-     * Two different silences, told apart because the fix differs: a union no
-     * single rule expresses, and a document that stated no type at all.
+     * Two different silences, told apart because the fix differs: a union no single rule expresses, and a document that
+     * stated no type at all.
      */
     private static function unmappedType(Schema $schema): ?string
     {
@@ -1441,8 +1385,7 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * What the body's own root says that a rule set cannot act on, or that a
-     * reader would not guess from the rules.
+     * What the body's own root says that a rule set cannot act on, or that a reader would not guess from the rules.
      *
      * @return list<string>
      */
@@ -1516,13 +1459,11 @@ final readonly class RuleSetBuilder
     /**
      * Whether the document stated a keyword, by the property that carries it.
      *
-     * Two shapes of "nothing was written" read the same way — null and the
-     * empty array — and `false` joins them for the flags whose absence is
-     * spelled that way, `uniqueItems` and `isFilePart`.
+     * Two shapes of "nothing was written" read the same way — null and the empty array — and `false` joins them for the
+     * flags whose absence is spelled that way, `uniqueItems` and `isFilePart`.
      *
-     * **`additionalProperties` is the exception.** `false` there is the
-     * statement rather than the silence, and the only value a rule can carry:
-     * `true` asks for nothing, and `null` is a document that said nothing.
+     * **`additionalProperties` is the exception.** `false` there is the statement rather than the silence, and the only
+     * value a rule can carry: `true` asks for nothing, and `null` is a document that said nothing.
      */
     private static function states(Schema $schema, string $keyword): bool
     {
@@ -1536,17 +1477,14 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * A rule key, with the structural character Laravel lets a key escape
-     * escaped.
+     * A rule key, with the structural character Laravel lets a key escape escaped.
      *
-     * `user.name` as a literal property name would otherwise generate rules
-     * for a `name` key inside a `user` object the contract never declared,
-     * which is a rule set that is wrong rather than incomplete.
+     * `user.name` as a literal property name would otherwise generate rules for a `name` key inside a `user` object the
+     * contract never declared, which is a rule set that is wrong rather than incomplete.
      *
-     * **`.` is the one Laravel offers an escape for, and not the only one it
-     * reads.** `*` is the validator's wildcard in a rule key and has no
-     * escape, so a field named with one is reported by
-     * {@see self::unescapableKey()} rather than quietly mis-keyed.
+     * **`.` is the one Laravel offers an escape for, and not the only one it reads.** `*` is the validator's wildcard
+     * in a rule key and has no escape, so a field named with one is reported by {@see self::unescapableKey()} rather
+     * than quietly mis-keyed.
      */
     private static function ruleKey(string $field): string
     {
@@ -1554,13 +1492,11 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * A finding for a field name Laravel would read as structure and offers no
-     * way to escape, or null for the ordinary case.
+     * A finding for a field name Laravel would read as structure and offers no way to escape, or null for the ordinary
+     * case.
      *
-     * Reported rather than refused, on the rule the whole class follows: the
-     * rule set is short by a field rather than wrong about one, and a build
-     * that turned away a valid contract over a rare spelling would be the
-     * worse answer.
+     * Reported rather than refused, on the rule the whole class follows: the rule set is short by a field rather than
+     * wrong about one, and a build that turned away a valid contract over a rare spelling would be the worse answer.
      *
      * @internal Public for the reason {@see self::breaksKeyList()} gives.
      */
@@ -1577,15 +1513,13 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The path PHP delivers a name of a form body under, or null when it delivers it
-     * under none: `user.name` is `['user_name']`, `a b` is `['a_b']` and `page[size]`
-     * is `['page', 'size']`.
+     * The path PHP delivers a name of a form body under, or null when it delivers it under none: `user.name` is
+     * `['user_name']`, `a b` is `['a_b']` and `page[size]` is `['page', 'size']`.
      *
-     * Asked of PHP itself: `parse_str()` is the parser a form body goes through,
-     * and what it keeps is the answer, where a rewrite of its rules written here
-     * would be one more thing to keep in step with it. Measured against a real SAPI
-     * (`curl -d` and `curl -F` to `php -S`), `$_POST` agrees with it, and a name
-     * inside brackets (`address[a.b]`) keeps its dot.
+     * Asked of PHP itself: `parse_str()` is the parser a form body goes through, and what it keeps is the answer, where
+     * a rewrite of its rules written here would be one more thing to keep in step with it. Measured against a real SAPI
+     * (`curl -d` and `curl -F` to `php -S`), `$_POST` agrees with it, and a name inside brackets (`address[a.b]`) keeps
+     * its dot.
      *
      * @return list<string>|null
      */
@@ -1621,8 +1555,7 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The rule key a path is validated under: each step escaped, since a name inside brackets
-     * keeps its dot.
+     * The rule key a path is validated under: each step escaped, since a name inside brackets keeps its dot.
      *
      * @param  list<string>  $path
      */
@@ -1634,21 +1567,21 @@ final readonly class RuleSetBuilder
     /**
      * Decide, for a body read as a form, which rule key each top-level name answers to.
      *
-     * **PHP rewrites a top-level name of a form-encoded or multipart body before Laravel sees it**
-     * (`user.name` arrives as `user_name`, `page[size]` as `page => [size => ...]`), so a rule keyed
-     * by the name the contract writes never finds the value. A body read only as a form keys its rules
-     * by the name PHP delivers, so presence, type, `required_with` and `dependentRequired` judge what
-     * was sent, and `dto()` reads the value back under the contract's name.
+     * **PHP rewrites a top-level name of a form-encoded or multipart body before Laravel sees it** (`user.name` arrives
+     * as `user_name`, `page[size]` as `page => [size => ...]`), so a rule keyed by the name the contract writes never
+     * finds the value. A body read only as a form keys its rules by the name PHP delivers, so presence, type,
+     * `required_with` and `dependentRequired` judge what was sent, and `dto()` reads the value back under the
+     * contract's name.
      *
-     * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name
-     * and a declared one that is equal to what it becomes, or a bracketed name under a declared
-     * top-level one. None of them gets a rule, and one finding names them. A body that is JSON as well
-     * gets the same, since a rule for the declared name would judge the array a form builds.
+     * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name and a declared
+     * one that is equal to what it becomes, or a bracketed name under a declared top-level one. None of them gets a
+     * rule, and one finding names them. A body that is JSON as well gets the same, since a rule for the declared name
+     * would judge the array a form builds.
      *
-     * **A body that is JSON as well keeps the rule keyed by the name the contract writes**, since a
-     * JSON client sends exactly that, and the value a form client sends under the other name is not
-     * checked: no one rule set holds both keys without refusing one of the clients. A presence rule is
-     * left out for the same reason, and a finding says where the form value arrives.
+     * **A body that is JSON as well keeps the rule keyed by the name the contract writes**, since a JSON client sends
+     * exactly that, and the value a form client sends under the other name is not checked: no one rule set holds both
+     * keys without refusing one of the clients. A presence rule is left out for the same reason, and a finding says
+     * where the form value arrives.
      */
     private static function planFormNames(Schema $schema, RuleWalk $walk): void
     {
@@ -1820,8 +1753,8 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The rule key the field of a name is validated under: the key a form delivers it as, for a
-     * top-level name of a body read only as a form, and the name as written for the rest.
+     * The rule key the field of a name is validated under: the key a form delivers it as, for a top-level name of a
+     * body read only as a form, and the name as written for the rest.
      */
     private static function fieldKey(string $name, RuleWalk $walk, string $prefix): string
     {
@@ -1831,8 +1764,8 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The keys whose presence stands for a name being sent, for a sibling or a `dependentRequired`
-     * trigger: both of a JSON and form body's, one of a form's, none for a name with no rule.
+     * The keys whose presence stands for a name being sent, for a sibling or a `dependentRequired` trigger: both of a
+     * JSON and form body's, one of a form's, none for a name with no rule.
      *
      * @return list<string>
      */
@@ -1856,17 +1789,13 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * A finding for a query name PHP rewrites before Laravel sees the request,
-     * or null for the ordinary case.
+     * A finding for a query name PHP rewrites before Laravel sees the request, or null for the ordinary case.
      *
-     * **PHP parses the query string, and it does not keep every name.** A `.`
-     * or a space becomes `_` (`user.name` arrives as `user_name`), and `[`
-     * opens a nested array (`page[size]` arrives as `page => [size => ...]`).
-     * Measured with `parse_str()`, which the request's query bag is built from.
-     * No key a rule can name is ever found under the name the contract
-     * writes, so a rule for it would never see what was sent: an optional one
-     * is never validated, and a required one answers 422 to every valid
-     * request. Reported instead, which is what the `*` case does, so the
+     * **PHP parses the query string, and it does not keep every name.** A `.` or a space becomes `_` (`user.name`
+     * arrives as `user_name`), and `[` opens a nested array (`page[size]` arrives as `page => [size => ...]`). Measured
+     * with `parse_str()`, which the request's query bag is built from. No key a rule can name is ever found under the
+     * name the contract writes, so a rule for it would never see what was sent: an optional one is never validated, and
+     * a required one answers 422 to every valid request. Reported instead, which is what the `*` case does, so the
      * request accepts what the contract accepts.
      */
     private static function unreachableQueryName(string $name): ?string

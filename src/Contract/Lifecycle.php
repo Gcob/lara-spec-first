@@ -7,8 +7,8 @@ namespace Gcob\LaraSpecFirst\Contract;
 /**
  * How strong a promise an operation carries.
  *
- * A binary. `deprecated` is deliberately not a value here — it is native to
- * OpenAPI, independent of this axis, and both can be true at once.
+ * A binary. `deprecated` is deliberately not a value here — it is native to OpenAPI, independent of this axis, and both
+ * can be true at once.
  *
  * @see docs/guide/lifecycle.md — "`deprecated` stays out of `x-lifecycle`"
  */

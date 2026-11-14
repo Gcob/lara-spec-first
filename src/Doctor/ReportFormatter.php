@@ -7,36 +7,28 @@ namespace Gcob\LaraSpecFirst\Doctor;
 /**
  * Renders a DiagnosticReport as text for the console.
  *
- * A plain string rather than writing straight to a Command's output: the same
- * report has to become `--json` too, and a formatter that only knows how to
- * print is a formatter `--json` cannot reuse. See docs/guide/doctor.md — "The
+ * A plain string rather than writing straight to a Command's output: the same report has to become `--json` too, and a
+ * formatter that only knows how to print is a formatter `--json` cannot reuse. See docs/guide/doctor.md — "The
  * contract" — for why both are owed from the first release.
  *
- * **Section order is fixed**, matching the table in
- * docs/guide/doctor.md#what-it-checks: Configuration, Document validity,
- * Version, References, Support findings, Routing outcome, Security, Drift,
- * Lifecycle, Installation, Baseline, Drivers. A section with nothing to say
- * still prints, because a command that prints nothing on success teaches a
- * developer nothing about what the spec actually did — the same reasoning
- * doctor.md gives for reporting the outcome, not only the problems.
+ * **Section order is fixed**, matching the table in docs/guide/doctor.md#what-it-checks: Configuration, Document
+ * validity, Version, References, Support findings, Routing outcome, Security, Drift, Lifecycle, Installation, Baseline,
+ * Drivers. A section with nothing to say still prints, because a command that prints nothing on success teaches a
+ * developer nothing about what the spec actually did — the same reasoning doctor.md gives for reporting the outcome,
+ * not only the problems.
  *
- * **Every section prints, including the two this release does not check.**
- * A section absent from the report is one a green exit silently claims to have
- * covered. Security and Lifecycle were on that list one release ago and came
- * off it in the change that built them, which is the only way an entry there
- * is meant to be removed; Baseline and Drivers are what is left. Each prints
- * its note instead of `clean`, from {@see DiagnosticReport::noteFor()}, which
- * is also where a section skipped on *this* run says so — including Security
- * and Lifecycle, which have no standing note any more and so need a
- * run-specific one the moment there is no document to read. That is
- * doctor.md's own rule about the exit code: the report says which checks were
- * skipped, on every run, so a green exit is never mistaken for a full pass.
+ * **Every section prints, including the two this release does not check.** A section absent from the report is one a
+ * green exit silently claims to have covered. Security and Lifecycle were on that list one release ago and came off it
+ * in the change that built them, which is the only way an entry there is meant to be removed; Baseline and Drivers are
+ * what is left. Each prints its note instead of `clean`, from {@see DiagnosticReport::noteFor()}, which is also where a
+ * section skipped on *this* run says so — including Security and Lifecycle, which have no standing note any more and so
+ * need a run-specific one the moment there is no document to read. That is doctor.md's own rule about the exit code:
+ * the report says which checks were skipped, on every run, so a green exit is never mistaken for a full pass.
  */
 final readonly class ReportFormatter
 {
     /**
-     * The section order every render follows, whether or not this PR's
-     * checks have populated all of them yet.
+     * The section order every render follows, whether or not this PR's checks have populated all of them yet.
      */
     private const SECTION_ORDER = [
         'Document validity',
@@ -52,9 +44,8 @@ final readonly class ReportFormatter
     ];
 
     /**
-     * A flat object per finding, plus a summary — for CI annotation and for
-     * tooling, including an AI agent, that consumes findings without parsing
-     * prose. See docs/guide/doctor.md — "The contract".
+     * A flat object per finding, plus a summary — for CI annotation and for tooling, including an AI agent, that
+     * consumes findings without parsing prose. See docs/guide/doctor.md — "The contract".
      */
     public function toJson(DiagnosticReport $report): string
     {
@@ -174,8 +165,8 @@ final readonly class ReportFormatter
     }
 
     /**
-     * The lines a section prints that are not findings: what the run found to
-     * be true rather than what it found to be wrong.
+     * The lines a section prints that are not findings: what the run found to be true rather than what it found to be
+     * wrong.
      *
      * @return list<string>
      */
@@ -210,13 +201,12 @@ final readonly class ReportFormatter
     }
 
     /**
-     * One line, never a list of the operations under it: the package does not
-     * read the root block, so it cannot say what any of them inherits from it.
+     * One line, never a list of the operations under it: the package does not read the root block, so it cannot say
+     * what any of them inherits from it.
      *
-     * Printed only when some operation actually inherits one: that is what
-     * `$report->inheritsUnreadRootRequirements` answers, both halves of it,
-     * and a document overriding the block on every operation gets no line at
-     * all rather than a caveat about a risk it does not carry.
+     * Printed only when some operation actually inherits one: that is what `$report->inheritsUnreadRootRequirements`
+     * answers, both halves of it, and a document overriding the block on every operation gets no line at all rather
+     * than a caveat about a risk it does not carry.
      *
      * @return list<string>
      */
@@ -232,20 +222,16 @@ final readonly class ReportFormatter
     }
 
     /**
-     * The protection report, then the unstable surface and the removal dates
-     * coming up — each standing on its own, because each answers a different
-     * question about a different set of operations.
+     * The protection report, then the unstable surface and the removal dates coming up — each standing on its own,
+     * because each answers a different question about a different set of operations.
      *
-     * **The protection report is printed exactly when there is a public
-     * surface to report on.** It used to be gated on all three being empty at
-     * once, which meant an internal-only service — every operation
-     * `x-audience: internal`, one of them `beta` — printed "0 of 0 public
-     * operation(s) are stable" beside its beta listing: the sentence about an
-     * empty document that this guard exists to avoid, on a document that is
-     * not empty at all. An internal-only API is not an exotic shape, and the
-     * protection report is a statement about a public surface, so with no
-     * public surface there is nothing for it to say. The beta and sunset lines
-     * are unaffected: they were never about the public surface.
+     * **The protection report is printed exactly when there is a public surface to report on.** It used to be gated on
+     * all three being empty at once, which meant an internal-only service — every operation `x-audience: internal`, one
+     * of them `beta` — printed "0 of 0 public operation(s) are stable" beside its beta listing: the sentence about an
+     * empty document that this guard exists to avoid, on a document that is not empty at all. An internal-only API is
+     * not an exotic shape, and the protection report is a statement about a public surface, so with no public surface
+     * there is nothing for it to say. The beta and sunset lines are unaffected: they were never about the public
+     * surface.
      *
      * @return list<string>
      */
@@ -358,11 +344,9 @@ final readonly class ReportFormatter
     /**
      * The summary line, followed by the sections this run did not cover.
      *
-     * **The exit code's scope, on the line a reader actually reads.** Every
-     * unchecked section already prints its own note above, but the summary is
-     * the line a person skims and a CI log tails — and `Clean.` on its own,
-     * from a run that never looked at Security, is the sentence doctor.md
-     * forbids: a green exit mistaken for a full pass.
+     * **The exit code's scope, on the line a reader actually reads.** Every unchecked section already prints its own
+     * note above, but the summary is the line a person skims and a CI log tails — and `Clean.` on its own, from a run
+     * that never looked at Security, is the sentence doctor.md forbids: a green exit mistaken for a full pass.
      */
     private static function withUncheckedSections(DiagnosticReport $report, string $summary): string
     {

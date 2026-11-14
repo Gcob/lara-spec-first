@@ -10,9 +10,8 @@ use RuntimeException;
 /**
  * The contract names a class in a namespace this project does not map.
  *
- * A refusal rather than a guess, and the guess is the tempting part: a path could
- * always be invented from the namespace by convention. It would produce a file
- * that compiles, that the autoloader never finds, and whose route therefore
+ * A refusal rather than a guess, and the guess is the tempting part: a path could always be invented from the namespace
+ * by convention. It would produce a file that compiles, that the autoloader never finds, and whose route therefore
  * answers with a class-not-found — for a reason nothing in the project states.
  *
  * @see docs/guide/code-generation/scaffolding.md — "Where your classes go"

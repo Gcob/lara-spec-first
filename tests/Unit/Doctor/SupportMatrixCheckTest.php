@@ -198,10 +198,9 @@ it('does not count a path parameter as an unread one', function (): void {
 // --- Reading a raw document whose nodes have the wrong type ---
 
 /**
- * A raw document with an arbitrary root, so a test can put a node of the wrong
- * type where this class reads one. Every existing test above builds a
- * well-formed array, which is exactly why the suite stayed green on a command
- * that died on `parameters: oops`.
+ * A raw document with an arbitrary root, so a test can put a node of the wrong type where this class reads one. Every
+ * existing test above builds a well-formed array, which is exactly why the suite stayed green on a command that died on
+ * `parameters: oops`.
  *
  * @param  array<array-key, mixed>  $raw
  */

@@ -24,14 +24,12 @@ use Symfony\Component\Yaml\Yaml;
 // @see AGENTS.md — "Automated tests are required"
 
 /**
- * Read a 3.1 document whose body schema writes one raw keyword over inline
- * schemas.
+ * Read a 3.1 document whose body schema writes one raw keyword over inline schemas.
  *
- * Built in a temporary directory rather than kept beside the other fixtures:
- * eleven near-identical files would bury the ten that say something, and what
- * changes between these is one key. The read itself goes through the helper in
- * `tests/Pest.php`, so the "throw the first fault" convention every `toThrow()`
- * in this suite reads against has one definition rather than two.
+ * Built in a temporary directory rather than kept beside the other fixtures: eleven near-identical files would bury the
+ * ten that say something, and what changes between these is one key. The read itself goes through the helper in
+ * `tests/Pest.php`, so the "throw the first fault" convention every `toThrow()` in this suite reads against has one
+ * definition rather than two.
  *
  * @return list<Operation>
  */

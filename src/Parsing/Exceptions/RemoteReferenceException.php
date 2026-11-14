@@ -10,9 +10,8 @@ use RuntimeException;
 /**
  * The document points at a reference this package will not fetch.
  *
- * Not a stopgap: an empty allowlist is the documented default, and "no
- * allowlist means no remote references" is the behaviour that default
- * describes. What is missing is the configuration to widen it, not the rule.
+ * Not a stopgap: an empty allowlist is the documented default, and "no allowlist means no remote references" is the
+ * behaviour that default describes. What is missing is the configuration to widen it, not the rule.
  *
  * @see docs/guide/remote-references.md
  */
@@ -31,10 +30,9 @@ final class RemoteReferenceException extends RuntimeException implements SpecExc
     }
 
     /**
-     * A `.` or `..` segment in the URL's path — refused rather than resolved,
-     * because it would otherwise let an allowed host decide where on this
-     * filesystem its own vendored copy gets written, up to and including
-     * outside the vendor directory entirely.
+     * A `.` or `..` segment in the URL's path — refused rather than resolved, because it would otherwise let an allowed
+     * host decide where on this filesystem its own vendored copy gets written, up to and including outside the vendor
+     * directory entirely.
      */
     public static function unsafePath(string $reference): self
     {

@@ -9,23 +9,19 @@ use InvalidArgumentException;
 /**
  * A setting the package needs carries a value it cannot work with.
  *
- * The sibling of {@see NotImplementedYetException}, and the distinction is whose
- * fault it is: that one refuses a setting the package has not built, this one
- * refuses a value the application supplied. Both exist so that a configuration
- * key never quietly means nothing.
+ * The sibling of {@see NotImplementedYetException}, and the distinction is whose fault it is: that one refuses a
+ * setting the package has not built, this one refuses a value the application supplied. Both exist so that a
+ * configuration key never quietly means nothing.
  *
- * Distinct from a resource being absent, which is not always a fault. A missing
- * generated routes file is a legitimate state on a fresh clone; a `generated.path`
- * with nothing in it is a broken installation, because nothing can be looked for
- * without a path and carrying on would register no route on an application that
- * asked for some.
+ * Distinct from a resource being absent, which is not always a fault. A missing generated routes file is a legitimate
+ * state on a fresh clone; a `generated.path` with nothing in it is a broken installation, because nothing can be looked
+ * for without a path and carrying on would register no route on an application that asked for some.
  */
 final class UnusableSettingException extends InvalidArgumentException implements SpecException
 {
     /**
      * @param  string  $key  the configuration key, so the message names what to edit
-     * @param  string  $requirement  what a usable value has to be, in a form that
-     *                               completes "must be"
+     * @param  string  $requirement  what a usable value has to be, in a form that completes "must be"
      */
     public static function setting(string $key, string $requirement): self
     {

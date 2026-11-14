@@ -10,11 +10,10 @@ use RuntimeException;
 /**
  * A chain of vendored remote references closes back on a URL it already fetched.
  *
- * The existing cycle detector only ever inspects the root document, once,
- * before any fetching starts — it cannot see a cycle that only exists across
- * documents this package fetches itself. Vendoring recurses into every fetched
- * document looking for further remote references, so it is the one place such a
- * cycle could otherwise recurse forever instead of raising.
+ * The existing cycle detector only ever inspects the root document, once, before any fetching starts — it cannot see a
+ * cycle that only exists across documents this package fetches itself. Vendoring recurses into every fetched document
+ * looking for further remote references, so it is the one place such a cycle could otherwise recurse forever instead of
+ * raising.
  *
  * @see CyclicReferenceException the local-reference equivalent this mirrors
  */

@@ -12,23 +12,17 @@ namespace Gcob\LaraSpecFirst\Generation;
 final readonly class PlannedInputDto
 {
     /**
-     * @param  string  $shortName  the class name, `NewUserInputDto` or
-     *                             `NewUserPartialInputDto`
+     * @param  string  $shortName  the class name, `NewUserInputDto` or `NewUserPartialInputDto`
      * @param  bool  $partial  whether every property is optional
-     * @param  string  $position  where the schema it describes is written: a
-     *                            component's own position, or the operation's for
-     *                            a schema written inline
+     * @param  string  $position  where the schema it describes is written: a component's own position, or the
+     *                            operation's for a schema written inline
      * @param  list<InputDtoProperty>  $properties
-     * @param  list<string>  $readers  the labels of the operations whose
-     *                                 `dto()` returns this type, in document
-     *                                 order. Empty for a type no operation reads,
-     *                                 which the file says
+     * @param  list<string>  $readers  the labels of the operations whose `dto()` returns this type, in document order.
+     *                                 Empty for a type no operation reads, which the file says
      * @param  string  $naming  how the name was reached, for the file's findings
-     * @param  list<string>  $findings  what the build worked out about the
-     *                                  properties that the declared types do not
+     * @param  list<string>  $findings  what the build worked out about the properties that the declared types do not
      *                                  show
-     * @param  list<string>  $requests  the short names of the requests whose
-     *                                  `dto()` returns this type, parallel to
+     * @param  list<string>  $requests  the short names of the requests whose `dto()` returns this type, parallel to
      *                                  `$readers`
      */
     public function __construct(

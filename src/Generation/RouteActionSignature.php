@@ -7,25 +7,19 @@ namespace Gcob\LaraSpecFirst\Generation;
 use Gcob\LaraSpecFirst\Contract\Operation;
 
 /**
- * What `routeAction` declares, in the one place both sides of the seam read it
- * from.
+ * What `routeAction` declares, in the one place both sides of the seam read it from.
  *
- * **Two classes have to agree on this signature or the application does not
- * load.** The generated parent declares it and a custom child overrides it, and
- * PHP forbids an override from widening — so a scaffold that built the
- * signature its own way would write a child that is a fatal error the moment
- * the two derivations disagree. They did disagree in exactly the way this class
- * prevents: the request parameter had to be learned twice.
+ * **Two classes have to agree on this signature or the application does not load.** The generated parent declares it
+ * and a custom child overrides it, and PHP forbids an override from widening — so a scaffold that built the signature
+ * its own way would write a child that is a fatal error the moment the two derivations disagree. They did disagree in
+ * exactly the way this class prevents: the request parameter had to be learned twice.
  *
- * **Named, because Laravel matches route parameters to method parameters by
- * name** rather than by position. The specification's spelling is load-bearing
- * here in a way it is not anywhere else, and renaming `{id}` to `{userId}`
+ * **Named, because Laravel matches route parameters to method parameters by name** rather than by position. The
+ * specification's spelling is load-bearing here in a way it is not anywhere else, and renaming `{id}` to `{userId}`
  * changes this signature.
  *
- * **The request comes first**, ahead of the path's own parameters. Laravel
- * splices a class-typed parameter in from the container and fills the rest from
- * the route, so either order works and only one of them reads like ordinary
- * Laravel.
+ * **The request comes first**, ahead of the path's own parameters. Laravel splices a class-typed parameter in from the
+ * container and fills the rest from the route, so either order works and only one of them reads like ordinary Laravel.
  *
  * @see docs/guide/code-generation/request-validation.md — "The type hint is what runs it"
  * @see docs/guide/controllers.md — "One controller, one routeAction"
@@ -35,31 +29,26 @@ final readonly class RouteActionSignature
     /**
      * The parameter name the generated request is bound to.
      *
-     * A constant rather than a literal in three files: the declaration, the
-     * arguments a scaffolded child passes up, and every test that reads either.
+     * A constant rather than a literal in three files: the declaration, the arguments a scaffolded child passes up, and
+     * every test that reads either.
      */
     public const REQUEST_PARAMETER = 'request';
 
     /**
      * The parameter list as PHP, ready to sit between the parentheses.
      *
-     * **A templated path's parameters are never left out, and that is a
-     * constraint rather than a preference.** PHP forbids an override from
-     * adding a required parameter, so a parent that dropped them would make
-     * `x-controller` useless on every templated path: a developer could only
-     * reach `{id}` through the request object. Verified rather than reasoned
-     * about — a Workbench child declaring `routeAction(string $id)` over a
-     * parameterless parent is a fatal error at load. The list is empty only
-     * when the path is untemplated and the operation states nothing about its
-     * input, which is an operation with nothing to pass.
+     * **A templated path's parameters are never left out, and that is a constraint rather than a preference.** PHP
+     * forbids an override from adding a required parameter, so a parent that dropped them would make `x-controller`
+     * useless on every templated path: a developer could only reach `{id}` through the request object. Verified rather
+     * than reasoned about — a Workbench child declaring `routeAction(string $id)` over a parameterless parent is a
+     * fatal error at load. The list is empty only when the path is untemplated and the operation states nothing about
+     * its input, which is an operation with nothing to pass.
      *
-     * `string` for a path parameter because that is what one is until something
-     * says otherwise. `x-model` is what will turn one into a bound model.
+     * `string` for a path parameter because that is what one is until something says otherwise. `x-model` is what will
+     * turn one into a bound model.
      *
-     * @param  string|null  $requestType  the request class as the emitting file
-     *                                    refers to it — its short name, since
-     *                                    both callers import it — or null for an
-     *                                    operation with nothing to validate
+     * @param  string|null  $requestType  the request class as the emitting file refers to it — its short name, since
+     *                                    both callers import it — or null for an operation with nothing to validate
      */
     public static function declaration(Operation $operation, ?string $requestType): string
     {
