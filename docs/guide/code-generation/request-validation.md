@@ -224,10 +224,14 @@ the `body` key too, and the client could not tell which of the two is wrong, so 
 
 **An empty content is an absent body, and the body's `required` decides.** A required body sent as nothing is refused on
 the body's own key, with Laravel's `required` message, since no rule says so when every property is optional (they are
-all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one, that passes either way. A
-request that is JSON is checked: any other request has its body read from the form bag, whose fields need not show in
-the raw content (PHP leaves `php://input` empty for `multipart/form-data`), so a request that names no JSON media type
-and sends nothing is not read as an absent body.
+all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one, that passes either way. The
+check is for a JSON body and a form body alike, and it reads two kinds of request as absent: one that is JSON, and one
+with no `Content-Type` at all (`curl -X POST url` and `fetch(url, { method: 'POST' })` send none when there is no body).
+A request with no `Content-Type` carries no form field either, since a multipart always sets one, and one with an
+uploaded file is never read as absent. What stays ambiguous is a form: a request with a form `Content-Type` and no
+content has its body read from the form bag, whose fields need not show in the raw content (PHP leaves `php://input`
+empty for `multipart/form-data`), so an empty `application/x-www-form-urlencoded` body and a multipart with no parts are
+not read as an absent body, and the generated file says so in a finding whenever a required body is read as a form.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body

@@ -1426,6 +1426,15 @@ final readonly class RuleSetBuilder
                 .'the root. Add `type: object` to the schema to make the reading the contract\'s own.';
         }
 
+        // The request refuses an empty content for a required body when it is JSON or has no
+        // `Content-Type`. A form is the one it cannot read that way.
+        if ($body->required && $walk->formBody) {
+            $findings[] = 'The body is required and read as a form, so a form with a `Content-Type` and no field '
+                .'(an empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is not '
+                .'read as an absent body: a form\'s fields need not show in the raw content, so the request cannot '
+                .'tell it from a body whose every field is optional, and accepts it unless a required property refuses it.';
+        }
+
         if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
             $findings[] = sprintf(
                 'A `PATCH` is a partial update, so the schema\'s required list (%s) is read as '

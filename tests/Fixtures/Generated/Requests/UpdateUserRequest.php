@@ -33,6 +33,11 @@ use Illuminate\Validation\Validator;
  *   - `dto()` returns the body as `NewUserPartialInputDto`, built from `validated()`, which keeps
  *     returning Laravel's array. A `query` parameter is not a property of it: read one with
  *     `validated('name')`.
+ *   - The body is required and read as a form, so a form with a `Content-Type` and no field (an
+ *     empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is
+ *     not read as an absent body: a form's fields need not show in the raw content, so the request
+ *     cannot tell it from a body whose every field is optional, and accepts it unless a required
+ *     property refuses it.
  *   - A `PATCH` is a partial update, so the schema's required list (`email`, `born_on`, `nickname`
  *     and `address`) is read as empty here. Every property is `sometimes`.
  *   - `active` is a boolean read from a form body, where every value is text and Laravel's
@@ -147,5 +152,25 @@ final class UpdateUserRequest extends FormRequest
         } finally {
             $validator->excludeUnvalidatedArrayKeys = $excluded;
         }
+    }
+
+    /**
+     * @return list<callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $content = $this->getContent();
+
+                if (
+                    trim($content) === ''
+                    && $this->allFiles() === []
+                    && ($this->isJson() || ! $this->headers->has('Content-Type'))
+                ) {
+                    $validator->addFailure('body', 'required');
+                }
+            },
+        ];
     }
 }

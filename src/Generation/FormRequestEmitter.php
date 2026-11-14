@@ -359,9 +359,11 @@ final readonly class FormRequestEmitter
      * for, and an open root with nothing required would accept them. Only a JSON
      * request is checked (a form cannot send a non-object). An empty content is not a
      * non-object but an absent body: it is refused when the body is `required`, which no
-     * rule says when every property is optional, and accepted when it is not. Only a JSON
-     * request is read as absent: a request that is not JSON has its body read from the
-     * form bag, whose fields need not show in the raw content. A schema that allows `null`
+     * rule says when every property is optional, and accepted when it is not. That check
+     * holds for a form body too, and reads a request as absent when it is JSON or has no
+     * `Content-Type` (a request with none carries no form field either). A request with a
+     * form `Content-Type` has its body read from the form bag, whose fields need not show in
+     * the raw content, so it is not read as absent. A schema that allows `null`
      * allows it here.
      *
      * **The second reads the top-level keys from the body rather than from `all()`**, by
@@ -382,23 +384,40 @@ final readonly class FormRequestEmitter
      */
     private function after(RuleSet $set): string
     {
-        if ($set->closedKeys === null && ! $set->jsonRoot) {
+        if ($set->closedKeys === null && ! $set->jsonRoot && ! $set->requiredRoot) {
             return '';
         }
 
         $lines = [];
 
+        if ($set->jsonRoot || $set->requiredRoot) {
+            $lines = ['                $content = $this->getContent();', ''];
+        }
+
+        // Why: a request with no `Content-Type` carries no form field either (a multipart always sets
+        // one), so no content is as absent as a body gets. A form with a type and no content is not read
+        // as absent, since its fields need not show in the content.
+        if ($set->requiredRoot) {
+            $lines = [
+                ...$lines,
+                '                if (',
+                '                    trim($content) === \'\'',
+                '                    && $this->allFiles() === []',
+                '                    && ($this->isJson() || ! $this->headers->has(\'Content-Type\'))',
+                '                ) {',
+                '                    $validator->addFailure('.$this->literal($set->rootKey).', \'required\');',
+                ...($set->closedKeys === null ? [] : ['', '                    return;']),
+                '                }',
+            ];
+
+            if ($set->jsonRoot) {
+                $lines[] = '';
+            }
+        }
+
         if ($set->jsonRoot) {
             $lines = [
-                '                $content = $this->getContent();',
-                '',
-                ...($set->requiredRoot ? [
-                    '                if ($this->isJson() && trim($content) === \'\') {',
-                    '                    $validator->addFailure('.$this->literal($set->rootKey).', \'required\');',
-                    ...($set->closedKeys === null ? [] : ['', '                    return;']),
-                    '                }',
-                    '',
-                ] : []),
+                ...$lines,
                 '                // Why: decoded without `assoc`, because `{}` and `[]` are both `[]` with it.',
                 '                if ($this->isJson() && trim($content) !== \'\' && ! is_object(json_decode($content))'
                     .($set->nullableRoot ? ' && trim($content) !== \'null\'' : '').') {',

@@ -1499,6 +1499,102 @@ it('refuses an empty content when the body is required', function (bool $typed, 
     'blanks' => ["  \n"],
 ]);
 
+/**
+ * One request through the real kernel carrying `$content` with the `Content-Type` as given, or none: what
+ * `curl -X POST url` sends, which `Request::create()` would otherwise default to a form's.
+ *
+ * @param  class-string<FormRequest>  $class
+ * @param  array<string, mixed>  $parameters
+ * @param  array<string, mixed>  $files
+ */
+function statusForContentType(string $class, ?string $contentType, string $content = '', array $parameters = [], array $files = []): int
+{
+    Route::post('/_generated/typed-content', fn () => response()->json(app($class)->validated()));
+
+    $request = Request::create(
+        '/_generated/typed-content',
+        'POST',
+        $parameters,
+        [],
+        $files,
+        ['HTTP_ACCEPT' => 'application/json'] + ($contentType === null ? [] : ['CONTENT_TYPE' => $contentType]),
+        $content,
+    );
+
+    if ($contentType === null) {
+        $request->headers->remove('Content-Type');
+    }
+
+    return app(HttpKernel::class)->handle($request)->getStatusCode();
+}
+
+/**
+ * A `POST` whose body is an object read as a form only, every property optional.
+ *
+ * @param  list<string>  $mediaTypes
+ */
+function postWithOptionalFormObject(array $mediaTypes, bool $bodyRequired = true): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/search'),
+        operationId: 'searchForm',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, new Schema(
+            types: [SchemaType::Object],
+            properties: ['q' => new Schema(types: [SchemaType::String])],
+        )), $bodyRequired),
+    );
+}
+
+// `curl -X POST url` and `fetch(url, { method: 'POST' })` send no `Content-Type` when there is no body,
+// and a request with none carries no form field either (a multipart always sets one), so it is as absent
+// as a body can be.
+it('refuses a required body sent with no content type and no content', function (bool $typed, bool $closed): void {
+    $class = emittedRequestClass(postWithOptionalJsonObject($typed, $closed));
+
+    expect(statusForContentType($class, null))->toBe(422)
+        ->and(statusForContentType($class, null, "  \n"))->toBe(422)
+        ->and(statusForContentType($class, null, '{}'))->toBe(200);
+})->with([
+    'typed, open' => [true, false],
+    'untyped, open' => [false, false],
+    'typed, closed' => [true, true],
+]);
+
+it('accepts a body sent with no content type and no content when the body is optional', function (): void {
+    expect(statusForContentType(emittedRequestClass(postWithOptionalJsonObject(bodyRequired: false)), null))->toBe(200)
+        ->and(statusForContentType(emittedRequestClass(postWithOptionalFormObject(['multipart/form-data'], false)), null))->toBe(200);
+});
+
+// The check is not JSON-specific: a body that is only a form has every property optional here too, so
+// no rule refuses it either.
+it('refuses a required form body sent with no content type and no content', function (array $mediaTypes): void {
+    $class = emittedRequestClass(postWithOptionalFormObject(array_values($mediaTypes)));
+
+    expect(statusForContentType($class, null))->toBe(422)
+        ->and(statusForContentType($class, 'application/x-www-form-urlencoded', 'q=x', ['q' => 'x']))->toBe(200);
+})->with([
+    'urlencoded' => [['application/x-www-form-urlencoded']],
+    'multipart' => [['multipart/form-data']],
+    'both forms' => [['application/x-www-form-urlencoded', 'multipart/form-data']],
+]);
+
+// What stays ambiguous, and the generated file says so: a form's fields need not show in the raw content
+// (PHP leaves `php://input` empty for a multipart), so an empty form is not read as an absent body.
+it('does not read a form with a content type and no fields as an absent body', function (): void {
+    $class = emittedRequestClass(postWithOptionalFormObject(['multipart/form-data']));
+
+    expect(statusForContentType($class, 'application/x-www-form-urlencoded'))->toBe(200)
+        ->and(statusForContentType($class, 'multipart/form-data; boundary=x'))->toBe(200);
+});
+
+it('does not refuse an upload sent with no content type', function (): void {
+    $class = emittedRequestClass(postWithOptionalFormObject(['multipart/form-data']));
+
+    expect(statusForContentType($class, null, files: ['avatar' => realUpload('x', 'a.txt')]))->toBe(200);
+});
+
 // Only a JSON request is read as an absent body: a request that is not JSON has its body read from
 // the form bag, and a form's fields need not show in the raw content.
 it('does not read an empty content as an absent body when the request is not JSON', function (): void {

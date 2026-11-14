@@ -136,7 +136,11 @@ final class CreateUserRequest extends FormRequest
             function (Validator $validator): void {
                 $content = $this->getContent();
 
-                if ($this->isJson() && trim($content) === '') {
+                if (
+                    trim($content) === ''
+                    && $this->allFiles() === []
+                    && ($this->isJson() || ! $this->headers->has('Content-Type'))
+                ) {
                     $validator->addFailure('body', 'required');
 
                     return;

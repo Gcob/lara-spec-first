@@ -203,6 +203,24 @@ it('says nothing about an absent body that declares one optional property', func
         ->and(implode('', $set->findings))->not->toContain('requires  ');
 });
 
+// An empty content is refused by the request itself for a required body with no content type or a JSON one.
+// What stays ambiguous is a form: its fields need not show in the raw content, so one with a type and no
+// field passes, and the file says so wherever the body is required and read as a form.
+it('says that an empty form is not read as an absent body when the body is required', function (array $media, bool $required, bool $says): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: array_fill_keys($media, objectSchema(['q' => new Schema(types: [SchemaType::String])])),
+        bodyRequired: $required,
+    ));
+
+    expect(str_contains(implode("\n", $set->findings), 'a form with a `Content-Type` and no field'))->toBe($says);
+})->with([
+    'urlencoded, required' => [['application/x-www-form-urlencoded'], true, true],
+    'multipart, required' => [['multipart/form-data'], true, true],
+    'JSON and a form, required' => [['application/json', 'multipart/form-data'], true, true],
+    'a form, optional' => [['multipart/form-data'], false, false],
+    'JSON only, required' => [['application/json'], true, false],
+]);
+
 // --- Query parameters, whose presence is their own and never the method's ---
 
 it('keys a query parameter by its own name and its own required flag', function (): void {

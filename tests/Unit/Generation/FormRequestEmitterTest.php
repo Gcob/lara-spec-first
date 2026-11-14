@@ -230,7 +230,9 @@ it('lets a nullable body be null', function (): void {
         ->toContain("&& trim(\$content) !== 'null'");
 });
 
-it('emits no root check for a form body', function (): void {
+// A form cannot send a non-object, so there is no root to decode. A required one still gets the check for an
+// empty content, which no rule makes when every property is optional; an optional one gets no `after()`.
+it('emits no root check for a form body, and the empty-content check only when it is required', function (bool $required, bool $expected): void {
     $operation = new Operation(
         index: 0,
         method: HttpMethod::Post,
@@ -239,14 +241,18 @@ it('emits no root check for a form body', function (): void {
         requestBody: new RequestBody(['multipart/form-data' => new Schema(
             types: [SchemaType::Object],
             properties: ['name' => new Schema(types: [SchemaType::String])],
-        )], true),
+        )], $required),
     );
 
     $emitted = emittedRequest($operation, controllerShortName: 'CreateThingController');
 
     expect($emitted)->not->toContain('json_decode')
-        ->and($emitted)->not->toContain('function after()');
-});
+        ->and(str_contains($emitted, 'function after()'))->toBe($expected)
+        ->and(str_contains($emitted, "! \$this->headers->has('Content-Type')"))->toBe($expected);
+})->with([
+    'required' => [true, true],
+    'optional' => [false, false],
+]);
 
 // A form delivers `user.name` as `user_name`, and `validated()` holds it there, so `dto()` puts the value
 // back under the name the contract writes. Written only when a name is rewritten.
