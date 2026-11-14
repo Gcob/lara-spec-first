@@ -66,7 +66,7 @@ it('compares two schemas by what they state rather than by where an ignored keyw
 
 // `sameShapeAs()` forgives the order a map was written in and the planner of the input DTOs does not, since
 // it emits properties in that order. Both leave an ignored keyword's position out, and both are strict about
-// values: `[0]` and `[false]` are `==`.
+// values: `[0]` and `[false]` are `==`, but `1.0` is `1`, as JSON Schema compares numbers.
 it('keys a shape without its ignored keywords, strictly, and in order unless told otherwise', function (): void {
     $ab = new Schema(properties: ['a' => new Schema(ignored: ['default' => '#/x']), 'b' => new Schema]);
     $ba = new Schema(properties: ['b' => new Schema, 'a' => new Schema(ignored: ['default' => '#/y'])]);
@@ -75,5 +75,7 @@ it('keys a shape without its ignored keywords, strictly, and in order unless tol
         ->and($ab->shapeKey())->not->toBe($ba->shapeKey())
         ->and($ab->shapeKey(ordered: false))->toBe($ba->shapeKey(ordered: false))
         ->and((new Schema(enum: [0]))->shapeKey())->not->toBe((new Schema(enum: [false]))->shapeKey())
-        ->and((new Schema(enum: [0]))->sameShapeAs(new Schema(enum: [false])))->toBeFalse();
+        ->and((new Schema(enum: [0]))->sameShapeAs(new Schema(enum: [false])))->toBeFalse()
+        ->and((new Schema(enum: [1]))->sameShapeAs(new Schema(enum: [1.0])))->toBeTrue()
+        ->and((new Schema(enum: [1]))->sameShapeAs(new Schema(enum: [1.5])))->toBeFalse();
 });

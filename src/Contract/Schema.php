@@ -151,6 +151,11 @@ final readonly class Schema
             return self::shapeOf($properties, $ordered);
         }
 
+        // JSON Schema compares numbers by value: `1.0` is `1`, so a YAML `1.0` must not split one shape in two.
+        if (is_float($value) && is_finite($value) && $value === floor($value) && abs($value) < PHP_INT_MAX) {
+            return (int) $value;
+        }
+
         if (! is_array($value)) {
             return $value;
         }
