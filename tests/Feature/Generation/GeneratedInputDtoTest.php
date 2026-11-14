@@ -331,13 +331,18 @@ it('refuses a payload deeper than the depth, on the first field below it', funct
         ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['address.parent.parent.parent.parent']);
 });
 
-// `prohibited` is Laravel's "missing or empty", so an empty value gets through at the cut. The finding in the
-// generated file names it, and this is the measurement behind that sentence.
-it('lets an empty value through at the depth, which the finding names', function (): void {
+// Laravel's `missing` asks for the key to be absent, so an empty value is refused at the cut as well: a
+// typed DTO is never built from `[]` below the depth. `prohibited` let all three through.
+it('refuses an empty value at the depth as it refuses any other', function (mixed $empty): void {
     $payload = ['address' => addressDeep(3)];
-    $payload['address']['parent']['parent']['parent']['parent'] = null;
+    $payload['address']['parent']['parent']['parent']['parent'] = $empty;
 
-    [$status] = patchUser($payload);
+    [$status, $body] = patchUser($payload);
 
-    expect($status)->toBe(200);
-});
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['address.parent.parent.parent.parent']);
+})->with([
+    'null' => [null],
+    'an empty string' => [''],
+    'an empty list' => [[]],
+]);

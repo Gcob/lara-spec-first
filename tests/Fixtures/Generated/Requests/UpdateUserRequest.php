@@ -57,10 +57,10 @@ use Illuminate\Validation\Validator;
  *     not enforced.
  *   - `anything` states no type, so no type rule is emitted for it.
  *   - `Address` recurses, and it states no `x-max-depth`, so the request validates it 3 levels
- *     deep, the package's default. `address.parent.parent.parent.parent` is `prohibited` below
- *     that: a payload deeper than that answers 422, which the contract allows. `x-max-depth` on
- *     `Address` sets the depth. `prohibited` lets an empty value through there (`null`, `""`,
- *     `[]`), which the contract may refuse.
+ *     deep, the package's default. `address.parent.parent.parent.parent` is `missing` below that,
+ *     so the field must be absent there: a payload deeper than that answers 422, an empty value
+ *     (`null`, `""`, `[]`) included, which the contract allows. `x-max-depth` on `Address` sets
+ *     the depth.
  *
  * Navigation
  *
@@ -104,7 +104,7 @@ final class UpdateUserRequest extends FormRequest
             'address.parent.parent.parent' => ['sometimes', 'array', 'required_array_keys:street'],
             'address.parent.parent.parent.street' => ['sometimes', 'string'],
             'address.parent.parent.parent.city' => ['sometimes', 'nullable', 'string'],
-            'address.parent.parent.parent.parent' => ['sometimes', 'prohibited'],
+            'address.parent.parent.parent.parent' => ['missing'],
             'profile' => ['sometimes', 'array'],
             'profile.bio' => ['sometimes', 'string'],
             'tags' => ['sometimes', 'array', 'list'],

@@ -28,11 +28,12 @@ tags: [versions, conventions, planning]
   itself (a tree, a comment thread, an `Address` holding an `Address`) used to stop at the point it repeated, so
   `parent: "oops"` passed and nothing below the first repeat was checked. The generated request now unrolls the
   recursion into the depth the schema states with `x-max-depth` (three when it states none), validates every level, and
-  refuses the field below the last one with `prohibited`. **A request that answered 200 before may now answer 422**: a
-  payload with a wrong value in a recursive node, and a payload nested deeper than the depth. The first is the contract
-  being enforced, the second is stricter than the contract, which the generated file says in a finding that names
-  `x-max-depth`. A contract whose recursion is deeper than three levels in real traffic states the depth it needs. The
-  rule set grows with the depth: a schema that recurses once per level gets one more copy of its rules for each level.
+  requires the field below the last one to be absent (`missing`), an empty value there included. **A request that
+  answered 200 before may now answer 422**: a payload with a wrong value in a recursive node, and a payload nested
+  deeper than the depth. The first is the contract being enforced, the second is stricter than the contract, which the
+  generated file says in a finding that names `x-max-depth`. A contract whose recursion is deeper than three levels in
+  real traffic states the depth it needs. The rule set grows with the depth: a schema that recurses once per level gets
+  one more copy of its rules for each level.
   [Request validation](./docs/guide/code-generation/request-validation.md#a-recursive-schema-is-validated-to-a-stated-depth).
 - **`spec:doctor` now exits `2` on a request schema that writes an `Ignored` keyword**: `default`, `deprecated`,
   `oneOf`, `anyOf`, `not`, `discriminator`, `minProperties`, `prefixItems` and the rest of the

@@ -995,7 +995,7 @@ final readonly class RuleSetBuilder
      *
      * **A level is one crossing of a marker**, and the limit at a marker is the `x-max-depth` of the schema it points
      * to (three when it states none), so the two sides of a recursive pair never have to agree. Below the limit the
-     * field is `prohibited`, which refuses a payload the contract allows: the finding that says so is written once the
+     * field is `missing`, which refuses a payload the contract allows: the finding that says so is written once the
      * walk is over ({@see self::reportCuts()}). The rules unroll here and the contract's normal form does not change,
      * since a rule set is the one reader that needs a finite tree.
      *
@@ -1003,8 +1003,8 @@ final readonly class RuleSetBuilder
      * It keeps presence and a finding, as it always did.
      *
      * @param  string  $position  where the ancestor is written, which is what the marker carries
-     * @param  string  $presence  how the field is asked for, kept at the cut: asking for a key and refusing a value are
-     *                            two statements, and a `null` satisfies both
+     * @param  string  $presence  how the field is asked for. Dropped at the cut: `missing` says the key is absent, and
+     *                            a presence rule beside it would contradict it
      *
      * @throws ConflictingInputException
      */
@@ -1031,7 +1031,7 @@ final readonly class RuleSetBuilder
         $crossed = $walk->crossings[$position] ?? 0;
 
         if ($crossed >= $depth) {
-            $walk->rules[$key] = [...$rules, 'prohibited'];
+            $walk->rules[$key] = ['missing'];
             $walk->cuts[$position] ??= [
                 'name' => $ancestor->name ?? $position,
                 'depth' => $depth,
@@ -1052,9 +1052,10 @@ final readonly class RuleSetBuilder
      * One finding for each recursive schema the walk cut: what the request now refuses that the contract allows, and
      * the extension that moves the line.
      *
-     * **Stricter than the contract, and said so**, which is the one way the request may be. Laravel's `prohibited`
-     * passes an empty value (`null`, `""`, `[]`), so what it lets through at the cut is named too: a finding that
-     * claimed more would be a rule stricter in silence and looser in the same breath.
+     * **Stricter than the contract, and said so**, which is the one way the request may be. Laravel's `missing` is the
+     * key being absent, so an empty value (`null`, `""`, `[]`) is refused below the depth too, and the finding says it:
+     * Laravel's `prohibited` would have let those through, and a typed DTO built from them would be a second answer to
+     * the same question.
      */
     private static function reportCuts(RuleWalk $walk): void
     {
@@ -1067,9 +1068,9 @@ final readonly class RuleSetBuilder
             );
 
             $walk->findings[] = sprintf(
-                '`%1$s` recurses, and %2$s. %3$s is `prohibited` below that: a payload deeper than that answers 422, '
-                    .'which the contract allows. `x-max-depth` on `%1$s` sets the depth. `prohibited` lets an empty value '
-                    .'through there (`null`, `""`, `[]`), which the contract may refuse.',
+                '`%1$s` recurses, and %2$s. %3$s is `missing` below that, so the field must be absent there: a '
+                    .'payload deeper than that answers 422, an empty value (`null`, `""`, `[]`) included, which the '
+                    .'contract allows. `x-max-depth` on `%1$s` sets the depth.',
                 $cut['name'],
                 $cut['stated']
                     ? sprintf('it states `x-max-depth: %1$d`, so the request validates it %1$d levels deep', $cut['depth'])

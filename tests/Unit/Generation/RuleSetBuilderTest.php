@@ -1920,7 +1920,7 @@ it('validates a recursion down to the depth the schema states and refuses what i
         'parent.city' => ['sometimes', 'string'],
         'parent.parent' => ['sometimes', 'array'],
         'parent.parent.city' => ['sometimes', 'string'],
-        'parent.parent.parent' => ['sometimes', 'prohibited'],
+        'parent.parent.parent' => ['missing'],
     ]);
 });
 
@@ -1937,7 +1937,7 @@ it('reads three levels when the schema states no depth', function (): void {
         'parent.parent.parent.city',
         'parent.parent.parent.parent',
     ])->and($set->rules['parent.parent.parent'])->toBe(['sometimes', 'array'])
-        ->and($set->rules['parent.parent.parent.parent'])->toBe(['sometimes', 'prohibited']);
+        ->and($set->rules['parent.parent.parent.parent'])->toBe(['missing']);
 });
 
 it('refuses the recursive field itself when the schema states a depth of zero', function (): void {
@@ -1945,15 +1945,14 @@ it('refuses the recursive field itself when the schema states a depth of zero', 
 
     expect($set->rules)->toBe([
         'city' => ['sometimes', 'string'],
-        'parent' => ['sometimes', 'prohibited'],
+        'parent' => ['missing'],
     ]);
 });
 
-// What the contract asks of the recursive field survives the cut: asking for a key and
-// refusing a value are two statements, and a `null` satisfies both. Below the first level
-// the parent object asks for the key through `required_array_keys`, so only the root's own
-// field carries `present` itself.
-it('keeps the presence the contract asks of the recursive field', function (): void {
+// `missing` says everything about the field below the cut: the key is absent. A presence rule
+// beside it would contradict it, so the field carries `missing` and nothing else, whether the
+// contract asks for the key or not.
+it('asks for nothing but the absence of the recursive field at the cut', function (): void {
     $cutAtOnce = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 0,
         parentRequired: true,
@@ -1963,9 +1962,9 @@ it('keeps the presence the contract asks of the recursive field', function (): v
         parentRequired: true,
     )]));
 
-    expect($cutAtOnce->rules['parent'])->toBe(['present', 'prohibited'])
+    expect($cutAtOnce->rules['parent'])->toBe(['missing'])
         ->and($cutBelow->rules['parent'])->toBe(['present', 'array', 'required_array_keys:parent'])
-        ->and($cutBelow->rules['parent.parent'])->toBe(['sometimes', 'prohibited']);
+        ->and($cutBelow->rules['parent.parent'])->toBe(['missing']);
 });
 
 it('unrolls a recursion through a list element', function (): void {
@@ -1988,7 +1987,7 @@ it('unrolls a recursion through a list element', function (): void {
         'children' => ['sometimes', 'array', 'list'],
         'children.*' => ['array'],
         'children.*.children' => ['sometimes', 'array', 'list'],
-        'children.*.children.*' => ['prohibited'],
+        'children.*.children.*' => ['missing'],
     ]);
 });
 
@@ -2024,7 +2023,7 @@ it('reads the limit at a marker from the schema it points to', function (): void
         'books.*.author.books.*',
         'books.*.author.books.*.author',
     ])->and($fromAuthor->rules['books.*.author'])->toBe(['sometimes', 'array'])
-        ->and($fromAuthor->rules['books.*.author.books.*.author'])->toBe(['sometimes', 'prohibited'])
+        ->and($fromAuthor->rules['books.*.author.books.*.author'])->toBe(['missing'])
         ->and(array_keys($fromBook->rules))->toBe([
             'author',
             'author.books',
@@ -2036,7 +2035,7 @@ it('reads the limit at a marker from the schema it points to', function (): void
             'author.books.*.author.books.*.author.books',
             'author.books.*.author.books.*.author.books.*',
         ])->and($fromBook->rules['author.books.*.author.books.*'])->toBe(['array'])
-        ->and($fromBook->rules['author.books.*.author.books.*.author.books.*'])->toBe(['prohibited']);
+        ->and($fromBook->rules['author.books.*.author.books.*.author.books.*'])->toBe(['missing']);
 });
 
 // The merged schema is what a marker re-enters, and it carries the component's own depth.
@@ -2061,7 +2060,7 @@ it('takes the depth from the component and not from a branch of its allOf', func
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]));
 
     expect(array_keys($set->rules))->toBe(['id', 'next', 'next.id', 'next.next'])
-        ->and($set->rules['next.next'])->toBe(['sometimes', 'prohibited']);
+        ->and($set->rules['next.next'])->toBe(['missing']);
 });
 
 // The cut refuses something the contract allows, which the principle permits when the
@@ -2075,7 +2074,9 @@ it('says in one finding that a deeper payload is refused and names x-max-depth a
         ->toContain('`Address`')
         ->toContain('`x-max-depth: 2`')
         ->toContain('`parent.parent.parent`')
-        ->toContain('`prohibited`')
+        ->toContain('`missing`')
+        ->toContain('absent')
+        ->toContain('an empty value')
         ->toContain('422');
 });
 
@@ -2109,9 +2110,9 @@ it('counts the fields it refuses once, in the finding, however many the recursio
     );
 
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $tree]));
-    $prohibited = array_keys(array_filter($set->rules, static fn (array $rules): bool => in_array('prohibited', $rules, true)));
+    $cut = array_keys(array_filter($set->rules, static fn (array $rules): bool => in_array('missing', $rules, true)));
 
-    expect($prohibited)->toBe([
+    expect($cut)->toBe([
         'left.left.left',
         'left.left.right',
         'left.right.left',

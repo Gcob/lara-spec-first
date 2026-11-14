@@ -244,7 +244,7 @@ paths:
         # `Comment`s. No rule set reaches an infinite depth, so the generated
         # request validates it down to the depth `Comment` states with
         # `x-max-depth` (two here, three when a schema says nothing) and refuses
-        # what is below with `prohibited`. Read `replies.*.replies.*.replies` in the
+        # what is below with `missing`. Read `replies.*.replies.*.replies` in the
         # generated request and the finding that says it is stricter than this
         # contract, then post a thread three replies deep and a thread two deep.
         post:

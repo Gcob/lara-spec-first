@@ -691,7 +691,7 @@ Comment:
 'replies.*.replies.*' => ['array', 'required_array_keys:body'],
 'replies.*.replies.*.body' => ['sometimes', 'string', 'max:500'],
 'replies.*.replies.*.replies' => ['sometimes', 'array', 'list'],
-'replies.*.replies.*.replies.*' => ['prohibited'],
+'replies.*.replies.*.replies.*' => ['missing'],
 ```
 
 **A level is one crossing of the recursion**, so `x-max-depth: 2` lets a payload re-enter `Comment` twice: a reply, and
@@ -700,19 +700,20 @@ recursive pair (`Author` holds `Book`s and `Book` holds an `Author`) therefore n
 at `Author`, the pair reads `Author`'s depth, and entered at `Book`, it reads `Book`'s. Each operation unrolls from the
 schema its own body starts at, so the same pair can be validated to two depths by two operations and neither is wrong.
 
-**Below the depth the field is `prohibited`, which makes a deeper payload a 422.** The alternatives were to stop
-validating there, which brings back what a typed [input DTO](#the-payload-arrives-as-a-dto) turns into a 500 (a
+**Below the depth the field must be absent (`missing`), which makes a deeper payload a 422.** The alternatives were to
+stop validating there, which brings back what a typed [input DTO](#the-payload-arrives-as-a-dto) turns into a 500 (a
 `parent: "oops"` below the last rule), or to refuse a contract that states no depth at build time, which turns away a
-contract that is valid. A field that the contract requires keeps its presence rule at the cut (`present` beside
-`prohibited`), so a `null` there still satisfies both.
+contract that is valid. **Not `prohibited`, which is "missing or empty"**: it lets `null`, `""` and `[]` through, and a
+typed DTO would then be built from an empty array. `missing` is the key being absent, so an empty value is refused there
+like any other, and the field carries that rule alone, since a presence rule beside it would contradict it.
 
 **That is stricter than the contract, and the generated file says so.** A payload five levels deep is valid against a
 schema that states no limit, so this is the exception [the principle](#every-constraint-maps-or-reports) allows when
 matching the contract exactly is far too complex in Laravel, and the one finding of the file names the schema, the depth
-it applied, whether the schema stated it, the first field it refuses and how many more, and `x-max-depth` as the lever.
-**It is also looser in one corner, and the finding says that too.** Laravel's `prohibited` is "missing or empty", so
-`null`, `""` and `[]` pass at the cut, where the contract may refuse them. An execution test pins it, so the sentence
-rests on a measurement.
+it applied, whether the schema stated it, the first field it refuses and how many more, that an empty value there is
+refused too, and `x-max-depth` as the lever. A recursive field the schema requires cannot be satisfied below the depth:
+its parent asks for the key and `missing` refuses it. A contract that requires its own recursion has no finite payload
+unless the field is nullable, and then this request accepts none either.
 
 **The rules unroll in `RuleSetBuilder`, and the contract's normal form does not change.** A recursion marker still
 carries the position of the schema it points back at (`recursesTo`), and the builder keeps the schemas it is inside of
@@ -725,7 +726,8 @@ can be found by, so the field gets its presence rule and a finding that nothing 
 fixtures 12 rules for a two-field `Node` where the walk used to give 3. A schema that recurses `k` times per level grows
 as `k` to the power of the depth: two children (`left` and `right`) refuse `2` to the power of the depth plus one fields
 at the cut, 16 at the default depth, and every level above them carries its own rules. `x-max-depth` is the lever in
-both directions, and a large value on a branching schema is a large file.
+both directions, and a large value on a branching schema is a large file: a schema that recurses more than once per
+level multiplies its rules (about `k` to the power of `N`), so keep the depth small.
 
 **The input DTO still reads a recursive node as `mixed`**, see
 [`dto-anatomy.md`](./dto-anatomy.md#what-each-schema-type-becomes). The request now validates it to the depth, and
