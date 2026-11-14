@@ -157,7 +157,7 @@ final readonly class RuleSetBuilder
         $queryKeys = [];
 
         foreach ($operation->queryParameters as $parameter) {
-            $unescapable = self::unescapableKey($parameter->name);
+            $unescapable = self::unreachableQueryName($parameter->name) ?? self::unescapableKey($parameter->name);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
@@ -1203,6 +1203,32 @@ final readonly class RuleSetBuilder
                     .'escape for. Its rules would apply to keys the contract never declared, so none '
                     .'are emitted for it.',
                 $field,
+            )
+            : null;
+    }
+
+    /**
+     * A finding for a query name PHP rewrites before Laravel sees the request,
+     * or null for the ordinary case.
+     *
+     * **PHP parses the query string, and it does not keep every name.** A `.`
+     * or a space becomes `_` (`user.name` arrives as `user_name`), and `[`
+     * opens a nested array (`page[size]` arrives as `page => [size => ...]`).
+     * Measured with `parse_str()`, which the request's query bag is built from.
+     * No key a rule can name is ever found under the name the contract
+     * writes, so a rule for it would never see what was sent: an optional one
+     * is never validated, and a required one answers 422 to every valid
+     * request. Reported instead, which is what the `*` case does, so the
+     * request accepts what the contract accepts.
+     */
+    private static function unreachableQueryName(string $name): ?string
+    {
+        return strpbrk($name, ".[ \0") !== false
+            ? sprintf(
+                '`%s` is a `query` parameter whose name PHP rewrites before Laravel sees it (`.` and a '
+                    .'space become `_`, and `[` opens a nested array), so no rule key can find it. None is '
+                    .'emitted for it, and neither its type nor its presence is enforced.',
+                $name,
             )
             : null;
     }

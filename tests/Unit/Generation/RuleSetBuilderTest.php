@@ -986,3 +986,22 @@ it('says nothing about a readOnly property that is not required', function (): v
     expect($set->rules)->toBe(['id' => ['sometimes', 'integer']])
         ->and($set->findings)->toBe([]);
 });
+
+// PHP rewrites a query name before Laravel sees it: `.` and a space become `_`,
+// and `page[size]` becomes a nested array. No key a rule names is ever found, so
+// the name is reported rather than given a rule that refuses or ignores every
+// request.
+it('reports a query name PHP rewrites, and gives it no rule', function (string $name): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [
+            new QueryParameter($name, new Schema(types: [SchemaType::Integer]), required: true),
+            new QueryParameter('limit', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect($set->rules)->toBe(['limit' => ['sometimes', 'integer']])
+        ->and($set->queryKeys)->toBe(['limit'])
+        ->and(implode("\n", $set->findings))->toContain('`'.$name.'`')
+        ->and(implode("\n", $set->findings))->toContain('PHP rewrites');
+})->with(['user.name', 'a b', 'page[size]']);

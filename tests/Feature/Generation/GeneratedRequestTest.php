@@ -969,3 +969,25 @@ it('accepts a request without a required readOnly property, and still judges it 
         ->and(statusForBuiltRules($body, ['id' => 'x', 'name' => 'Ada']))->toBe(422)
         ->and(statusForBuiltRules($body, ['id' => 7]))->toBe(422);
 });
+
+// PHP turns `.` and a space in a query name into `_` and `page[size]` into a
+// nested array before Laravel sees the request, so a rule keyed by the name the
+// contract writes can never find it. The request accepts what the contract does.
+it('accepts a request carrying the query names PHP rewrites', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listRewritten',
+        queryParameters: [
+            new QueryParameter('user.name', new Schema(types: [SchemaType::String]), required: true),
+            new QueryParameter('a b', new Schema(types: [SchemaType::Integer]), required: true),
+            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer]), required: true),
+            new QueryParameter('limit', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', '?user.name=ada&a%20b=1&page[size]=3&limit=2'))->toBe([200, ['limit' => '2']])
+        ->and(sendThroughEmitted($class, 'GET')[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'GET', '?limit=x')[0])->toBe(422);
+});

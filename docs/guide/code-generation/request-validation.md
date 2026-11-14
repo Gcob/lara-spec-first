@@ -52,6 +52,7 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | A recursive schema below the point it repeats, since no rule set reaches infinity              |
 | [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A file part's `encoding.<part>.contentType`, which [`uploads.md`](../uploads.md) names as open |
 | `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for          |
+|                                                                                                              | A `query` name PHP rewrites (`user.name`, `a b`, `page[size]`), which no rule key can find     |
 | A `query` parameter, with its own `required`                                                                 | A bound on a field that states no single type                                                  |
 | A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                                |
 | [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size |                                                                                                |
@@ -110,6 +111,13 @@ reaching the validator is not the shape the schema describes, and every rule abo
 request. An object is worse off still: the default style sends one key per property, `?status=a`, and never the
 parameter's own name, so even its presence would refuse a valid request, and it is `sometimes` whatever its `required`
 flag. The generated file says so in both cases.
+
+**A query name PHP rewrites gets no rule at all.** PHP parses the query string before Laravel sees it: a `.` or a space
+in a name becomes `_`, so `user.name` arrives as `user_name`, and `[` opens a nested array, so `page[size]` arrives as
+`page => [size => 3]`. No rule key finds the name the contract writes, so a rule for it would never judge what was sent:
+an optional parameter would never be validated, and a required one would answer 422 to every valid request. It is
+treated as [a field name carrying `*`](#every-constraint-maps-or-reports) is: no rule, a finding that says why, and the
+request accepts what the contract accepts. It is not in the list of names `validationData()` reads either.
 
 **A path parameter is the router's question, and its answer is a 404.** `/users/abc` on an operation whose `{id}` is an
 integer has not addressed a resource, so refusing it with a 422 field error about a body that was fine is the wrong
