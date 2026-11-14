@@ -260,6 +260,9 @@ Two documents govern most of what you will need. Read the one that owns your sub
   Start there when you need to find something.
 - [`docs/contributing/card-management.md`](./docs/contributing/card-management.md) — what makes a card the right size,
   the board's fields, and what this project declines to use. Read it before opening a card or splitting one.
+- [`docs/contributing/releasing.md`](./docs/contributing/releasing.md) — how a version is cut: `just release-prep` for
+  the release pull request, and why only the maintainer tags. Read it before touching a release, and never run
+  `just release --publish`.
 - [`docs/project/stack.md`](./docs/project/stack.md) — every technology choice, its status, and its reasoning.
 - [`docs/guide/openapi-support.md`](./docs/guide/openapi-support.md) — what the package honors of the specification and
   what it does not, and why. Read it before writing anything that reads a spec.

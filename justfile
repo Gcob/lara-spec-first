@@ -154,6 +154,19 @@ check-markers:
 card-context card:
     @npm run --silent card-context -- {{card}}
 
+# The two release recipes run on the host and wrap a script, not a Composer
+# script: they need git, gh and a terminal, and the PHP image has none of them.
+# The logic, and the checks that keep an agent from tagging, live in the scripts.
+# The process is in docs/contributing/releasing.md.
+
+# Prepare a release: gates, release branch, changelog heading, draft PR. Add --dry-run to only check.
+release-prep version card *flags:
+    ./scripts/release-prep.sh {{version}} {{card}} {{flags}}
+
+# Dry run of tagging a release. Add --publish to tag, push and publish it (asks for the version).
+release version *flags:
+    ./scripts/release.sh {{version}} {{flags}}
+
 # Serve the built site exactly as it will be published.
 docs-preview:
     npm run docs:preview
