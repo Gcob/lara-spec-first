@@ -189,6 +189,20 @@ it('does not require a lone property when the whole body may be absent', functio
         ->and(implode('', $set->findings))->toContain('may be absent entirely');
 });
 
+// The finding is about a required key with no sibling to name. A body that
+// declares one key and requires none has nothing to say, and the finding used to
+// fire anyway, with an empty name.
+it('says nothing about an absent body that declares one optional property', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['name' => new Schema(types: [SchemaType::String])])],
+        bodyRequired: false,
+    ));
+
+    expect($set->rules)->toBe(['name' => ['sometimes', 'string']])
+        ->and(implode('', $set->findings))->not->toContain('may be absent entirely')
+        ->and(implode('', $set->findings))->not->toContain('requires  ');
+});
+
 // --- Query parameters, whose presence is their own and never the method's ---
 
 it('keys a query parameter by its own name and its own required flag', function (): void {

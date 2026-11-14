@@ -1170,6 +1170,7 @@ final readonly class RuleSetBuilder
             );
         } elseif (
             ! $body->required
+            && $schema->required !== []
             && count(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required])) === 1
         ) {
             $findings[] = sprintf(
