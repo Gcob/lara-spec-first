@@ -145,7 +145,10 @@ final readonly class SupportMatrixCheck
      * one line that lists each position, and its pointer is the first of them: the structured field names one place,
      * the message names the rest. A `Partial` keyword has no position the contract states beyond the field it is
      * written on, so its message lists the fields and its pointer is the operation's, as
-     * {@see self::missingOperationId()}'s is.
+     * {@see self::missingOperationId()}'s is. Its level is `Partial` for all of them, which is the level of the gap
+     * rather than of the keyword: the matrix rates `enum` as honored, and an `enum` on an object is a field it was not
+     * read for. Taking each keyword's level from the matrix would need the matrix in code, and nothing but this report
+     * would read it, so the message says it instead.
      *
      * **Request schemas only, the body and the `query` parameters.** A response is read by nothing yet, and a keyword
      * is unhonored only against a generator that reads it, which is why a response stays one `Deferred` count. Only the
@@ -192,12 +195,14 @@ final readonly class SupportMatrixCheck
                     SupportLevel::Partial,
                     DocumentPointer::forOperation($operation),
                     sprintf(
-                        '%s writes `%s` where the generated request enforces nothing for it: %s. This package reads '.
-                        'part of it and not what is written there. See docs/guide/openapi-support.md, "Schemas". '.
-                        'This is a fact about this package, not a defect in your contract.',
+                        '%s writes `%s` where the generated request enforces nothing for it: %s. The support matrix '.
+                        'may rate `%s` as honored in general, and on these fields it is left out of the rules. See '.
+                        'docs/guide/openapi-support.md, "Schemas". This is a fact about this package, not a defect '.
+                        'in your contract.',
                         $operation->label(),
                         $keyword,
                         implode(', ', $fields),
+                        $keyword,
                     ),
                 );
             }

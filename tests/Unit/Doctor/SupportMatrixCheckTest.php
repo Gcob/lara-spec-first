@@ -534,6 +534,21 @@ it('reports what a read keyword leaves unenforced as Partial, naming the fields'
         ->and($findings[0]->message)->toContain('`website`, `home`');
 });
 
+// The matrix rates `enum` as honored, and an `enum` on an object is a field it was not read for. The finding is
+// `Partial` because it names fields rather than a keyword, so it must not say the keyword is read in part.
+it('says the fields leave the keyword out, never that the package reads part of it', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => supportMatrixObject(
+        properties: ['meta' => new Schema(types: [SchemaType::Object], enum: [[]])],
+    )])]);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->level)->toBe(SupportLevel::Partial)
+        ->and($findings[0]->message)->toContain('`enum`')
+        ->and($findings[0]->message)->toContain('`meta`')
+        ->and($findings[0]->message)->toContain('on these fields')
+        ->and($findings[0]->message)->not->toContain('reads part of it');
+});
+
 // The informational lines of a generated file's findings must never gate the
 // doctor: two media types over one schema is worth saying and wrong to fail on.
 it('does not report what a generated file only mentions', function (): void {

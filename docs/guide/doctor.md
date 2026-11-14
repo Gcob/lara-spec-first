@@ -85,8 +85,9 @@ first thing that reads a spec**, see the [Roadmap](../../README.md#roadmap).
     one, in the text report and in `--json` both. The JSON pointer is filled by the sections that compute a finding here
     and know the position exactly: the `operationId` rule, shadowing, which points at the operation that will never be
     reached, and a request schema's `Ignored` keyword, which points at the first place it is written. A `Partial`
-    keyword points at its operation. It is **empty** in two cases, and each is a property of the finding rather than a
-    gap to fill later:
+    keyword points at its operation, and its level is `Partial` for the gap rather than the keyword's own row: an `enum`
+    on an object is `Partial` here and `Supported` in the matrix, and the message says so. It is **empty** in two cases,
+    and each is a property of the finding rather than a gap to fill later:
 
     - **A finding translated out of a reading-pipeline fault.** Those exceptions carry their position in prose inside
       the message, not as structured data. Closing that means widening `Parsing\Exceptions\`, which is a change to what
