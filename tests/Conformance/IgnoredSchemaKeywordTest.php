@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Generation\FormRequestEmitter;
+use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Symfony\Component\Yaml\Yaml;
 
 // The equivalence class behind `spec:doctor`'s report on request schemas: a
@@ -170,4 +172,85 @@ it('collects the same keywords from a 3.0 document', function (): void {
     ], version: '3.0.3')[0]);
 
     expect(array_keys($body->ignored))->toBe(['default', 'oneOf', 'discriminator']);
+});
+
+/**
+ * Every file the build emits for a contract whose two operations write one inline shape, with or without an `Ignored`
+ * keyword in it at every depth: the request of each, and every input DTO.
+ *
+ * `createUser` nests the shape as `address` and `createUserAddress` sends it as the body, so both give
+ * `CreateUserAddressInputDto`, and the two copies are written at two positions.
+ *
+ * @return array{emitted: array<string, string>, ignored: int}
+ */
+function emitForTwoCopiesOfOneShape(bool $withIgnored): array
+{
+    $extra = static fn (array $keywords): array => $withIgnored ? $keywords : [];
+
+    $street = ['type' => 'string', 'minLength' => 2, ...$extra(['default' => 'main', 'not' => ['type' => 'integer']])];
+    $address = [
+        'type' => 'object',
+        'required' => ['street'],
+        'properties' => ['street' => $street],
+        ...$extra(['deprecated' => true, 'minProperties' => 1]),
+    ];
+    $operation = static fn (string $id, array $body): array => ['post' => [
+        'operationId' => $id,
+        'requestBody' => ['content' => ['application/json' => ['schema' => $body]]],
+        'responses' => ['201' => ['description' => 'Created']],
+    ]];
+
+    $path = sys_get_temp_dir().'/lsf-golden-'.bin2hex(random_bytes(6)).'.yaml';
+    file_put_contents($path, Yaml::dump([
+        'openapi' => '3.1.0',
+        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
+        'paths' => [
+            '/users' => $operation('createUser', ['type' => 'object', 'properties' => ['address' => $address]]),
+            '/addresses' => $operation('createUserAddress', $address),
+        ],
+    ], 12));
+
+    try {
+        $operations = extractDocumentAt($path);
+    } finally {
+        unlink($path);
+    }
+
+    $planned = plannedRequests($operations);
+    $emitted = [];
+
+    foreach ($planned['requests'] as $request) {
+        $file = (new FormRequestEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($request);
+        $emitted[$file->relativePath] = $file->contents;
+    }
+
+    foreach ($planned['plan']->dtos as $dto) {
+        $file = (new InputDtoEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($dto);
+        $emitted[$file->relativePath] = $file->contents;
+    }
+
+    $count = 0;
+    $walk = static function (Schema $schema) use (&$walk, &$count): void {
+        $count += count($schema->ignored);
+        array_map($walk, $schema->properties);
+    };
+
+    foreach ($operations as $operation) {
+        $operation->requestBody !== null && array_map($walk, $operation->requestBody->content);
+    }
+
+    return ['emitted' => $emitted, 'ignored' => $count];
+}
+
+// Class six: a keyword nothing reads changes nothing that is generated. The guard behind the shared DTO name, which
+// compared two inline copies as written and refused a contract that the same one without a `default` built.
+it('emits the same files with and without the keywords the matrix ignores', function (): void {
+    $without = emitForTwoCopiesOfOneShape(false);
+    $with = emitForTwoCopiesOfOneShape(true);
+
+    // The case would pass for the wrong reason if the keywords never reached the contract.
+    expect($without['ignored'])->toBe(0)
+        ->and($with['ignored'])->toBeGreaterThan(4)
+        ->and(array_keys($with['emitted']))->toContain('Data/CreateUserAddressInputDto.php')
+        ->and($with['emitted'])->toBe($without['emitted']);
 });
