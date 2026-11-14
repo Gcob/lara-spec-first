@@ -288,6 +288,63 @@ it('reads an empty string at the depth as the null Laravel turns it into', funct
         ->and(statusForBuiltRules(chain(nullable: false, required: false), ['next' => ['next' => '']]))->toBe(422);
 });
 
+/**
+ * The JSON body schema of one operation of a fixture, read the way a build reads it, so a test drives the rules a real
+ * contract produces rather than a schema built to look like one.
+ */
+function bodyOfFixture(string $fixture, string $operationId): Schema
+{
+    foreach (extractFixture($fixture) as $operation) {
+        if ($operation->operationId === $operationId) {
+            $body = $operation->requestBody;
+            assert($body instanceof RequestBody);
+
+            return $body->content['application/json'];
+        }
+    }
+
+    throw new RuntimeException(sprintf('`%s` has no operation `%s`.', $fixture, $operationId));
+}
+
+// An `allOf` around a recursion is an intersection: the constraints a wrapper writes hold for the wrapper's own level,
+// and the ones written beside a marker hold at every level that marker is crossed at. Each payload below is judged by
+// the contract in `recursion-allof-*.yaml` (a child of a `Category` is a plain `Category`, so it needs neither
+// `name` nor `slug`), at both versions, through the rules the builder emits.
+it('answers a payload the way the contract reads an allOf around a recursion', function (
+    string $version,
+    string $operationId,
+    array $payload,
+    int $status,
+): void {
+    expect(statusForBuiltRules(bodyOfFixture('recursion-allof-'.$version.'.yaml', $operationId), $payload))->toBe($status);
+})->with(function (): array {
+    $cases = [
+        'a body wrapping the component: a bare child is valid' => ['createCategory', ['name' => 'Root', 'slug' => 'root', 'children' => [['name' => 'Child']]], 200],
+        'a body wrapping the component: the root still needs its slug' => ['createCategory', ['name' => 'Root', 'children' => []], 422],
+        'a body wrapping the component: a wrong value in a child' => ['createCategory', ['name' => 'Root', 'slug' => 'root', 'children' => [['children' => 'oops']]], 422],
+        'a named allOf over the component: a bare child is valid' => ['createNamedCategory', ['name' => 'Root', 'slug' => 'root', 'children' => [['name' => 'Child']]], 200],
+        'a named allOf over the component: a wrong value in a child' => ['createNamedCategory', ['name' => 'Root', 'slug' => 'root', 'children' => [['children' => 'oops']]], 422],
+        'a named allOf over the component: the root still needs its slug' => ['createNamedCategory', ['name' => 'Root', 'children' => []], 422],
+        'a marker with a required beside it: every level named' => ['createNode', ['label' => 'a', 'next' => ['label' => 'b']], 200],
+        'a marker with a required beside it: the first level lacks it' => ['createNode', ['next' => []], 422],
+        'a marker with a required beside it: the second level lacks it' => ['createNode', ['label' => 'a', 'next' => ['label' => 'b', 'next' => []]], 422],
+        'a marker with a required beside it: two levels, both named' => ['createNode', ['label' => 'a', 'next' => ['label' => 'b', 'next' => ['label' => 'c']]], 200],
+        'a marker with a required beside it: a third level is below the depth' => ['createNode', ['label' => 'a', 'next' => ['label' => 'b', 'next' => ['label' => 'c', 'next' => ['label' => 'd']]]], 422],
+        'a field wrapping the component: a bare next is valid' => ['createTree', ['root' => ['extra' => 'x', 'next' => []]], 200],
+        'a field wrapping the component: the wrapped level still needs its extra' => ['createTree', ['root' => ['next' => []]], 422],
+        'a field wrapping the component: a wrong value below' => ['createTree', ['root' => ['extra' => 'x', 'next' => ['next' => 'oops']]], 422],
+    ];
+    $datasets = [];
+
+    foreach (['3.0', '3.1'] as $version) {
+        foreach ($cases as $name => [$operationId, $payload, $status]) {
+            $datasets[$name.' (OpenAPI '.$version.')'] = [$version, $operationId, $payload, $status];
+        }
+    }
+
+    return $datasets;
+});
+
 /*
  * Part 2's table, against the framework rather than against a string: one
  * case for each rule whose meaning the design checked, because a rule name

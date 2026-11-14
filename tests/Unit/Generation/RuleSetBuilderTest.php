@@ -2114,7 +2114,7 @@ it('says in one finding that a deeper payload is refused and names x-max-depth a
         ->toContain('`parent.parent.parent`')
         ->toContain('`missing`')
         ->toContain('absent')
-        ->toContain('an empty value')
+        ->toContain('`null` passes only where the schema is nullable')
         ->toContain('422');
 });
 
@@ -2213,3 +2213,164 @@ it('unrolls a recursion read from a document', function (string $fixture, array 
         'city', 'parent', 'parent.city', 'parent.parent', 'parent.parent.city', 'parent.parent.parent',
     ]],
 ]);
+
+// An `allOf` around a recursion, read from a document at both versions. What the wrapper states belongs to its own
+// level, and what is written beside a marker belongs to every level the marker is crossed at. The expected keys and
+// rules are written out by hand from `recursion-allof-*.yaml`.
+
+/**
+ * The operation of a fixture with the given `operationId`.
+ */
+function fixtureOperation(string $fixture, string $operationId): Operation
+{
+    foreach (extractFixture($fixture) as $operation) {
+        if ($operation->operationId === $operationId) {
+            return $operation;
+        }
+    }
+
+    throw new RuntimeException(sprintf('`%s` has no operation `%s`.', $fixture, $operationId));
+}
+
+it('keeps what a wrapper around a recursive component states at the wrapper level', function (string $fixture): void {
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createCategory'));
+
+    expect($set->rules['name'])->toBe(['present', 'string'])
+        ->and($set->rules['children.*'])->toBe(['array'])
+        ->and($set->rules['children.*.children.*'])->toBe(['array'])
+        ->and($set->rules['children.*.children.*.children.*'])->toBe(['array'])
+        ->and($set->rules['children.*.children.*.children.*.children.*'])->toBe(['missing'])
+        ->and(count($set->rules))->toBe(16);
+})->with([
+    'OpenAPI 3.0' => ['recursion-allof-3.0.yaml'],
+    'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
+]);
+
+it('applies what is written beside a marker at every level the marker is crossed at', function (string $fixture): void {
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNode'));
+
+    expect($set->rules)->toBe([
+        'label' => ['sometimes', 'string'],
+        'next' => ['sometimes', 'array', 'required_array_keys:label'],
+        'next.label' => ['sometimes', 'string'],
+        'next.next' => ['sometimes', 'array', 'required_array_keys:label'],
+        'next.next.label' => ['sometimes', 'string'],
+        'next.next.next' => ['missing'],
+    ]);
+})->with([
+    'OpenAPI 3.0' => ['recursion-allof-3.0.yaml'],
+    'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
+]);
+
+it('unrolls a recursive component a named allOf includes', function (string $fixture): void {
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNamedCategory'));
+
+    expect($set->rules['children.*'])->toBe(['array'])
+        ->and($set->rules['children.*.children.*.children.*.children.*'])->toBe(['missing'])
+        ->and(count($set->rules))->toBe(16)
+        ->and(implode('', $set->findings))->not->toContain('points back at');
+})->with([
+    'OpenAPI 3.0' => ['recursion-allof-3.0.yaml'],
+    'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
+]);
+
+it('unrolls a recursive component wrapped on a field, and keeps the wrapper to the wrapped level', function (string $fixture): void {
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createTree'));
+
+    expect($set->rules['root'])->toBe(['sometimes', 'array', 'required_array_keys:extra'])
+        ->and($set->rules['root.next'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['root.next.next.next'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['root.next.next.next.next'])->toBe(['missing']);
+})->with([
+    'OpenAPI 3.0' => ['recursion-allof-3.0.yaml'],
+    'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
+]);
+
+// A depth written in the component's own inline branch is the component's: the finding must not tell its author the
+// schema states none, and the included component's own depth (9) must not be the one used.
+it('reads an x-max-depth written in a component\'s own inline allOf branch', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-depth-in-allof-branch.yaml', 'createNode'));
+
+    expect(array_keys($set->rules))->toBe(['id', 'next', 'next.id', 'next.next'])
+        ->and($set->rules['next.next'])->toBe(['missing'])
+        ->and(implode('', $set->findings))->toContain('`x-max-depth: 1`')
+        ->and(implode('', $set->findings))->not->toContain('states no `x-max-depth`');
+});
+
+// The finding says what a payload below the depth gets: `null` passes only when the schema is nullable, and the
+// count of levels agrees with its noun.
+it('says null passes below the depth only when the schema is nullable', function (bool $nullable, string $says, string $notSays): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
+        maxDepth: 2,
+        nullable: $nullable,
+    )]));
+    $finding = implode("\n", $set->findings);
+
+    expect($finding)->toContain($says)
+        ->and($finding)->not->toContain($notSays);
+})->with([
+    'a nullable schema' => [true, '`null` passes because `Address` is nullable', '`null` passes only'],
+    'a schema that is not nullable' => [false, '`null` passes only where the schema is nullable, and `Address` is not', 'because `Address` is nullable'],
+]);
+
+it('says one level, not 1 levels', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 1)]));
+    $finding = implode("\n", $set->findings);
+
+    expect($finding)->toContain('1 level deep')
+        ->and($finding)->not->toContain('1 levels');
+});
+
+// A recursion that branches grows as `k` to the power of the depth, so a depth that reads as reasonable for a tree
+// is more rules than a request should evaluate, and then more than a process holds. Unrolling stops at a ceiling,
+// per operation, and the fields it did not reach keep what the walk always gave them: presence and a finding.
+it('stops unrolling at a ceiling and says so, instead of running out of memory', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'));
+    $findings = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'ceiling')));
+
+    // The root's own key is not unrolled. The check runs where a marker is met, so each of the 20 levels the walk is
+    // inside of when it passes the ceiling still writes the three fields it has left: past it by a few dozen keys at
+    // most, where the full tree is millions.
+    expect(count($set->rules))->toBeGreaterThan(RuleSetBuilder::MAX_UNROLLED_KEYS)
+        ->toBeLessThanOrEqual(1 + RuleSetBuilder::MAX_UNROLLED_KEYS + 20 * 3)
+        ->and($findings)->toHaveCount(1)
+        ->and($findings[0])
+        ->toContain('`Tree`')
+        ->toContain('`x-max-depth: 20`')
+        ->toContain((string) RuleSetBuilder::MAX_UNROLLED_KEYS)
+        ->toContain('presence')
+        ->toContain('lower');
+});
+
+it('keeps the presence rule of a field it did not unroll', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'));
+    $presenceOnly = array_filter($set->rules, static fn (array $rules): bool => $rules === ['sometimes']);
+
+    expect($presenceOnly)->not->toBe([]);
+});
+
+// The `and`, `or` and `not` filter of a search endpoint, with no depth stated. By hand: an expansion writes its own
+// key, three scalars and `and` and `or`, then crosses three markers, so the root's 5 keys and three crossings of 105
+// make 320, which is under the ceiling and so unrolled in full.
+it('unrolls the default depth of a search filter in full, under the ceiling', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-filter.yaml', 'search'));
+
+    expect(count($set->rules))->toBe(320)
+        ->toBeLessThan(RuleSetBuilder::MAX_UNROLLED_KEYS)
+        ->and(implode('', $set->findings))->not->toContain('ceiling');
+});
+
+// A field that two branches of an `allOf` write as a marker to two different components is one field that has to
+// satisfy both, and a rule set that unrolled one of them would silently drop the other. It keeps the presence rule it
+// always had and the finding that nothing below it is validated, naming both.
+it('keeps presence and a finding for a field that two allOf branches point back from', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-allof-two-markers.yaml', 'createThing'));
+
+    expect($set->rules)->toBe([
+        'part' => ['sometimes'],
+        'a' => ['sometimes', 'string'],
+        'b' => ['sometimes', 'integer'],
+    ])->and(implode("\n", $set->findings))
+        ->toContain('`part` points back at `#/components/schemas/Left` and `#/components/schemas/Right`')
+        ->toContain('nothing below it is validated');
+});

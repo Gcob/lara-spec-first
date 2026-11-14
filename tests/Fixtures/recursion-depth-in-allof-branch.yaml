@@ -1,0 +1,35 @@
+# A component that includes another and states its own `x-max-depth` in an inline branch of its `allOf`. The depth is
+# the component's even though no key of it is written beside the `allOf`, and the included component's own depth (9)
+# is not.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /nodes:
+    post:
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Node'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Base:
+      type: object
+      x-max-depth: 9
+      properties:
+        id:
+          type: integer
+    Node:
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - x-max-depth: 1
+          properties:
+            next:
+              $ref: '#/components/schemas/Node'

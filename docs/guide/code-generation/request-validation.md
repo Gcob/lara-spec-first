@@ -37,7 +37,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 >   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()`, and `validated()` itself keeps
 >   returning Laravel's array.
 > - A recursive schema is validated down to the depth it states with `x-max-depth` (three when it says nothing), and a
->   payload deeper than that is refused, with a finding in the generated file that names the extension.
+>   payload deeper than that is refused, with a finding in the generated file that names the extension. Unrolling stops
+>   at 1,000 rule keys per operation, with a finding, so a deep branching schema never costs a build.
 > - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one. A
 >   rule is never stricter than the contract either, unless matching it exactly would be far too complex in Laravel, and
 >   then the generated file says so in a finding.
@@ -724,23 +725,60 @@ a non-nullable one refuses it like any other value. Execution tests pin each cel
 
 **That is stricter than the contract, and the generated file says so.** A payload five levels deep is valid against a
 schema that states no limit, so this is the exception [the principle](#every-constraint-maps-or-reports) allows when
-matching the contract exactly is far too complex in Laravel, and the one finding of the file names the schema, the depth
-it applied, whether the schema stated it, the first field it refuses and how many more, which rule it carries there, and
-`x-max-depth` as the lever.
+matching the contract exactly is far too complex in Laravel. **Each recursive schema the walk cuts gets one finding**
+(`Comment` and `Address` in one request are two, among the file's others), and it names the schema, the depth it
+applied, whether the schema stated it, the first field it refuses and how many more, which rule it carries there, what
+`null` does (it passes only where the schema is nullable), and `x-max-depth` as the lever.
 
 **The rules unroll in `RuleSetBuilder`, and the contract's normal form does not change.** A recursion marker still
-carries the position of the schema it points back at (`recursesTo`), and the builder keeps the schemas it is inside of
-on a stack: a marker finds its ancestor there, by position, and expands it once more. A schema in another file is found
-the same way. **A recursion through a schema with no name stays as it was**: an inline schema has no position a marker
-can be found by, so the field gets its presence rule and a finding that nothing below it is validated.
+carries the position of the schema it points back at (`recursesTo`), and the builder keeps the definitions of the named
+schemas it is inside of on a stack: a marker finds its ancestor there, by position, and expands it once more. A schema
+in another file is found the same way.
 
-**The rule count is the price, and nothing but the depth caps it.** A schema that recurses once per level (`Comment`,
-`Address`) adds one copy of its rules per level, so the default of three levels gives the repository's own recursive
-fixtures 12 rules for a two-field `Node` where the walk used to give 3. A schema that recurses `k` times per level grows
-as `k` to the power of the depth: two children (`left` and `right`) refuse `2` to the power of the depth plus one fields
-at the cut, 16 at the default depth, and every level above them carries its own rules. `x-max-depth` is the lever in
-both directions, and a large value on a branching schema is a large file: a schema that recurses more than once per
-level multiplies its rules (about `k` to the power of `N`), so keep the depth small.
+**What goes on the stack is the component as the document writes it, never the schema that wraps it.** An `allOf` is an
+intersection, so a constraint belongs to the level of the schema that wrote it:
+
+- **A wrapper's constraints stay at the wrapper's level.** A body written as
+  `allOf: [Category, {required: [name, slug]}]` requires `name` and `slug` on the root only. A child of a `Category` is
+  a plain `Category`, so `{"name": "Root", "slug": "root", "children": [{"name": "Child"}]}` passes, as it did before
+  the unrolling. The same goes for a field written that way, and for a named `CreateCategory: allOf: [Category, ...]`,
+  whose `Category` is unrolled like any other.
+- **What is written beside a marker applies at every level that marker is crossed at.**
+  `next: allOf: [Node, {required: [label]}]` asks for `label` on `next`, and on `next.next`, down to the depth. The
+  unrolled level is the ancestor with that constraint beside it, which is also what the contract says: every `next` is
+  that intersection.
+- **`x-max-depth` written in a component's own inline `allOf` branch is the component's**, since the branch is part of
+  it. One written on a component that is only included stays with that component.
+
+**Three shapes keep the presence rule and the finding they had before the unrolling**, and the finding says that nothing
+below the field is validated:
+
+- **A recursion through a schema with no name.** An inline schema has no position a marker can be found by.
+- **A field that is two markers at once**: two branches of an `allOf` that each write a field of one name pointing back
+  at a different component. The walk follows one ancestor, and unrolling it would drop the other without a word. The
+  finding names both.
+- **A field met after the ceiling**, below.
+
+**Unrolling stops at a ceiling of 1,000 rule keys per operation, and the ceiling never refuses a contract.** A schema
+that recurses once per level (`Comment`, `Address`) adds one copy of its rules per level, so the default of three levels
+gives the repository's own recursive fixtures 12 rules for a two-field `Node` where the walk used to give 3. A schema
+that recurses `k` times per level grows as `k` to the power of the depth: two children (`left` and `right`) refuse `2`
+to the power of the depth plus one fields at the cut, 16 at the default depth, and every level above them carries its
+own rules. That is harmless at the default depth and fatal at a depth a contract plausibly states for a tree: a binary
+tree at `x-max-depth: 20` is over three million keys, which exhausts a gigabyte before the build ends, and a request
+evaluates every key it holds. So the walk counts the keys it writes by unrolling (the ones a schema holds without
+recursing do not count), and **a marker met once the count has reached 1,000 is not expanded**. Its field keeps the
+presence rule it would have had, as a marker through an inline schema does, and **one finding per recursive schema says
+which fields, that nothing below them is validated, which makes the request looser than the contract there, and that
+`x-max-depth` is the lever**. The ceiling is a number of keys because that is what a request pays for; the filter every
+search endpoint has (`and`, `or`, `not` over itself) is 315 unrolled keys at the default depth, and a binary tree at
+depth 7 is 381, so a contract stays far under it unless it asks for a branching schema to go deep.
+
+**The walk is depth first, so the ceiling is met on the first fields written, not evenly.** A branching schema past the
+ceiling is fully validated down its first branches and unrolled to no depth at all in the last ones, and the finding
+names the first field it left. The number is checked where a marker is met, so a build passes it by what every level it
+is inside of still has to write: a few dozen keys, never a multiple. A contract that wants a branching schema validated
+evenly lowers `x-max-depth` until it fits.
 
 **The input DTO still reads a recursive node as `mixed`**, see
 [`dto-anatomy.md`](./dto-anatomy.md#what-each-schema-type-becomes). The request now validates it to the depth, and

@@ -58,8 +58,9 @@ use Illuminate\Validation\Validator;
  *   - `anything` states no type, so no type rule is emitted for it.
  *   - `Address` recurses, and it states no `x-max-depth`, so the request validates it 3 levels
  *     deep, the package's default. `address.parent.parent.parent.parent` is `missing` (the field
- *     must be absent) below that: a payload deeper than that answers 422, an empty value (`null`,
- *     `""`, `[]`) included, which the contract allows. `x-max-depth` on `Address` sets the depth.
+ *     must be absent) below that: a payload deeper than that answers 422, though the contract
+ *     allows it. `null` passes only where the schema is nullable, and `Address` is not, so `null`,
+ *     `""` and `[]` answer 422 there too. `x-max-depth` on `Address` sets the depth.
  *
  * Navigation
  *

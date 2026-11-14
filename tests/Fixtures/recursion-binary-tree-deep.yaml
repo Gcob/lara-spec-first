@@ -1,0 +1,31 @@
+# A schema that recurses twice per level with a depth that looks reasonable for "how deep can a tree be". Unrolled in
+# full it is millions of rule keys, so the build stops unrolling at a ceiling and says so.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /trees:
+    post:
+      operationId: createTree
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tree'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Tree:
+      type: object
+      x-max-depth: 20
+      properties:
+        value:
+          type: string
+        left:
+          $ref: '#/components/schemas/Tree'
+        right:
+          $ref: '#/components/schemas/Tree'

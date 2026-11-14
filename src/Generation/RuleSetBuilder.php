@@ -140,6 +140,21 @@ final readonly class RuleSetBuilder
     public const int DEFAULT_MAX_DEPTH = 3;
 
     /**
+     * How many rule keys unrolling recursion may write for one operation. A marker met after that many keys is not
+     * expanded: its field keeps its presence rule, and the file says which ones.
+     *
+     * A schema that recurses `k` times per level grows as `k` to the power of the depth, and a request evaluates every
+     * key it holds. The default depth of a search filter (`and`, `or`, `not`) is 315 keys and a binary tree at depth 7
+     * is 381, so a plain contract is far under; a binary tree at depth 20 is over three million keys, which exhausts a
+     * gigabyte before the build ends. The check runs where a marker is met, so a build passes it by the fields that
+     * every level it is inside of still has to write: the depth times the width of a level, where the full tree is the
+     * width to the power of the depth.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "A recursive schema is validated to a stated depth"
+     */
+    public const int MAX_UNROLLED_KEYS = 1000;
+
+    /**
      * @throws ConflictingInputException the body and a query parameter naming one field, two media types over two
      *                                   schemas, or an `allOf` whose branches disagree
      */
@@ -394,11 +409,7 @@ final readonly class RuleSetBuilder
 
         self::planFormNames($schema, $walk);
 
-        $named = $schema->source !== null;
-
-        if ($named) {
-            $walk->ancestors[] = $schema;
-        }
+        $outside = self::enter($walk, $written, $schema, 'the body');
 
         self::objectChildren(
             $walk,
@@ -407,9 +418,7 @@ final readonly class RuleSetBuilder
             self::rootPresence($operation, $schema, $body, $walk),
         );
 
-        if ($named) {
-            array_pop($walk->ancestors);
-        }
+        self::leave($walk, $outside);
 
         // The payload's root has no field for `array:` to sit on, so a closed
         // root becomes a closure comparing its top-level keys. Only the top
@@ -784,16 +793,12 @@ final readonly class RuleSetBuilder
         $rules = $presence === '' ? [] : [$presence];
 
         if ($schema->recursesTo !== null) {
-            self::recursion($walk, $key, $label, $schema->recursesTo, $presence);
+            self::recursion($walk, $key, $label, $schema, $presence);
 
             return;
         }
 
-        $named = $schema->source !== null;
-
-        if ($named) {
-            $walk->ancestors[] = $schema;
-        }
+        $outside = self::enter($walk, $written, $schema, $label);
 
         $handled = ['allOf', 'type'];
         // A value has to satisfy the type list and the enumeration at once,
@@ -984,11 +989,55 @@ final readonly class RuleSetBuilder
             );
         }
 
-        if ($named) {
-            array_pop($walk->ancestors);
-        }
+        self::leave($walk, $outside);
 
         self::reportUnhandled($walk, $label, $schema, $handled);
+    }
+
+    /**
+     * Put the definitions of the named schemas a field is written as on the stack a recursion marker looks one up in.
+     *
+     * **The definition, never the merged site.** A field written as `allOf: [Category, {required: [name]}]` merges into
+     * one schema that takes `Category`'s name, and expanding that at a marker would re-impose the `required` at every
+     * level, where only the wrapper wrote it. So a named schema is pushed as its own definition (its own `allOf` merged
+     * in), and a wrapper with no name of its own pushes its named branches, each one merged on its own.
+     *
+     * @param  Schema  $written  the schema as the contract writes the field
+     * @param  Schema  $merged  the same, with its `allOf` merged: pushed as it is when `$written` is named
+     * @return int how many definitions were on the stack before, which {@see self::leave()} takes back to
+     *
+     * @throws ConflictingInputException
+     */
+    private static function enter(RuleWalk $walk, Schema $written, Schema $merged, string $label): int
+    {
+        $before = count($walk->ancestors);
+        array_push($walk->ancestors, ...self::definitions($written, $merged, $walk->identity, $label));
+
+        return $before;
+    }
+
+    private static function leave(RuleWalk $walk, int $before): void
+    {
+        $walk->ancestors = array_slice($walk->ancestors, 0, $before);
+    }
+
+    /**
+     * @param  Schema|null  $merged  `$written` merged, when the caller already has it
+     * @return list<Schema>
+     *
+     * @throws ConflictingInputException
+     */
+    private static function definitions(Schema $written, ?Schema $merged, string $identity, string $label): array
+    {
+        $definitions = $written->source === null
+            ? []
+            : [$merged ?? AllOfMerger::merge($written, $identity, $label)];
+
+        foreach ($written->allOf as $branch) {
+            array_push($definitions, ...self::definitions($branch, null, $identity, $label));
+        }
+
+        return $definitions;
     }
 
     /**
@@ -1000,21 +1049,33 @@ final readonly class RuleSetBuilder
      * walk is over ({@see self::reportCuts()}). The rules unroll here and the contract's normal form does not change,
      * since a rule set is the one reader that needs a finite tree.
      *
-     * A marker whose ancestor the walk does not hold has no depth to read: an inline schema has no name to be found by.
-     * It keeps presence and a finding, as it always did.
+     * **What is expanded is the ancestor with what the marker's site wrote beside the marker**, as an `allOf`: a
+     * constraint written next to the marker holds at every level the marker is crossed at, and a constraint an outer
+     * wrapper wrote is not in the ancestor at all, so it stays at the wrapper's own level.
      *
-     * @param  string  $position  where the ancestor is written, which is what the marker carries
+     * **A marker met once the ceiling is reached is not expanded** ({@see self::MAX_UNROLLED_KEYS}): its field keeps
+     * its presence rule, as a marker without an ancestor does, and a finding says which fields and what to lower. The
+     * cut at a depth stays, since it is one key.
+     *
+     * A marker whose ancestor the walk does not hold has no depth to read: an inline schema has no name to be found by.
+     * It keeps presence and a finding, as it always did, and so does a field that is two markers at once (two branches
+     * of an `allOf` writing a marker to two different components under one name): the walk follows one ancestor, and
+     * the other would be dropped without a word.
+     *
+     * @param  Schema  $site  the field the marker is written as, merged: the marker and whatever is written beside it
      * @param  string  $presence  how the field is asked for. Dropped at the cut: `missing` says the key is absent, and
      *                            a presence rule beside it would contradict it
      *
      * @throws ConflictingInputException
      */
-    private static function recursion(RuleWalk $walk, string $key, string $label, string $position, string $presence): void
+    private static function recursion(RuleWalk $walk, string $key, string $label, Schema $site, string $presence): void
     {
+        $position = (string) $site->recursesTo;
         $ancestor = $walk->ancestor($position);
         $rules = $presence === '' ? [] : [$presence];
 
-        if ($ancestor === null) {
+        // Two markers that could not be folded into one are two ancestors to expand, and the walk follows one.
+        if ($ancestor === null || $site->allOf !== []) {
             // A self-referential schema is a supported contract and an
             // infinite tree, and no rule set reaches an infinite depth.
             $walk->rules[$key] = $rules;
@@ -1022,7 +1083,10 @@ final readonly class RuleSetBuilder
                 '%s points back at `%s`, so nothing below it is validated: no rule set reaches an '
                     .'infinite depth.',
                 $label,
-                $position,
+                implode('` and `', [$position, ...array_map(
+                    static fn (Schema $branch): string => (string) $branch->recursesTo,
+                    $site->allOf,
+                )]),
             );
 
             return;
@@ -1030,18 +1094,21 @@ final readonly class RuleSetBuilder
 
         $depth = $ancestor->maxDepth ?? self::DEFAULT_MAX_DEPTH;
         $crossed = $walk->crossings[$position] ?? 0;
+        $nullable = self::statesNullable($ancestor);
+        $stated = $ancestor->maxDepth !== null;
+        $name = $ancestor->name ?? $position;
 
         if ($crossed >= $depth) {
             // A nullable schema allows `null` at the cut and the request still validates nothing below it, so the field
             // takes the one value the contract allows there. No rule Laravel ships says "null or absent": `missing`
             // refuses `null`, `prohibited` lets `""` and `[]` through, and `nullable` does not skip an implicit rule.
             // The presence the contract asks of the key stays beside it, which `missing` could not carry.
-            $walk->rules[$key] = self::statesNullable($ancestor) ? [...$rules, new NullOrAbsent] : ['missing'];
+            $walk->rules[$key] = $nullable ? [...$rules, new NullOrAbsent] : ['missing'];
             $walk->cuts[$position] ??= [
-                'name' => $ancestor->name ?? $position,
+                'name' => $name,
                 'depth' => $depth,
-                'stated' => $ancestor->maxDepth !== null,
-                'nullable' => self::statesNullable($ancestor),
+                'stated' => $stated,
+                'nullable' => $nullable,
                 'keys' => [],
             ];
             $walk->cuts[$position]['keys'][] = $key;
@@ -1049,45 +1116,104 @@ final readonly class RuleSetBuilder
             return;
         }
 
+        if ($walk->unrolledKeys() >= self::MAX_UNROLLED_KEYS) {
+            $walk->rules[$key] = $rules;
+            $walk->ceilings[$position] ??= ['name' => $name, 'depth' => $depth, 'stated' => $stated, 'keys' => []];
+            $walk->ceilings[$position]['keys'][] = $key;
+
+            return;
+        }
+
+        $beside = AllOfMerger::besideMarker($site);
+        $outermost = $walk->expansionStart === null;
+
+        if ($outermost) {
+            $walk->expansionStart = count($walk->rules);
+        }
+
         $walk->crossings[$position] = $crossed + 1;
-        self::field($walk, $key, $label, $ancestor, $presence);
+        self::field($walk, $key, $label, $beside === null ? $ancestor : new Schema(allOf: [$ancestor, $beside]), $presence);
         $walk->crossings[$position] = $crossed;
+
+        if ($outermost) {
+            $walk->unrolled = $walk->unrolledKeys();
+            $walk->expansionStart = null;
+        }
     }
 
     /**
-     * One finding for each recursive schema the walk cut: what the request now refuses that the contract allows, and
-     * the extension that moves the line.
+     * One finding for each recursive schema the walk cut, and one for each it stopped unrolling at the ceiling.
      *
-     * **Stricter than the contract, and said so**, which is the one way the request may be. Laravel's `missing` is the
-     * key being absent, so an empty value (`null`, `""`, `[]`) is refused below the depth too, and the finding says it:
-     * Laravel's `prohibited` would have let those through, and a typed DTO built from them would be a second answer to
-     * the same question.
+     * **A cut is stricter than the contract, and said so**, which is the one way the request may be. A payload deeper
+     * than the depth is valid against a schema that states no limit, so it answers 422, and `x-max-depth` is the lever.
+     * Laravel's `missing` is the key being absent, so `null`, `""` and `[]` are refused below the depth too. Laravel's
+     * `prohibited` would have let those through, and a typed DTO built from them would be a second answer to the same
+     * question. The contract allows `null` there only where the schema is nullable, and the finding says which case it
+     * is.
+     *
+     * **A ceiling is looser than the contract, and said so**: a field left with its presence rule validates nothing
+     * below it.
      */
     private static function reportCuts(RuleWalk $walk): void
     {
         foreach ($walk->cuts as $cut) {
-            $more = count($cut['keys']) - 1;
-            $where = sprintf(
-                '`%s`%s',
-                $cut['keys'][0],
-                $more > 0 ? sprintf(' and %d more', $more) : '',
-            );
-
             $walk->findings[] = sprintf(
-                '`%1$s` recurses, and %2$s. %3$s is %4$s below that: a payload deeper than that answers 422, %5$s '
-                    .'included, which the contract allows. `x-max-depth` on `%1$s` sets the depth.',
+                '`%1$s` recurses, and %2$s. %3$s %6$s %4$s below that: a payload deeper than that answers 422, though '
+                    .'the contract allows it. %5$s `x-max-depth` on `%1$s` sets the depth.',
                 $cut['name'],
-                $cut['stated']
-                    ? sprintf('it states `x-max-depth: %1$d`, so the request validates it %1$d levels deep', $cut['depth'])
-                    : sprintf(
-                        'it states no `x-max-depth`, so the request validates it %d levels deep, the package\'s default',
-                        $cut['depth'],
-                    ),
-                $where,
+                self::depthClause($cut['stated'], $cut['depth'], validated: true),
+                self::keysClause($cut['keys']),
                 $cut['nullable'] ? '`NullOrAbsent` (the field must be absent, or `null`)' : '`missing` (the field must be absent)',
-                $cut['nullable'] ? 'any other value, an empty one (`""`, `[]`) among them,' : 'an empty value (`null`, `""`, `[]`)',
+                $cut['nullable']
+                    ? sprintf('`null` passes because `%s` is nullable; any other value, `""` and `[]` among them, answers 422.', $cut['name'])
+                    : sprintf(
+                        '`null` passes only where the schema is nullable, and `%s` is not, so `null`, `""` and `[]` '
+                            .'answer 422 there too.',
+                        $cut['name'],
+                    ),
+                count($cut['keys']) === 1 ? 'is' : 'are',
             );
         }
+
+        foreach ($walk->ceilings as $ceiling) {
+            $walk->findings[] = sprintf(
+                '`%1$s` recurses, and %2$s, but unrolling it that deep is more than the ceiling of %3$d rules a request '
+                    .'unrolls for one operation. %4$s keep only their presence rule, so nothing below %5$s is validated. '
+                    .'`x-max-depth` on `%1$s` is the lever: lower it until the unrolled rules fit.',
+                $ceiling['name'],
+                self::depthClause($ceiling['stated'], $ceiling['depth'], validated: false),
+                self::MAX_UNROLLED_KEYS,
+                self::keysClause($ceiling['keys']),
+                count($ceiling['keys']) === 1 ? 'it' : 'them',
+            );
+        }
+    }
+
+    /**
+     * What a finding says about the depth of a recursive schema: whether the document stated it, and how deep it is.
+     */
+    private static function depthClause(bool $stated, int $depth, bool $validated): string
+    {
+        $levels = sprintf('%d %s deep', $depth, $depth === 1 ? 'level' : 'levels');
+
+        return match (true) {
+            $stated && $validated => sprintf('it states `x-max-depth: %d`, so the request validates it %s', $depth, $levels),
+            $stated => sprintf('it states `x-max-depth: %d`', $depth),
+            $validated => sprintf('it states no `x-max-depth`, so the request validates it %s, the package\'s default', $levels),
+            default => sprintf('it states no `x-max-depth`, so the package\'s default of %d applies', $depth),
+        };
+    }
+
+    /**
+     * The first rule key of a list and how many more there are, for a finding.
+     *
+     * @param  list<string>  $keys
+     */
+    private static function keysClause(array $keys): string
+    {
+        $more = count($keys) - 1;
+
+        return sprintf('`%s`%s', $keys[0], $more > 0 ? sprintf(' and %d more', $more) : '');
     }
 
     /**

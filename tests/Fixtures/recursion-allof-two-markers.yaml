@@ -1,0 +1,37 @@
+# Two branches of an `allOf` that each write a field of one name pointing back at their own component. A merged field
+# points back at one ancestor, so the build cannot unroll it without dropping the other: it keeps presence and says so.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Left'
+                - $ref: '#/components/schemas/Right'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Left:
+      type: object
+      properties:
+        part:
+          $ref: '#/components/schemas/Left'
+        a:
+          type: string
+    Right:
+      type: object
+      properties:
+        part:
+          $ref: '#/components/schemas/Right'
+        b:
+          type: integer

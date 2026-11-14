@@ -131,8 +131,14 @@ final class RuleWalk
     public bool $phpUploadNamed = false;
 
     /**
-     * The named schemas being expanded, outermost first: the path from the body down to the field in hand. A recursion
-     * marker names the ancestor it points back at, and this is where that ancestor is found to be expanded again.
+     * The definitions of the named schemas the walk is inside of, outermost first: the path from the body down to the
+     * field in hand. A recursion marker names the ancestor it points back at, and this is where that ancestor is found
+     * to be expanded again.
+     *
+     * **A definition is the component as the document writes it** (its own `allOf` merged in, and nothing of the schema
+     * that wraps or includes it), so a marker re-enters what the contract says the component is. The merged schema of a
+     * wrapper is the wrong thing to keep here: it carries the wrapper's own constraints, which belong to the wrapper's
+     * level alone.
      *
      * @var list<Schema>
      */
@@ -155,6 +161,35 @@ final class RuleWalk
      * @var array<string, array{name: string, depth: int, stated: bool, nullable: bool, keys: list<string>}>
      */
     public array $cuts = [];
+
+    /**
+     * Each recursive schema the walk stopped unrolling because it had reached the ceiling, by its position: the name it
+     * is reported under, the depth it applies, whether the schema stated it, and the rule keys left with their presence
+     * rule alone, in the order they were met. One finding is written for each, with the cuts.
+     *
+     * @var array<string, array{name: string, depth: int, stated: bool, keys: list<string>}>
+     */
+    public array $ceilings = [];
+
+    /**
+     * How many rule keys the expansions that are over have written. A rule key an expansion writes is counted once, by
+     * the outermost one, so the ceiling is a number of keys and not a number of expansions.
+     */
+    public int $unrolled = 0;
+
+    /**
+     * How many rule keys there were when the expansion in progress started, or null between two expansions. A marker
+     * met inside an expansion is part of it, and it is the outermost one that counts what they all wrote.
+     */
+    public ?int $expansionStart = null;
+
+    /**
+     * The rule keys written by unrolling so far, the expansion in progress included.
+     */
+    public function unrolledKeys(): int
+    {
+        return $this->unrolled + ($this->expansionStart === null ? 0 : count($this->rules) - $this->expansionStart);
+    }
 
     /**
      * The expanded ancestor a recursion marker points back at, or null when no schema the walk is inside is written at

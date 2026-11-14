@@ -17,9 +17,9 @@ use Illuminate\Translation\PotentiallyTranslatedString;
  * implicit rule.
  *
  * **Implicit**, so Laravel calls it for an absent key and for `""` as well, which a plain rule is skipped for. An
- * absent key reaches it as `null`, which passes. Over HTTP the `""` of a form or a query string has become `null` by
- * the time any rule runs (`ConvertEmptyStringsToNull`), so there it passes; a validator fed the value directly refuses
- * it.
+ * absent key reaches it as `null`, which passes. Over HTTP the `""` of a JSON body, a form or a query string has become
+ * `null` by the time any rule runs (`ConvertEmptyStringsToNull`), so there it passes; a validator fed the value
+ * directly refuses it.
  *
  * **It is public API surface**, because a generated request imports it: the name and namespace are frozen with the rest
  * of what a generated file names.
