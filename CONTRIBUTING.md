@@ -253,11 +253,11 @@ composer format                  # Pint, then the docblock formatter
 composer format:docblocks:check  # lists the files that would change, writes nothing
 ```
 
-It rewraps prose only: paragraphs, list items, and the description of `@internal`, `@deprecated`, `@since` and `@todo`.
-Code blocks, tables, `@see` and `@link`, `@template`, `@phpstan-*` and `@psalm-*` lines, backtick spans, type
-expressions, URLs and the generated goldens are left as written. The tags Pint aligns itself (`@param`, `@return`,
-`@throws`, `@var`) are not rewrapped yet: how their continuation lines are indented is still being decided, because Pint
-rewrites any indent the formatter picks.
+It rewraps prose only: paragraphs, list items, and the description of `@param`, `@return`, `@throws`, `@var`,
+`@internal`, `@deprecated`, `@since` and `@todo`. A `@param`, `@return`, `@throws` or `@var` that runs long continues
+under the start of its description, which is how Pint's `phpdoc_align` hangs it, so Pint leaves the result alone. Code
+blocks, tables, `@see` and `@link`, `@template`, `@phpstan-*` and `@psalm-*` lines, backtick spans, type expressions
+(never split), URLs and the generated goldens are left as written.
 
 `composer format:docblocks:check` is not part of `composer check`, and CI does not run it. The codebase is still wrapped
 at the old width, so adding it now would turn `main` red. One reformat commit comes first, and the CI check is wired in

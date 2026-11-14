@@ -388,6 +388,142 @@ function rewrappedDocblocks(): array
 }
 
 /**
+ * Tag descriptions the formatter rewraps, at 60 columns: a `@param`, `@return`, `@throws` or `@var` continues under the
+ * start of its description, which is where Pint's `phpdoc_align` hangs it.
+ *
+ * @return array<string, array{string, string}>
+ */
+function rewrappedTagDocblocks(): array
+{
+    return [
+        'a param hangs under the start of its description' => [
+            <<<'DOC'
+            /**
+             * @param  string  $name  the name of the thing that is far too long for one line
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @param  string  $name  the name of the thing that is
+             *                        far too long for one line
+             */
+            DOC,
+        ],
+        'a param continuation written anywhere is joined and hung' => [
+            <<<'DOC'
+            /**
+             * @param  string  $name  the name of
+             *     the thing that is far too long for one line
+             * @param  int  $age  the age
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @param  string  $name  the name of the thing that is
+             *                        far too long for one line
+             * @param  int  $age  the age
+             */
+            DOC,
+        ],
+        'a return hangs under the start of its description' => [
+            <<<'DOC'
+            /**
+             * @return list<string> the names, in the order the document writes them down
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @return list<string> the names, in the order the
+             *                      document writes them down
+             */
+            DOC,
+        ],
+        'a throws hangs under the start of its description' => [
+            <<<'DOC'
+            /**
+             * @throws \RuntimeException when the thing is far past the limit of sixty columns
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @throws \RuntimeException when the thing is far past
+             *                           the limit of sixty columns
+             */
+            DOC,
+        ],
+        'a var hangs under the start of its description' => [
+            <<<'DOC'
+            /**
+             * @var array<string, Schema> $schemas keyed by name, in the order the document writes them
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @var array<string, Schema> $schemas keyed by name, in
+             *                                     the order the
+             *                                     document writes
+             *                                     them
+             */
+            DOC,
+        ],
+        'a var without a name hangs under the description' => [
+            <<<'DOC'
+            /**
+             * @var list<string> the names, in the order the document writes them down
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @var list<string> the names, in the order the
+             *                   document writes them down
+             */
+            DOC,
+        ],
+        'a variadic param keeps its dots' => [
+            <<<'DOC'
+            /**
+             * @param  string  ...$names  the names, in the order the document writes them down
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @param  string  ...$names  the names, in the order
+             *                            the document writes them
+             *                            down
+             */
+            DOC,
+        ],
+        'a param whose type has spaces in it keeps the type whole' => [
+            <<<'DOC'
+            /**
+             * @param  array{id: int}  $row  the row of the table that was read from the file
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @param  array{id: int}  $row  the row of the table
+             *                               that was read from the
+             *                               file
+             */
+            DOC,
+        ],
+        'a backtick span in a description is never split' => [
+            <<<'DOC'
+            /**
+             * @return string the `components.schemas` key that names the schema in the document
+             */
+            DOC,
+            <<<'DOC'
+            /**
+             * @return string the `components.schemas` key that
+             *                names the schema in the document
+             */
+            DOC,
+        ],
+    ];
+}
+
+/**
  * Docblocks the formatter must leave exactly as written, long lines and all.
  *
  * @return array<string, array{string}>
@@ -468,21 +604,21 @@ function untouchedDocblocks(): array
          *     another thing that is long enough to be past the limit
          */
         DOC],
-        'a param tag, until its continuation style is decided' => [<<<'DOC'
+        'a param whose type cannot be told from its description' => [<<<'DOC'
         /**
-         * @param array<string, Schema> $content keyed by media type, in the order the document
-         *                                       writes them, which is far past the limit
-         * @param  string  $name  the name
+         * @param  callable(int, string): void  $callback  far past the limit of forty columns, so it stays
          */
         DOC],
-        'a return tag' => [<<<'DOC'
+        'a param whose type is written over two lines' => [<<<'DOC'
         /**
-         * @return list<string> a return description far past the limit of forty columns
+         * @param  array{
+         *     name: string,
+         * }  $row  far past the limit of forty columns, so it stays
          */
         DOC],
-        'a throws tag' => [<<<'DOC'
+        'a param with no description' => [<<<'DOC'
         /**
-         * @throws \RuntimeException when the thing is far past the limit
+         * @param  array<string, array<string, Schema>>  $content
          */
         DOC],
         'a see tag' => [<<<'DOC'
@@ -524,6 +660,14 @@ function untouchedDocblocks(): array
 it('rewraps prose to the width', function (string $input, string $expected): void {
     expect(reflowedDocblock($input))->toBe($expected);
 })->with(rewrappedDocblocks());
+
+it('rewraps the description of a param, return, throws or var', function (string $input, string $expected): void {
+    expect(reflowedDocblock($input, 60))->toBe($expected);
+})->with(rewrappedTagDocblocks());
+
+it('changes nothing it has already wrapped under a tag', function (string $input, string $expected): void {
+    expect(reflowedDocblock($expected, 60))->toBe($expected);
+})->with(rewrappedTagDocblocks());
 
 // Idempotence is the property that lets the formatter run on every edit and
 // every commit: a second run finds nothing to do. Asserted on every expected
@@ -741,5 +885,63 @@ it('produces docblocks that Pint leaves alone', function (): void {
     $pint->run();
 
     expect(file_get_contents($directory.'/File.php'))->not->toBe($source)
+        ->and($pint->getExitCode())->toBe(0, $pint->getOutput());
+});
+
+// D4's promise: a `@param`, `@return`, `@throws` or `@var` is wrapped where Pint's `phpdoc_align` hangs it, so the two
+// tools agree. The fixture is as Pint writes it, with long descriptions, and comes out reflowed and still untouched by
+// Pint.
+it('wraps the typed tags where Pint hangs them', function (): void {
+    $source = <<<'PHP'
+    <?php
+
+    declare(strict_types=1);
+
+    final class A
+    {
+        /** @var array<string, Schema> keyed by name, in the order the document writes them, which is far too long for one line of a hundred columns */
+        private array $schemas = [];
+
+        /**
+         * @param  array<string, array<string, Schema>>  $content  keyed by media type, in the order the document writes
+         *     them down, which is far too long for one line of a hundred columns
+         * @param  string  $name  short
+         * @return list<string> the names, in the order the document writes them down, which is far too long for one line
+         *     of a hundred columns
+         *
+         * @throws RuntimeException when the document cannot be read, or when it is far too long for one line of a
+         *     hundred columns
+         */
+        public function f(array $content, string $name): array
+        {
+            return [];
+        }
+    }
+
+    PHP;
+
+    $directory = docblockProject(['File.php' => $source], 100);
+    $repository = dirname(__DIR__, 2);
+
+    $run = runDocblockFormatter(['--root='.$directory, $directory.'/File.php']);
+    $pint = new Process([PHP_BINARY, $repository.'/vendor/bin/pint', '--test', '--config', $repository.'/pint.json', $directory.'/File.php']);
+    $pint->run();
+
+    $reflowed = (string) file_get_contents($directory.'/File.php');
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and($reflowed)->toContain(<<<'DOC'
+                 * @param  array<string, array<string, Schema>>  $content  keyed by media type, in the order the
+                 *                                                         document writes them down, which is
+                 *                                                         far too long for one line of a
+                 *                                                         hundred columns
+                 * @param  string  $name  short
+                 * @return list<string> the names, in the order the document writes them down, which is far too
+                 *                      long for one line of a hundred columns
+                 *
+                 * @throws RuntimeException when the document cannot be read, or when it is far too long for one
+                 *                          line of a hundred columns
+                 */
+            DOC)
         ->and($pint->getExitCode())->toBe(0, $pint->getOutput());
 });

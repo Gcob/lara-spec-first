@@ -15,24 +15,24 @@ declare(strict_types=1);
  *
  * Only T_DOC_COMMENT tokens are rewritten, found through token_get_all(), so
  * code is never touched. Inside a docblock, only prose is: a paragraph, a
- * list item (marker and hanging indent kept) and the description of the few
- * tags listed in REFLOWED_TAGS. Everything else is copied byte for byte: code
- * fences and indented code blocks, tables, headings, quotes, HTML, every other
- * tag line and its continuation. Inside prose, a backtick span, an inline
+ * list item (marker and hanging indent kept) and the description of the tags
+ * listed in PROSE_TAGS and TYPED_TAGS. Everything else is copied byte for byte:
+ * code fences and indented code blocks, tables, headings, quotes, HTML, every
+ * other tag line and its continuation. Inside prose, a backtick span, an inline
  * `{@tag}` and a generic type such as `array<string, Schema>` are never split,
  * and neither is a URL, which has no space to split at.
  *
+ * A `@param`, `@return`, `@throws` or `@var` continues under the start of its
+ * description, which is where Pint's `phpdoc_align` hangs it, so the two agree.
+ * What comes before the description (the tag, its type, its name) is kept as
+ * written and never split. A tag whose type cannot be told from its description
+ * (`callable(int): void`, a type written over two lines) is left as it is.
+ *
  * What it does not touch, on purpose:
  *
- *   - `@param`, `@return`, `@throws`, `@var`, `@type`, `@property*`, `@method`.
- *     Pint's `phpdoc_align` owns the continuation of those and hangs it under
- *     the description, whatever the formatter chose, so the two would fight.
- *     TODO (#114): wrapping them waits on the maintainer's answer to Q1 of the
- *     card's plan (decision D1 says a fixed 4-space indent, which Pint
- *     rewrites).
- *   - `@see`, `@link`, `@template`, `@phpstan-*`, `@psalm-*` and any tag not
- *     listed in REFLOWED_TAGS: they carry paths, URLs and type expressions that
- *     a rewrap could break.
+ *   - `@type`, `@property*`, `@method`, `@see`, `@link`, `@template`,
+ *     `@phpstan-*`, `@psalm-*` and any tag not listed above: they carry paths,
+ *     URLs and type expressions that a rewrap could break.
  *   - The generated goldens (tests/Fixtures, workbench/app/Http/Generated):
  *     they come from the emitters, which own their wrap width.
  *
@@ -48,8 +48,11 @@ declare(strict_types=1);
  * mode), 2 usage or configuration error.
  */
 
-/** Tags whose description is prose, so it can be rewrapped. */
-const REFLOWED_TAGS = ['internal', 'deprecated', 'since', 'todo'];
+/** Tags that are all prose after the tag: the description hangs under the text that follows the tag. */
+const PROSE_TAGS = ['internal', 'deprecated', 'since', 'todo'];
+
+/** Tags with a type, and for two of them a name, before the description: it hangs under the description's start. */
+const TYPED_TAGS = ['param', 'return', 'throws', 'var'];
 
 /** Directories that are never read, relative to the root. */
 const SKIPPED_DIRECTORIES = ['vendor', 'node_modules', 'build', 'worktrees', 'tests/Fixtures', 'workbench/app/Http/Generated'];
@@ -373,9 +376,8 @@ function reflowDocblock(string $docblock, string $indent, int $width): string
             }
 
             $block = array_slice($content, $i, $end - $i + 1);
-            $reflowed = preg_match('/^@([A-Za-z][\w-]*)\s+\S/', $line, $tag) === 1 && in_array(strtolower($tag[1]), REFLOWED_TAGS, true)
-                ? reflowBlock($block, '@'.$tag[1].' ', $limit, $indent)
-                : null;
+            $head = tagHead($line);
+            $reflowed = $head === null ? null : reflowBlock($block, $head, $limit, $indent);
 
             array_push($out, ...($reflowed ?? array_slice($raw, $i, $end - $i + 1)));
             $i = $end + 1;
@@ -509,9 +511,81 @@ function reflowListItem(array $block, int $limit, string $indent): ?array
 }
 
 /**
- * A tag's description, with a continuation hung under the text after the tag.
+ * What a tag line holds before its description, as written, when the tag is one whose description can be rewrapped; or
+ * null. Everything after it is the description.
+ *
+ * For `@internal` and its kind that is the tag and one space. For `@param`, `@return`, `@throws` and `@var` it also
+ * holds the type and, for `@param` and `@var`, the variable: `@param  array<string, Schema>  $content  `. A type that
+ * cannot be told from the description that follows it, such as `callable(int): void`, gives null.
+ */
+function tagHead(string $line): ?string
+{
+    if (preg_match('/^@([A-Za-z][\w-]*)\s+\S/', $line, $tag) !== 1) {
+        return null;
+    }
+
+    $name = $tag[1];
+
+    if (in_array($name, PROSE_TAGS, true)) {
+        return '@'.$name.' ';
+    }
+
+    if (! in_array($name, TYPED_TAGS, true)) {
+        return null;
+    }
+
+    $length = strlen($line);
+    $i = strlen($name) + 1;
+
+    while ($i < $length && ($line[$i] === ' ' || $line[$i] === "\t")) {
+        $i++;
+    }
+
+    // The type, up to the first space outside a bracket. A `$name` or `...$name` first means there is no type.
+    if (preg_match('/\G(?:&\s*)?(?:\.\.\.)?\$/', $line, $variable, 0, $i) !== 1) {
+        $depth = 0;
+        $start = $i;
+
+        for (; $i < $length; $i++) {
+            $character = $line[$i];
+
+            if (str_contains('<{([', $character)) {
+                $depth++;
+            } elseif (str_contains('>})]', $character)) {
+                $depth--;
+            } elseif (($character === ' ' || $character === "\t") && $depth === 0) {
+                break;
+            }
+        }
+
+        $type = substr($line, $start, $i - $start);
+
+        // Unbalanced, or a type that goes on after the space: `callable(): void`, `A | B`.
+        if ($depth !== 0 || preg_match('/[|&:,?]$/', $type) === 1 || preg_match('/\G\s*[|&:]/', $line, $more, 0, $i) === 1) {
+            return null;
+        }
+
+        while ($i < $length && ($line[$i] === ' ' || $line[$i] === "\t")) {
+            $i++;
+        }
+    }
+
+    if ($name !== 'return' && $name !== 'throws' && preg_match('/\G(?:&\s*)?(?:\.\.\.)?\$\w+/', $line, $variable, 0, $i) === 1) {
+        $i += strlen($variable[0]);
+
+        while ($i < $length && ($line[$i] === ' ' || $line[$i] === "\t")) {
+            $i++;
+        }
+    }
+
+    return $i < $length ? substr($line, 0, $i) : null;
+}
+
+/**
+ * A tag's description, with a continuation hung under where the description starts.
  *
  * @param  list<string>  $block
+ * @param  string  $head  the tag line up to the description, from tagHead()
  * @return list<string>|null
  */
 function reflowBlock(array $block, string $head, int $limit, string $indent): ?array
@@ -521,9 +595,8 @@ function reflowBlock(array $block, string $head, int $limit, string $indent): ?a
     }
 
     $block[0] = substr($block[0], strlen($head));
-    $block[0] = ltrim($block[0]);
 
-    return wrapAtoms(atomsOf(joinLines($block)), $head, str_repeat(' ', strlen($head)), $limit, $indent);
+    return wrapAtoms(atomsOf(joinLines($block)), $head, str_repeat(' ', textWidth($head)), $limit, $indent);
 }
 
 /**
