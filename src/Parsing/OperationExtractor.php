@@ -170,6 +170,7 @@ final readonly class OperationExtractor
         'example',
         'examples',
         'contentMediaType',
+        'contentEncoding',
     ];
 
     public function extract(ParsableSpecDocument $document): ExtractionResult
@@ -653,7 +654,9 @@ final readonly class OperationExtractor
             );
         }
 
-        return $strategy->normalizeSchema($keywords, $walk->name($position));
+        $name = $walk->name($position);
+
+        return $strategy->normalizeSchema($keywords, $name, $name === null ? null : $walk->pointer($position));
     }
 
     /**

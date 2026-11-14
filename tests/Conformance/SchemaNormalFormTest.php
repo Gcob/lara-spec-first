@@ -105,7 +105,7 @@ it('reads a file part from either spelling', function (string $fixture): void {
 
     expect($avatar->isFilePart)->toBeTrue()
         ->and($avatar->format)->toBeNull();
-})->with(['file-part-3.0.yaml', 'file-part-3.1.yaml']);
+})->with(['file-part-3.0.yaml', 'file-part-3.1.yaml', 'file-part-3.1-binary.yaml']);
 
 // A self-referential schema is a supported contract and an infinite object
 // graph. The walk has to terminate, and it has to say where it stopped rather

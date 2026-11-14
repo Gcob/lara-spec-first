@@ -101,8 +101,32 @@ final class OpenApi31Strategy implements VersionStrategy
     }
 
     /**
+     * `format: binary` left no trace in the normal form at 3.0, and it does not
+     * here either, for the same reason: it is how a file part is written, and
+     * {@see self::isFilePart()} has already carried it. Kept when a
+     * `contentEncoding` says the part is not a file, since then it is a format
+     * nothing else reads.
+     *
+     * @param  array<string, mixed>  $keywords
+     */
+    protected function format(array $keywords): ?string
+    {
+        return $this->isFilePart($keywords) ? null : $this->string($keywords, 'format');
+    }
+
+    /**
      * 3.1 names a file part with `contentMediaType`, having dropped
-     * `format: binary` with the rest of the format vocabulary.
+     * `format: binary` with the rest of the format vocabulary, and a document
+     * that declares 3.1 still writes `format: binary` for an upload: it is what
+     * many generators emit whatever version they declare. Both are read, so a
+     * part spelled the 3.0 way is not turned into a string every upload refuses.
+     *
+     * **Not when `contentEncoding` is beside it.** `type: string`,
+     * `contentEncoding: base64` and a `contentMediaType` is how 3.1 writes a
+     * file carried as text, which is a string with a description of what it
+     * decodes to, and `file` would refuse the very text the contract describes.
+     * That is `uploads.md`'s "a base64 part is a string", read here at the one
+     * place a 3.1 document can say it.
      *
      * @param  array<string, mixed>  $keywords
      *
@@ -110,6 +134,7 @@ final class OpenApi31Strategy implements VersionStrategy
      */
     protected function isFilePart(array $keywords): bool
     {
-        return is_string($keywords['contentMediaType'] ?? null);
+        return ! is_string($keywords['contentEncoding'] ?? null)
+            && (is_string($keywords['contentMediaType'] ?? null) || ($keywords['format'] ?? null) === 'binary');
     }
 }

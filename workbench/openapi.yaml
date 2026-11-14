@@ -66,11 +66,27 @@ paths:
         # `spec:make listPosts` wrote, untouched. It still answers 501, because the
         # one line in it calls the parent — which is what keeps a scaffold honest
         # until somebody replaces that line.
+        #
+        # It also declares a `query` parameter, which is what gives this
+        # operation a generated request — and what makes the child below
+        # declare one more parameter than it used to. A contract gaining a
+        # statement about what a client may send is exactly the change a
+        # static analysis error should be reporting.
         get:
             operationId: listPosts
             x-controller: Workbench\App\Http\Controllers\Posts\ListPostsController
             summary: Every post
             tags: [Posts]
+            parameters:
+                - { name: page, in: query, schema: { type: integer } }
+                # `?drafts=true` is how OpenAPI writes a boolean in a query string. The
+                # generated request accepts it, and says in its findings that
+                # `validated('drafts')` holds the string as sent.
+                - { name: drafts, in: query, schema: { type: boolean } }
+                # Read and never turned into a rule: what a missing credential
+                # deserves is a 401 and a rule set answers with a 422. The
+                # doctor counts it and exits non-zero until you acknowledge it.
+                - { name: X-Trace, in: header, schema: { type: string } }
             # Read into the contract and *not enforced* by this build. The
             # generated controller's findings say so out loud, because an endpoint
             # the contract describes as protected and that nothing protects is the
@@ -80,14 +96,120 @@ paths:
             responses:
                 '200': { description: A list of posts }
 
+        # The `POST` half of the pair below. Same schema as the `PATCH`, and
+        # the two generated requests differ in exactly one line each: this one
+        # reads the schema's `required` list, and the `PATCH` reads it as empty.
         post:
             operationId: createPost
             summary: Publish a post
             tags: [Posts]
             security:
                 - bearerAuth: [posts:write]
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NewPost'
             responses:
                 '201': { description: Created }
+
+    /posts/{postId}:
+        # The `PATCH` half. A partial update is a statement about the
+        # resource's representation, so the schema's required list is read as
+        # empty here and every property is `sometimes`. Diff the two generated
+        # files to see it, and read their Findings blocks for everything the
+        # schema states that no rule enforces yet.
+        #
+        # It also names a controller, so the generated parent is extendable and
+        # `workbench/app/Http/Controllers/Posts/UpdatePostController.php` answers
+        # for real: it reads `$request->dto()`, the partial input DTO, and says
+        # which properties the client sent, which is the question a `PATCH` has
+        # to answer without writing a `null` over a stored column.
+        patch:
+            operationId: updatePost
+            x-controller: Workbench\App\Http\Controllers\Posts\UpdatePostController
+            summary: Change part of a post
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NewPost'
+            responses:
+                '200': { description: Updated }
+
+    /posts/search:
+        # A form-encoded body whose names PHP rewrites before Laravel sees them:
+        # `user.name` arrives as `user_name` and `page[size]` as
+        # `page => [size => ...]`. The generated request keys the rules by what
+        # arrives (`user_name`, `page.size`), and `dto()` hands the value back
+        # under the name written here. Read the generated request's rules and
+        # its `FORM_NAMES`, then `curl -d 'user.name=ada&page[size]=3'` it.
+        post:
+            operationId: searchPosts
+            summary: Search posts from a form
+            tags: [Posts]
+            requestBody:
+                required: true
+                content:
+                    application/x-www-form-urlencoded:
+                        schema:
+                            type: object
+                            required: [user.name]
+                            properties:
+                                user.name:
+                                    type: string
+                                    maxLength: 50
+                                page[size]:
+                                    type: integer
+                                    minimum: 1
+            responses:
+                '200': { description: Matching posts }
+
+    /posts/{postId}/attachments:
+        # A multipart body, and the one place a part is a file. `cover` becomes
+        # `file`, `mimetypes:image/png` and `max:2.44140625` (2500 bytes, exact),
+        # `gallery` becomes an array plus the same rules under
+        # `gallery.*`, and `anything` states `application/octet-stream`, which
+        # means "any bytes" and so adds no `mimetypes`. The generated file's
+        # Findings block says that an `encoding` written beside the body is not
+        # read yet: until it is, a part's types come from `contentMediaType`.
+        post:
+            operationId: uploadAttachments
+            summary: Attach files to a post
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: true
+                content:
+                    multipart/form-data:
+                        schema:
+                            type: object
+                            required: [cover]
+                            properties:
+                                cover:
+                                    type: string
+                                    contentMediaType: image/png
+                                    maxLength: 2500
+                                gallery:
+                                    type: array
+                                    maxItems: 5
+                                    items:
+                                        type: string
+                                        contentMediaType: image/*
+                                anything:
+                                    type: string
+                                    contentMediaType: application/octet-stream
+                                caption:
+                                    type: string
+                                    maxLength: 120
+            responses:
+                '201': { description: Attached }
 
     /posts/{postId}/legacy-comments:
         # Deprecated with a sunset date. Both reach the generated file's findings,
@@ -148,6 +270,66 @@ paths:
                 '202': { description: Accepted }
 
 components:
+    schemas:
+        # One schema, two operations, two generated requests. Every keyword
+        # below becomes a rule, except the two marked: those are named in the
+        # generated file's Findings block rather than enforced, because no
+        # Laravel rule means the same thing.
+        NewPost:
+            type: object
+            required: [id, title, body]
+            additionalProperties: false
+            properties:
+                # `required` on a `readOnly` property is about responses, so a create
+                # without it is valid: the request has no presence rule for `id`.
+                id:
+                    type: integer
+                    readOnly: true
+                title:
+                    type: string
+                    maxLength: 120
+                body:
+                    type: string
+                published:
+                    type: boolean
+                readingMinutes:
+                    type: integer
+                    minimum: 1
+                summary:
+                    type: [string, 'null']
+                status:
+                    type: string
+                    enum: [draft, review, live]
+                publishAt:
+                    type: string
+                    format: date-time
+                slug:
+                    type: string
+                    pattern: '^[a-z0-9-]+$'
+                # Reported: `\d` reads as a Unicode class in PCRE under `u`.
+                isbn:
+                    type: string
+                    pattern: '^\d{13}$'
+                # Reported: Laravel's `url` refuses a `urn:` JSON Schema allows.
+                canonical:
+                    type: string
+                    format: uri
+                tags:
+                    type: array
+                    maxItems: 5
+                    uniqueItems: true
+                    items:
+                        type: string
+                author:
+                    type: object
+                    required: [name]
+                    properties:
+                        name:
+                            type: string
+                        email:
+                            type: string
+                            format: email
+
     securitySchemes:
         bearerAuth:
             type: http

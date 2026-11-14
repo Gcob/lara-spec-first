@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnroutablePathException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 
@@ -49,11 +50,15 @@ final readonly class BuildPlanner
      *
      * @throws UnusableNameException a name PHP cannot carry, or two operations claiming one
      * @throws UnroutablePathException a path parameter Laravel's router cannot match
+     * @throws ConflictingInputException an operation whose input cannot become one rule set
      */
     public function plan(array $operations): BuildPlan
     {
         $planned = [];
+        $requests = [];
         $claimed = [];
+        $claimedRequests = [];
+        $unreadBodies = [];
 
         foreach ($operations as $operation) {
             $this->assertRoutable($operation);
@@ -82,10 +87,41 @@ final readonly class BuildPlanner
             }
 
             $claimed[$name->shortName] = [$label, $name->customController];
+
+            $request = RequestName::for($operation);
+
+            if ($request === null && $operation->requestBody !== null) {
+                $unreadBodies[] = $label;
+            }
+
+            if ($request !== null) {
+                // Reachable without the controller check above firing, which
+                // is why it is here at all: a request's name comes from the
+                // `operationId` alone, so two operations sharing one while
+                // declaring different `x-controller` values pass that check
+                // and collide here.
+                if (isset($claimedRequests[$request->shortName])) {
+                    throw UnusableNameException::requestClaimedTwice(
+                        $request->shortName,
+                        $claimedRequests[$request->shortName],
+                        $label,
+                    );
+                }
+
+                $claimedRequests[$request->shortName] = $label;
+                $requests[] = new PlannedRequest(
+                    $operation,
+                    $request,
+                    RuleSetBuilder::for($operation),
+                    $name->shortName,
+                );
+            }
+
             $planned[] = new PlannedController(
                 $operation,
                 $name,
                 $name->customController !== null && $this->lookup->exists($name->customController),
+                $request,
             );
         }
 
@@ -95,9 +131,32 @@ final readonly class BuildPlanner
             $planned,
         );
 
+        // The DTOs are planned from the requests, and each request then learns
+        // which one its `dto()` returns: the two refer to each other, so one
+        // of them has to be built first and given the other afterwards.
+        $inputDtos = (new InputDtoPlanner)->plan($requests);
+        $requests = array_map(
+            static fn (PlannedRequest $request): PlannedRequest => $request->withDto(
+                $inputDtos->readBy[$request->operation->label()] ?? null,
+            ),
+            $requests,
+        );
+
+        $formRequests = new FormRequestEmitter($this->namespace, $this->specPath);
+
+        foreach ($requests as $request) {
+            $files[] = $formRequests->emit($request);
+        }
+
+        $dtoEmitter = new InputDtoEmitter($this->namespace, $this->specPath);
+
+        foreach ($inputDtos->dtos as $dto) {
+            $files[] = $dtoEmitter->emit($dto);
+        }
+
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
-        return new BuildPlan($planned, $files);
+        return new BuildPlan($planned, $files, $requests, $unreadBodies);
     }
 
     /**
@@ -154,6 +213,15 @@ final readonly class BuildPlanner
             // legal in a route, fatal as a parameter name.
             if (preg_match('/^[A-Za-z_]\w*$/', $parameter) !== 1 || $parameter === 'this') {
                 throw UnusableNameException::parameterNotAVariable($operation->label(), $parameter);
+            }
+
+            // Legal on its own and fatal beside the generated request, which
+            // `routeAction` declares under this name ahead of the path's own.
+            if (
+                $parameter === RouteActionSignature::REQUEST_PARAMETER
+                && RequestName::validatesAnything($operation)
+            ) {
+                throw UnusableNameException::parameterShadowsRequest($operation->label());
             }
         }
     }

@@ -26,7 +26,7 @@ trait NormalizesSchemas
      *                                          {@see Schema} a nested node was
      *                                          already normalized into
      */
-    public function normalizeSchema(array $keywords, ?string $name = null): Schema
+    public function normalizeSchema(array $keywords, ?string $name = null, ?string $source = null): Schema
     {
         [$exclusiveMinimum, $minimum] = $this->exclusiveBound($keywords, 'Minimum');
         [$exclusiveMaximum, $maximum] = $this->exclusiveBound($keywords, 'Maximum');
@@ -63,6 +63,7 @@ trait NormalizesSchemas
             writeOnly: ($keywords['writeOnly'] ?? null) === true,
             isFilePart: $this->isFilePart($keywords),
             contentMediaType: $this->contentMediaType($keywords),
+            source: $source,
         );
     }
 

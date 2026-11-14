@@ -50,6 +50,70 @@ tags: [versions, conventions, planning]
 which is why they are recorded together. None of them was ever served correctly: each produced a value that was wrong
 rather than one that was missing, and nothing downstream failed to say so.
 
+### Added
+
+- **`spec:build` emits one `FormRequest` per operation that states anything about its input**, into the `Requests`
+  sub-namespace of the generated tree, pruned like every other generated file. The rule set is the request body and the
+  `query` parameters merged by field name; the scalar types, nullability and presence are mapped, and every keyword the
+  build does not translate yet is named per field in the generated file's own findings rather than dropped. An operation
+  with no body and no `query` parameter gets no class, and the build says how many.
+- **The whole mapping table is built.** String and number bounds, `multipleOf`, the `format` values Laravel has a rule
+  of the same meaning for (`date`, `date-time` as the RFC 3339 grammar, a fraction of any length included, `email`,
+  `uuid`, `ipv4`, `ipv6`), `enum` and `const` as `Rule::in()` over an array, `pattern` as `regex:` inside the ECMA-262 /
+  PCRE boundary, arrays with their element rules under `field.*`, nested objects under dotted keys, `allOf` merged,
+  `dependentRequired`, an optional body's "all or none", and `additionalProperties: false` at every depth. What stays
+  outside the boundary is named in the generated file's findings. Most of the support matrix's schema rows moved from
+  `Deferred` to `Supported`; `format`, `pattern` and `uniqueItems` to `Partial`.
+- **A file part is validated as one.** In a body that is `multipart/form-data` alone, a property the schema calls a file
+  (`format: binary` at 3.0, `contentMediaType` at 3.1) becomes `file`, `mimetypes:` from `contentMediaType`, and `max:`
+  in kilobytes from `maxLength`, as an exact decimal (`max:2.44140625` is 2500 bytes, which Laravel's `max` takes).
+  `application/octet-stream` and `*/*` add no `mimetypes`, which would refuse every upload but an octet stream. A
+  required part is `required`, so an empty upload slot is refused. Beside another media type, or in a JSON body, the
+  part is a string. `encoding.<part>.contentType` is not read yet, and every file part says so in its generated file's
+  findings ([#90](https://github.com/Gcob/lara-spec-first/issues/90)). A closed root also refuses an undeclared upload.
+- **`spec:build` writes the input DTOs.** One `final readonly` class per request body that is an object, in the `Data`
+  sub-namespace: a promoted constructor, `from()`, `toArray()`, `Arrayable` and `JsonSerializable`. Each body gets a
+  full type and a `Partial` one, `NewUserInputDto` and `NewUserPartialInputDto`, named after the schema and never after
+  the `$ref` or the file that holds it. A property the client may leave out is `Optional|T`, so `toArray()` never writes
+  a `null` over a field that was not sent. Two different schemas under one name are a build error, and so is one schema
+  with a file part sent as multipart by one operation and as another media type by another.
+- **A generated request has a `dto()` method** returning the input DTO built from `validated()`: the full type for a
+  `POST` and a `PUT`, the partial one for a `PATCH` and for a body that may be absent. It is `dto()` and not `data()`
+  because `Illuminate\Http\Request` owns a protected `data()` that its typed accessors read through. `validated()` is
+  untouched, and a request with no object body has no `dto()`.
+- **A node that recurses is `mixed` on the DTO**, since no rule validates anything below it. A `date-time` is written
+  back by `toArray()` with its fraction (microseconds), a component name with dots derives its class name by dropping
+  them, and two operations reaching one named schema share its DTO, a 3.0 `$ref` wrapper carrying only an `example` or a
+  `readOnly` beside it included. A wrapper that adds `required` or `properties` is a schema of its own.
+- **A schema in a recursive pair (`Author` and `Book`) is `mixed` where it is nested**, a required key Laravel cannot
+  name is optional in the DTO, an enumeration value that could close a docblock is not written there, and a closed root
+  keeps a declared integer key such as `"2024"`.
+- **`Gcob\LaraSpecFirst\Data\Optional`** is public API: the one class of this package a generated DTO imports.
+- **`Contract\Schema` carries `source`**, where a named schema is written, beside its `name`.
+- **`generated.namespace` moved from `STARTED` to `DONE`** in the published config. It has been read since the first
+  generated controller; the block said otherwise.
+
+### Changed
+
+- **`routeAction` takes the generated request as its first parameter**, on the generated parent and on every child that
+  overrides it. **This breaks every custom controller written before it** for an operation that states anything about
+  its input: the child stops compiling until it declares the parameter too. That is the split doing its job — the
+  contract gained a statement about what a client may send — and `spec:make` writes the new signature. Both sides now
+  read it from one place, so a scaffold cannot disagree with the parent it extends.
+- **`header` and `cookie` parameters moved from a shared `Deferred` count to an `Ignored` one** in `spec:doctor`, which
+  means they now exit non-zero until acknowledged. They were counted beside `query` under one `Deferred` label while
+  nothing read a parameter at all; `query` is read now, so the count splits and the level with it. `query` and
+  `requestBody` moved from `Deferred` to `Partial` in the support matrix, and the doctor no longer counts either.
+- **A path parameter named `{request}` is refused on an operation with something to validate.** The generated request is
+  declared as `$request` ahead of the path's own parameters, so the two would be one variable declared twice. A contract
+  that built at `0.1.0` with such a parameter and a body or a `query` parameter now refuses to build.
+- **A required key gets `present`, not `required`, unless it is an integer, a number or a boolean.** JSON Schema's
+  `required` asks for the key, and Laravel's refuses `null`, `""`, `[]` and `{}`, which the contract may allow.
+- **A fully-qualified name in a generated docblock's `@see` is written in backticks.** Pint's
+  `fully_qualified_strict_types` rewrites an unquoted one into an import plus a short name, which means the build and a
+  consumer's formatter rewriting each other forever — and for a generated controller, an import carrying the child's
+  name into a parent that shares it by design, which stops the file loading.
+
 ### Fixed
 
 - **A position naming a schema written in another file was wrong**, and it was wrong in three readings at once: a
@@ -64,6 +128,14 @@ rather than one that was missing, and nothing downstream failed to say so.
   always where it is written, which it was not when `components` was read after `paths`. A percent-encoded `$ref`
   fragment (`%7B` for `{`, as a bundler writes it) is read the way the parser reads it, so one schema is one name on
   every road to it.
+- **A generated request read the body and the query string as one**, through Laravel's `validationData()`, which is
+  `all()`. `POST /users?email=x@example.test` with a body of `{}` passed a contract that requires `email` in the body,
+  and a required `query` parameter was satisfied by a body key of the same name. A body integer arrived in `validated()`
+  and in `dto()` as the string `"31"` whenever the URL supplied it. Each generated request now overrides
+  `validationData()`: body fields come from the body (the JSON bag, or the form bag, with the uploads) and only the
+  declared `query` parameters come from the query string, kept as a `QUERY_KEYS` constant. `rules()` is unchanged. **A
+  request that used to pass because the wrong source supplied a field now answers 422**, which is the contract's own
+  answer, and the build re-emits every request class.
 
 ### Added
 

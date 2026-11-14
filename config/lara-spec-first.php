@@ -68,18 +68,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Where generated code lives — STARTED
+    | Where generated code lives — DONE
     |--------------------------------------------------------------------------
     |
-    | `path` is live: it is where the service provider looks for the generated
-    | `routes.php` at boot, and setting it empty throws rather than quietly
-    | registering nothing. `namespace` is not read yet (phase 2): the build
-    | that emits classes into it does not exist.
+    | Both keys are live. `path` is where the service provider looks for the
+    | generated `routes.php` at boot, and setting it empty throws rather than
+    | quietly registering nothing. `namespace` is what `spec:build` emits its
+    | classes into, which it has done since the first generated controller.
     |
     | Under `app/` because it is application code you will read, extend and
     | debug, not a build artefact hidden away. One configurable root, with
-    | fixed sub-namespaces beneath it (`Controllers`, `Data`), so that
-    | .gitignore stays one line if you choose to ignore the tree.
+    | fixed sub-namespaces beneath it (`Controllers`, `Requests`, `Data`), so
+    | that .gitignore stays one line if you choose to ignore the tree.
     |
     | Path and namespace are two settings rather than one: deriving either from
     | the other means guessing at your autoload map. PSR-4 requires the

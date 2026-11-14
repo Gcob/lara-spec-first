@@ -139,6 +139,17 @@ it('leaves a 3.1 exclusive bound where the document wrote it', function (): void
         ->and($schema->maximum)->toBe(10.0);
 });
 
+// `contentEncoding` beside `contentMediaType` is how 3.1 writes a file carried as
+// text: a string, which `file` would refuse the very text of.
+it('does not read a 3.1 part with a contentEncoding as a file', function (): void {
+    $strategy = new OpenApi31Strategy;
+
+    expect($strategy->normalizeSchema(['type' => 'string', 'contentMediaType' => 'image/png', 'contentEncoding' => 'base64'])->isFilePart)
+        ->toBeFalse()
+        ->and($strategy->normalizeSchema(['type' => 'string', 'contentMediaType' => 'image/png'])->isFilePart)
+        ->toBeTrue();
+});
+
 it('names a file part from the spelling its version has', function (): void {
     expect((new OpenApi30Strategy)->normalizeSchema(['type' => 'string', 'format' => 'binary'])->isFilePart)
         ->toBeTrue()
@@ -146,6 +157,21 @@ it('names a file part from the spelling its version has', function (): void {
         ->toBeTrue()
         ->and((new OpenApi30Strategy)->normalizeSchema(['type' => 'string', 'contentMediaType' => 'image/png'])->isFilePart)
         ->toBeFalse();
+});
+
+// 3.1 dropped `format: binary`, and generators still write it for an upload. A
+// part spelled that way is a file at 3.1 too, unless a `contentEncoding` says the
+// text is the file carried as a string.
+it('reads format binary as a file part at 3.1 as well', function (): void {
+    $strategy = new OpenApi31Strategy;
+    $file = $strategy->normalizeSchema(['type' => 'string', 'format' => 'binary']);
+    $encoded = $strategy->normalizeSchema(['type' => 'string', 'format' => 'binary', 'contentEncoding' => 'base64']);
+
+    expect($file->isFilePart)->toBeTrue()
+        ->and($file->format)->toBeNull()
+        ->and($encoded->isFilePart)->toBeFalse()
+        ->and($encoded->format)->toBe('binary')
+        ->and($strategy->normalizeSchema(['type' => 'string', 'format' => 'uuid'])->isFilePart)->toBeFalse();
 });
 
 // `format: binary` is not a format a generator looks up; it is how 3.0 says
@@ -191,8 +217,8 @@ it('reads additionalProperties only when it is a boolean', function (mixed $writ
 
 // `dependentRequired` is handed back raw, like the 3.1 keywords around it, and
 // unlike most of them it is carried: it holds property names rather than a
-// schema, so no unresolved pointer can hide in it, and #35 turns it into
-// `required_with`.
+// schema, so no unresolved pointer can hide in it, and the generated rule set
+// turns it into `present_with`.
 it('carries dependentRequired, which holds names rather than a schema', function (): void {
     $schema = (new OpenApi31Strategy)->normalizeSchema([
         'dependentRequired' => ['card' => ['billing_address', 'postcode']],

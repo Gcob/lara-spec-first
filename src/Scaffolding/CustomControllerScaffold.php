@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Scaffolding;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Generation\CommentText;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
+use Gcob\LaraSpecFirst\Generation\RouteActionSignature;
 use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnwritableScaffoldException;
 
 /**
@@ -90,6 +91,15 @@ final readonly class CustomControllerScaffold
             $lines[] = '';
         }
 
+        // The one class this file imports. The parent is written in full below
+        // and for a reason of its own; the request has a short name of its own,
+        // so importing it keeps the signature readable — and the signature is
+        // the part PHP will not let the developer reword.
+        if ($scaffold->request !== null) {
+            $lines[] = 'use '.ltrim($scaffold->request, '\\').';';
+            $lines[] = '';
+        }
+
         foreach ($this->missingParentNote() as $line) {
             $lines[] = $line;
         }
@@ -102,7 +112,7 @@ final readonly class CustomControllerScaffold
         $lines[] = 'class '.$this->shortNameOf($scaffold->class).' extends \\'.$scaffold->parent;
         $lines[] = '{';
 
-        foreach ($this->body($scaffold->operation) as $line) {
+        foreach ($this->body($scaffold) as $line) {
             $lines[] = '    '.$line;
         }
 
@@ -138,20 +148,22 @@ final readonly class CustomControllerScaffold
      * The method, its signature, and the line that keeps the operation honest until
      * it is replaced.
      *
-     * The parameters are the path's own, named as the document names them, because
-     * that is what the parent declares and PHP forbids an override from widening —
-     * so this is not a suggestion the developer may reword.
+     * The signature comes from {@see RouteActionSignature}, the same place the
+     * generated parent reads it: PHP forbids an override from widening, so this
+     * is not a suggestion the developer may reword — and two derivations of one
+     * signature is how a scaffold ends up being a fatal error at load.
      *
      * @return list<string>
      */
-    private function body(Operation $operation): array
+    private function body(PlannedScaffold $scaffold): array
     {
-        $parameters = $operation->path->parameterNames;
+        $operation = $scaffold->operation;
+        $hasRequest = $scaffold->request !== null;
 
-        $signature = 'public function routeAction('.implode(', ', array_map(
-            static fn (string $parameter): string => 'string $'.$parameter,
-            $parameters,
-        )).'): mixed';
+        $signature = 'public function routeAction('.RouteActionSignature::declaration(
+            $operation,
+            $hasRequest ? $this->shortNameOf((string) $scaffold->request) : null,
+        ).'): mixed';
 
         $comment = array_map(
             static fn (string $line): string => '    // '.$line,
@@ -165,10 +177,7 @@ final readonly class CustomControllerScaffold
             $signature,
             '{',
             ...$comment,
-            '    return parent::routeAction('.implode(', ', array_map(
-                static fn (string $parameter): string => '$'.$parameter,
-                $parameters,
-            )).');',
+            '    return parent::routeAction('.RouteActionSignature::arguments($operation, $hasRequest).');',
             '}',
         ];
     }

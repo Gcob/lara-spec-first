@@ -1,0 +1,19 @@
+# A body declared only in a media type no rule set reads. It gets no request
+# class, and the build warns about it on a line of its own: unlike an operation
+# stating nothing, this one states something nobody validates.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /imports:
+    post:
+      operationId: importXml
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              type: object
+      responses:
+        '202': { description: Accepted }

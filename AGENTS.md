@@ -30,10 +30,14 @@ read, so an operation that declares one gets a parent it may extend and a route 
 exists; an operation that declares none stays `final`. `spec:make` scaffolds that child on request, for one operation, a
 `--tag` or `--all`, offers to write `x-controller` into the specification when it is missing, and builds afterwards; the
 build itself never scaffolds, it names the invocation. `spec:doctor` reports what the package will honor, what it will
-not, and the routing table that results, read-only always and asserted to be. There is no response DTO and no generated
-validation. The [project board](https://github.com/users/Gcob/projects/1) is the authoritative list of what exists and
-what is in flight, and `gh issue list --repo Gcob/lara-spec-first` reads it from a session. An open card is work that is
-not done, which a checked box in a file could only claim as accurately as somebody remembered to edit it.
+not, and the routing table that results, read-only always and asserted to be. Validation is built: `spec:build` emits
+one `FormRequest` per operation that states anything about its input and declares it as `routeAction`'s first parameter,
+with the whole mapping table applied and whatever no Laravel rule means the same as named in the generated file's own
+findings rather than dropped. It also emits one input DTO pair per request body, `NewUserInputDto` and
+`NewUserPartialInputDto`, and the request returns the one its method reads from `dto()`. There is no response DTO. The
+[project board](https://github.com/users/Gcob/projects/1) is the authoritative list of what exists and what is in
+flight, and `gh issue list --repo Gcob/lara-spec-first` reads it from a session. An open card is work that is not done,
+which a checked box in a file could only claim as accurately as somebody remembered to edit it.
 
 Verify your work with `just check` (or `composer check`): Pint, Larastan, then Pest.
 
@@ -219,7 +223,10 @@ worth reviewing for style.
    them later", and do not approve the change on the grounds that the code itself is correct. This is the
    highest-severity category of finding in this repository.
 2. **Direction of truth.** Does the change keep the OpenAPI spec authoritative over the code? Anything that makes PHP
-   the source of truth is a design defect, however well written.
+   the source of truth is a design defect, however well written. A generated rule is never looser than the contract
+   (accepting what it refuses) and never stricter (refusing what it accepts), unless matching it exactly would be far
+   too complex in Laravel, and then the generated file says so in a finding. A stricter rule with no finding is a
+   defect.
 3. **Correctness.** Logic, edge cases, failure paths, `$ref` resolution, behavior across OpenAPI 3.0 and 3.1.
 4. **Stack compliance.** No syntax newer than PHP 8.3 in `src/`. No dependency or version constraint that contradicts
    [`docs/project/stack.md`](./docs/project/stack.md), and no choice invented for a row still marked `Planned` or

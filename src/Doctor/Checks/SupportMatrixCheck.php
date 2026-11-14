@@ -44,17 +44,16 @@ final readonly class SupportMatrixCheck
     private const SECTION = 'Support findings';
 
     /**
-     * Constructs this PR counts for the Deferred lot, and what each label
-     * counts — the query, header and cookie parameters a Path Item or an
-     * Operation Object can hold, `requestBody`, and `responses`.
+     * What is left of the Deferred lot: response declarations, and nothing
+     * else.
      *
-     * **`query` is `Deferred` in docs/guide/openapi-support.md's matrix;
-     * `header` and `cookie` are `Ignored` there and are counted here anyway**,
-     * under the label `parameters`, because nothing in this package reads a
-     * parameter yet and an `Ignored` finding needs the non-zero exit only once
-     * there is behavior to be absent from. The split lands with #35, which is
-     * where a parameter first becomes a rule. Counting them apart before then
-     * would promise an exit code on a construct no generator has met.
+     * **`query` and `requestBody` left it when a rule set was first built from
+     * them.** They are `Partial` in docs/guide/openapi-support.md's matrix now,
+     * and a `Partial` construct is reported when something about a particular
+     * occurrence is missing rather than counted wholesale — what a given
+     * operation states and this package does not enforce is named in the
+     * generated request's own findings, per field, which is a better answer
+     * than a number. #36 is where the doctor says the same thing per operation.
      *
      * **Each label names the unit it counts, and the count matches it.** The
      * whole content of one of these findings is a number, so a label counting
@@ -63,9 +62,23 @@ final readonly class SupportMatrixCheck
      * operations that declare any.
      */
     private const DEFERRED_LABELS = [
-        'parameters' => 'non-path parameter declaration(s) (query, header or cookie)',
-        'requestBody' => 'request body/bodies',
         'responses' => 'response declaration(s)',
+    ];
+
+    /**
+     * Constructs the package reads and will not act on, ever.
+     *
+     * `header` and `cookie` parameters are the whole list. They were counted
+     * beside `query` under one `Deferred` label until a parameter first became
+     * a rule, because an `Ignored` finding needs its non-zero exit only once
+     * there is behavior to be absent from — and now there is. What a validator
+     * would answer for a missing credential is a 401 and not a 422, so this is
+     * a position rather than a gap.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
+     */
+    private const IGNORED_LABELS = [
+        'parameters' => 'header or cookie parameter declaration(s)',
     ];
 
     /**
@@ -167,17 +180,9 @@ final readonly class SupportMatrixCheck
 
         $raw = $document->raw;
 
-        $counts = [
-            'parameters' => self::countDeferredParameters($raw),
-            'requestBody' => 0,
-            'responses' => 0,
-        ];
+        $counts = ['responses' => 0];
 
         foreach (self::operationNodes($raw) as $operation) {
-            if (isset($operation['requestBody'])) {
-                $counts['requestBody']++;
-            }
-
             $responses = $operation['responses'] ?? null;
 
             // Declarations, not operations: `/users/{id}` `get` declaring both
@@ -211,30 +216,48 @@ final readonly class SupportMatrixCheck
             );
         }
 
+        $unread = self::countUnreadParameters($raw);
+
+        if ($unread > 0) {
+            $findings[] = new Finding(
+                FindingClass::PackageLimit,
+                self::SECTION,
+                SupportLevel::Ignored,
+                '',
+                sprintf(
+                    '%d %s found. This package reads them and will not turn one into a rule: what a missing '.
+                    'credential or an unreadable media type deserves is a 401 or a 415, and a rule set answers '.
+                    'with a 422. See https://github.com/Gcob/lara-spec-first#roadmap.',
+                    $unread,
+                    self::IGNORED_LABELS['parameters'],
+                ),
+            );
+        }
+
         return $findings;
     }
 
     /**
-     * Every non-path parameter the document declares, from both levels
-     * OpenAPI allows one at.
+     * Every `header` and `cookie` parameter the document declares, from both
+     * levels OpenAPI allows one at.
      *
      * **A Path Item's own `parameters` count.** OpenAPI lets a path declare
      * parameters shared by every operation under it, and a specification that
-     * puts all its query parameters there — a perfectly ordinary style — used
-     * to report zero deferred parameters, which is rule 2 defeated for a
-     * construct this package genuinely does not honor yet. Counted once per
-     * path rather than once per operation beneath it, because one declaration
-     * is what is written and what a reader would count.
+     * puts all of them there — a perfectly ordinary style — used to report
+     * zero, which is rule 2 defeated for a construct this package genuinely
+     * does not honor. Counted once per path rather than once per operation
+     * beneath it, because one declaration is what is written and what a reader
+     * would count.
      *
      * @param  array<array-key, mixed>  $raw
      */
-    private static function countDeferredParameters(array $raw): int
+    private static function countUnreadParameters(array $raw): int
     {
         $count = 0;
 
         foreach (self::pathItems($raw) as $pathItem) {
             foreach (self::parameterNodes($pathItem) as $parameter) {
-                if (self::isDeferredParameter($parameter, $raw)) {
+                if (self::isUnreadParameter($parameter, $raw)) {
                     $count++;
                 }
             }
@@ -242,7 +265,7 @@ final readonly class SupportMatrixCheck
             foreach (self::VERBS as $verb) {
                 if (is_array($pathItem[$verb] ?? null)) {
                     foreach (self::parameterNodes($pathItem[$verb]) as $parameter) {
-                        if (self::isDeferredParameter($parameter, $raw)) {
+                        if (self::isUnreadParameter($parameter, $raw)) {
                             $count++;
                         }
                     }
@@ -269,8 +292,11 @@ final readonly class SupportMatrixCheck
 
     /**
      * Whether one entry of a `parameters` list is a parameter this package
-     * defers: declared, recognized, and not a path parameter — path
-     * parameters are the one kind the build already honors.
+     * reads and will not act on: a `header` or a `cookie`.
+     *
+     * Named rather than defined by exclusion. "Not a path parameter" was the
+     * right rule while nothing read a parameter at all; now `query` becomes a
+     * rule, so the two locations that stay unread are the two this names.
      *
      * **A `$ref`'d parameter is resolved, not assumed.** `{$ref:
      * '#/components/parameters/UserId'}` carries no `in` of its own, so
@@ -284,7 +310,7 @@ final readonly class SupportMatrixCheck
      *
      * @param  array<array-key, mixed>  $raw
      */
-    private static function isDeferredParameter(mixed $parameter, array $raw): bool
+    private static function isUnreadParameter(mixed $parameter, array $raw): bool
     {
         if (! is_array($parameter)) {
             return false;
@@ -304,12 +330,12 @@ final readonly class SupportMatrixCheck
 
         $in = $parameter['in'] ?? null;
 
-        // Present *and* not `path`, rather than "not `path`": a Parameter
-        // Object with no `in` at all is not a parameter this package could
-        // defer, it is a document the parser will refuse, and counting it
-        // would put a wrong number on the one line whose whole content is a
-        // number.
-        return is_string($in) && $in !== 'path';
+        // Matched against the two locations rather than against everything
+        // that is not `path`: a Parameter Object with no `in` at all, or with
+        // one nobody recognizes, is a document the parser will refuse, and
+        // counting it would put a wrong number on the one line whose whole
+        // content is a number.
+        return $in === 'header' || $in === 'cookie';
     }
 
     /**
