@@ -12,7 +12,6 @@ use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
-use LogicException;
 
 /**
  * One operation's request body and `query` parameters, as one Laravel rule set.
@@ -1134,10 +1133,10 @@ final readonly class RuleSetBuilder
      * none is left unvalidated. A walk that passes the ceiling stops expanding and is thrown away, which is how
      * {@see self::for()} knows to try a lower cap.
      *
-     * A marker whose ancestor the walk does not hold has no depth to read: an inline schema has no name to be found by.
-     * It keeps presence and a finding, as it always did, and so does a field that is two markers at once (two branches
-     * of an `allOf` writing a marker to two different components under one name): the walk follows one ancestor, and
-     * the other would be dropped without a word.
+     * {@see self::unrolls()} says which markers this expands. A marker whose ancestor the walk does not hold has no
+     * depth to read: an inline schema has no name to be found by. It keeps presence and a finding, as it always did,
+     * and so does a field that is two markers at once (two branches of an `allOf` writing a marker to two different
+     * components under one name): the walk follows one ancestor, and the other would be dropped without a word.
      *
      * @param  Schema  $site  the field the marker is written as, merged: the marker and whatever is written beside it
      * @param  string  $presence  how the field is asked for. Beside `missing` it stays when the contract asks for the
@@ -1157,7 +1156,7 @@ final readonly class RuleSetBuilder
         $ancestor = $walk->ancestor($position);
         $rules = $presence === '' ? [] : [$presence];
 
-        if (! self::unrolls($site)) {
+        if ($ancestor === null || ! self::unrolls($site, $ancestor)) {
             // A self-referential schema is a supported contract and an
             // infinite tree, and no rule set reaches an infinite depth.
             $walk->rules[$key] = $rules;
@@ -1172,12 +1171,6 @@ final readonly class RuleSetBuilder
             );
 
             return;
-        }
-
-        // Why: `unrolls()` is the one rule for what unrolls. A marker it accepts always has its ancestor on the stack,
-        // since every named schema is pushed when the walk enters it, so a miss is a bug here and not a contract.
-        if ($ancestor === null) {
-            throw new LogicException(sprintf('The recursion marker at `%s` unrolls, but the walk holds no schema written there.', $position));
         }
 
         $requested = $ancestor->maxDepth ?? self::DEFAULT_MAX_DEPTH;
@@ -1244,24 +1237,20 @@ final readonly class RuleSetBuilder
      * Whether the request unrolls a recursion marker, so that a schema below it is validated down to a depth.
      *
      * One answer for both sides, since the input DTO types a marker as its own class only where the request validated
-     * what the class is built from. It depends on the site alone: a marker whose target has no name (an inline schema
-     * is found by its name, so there is no ancestor to expand), and a field that is two markers at once (an `allOf`
-     * left holding a marker branch: the walk follows one ancestor, and the other would be dropped without a word) are
-     * not unrolled. They keep presence and a finding.
-     *
-     * A merged site keeps the marker's own name only when no named schema was merged in ahead of it, which is why a
-     * `source` is the other half of the test: the marker has none.
+     * what the class is built from. **The ancestor the walk holds decides**, never what the merged site is called: a
+     * site takes the name and source of the first named schema merged into it (`allOf: [Mixin, Node]`), and it still
+     * points back at `Node`. A marker with no ancestor (an inline schema has no name to be found by) and a field that
+     * is two markers at once (an `allOf` left holding a marker branch: the walk follows one ancestor, and the other
+     * would be dropped without a word) are not unrolled. They keep presence and a finding.
      *
      * @param  Schema  $site  the field the marker is written as, merged
+     * @param  Schema|null  $ancestor  the definition a walk holds at the position the marker points back at
      *
      * @internal Public so the input DTO asks the question the rules did.
      */
-    public static function unrolls(Schema $site): bool
+    public static function unrolls(Schema $site, ?Schema $ancestor): bool
     {
-        return $site->recursesTo !== null
-            && $site->name !== null
-            && $site->source === null
-            && $site->allOf === [];
+        return $site->recursesTo !== null && $ancestor !== null && $site->allOf === [];
     }
 
     /**

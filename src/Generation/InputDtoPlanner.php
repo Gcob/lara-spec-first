@@ -11,7 +11,6 @@ use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Illuminate\Support\Str;
-use LogicException;
 
 /**
  * Works out every input DTO of a build: its name, its properties, and which operation reads it.
@@ -587,8 +586,9 @@ final class InputDtoPlanner
      * way the rules find it, and registered here when nothing walked that schema as a schema of its own: a body written
      * `allOf: [Category, {required: [name]}]` is a class of its own, and `Category` is only reached through the marker.
      *
-     * What the request did not unroll stays `mixed` ({@see RuleSetBuilder::unrolls()}), and so does a marker with
-     * properties written beside it: that is a schema the ancestor's class does not say.
+     * What the request did not unroll stays `mixed` ({@see RuleSetBuilder::unrolls()}), asked of the ancestor this
+     * planner holds on its own stack. So does a marker with properties written beside it, which the request does
+     * validate: that is a schema the ancestor's class does not say.
      *
      * @throws UnusableNameException
      * @throws ConflictingInputException
@@ -596,19 +596,6 @@ final class InputDtoPlanner
     private function recursion(Schema $site, string $segment, string $owner): InputDtoType
     {
         $position = (string) $site->recursesTo;
-        $beside = AllOfMerger::besideMarker($site);
-
-        if (! RuleSetBuilder::unrolls($site) || ($beside !== null && $beside->properties !== [])) {
-            $this->registry[$owner]['findings'][] = sprintf(
-                '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
-                    .'`mixed` rather than built into a DTO from input nothing checked.',
-                $segment,
-                $position,
-            );
-
-            return new InputDtoType(InputDtoType::MIXED);
-        }
-
         $ancestor = null;
 
         foreach (array_reverse($this->ancestors) as $definition) {
@@ -619,11 +606,32 @@ final class InputDtoPlanner
             }
         }
 
-        if ($ancestor === null) {
-            throw new LogicException(sprintf('The recursion marker at `%s` unrolls, but the walk holds no schema written there.', $position));
+        if ($ancestor === null || ! RuleSetBuilder::unrolls($site, $ancestor)) {
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
+                    .'`mixed` rather than built into a DTO from input nothing checked.',
+                $segment,
+                $position,
+            );
+
+            return new InputDtoType(InputDtoType::MIXED);
         }
 
-        $name = (string) ($ancestor->name ?? $site->name);
+        // What is written beside the marker holds at every level, and the ancestor's class carries none of it.
+        $beside = AllOfMerger::besideMarker($site);
+
+        if ($beside !== null && $beside->properties !== []) {
+            $this->registry[$owner]['findings'][] = sprintf(
+                '`%s` is validated by the request, which unrolls it, but it is `mixed` here: it writes properties '
+                    .'beside the marker, and the class of `%s` does not carry them.',
+                $segment,
+                $ancestor->name,
+            );
+
+            return new InputDtoType(InputDtoType::MIXED);
+        }
+
+        $name = (string) $ancestor->name;
         $base = $this->className($name, $position);
         $class = $this->register(
             $base.'InputDto',

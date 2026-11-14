@@ -248,9 +248,10 @@ checked. Three shapes are left as they arrived:
   class does not carry it, so `from()` would lose a key the request validated. A `required` beside the marker changes
   nothing in the class, and the field is typed.
 
-For each, the file's findings say that the field points back at a position and that the request validates nothing below
-it, so it is `mixed`. For the first two, the request's finding says the same thing from its side, and it is where the
-lever is.
+For the first two, the file's findings say that the field points back at a position and that the request validates
+nothing below it, so it is `mixed`, and the request's finding says the same thing from its side, where the lever is. For
+the third, the request does validate it, and the finding says so: the field is `mixed` because the ancestor's class does
+not carry what is written beside the marker.
 
 **A key the rules cannot name when its object is nested is optional in the DTO.** A required `user.name` is `Optional`
 beside the rest of its object, so that a schema's shape does not depend on which operation reached it first, and the

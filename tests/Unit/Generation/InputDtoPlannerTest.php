@@ -489,10 +489,35 @@ it('types a recursion the request did not unroll as mixed', function (array $ope
         ->and(implode("\n", $dto->findings))->toContain('`'.$property.'` points back at');
 })->with([
     'an inline ancestor with no name' => [
-        [dtoOperation('doThing', ['application/json' => recursiveComponent('Node', ['link' => Schema::recursion('#/components/schemas/Node')])])],
+        [dtoOperation('doThing', ['application/json' => dtoSchema(['link' => Schema::recursion('#/paths/~1things/post/requestBody/content/application~1json/schema')])])],
         'link',
     ],
     'a field that is two markers' => [extractFixture('recursion-allof-two-markers.yaml'), 'part'],
+]);
+
+// `allOf: [Mixin, Node]` is a marker the request unrolls, whatever its merged site is called. A mixin that only requires
+// keys changes nothing the class of `Node` says. One that writes a property does, so the site stays `mixed` and the file
+// says the request validates it.
+it('types a recursion behind a mixin as the class it points back at only when the mixin adds no property', function (string $operationId, string $class, string $kind): void {
+    $operation = array_values(array_filter(
+        extractFixture('recursion-mixin.yaml'),
+        static fn (Operation $operation): bool => $operation->operationId === $operationId,
+    ));
+    $plan = planDtos($operation);
+    $dto = dtoNamed($plan, $class);
+    $child = array_values(array_filter($dto->properties, static fn ($property): bool => $property->key === 'child'))[0];
+
+    expect($child->type->kind)->toBe($kind);
+
+    if ($kind === InputDtoType::MIXED) {
+        expect(implode("\n", $dto->findings))->toContain('`child` is validated by the request, which unrolls it')
+            ->and(implode("\n", $dto->findings))->not->toContain('validates nothing');
+    } else {
+        expect($child->type->class)->toBe($class);
+    }
+})->with([
+    'a mixin that writes a property' => ['createNode', 'NodeInputDto', InputDtoType::MIXED],
+    'a mixin that only requires' => ['createMarked', 'MarkedInputDto', InputDtoType::DTO],
 ]);
 
 // What is written beside a marker holds at every level the request crosses it at. A `required` changes nothing the
@@ -508,7 +533,7 @@ it('keeps a recursion mixed when the site writes properties beside the marker', 
     $dto = dtoNamed($plan, 'NodeInputDto');
 
     expect($dto->properties[1]->type->kind)->toBe(InputDtoType::MIXED)
-        ->and(implode("\n", $dto->findings))->toContain('`link` points back at');
+        ->and(implode("\n", $dto->findings))->toContain('`link` is validated by the request, which unrolls it');
 });
 
 // Decision 2 of the card #35 plan: a schema no single rule expresses is read as it

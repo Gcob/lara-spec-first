@@ -1,0 +1,63 @@
+# A component that inherits from a mixin and contains itself: `child` is `allOf: [Mixin, Node]`. The marker is merged with
+# a named schema, so the field carries the mixin's name and source beside the marker's `recursesTo`. The request still
+# unrolls it: what decides is the ancestor the walk holds, not what the merged site is called. `Mixin` writes a property,
+# which the DTO's class for `Node` does not carry, and `Required` writes only a `required`, which it does.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /nodes:
+    post:
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Node'
+      responses:
+        '201':
+          description: Created
+  /marked:
+    post:
+      operationId: createMarked
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Marked'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Mixin:
+      type: object
+      properties:
+        tag:
+          type: string
+    Required:
+      type: object
+      required: [label]
+    Node:
+      type: object
+      x-max-depth: 2
+      properties:
+        label:
+          type: string
+        child:
+          allOf:
+            - $ref: '#/components/schemas/Mixin'
+            - $ref: '#/components/schemas/Node'
+    Marked:
+      type: object
+      x-max-depth: 2
+      properties:
+        label:
+          type: string
+        child:
+          allOf:
+            - $ref: '#/components/schemas/Required'
+            - $ref: '#/components/schemas/Marked'

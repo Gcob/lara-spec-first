@@ -2252,6 +2252,44 @@ it('keeps what a wrapper around a recursive component states at the wrapper leve
     'OpenAPI 3.1' => ['recursion-allof-3.1.yaml'],
 ]);
 
+// A mixin is the common way a component inherits and contains itself. The site is the marker merged with a named schema,
+// so it carries that schema's name and source, and what decides is the ancestor the walk holds. The rules are the ones
+// the walk wrote before the DTO side asked the same question: `main` at the commit that merged the request side.
+it('unrolls a recursion behind a mixin', function (): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-mixin.yaml', 'createNode'));
+
+    expect($set->rules)->toBe([
+        'label' => ['sometimes', 'string'],
+        'child' => ['sometimes', 'array'],
+        'child.label' => ['sometimes', 'string'],
+        'child.child' => ['sometimes', 'array'],
+        'child.child.label' => ['sometimes', 'string'],
+        'child.child.child' => ['missing'],
+        'child.child.tag' => ['sometimes', 'string'],
+        'child.tag' => ['sometimes', 'string'],
+    ])->and(implode("\n", $set->findings))->not->toContain('points back at');
+});
+
+// One predicate for the request and the DTO, and it is the ancestor the walk holds that answers.
+it('says a marker unrolls when the walk holds its ancestor and the site has no marker branch left', function (): void {
+    $marker = Schema::recursion('#/components/schemas/Node', 'Node');
+    $ancestor = new Schema(name: 'Node', source: '#/components/schemas/Node', types: [SchemaType::Object]);
+    $twoMarkers = new Schema(
+        name: 'Node',
+        allOf: [Schema::recursion('#/components/schemas/Other', 'Other')],
+        recursesTo: '#/components/schemas/Node',
+    );
+    // A named schema merged ahead of the marker gives the site its own name and source.
+    $mixin = new Schema(name: 'Mixin', source: '#/components/schemas/Mixin', recursesTo: '#/components/schemas/Node');
+
+    expect(RuleSetBuilder::unrolls($marker, $ancestor))->toBeTrue()
+        ->and(RuleSetBuilder::unrolls($mixin, $ancestor))->toBeTrue()
+        // An unnamed ancestor is not on the stack: an inline schema has no name to be found by.
+        ->and(RuleSetBuilder::unrolls($marker, null))->toBeFalse()
+        ->and(RuleSetBuilder::unrolls($twoMarkers, $ancestor))->toBeFalse()
+        ->and(RuleSetBuilder::unrolls(new Schema(types: [SchemaType::Object]), $ancestor))->toBeFalse();
+});
+
 it('applies what is written beside a marker at every level the marker is crossed at', function (string $fixture): void {
     $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNode'));
 
