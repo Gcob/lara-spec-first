@@ -316,7 +316,7 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
-            if ($schema != $first) {
+            if (! $schema->sameShapeAs($first)) {
                 throw ConflictingInputException::twoMediaTypeSchemas(
                     $operation->label(),
                     (string) $firstMediaType,

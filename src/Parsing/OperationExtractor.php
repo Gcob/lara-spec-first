@@ -160,6 +160,43 @@ final readonly class OperationExtractor
         'contentEncoding',
     ];
 
+    /**
+     * Every schema keyword the support matrix marks `Ignored`, which is what `spec:doctor` reports per request.
+     *
+     * The list is closed, and it is the matrix's rows: a keyword absent from here and from {@see self::SCHEMA_KEYWORDS}
+     * is `Out of scope`, `Rejected`, or one the matrix has not placed, and none of those is this report's to name.
+     * `additionalProperties` is on it for the one spelling that is a schema, `false` being a rule; see
+     * {@see self::ignoredKeywords()}.
+     *
+     * @see docs/guide/openapi-support.md — "Schemas"
+     */
+    private const IGNORED_SCHEMA_KEYWORDS = [
+        'default',
+        'deprecated',
+        '$defs',
+        '$anchor',
+        'additionalProperties',
+        'minProperties',
+        'maxProperties',
+        'patternProperties',
+        'propertyNames',
+        'dependentSchemas',
+        'unevaluatedProperties',
+        'prefixItems',
+        'contains',
+        'minContains',
+        'maxContains',
+        'unevaluatedItems',
+        'oneOf',
+        'anyOf',
+        'not',
+        'discriminator',
+        'if',
+        'then',
+        'else',
+        'contentSchema',
+    ];
+
     public function extract(ParsableSpecDocument $document): ExtractionResult
     {
         $faults = [
@@ -624,7 +661,50 @@ final readonly class OperationExtractor
 
         $name = $walk->name($position);
 
-        return $strategy->normalizeSchema($keywords, $name, $name === null ? null : $walk->pointer($position));
+        return $strategy->normalizeSchema(
+            $keywords,
+            $name,
+            $name === null ? null : $walk->pointer($position),
+            $this->ignoredKeywords($walk, $position),
+        );
+    }
+
+    /**
+     * The `Ignored` keywords written at one schema, each with the position of the keyword itself.
+     *
+     * **Read off the raw document, not off the parser's node.** The parser models some of these (`oneOf`, `default`)
+     * and hands back others as raw values, and one rule covering both is a read of what was written, which is also how
+     * {@see self::schema()} tells a keyword written as `null` from one not written.
+     *
+     * **A keyword's own position is built, not walked to.** {@see DocumentWalk::child()} follows a `$ref`, and a
+     * `default` holding `{$ref: ...}` is data: following it would report the keyword at a place the author never wrote
+     * it.
+     *
+     * `additionalProperties` counts only as a schema. `false` is a rule and `true` is the default said aloud.
+     *
+     * @return array<string, string>
+     */
+    private function ignoredKeywords(DocumentWalk $walk, SchemaPosition $position): array
+    {
+        $raw = $walk->rawAt($position) ?? [];
+        $ignored = [];
+
+        foreach (self::IGNORED_SCHEMA_KEYWORDS as $keyword) {
+            if (! array_key_exists($keyword, $raw)) {
+                continue;
+            }
+
+            if ($keyword === 'additionalProperties' && ! is_array($raw[$keyword])) {
+                continue;
+            }
+
+            $ignored[$keyword] = $walk->pointer(new SchemaPosition(
+                $position->file,
+                $position->pointer.'/'.DocumentPointer::escape($keyword),
+            ));
+        }
+
+        return $ignored;
     }
 
     /**

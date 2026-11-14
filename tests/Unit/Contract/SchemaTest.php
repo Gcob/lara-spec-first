@@ -43,3 +43,23 @@ it('carries only a pointer on a recursion marker', function (): void {
         ->and($marker->properties)->toBe([])
         ->and($marker->items)->toBeNull();
 });
+
+// Where an ignored keyword is written is a fact about the document's layout, so
+// two inline copies of one shape stay one shape, at any depth. Anything a rule
+// could be built from still tells two schemas apart.
+it('compares two schemas by what they state rather than by where an ignored keyword is written', function (): void {
+    $copy = static fn (string $at, string $type): Schema => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'a' => new Schema(types: [SchemaType::String], ignored: ['default' => $at.'/properties/a/default']),
+            'b' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::from($type)], ignored: ['not' => $at.'/b/items/not'])),
+        ],
+        ignored: ['oneOf' => $at.'/oneOf'],
+    );
+
+    expect($copy('#/json', 'string')->sameShapeAs($copy('#/form', 'string')))->toBeTrue()
+        ->and($copy('#/json', 'string')->sameShapeAs($copy('#/json', 'integer')))->toBeFalse()
+        ->and((new Schema(properties: ['a' => new Schema, 'b' => new Schema]))->sameShapeAs(
+            new Schema(properties: ['b' => new Schema, 'a' => new Schema]),
+        ))->toBeTrue();
+});

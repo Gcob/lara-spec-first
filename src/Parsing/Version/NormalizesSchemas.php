@@ -21,8 +21,10 @@ trait NormalizesSchemas
      * @param  array<string, mixed>  $keywords  one schema node, flattened by the extractor: every value is either a
      *                                          scalar, a plain array, or a {@see Schema} a nested node was already
      *                                          normalized into
+     * @param  array<string, string>  $ignored  passed through as the walk found it: the keywords are not in
+     *                                          `$keywords`, which is closed, so no version reads them
      */
-    public function normalizeSchema(array $keywords, ?string $name = null, ?string $source = null): Schema
+    public function normalizeSchema(array $keywords, ?string $name = null, ?string $source = null, array $ignored = []): Schema
     {
         [$exclusiveMinimum, $minimum] = $this->exclusiveBound($keywords, 'Minimum');
         [$exclusiveMaximum, $maximum] = $this->exclusiveBound($keywords, 'Maximum');
@@ -60,6 +62,7 @@ trait NormalizesSchemas
             isFilePart: $this->isFilePart($keywords),
             contentMediaType: $this->contentMediaType($keywords),
             source: $source,
+            ignored: $ignored,
         );
     }
 

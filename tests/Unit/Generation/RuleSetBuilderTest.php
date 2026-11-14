@@ -399,6 +399,22 @@ it('accepts two read media types describing one shape', function (): void {
         ->and(implode('', $set->findings))->toContain('over one schema');
 });
 
+// An ignored keyword is written at a position, and two media types writing the
+// same shape inline write it at two. The position is what the doctor reports and
+// no rule is built from it, so it is not a difference between the two shapes.
+it('accepts two read media types whose shapes differ only in where an ignored keyword is written', function (): void {
+    $at = static fn (string $media): Schema => objectSchema([
+        'a' => new Schema(types: [SchemaType::String], ignored: ['default' => '#/'.$media.'/properties/a/default']),
+    ]);
+
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $at('json'),
+        'multipart/form-data' => $at('multipart'),
+    ]));
+
+    expect($set->rules)->toBe(['a' => ['sometimes', 'string']]);
+});
+
 // Reported rather than refused: refusing the whole build over a media type this
 // package does not serve would turn away an operation whose other half is fine.
 it('reports a media type it does not read rather than refusing it', function (): void {

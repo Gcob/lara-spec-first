@@ -16,11 +16,10 @@ namespace Gcob\LaraSpecFirst\Contract;
  * usable was written" rather than "the document was silent". Nothing is generated from the difference, so nothing needs
  * to carry it.
  *
- * **What it does not carry.** A keyword the support matrix marks `Ignored` has no property here: nothing reads it, and
- * a field nobody reads is a value waiting to be mistaken for a supported one.
- *
- * TODO (#36): reporting those ignored keywords per operation is that card's, and this class is where the collection
- * would hang when it lands.
+ * **What it does not carry.** A keyword the support matrix marks `Ignored` has no value here: nothing reads it, and a
+ * field nobody reads is a value waiting to be mistaken for a supported one. What it carries instead is the fact that it
+ * was written and where, in {@see self::$ignored}, which only `spec:doctor` reads: a keyword cannot be reported once
+ * the reading is over, and this is the one place both the keyword and its position are still known.
  *
  * @see docs/guide/openapi-support.md — "The normal form a schema takes"
  */
@@ -66,6 +65,11 @@ final readonly class Schema
      *                                   infinite tree, so it is cut here and named rather than walked. Spelled the way
      *                                   every position is: a bare JSON Pointer for the root document, and
      *                                   `path.yaml#/pointer` for an ancestor written in another file
+     * @param  array<string, string>  $ignored  each keyword this node writes that the support matrix marks `Ignored`,
+     *                                          by the position of the keyword itself, spelled the way every position
+     *                                          is. Only this node's own: a keyword written on a child is the child's.
+     *                                          The values are positions and never the keywords' values, which hold
+     *                                          schemas the walk did not resolve
      */
     public function __construct(
         public ?string $name = null,
@@ -96,6 +100,7 @@ final readonly class Schema
         public ?string $contentMediaType = null,
         public ?string $recursesTo = null,
         public ?string $source = null,
+        public array $ignored = [],
     ) {}
 
     /**
@@ -109,6 +114,44 @@ final readonly class Schema
     public static function recursion(string $pointer, ?string $name = null): self
     {
         return new self(name: $name, recursesTo: $pointer);
+    }
+
+    /**
+     * Whether two schemas state the same thing, wherever each was written.
+     *
+     * What differs between two inline copies of one shape is {@see self::$ignored}: the positions of keywords nothing
+     * reads, which are a fact about the document's layout and never about the shape. `==` would call the copies
+     * different and refuse a contract that says one thing twice.
+     */
+    public function sameShapeAs(self $other): bool
+    {
+        return self::sameValue($this, $other);
+    }
+
+    private static function sameValue(mixed $left, mixed $right): bool
+    {
+        if ($left instanceof self && $right instanceof self) {
+            $left = get_object_vars($left);
+            $right = get_object_vars($right);
+            unset($left['ignored'], $right['ignored']);
+        }
+
+        if (! is_array($left) || ! is_array($right)) {
+            return $left == $right;
+        }
+
+        // The order a map was written in is not part of what it says, which is also what `==` has always answered.
+        if (count($left) !== count($right)) {
+            return false;
+        }
+
+        foreach ($left as $key => $value) {
+            if (! array_key_exists($key, $right) || ! self::sameValue($value, $right[$key])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

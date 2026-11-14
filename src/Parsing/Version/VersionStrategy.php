@@ -63,8 +63,9 @@ interface VersionStrategy
      * @param  array<string, mixed>  $keywords
      * @param  string|null  $name  what the document calls this schema, null for one written inline
      * @param  string|null  $source  where that schema is written, set exactly when `$name` is
+     * @param  array<string, string>  $ignored  the `Ignored` keywords this node writes, by the position of each
      *
      * @see docs/guide/openapi-support.md — "The normal form a schema takes"
      */
-    public function normalizeSchema(array $keywords, ?string $name = null, ?string $source = null): Schema;
+    public function normalizeSchema(array $keywords, ?string $name = null, ?string $source = null, array $ignored = []): Schema;
 }

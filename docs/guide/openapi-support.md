@@ -189,7 +189,7 @@ follows is the whole of what one of them has to know, and none of it requires kn
 | `dependentRequired`                      | A map of property name to the names it makes required                                                                  | Read it out of a keyword the parser hands back raw                       |
 | `name`                                   | What the document calls this schema, or null for an inline one, and as written rather than as a class could be called  | Work it out from the `$ref` that reached it, or from the file holding it |
 | `source`                                 | Where that named schema is written, as a pointer, or `path.yaml#/pointer` in another file; null exactly when `name` is | Ask the parser, which answers with the first site that referenced it     |
-| A keyword the [matrix](#schemas) ignores | Nothing: there is no field for it                                                                                      | Wonder whether an empty value means unsupported or unwritten             |
+| A keyword the [matrix](#schemas) ignores | No value. `ignored` names the keyword and the position it is written at, and nothing else                              | Wonder whether an empty value means unsupported or unwritten             |
 
 **Where a spelling you wrote went is the [table above](#the-differences-the-strategy-must-absorb)**, which is the same
 decisions read from the other side: that one answers "my document says X, what happens to it", this one answers "I am
@@ -202,6 +202,12 @@ an ancestor written in another file reads `node.yaml#/components/schemas/Node` r
 [below](#where-a-schema-is-reported-from). A tree, a comment thread and nested categories all produce one. Truncating in
 silence would hand a generator a schema that is wrong rather than one that is incomplete, which
 [rule 2](#the-four-rules) forbids.
+
+**`ignored` is the one field that exists for a report and no generator.** It maps each `Ignored` keyword a node writes
+to the position of the keyword, and it is read by [`spec:doctor`](./doctor.md#what-it-checks) alone. A keyword cannot be
+reported once the reading is over, since nothing keeps it, so the position is taken where the schema is walked.
+`sameShapeAs()` is how two schemas are compared: it leaves `ignored` out, because two inline copies of one shape under
+two media types write the same keyword at two positions, and that is not a difference the contract states.
 
 **Both `recursesTo` and `name` are read off the same thing: where the schema is written.** That position is computed
 rather than asked of the parser, and a schema written in another file is the whole reason. See
