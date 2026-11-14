@@ -769,7 +769,7 @@ it('reports what no Laravel rule means the same as', function (Schema $field, st
     'a bound on an untyped field' => [new Schema(minimum: 1.0), '`field` states `minimum`'],
     'a recursion marker' => [Schema::recursion('#/components/schemas/Node'), 'points back at'],
     // A file part in a JSON body is a string: JSON cannot carry a file.
-    'a file part in a JSON body' => [new Schema(types: [SchemaType::String], isFilePart: true), '`isFilePart`'],
+    'a file part in a JSON body' => [new Schema(types: [SchemaType::String], isFilePart: true), '`field` states `format`'],
 ]);
 
 // `true` asks for nothing, so there is no rule for it to be missing: a finding
@@ -1016,7 +1016,9 @@ it('reads a file part as a string unless multipart is the only body', function (
     [$rules, $findings] = filePartRules(new Schema(types: [SchemaType::String], isFilePart: true), mediaTypes: $mediaTypes);
 
     expect($rules['avatar'])->toBe(['present', 'string'])
-        ->and($findings)->toContain('`avatar` states `isFilePart`');
+        // `isFilePart` is no word of a contract: it is `format: binary` here, which is what the finding names.
+        ->and($findings)->toContain('`avatar` states `format`')
+        ->and($findings)->not->toContain('isFilePart');
 })->with([
     'JSON' => [['application/json']],
     'a form' => [['application/x-www-form-urlencoded']],
@@ -1774,6 +1776,18 @@ it('names the keyword and the field for each way a read keyword is left unenforc
         ['application/json' => objectSchema([], ['a*b'])],
         [],
         ['required' => ['`a*b`']],
+    ],
+    // `isFilePart` is no word of a contract, so it is named by the keyword the contract wrote: `format: binary`, or a
+    // `contentMediaType` at 3.1.
+    'a file part written as format: binary, in a JSON body' => [
+        ['application/json' => objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true)])],
+        [],
+        ['format' => ['`doc`']],
+    ],
+    'a file part written as contentMediaType, in a JSON body' => [
+        ['application/json' => objectSchema(['doc' => new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'application/pdf')])],
+        [],
+        ['contentMediaType' => ['`doc`']],
     ],
     'int64 on a query parameter' => [
         [],

@@ -1454,10 +1454,21 @@ final readonly class RuleSetBuilder
      */
     private static function statedKeywords(Schema $schema, array $handled): array
     {
-        return array_values(array_filter(
+        $stated = array_filter(
             self::RULE_KEYWORDS,
             static fn (string $keyword): bool => ! in_array($keyword, $handled, true) && self::states($schema, $keyword),
-        ));
+        );
+
+        // Why: `isFilePart` is the normal form's one flag for two spellings, and no contract has the word. A finding
+        // naming it sends the reader looking for a keyword that is not in their file, so it says what they wrote.
+        $named = array_map(
+            static fn (string $keyword): string => $keyword === 'isFilePart'
+                ? ($schema->contentMediaType === null ? 'format' : 'contentMediaType')
+                : $keyword,
+            $stated,
+        );
+
+        return array_values(array_unique($named));
     }
 
     /**
