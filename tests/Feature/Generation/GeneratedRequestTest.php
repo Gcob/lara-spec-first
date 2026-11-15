@@ -276,6 +276,18 @@ it('compares min and max as numbers under a strict rule', function (Schema $body
     'a number above maximum' => [scalarBody(SchemaType::Number, maximum: 2.5), 3, 422],
 ]);
 
+// The same for the other rules a number schema writes: `gt`, `lt` and `multiple_of` sit beside the strict rule.
+it('compares gt, lt and multiple_of as numbers under a strict rule', function (Schema $field, float|int $value, int $status): void {
+    expect(statusForBuiltRules(oneField($field, required: false), ['field' => $value]))->toBe($status);
+})->with([
+    'an integer above exclusiveMinimum' => [new Schema(types: [SchemaType::Integer], exclusiveMinimum: 5.0), 6, 200],
+    'an integer at exclusiveMinimum' => [new Schema(types: [SchemaType::Integer], exclusiveMinimum: 5.0), 5, 422],
+    'a number below exclusiveMaximum' => [new Schema(types: [SchemaType::Number], exclusiveMaximum: 2.5), 2, 200],
+    'a number at exclusiveMaximum' => [new Schema(types: [SchemaType::Number], exclusiveMaximum: 2.5), 2.5, 422],
+    'an integer that is a multiple' => [new Schema(types: [SchemaType::Integer], multipleOf: 3.0), 9, 200],
+    'an integer that is not a multiple' => [new Schema(types: [SchemaType::Integer], multipleOf: 3.0), 10, 422],
+]);
+
 // JSON Schema's `required` asks for the key; Laravel's refuses `null`, `""`,
 // `[]` and `{}`. Each case is a payload the contract accepts, sent through the
 // rules the builder actually emits.

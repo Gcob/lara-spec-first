@@ -46,7 +46,8 @@ jobs:
                 # major is a property of the Laravel cell rather than a third axis.
                 include:
                     # `constraint` is the Laravel this cell installs. Laravel 12's starts at 12.22: the package's
-                    # floor, since `:strict` on `integer`, `numeric` and `boolean` is silently ignored before it.
+                    # floor, since `integer:strict` is silently ignored before it (`numeric:strict` and
+                    # `boolean:strict` exist from 12.21).
                     - laravel: "12"
                       constraint: "^12.22"
                       testbench: "^10.11"
