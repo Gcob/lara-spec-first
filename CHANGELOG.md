@@ -36,9 +36,14 @@ tags: [versions, conventions, planning]
   same way**, since one schema reads one way wherever it is reached. No response DTO exists yet, so nothing generated
   from a response changes.
   [Keywords written beside a `$ref`](./docs/guide/openapi-support.md#keywords-written-beside-a-ref).
+- **A `$ref` written inside the keywords beside a `$ref` is followed.**
+  `{$ref: Base, properties: {owner: {$ref: User}}}`, `items` and an `allOf` branch included, at any depth: `owner` has
+  the rules of `User`, and so does what `User` writes below it. A relative path is resolved against the file that wrote
+  it, and a recursion that closes through the keywords ends in a recursion marker the first time round.
 - **Some documents that built before are now refused, because their keywords beside a `$ref` are read.** Each is refused
-  for the operation that reaches it. Only the first is limited to a request schema: the others also stop an operation
-  whose only such keyword is in a response schema, which is read the same way.
+  for the operation that reaches it, except the last two, which refuse the document as the same fault does anywhere
+  else. Only the first is limited to a request schema: the others also stop an operation whose only such construct is in
+  a response schema, which is read the same way.
     - A keyword that contradicts the schema it sits beside (`{$ref: User, additionalProperties: false}` over a `User`
       that declares properties, `{$ref: Code, type: integer}` over a string, a second `pattern` or `format` where the
       schema already has one). It is refused when the request is built, as two `allOf` branches that disagree are.
@@ -47,8 +52,18 @@ tags: [versions, conventions, planning]
     - A keyword the parser hands back raw (`prefixItems`, `if`, and the other nine) that holds a `$ref`, beside a
       `$ref`.
     - A keyword the parser cannot build a schema from (`{$ref: Code, items: "x"}`), which is a fault in the document.
-    - For now, a `$ref` written inside the keywords beside a `$ref` (a property, `items` or an `allOf` branch). It is
-      refused until it is read.
+    - A `$ref` written inside the keywords beside a `$ref` whose target is not there, or whose chain comes back to a
+      reference it already followed through other files (the cycle check reads one document, not several). Never read as
+      an empty schema.
+    - A schema that such a `$ref` points at, which the parser cannot build (`items: "x"` in the file it names).
+    - An `allOf` written as a mapping (`allOf: {$ref: X}`), on any schema and at 3.0 too. The parser used to read it as
+      a reference to a schema and hand back no branches, so the composition vanished unsaid.
+    - A `$ref` aimed into a `$defs`, or a chain of references that never reaches content, written inside the keywords
+      beside a `$ref` at 3.1. They are refused as they are anywhere else, and the build stops on them.
+- **An `enum` or an `example` that writes a `$ref` key is read as data.** `enum: [{$ref: "#/components/schemas/Code"}]`
+  is a list holding that object, wherever it is written. The parser read it as a reference and resolved it into a
+  schema, so a schema leaked into the contract's `enum` and `examples`. An `enum` behind a URL written by hand inside a
+  local file, which only the parser follows, keeps the parser's value.
 - **`spec:doctor` goes from exit `0` to exit `2` for a `deprecated`, a `default` or an `x-max-depth` written beside a
   `$ref` in a 3.1 request.** They were dropped without a word and are now reported `Ignored`, at the position they are
   written, like the same keywords anywhere else. An `x-max-depth` beside a `$ref` is never honored: a recursion reads

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
 use Gcob\LaraSpecFirst\Parsing\Guards\ReferenceCycleDetector;
+use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
+use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
 
 // The distinction this class exists to make. If only one test survives a
 // refactor, it should be this pair.
@@ -303,4 +305,31 @@ it('does not report a second fault for a reference that only leads into an alrea
     ]]];
 
     expect((new ReferenceCycleDetector)->findCycles($document))->toHaveCount(1);
+});
+
+// D42 b: at 3.1 the keywords beside a `$ref` are read, so a `$ref` written in them is a reference like any other, and a
+// chain that closes through one never reaches content. At 3.0 they are ignored and nothing reads them.
+/**
+ * @return array<string, mixed>
+ */
+function cycleInSiblings(): array
+{
+    return ['components' => ['schemas' => [
+        'Code' => ['type' => 'string'],
+        'A' => [
+            '$ref' => '#/components/schemas/Code',
+            'allOf' => [['$ref' => '#/components/schemas/A/allOf/0']],
+        ],
+    ]]];
+}
+
+it('rejects a pure cycle written inside the keywords beside a $ref at 3.1', function (): void {
+    $faults = (new ReferenceCycleDetector)->findCycles(cycleInSiblings(), new OpenApi31Strategy);
+
+    expect($faults)->toHaveCount(1)
+        ->and($faults[0]->getMessage())->toContain('#/components/schemas/A/allOf/0');
+});
+
+it('does not walk the keywords beside a $ref at 3.0', function (): void {
+    expect((new ReferenceCycleDetector)->findCycles(cycleInSiblings(), new OpenApi30Strategy))->toBe([]);
 });

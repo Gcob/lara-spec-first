@@ -139,6 +139,74 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     }
 
     /**
+     * A schema a `$ref` inside the keywords beside another `$ref` points at, which the parser cannot build.
+     *
+     * The target is read from the raw document, because the parser keeps no trace of a reference it was never asked to
+     * resolve, so a value of the wrong shape is found here and not when the document is parsed.
+     *
+     * @param  string  $pointer  where the target is written
+     * @param  string  $detail  what the parser said
+     */
+    public static function malformedSchemaBehindReference(string $pointer, string $detail): self
+    {
+        return new self(sprintf(
+            'The schema at "%s", which a `$ref` inside the keywords beside another `$ref` points at, does not make a schema: %s.',
+            $pointer,
+            $detail
+        ));
+    }
+
+    /**
+     * A `$ref` inside the keywords beside another `$ref` whose target is not there.
+     *
+     * Refused rather than read as an empty schema, which would validate the field against nothing and say nothing.
+     *
+     * @param  string  $pointer  where the `$ref` is written
+     * @param  string  $reference  what it points at, as written
+     */
+    public static function referenceTargetMissing(string $pointer, string $reference): self
+    {
+        return new self(sprintf(
+            'The `$ref` at "%s" points at "%s", and nothing is written there.',
+            $pointer,
+            $reference
+        ));
+    }
+
+    /**
+     * A `$ref` inside the keywords beside another `$ref` that never reaches a schema.
+     *
+     * The chain of references comes back to one it already followed, through files the cycle check does not read.
+     *
+     * @param  string  $pointer  where the first `$ref` of the chain is written
+     * @param  string  $reference  what it points at, as written
+     */
+    public static function referenceNeverReachesSchema(string $pointer, string $reference): self
+    {
+        return new self(sprintf(
+            'The `$ref` at "%s" points at "%s", and following the references from there never reaches a schema: the chain comes back to a reference it already followed.',
+            $pointer,
+            $reference
+        ));
+    }
+
+    /**
+     * An `allOf` written as a mapping.
+     *
+     * It is a list of schemas, and `allOf: {$ref: X}` has none: the parser would drop it without a word, and the schema
+     * would be read as if the composition were not part of the contract.
+     *
+     * @param  string  $pointer  where the schema writing it is
+     */
+    public static function allOfNotAList(string $pointer): self
+    {
+        return new self(sprintf(
+            'The schema at "%s" writes `allOf` as a mapping. It is a list of schemas: write `allOf: [{$ref: ...}]`.',
+            $pointer
+        ));
+    }
+
+    /**
      * @param  non-empty-list<string>  $keys
      */
     private static function orList(array $keys): string

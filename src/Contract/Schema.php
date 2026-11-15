@@ -175,28 +175,6 @@ final readonly class Schema
     }
 
     /**
-     * Whether this schema writes anything a DTO is built from: a property, a required name, a type, items or an
-     * enumeration, and the other keywords that decide which keys a class holds.
-     *
-     * An `example`, a `description` or a `readOnly` change nothing a DTO holds, and a schema that writes only those is
-     * the schema it wraps as far as a class is concerned. The planner of the input DTOs asks it of the wrapper of a
-     * one-branch `allOf`, and the reading of a `$ref` with keywords beside it asks it to decide which of the two names
-     * the wrapper takes.
-     *
-     * @internal Read by the input DTO planner and the reading of a schema; not part of the contract's own surface.
-     */
-    public function addsDtoShape(): bool
-    {
-        return $this->properties !== []
-            || $this->required !== []
-            || $this->dependentRequired !== []
-            || $this->additionalProperties !== null
-            || $this->types !== []
-            || $this->items !== null
-            || $this->enum !== null;
-    }
-
-    /**
      * Whether the document allows this value to be null.
      *
      * Read from the type list rather than from a flag beside it, which is the whole reason `null` is a type here: one

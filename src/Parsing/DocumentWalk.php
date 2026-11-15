@@ -28,8 +28,14 @@ use Gcob\LaraSpecFirst\Support\Path;
  * this walk met it. A URL reaching here anyway is read as a path and decodes to nothing, so the position it yields
  * names a file that does not exist — which is the right shape for a reference that cannot be resolved, and is not
  * reachable through the supported pipeline. And the reference graph has already been checked:
- * {@see Guards\ReferenceCycleDetector} refuses pure cycles and the parser refuses missing targets, so following an
- * alias chain terminates.
+ * {@see Guards\ReferenceCycleDetector} refuses pure cycles in the root document, and the parser refuses the missing
+ * targets of the references it resolves, so following an alias chain terminates.
+ *
+ * **The parser resolves only the references it is asked to, and at 3.1 that leaves some.** A `$ref` written inside the
+ * keywords beside another `$ref` is dropped with them, so no one has checked that its target exists or that its chain
+ * ends. {@see chain()} still terminates, because it never lists a position twice, and what it ends on is for the
+ * extractor to check: a missing target or a chain that closes across files is an
+ * {@see Exceptions\InvalidDocumentException} there, never an empty schema.
  *
  * Not `readonly`, unlike most of this namespace: each external file is decoded once and kept, and the cache is the
  * whole reason a walk over a contract split across a dozen files is not a dozen re-reads per schema. One instance per

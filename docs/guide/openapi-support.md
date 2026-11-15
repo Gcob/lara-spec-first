@@ -246,15 +246,31 @@ nine) and `$id` or a dynamic reference are refused beside a `$ref` as they are e
 the referenced schema (`{$ref: User, additionalProperties: false}`, `{$ref: Code, type: integer}`) is refused by the
 build the way two `allOf` branches that disagree are.
 
-**Three things are new, and each ends in a message instead of a silent gap:**
+**A `$ref` written inside those keywords is followed like any other.** `{$ref: Base, properties: {owner: {$ref: User}}}`
+has an `owner` with the rules of `User`, and so does what `User` writes below it, at any depth. The parser never
+resolved those references, since it dropped the keywords that hold them, so the extractor follows them itself, through
+the walk over the raw document that already knows where every hop was written: a relative path is resolved against the
+file that wrote it, and a vendored copy of a remote document already has its URLs rewritten. A schema reached that way
+is built from the document the way the parser would have built it, and read through the same steps as every other. A
+recursion that closes through the keywords (`Alias: {$ref: Node, properties: {p: {$ref: Alias}}}`) ends in a recursion
+marker the first time round, like one that closes anywhere else.
 
-- A `$ref` written inside those keywords is refused for now, naming where it is written. The reference would be left out
-  of the field, and nothing later would say so.
-- A keyword the parser cannot build a schema from (`{$ref: Code, items: "x"}`) is a fault in the document, for that
-  operation only.
+**Four things are new, and each ends in a message instead of a silent gap:**
+
+- A `$ref` inside those keywords whose target is not there, or whose chain of references comes back to one it already
+  followed through other files, is a fault in the document for that operation. It is never read as an empty schema.
+- A keyword the parser cannot build a schema from (`{$ref: Code, items: "x"}`), or a schema such a `$ref` points at that
+  it cannot build, is a fault in the document, for that operation only.
+- A `$ref` aimed into a `$defs`, and a chain of references that never reaches content, are refused inside those keywords
+  as they are anywhere else.
 - An `x-max-depth` written beside a `$ref` is reported `Ignored` and never honored. A recursion marker reads the depth
   of the schema it points back at, so one written on the way there would be read by nothing: write it on the recursive
   schema itself.
+
+**`enum` and `example` are data, wherever they are written.** A key spelled `$ref` inside one is part of the value, and
+it is read from the raw document as it was written: the parser would turn it into a reference, and resolve it into a
+schema on a schema it reads itself. An `allOf` written as a mapping (`allOf: {$ref: X}`) is a fault in the document at
+both versions: it is a list of schemas, and the parser would drop the composition without a word.
 
 **Responses are read the same way**, since one schema is read one way wherever it is reached. No response DTO exists
 yet, so the only reader of a response schema is the contract itself.

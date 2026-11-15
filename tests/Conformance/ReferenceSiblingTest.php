@@ -7,11 +7,15 @@ use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\AllOfMerger;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
+use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
+use Gcob\LaraSpecFirst\Parsing\RemoteReferences\RemoteReferenceFetcher;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
+use Illuminate\Http\Client\Factory;
 use Symfony\Component\Yaml\Yaml;
 
 // What a `$ref` means in a 3.1 schema, and what it still means in a 3.0 one.
@@ -302,20 +306,29 @@ it('refuses a sibling that contradicts the referenced schema the way allOf does'
     'a type the target does not have' => [['type' => 'integer'], ['type' => 'string']],
 ]);
 
-it('refuses a $ref nested inside a keyword beside a $ref, until it is read', function (array $siblings): void {
-    $read = fn (): array => readSiblingField(
+// A `$ref` written inside the keywords beside another is read where it is written: through the same walk as every other
+// schema, against the file that wrote it. The four rows are the places the parser keeps no trace of one.
+it('reads a $ref nested inside a keyword beside a $ref', function (array $siblings, string $path): void {
+    $operations = readSiblingField(
         ['$ref' => '#/components/schemas/Base', ...$siblings],
-        ['Base' => ['type' => 'object'], 'User' => ['type' => 'object']],
+        ['Base' => ['type' => 'object'], 'User' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string', 'maxLength' => 5]]]],
     );
+    $field = siblingMerged(siblingFieldOf($operations));
+    $user = match ($path) {
+        'properties' => $field->properties['owner'],
+        'items' => $field->items,
+        'allOf' => $field,
+        default => $field->properties['owner']->properties['address'],
+    };
 
-    expect($read)->toThrow(RejectedConstructException::class, 'until it is read');
+    expect($user?->properties['name']->maxLength)->toBe(5);
 })->with([
-    'in properties' => [['properties' => ['owner' => ['$ref' => '#/components/schemas/User']]]],
-    'in items' => [['items' => ['$ref' => '#/components/schemas/User']]],
-    'in allOf' => [['allOf' => [['$ref' => '#/components/schemas/User']]]],
+    'in properties' => [['properties' => ['owner' => ['$ref' => '#/components/schemas/User']]], 'properties'],
+    'in items' => [['items' => ['$ref' => '#/components/schemas/User']], 'items'],
+    'in allOf' => [['allOf' => [['$ref' => '#/components/schemas/User']]], 'allOf'],
     'two levels down' => [['properties' => ['owner' => ['type' => 'object', 'properties' => [
         'address' => ['$ref' => '#/components/schemas/User'],
-    ]]]]],
+    ]]]], 'two levels'],
 ]);
 
 // A malformed sibling used to be dropped with the rest. Now it is read, and what the parser cannot build is the
@@ -482,4 +495,282 @@ it('reports an x-max-depth written beside a $ref at every hop', function (): voi
         ['x-max-depth' => SIBLING_FIELD_AT.'/x-max-depth'],
         ['x-max-depth' => '#/components/schemas/Tree/x-max-depth'],
     ])->and(siblingMerged($field)->maxDepth)->toBe(2);
+});
+
+// D42 b: a `$ref` written inside the keywords beside a `$ref` is followed like any other, wherever it is written.
+const SIBLING_USER = ['User' => ['type' => 'object', 'properties' => [
+    'name' => ['type' => 'string', 'maxLength' => 5],
+    'address' => ['$ref' => '#/components/schemas/Address'],
+]]];
+const SIBLING_ADDRESS = ['Address' => ['type' => 'object', 'properties' => ['city' => ['type' => 'string', 'maxLength' => 9]]]];
+
+it('resolves a $ref written inside properties, items and allOf beside a $ref', function (
+    array $siblings,
+    string $target,
+    string $keyword,
+    array $expected,
+): void {
+    $field = siblingMerged(siblingFieldOf(readSiblingField(
+        ['$ref' => '#/components/schemas/Target', ...$siblings],
+        ['Target' => ['type' => $target], 'Tag' => ['type' => 'string', 'maxLength' => 4], 'Extra' => ['type' => 'object', 'required' => ['id']]],
+    )));
+
+    $read = match ($keyword) {
+        'properties' => $field->properties['owner']->maxLength,
+        'items' => $field->items?->maxLength,
+        default => $field->required,
+    };
+
+    expect($read)->toBe($expected[0]);
+})->with([
+    'a property' => [['properties' => ['owner' => ['$ref' => '#/components/schemas/Tag']]], 'object', 'properties', [4]],
+    'the items' => [['items' => ['$ref' => '#/components/schemas/Tag']], 'array', 'items', [4]],
+    'a branch of allOf' => [['allOf' => [['$ref' => '#/components/schemas/Extra']]], 'object', 'allOf', [['id']]],
+]);
+
+it('honors siblings beside a $ref nested inside a sibling', function (): void {
+    $field = siblingMerged(siblingFieldOf(readSiblingField(
+        ['$ref' => '#/components/schemas/Base', 'properties' => [
+            'owner' => ['$ref' => '#/components/schemas/Code', 'maxLength' => 3, 'deprecated' => true],
+        ]],
+        ['Base' => ['type' => 'object'], ...SIBLING_CODE],
+    )));
+
+    $owner = AllOfMerger::merge($field->properties['owner'], 'createThing', 'owner');
+
+    expect($owner->maxLength)->toBe(3)
+        ->and($owner->types)->toBe([SchemaType::String])
+        ->and(array_keys($field->properties['owner']->ignored))->toBe(['deprecated']);
+});
+
+it('resolves a nested $ref against the file that wrote it', function (): void {
+    $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath('ref-siblings-external/main.yaml'));
+
+    expect($outcome->faults)->toBe([]);
+
+    $body = $outcome->operations[0]->requestBody;
+    assert($body !== null);
+    $thing = AllOfMerger::merge($body->content['application/json'], 'createThing', 'body');
+    $owner = $thing->properties['owner'];
+
+    expect(array_keys($thing->properties))->toEqualCanonicalizing(['id', 'owner'])
+        ->and($owner->properties['name']->maxLength)->toBe(5)
+        ->and($owner->properties['address']->properties['city']->maxLength)->toBe(9)
+        ->and($owner->name)->toBe('user');
+});
+
+it('resolves a nested $ref into a vendored remote copy', function (): void {
+    $directory = sys_get_temp_dir().'/lsf-siblings-'.bin2hex(random_bytes(6));
+    mkdir($directory.'/vendor', 0o777, true);
+
+    $factory = new Factory;
+    $factory->preventStrayRequests();
+    $factory->fake([
+        'https://schemas.example.com/common.yaml' => Yaml::dump(['components' => ['schemas' => [
+            'User' => ['type' => 'object', 'properties' => [
+                'name' => ['type' => 'string', 'maxLength' => 5],
+                'address' => ['$ref' => 'https://schemas.example.com/address.yaml#/components/schemas/Address'],
+            ]],
+        ]]], 12),
+        'https://schemas.example.com/address.yaml' => Yaml::dump(['components' => ['schemas' => SIBLING_ADDRESS]], 12),
+    ]);
+
+    file_put_contents($directory.'/spec.yaml', Yaml::dump([
+        'openapi' => '3.1.0',
+        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
+        'paths' => ['/things' => siblingPostPath(['$ref' => '#/components/schemas/Base', 'properties' => [
+            'owner' => ['$ref' => 'https://schemas.example.com/common.yaml#/components/schemas/User'],
+        ]])],
+        'components' => ['schemas' => ['Base' => ['type' => 'object']]],
+    ], 12));
+
+    try {
+        $reader = new SpecDocumentReader(remote: new RemoteReferenceGuard(
+            ['schemas.example.com'],
+            $directory.'/vendor',
+            new RemoteReferenceFetcher($factory),
+        ));
+        $outcome = ReadOutcome::read($reader, $directory.'/spec.yaml', updateRefs: true);
+    } finally {
+        exec('rm -rf '.escapeshellarg($directory));
+    }
+
+    expect($outcome->faults)->toBe([]);
+
+    $owner = siblingMerged(siblingFieldOfBody($outcome->operations))->properties['owner'];
+
+    expect($owner->properties['name']->maxLength)->toBe(5)
+        ->and($owner->properties['address']->properties['city']->maxLength)->toBe(9);
+});
+
+/**
+ * The root schema of the first operation's body.
+ *
+ * @param  list<Operation>  $operations
+ */
+function siblingFieldOfBody(array $operations): Schema
+{
+    $body = $operations[0]->requestBody;
+    assert($body !== null);
+
+    return $body->content['application/json'];
+}
+
+// A marker is what a walk answers on meeting a schema it is already inside. The hop is inside its own keywords, so a
+// `$ref` back at it ends in a marker the first time round, and the wrapper it points at is the alias that wrote them.
+it('cuts a recursion that closes through a sibling at the first repeat', function (): void {
+    $outcome = readSiblingDocument(
+        ['/things' => siblingPostPath(['$ref' => '#/components/schemas/Alias'])],
+        [
+            'Alias' => ['$ref' => '#/components/schemas/Node', 'properties' => ['p' => ['$ref' => '#/components/schemas/Alias']]],
+            'Node' => ['type' => 'object', 'properties' => ['id' => ['type' => 'integer']]],
+        ],
+    );
+
+    expect($outcome->faults)->toBe([]);
+
+    $alias = siblingFieldOfBody($outcome->operations);
+    $marker = $alias->properties['p'];
+
+    expect($alias->name)->toBe('Alias')
+        ->and($alias->source)->toBe('#/components/schemas/Alias')
+        ->and($marker->recursesTo)->toBe('#/components/schemas/Alias')
+        ->and($marker->name)->toBe('Alias')
+        ->and($marker->properties)->toBe([]);
+});
+
+it('refuses a nested $ref whose target does not exist', function (): void {
+    $outcome = readSiblingDocument([
+        '/broken' => siblingPostPath(['$ref' => '#/components/schemas/Base', 'properties' => [
+            'owner' => ['$ref' => '#/components/schemas/Missing'],
+        ]], 'createBroken'),
+        '/fine' => siblingPostPath(['$ref' => '#/components/schemas/Base'], 'createFine'),
+    ], ['Base' => ['type' => 'object']]);
+
+    expect($outcome->faults)->toHaveCount(1)
+        ->and($outcome->faults[0])->toBeInstanceOf(InvalidDocumentException::class)
+        ->and($outcome->faults[0]->getMessage())->toContain('#/components/schemas/Missing')
+        ->and(array_map(static fn (Operation $operation): ?string => $operation->operationId, $outcome->operations))
+        ->toBe(['createFine']);
+});
+
+it('refuses a nested $ref into $defs beside a $ref, as anywhere else', function (): void {
+    $outcome = readSiblingDocument(
+        ['/things' => siblingPostPath(['$ref' => '#/components/schemas/Base', 'properties' => [
+            'amount' => ['$ref' => '#/components/schemas/Money/$defs/Amount'],
+        ]])],
+        ['Base' => ['type' => 'object'], 'Money' => ['type' => 'object', '$defs' => ['Amount' => ['type' => 'integer']]]],
+    );
+
+    expect($outcome->faults)->toHaveCount(1)
+        ->and($outcome->faults[0])->toBeInstanceOf(RejectedConstructException::class)
+        ->and($outcome->faults[0]->getMessage())->toContain('inside a `$defs`');
+});
+
+it('resolves a $ref two levels down inside a target built from the raw document', function (): void {
+    $operations = readSiblingField(
+        ['$ref' => '#/components/schemas/Base', 'properties' => ['owner' => ['$ref' => '#/components/schemas/User']]],
+        ['Base' => ['type' => 'object'], ...SIBLING_USER, ...SIBLING_ADDRESS],
+    );
+    $owner = siblingMerged(siblingFieldOf($operations))->properties['owner'];
+
+    expect($owner->properties['address']->properties['city']->maxLength)->toBe(9)
+        ->and(RuleSetBuilder::for($operations[0])->rules['field.owner.address.city'])
+        ->toBe(['sometimes', 'string', 'max:9']);
+});
+
+// D42 b: `enum` and `example` are data. A key spelled `$ref` inside them is part of the value, and the parser would turn
+// it into a reference, so both are read from the raw document, on every node.
+it('reads an enum and an example that write a $ref key from the raw document', function (string $keyword, bool $beside): void {
+    $written = $keyword === 'enum'
+        ? ['enum' => [['$ref' => '#/components/schemas/Code'], 'a']]
+        : ['example' => ['$ref' => '#/components/schemas/Code']];
+    $field = $beside
+        ? ['$ref' => '#/components/schemas/Code', ...$written]
+        : ['type' => 'string', ...$written];
+
+    $schema = siblingFieldOf(readSiblingField($field));
+
+    $data = ['$ref' => '#/components/schemas/Code'];
+
+    expect($keyword === 'enum' ? $schema->enum : $schema->examples)
+        ->toBe($keyword === 'enum' ? [$data, 'a'] : [$data]);
+})->with([
+    'an enum beside a $ref' => ['enum', true],
+    'an enum read directly' => ['enum', false],
+    'an example beside a $ref' => ['example', true],
+    'an example read directly' => ['example', false],
+]);
+
+// D42 b: an `allOf` is a list. Written as a mapping it has no branches to read, and the parser would drop it silently.
+it('refuses an allOf written as a mapping, beside a $ref and at 3.0', function (array $field, string $version): void {
+    $read = fn (): array => readSiblingField($field, SIBLING_CODE, $version);
+
+    expect($read)->toThrow(InvalidDocumentException::class, '`allOf`');
+})->with([
+    'beside a $ref at 3.1' => [['$ref' => '#/components/schemas/Code', 'allOf' => ['$ref' => '#/components/schemas/Code']], '3.1.0'],
+    'directly at 3.1' => [['allOf' => ['$ref' => '#/components/schemas/Code']], '3.1.0'],
+    'directly at 3.0' => [['allOf' => ['$ref' => '#/components/schemas/Code']], '3.0.3'],
+]);
+
+it('refuses a nested chain that ends on a cycle in another file', function (): void {
+    $outcome = readSiblingDocument(
+        ['/things' => siblingPostPath(['$ref' => '#/components/schemas/Base', 'properties' => [
+            'owner' => ['$ref' => './a.yaml#/A'],
+        ]])],
+        ['Base' => ['type' => 'object']],
+        files: [
+            'a.yaml' => ['A' => ['$ref' => './b.yaml#/B']],
+            'b.yaml' => ['B' => ['$ref' => './a.yaml#/A']],
+        ],
+    );
+
+    expect($outcome->faults)->toHaveCount(1)
+        ->and($outcome->faults[0])->toBeInstanceOf(InvalidDocumentException::class)
+        ->and($outcome->operations)->toBe([]);
+});
+
+it('refuses a malformed target reached through a nested $ref without crashing the read', function (): void {
+    $outcome = readSiblingDocument([
+        '/broken' => siblingPostPath(['$ref' => '#/components/schemas/Base', 'properties' => [
+            'owner' => ['$ref' => './bad.yaml#/Bad'],
+        ]], 'createBroken'),
+        '/fine' => siblingPostPath(['$ref' => '#/components/schemas/Base'], 'createFine'),
+    ], ['Base' => ['type' => 'object']], files: [
+        'bad.yaml' => ['Bad' => ['type' => 'array', 'items' => 'x']],
+    ]);
+
+    expect($outcome->faults)->toHaveCount(1)
+        ->and($outcome->faults[0])->toBeInstanceOf(InvalidDocumentException::class)
+        ->and($outcome->faults[0]->getMessage())->toContain('bad.yaml#/Bad')
+        ->and(array_map(static fn (Operation $operation): ?string => $operation->operationId, $outcome->operations))
+        ->toBe(['createFine']);
+});
+
+// The raw document answers only for what it can reach. A `$ref` the walk cannot follow, a URL written by hand inside a
+// local file (docs/guide/remote-references.md), is one the parser resolved alone, and its enum is still the rule.
+it('keeps the parser\'s enum where the raw document can\'t reach the node', function (): void {
+    $directory = sys_get_temp_dir().'/lsf-siblings-'.bin2hex(random_bytes(6));
+    mkdir($directory);
+    file_put_contents($directory.'/status.yaml', Yaml::dump(['Status' => ['type' => 'string', 'enum' => ['open', 'closed']]]));
+
+    try {
+        $outcome = readSiblingDocument(
+            ['/things' => siblingPostPath(['type' => 'object', 'properties' => [
+                'field' => ['$ref' => './alias.yaml#/Alias'],
+            ]])],
+            files: ['alias.yaml' => ['Alias' => ['$ref' => 'file://'.$directory.'/status.yaml#/Status']]],
+        );
+    } finally {
+        exec('rm -rf '.escapeshellarg($directory));
+    }
+
+    $in = array_values(array_filter(
+        RuleSetBuilder::for($outcome->operations[0])->rules['field'],
+        static fn (mixed $rule): bool => $rule instanceof InRule,
+    ));
+
+    expect($outcome->faults)->toBe([])
+        ->and($in)->toHaveCount(1)
+        ->and($in[0]->values)->toBe(['open', 'closed']);
 });

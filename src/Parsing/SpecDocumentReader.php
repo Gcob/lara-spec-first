@@ -60,7 +60,7 @@ final readonly class SpecDocumentReader
             return new DocumentReadResult(null, [$fault]);
         }
 
-        $cycles = $this->cycles->findCycles($data);
+        $cycles = $this->cycles->findCycles($data, $strategy);
         $remote = $this->remote->resolve($data, dirname($path), $updateRefs);
 
         return new DocumentReadResult(

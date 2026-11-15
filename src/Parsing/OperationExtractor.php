@@ -10,6 +10,7 @@ use cebe\openapi\spec\MediaType as ParsedMediaType;
 use cebe\openapi\spec\OpenApi;
 use cebe\openapi\spec\Operation as ParsedOperation;
 use cebe\openapi\spec\Parameter as ParsedParameter;
+use cebe\openapi\spec\Reference;
 use cebe\openapi\spec\RequestBody as ParsedRequestBody;
 use cebe\openapi\spec\Response as ParsedResponse;
 use cebe\openapi\spec\Responses as ParsedResponses;
@@ -36,6 +37,8 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\ParserFailedException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategy;
+use Gcob\LaraSpecFirst\Support\DtoShape;
+use LogicException;
 use Throwable;
 
 /**
@@ -201,7 +204,7 @@ final readonly class OperationExtractor
     {
         $faults = [
             ...$this->unfollowablePathItemFaults($document),
-            ...$this->referencesIntoDefinitions($document->raw, ''),
+            ...$this->referencesIntoDefinitions($document->raw, '', $document->strategy),
         ];
 
         try {
@@ -595,6 +598,13 @@ final readonly class OperationExtractor
      * `Alias: {$ref: Node, properties: {p: {$ref: Alias}}}` reaches `Alias` again from inside its own keywords, and the
      * content it points at is not open at that moment, so only the hop can tell the walk it is going round.
      *
+     * **A node that is a `Reference` is one the parser was never asked to resolve**: it is written inside the keywords
+     * beside another `$ref`, which the parser dropped, or inside a schema read from the raw document for the same
+     * reason. It is followed here, through the walk that knows where each hop was written, and its content is built
+     * from the document the way the parser would have built it ({@see self::target()}).
+     *
+     * @param  ParsedSchema|Reference  $node  the parser's schema at the written position, or the reference it is
+     *                                        written as when it was never resolved
      * @param  SchemaPosition  $parent  the position of the node whose key holds the schema, already resolved
      * @param  array<string, array{0: string, 1: string|null}>  $open  see {@see self::schema()}
      *
@@ -602,7 +612,7 @@ final readonly class OperationExtractor
      * @throws InvalidDocumentException
      */
     private function schemaAt(
-        ParsedSchema $node,
+        ParsedSchema|Reference $node,
         VersionStrategy $strategy,
         DocumentWalk $walk,
         SchemaPosition $parent,
@@ -618,6 +628,10 @@ final readonly class OperationExtractor
             }
         }
 
+        if ($node instanceof Reference) {
+            $node = $this->target($walk, $hops === [] ? $content : $hops[array_key_last($hops)], $content);
+        }
+
         $schema = $this->schema($node, $strategy, $walk, $content, $open);
 
         foreach (array_reverse($hops) as $hop) {
@@ -625,6 +639,62 @@ final readonly class OperationExtractor
         }
 
         return $schema;
+    }
+
+    /**
+     * The schema a `$ref` that the parser never resolved points at, built from the raw document.
+     *
+     * Built the way the parser builds one, so everything after this reads it as it reads any other. What it holds of
+     * its own `$ref`s is a `Reference` again, and they are followed by {@see self::schemaAt()} in turn, one level at a
+     * time, which is why a target two levels down has its rules.
+     *
+     * **A target that is not there is the document's fault, never an empty schema.** The same goes for a chain the walk
+     * stopped following because it came back to a position it had seen, which leaves a `$ref` where content should be.
+     *
+     * @param  SchemaPosition  $last  the position the last `$ref` of the chain is written at
+     * @param  SchemaPosition  $content  where the chain ends
+     *
+     * @throws InvalidDocumentException
+     */
+    private function target(DocumentWalk $walk, SchemaPosition $last, SchemaPosition $content): ParsedSchema
+    {
+        $written = $walk->rawAt($last)['$ref'] ?? null;
+        $reference = is_string($written) ? $written : '';
+        $raw = $walk->rawAt($content);
+
+        if ($raw === null) {
+            throw InvalidDocumentException::referenceTargetMissing($walk->pointer($last), $reference);
+        }
+
+        if (isset($raw['$ref'])) {
+            throw InvalidDocumentException::referenceNeverReachesSchema($walk->pointer($last), $reference);
+        }
+
+        return $this->parsed($raw, $walk->pointer($content), behindReference: true);
+    }
+
+    /**
+     * A schema built from keys the parser did not build, which can fail in a way the pipeline does not expect.
+     *
+     * cebe's `TypeErrorException` extends `\Exception` and not {@see SpecException}, so one thrown here would pass the
+     * catch of {@see self::extract()} and crash the read, against the pipeline's promise that it never throws. Every
+     * schema built from the raw document goes through here.
+     *
+     * @param  array<array-key, mixed>  $written
+     * @param  string  $pointer  where the keys are written
+     * @param  bool  $behindReference  the keys are the target of a `$ref`, and not the ones written beside one
+     *
+     * @throws InvalidDocumentException
+     */
+    private function parsed(array $written, string $pointer, bool $behindReference = false): ParsedSchema
+    {
+        try {
+            return new ParsedSchema($written);
+        } catch (Exception $fault) {
+            throw $behindReference
+                ? InvalidDocumentException::malformedSchemaBehindReference($pointer, $fault->getMessage())
+                : InvalidDocumentException::malformedKeywordBesideReference($pointer, $fault->getMessage());
+        }
     }
 
     /**
@@ -638,7 +708,7 @@ final readonly class OperationExtractor
      * written both here and on the target gets a wrapper too, so each keeps its own position: a schema carries one
      * position per keyword.
      *
-     * **The wrapper takes this hop's name only when what it adds is shape a DTO holds** ({@see Schema::addsDtoShape()},
+     * **The wrapper takes this hop's name only when what it adds is shape a DTO holds** ({@see DtoShape::isAddedBy()},
      * the planner's own question). `Alias: {$ref: Node, maxLength: 3}` is still `Node` to a generated class, and
      * `Alias: {$ref: Node, required: [id]}` is a schema of its own, which the planner could not tell from `Node` by
      * position.
@@ -663,21 +733,10 @@ final readonly class OperationExtractor
         }
 
         $pointer = $walk->pointer($hop);
-        $nested = $this->referenceAmongSchemas($siblings, $pointer);
-
-        if ($nested !== null) {
-            throw RejectedConstructException::referenceInsideReferenceSibling(...$nested);
-        }
 
         // Built from the raw keys: the parser dropped them with the `$ref`, so there is no object of its own to read.
-        try {
-            $parsed = new ParsedSchema($siblings);
-        } catch (Exception $fault) {
-            // cebe's own exception is not one of ours, and a read that threw it would crash instead of reporting.
-            throw InvalidDocumentException::malformedKeywordBesideReference($pointer, $fault->getMessage());
-        }
-
-        $beside = $this->schema($parsed, $strategy, $walk, $hop, $open, beside: true);
+        // A `$ref` written inside them is a `Reference` here, and `schemaAt()` follows it.
+        $beside = $this->schema($this->parsed($siblings, $pointer), $strategy, $walk, $hop, $open, beside: true);
 
         if ($beside->shapeKey() === (new Schema)->shapeKey()) {
             if ($beside->ignored === []) {
@@ -689,7 +748,7 @@ final readonly class OperationExtractor
             }
         }
 
-        $name = $beside->addsDtoShape() ? $walk->name($hop) : null;
+        $name = DtoShape::isAddedBy($beside) ? $walk->name($hop) : null;
 
         return new Schema(...[
             ...get_object_vars($beside),
@@ -697,71 +756,6 @@ final readonly class OperationExtractor
             'source' => $name === null ? null : $pointer,
             'allOf' => [$target, ...$beside->allOf],
         ]);
-    }
-
-    /**
-     * The first `$ref` written where a schema is, inside the keywords that hold schemas, or null when there is none.
-     *
-     * Only `properties`, `items` and `allOf`, at any depth of them: those are the keywords read into the contract. A
-     * keyword the contract ignores holds no schema anyone reads, so a `$ref` inside `oneOf` is reported with it and not
-     * refused, and the keywords the parser hands back raw are refused where every schema is checked.
-     *
-     * @param  array<array-key, mixed>  $node
-     * @param  string  $pointer  where `$node` is written
-     * @return array{0: string, 1: string}|null where the reference is written, and what it points at
-     */
-    private function referenceAmongSchemas(array $node, string $pointer): ?array
-    {
-        foreach (['properties', 'items', 'allOf'] as $keyword) {
-            $value = $node[$keyword] ?? null;
-
-            if (! is_array($value)) {
-                continue;
-            }
-
-            $at = $pointer.'/'.$keyword;
-            $found = $keyword === 'items'
-                ? $this->referenceAtSchema($value, $at)
-                : $this->referenceAmongEach($value, $at);
-
-            if ($found !== null) {
-                return $found;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param  array<array-key, mixed>  $schemas
-     * @return array{0: string, 1: string}|null
-     */
-    private function referenceAmongEach(array $schemas, string $pointer): ?array
-    {
-        foreach ($schemas as $key => $schema) {
-            $found = is_array($schema)
-                ? $this->referenceAtSchema($schema, $pointer.'/'.DocumentPointer::escape((string) $key))
-                : null;
-
-            if ($found !== null) {
-                return $found;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param  array<array-key, mixed>  $schema
-     * @return array{0: string, 1: string}|null
-     */
-    private function referenceAtSchema(array $schema, string $pointer): ?array
-    {
-        if (isset($schema['$ref']) && is_string($schema['$ref'])) {
-            return [$pointer, $schema['$ref']];
-        }
-
-        return $this->referenceAmongSchemas($schema, $pointer);
     }
 
     /**
@@ -832,6 +826,14 @@ final readonly class OperationExtractor
 
         $this->assertSchemaIsServable($node, $walk->pointer($position));
 
+        $raw = $walk->rawAt($position);
+
+        // Refused on every node, at both versions: the parser reads `allOf: {$ref: X}` as a reference to a schema and
+        // not as a list, and what it hands back is not a list of branches, so the composition would vanish unsaid.
+        if (is_array($raw['allOf'] ?? null) && ! array_is_list($raw['allOf'])) {
+            throw InvalidDocumentException::allOfNotAList($walk->pointer($position));
+        }
+
         $name = $beside ? null : $walk->name($position);
         $open[$keys[0]] = $open[$keys[1]] = [$walk->pointer($position), $walk->name($position)];
         $keywords = [];
@@ -859,6 +861,14 @@ final readonly class OperationExtractor
             // ones, which happens exactly when that key was written as `null`,
             // so `isset()` being false here *is* the null.
             $keywords[$keyword] = isset($node->$keyword) ? $node->$keyword : null;
+
+            // `enum` and `example` are data, and a key spelled `$ref` inside one is part of the value. The parser turns
+            // it into a reference on a node built from raw keys and resolves it into a schema on its own, so both are
+            // read from the document. Where the raw walk finds no node (a URL written by hand in a local file, which
+            // only the parser followed) the parser's value stays, so no `enum` loses its rule.
+            if (in_array($keyword, ['enum', 'example'], true) && array_key_exists($keyword, $raw ?? [])) {
+                $keywords[$keyword] = $raw[$keyword];
+            }
         }
 
         $depth = $beside ? null : $node->getExtensions()['x-max-depth'] ?? null;
@@ -884,7 +894,7 @@ final readonly class OperationExtractor
             // and the two-array form of `array_map` renumbers what it returns —
             // which would rename every property of every object schema.
             foreach ($keywords[$keyword] as $key => $child) {
-                $walked[$key] = $child instanceof ParsedSchema
+                $walked[$key] = $child instanceof ParsedSchema || $child instanceof Reference
                     ? $this->schemaAt($child, $strategy, $walk, $keywordAt, $key, $open)
                     : $child;
             }
@@ -892,9 +902,11 @@ final readonly class OperationExtractor
             $keywords[$keyword] = $walked;
         }
 
-        if (($keywords['items'] ?? null) instanceof ParsedSchema) {
+        if (($keywords['items'] ?? null) instanceof ParsedSchema || ($keywords['items'] ?? null) instanceof Reference) {
             $keywords['items'] = $this->schemaAt($keywords['items'], $strategy, $walk, $position, 'items', $open);
         }
+
+        $this->assertNoReferenceLeft($keywords);
 
         return $strategy->normalizeSchema(
             $keywords,
@@ -902,6 +914,32 @@ final readonly class OperationExtractor
             $name === null ? null : $walk->pointer($position),
             $this->ignoredKeywords($walk, $position, $beside),
         );
+    }
+
+    /**
+     * A reference the walk was meant to follow and did not.
+     *
+     * `normalizeSchema()` filters what is not a schema out of `properties`, `items` and `allOf` without a word, so a
+     * `Reference` left in one would be a field that validates against nothing. {@see self::schemaAt()} follows every
+     * one of them, and no document reaches this: it is the line between a bug here and a silent hole in a contract.
+     *
+     * @param  array<string, mixed>  $keywords
+     *
+     * @throws LogicException
+     */
+    private function assertNoReferenceLeft(array $keywords): void
+    {
+        foreach (['properties', 'allOf'] as $keyword) {
+            foreach (is_array($keywords[$keyword] ?? null) ? $keywords[$keyword] : [] as $child) {
+                if ($child instanceof Reference) {
+                    throw new LogicException("A reference under `{$keyword}` was not followed.");
+                }
+            }
+        }
+
+        if (($keywords['items'] ?? null) instanceof Reference) {
+            throw new LogicException('A reference under `items` was not followed.');
+        }
     }
 
     /**
@@ -1077,21 +1115,27 @@ final readonly class OperationExtractor
      * schemas the contract actually reaches, while this one refuses a *reference*, and a reference is written wherever
      * its author put it.
      *
+     * **What is written beside a `$ref` is walked at 3.1 and not at 3.0**, the same line the cycle check draws: it is
+     * read at 3.1, so a `$ref` among its keywords is a reference this package follows, and a `$ref` into a `$defs`
+     * there is as silent a loss as anywhere else.
+     *
      * @param  array<array-key, mixed>  $node
      * @return list<RejectedConstructException> one per offending reference, so a document writing several is reported
      *                                          in one pass
      */
-    private function referencesIntoDefinitions(array $node, string $pointer): array
+    private function referencesIntoDefinitions(array $node, string $pointer, VersionStrategy $strategy): array
     {
-        if (isset($node['$ref'])) {
-            // A Reference Object carries nothing else worth walking: 3.1 allows
-            // `summary` and `description` beside it, and neither holds a target.
-            return is_string($node['$ref']) && $this->aimsIntoDefinitions($node['$ref'])
-                ? [RejectedConstructException::referenceIntoDefinitions('#'.$pointer, $node['$ref'])]
-                : [];
-        }
-
         $faults = [];
+
+        if (isset($node['$ref'])) {
+            if (is_string($node['$ref']) && $this->aimsIntoDefinitions($node['$ref'])) {
+                $faults[] = RejectedConstructException::referenceIntoDefinitions('#'.$pointer, $node['$ref']);
+            }
+
+            // A Reference Object carries `summary` and `description` beside it, and neither holds a target. A Schema
+            // Object at 3.1 carries keywords, and they may.
+            $node = $strategy->referenceSiblings($node);
+        }
 
         foreach ($node as $key => $child) {
             // A `$ref` under one of these is a literal, which is the boundary
@@ -1103,7 +1147,7 @@ final readonly class OperationExtractor
 
             $faults = [
                 ...$faults,
-                ...$this->referencesIntoDefinitions($child, $pointer.'/'.DocumentPointer::escape((string) $key)),
+                ...$this->referencesIntoDefinitions($child, $pointer.'/'.DocumentPointer::escape((string) $key), $strategy),
             ];
         }
 
