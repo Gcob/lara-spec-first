@@ -658,8 +658,7 @@ final readonly class OperationExtractor
      */
     private function target(DocumentWalk $walk, SchemaPosition $last, SchemaPosition $content): ParsedSchema
     {
-        $written = $walk->rawAt($last)['$ref'] ?? null;
-        $reference = is_string($written) ? $written : '';
+        $reference = (string) ($walk->rawAt($last)['$ref'] ?? '');
         $raw = $walk->rawAt($content);
 
         if ($raw === null) {
@@ -862,11 +861,12 @@ final readonly class OperationExtractor
             // so `isset()` being false here *is* the null.
             $keywords[$keyword] = isset($node->$keyword) ? $node->$keyword : null;
 
-            // `enum` and `example` are data, and a key spelled `$ref` inside one is part of the value. The parser turns
-            // it into a reference on a node built from raw keys and resolves it into a schema on its own, so both are
-            // read from the document. Where the raw walk finds no node (a URL written by hand in a local file, which
-            // only the parser followed) the parser's value stays, so no `enum` loses its rule.
-            if (in_array($keyword, ['enum', 'example'], true) && array_key_exists($keyword, $raw ?? [])) {
+            // `enum`, `example` and `const` are data, and a key spelled `$ref` inside one is part of the value. The
+            // parser turns it into a reference on a node built from raw keys (beside a `$ref`, or behind one written in
+            // the keywords beside another) and resolves it into a schema on a node it reads itself, so all three are
+            // read from the document wherever the raw walk finds the node. Where it finds none (a URL written by hand
+            // in a local file, which only the parser followed) the parser's value stays, so no `enum` loses its rule.
+            if (in_array($keyword, ['enum', 'example', 'const'], true) && array_key_exists($keyword, $raw ?? [])) {
                 $keywords[$keyword] = $raw[$keyword];
             }
         }

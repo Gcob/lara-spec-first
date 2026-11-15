@@ -682,24 +682,27 @@ it('resolves a $ref two levels down inside a target built from the raw document'
 // D42 b: `enum` and `example` are data. A key spelled `$ref` inside them is part of the value, and the parser would turn
 // it into a reference, so both are read from the raw document, on every node.
 it('reads an enum and an example that write a $ref key from the raw document', function (string $keyword, bool $beside): void {
-    $written = $keyword === 'enum'
-        ? ['enum' => [['$ref' => '#/components/schemas/Code'], 'a']]
-        : ['example' => ['$ref' => '#/components/schemas/Code']];
+    $data = ['$ref' => '#/components/schemas/Code'];
+    $written = match ($keyword) {
+        'enum' => ['enum' => [$data, 'a']],
+        'example' => ['example' => $data],
+        default => ['const' => $data],
+    };
     $field = $beside
         ? ['$ref' => '#/components/schemas/Code', ...$written]
         : ['type' => 'string', ...$written];
 
     $schema = siblingFieldOf(readSiblingField($field));
 
-    $data = ['$ref' => '#/components/schemas/Code'];
-
-    expect($keyword === 'enum' ? $schema->enum : $schema->examples)
+    expect($keyword === 'example' ? $schema->examples : $schema->enum)
         ->toBe($keyword === 'enum' ? [$data, 'a'] : [$data]);
 })->with([
     'an enum beside a $ref' => ['enum', true],
     'an enum read directly' => ['enum', false],
     'an example beside a $ref' => ['example', true],
     'an example read directly' => ['example', false],
+    'a const beside a $ref' => ['const', true],
+    'a const read directly' => ['const', false],
 ]);
 
 // D42 b: an `allOf` is a list. Written as a mapping it has no branches to read, and the parser would drop it silently.
