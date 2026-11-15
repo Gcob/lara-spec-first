@@ -121,6 +121,24 @@ final class InvalidDocumentException extends RuntimeException implements SpecExc
     }
 
     /**
+     * The keywords written beside a `$ref` that the parser cannot build a schema from.
+     *
+     * A fault in the document, for the operation that reaches it only. The keywords used to be dropped with the rest,
+     * so a value of the wrong shape never mattered; now they are read, and it does.
+     *
+     * @param  string  $pointer  where the `$ref` is written
+     * @param  string  $detail  what the parser said
+     */
+    public static function malformedKeywordBesideReference(string $pointer, string $detail): self
+    {
+        return new self(sprintf(
+            'The `$ref` at "%s" has keywords written beside it that do not make a schema: %s.',
+            $pointer,
+            $detail
+        ));
+    }
+
+    /**
      * @param  non-empty-list<string>  $keys
      */
     private static function orList(array $keys): string

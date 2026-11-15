@@ -570,15 +570,7 @@ final class InputDtoPlanner
             return [$written->name, $written->source];
         }
 
-        $addsShape = $written->properties !== []
-            || $written->required !== []
-            || $written->dependentRequired !== []
-            || $written->additionalProperties !== null
-            || $written->types !== []
-            || $written->items !== null
-            || $written->enum !== null;
-
-        return count($written->allOf) === 1 && $merged->name !== null && ! $addsShape
+        return count($written->allOf) === 1 && $merged->name !== null && ! $written->addsDtoShape()
             ? [$merged->name, $merged->source]
             : [null, null];
     }

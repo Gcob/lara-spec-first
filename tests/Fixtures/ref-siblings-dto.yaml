@@ -1,0 +1,45 @@
+# Keywords written beside a `$ref` at 3.1, and what each does to the class a body is read as. `Marked` writes only
+# `writeOnly` beside its `$ref`, which no DTO holds, so it is `Node` to a generated class. `Strict` writes a `required`,
+# which does, so it is a schema of its own and gets a class of its own.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /marked-nodes:
+    post:
+      operationId: createMarkedNode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Marked'
+      responses:
+        '201':
+          description: Created
+  /strict-nodes:
+    post:
+      operationId: createStrictNode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Strict'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+    Marked:
+      $ref: '#/components/schemas/Node'
+      writeOnly: true
+    Strict:
+      $ref: '#/components/schemas/Node'
+      required: [name]

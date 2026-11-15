@@ -132,4 +132,29 @@ final class RejectedConstructException extends RuntimeException implements SpecE
             $target
         ));
     }
+
+    /**
+     * A `$ref` written inside the keywords beside another `$ref`, which this package does not follow yet.
+     *
+     * Temporary: the keywords beside a `$ref` are read, and a reference inside them is the next thing to be read. It is
+     * refused rather than left out because the parser keeps no trace of it: the sibling would come back without the
+     * schema the reference names, and nothing later would say so.
+     *
+     * @param  string  $pointer  where the inner `$ref` is written
+     * @param  string  $target  what it points at
+     *
+     * @see docs/guide/openapi-support.md — "References and security"
+     */
+    public static function referenceInsideReferenceSibling(string $pointer, string $target): self
+    {
+        return new self(sprintf(
+            'The reference at "%s" points at "%s", and it is written inside the keywords beside another `$ref`. '.
+            'This package reads those keywords, and it does not follow a reference inside them until it is read: '.
+            'leaving it out would validate the field as if the schema it names were not part of the contract. '.
+            'Move the schema under `components.schemas` and write the keywords it needs inline, or spell the '.
+            'composition as an `allOf`.',
+            $pointer,
+            $target
+        ));
+    }
 }

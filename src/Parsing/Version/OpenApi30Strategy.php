@@ -42,6 +42,17 @@ final class OpenApi30Strategy implements VersionStrategy
     }
 
     /**
+     * Nothing: the 3.0 specification ignores every keyword written beside a `$ref`, and so does this.
+     *
+     * @param  array<array-key, mixed>  $node
+     * @return array<array-key, mixed>
+     */
+    public function referenceSiblings(array $node): array
+    {
+        return [];
+    }
+
+    /**
      * `type` is one string at 3.0, and `nullable: true` beside it is how the version spells a value that may also be
      * null.
      *

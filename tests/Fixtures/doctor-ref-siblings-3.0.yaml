@@ -1,0 +1,37 @@
+# The same document at 3.0, which ignores every keyword written beside a `$ref`: nothing in it is read, so the
+# doctor has nothing to name.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  $ref: '#/components/schemas/Code'
+                  maxLength: 3
+                  deprecated: true
+                  default: ABC
+                node:
+                  $ref: '#/components/schemas/Node'
+                  x-max-depth: 5
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Code:
+      type: string
+    Node:
+      type: object
+      x-max-depth: 2
+      properties:
+        next:
+          $ref: '#/components/schemas/Node'

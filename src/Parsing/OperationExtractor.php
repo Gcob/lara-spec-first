@@ -587,8 +587,13 @@ final readonly class OperationExtractor
      *
      * Every schema the extractor builds comes in here, so there is one place that holds, for each of them, the position
      * where the author wrote it (a `$ref`, if there is one) before the references are followed to the position that
-     * holds its content. {@see self::schema()} reads the node from the second; the first is what a keyword written
-     * beside a `$ref` hangs off.
+     * holds its content. {@see self::schema()} reads the node from the second. The first is what a keyword written
+     * beside a `$ref` hangs off, at 3.1: each hop of the chain, from the innermost out, wraps what is inside it
+     * ({@see self::besideReference()}).
+     *
+     * **A hop whose keywords are being built is an ancestor of everything under them.**
+     * `Alias: {$ref: Node, properties: {p: {$ref: Alias}}}` reaches `Alias` again from inside its own keywords, and the
+     * content it points at is not open at that moment, so only the hop can tell the walk it is going round.
      *
      * @param  SchemaPosition  $parent  the position of the node whose key holds the schema, already resolved
      * @param  array<string, array{0: string, 1: string|null}>  $open  see {@see self::schema()}
@@ -604,9 +609,159 @@ final readonly class OperationExtractor
         string|int $segment,
         array $open = [],
     ): Schema {
-        $chain = $walk->chain($walk->written($parent, $segment));
+        $hops = $walk->chain($walk->written($parent, $segment));
+        $content = array_pop($hops);
 
-        return $this->schema($node, $strategy, $walk, $chain[array_key_last($chain)], $open);
+        foreach ($hops as $hop) {
+            if (isset($open[$hop->key()])) {
+                return Schema::recursion(...$open[$hop->key()]);
+            }
+        }
+
+        $schema = $this->schema($node, $strategy, $walk, $content, $open);
+
+        foreach (array_reverse($hops) as $hop) {
+            $schema = $this->besideReference($schema, $strategy, $walk, $hop, $open);
+        }
+
+        return $schema;
+    }
+
+    /**
+     * A schema together with the keywords written beside the `$ref` that leads to it.
+     *
+     * **Two tests decide what comes back, and neither is a policy.** What the keywords add, built and set aside where
+     * they were written: when it is nothing a generator reads (an annotation, a description, an `Ignored` keyword) the
+     * answer is the target itself, with the positions of the keywords it ignored added to a copy, so a field that only
+     * documents itself stays the class it was. Otherwise it is one `allOf` wrapper, the target first and the keywords'
+     * own branches after it, which is how 3.0 writes the same thing and what the generators already read. A keyword
+     * written both here and on the target gets a wrapper too, so each keeps its own position: a schema carries one
+     * position per keyword.
+     *
+     * **The wrapper takes this hop's name only when what it adds is shape a DTO holds** ({@see Schema::addsDtoShape()},
+     * the planner's own question). `Alias: {$ref: Node, maxLength: 3}` is still `Node` to a generated class, and
+     * `Alias: {$ref: Node, required: [id]}` is a schema of its own, which the planner could not tell from `Node` by
+     * position.
+     *
+     * @param  array<string, array{0: string, 1: string|null}>  $open  see {@see self::schema()}
+     *
+     * @throws RejectedConstructException
+     * @throws InvalidDocumentException
+     */
+    private function besideReference(
+        Schema $target,
+        VersionStrategy $strategy,
+        DocumentWalk $walk,
+        SchemaPosition $hop,
+        array $open,
+    ): Schema {
+        $written = $walk->rawAt($hop);
+        $siblings = $written === null ? [] : $strategy->referenceSiblings($written);
+
+        if ($siblings === []) {
+            return $target;
+        }
+
+        $pointer = $walk->pointer($hop);
+        $nested = $this->referenceAmongSchemas($siblings, $pointer);
+
+        if ($nested !== null) {
+            throw RejectedConstructException::referenceInsideReferenceSibling(...$nested);
+        }
+
+        // Built from the raw keys: the parser dropped them with the `$ref`, so there is no object of its own to read.
+        try {
+            $parsed = new ParsedSchema($siblings);
+        } catch (Exception $fault) {
+            // cebe's own exception is not one of ours, and a read that threw it would crash instead of reporting.
+            throw InvalidDocumentException::malformedKeywordBesideReference($pointer, $fault->getMessage());
+        }
+
+        $beside = $this->schema($parsed, $strategy, $walk, $hop, $open, beside: true);
+
+        if ($beside->shapeKey() === (new Schema)->shapeKey()) {
+            if ($beside->ignored === []) {
+                return $target;
+            }
+
+            if (array_intersect_key($beside->ignored, $target->ignored) === []) {
+                return new Schema(...[...get_object_vars($target), 'ignored' => [...$target->ignored, ...$beside->ignored]]);
+            }
+        }
+
+        $name = $beside->addsDtoShape() ? $walk->name($hop) : null;
+
+        return new Schema(...[
+            ...get_object_vars($beside),
+            'name' => $name,
+            'source' => $name === null ? null : $pointer,
+            'allOf' => [$target, ...$beside->allOf],
+        ]);
+    }
+
+    /**
+     * The first `$ref` written where a schema is, inside the keywords that hold schemas, or null when there is none.
+     *
+     * Only `properties`, `items` and `allOf`, at any depth of them: those are the keywords read into the contract. A
+     * keyword the contract ignores holds no schema anyone reads, so a `$ref` inside `oneOf` is reported with it and not
+     * refused, and the keywords the parser hands back raw are refused where every schema is checked.
+     *
+     * @param  array<array-key, mixed>  $node
+     * @param  string  $pointer  where `$node` is written
+     * @return array{0: string, 1: string}|null where the reference is written, and what it points at
+     */
+    private function referenceAmongSchemas(array $node, string $pointer): ?array
+    {
+        foreach (['properties', 'items', 'allOf'] as $keyword) {
+            $value = $node[$keyword] ?? null;
+
+            if (! is_array($value)) {
+                continue;
+            }
+
+            $at = $pointer.'/'.$keyword;
+            $found = $keyword === 'items'
+                ? $this->referenceAtSchema($value, $at)
+                : $this->referenceAmongEach($value, $at);
+
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $schemas
+     * @return array{0: string, 1: string}|null
+     */
+    private function referenceAmongEach(array $schemas, string $pointer): ?array
+    {
+        foreach ($schemas as $key => $schema) {
+            $found = is_array($schema)
+                ? $this->referenceAtSchema($schema, $pointer.'/'.DocumentPointer::escape((string) $key))
+                : null;
+
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $schema
+     * @return array{0: string, 1: string}|null
+     */
+    private function referenceAtSchema(array $schema, string $pointer): ?array
+    {
+        if (isset($schema['$ref']) && is_string($schema['$ref'])) {
+            return [$pointer, $schema['$ref']];
+        }
+
+        return $this->referenceAmongSchemas($schema, $pointer);
     }
 
     /**
@@ -628,6 +783,11 @@ final readonly class OperationExtractor
      *                                                                 one shared schema, and a set that survived the
      *                                                                 first of them would report the second as
      *                                                                 recursion
+     * @param  bool  $beside  `$node` is the keywords written beside the `$ref` at `$position`, built as a schema of
+     *                        their own. The position is the one the `$ref` is written at, so it is open to what is
+     *                        under it and is not an ancestor of itself. It carries no name and no source, which belong
+     *                        to the wrapper, and no `x-max-depth`: a marker reads the depth of the schema it points
+     *                        back at, so one written here would be read by nothing and is reported instead
      *
      * @throws RejectedConstructException
      * @throws InvalidDocumentException
@@ -638,6 +798,7 @@ final readonly class OperationExtractor
         DocumentWalk $walk,
         SchemaPosition $position,
         array $open = [],
+        bool $beside = false,
     ): Schema {
         // Two keys for one node, and the pair is the point. The position is
         // what cuts at the right level, since the parser hands back a *copy* of
@@ -648,7 +809,7 @@ final readonly class OperationExtractor
         // message. Neither can fire before the document actually repeats
         // something, so keeping both cannot cut early.
         $keys = [$position->key(), 'object:'.spl_object_id($node)];
-        $ancestor = $open[$keys[0]] ?? $open[$keys[1]] ?? null;
+        $ancestor = $beside ? null : $open[$keys[0]] ?? $open[$keys[1]] ?? null;
 
         if ($ancestor !== null) {
             // A schema pointing back at one of its own ancestors — a tree, a
@@ -671,6 +832,7 @@ final readonly class OperationExtractor
 
         $this->assertSchemaIsServable($node, $walk->pointer($position));
 
+        $name = $beside ? null : $walk->name($position);
         $open[$keys[0]] = $open[$keys[1]] = [$walk->pointer($position), $walk->name($position)];
         $keywords = [];
 
@@ -699,7 +861,7 @@ final readonly class OperationExtractor
             $keywords[$keyword] = isset($node->$keyword) ? $node->$keyword : null;
         }
 
-        $depth = $node->getExtensions()['x-max-depth'] ?? null;
+        $depth = $beside ? null : $node->getExtensions()['x-max-depth'] ?? null;
 
         if ($depth !== null) {
             if (! is_int($depth) || $depth < 0) {
@@ -734,13 +896,11 @@ final readonly class OperationExtractor
             $keywords['items'] = $this->schemaAt($keywords['items'], $strategy, $walk, $position, 'items', $open);
         }
 
-        $name = $walk->name($position);
-
         return $strategy->normalizeSchema(
             $keywords,
             $name,
             $name === null ? null : $walk->pointer($position),
-            $this->ignoredKeywords($walk, $position),
+            $this->ignoredKeywords($walk, $position, $beside),
         );
     }
 
@@ -757,11 +917,14 @@ final readonly class OperationExtractor
      *
      * `additionalProperties` counts only as a schema. `false` is a rule and `true` is the default said aloud.
      *
+     * **Beside a `$ref`, `x-max-depth` is one of them.** It is honored on the schema a marker points back at, and a
+     * depth written beside the `$ref` is read by nothing, which is a thing to say rather than to drop (D2).
+     *
+     * @param  bool  $beside  `$position` is where a `$ref` is written, and the keywords are the ones beside it
      * @return array<string, string>
      */
-    private function ignoredKeywords(DocumentWalk $walk, SchemaPosition $position): array
+    private function ignoredKeywords(DocumentWalk $walk, SchemaPosition $position, bool $beside = false): array
     {
-        // TODO (#118): read the keywords written beside a $ref in 3.1
         $raw = $walk->rawAt($position) ?? [];
         $ignored = [];
 
@@ -777,6 +940,13 @@ final readonly class OperationExtractor
             $ignored[$keyword] = $walk->pointer(new SchemaPosition(
                 $position->file,
                 $position->pointer.'/'.DocumentPointer::escape($keyword),
+            ));
+        }
+
+        if ($beside && array_key_exists('x-max-depth', $raw)) {
+            $ignored['x-max-depth'] = $walk->pointer(new SchemaPosition(
+                $position->file,
+                $position->pointer.'/x-max-depth',
             ));
         }
 

@@ -1,0 +1,38 @@
+# Keywords written beside a `$ref`, which 3.1 reads together with the schema the `$ref` names. The annotations
+# among them (`deprecated`, `default`) and an `x-max-depth` are written beside it and read by nothing, so the
+# doctor names each at the position it is written.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  $ref: '#/components/schemas/Code'
+                  maxLength: 3
+                  deprecated: true
+                  default: ABC
+                node:
+                  $ref: '#/components/schemas/Node'
+                  x-max-depth: 5
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Code:
+      type: string
+    Node:
+      type: object
+      x-max-depth: 2
+      properties:
+        next:
+          $ref: '#/components/schemas/Node'

@@ -24,6 +24,35 @@ tags: [versions, conventions, planning]
 
 ### Changed
 
+- **A keyword written beside a `$ref` in a 3.1 schema is now read, and a request becomes stricter.** JSON Schema 2020-12
+  applies `{$ref: Code, maxLength: 3}` as `Code` and a ceiling of three, and the parser drops everything beside a `$ref`
+  without a word, so the generated request used to ignore the ceiling. It is read from the raw document now, at every
+  hop of an alias chain, and the field is one `allOf` wrapper (the referenced schema, then what is written beside the
+  `$ref`). **A request that answered 200 may now answer 422**: a code of four characters beside that ceiling, a missing
+  key a `required` beside the `$ref` asks for. A 3.0 document is unchanged, since its specification ignores them. A
+  keyword that adds nothing a generator reads (`description`, `title`, `deprecated`, `default`) leaves the field as the
+  schema it names, and a DTO keeps that schema's class: `Alias: {$ref: Node, maxLength: 3}` is still `NodeInputDto`, and
+  one that writes a `required` or `properties` is a class of its own. **The contract's response schemas are read the
+  same way**, since one schema reads one way wherever it is reached. No response DTO exists yet, so nothing generated
+  from a response changes.
+  [Keywords written beside a `$ref`](./docs/guide/openapi-support.md#keywords-written-beside-a-ref).
+- **Some documents that built before are now refused, because their keywords beside a `$ref` are read.** Each is refused
+  for the operation that reaches it. Only the first is limited to a request schema: the others also stop an operation
+  whose only such keyword is in a response schema, which is read the same way.
+    - A keyword that contradicts the schema it sits beside (`{$ref: User, additionalProperties: false}` over a `User`
+      that declares properties, `{$ref: Code, type: integer}` over a string, a second `pattern` or `format` where the
+      schema already has one). It is refused when the request is built, as two `allOf` branches that disagree are.
+    - An `$id` or a dynamic reference (`$dynamicRef`, `$dynamicAnchor`, `$recursiveRef`, `$recursiveAnchor`) beside a
+      `$ref`.
+    - A keyword the parser hands back raw (`prefixItems`, `if`, and the other nine) that holds a `$ref`, beside a
+      `$ref`.
+    - A keyword the parser cannot build a schema from (`{$ref: Code, items: "x"}`), which is a fault in the document.
+    - For now, a `$ref` written inside the keywords beside a `$ref` (a property, `items` or an `allOf` branch). It is
+      refused until it is read.
+- **`spec:doctor` goes from exit `0` to exit `2` for a `deprecated`, a `default` or an `x-max-depth` written beside a
+  `$ref` in a 3.1 request.** They were dropped without a word and are now reported `Ignored`, at the position they are
+  written, like the same keywords anywhere else. An `x-max-depth` beside a `$ref` is never honored: a recursion reads
+  the depth of the schema it points back at, so the message says to write it on the recursive schema itself.
 - **Breaking: a JSON body refuses what it used to coerce, and Laravel 12.22 is the new floor.** A request body that is
   JSON and nothing else now validates an `integer`, a `number` and a `boolean` with Laravel's `integer:strict`,
   `numeric:strict` and `boolean:strict`, at every level. **A request that answered 200 now answers 422** for a

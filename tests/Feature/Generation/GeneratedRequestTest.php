@@ -2133,3 +2133,18 @@ it('answers a required body sent empty on a key no property of the contract has'
     'no property named like it' => ['title', 'body'],
     'a property named body' => ['body', '_body'],
 ]);
+
+// A constraint written beside a `$ref` at 3.1 holds together with the schema the `$ref` names, so a value that breaks it
+// is refused by the request: a 200 before the keyword was read, a 422 now. `ref-siblings-request.yaml` writes a ceiling
+// of three beside `Code` and a floor of one beside `Count`, and a `description` beside the third, which says nothing a
+// rule can hold.
+it('answers 422 for a value breaking a constraint written beside a $ref', function (array $payload, int $status): void {
+    expect(statusForBuiltRules(bodyOfFixture('ref-siblings-request.yaml', 'createThing'), $payload))->toBe($status);
+})->with([
+    'a code at the ceiling' => [['code' => 'ABC'], 200],
+    'a code over the ceiling' => [['code' => 'ABCD'], 422],
+    'an amount at the floor' => [['amount' => 1], 200],
+    'an amount under the floor' => [['amount' => 0], 422],
+    'the type of the referenced schema still holds' => [['amount' => 'one'], 422],
+    'a label with only a description beside it' => [['label' => 'a label longer than three'], 200],
+]);

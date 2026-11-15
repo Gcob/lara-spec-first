@@ -600,3 +600,30 @@ it('gates the exit code as a package limit, never as a document fault', function
         ->and(supportMatrixReport($limits)->exitCode())->toBe(2)
         ->and(supportMatrixReport([...$limits, $fault])->exitCode())->toBe(1);
 });
+
+// --- Keywords written beside a $ref, at 3.1 ---
+
+it('names an Ignored keyword written beside a $ref in a 3.1 request', function (): void {
+    $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath('doctor-ref-siblings-3.1.yaml'));
+    $at = '#/paths/~1things/post/requestBody/content/application~1json/schema/properties';
+    $findings = SupportMatrixCheck::requestSchemas($outcome->operations);
+
+    expect(array_map(static fn (Finding $finding): string => $finding->pointer, $findings))->toBe([
+        $at.'/code/default',
+        $at.'/code/deprecated',
+        $at.'/node/x-max-depth',
+    ])->and($findings[0]->level)->toBe(SupportLevel::Ignored)
+        ->and($findings[0]->message)->toContain('`default`')
+        // The depth is honored on the schema a recursion points back at, so the message says where to write it
+        // rather than that the package reads past it.
+        ->and($findings[2]->message)->toContain('`x-max-depth`')
+        ->and($findings[2]->message)->toContain('on the recursive schema itself')
+        ->and($findings[2]->message)->not->toContain('reads past it');
+});
+
+it('names nothing for a keyword beside a $ref in a 3.0 request', function (): void {
+    $outcome = ReadOutcome::read(new SpecDocumentReader, specFixturePath('doctor-ref-siblings-3.0.yaml'));
+
+    expect($outcome->faults)->toBe([])
+        ->and(SupportMatrixCheck::requestSchemas($outcome->operations))->toBe([]);
+});

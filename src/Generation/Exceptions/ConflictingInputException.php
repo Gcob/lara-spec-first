@@ -81,14 +81,17 @@ final class ConflictingInputException extends InvalidArgumentException implement
     /**
      * Two `allOf` branches no payload can satisfy at once, or that one rule set cannot express together.
      *
+     * The keywords written beside a `$ref` at 3.1 are one more branch of an `allOf`, so a contradiction between them
+     * and the schema the `$ref` names ends here too, and the message says so.
+     *
      * Refused rather than resolved by picking a branch: either choice would enforce half of what the document wrote and
      * drop the other half in silence.
      */
     public static function contradictoryAllOf(string $identity, string $where, string $what): self
     {
         return new self(sprintf(
-            'The operation "%s" writes `allOf` under %s whose branches disagree: %s. A payload '.
-            'cannot satisfy both, or one rule set cannot say both, so the build will not choose '.
+            'The operation "%s" writes `allOf`, or keywords beside a `$ref`, under %s whose branches disagree: %s. '.
+            'A payload cannot satisfy both, or one rule set cannot say both, so the build will not choose '.
             'between them. Make the branches agree.',
             $identity,
             $where,
