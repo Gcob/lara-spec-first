@@ -694,8 +694,9 @@ refuses. A field of a body that is JSON and nothing else gets the `:strict` form
   `true`, a number accepts `"1.5"`, and a boolean accepts `"1"` and `1`, all of which the contract refuses. The
   generated file says so in one finding per field, and `spec:doctor` stays silent on it, like the other prose-only
   cases. [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them.
-- **`:strict` needs Laravel 12.22.** Before it the parameter is silently ignored, and the rule would accept a string,
-  which is why the package requires `^12.22 || ^13.0`.
+- **`integer:strict` needs Laravel 12.22.** Before it the parameter is silently ignored, and an integer would accept
+  `"42"`. `numeric:strict` and `boolean:strict` exist from 12.21, so `integer:strict` is the rule that sets the floor,
+  and the reason the package requires `^12.22 || ^13.0`.
 
 ### A recursive schema is validated to a stated depth
 
