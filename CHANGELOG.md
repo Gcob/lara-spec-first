@@ -22,6 +22,8 @@ tags: [versions, conventions, planning]
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
 ### Changed
 
 - **A keyword written beside a `$ref` in a 3.1 schema is now read, and a request becomes stricter.** JSON Schema 2020-12
@@ -362,5 +364,6 @@ this file is for, which is not having to work out where to look.
 own is not a reason to do it: ten releases a year at twenty lines each is two hundred lines a year, and anyone who wants
 one version on its own already has its [GitHub release page](https://github.com/Gcob/lara-spec-first/releases).
 
-[unreleased]: https://github.com/Gcob/lara-spec-first/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/Gcob/lara-spec-first/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Gcob/lara-spec-first/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Gcob/lara-spec-first/releases/tag/v0.1.0
