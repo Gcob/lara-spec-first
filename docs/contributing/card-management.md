@@ -331,6 +331,80 @@ had not changed. Lot 1 was written the other way round, because of what that cos
 `generated.namespace is read, and its config block moves from STARTED to DONE` survives any rename, since it describes
 what is true rather than what is called what.
 
+**A card whose `Done when` names two generated artifacts is two cards.**
+[#35](https://github.com/Gcob/lara-spec-first/issues/35) was "one FormRequest per operation", and it also grew the input
+DTO pair and `dto()`. That made five stacked pull requests ([#101](https://github.com/Gcob/lara-spec-first/pull/101) to
+[#105](https://github.com/Gcob/lara-spec-first/pull/105)), the last one near 9,000 lines once the review fixes landed on
+it. The DTO was a card of its own.
+
+**Most late findings came from the request channels, so a card that reads request input names the ones it covers.**
+[#35](https://github.com/Gcob/lara-spec-first/issues/35) found a new corner of the same domain in each review round:
+names PHP rewrites in a form or a query string, an empty body with no `Content-Type`. The card now names the channels it
+covers (JSON, form-encoded, multipart, query string) and what PHP and Laravel do to each before a rule sees the input.
+
+**A rule written for one direction leaves the other one open.**
+[#35](https://github.com/Gcob/lara-spec-first/issues/35)'s docs forbade a rule looser than the contract and said nothing
+of a stricter one, and a draft `boolean` rule refused `?notify=true`, which review caught before the merge. Both
+directions are written down in [`request-validation.md`](../guide/code-generation/request-validation.md).
+
+**CI runs the test suite with assertions off (the default of the PHP setup action), so a side effect inside `assert()`
+never runs there.** [#36](https://github.com/Gcob/lara-spec-first/issues/36)
+([#117](https://github.com/Gcob/lara-spec-first/pull/117)) had a `preg_match()` inside `assert()` that passed locally
+and failed in CI, since the match itself never ran. Run the suite once with `-d zend.assertions=-1` before pushing, and
+never put a side effect inside `assert()`.
+
+**A new field on a value object changes every equality built on it.**
+[#36](https://github.com/Gcob/lara-spec-first/issues/36) added `Schema::$ignored` (positions), which broke the DTO
+planner's `serialize()` comparison, and the first fix repaired it in one place only. One shape key now serves both
+comparisons.
+
+**A recursive schema split cleanly along the request and the DTO, and a card that touches both sides states that split
+up front.** [#100](https://github.com/Gcob/lara-spec-first/issues/100) went out as two pull requests
+([#123](https://github.com/Gcob/lara-spec-first/pull/123) and [#125](https://github.com/Gcob/lara-spec-first/pull/125)):
+the rules first, then the typed DTO classes, each readable on its own.
+
+**A default can differ by OpenAPI version, so a card that touches parsing names the versions it covers.**
+[#90](https://github.com/Gcob/lara-spec-first/issues/90) ([#129](https://github.com/Gcob/lara-spec-first/pull/129))
+carried `encoding.contentType` onto the contract and showed that a multipart part's default `contentType` is not the
+same in 3.0 and 3.1, while the package reads it one way for both. That is filed as
+[#131](https://github.com/Gcob/lara-spec-first/issues/131).
+
+**A bug filed from a review's reasoning needs a reproduction before a fix.**
+[#108](https://github.com/Gcob/lara-spec-first/issues/108) ([#132](https://github.com/Gcob/lara-spec-first/pull/132))
+said an optional multipart body with a required file part accepts an empty slot. A probe on current Laravel showed it
+already answers 422, so the card shipped as tests that pin the behavior (removing the `file` rule turns them red) and a
+docs line.
+
+**A rule can need a newer framework minor than the package requires, so a card that adds a framework rule names the
+version that rule needs.** [#107](https://github.com/Gcob/lara-spec-first/issues/107)
+([#135](https://github.com/Gcob/lara-spec-first/pull/135)) used `integer:strict`, which exists from Laravel 12.22 and is
+silently ignored before it. The support floor rose with the rule.
+
+**One rule set cannot serve two channels with different types.**
+[#107](https://github.com/Gcob/lara-spec-first/issues/107) met it again, the channels lesson of
+[#35](https://github.com/Gcob/lara-spec-first/issues/35): a body declared as JSON and as a form must accept the form's
+`"42"`, so it lets a JSON client's `"42"` through too. It ships as a finding and a follow-up card,
+[#133](https://github.com/Gcob/lara-spec-first/issues/133).
+
+**Findings stricter than the contract drowned the build warning.**
+[#107](https://github.com/Gcob/lara-spec-first/issues/107) produced enough of them that the warning stopped saying
+anything. They are real, but nothing is left unenforced by them, so the build warning no longer counts them.
+Informational findings still do ([#134](https://github.com/Gcob/lara-spec-first/issues/134)).
+
+**A fix can regress a case it does not target, so re-check the old cases and not only the new one.**
+[#118](https://github.com/Gcob/lara-spec-first/issues/118) ([#136](https://github.com/Gcob/lara-spec-first/pull/136))
+fixed its main bug by opening every outer `$ref` hop, which broke a common alias shape the previous commit handled. The
+re-review caught it by running its earlier probes again on both commits.
+
+**An equivalent spelling is the cheapest exact oracle.** [#118](https://github.com/Gcob/lara-spec-first/issues/118)
+relied on keywords beside a `$ref` meaning the same as an `allOf` of the two, which the package already honored. Each
+recursion test compares the rules and the DTO classes of the two spellings for equality. That caught every recursion
+bug, where hand-written expectations would have encoded the bug.
+
+**Siblings of a `$ref` mean nothing in 3.0 and something in 3.1.**
+[#118](https://github.com/Gcob/lara-spec-first/issues/118) is the version axis of
+[#90](https://github.com/Gcob/lara-spec-first/issues/90) again.
+
 ## The template, and what each kind of card drops
 
 **The template lives in the
@@ -342,7 +416,7 @@ Eight sections, of which two only ever appear on a `Backlog` card and most of th
 
 | Section         | Carries                                                                  | Dropped by                        |
 | --------------- | ------------------------------------------------------------------------ | --------------------------------- |
-| `Why`           | Two sentences: the problem, not the solution                             | Nobody                            |
+| `Why`           | The problem in two sentences, and how to reproduce a bug from review     | Nobody                            |
 | `Ready when`    | Card numbers that have to land first, and nothing else                   | Any card that nothing blocks      |
 | `Assumptions`   | What is believed and could be checked by reading the code or the docs    | Every card, on reaching `Todo`    |
 | `Discovery`     | What is known not to be known, and needs research or a trial to find out | Every card, on reaching `Todo`    |
@@ -353,6 +427,15 @@ Eight sections, of which two only ever appear on a `Backlog` card and most of th
 
 So a `Todo` `Docs` card with no blocker and nothing to settle is two sections, a `Chore` card is rarely more, and only a
 `Feature` card routinely carries six.
+
+**Lot 1's cards changed two sections of the form.** `Decisions` now asks, for a card that reads request input or parses
+a contract, which request channels it covers and what PHP and Laravel do to each, which OpenAPI versions it covers, and
+which Laravel version a new framework rule needs: a boundary is a decision, and each of those boundaries was found late
+on [#35](https://github.com/Gcob/lara-spec-first/issues/35), [#90](https://github.com/Gcob/lara-spec-first/issues/90),
+[#107](https://github.com/Gcob/lara-spec-first/issues/107) and
+[#118](https://github.com/Gcob/lara-spec-first/issues/118). `Why` now asks a card filed from review that reports a bug
+to say how to reproduce it, or that it has no reproduction yet, since
+[#108](https://github.com/Gcob/lara-spec-first/issues/108) was filed on a review's reasoning and the bug was not there.
 
 **A card carries only the delta.** Repeating the general definition of done on thirty cards is how it stops being read.
 `Ready when` replaces a ceremonial definition of ready: it holds card numbers, and it is deleted outright rather than

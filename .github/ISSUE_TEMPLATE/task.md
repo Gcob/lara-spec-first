@@ -8,7 +8,11 @@ assignees: ""
 
 ## Why
 
-<!-- Two sentences. The problem, not the solution. -->
+<!--
+Two sentences. The problem, not the solution. A card filed from a review that reports a bug says
+how to reproduce it, or that it has no reproduction yet: a bug argued from the code alone may
+not exist.
+-->
 
 ## Ready when
 
@@ -42,6 +46,14 @@ Delete this section when the card reaches Todo.
 Settled decisions only, each with its reason. A boundary is one too: what this card does not
 do, and the card that does it. A question still open does not go here, it keeps the card out
 of Todo. Delete this section when the card settled nothing.
+
+Boundaries worth writing down when the card touches them:
+- Request channels: which of JSON, form-encoded, multipart and query string the card covers,
+  and what PHP and Laravel do to each before a rule sees the input (renamed keys, empty body).
+- OpenAPI versions: which of 3.0 and 3.1 the card covers, since a default or a keyword can
+  mean something different in each.
+- Framework version: a new framework rule says the Laravel version it needs, since an older
+  one may ignore it without a word.
 -->
 
 -
