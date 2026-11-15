@@ -45,9 +45,13 @@ jobs:
                 # the PHP 8.3 floor buys. Testbench tracks Laravel minus two, so its
                 # major is a property of the Laravel cell rather than a third axis.
                 include:
+                    # `constraint` is the Laravel this cell installs. Laravel 12's starts at 12.22: the package's
+                    # floor, since `:strict` on `integer`, `numeric` and `boolean` is silently ignored before it.
                     - laravel: "12"
+                      constraint: "^12.22"
                       testbench: "^10.11"
                     - laravel: "13"
+                      constraint: "^13.0"
                       testbench: "^11.0"
 
         steps:
@@ -70,8 +74,8 @@ jobs:
             - name: Pin this cell's Laravel
               run: >
                   composer require --no-update --no-interaction
-                  "illuminate/routing:^${{ matrix.laravel }}.0"
-                  "illuminate/support:^${{ matrix.laravel }}.0"
+                  "illuminate/routing:${{ matrix.constraint }}"
+                  "illuminate/support:${{ matrix.constraint }}"
 
             - name: Pin this cell's Testbench
               run: >

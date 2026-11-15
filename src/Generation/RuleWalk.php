@@ -29,6 +29,14 @@ final class RuleWalk
     public array $findings = [];
 
     /**
+     * The findings that say the request is stricter than the contract, not looser: the same sentences as in
+     * {@see self::$findings}, which stays whole. Nothing is unenforced by them, so the build does not count them.
+     *
+     * @var list<string>
+     */
+    public array $stricter = [];
+
+    /**
      * Each keyword the walk read and enforced nothing for, by the fields it was left unenforced on: a keyword mapped to
      * the labels of those fields, in the order they were met. The data behind the findings that are about a keyword,
      * and none of the ones that are only worth saying.
@@ -68,6 +76,12 @@ final class RuleWalk
      * Whether `application/json` is among the media types the body is read from.
      */
     public bool $jsonBody = false;
+
+    /**
+     * Whether the finding that a JSON integer written as a float is refused has been written, since one request says it
+     * once however many integers it has.
+     */
+    public bool $integralFloatNamed = false;
 
     /**
      * Whether the generated request has to refuse a JSON body whose root is not an object, and whether a `null` root is
@@ -251,6 +265,26 @@ final class RuleWalk
         }
 
         return null;
+    }
+
+    /**
+     * Whether the fields being walked are read from a JSON body and from nothing else: the one place an `integer`, a
+     * `number` and a `boolean` keep their types. A query parameter is text whatever the body is, and a body that is
+     * also a form carries text too.
+     */
+    public function strictJson(): bool
+    {
+        return $this->textSource === null && $this->jsonBody && ! $this->formBody;
+    }
+
+    /**
+     * Record a finding that says the request is stricter than the contract: in the generated file like any other, and
+     * apart so the build does not count it as a constraint left unenforced.
+     */
+    public function stricter(string $message): void
+    {
+        $this->findings[] = $message;
+        $this->stricter[] = $message;
     }
 
     /**

@@ -325,7 +325,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter);
     }
 
     /**
@@ -988,18 +988,30 @@ final readonly class RuleSetBuilder
                     self::stringRules($schema, $label, $rules, $handled, $walk);
                     break;
                 case SchemaType::Integer:
-                    $rules[] = 'integer';
+                    // Why: Laravel's `min` and `max` find `Integer` and `Numeric` by the rule's name whatever its
+                    // parameters, so a strict rule still compares as a number.
+                    $rules[] = $walk->strictJson() ? 'integer:strict' : 'integer';
                     self::numberRules($schema, $rules, $handled);
+
+                    if ($walk->strictJson() && ! $walk->integralFloatNamed) {
+                        $walk->integralFloatNamed = true;
+                        $walk->stricter(
+                            'An `integer` in this JSON body is `integer:strict`, which refuses a whole number written '
+                                .'with a fraction or an exponent (`1.0`, `1e2`). JSON Schema 2020-12 reads those as '
+                                .'integers, so the request is stricter than the contract for them. The same rule is '
+                                .'what refuses `"42"` and `true`.',
+                        );
+                    }
                     break;
                 case SchemaType::Number:
-                    $rules[] = 'numeric';
+                    $rules[] = $walk->strictJson() ? 'numeric:strict' : 'numeric';
                     self::numberRules($schema, $rules, $handled);
                     break;
                 case SchemaType::Boolean:
                     if ($walk->textSource !== null) {
                         $rules[] = self::textBoolean($schema, $label, $walk, $handled);
                     } else {
-                        $rules[] = 'boolean';
+                        $rules[] = $walk->strictJson() ? 'boolean:strict' : 'boolean';
 
                         if ($walk->mixedBody) {
                             $walk->findings[] = sprintf(
@@ -1358,7 +1370,7 @@ final readonly class RuleSetBuilder
             $lists = array_filter($cut['keys'], static fn (string $key): bool => str_ends_with($key, '.*')) !== [];
             $fields = count(array_filter($cut['keys'], static fn (string $key): bool => ! str_ends_with($key, '.*'))) > 0;
 
-            $walk->findings[] = sprintf(
+            $walk->stricter(sprintf(
                 '`%1$s` recurses, and %2$s. %3$s %6$s %4$s below that: a payload deeper than that answers 422, though '
                     .'the contract allows it. %5$s `x-max-depth` on `%1$s` sets the depth.',
                 $cut['name'],
@@ -1376,7 +1388,7 @@ final readonly class RuleSetBuilder
                     $lists ? sprintf('An empty list of `%s` passes: it carries no data, and it is its elements that are cut.', $cut['name']) : null,
                 ])),
                 count($cut['keys']) === 1 ? 'is' : 'are',
-            );
+            ));
         }
     }
 
@@ -1593,10 +1605,10 @@ final readonly class RuleSetBuilder
             // from a generated class matches the contract exactly.
             if (! $walk->phpUploadNamed) {
                 $walk->phpUploadNamed = true;
-                $walk->findings[] = 'A `mimetypes` rule in this request is stricter than the contract in one case: '
+                $walk->stricter('A `mimetypes` rule in this request is stricter than the contract in one case: '
                     .'Laravel refuses a file whose name ends in a PHP extension (`php`, `phtml`, `phar` and the '
                     .'like) whatever its type, a security default no rule turns off, and matching the contract '
-                    .'there would mean overriding it from a generated class.';
+                    .'there would mean overriding it from a generated class.');
             }
         }
 
@@ -2098,6 +2110,7 @@ final readonly class RuleSetBuilder
                 .'body that is not one (the string `"Ada"` is valid against this schema) is refused. That is '
                 .'stricter than the contract, since the request cannot accept an object or anything else at '
                 .'the root. Add `type: object` to the schema to make the reading the contract\'s own.';
+            $walk->stricter[] = $findings[array_key_last($findings)];
         }
 
         // The request refuses an empty content for a required body when it is JSON or has no

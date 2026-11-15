@@ -541,11 +541,9 @@ final readonly class FormRequestEmitter
             );
         }
 
-        if ($planned->rules->findings === []) {
+        if (! $planned->rules->leavesUnenforced()) {
             $findings[] = 'Every constraint the contract states is in the rule set above. Nothing '
                 .'was read and left unenforced.';
-
-            return $findings;
         }
 
         return [...$findings, ...$planned->rules->findings];

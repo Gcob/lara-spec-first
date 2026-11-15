@@ -157,6 +157,17 @@ function frameworkRules(array $built): array
  */
 function statusForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true): int
 {
+    return responseForBuiltRules($body, $payload, $bodyRequired)[0];
+}
+
+/**
+ * The same request as {@see statusForBuiltRules()}, with the keys the 422 names.
+ *
+ * @param  array<string, mixed>  $payload
+ * @return array{0: int, 1: list<string>}
+ */
+function responseForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true): array
+{
     $built = RuleSetBuilder::for(new Operation(
         index: 0,
         method: HttpMethod::Post,
@@ -169,16 +180,82 @@ function statusForBuiltRules(Schema $body, array $payload, bool $bodyRequired = 
 
     Route::post('/_generated/built', fn (Request $request) => response()->json($request->validate($rules)));
 
-    return app(HttpKernel::class)->handle(Request::create(
+    $response = app(HttpKernel::class)->handle(Request::create(
         '/_generated/built',
         'POST',
         [],
         [],
         [],
         ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
-        (string) json_encode($payload),
-    ))->getStatusCode();
+        // Without the flag `1.0` is sent as `1`, and the one payload this is for would never be sent.
+        (string) json_encode($payload, JSON_PRESERVE_ZERO_FRACTION),
+    ));
+
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), array_map('strval', array_keys((array) ($decoded['errors'] ?? [])))];
 }
+
+/**
+ * A JSON body of one `field` of the type given, nullable or not.
+ */
+function scalarBody(SchemaType $type, bool $nullable = false, float|int|null $minimum = null, float|int|null $maximum = null): Schema
+{
+    return oneField(new Schema(
+        types: $nullable ? [$type, SchemaType::Null] : [$type],
+        minimum: $minimum === null ? null : (float) $minimum,
+        maximum: $maximum === null ? null : (float) $maximum,
+    ), required: false);
+}
+
+// A JSON body keeps its types: `"42"` is a string, `true` is a boolean, and Laravel's loose `integer`, `numeric`
+// and `boolean` accept what a form or a query string writes. `1.0` is the one a JSON Schema validator accepts and
+// this refuses (D32).
+it('refuses a string for an integer, a number or a boolean in a JSON body', function (Schema $body, array $payload, string $key): void {
+    expect(responseForBuiltRules($body, $payload))->toBe([422, [$key]]);
+})->with([
+    'an integer as a string' => [scalarBody(SchemaType::Integer), ['field' => '42'], 'field'],
+    'an integer as true' => [scalarBody(SchemaType::Integer), ['field' => true], 'field'],
+    'an integer as a float' => [scalarBody(SchemaType::Integer), ['field' => 1.0], 'field'],
+    'a number as a string' => [scalarBody(SchemaType::Number), ['field' => '1.5'], 'field'],
+    'a number as a whole string' => [scalarBody(SchemaType::Number), ['field' => '2'], 'field'],
+    'a boolean as the string one' => [scalarBody(SchemaType::Boolean), ['field' => '1'], 'field'],
+    'a boolean as the string true' => [scalarBody(SchemaType::Boolean), ['field' => 'true'], 'field'],
+    'a boolean as 1' => [scalarBody(SchemaType::Boolean), ['field' => 1], 'field'],
+    'a boolean as 0' => [scalarBody(SchemaType::Boolean), ['field' => 0], 'field'],
+    'a nested integer' => [
+        oneField(new Schema(types: [SchemaType::Object], properties: ['b' => new Schema(types: [SchemaType::Integer])]), required: false),
+        ['field' => ['b' => '42']],
+        'field.b',
+    ],
+    'an integer in an array' => [
+        oneField(new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer])), required: false),
+        ['field' => [1, '2']],
+        'field.1',
+    ],
+]);
+
+it('accepts a JSON integer, number and boolean as sent', function (Schema $body, mixed $value): void {
+    expect(statusForBuiltRules($body, ['field' => $value]))->toBe(200);
+})->with([
+    'an integer' => [scalarBody(SchemaType::Integer), 42],
+    'a number' => [scalarBody(SchemaType::Number), 1.5],
+    'an integer for a number' => [scalarBody(SchemaType::Number), 2],
+    'true' => [scalarBody(SchemaType::Boolean), true],
+    'false' => [scalarBody(SchemaType::Boolean), false],
+    'null for a nullable integer' => [scalarBody(SchemaType::Integer, nullable: true), null],
+]);
+
+// Laravel finds the size rules' kind by the name of the rule, `integer` or `numeric`, whatever follows the colon.
+it('compares min and max as numbers under a strict rule', function (Schema $body, int $value, int $status): void {
+    expect(statusForBuiltRules($body, ['field' => $value]))->toBe($status);
+})->with([
+    'an integer at or above minimum' => [scalarBody(SchemaType::Integer, minimum: 5), 10, 200],
+    'an integer below minimum' => [scalarBody(SchemaType::Integer, minimum: 5), 3, 422],
+    'a number at or below maximum' => [scalarBody(SchemaType::Number, maximum: 2.5), 2, 200],
+    'a number above maximum' => [scalarBody(SchemaType::Number, maximum: 2.5), 3, 422],
+]);
 
 // JSON Schema's `required` asks for the key; Laravel's refuses `null`, `""`,
 // `[]` and `{}`. Each case is a payload the contract accepts, sent through the
@@ -1142,31 +1219,50 @@ it('hands an integer body field to validated() as an integer', function (): void
         ->and($body['age'])->toBe(31);
 });
 
-it('reads a form-encoded body', function (): void {
+/**
+ * One form-encoded request, as an HTML form sends it, to the golden's operation: it declares JSON and nothing else.
+ *
+ * @param  array<string, string>  $fields
+ * @return array{0: int, 1: array<string, mixed>}
+ */
+function sendGeneratedForm(array $fields, string $query = ''): array
+{
     $response = app(HttpKernel::class)->handle(Request::create(
-        '/_generated/users',
+        '/_generated/users'.$query,
         'POST',
-        ['email' => 'someone@example.test', 'age' => '30'],
+        $fields,
         [],
         [],
         ['HTTP_ACCEPT' => 'application/json'],
     ));
 
-    expect($response->getStatusCode())->toBe(200)
-        ->and(json_decode((string) $response->getContent(), true))->toBe(['email' => 'someone@example.test', 'age' => '30']);
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), $decoded];
+}
+
+it('reads a form-encoded body', function (): void {
+    expect(sendGeneratedForm(['email' => 'someone@example.test', 'nickname' => 'ada']))
+        ->toBe([200, ['email' => 'someone@example.test', 'nickname' => 'ada']]);
 });
 
-it('refuses a form-encoded body that leaves a required field to the query string', function (): void {
-    $response = app(HttpKernel::class)->handle(Request::create(
-        '/_generated/users?email=x@example.test',
-        'POST',
-        ['age' => '30'],
-        [],
-        [],
-        ['HTTP_ACCEPT' => 'application/json'],
-    ));
+// D40: the contract declares no form, so that client is off-contract, and `rules()` is one array. The rules a JSON
+// body gets answer it too, and a form writes every number as text: the same `age=30` that was a 200 is now a 422.
+it('refuses a form-encoded number sent to an operation that declares only JSON', function (): void {
+    [$status, $body] = sendGeneratedForm(['email' => 'someone@example.test', 'age' => '30']);
 
-    expect($response->getStatusCode())->toBe(422);
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['age']);
+});
+
+// `nickname` rather than `age`: a string passes whatever the rules are, so the 422 below can only be the query
+// string leaking into the body, which `age=30` (a 422 of its own since D40) would hide.
+it('refuses a form-encoded body that leaves a required field to the query string', function (): void {
+    [$status, $body] = sendGeneratedForm(['nickname' => 'ada'], '?email=x@example.test');
+
+    expect($status)->toBe(422)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe(['email']);
 });
 
 // The reverse: a declared `query` parameter is the query string's, and a body key
@@ -1659,11 +1755,13 @@ it('accepts "true" and "false" for a boolean field of a form or multipart body',
         ->and(sendThroughEmitted($class, 'POST')[0])->toBe(422);
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
-it('keeps Laravel\'s boolean for a JSON body', function (): void {
+// Not Laravel's `boolean`, which takes `1` and `"0"` too: a JSON body has `true` and `false`.
+it('refuses everything but true and false for a boolean of a JSON body', function (): void {
     $class = emittedRequestClass(postWithBooleanField(['application/json']));
 
     expect(sendThroughEmitted($class, 'POST', json: ['active' => false]))->toBe([200, ['active' => false]])
-        ->and(sendThroughEmitted($class, 'POST', json: ['active' => 'true'])[0])->toBe(422);
+        ->and(sendThroughEmitted($class, 'POST', json: ['active' => 'true'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', json: ['active' => 1])[0])->toBe(422);
 });
 
 // The case the finding on a `mimetypes` rule names: a real PNG whose name ends in a PHP

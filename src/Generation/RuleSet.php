@@ -56,6 +56,9 @@ final readonly class RuleSet
      *                                        `encoding` entry for a part the body does not declare, a `contentType`
      *                                        that is not a string): findings too, and data besides so the doctor can
      *                                        report them as document faults
+     * @param  list<string>  $stricter  the findings that say the request is stricter than the contract, which are in
+     *                                  `findings` too. Nothing is left unenforced by one, so the build does not count a
+     *                                  request for them alone
      */
     public function __construct(
         public array $rules = [],
@@ -72,7 +75,17 @@ final readonly class RuleSet
         public string $rootKey = 'body',
         public array $unenforced = [],
         public array $documentFaults = [],
+        public array $stricter = [],
     ) {}
+
+    /**
+     * Whether the build read something and enforced nothing for it: a finding that is not one of the request being
+     * stricter than the contract.
+     */
+    public function leavesUnenforced(): bool
+    {
+        return array_diff($this->findings, $this->stricter) !== [];
+    }
 
     /**
      * Whether any rule is an enumeration, which is what decides whether the emitted file imports `Rule`.
