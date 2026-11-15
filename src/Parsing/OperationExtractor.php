@@ -622,6 +622,9 @@ final readonly class OperationExtractor
         $hops = $walk->chain($walk->written($parent, $segment));
         $content = array_pop($hops);
 
+        // Why: only the hops are tested here. The content position is tested, and opened, by `schema()` itself, which
+        // is also where its marker is built. A hop has no `schema()` of its own until `besideReference()` builds its
+        // keywords, so this is the only place that can tell the walk it is going round through one.
         foreach ($hops as $hop) {
             if (isset($open[$hop->key()])) {
                 return Schema::recursion(...$open[$hop->key()]);
@@ -634,8 +637,18 @@ final readonly class OperationExtractor
 
         $schema = $this->schema($node, $strategy, $walk, $content, $open);
 
-        foreach (array_reverse($hops) as $hop) {
-            $schema = $this->besideReference($schema, $strategy, $walk, $hop, $open);
+        // Wrapped from the innermost hop out, and every hop outside the one being built is open to its keywords: a
+        // `$ref` back at an outer hop, written in an inner hop's keywords, ends on that outer hop, which is the schema
+        // that carries the outer keywords. Open only the inner one and the marker would end on it, and the outer
+        // keywords would be lost at every level.
+        foreach (array_reverse(array_keys($hops)) as $index) {
+            $outside = $open;
+
+            foreach (array_slice($hops, 0, $index) as $outer) {
+                $outside[$outer->key()] = [$walk->pointer($outer), $walk->name($outer)];
+            }
+
+            $schema = $this->besideReference($schema, $strategy, $walk, $hops[$index], $outside);
         }
 
         return $schema;
@@ -707,10 +720,10 @@ final readonly class OperationExtractor
      * written both here and on the target gets a wrapper too, so each keeps its own position: a schema carries one
      * position per keyword.
      *
-     * **The wrapper takes this hop's name only when what it adds is shape a DTO holds** ({@see DtoShape::isAddedBy()},
-     * the planner's own question). `Alias: {$ref: Node, maxLength: 3}` is still `Node` to a generated class, and
-     * `Alias: {$ref: Node, required: [id]}` is a schema of its own, which the planner could not tell from `Node` by
-     * position.
+     * **The wrapper takes this hop's name only when what it adds is shape a DTO holds**
+     * ({@see DtoShape::isAddedByKeywordsBeside()}, the planner's own question). `Alias: {$ref: Node, maxLength: 3}` is
+     * still `Node` to a generated class, and `Alias: {$ref: Node, required: [id]}` is a schema of its own, which the
+     * planner could not tell from `Node` by position.
      *
      * @param  array<string, array{0: string, 1: string|null}>  $open  see {@see self::schema()}
      *
@@ -747,7 +760,7 @@ final readonly class OperationExtractor
             }
         }
 
-        $name = DtoShape::isAddedBy($beside) ? $walk->name($hop) : null;
+        $name = DtoShape::isAddedByKeywordsBeside($beside) ? $walk->name($hop) : null;
 
         return new Schema(...[
             ...get_object_vars($beside),

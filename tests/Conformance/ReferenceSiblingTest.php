@@ -7,7 +7,11 @@ use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\AllOfMerger;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Generation\InputDtoPlanner;
 use Gcob\LaraSpecFirst\Generation\InRule;
+use Gcob\LaraSpecFirst\Generation\PlannedInputDto;
+use Gcob\LaraSpecFirst\Generation\PlannedRequest;
+use Gcob\LaraSpecFirst\Generation\RequestName;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
@@ -776,4 +780,95 @@ it('keeps the parser\'s enum where the raw document can\'t reach the node', func
     expect($outcome->faults)->toBe([])
         ->and($in)->toHaveCount(1)
         ->and($in[0]->values)->toBe(['open', 'closed']);
+});
+
+/**
+ * The input DTOs the build plans for the operation, by class name, with the class each property that is an object
+ * holds.
+ *
+ * @param  list<Operation>  $operations
+ * @return array<string, array<string, string|null>> short name => property name => class, null for what is not a DTO
+ */
+function siblingDtoClasses(array $operations): array
+{
+    $name = RequestName::for($operations[0]);
+    assert($name !== null);
+
+    $plan = (new InputDtoPlanner)->plan([
+        new PlannedRequest($operations[0], $name, RuleSetBuilder::for($operations[0]), 'Controller'),
+    ]);
+    $classes = [];
+
+    foreach ($plan->dtos as $dto) {
+        /** @var PlannedInputDto $dto */
+        $classes[$dto->shortName] = [];
+
+        foreach ($dto->properties as $property) {
+            $classes[$dto->shortName][$property->name] = $property->type->class;
+        }
+    }
+
+    ksort($classes);
+
+    return $classes;
+}
+
+// A recursion that closes on a hop further out than the one writing it. `B` is inside `A`, and `A` is written again
+// in `B`'s keywords: the marker is for `A`, so what `A` writes holds at every level, as it does when both are spelled
+// as an `allOf`. Ending the marker on `B` instead would drop `A`'s `required` at every level, without a word.
+it('cuts a recursion that closes on an outer hop with the outer hop\'s keywords, as the allOf spelling does', function (): void {
+    $node = ['Node' => ['type' => 'object', 'x-max-depth' => 2, 'properties' => ['label' => ['type' => 'string']]]];
+    $read = static function (array $components) {
+        $outcome = readSiblingDocument(['/nodes' => siblingPostPath(['$ref' => '#/components/schemas/A'])], $components);
+
+        expect($outcome->faults)->toBe([]);
+
+        return $outcome->operations;
+    };
+
+    $beside = $read([
+        'A' => ['$ref' => '#/components/schemas/B', 'required' => ['label']],
+        'B' => ['$ref' => '#/components/schemas/Node', 'properties' => ['next' => ['$ref' => '#/components/schemas/A']]],
+        ...$node,
+    ]);
+    $spelled = $read([
+        'A' => ['allOf' => [['$ref' => '#/components/schemas/B'], ['required' => ['label']]]],
+        'B' => ['allOf' => [['$ref' => '#/components/schemas/Node'], ['properties' => ['next' => ['$ref' => '#/components/schemas/A']]]]],
+        ...$node,
+    ]);
+    $rules = RuleSetBuilder::for($beside[0])->rules;
+
+    expect($rules)->toEqual(RuleSetBuilder::for($spelled[0])->rules)
+        ->and($rules['next'])->toContain('required_array_keys:label')
+        ->and(siblingDtoClasses($beside))->toEqual(siblingDtoClasses($spelled))
+        ->and(siblingDtoClasses($beside)['AInputDto']['next'])->toBe('AInputDto');
+});
+
+// What an `allOf` written beside a `$ref` holds counts as what the keywords add, as the keywords themselves do. Without
+// it the wrapper has no name, a marker back at the alias finds no ancestor, and nothing below it is validated.
+it('names the wrapper of a $ref whose allOf sibling adds a property, and unrolls its recursion', function (): void {
+    $node = ['Node' => ['type' => 'object', 'x-max-depth' => 2, 'properties' => ['id' => ['type' => 'integer']]]];
+    $read = static function (array $alias) use ($node) {
+        $outcome = readSiblingDocument(
+            ['/nodes' => siblingPostPath(['$ref' => '#/components/schemas/Alias'])],
+            ['Alias' => $alias, ...$node],
+        );
+
+        expect($outcome->faults)->toBe([]);
+
+        return $outcome->operations;
+    };
+
+    $beside = $read(['$ref' => '#/components/schemas/Node', 'allOf' => [[
+        'properties' => ['next' => ['$ref' => '#/components/schemas/Alias']],
+    ]]]);
+    $spelled = $read(['allOf' => [
+        ['$ref' => '#/components/schemas/Node'],
+        ['properties' => ['next' => ['$ref' => '#/components/schemas/Alias']]],
+    ]]);
+
+    expect(RuleSetBuilder::for($beside[0])->rules)->toEqual(RuleSetBuilder::for($spelled[0])->rules)
+        ->and(RuleSetBuilder::for($beside[0])->rules)->toHaveKey('next.next.id')
+        ->and(siblingFieldOfBody($beside)->name)->toBe('Alias')
+        ->and(siblingDtoClasses($beside))->toEqual(siblingDtoClasses($spelled));
 });

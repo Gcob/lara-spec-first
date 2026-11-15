@@ -29,8 +29,13 @@ final readonly class Schema
      * @param  string|null  $name  the name the document gives this schema, and null for one written inline. A key of
      *                             `components.schemas`, in whichever file holds it, or the file name of a schema that
      *                             is a whole file — never derived from how a `$ref` spelled it, so splitting a
-     *                             specification across files renames nothing. What a generator calls the class it emits
-     *                             is its own decision; this is only what the author called the schema
+     *                             specification across files renames nothing. The wrapper the reading builds around a
+     *                             `$ref` with keywords beside it takes the name of the alias that wrote them only when
+     *                             those keywords add shape a DTO holds (`required`, `properties`, a type, `items`, an
+     *                             `enum`, or an `allOf` branch that adds one), and is unnamed otherwise: the schema it
+     *                             wraps keeps its own name, so a constraint beside a `$ref` renames no class. What a
+     *                             generator calls the class it emits is its own decision; this is only what the author
+     *                             called the schema
      * @param  string|null  $source  where the schema this one names is written, spelled the way every position is: a
      *                               bare JSON Pointer for the root document, and `path.yaml#/pointer` for another file.
      *                               Set exactly when `name` is, and null for a schema written inline, whose position is

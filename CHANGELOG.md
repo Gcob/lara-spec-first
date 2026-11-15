@@ -66,10 +66,11 @@ tags: [versions, conventions, planning]
   `enum` and `examples`. An `enum` behind a URL written by hand inside a local file, which only the parser follows,
   keeps the parser's value. A `$ref` there that points nowhere still stops the parser before this package reads
   anything.
-- **`spec:doctor` goes from exit `0` to exit `2` for a `deprecated`, a `default` or an `x-max-depth` written beside a
-  `$ref` in a 3.1 request.** They were dropped without a word and are now reported `Ignored`, at the position they are
-  written, like the same keywords anywhere else. An `x-max-depth` beside a `$ref` is never honored: a recursion reads
-  the depth of the schema it points back at, so the message says to write it on the recursive schema itself.
+- **`spec:doctor` goes from exit `0` to exit `2` for any `Ignored` keyword written beside a `$ref` in a 3.1 request**
+  (`deprecated`, `default`, `oneOf`, `anyOf`, `not`, a schema `additionalProperties`, `x-max-depth` and the rest of the
+  matrix's `Ignored` rows). They were dropped without a word and are now reported, at the position they are written,
+  like the same keywords anywhere else. An `x-max-depth` beside a `$ref` is never honored: a recursion reads the depth
+  of the schema it points back at, so the message says to write it on the recursive schema itself.
 - **Breaking: a JSON body refuses what it used to coerce, and Laravel 12.22 is the new floor.** A request body that is
   JSON and nothing else now validates an `integer`, a `number` and a `boolean` with Laravel's `integer:strict`,
   `numeric:strict` and `boolean:strict`, at every level. **A request that answered 200 now answers 422** for a

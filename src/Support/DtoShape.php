@@ -37,4 +37,28 @@ final readonly class DtoShape
             || $schema->items !== null
             || $schema->enum !== null;
     }
+
+    /**
+     * Whether the keywords written beside a `$ref` add anything a DTO is built from, counting what their own `allOf`
+     * branches add.
+     *
+     * Not {@see self::isAddedBy()} alone: `Alias: {$ref: Node, allOf: [{properties: {next: ...}}]}` adds a property
+     * through a branch, and a wrapper that took no name for it would be a schema no marker can find. The planner does
+     * not ask this of the wrapper of a one-branch `allOf`, whose one branch is the schema it wraps, and counting it
+     * there would give every such wrapper a class of its own.
+     */
+    public static function isAddedByKeywordsBeside(Schema $keywords): bool
+    {
+        if (self::isAddedBy($keywords)) {
+            return true;
+        }
+
+        foreach ($keywords->allOf as $branch) {
+            if (self::isAddedByKeywordsBeside($branch)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
