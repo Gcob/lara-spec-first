@@ -363,11 +363,12 @@ final readonly class OperationExtractor
         foreach ($this->listOf($body, 'content') as $mediaType => $media) {
             if ($media instanceof ParsedMediaType && $media->schema instanceof ParsedSchema) {
                 $mediaAt = $walk->child($contentAt, (string) $mediaType);
-                $content[(string) $mediaType] = $this->schema(
+                $content[(string) $mediaType] = $this->schemaAt(
                     $media->schema,
                     $strategy,
                     $walk,
-                    $walk->child($mediaAt, 'schema'),
+                    $mediaAt,
+                    'schema',
                 );
 
                 $contentTypes = $this->encodedContentTypes($walk, $mediaAt);
@@ -469,11 +470,12 @@ final readonly class OperationExtractor
 
             foreach ($this->listOf($response, 'content') as $mediaType => $media) {
                 if ($media instanceof ParsedMediaType && $media->schema instanceof ParsedSchema) {
-                    $content[(string) $mediaType] = $this->schema(
+                    $content[(string) $mediaType] = $this->schemaAt(
                         $media->schema,
                         $strategy,
                         $walk,
-                        $walk->child($walk->child($contentAt, (string) $mediaType), 'schema'),
+                        $walk->child($contentAt, (string) $mediaType),
+                        'schema',
                     );
                 }
             }
@@ -535,11 +537,12 @@ final readonly class OperationExtractor
                 $parameters[$name] = new QueryParameter(
                     $name,
                     $parameter->schema instanceof ParsedSchema
-                        ? $this->schema(
+                        ? $this->schemaAt(
                             $parameter->schema,
                             $strategy,
                             $walk,
-                            $walk->child($walk->child($listAt, (string) $index), 'schema'),
+                            $walk->child($listAt, (string) $index),
+                            'schema',
                         )
                         : new Schema,
                     $parameter->required === true,
@@ -577,6 +580,33 @@ final readonly class OperationExtractor
         $written = $node->$attribute ?? null;
 
         return is_array($written) ? $written : [];
+    }
+
+    /**
+     * One schema, entered through the key its parent writes it under.
+     *
+     * Every schema the extractor builds comes in here, so there is one place that holds, for each of them, the position
+     * where the author wrote it (a `$ref`, if there is one) before the references are followed to the position that
+     * holds its content. {@see self::schema()} reads the node from the second; the first is what a keyword written
+     * beside a `$ref` hangs off.
+     *
+     * @param  SchemaPosition  $parent  the position of the node whose key holds the schema, already resolved
+     * @param  array<string, array{0: string, 1: string|null}>  $open  see {@see self::schema()}
+     *
+     * @throws RejectedConstructException
+     * @throws InvalidDocumentException
+     */
+    private function schemaAt(
+        ParsedSchema $node,
+        VersionStrategy $strategy,
+        DocumentWalk $walk,
+        SchemaPosition $parent,
+        string|int $segment,
+        array $open = [],
+    ): Schema {
+        $chain = $walk->chain($walk->written($parent, $segment));
+
+        return $this->schema($node, $strategy, $walk, $chain[array_key_last($chain)], $open);
     }
 
     /**
@@ -693,7 +723,7 @@ final readonly class OperationExtractor
             // which would rename every property of every object schema.
             foreach ($keywords[$keyword] as $key => $child) {
                 $walked[$key] = $child instanceof ParsedSchema
-                    ? $this->schema($child, $strategy, $walk, $walk->child($keywordAt, $key), $open)
+                    ? $this->schemaAt($child, $strategy, $walk, $keywordAt, $key, $open)
                     : $child;
             }
 
@@ -701,13 +731,7 @@ final readonly class OperationExtractor
         }
 
         if (($keywords['items'] ?? null) instanceof ParsedSchema) {
-            $keywords['items'] = $this->schema(
-                $keywords['items'],
-                $strategy,
-                $walk,
-                $walk->child($position, 'items'),
-                $open
-            );
+            $keywords['items'] = $this->schemaAt($keywords['items'], $strategy, $walk, $position, 'items', $open);
         }
 
         $name = $walk->name($position);

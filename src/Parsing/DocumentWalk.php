@@ -73,11 +73,26 @@ final class DocumentWalk
      */
     public function root(): SchemaPosition
     {
-        return $this->resolve(new SchemaPosition($this->rootFile, ''));
+        return $this->content(new SchemaPosition($this->rootFile, ''));
     }
 
     /**
-     * One step down, into the key a resolved position holds.
+     * One step down, into the key a position holds, with no reference followed.
+     *
+     * This is where the author *wrote* the schema, which is the place a keyword beside a `$ref` is found:
+     * {@see child()} has already stepped past it by the time anyone could read it. The parent is a position that has
+     * been resolved, and the answer is not.
+     */
+    public function written(SchemaPosition $parent, string|int $segment): SchemaPosition
+    {
+        return new SchemaPosition(
+            $parent->file,
+            $parent->pointer.'/'.DocumentPointer::escape((string) $segment),
+        );
+    }
+
+    /**
+     * One step down, into the key a resolved position holds, then every reference followed.
      *
      * The step is taken first and the references are followed after, which is the order that makes a chain of aliases
      * collapse to the place the schema is really written: `#/components/schemas/Alias` pointing at `NewUser` gives back
@@ -85,10 +100,43 @@ final class DocumentWalk
      */
     public function child(SchemaPosition $parent, string|int $segment): SchemaPosition
     {
-        return $this->resolve(new SchemaPosition(
-            $parent->file,
-            $parent->pointer.'/'.DocumentPointer::escape((string) $segment),
-        ));
+        return $this->content($this->written($parent, $segment));
+    }
+
+    /**
+     * Every position an alias chain passes through, starting at the one written and ending at the one that holds the
+     * content.
+     *
+     * A position that writes no `$ref` is a chain of one. Each hop is the place a `$ref` was written, in the file that
+     * wrote it, so a hop's own keywords can be read where the author put them, and a relative path is resolved against
+     * the right directory at every step.
+     *
+     * The loop keeps its own visited set even though the guards have already refused pure cycles: those run on the root
+     * document alone, and a chain that closes across files is out of their reach by their own admission. An
+     * unterminated walk here would be a hang rather than a message, which is not a trade worth making for four lines. A
+     * chain that closes ends at the last position it had not seen, so no position is listed twice.
+     *
+     * @return non-empty-list<SchemaPosition>
+     */
+    public function chain(SchemaPosition $position): array
+    {
+        $seen = [];
+        $chain = [];
+
+        while (! isset($seen[$position->key()])) {
+            $seen[$position->key()] = true;
+            $chain[] = $position;
+
+            $node = $this->rawAt($position);
+
+            if ($node === null || ! isset($node['$ref']) || ! is_string($node['$ref'])) {
+                break;
+            }
+
+            $position = $this->follow($position, $node['$ref']);
+        }
+
+        return $chain;
     }
 
     /**
@@ -162,29 +210,13 @@ final class DocumentWalk
     }
 
     /**
-     * Follow references from a position until one lands somewhere that holds content.
-     *
-     * The loop keeps its own visited set even though the guards have already refused pure cycles: those run on the root
-     * document alone, and a chain that closes across files is out of their reach by their own admission. An
-     * unterminated walk here would be a hang rather than a message, which is not a trade worth making for four lines.
+     * The position at the end of the chain that starts at a position: the one that holds content.
      */
-    private function resolve(SchemaPosition $position): SchemaPosition
+    private function content(SchemaPosition $position): SchemaPosition
     {
-        $seen = [];
+        $chain = $this->chain($position);
 
-        while (! isset($seen[$position->key()])) {
-            $seen[$position->key()] = true;
-
-            $node = $this->rawAt($position);
-
-            if ($node === null || ! isset($node['$ref']) || ! is_string($node['$ref'])) {
-                return $position;
-            }
-
-            $position = $this->follow($position, $node['$ref']);
-        }
-
-        return $position;
+        return $chain[array_key_last($chain)];
     }
 
     /**

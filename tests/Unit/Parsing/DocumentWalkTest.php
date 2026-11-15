@@ -168,3 +168,100 @@ it('stops rather than looping on an alias chain that closes on itself', function
         rmdir($directory);
     }
 });
+
+/**
+ * Where an operation of that fixture writes its body schema: the step taken, and no reference followed.
+ */
+function writtenBodyOf(DocumentWalk $walk, string $path): SchemaPosition
+{
+    $operation = $walk->child($walk->child($walk->child($walk->root(), 'paths'), $path), 'post');
+    $media = $walk->child($walk->child($walk->child($operation, 'requestBody'), 'content'), 'application/json');
+
+    return $walk->written($media, 'schema');
+}
+
+/**
+ * The pointers a chain passes through, in order, each spelled as a message spells it.
+ *
+ * @param  list<SchemaPosition>  $chain
+ * @return list<string>
+ */
+function pointersOf(DocumentWalk $walk, array $chain): array
+{
+    return array_map($walk->pointer(...), $chain);
+}
+
+// Scope 1 of card #118: a keyword written beside a `$ref` lives at the written
+// position, which `child()` has already stepped past by the time anyone could
+// read it. These cases pin the two halves `child()` is made of.
+it('steps into a key without following the reference written there', function (): void {
+    $walk = namesWalk();
+    $written = writtenBodyOf($walk, '/local');
+
+    // `child()` would answer `#/components/schemas/LocalPet`.
+    expect($walk->pointer($written))
+        ->toBe('#/paths/~1local/post/requestBody/content/application~1json/schema')
+        ->and($walk->rawAt($written))->toBe(['$ref' => '#/components/schemas/LocalPet']);
+});
+
+it('lists every position an alias chain passes through, the content last', function (): void {
+    $walk = namesWalk();
+    $chain = $walk->chain(writtenBodyOf($walk, '/alias'));
+
+    expect(pointersOf($walk, $chain))->toBe([
+        '#/paths/~1alias/post/requestBody/content/application~1json/schema',
+        '#/components/schemas/AliasOfPet',
+        'other.yaml#/components/schemas/Pet',
+    ])
+        ->and($chain[array_key_last($chain)])->toEqual(bodyPositionOf($walk, '/alias'));
+});
+
+it('lists only the written position for a schema with no reference', function (): void {
+    $walk = namesWalk();
+    $written = writtenBodyOf($walk, '/inline');
+
+    expect($walk->chain($written))->toEqual([$written]);
+});
+
+it('ends the list rather than looping on a chain that closes on itself', function (): void {
+    $directory = sys_get_temp_dir().'/lsf-walk-'.bin2hex(random_bytes(6));
+    mkdir($directory);
+
+    file_put_contents($directory.'/main.yaml', Yaml::dump([
+        'components' => ['schemas' => ['A' => ['$ref' => './other.yaml#/components/schemas/B']]],
+    ], 10));
+    file_put_contents($directory.'/other.yaml', Yaml::dump([
+        'components' => ['schemas' => ['B' => ['$ref' => './main.yaml#/components/schemas/A']]],
+    ], 10));
+
+    try {
+        /** @var array<string, mixed> $document */
+        $document = Yaml::parseFile($directory.'/main.yaml');
+        $walk = new DocumentWalk($directory.'/main.yaml', $document);
+
+        $schemas = $walk->child($walk->child($walk->root(), 'components'), 'schemas');
+
+        // Each hop once: the second visit to `A` closes the loop and is not a hop of its own.
+        expect(pointersOf($walk, $walk->chain($walk->written($schemas, 'A'))))
+            ->toBe(['#/components/schemas/A', 'other.yaml#/components/schemas/B']);
+    } finally {
+        unlink($directory.'/main.yaml');
+        unlink($directory.'/other.yaml');
+        rmdir($directory);
+    }
+});
+
+it('follows a chain across files, each hop in the file that wrote it', function (): void {
+    $walk = namesWalk();
+    $wrapper = bodyPositionOf($walk, '/from-a-subdirectory');
+    $chain = $walk->chain($walk->written($walk->child($wrapper, 'properties'), 'pet'));
+
+    // `../other.yaml` is written in sub/wrapper.yaml: the first hop is in that
+    // file, and only the second is in the file the reference names.
+    expect(array_map(fn (SchemaPosition $position): string => basename($position->file), $chain))
+        ->toBe(['wrapper.yaml', 'other.yaml'])
+        ->and(pointersOf($walk, $chain))->toBe([
+            'sub/wrapper.yaml#/components/schemas/Wrapper/properties/pet',
+            'other.yaml#/components/schemas/Pet',
+        ]);
+});
