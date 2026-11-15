@@ -34,10 +34,11 @@ changes.
 
 ### Upgrading from 0.1
 
-Update the package, run `php artisan spec:build`, then `php artisan spec:doctor`. Every item below says what you see and
-what you change. A refusal stops the whole build and leaves the generated tree untouched, even when one operation is at
-fault. `spec:doctor` reports every refusal too: `Routing outcome` and `Support findings` give exit `2`, a document fault
-gives exit `1`.
+A `^0.1` constraint does not let `composer update` move to `0.2`, so run `composer require gcob/lara-spec-first:^0.2`
+(on Laravel 12.0 to 12.21, [upgrade Laravel first](#the-support-range)), then `php artisan spec:build`, then
+`php artisan spec:doctor`. Every item below says what you see and what you change. A refusal stops the whole build and
+leaves the generated tree untouched, even when one operation is at fault. `spec:doctor` reports every refusal too:
+`Routing outcome` and `Support findings` give exit `2`, a document fault gives exit `1`.
 
 #### A name clash
 
@@ -149,8 +150,8 @@ If a CI step runs the doctor, it is the step that changes.
 
 - **A generated route validates its request.** An invalid body or `query` is refused before the controller, where
   `0.1.0` passed everything through. Laravel answers a failed `FormRequest` with a `422` and the errors as JSON when the
-  client asks for JSON (`Accept: application/json`), and with a `302` redirect back, errors in the session, to any other
-  client
+  client asks for JSON (`Accept: application/json`), and with a `302` redirect back, without the errors (the generated
+  routes run no session middleware), to any other client
   ([how to make every refusal a JSON `422`](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   The new refusals are the types and constraints of the mapping table; a required key as `present` (`required` only for
   an integer, a number or a boolean); a `PATCH` or an optional body with every key optional; a file part as `file` with
@@ -193,7 +194,7 @@ If a CI step runs the doctor, it is the step that changes.
   the build does not translate is named per field in the generated file's own findings rather than dropped. An operation
   with no body and no `query` parameter gets no class, and the build says how many. **A request that fails validation is
   refused before the controller**: Laravel answers `422` with the errors as JSON to a client that asks for JSON, and
-  redirects any other client back with the errors in the session
+  redirects any other client back, without the errors, since the generated routes run no session middleware
   ([what a client gets](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   The build's "read a constraint they do not enforce" warning counts the requests that read something and enforce
   nothing for it, and one case that is only a gap, a body that is JSON and a form at once. A finding that says the

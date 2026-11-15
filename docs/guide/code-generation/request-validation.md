@@ -31,8 +31,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 > - One rule set per operation, derived from the request body and the query parameters. The path's own parameters stay
 >   the router's.
 > - **Only a client that asks for JSON gets the `422`** (`Accept: application/json`, or an XHR request). Any other
->   client gets Laravel's default: a redirect back, with the errors in the session. An application that wants a JSON
->   `422` for every refusal says so in [its exception handling](#what-a-client-gets-when-a-request-is-refused).
+>   client gets a redirect back, and its errors are lost. An application that wants a JSON `422` for every refusal says
+>   so in [its exception handling](#what-a-client-gets-when-a-request-is-refused).
 > - A body field is read from the body and a `query` parameter from the query string, never from each other: the request
 >   overrides `validationData()` so the URL cannot satisfy a body field, nor the body a query parameter.
 > - `PATCH` is `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema
@@ -95,15 +95,20 @@ whose body is not an object, has no `dto()`: its `query` parameters are read wit
 **A generated request is a Laravel `FormRequest`, so a refusal is answered the way Laravel answers one, and this package
 changes nothing about it.** What the client gets depends on what it asks for:
 
-| The client                                                                              | What a failed validation answers                                          |
-| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Asks for JSON: `Accept: application/json` (or `application/problem+json`) comes first   | `422`, and the errors as JSON                                             |
-| An XHR request: `X-Requested-With: XMLHttpRequest`, and an `Accept` that takes any type | `422`, and the errors as JSON                                             |
-| Any other: a `curl` with no `Accept`, an HTML form, a browser, an HTTP client's default | A `302` redirect back to the previous URL, with the errors in the session |
+| The client                                                                              | What a failed validation answers                                   |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Asks for JSON: `Accept: application/json` (or `application/problem+json`) comes first   | `422`, and the errors as JSON                                      |
+| An XHR request: `X-Requested-With: XMLHttpRequest`, and an `Accept` that takes any type | `422`, and the errors as JSON                                      |
+| Any other: a `curl` with no `Accept`, an HTML form, a browser, an HTTP client's default | A `302` redirect back to the previous URL, and the errors are lost |
 
 **Only a client asking for JSON gets the `422`.** A client that sends `*/*` or nothing is redirected, and a redirect
 back from a request with no previous page lands on the root. In a test, `postJson()` gets the `422` and `post()` gets
 the `302`.
+
+**The redirect carries no errors, because the generated routes run no session middleware.** Laravel flashes the errors
+into the session, and nothing on these routes starts or saves one, so the client lands on the previous page with nothing
+to show. An HTML form that needs its errors back has to run on a route that starts the session, which is the
+application's to arrange.
 
 **An API usually wants the `422` for everybody, and that is the application's to decide**, since the generated request
 is [`final`](#the-generated-request-is-final) and nothing generated carries a global setting. Laravel has two ways, both
