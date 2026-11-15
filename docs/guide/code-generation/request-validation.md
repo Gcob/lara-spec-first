@@ -792,7 +792,9 @@ intersection, so a constraint belongs to the level of the schema that wrote it:
 - **What is written beside a marker applies at every level that marker is crossed at.**
   `next: allOf: [Node, {required: [label]}]` asks for `label` on `next`, and on `next.next`, down to the depth. The
   unrolled level is the ancestor with that constraint beside it, which is also what the contract says: every `next` is
-  that intersection.
+  that intersection. At 3.1, `next: {$ref: Node, required: [label]}` is the same field, since the keywords written
+  beside a `$ref` are a branch of that `allOf`
+  ([how they are read](../openapi-support.md#keywords-written-beside-a-ref)).
 - **`x-max-depth` written in a component's own inline `allOf` branch is the component's**, since the branch is part of
   it. One written on a component that is only included stays with that component.
 
@@ -993,8 +995,11 @@ whether or not a `$ref` was involved, because the same `$ref: User` used in a re
 give the two directions one name. **The name is the schema's and never the `$ref`'s or the file's**:
 `./other.yaml#/components/schemas/NewUser` is the same `NewUserInputDto`, so reorganizing a specification into files
 renames nothing, and two different schemas that give one class are a build error naming the class and where each is
-written ([what it says](./dto-anatomy.md#one-class-three-members)). The exact spellings are public API surface under
-[rule 4](../openapi-support.md#the-four-rules) and belong to
+written ([what it says](./dto-anatomy.md#one-class-three-members)). **A 3.1 `$ref` with keywords beside it keeps the
+class of the schema it names when they add no shape a DTO holds**: `Alias: {$ref: Node, maxLength: 3}` is
+`NodeInputDto`. One that writes `required`, `properties`, a type, `items`, `enum` or `additionalProperties` is a schema
+of its own, and gets a class after the alias when the alias has a name, and after the operation or the field when it has
+not. The exact spellings are public API surface under [rule 4](../openapi-support.md#the-four-rules) and belong to
 [the name freeze](../../../README.md#before-10-freeze-what-a-major-would-cost).
 
 ## Nothing to validate, no class

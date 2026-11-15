@@ -68,4 +68,19 @@ interface VersionStrategy
      * @see docs/guide/openapi-support.md — "The normal form a schema takes"
      */
     public function normalizeSchema(array $keywords, ?string $name = null, ?string $source = null, array $ignored = []): Schema;
+
+    /**
+     * The keywords a schema node writes beside its `$ref`, which apply together with the schema it points at.
+     *
+     * JSON Schema 2020-12 reads `{$ref: Code, maxLength: 3}` as `Code` and a ceiling of three, and OpenAPI 3.1 adopted
+     * it. 3.0 says the opposite: everything beside a `$ref` is ignored. So the version decides what is read, which is
+     * the kind of disagreement this seam is for, and the answer is the keys themselves: the walk builds them as a
+     * schema of their own.
+     *
+     * @param  array<array-key, mixed>  $node  a schema node as the document wrote it, a `$ref` among its keys
+     * @return array<array-key, mixed> nothing at 3.0, and every key but `$ref` at 3.1
+     *
+     * @see docs/guide/openapi-support.md — "Schemas"
+     */
+    public function referenceSiblings(array $node): array;
 }

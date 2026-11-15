@@ -10,6 +10,7 @@ use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
+use Gcob\LaraSpecFirst\Support\DtoShape;
 use Illuminate\Support\Str;
 
 /**
@@ -570,15 +571,7 @@ final class InputDtoPlanner
             return [$written->name, $written->source];
         }
 
-        $addsShape = $written->properties !== []
-            || $written->required !== []
-            || $written->dependentRequired !== []
-            || $written->additionalProperties !== null
-            || $written->types !== []
-            || $written->items !== null
-            || $written->enum !== null;
-
-        return count($written->allOf) === 1 && $merged->name !== null && ! $addsShape
+        return count($written->allOf) === 1 && $merged->name !== null && ! DtoShape::isAddedBy($written)
             ? [$merged->name, $merged->source]
             : [null, null];
     }

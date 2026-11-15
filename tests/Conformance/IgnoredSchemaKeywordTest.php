@@ -254,3 +254,84 @@ it('emits the same files with and without the keywords the matrix ignores', func
         ->and(array_keys($with['emitted']))->toContain('Data/CreateUserAddressInputDto.php')
         ->and($with['emitted'])->toBe($without['emitted']);
 });
+
+/**
+ * Every file the build emits for a contract that reaches one `Address` twice: as the body of its own operation, and as
+ * the `address` of another, where it is written as a `$ref` with or without `Ignored` keywords beside it.
+ *
+ * @return array{emitted: array<string, string>, ignored: list<string>}
+ */
+function emitForARefWithKeywordsBeside(bool $withIgnored): array
+{
+    $beside = $withIgnored
+        ? ['deprecated' => true, 'default' => ['street' => 'Main'], 'oneOf' => [['type' => 'object']], 'x-max-depth' => 3]
+        : [];
+    $operation = static fn (string $id, array $body): array => ['post' => [
+        'operationId' => $id,
+        'requestBody' => ['content' => ['application/json' => ['schema' => $body]]],
+        'responses' => ['201' => ['description' => 'Created']],
+    ]];
+
+    $path = sys_get_temp_dir().'/lsf-ref-beside-'.bin2hex(random_bytes(6)).'.yaml';
+    file_put_contents($path, Yaml::dump([
+        'openapi' => '3.1.0',
+        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
+        'paths' => [
+            '/users' => $operation('createUser', ['type' => 'object', 'properties' => [
+                'address' => ['$ref' => '#/components/schemas/Address', ...$beside],
+            ]]),
+            '/addresses' => $operation('createAddress', ['$ref' => '#/components/schemas/Address']),
+        ],
+        'components' => ['schemas' => ['Address' => [
+            'type' => 'object',
+            'required' => ['street'],
+            'properties' => ['street' => ['type' => 'string', 'minLength' => 2]],
+        ]]],
+    ], 12));
+
+    try {
+        $operations = extractDocumentAt($path);
+    } finally {
+        unlink($path);
+    }
+
+    $planned = plannedRequests($operations);
+    $emitted = [];
+
+    foreach ($planned['requests'] as $request) {
+        $file = (new FormRequestEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($request);
+        $emitted[$file->relativePath] = $file->contents;
+    }
+
+    foreach ($planned['plan']->dtos as $dto) {
+        $file = (new InputDtoEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($dto);
+        $emitted[$file->relativePath] = $file->contents;
+    }
+
+    $ignored = [];
+    $walk = static function (Schema $schema) use (&$walk, &$ignored): void {
+        array_push($ignored, ...array_values($schema->ignored));
+        array_map($walk, [...array_values($schema->properties), ...$schema->allOf]);
+    };
+
+    foreach ($operations as $operation) {
+        $operation->requestBody !== null && array_map($walk, $operation->requestBody->content);
+    }
+
+    return ['emitted' => $emitted, 'ignored' => $ignored];
+}
+
+// Class seven: the same document written with and without the keywords the matrix ignores beside a `$ref`, which 3.1
+// reads and 3.0 never did. They are carried on the schema as positions and nothing else, so what is generated does not
+// change, and one `Address` is still one class however many keywords are written beside the `$ref` that reaches it.
+it('records a keyword beside a $ref the same way in a document with and without ignored keywords', function (): void {
+    $without = emitForARefWithKeywordsBeside(false);
+    $with = emitForARefWithKeywordsBeside(true);
+    $at = '#/paths/~1users/post/requestBody/content/application~1json/schema/properties/address/';
+
+    // The case would pass for the wrong reason if the keywords never reached the contract.
+    expect($without['ignored'])->toBe([])
+        ->and($with['ignored'])->toBe([$at.'default', $at.'deprecated', $at.'oneOf', $at.'x-max-depth'])
+        ->and(array_keys($with['emitted']))->toContain('Data/AddressInputDto.php')
+        ->and($with['emitted'])->toBe($without['emitted']);
+});

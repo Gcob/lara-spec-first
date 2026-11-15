@@ -1,0 +1,5 @@
+type: object
+properties:
+  city:
+    type: string
+    maxLength: 9

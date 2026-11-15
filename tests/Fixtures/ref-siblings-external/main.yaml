@@ -1,0 +1,19 @@
+# A schema written in another file that writes a `$ref` beside its own `$ref`, and inside the keywords beside it a
+# relative `$ref` of its own. Each is resolved against the file that wrote it: `schemas/thing.yaml` names
+# `./people/user.yaml`, which is `schemas/people/user.yaml` and not a file beside this one.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/thing.yaml'
+      responses:
+        '201':
+          description: Created

@@ -186,14 +186,23 @@ final readonly class SupportMatrixCheck
                     self::SECTION,
                     SupportLevel::Ignored,
                     $positions[0],
-                    sprintf(
-                        '%s writes `%s` at %s. This package reads past it and the generated request enforces nothing '.
-                        'for it. See docs/guide/openapi-support.md, "Schemas". This is a fact about this package, '.
-                        'not a defect in your contract.',
-                        $operation->label(),
-                        $keyword,
-                        implode(', ', $positions),
-                    ),
+                    $keyword === 'x-max-depth'
+                        ? sprintf(
+                            '%s writes `x-max-depth` at %s, beside a `$ref`. The depth of a recursive schema is read '.
+                            'from the schema a recursion points back at, so one written beside the `$ref` is read by '.
+                            'nothing: write it on the recursive schema itself. See docs/guide/openapi-support.md, '.
+                            '"Schemas". This is a fact about this package, not a defect in your contract.',
+                            $operation->label(),
+                            implode(', ', $positions),
+                        )
+                        : sprintf(
+                            '%s writes `%s` at %s. This package reads past it and the generated request enforces nothing '.
+                            'for it. See docs/guide/openapi-support.md, "Schemas". This is a fact about this package, '.
+                            'not a defect in your contract.',
+                            $operation->label(),
+                            $keyword,
+                            implode(', ', $positions),
+                        ),
                 );
             }
 

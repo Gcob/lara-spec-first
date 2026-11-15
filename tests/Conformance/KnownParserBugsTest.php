@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use cebe\openapi\json\JsonPointer;
+use cebe\openapi\ReferenceContext;
+use cebe\openapi\spec\OpenApi;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
 use Symfony\Component\Process\Process;
@@ -102,4 +105,43 @@ it('no longer takes the process down on a defect that once did', function (strin
 })->with([
     'a $ref pointing into an example value, which once died in Reference::resolve()' => ['ref-inside-example.yaml'],
     'a $ref pointing into an Example Object\'s value, which died the same way' => ['example-object-value.yaml'],
+]);
+
+// One more, and the one the reading of a 3.1 schema is built around: the parser keeps `$ref`, `summary` and
+// `description` of any node that writes a `$ref` and drops the rest, with no error and no trace. At 3.0 that is what the
+// specification says. At 3.1 the keywords beside a `$ref` apply together with the referenced schema, so a constraint
+// written there is a constraint the parser threw away, and the only copy left is in the raw document, which is where
+// `OperationExtractor` reads it from. The row stays for the day a parser keeps them: this would go red, and the
+// extractor could stop reading them twice.
+it('drops every keyword written beside a $ref', function (string $keyword, mixed $value): void {
+    $parsed = new OpenApi([
+        'openapi' => '3.1.0',
+        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
+        'paths' => [],
+        'components' => ['schemas' => [
+            'Code' => ['type' => 'string'],
+            'Holder' => ['type' => 'object', 'properties' => [
+                'field' => ['$ref' => '#/components/schemas/Code', $keyword => $value],
+            ]],
+        ]],
+    ]);
+    $parsed->setDocumentContext($parsed, new JsonPointer(''));
+    $parsed->resolveReferences(new ReferenceContext($parsed, __DIR__.'/spec.yaml'));
+
+    $field = $parsed->components?->schemas['Holder']->properties['field'] ?? null;
+
+    expect((array) $field?->getSerializableData())->toBe(['type' => 'string']);
+})->with([
+    'maxLength' => ['maxLength', 3],
+    'pattern' => ['pattern', '^[A-Z]+$'],
+    'minimum' => ['minimum', 1],
+    'enum' => ['enum', ['a', 'b']],
+    'required' => ['required', ['city']],
+    'properties' => ['properties', ['extra' => ['type' => 'string']]],
+    'items' => ['items', ['type' => 'string']],
+    'allOf' => ['allOf', [['required' => ['id']]]],
+    'readOnly' => ['readOnly', true],
+    'deprecated' => ['deprecated', true],
+    'default' => ['default', 'ABC'],
+    'x-max-depth' => ['x-max-depth', 5],
 ]);

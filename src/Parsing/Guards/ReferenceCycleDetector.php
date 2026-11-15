@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Parsing\Guards;
 use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\CyclicReferenceException;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
+use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategy;
 
 /**
  * Rejects `$ref` chains that never reach content.
@@ -66,11 +67,14 @@ final readonly class ReferenceCycleDetector
      * of raising.
      *
      * @param  array<string, mixed>  $document
+     * @param  VersionStrategy|null  $strategy  the version the document declares, which decides whether the keywords
+     *                                          written beside a `$ref` are read, and so whether a `$ref` among them is
+     *                                          an edge. Without one they are not walked
      * @return list<CyclicReferenceException>
      */
-    public function findCycles(array $document): array
+    public function findCycles(array $document, ?VersionStrategy $strategy = null): array
     {
-        $collected = $this->collect($document, '');
+        $collected = $this->collect($document, '', $strategy);
         $references = self::followTargetsIntoData($collected, $document);
 
         // Every position the walk above had to reach *through* data rather than
@@ -107,20 +111,25 @@ final readonly class ReferenceCycleDetector
      * a later concern. A cycle that only closes across files is therefore out of reach here, and that limit is
      * deliberate rather than forgotten.
      *
+     * **What sits beside a `$ref` is walked at 3.1 and not at 3.0.** A Reference Object carries `summary` and
+     * `description` there, and neither can hold a `$ref`, but a Schema Object at 3.1 carries keywords, and one of them
+     * can: `{$ref: A, properties: {p: {$ref: B}}}` is read, so `p` is a reference like any other and a chain closing
+     * through it never reaches content. At 3.0 the same keys are ignored, and nothing reads what they hold.
+     *
      * @param  array<array-key, mixed>  $node
      * @return array<string, string> pointer of the reference => pointer it targets
      */
-    private function collect(array $node, string $pointer): array
+    private function collect(array $node, string $pointer, ?VersionStrategy $strategy): array
     {
-        if (isset($node['$ref']) && is_string($node['$ref'])) {
-            // A Reference Object carries nothing else worth walking: 3.1 allows
-            // `summary` and `description` beside it, and neither can hold a ref.
-            return str_starts_with($node['$ref'], '#/')
-                ? ['#'.$pointer => '#'.DocumentPointer::fragment(substr($node['$ref'], 1))]
-                : [];
-        }
-
         $references = [];
+
+        if (isset($node['$ref']) && is_string($node['$ref'])) {
+            if (str_starts_with($node['$ref'], '#/')) {
+                $references['#'.$pointer] = '#'.DocumentPointer::fragment(substr($node['$ref'], 1));
+            }
+
+            $node = $strategy?->referenceSiblings($node) ?? [];
+        }
 
         foreach ($node as $key => $child) {
             if (! is_array($child) || self::isOpaque($key, $child)) {
@@ -130,8 +139,8 @@ final readonly class ReferenceCycleDetector
             $childPointer = $pointer.'/'.self::escape((string) $key);
 
             $references += $key === 'examples'
-                ? $this->collectExampleObjects($child, $childPointer)
-                : $this->collect($child, $childPointer);
+                ? $this->collectExampleObjects($child, $childPointer, $strategy)
+                : $this->collect($child, $childPointer, $strategy);
         }
 
         return $references;
@@ -152,7 +161,7 @@ final readonly class ReferenceCycleDetector
      * @param  array<array-key, mixed>  $examples
      * @return array<string, string>
      */
-    private function collectExampleObjects(array $examples, string $pointer): array
+    private function collectExampleObjects(array $examples, string $pointer, ?VersionStrategy $strategy): array
     {
         $references = [];
 
@@ -163,7 +172,7 @@ final readonly class ReferenceCycleDetector
 
             unset($example['value']);
 
-            $references += $this->collect($example, $pointer.'/'.self::escape((string) $name));
+            $references += $this->collect($example, $pointer.'/'.self::escape((string) $name), $strategy);
         }
 
         return $references;

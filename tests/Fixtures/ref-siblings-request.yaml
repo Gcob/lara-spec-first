@@ -1,0 +1,35 @@
+# A constraint written beside a `$ref` at 3.1: `code` is `Code` and a ceiling of three, `amount` is `Count` and a floor
+# of one, and `label` is `Code` and nothing a request enforces (a `description`).
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  $ref: '#/components/schemas/Code'
+                  maxLength: 3
+                amount:
+                  $ref: '#/components/schemas/Count'
+                  minimum: 1
+                label:
+                  $ref: '#/components/schemas/Code'
+                  description: A label
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Code:
+      type: string
+    Count:
+      type: integer

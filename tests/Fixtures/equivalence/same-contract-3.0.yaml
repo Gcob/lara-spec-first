@@ -105,8 +105,15 @@ components:
           items:
             type: string
           minItems: 1
+        code:
+          # 3.0 ignores a keyword written beside a `$ref`, so the ceiling is spelled as an `allOf` of the one branch.
+          allOf:
+            - $ref: '#/components/schemas/Code'
+          maxLength: 3
       # 3.0 spells one example with the singular key.
       example:
         name: Ada
       required:
         - name
+    Code:
+      type: string

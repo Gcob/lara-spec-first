@@ -346,6 +346,12 @@ components:
                 slug:
                     type: string
                     pattern: '^[a-z0-9-]+$'
+                # A keyword beside a `$ref` applies together with the schema it names, at 3.1: `shortCode` is
+                # `ShortCode` and a ceiling of six, so the generated request carries `max:6` for it. At 3.0 the
+                # specification ignores everything written beside a `$ref`, and so would this package.
+                shortCode:
+                    $ref: '#/components/schemas/ShortCode'
+                    maxLength: 6
                 # Reported: `\d` reads as a Unicode class in PCRE under `u`.
                 isbn:
                     type: string
@@ -369,6 +375,9 @@ components:
                         email:
                             type: string
                             format: email
+
+        ShortCode:
+            type: string
 
         # Recursive, and stating how deep: the request validates `replies` two
         # levels down and refuses a third.

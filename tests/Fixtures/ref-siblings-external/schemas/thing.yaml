@@ -1,0 +1,4 @@
+$ref: './base.yaml'
+properties:
+  owner:
+    $ref: './people/user.yaml'

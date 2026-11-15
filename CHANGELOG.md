@@ -24,6 +24,53 @@ tags: [versions, conventions, planning]
 
 ### Changed
 
+- **A keyword written beside a `$ref` in a 3.1 schema is now read, and a request becomes stricter.** JSON Schema 2020-12
+  applies `{$ref: Code, maxLength: 3}` as `Code` and a ceiling of three, and the parser drops everything beside a `$ref`
+  without a word, so the generated request used to ignore the ceiling. It is read from the raw document now, at every
+  hop of an alias chain, and the field is one `allOf` wrapper (the referenced schema, then what is written beside the
+  `$ref`). **A request that answered 200 may now answer 422**: a code of four characters beside that ceiling, a missing
+  key a `required` beside the `$ref` asks for. A 3.0 document is unchanged, since its specification ignores them. A
+  keyword that adds nothing a generator reads (`description`, `title`, `deprecated`, `default`) leaves the field as the
+  schema it names, and a DTO keeps that schema's class: `Alias: {$ref: Node, maxLength: 3}` is still `NodeInputDto`, and
+  one that writes a `required` or `properties` is a class of its own. **The contract's response schemas are read the
+  same way**, since one schema reads one way wherever it is reached. No response DTO exists yet, so nothing generated
+  from a response changes.
+  [Keywords written beside a `$ref`](./docs/guide/openapi-support.md#keywords-written-beside-a-ref).
+- **A `$ref` written inside the keywords beside a `$ref` is followed.**
+  `{$ref: Base, properties: {owner: {$ref: User}}}`, `items` and an `allOf` branch included, at any depth: `owner` has
+  the rules of `User`, and so does what `User` writes below it. A relative path is resolved against the file that wrote
+  it, and a recursion that closes through the keywords ends in a recursion marker the first time round.
+- **Breaking: some documents that built before are now refused, because their keywords beside a `$ref` are read.** Each
+  is refused for the operation that reaches it, except the last two, which refuse the document as the same fault does
+  anywhere else. Only the first is limited to a request schema: the others also stop an operation whose only such
+  construct is in a response schema, which is read the same way.
+    - A keyword that contradicts the schema it sits beside (`{$ref: User, additionalProperties: false}` over a `User`
+      that declares properties, `{$ref: Code, type: integer}` over a string, a second `pattern` or `format` where the
+      schema already has one). It is refused when the request is built, as two `allOf` branches that disagree are.
+    - An `$id` or a dynamic reference (`$dynamicRef`, `$dynamicAnchor`, `$recursiveRef`, `$recursiveAnchor`) beside a
+      `$ref`.
+    - A keyword the parser hands back raw (`prefixItems`, `if`, and the other nine) that holds a `$ref`, beside a
+      `$ref`.
+    - A keyword the parser cannot build a schema from (`{$ref: Code, items: "x"}`), which is a fault in the document.
+    - A `$ref` written inside the keywords beside a `$ref` whose target is not there, or whose chain comes back to a
+      reference it already followed through other files (the cycle check reads one document, not several). Never read as
+      an empty schema.
+    - A schema that such a `$ref` points at, which the parser cannot build (`items: "x"` in the file it names).
+    - An `allOf` written as a mapping (`allOf: {$ref: X}`), on any schema and at 3.0 too. The parser used to read it as
+      a reference to a schema and hand back no branches, so the composition vanished unsaid.
+    - A `$ref` aimed into a `$defs`, or a chain of references that never reaches content, written inside the keywords
+      beside a `$ref` at 3.1. They are refused as they are anywhere else, and the build stops on them.
+- **An `enum`, an `example` or a `const` that writes a `$ref` key is read as data, where the raw document reaches the
+  schema.** `enum: [{$ref: "#/components/schemas/Code"}]` is a list holding that object, beside a `$ref` as on a schema
+  of its own. The parser read it as a reference and resolved it into a schema, so a schema leaked into the contract's
+  `enum` and `examples`. An `enum` behind a URL written by hand inside a local file, which only the parser follows,
+  keeps the parser's value. A `$ref` there that points nowhere still stops the parser before this package reads
+  anything.
+- **`spec:doctor` goes from exit `0` to exit `2` for any `Ignored` keyword written beside a `$ref` in a 3.1 request**
+  (`deprecated`, `default`, `oneOf`, `anyOf`, `not`, a schema `additionalProperties`, `x-max-depth` and the rest of the
+  matrix's `Ignored` rows). They were dropped without a word and are now reported, at the position they are written,
+  like the same keywords anywhere else. An `x-max-depth` beside a `$ref` is never honored: a recursion reads the depth
+  of the schema it points back at, so the message says to write it on the recursive schema itself.
 - **Breaking: a JSON body refuses what it used to coerce, and Laravel 12.22 is the new floor.** A request body that is
   JSON and nothing else now validates an `integer`, a `number` and a `boolean` with Laravel's `integer:strict`,
   `numeric:strict` and `boolean:strict`, at every level. **A request that answered 200 now answers 422** for a

@@ -941,3 +941,27 @@ it('says why a required key with a dot is optional', function (): void {
     expect(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))
         ->toContain('`user.name` is required by the schema, but its name has a `.` or a `,`');
 });
+
+// A keyword written beside a `$ref` at 3.1 is read as a wrapper around the schema it names. What it adds decides the
+// class: nothing a DTO holds, and the body is still `Node`, with the one class every other way of reaching `Node` has.
+// `ref-siblings-dto.yaml` writes `Marked` as `Node` and a `writeOnly`.
+it('keeps the class of the referenced schema when the siblings add no shape', function (): void {
+    $plan = planDtos([extractFixture('ref-siblings-dto.yaml')[0]]);
+
+    expect(dtoNames($plan->dtos))->toBe(['NodeInputDto', 'NodePartialInputDto'])
+        ->and(array_map(
+            static fn ($property): string => $property->name,
+            dtoNamed($plan, 'NodeInputDto')->properties,
+        ))->toBe(['name', 'size']);
+});
+
+// A `required` is shape: `Strict` is `Node` with a key it must carry, which `Node`'s class cannot say, so it is a
+// schema of its own and shares nothing with `Node` by position.
+it('gives a $ref whose siblings add a required key a class of its own', function (): void {
+    $plan = planDtos(extractFixture('ref-siblings-dto.yaml'));
+    $strict = dtoNamed($plan, 'StrictInputDto');
+
+    expect(dtoNames($plan->dtos))->toContain('StrictInputDto')
+        ->and(dtoNames($plan->dtos))->toContain('NodeInputDto')
+        ->and(array_map(static fn ($property): bool => $property->optional, $strict->properties))->toBe([false, true]);
+});

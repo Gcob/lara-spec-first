@@ -42,6 +42,19 @@ final class OpenApi31Strategy implements VersionStrategy
     }
 
     /**
+     * Every key but `$ref`: 2020-12 applies them together with the referenced schema.
+     *
+     * @param  array<array-key, mixed>  $node
+     * @return array<array-key, mixed>
+     */
+    public function referenceSiblings(array $node): array
+    {
+        unset($node['$ref']);
+
+        return $node;
+    }
+
+    /**
      * `type` is a string or a list of them at 3.1, and `"null"` inside that list is how the version spells nullability.
      *
      * The parser declares this attribute a string and does not enforce it, so a list arrives here unchecked — which is
