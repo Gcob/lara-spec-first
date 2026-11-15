@@ -333,7 +333,7 @@ what is true rather than what is called what.
 
 **A card whose `Done when` names two generated artifacts is two cards.**
 [#35](https://github.com/Gcob/lara-spec-first/issues/35) was "one FormRequest per operation", and it also grew the input
-DTO pair and `dto()`. That made five stacked pull requests ([#102](https://github.com/Gcob/lara-spec-first/pull/102) to
+DTO pair and `dto()`. That made five stacked pull requests ([#101](https://github.com/Gcob/lara-spec-first/pull/101) to
 [#105](https://github.com/Gcob/lara-spec-first/pull/105)), the last one near 9,000 lines once the review fixes landed on
 it. The DTO was a card of its own.
 
@@ -347,10 +347,11 @@ covers (JSON, form-encoded, multipart, query string) and what PHP and Laravel do
 of a stricter one, and a draft `boolean` rule refused `?notify=true`, which review caught before the merge. Both
 directions are written down in [`request-validation.md`](../guide/code-generation/request-validation.md).
 
-**CI runs the test suite with assertions off, so a side effect inside `assert()` never runs there.**
-[#36](https://github.com/Gcob/lara-spec-first/issues/36) ([#117](https://github.com/Gcob/lara-spec-first/pull/117)) had
-a `preg_match()` inside `assert()` that passed locally and failed in CI, since the match itself never ran. Run the suite
-once with `-d zend.assertions=-1` before pushing, and never put a side effect inside `assert()`.
+**CI runs the test suite with assertions off (the default of the PHP setup action), so a side effect inside `assert()`
+never runs there.** [#36](https://github.com/Gcob/lara-spec-first/issues/36)
+([#117](https://github.com/Gcob/lara-spec-first/pull/117)) had a `preg_match()` inside `assert()` that passed locally
+and failed in CI, since the match itself never ran. Run the suite once with `-d zend.assertions=-1` before pushing, and
+never put a side effect inside `assert()`.
 
 **A new field on a value object changes every equality built on it.**
 [#36](https://github.com/Gcob/lara-spec-first/issues/36) added `Schema::$ignored` (positions), which broke the DTO
