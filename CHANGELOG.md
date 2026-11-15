@@ -115,8 +115,9 @@ document.
 
 #### `spec:doctor`'s exit code
 
-A run that was green on `0.1.0` may be red. The first four are package limits: exit `2`, never `1`. If a CI step runs
-the doctor, it is the step that changes.
+A run that was green on `0.1.0` may be red. Drift is exit `1`. The four after it (`Ignored`, `Partial`, a dropped field,
+`header` and `cookie`) are package limits: exit `2`, never `1`. A malformed `encoding` is the one case that exits `1`.
+If a CI step runs the doctor, it is the step that changes.
 
 - **Drift until `spec:build` runs again.** Right after `composer update`, `Drift` findings (exit `1`) appear for each
   operation with a body or a `query` parameter (a new request class, input DTOs, a new `routeAction` signature) and for
@@ -431,6 +432,12 @@ card that closes it.
   [#140](https://github.com/Gcob/lara-spec-first/issues/140).
 - **The same schema under two names, or two copies that differ only in an `example`, are refused across two media
   types**, though they validate the same way. [#144](https://github.com/Gcob/lara-spec-first/issues/144).
+- **At 3.1, a string with `contentEncoding` is read as a plain string.** A multipart part holding one defaults to
+  `application/octet-stream`, and the package assumes `text/plain`, so a non-default `contentType` on it goes
+  unreported. [#146](https://github.com/Gcob/lara-spec-first/issues/146).
+- **At 3.1, a `contentType` written beside `style`, `explode` or `allowReserved` is still enforced**, though the
+  specification ignores it there: the request gets a `mimetypes` rule and refuses an upload the contract allows.
+  [#147](https://github.com/Gcob/lara-spec-first/issues/147).
 - **What `0.1.0` listed still holds**: `security` is reported, not enforced; four configuration blocks are inert; there
   are no response DTOs, no pagination and no rate limiting.
 
