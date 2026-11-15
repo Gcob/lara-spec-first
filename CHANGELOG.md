@@ -412,8 +412,10 @@ card that closes it.
 - **A named array inside a recursive cycle is typed by the order of the operations.** The input DTO says `mixed` or a
   `list` depending on which operation the document writes first.
   [#127](https://github.com/Gcob/lara-spec-first/issues/127).
-- **A multipart part's default `contentType` is read for every OpenAPI version at once**, so `text/plain` on a 3.0
-  binary part is reported (and exits `2`) in a multipart-only body and not in a form or mixed one.
+- **A multipart part's default `contentType` is read for every OpenAPI version at once.** A part's
+  `application/octet-stream` on a plain string, number, integer or boolean (3.0 and 3.1), or on an array of them, is
+  read as a default rather than as a constraint, so `spec:doctor` can stay green for it. A 3.0 binary part in a form or
+  mixed body is not affected: its unenforced `format` already exits `2`.
   [#131](https://github.com/Gcob/lara-spec-first/issues/131).
 - **A body declared as JSON and a form at once lets a JSON client's `"42"` through**, since it keeps the loose rules and
   the generated file says so. [#133](https://github.com/Gcob/lara-spec-first/issues/133).
