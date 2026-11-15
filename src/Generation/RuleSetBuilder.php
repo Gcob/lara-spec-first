@@ -1002,10 +1002,18 @@ final readonly class RuleSetBuilder
                                 .'what refuses `"42"` and `true`.',
                         );
                     }
+
+                    if ($walk->mixedBody) {
+                        $walk->findings[] = self::mixedBodyFinding($label, 'an integer', 'integer', '`"42"` and `true` get through, though the contract refuses them.');
+                    }
                     break;
                 case SchemaType::Number:
                     $rules[] = $walk->strictJson() ? 'numeric:strict' : 'numeric';
                     self::numberRules($schema, $rules, $handled);
+
+                    if ($walk->mixedBody) {
+                        $walk->findings[] = self::mixedBodyFinding($label, 'a number', 'numeric', '`"1.5"` gets through, though the contract refuses it.');
+                    }
                     break;
                 case SchemaType::Boolean:
                     if ($walk->textSource !== null) {
@@ -1014,11 +1022,11 @@ final readonly class RuleSetBuilder
                         $rules[] = $walk->strictJson() ? 'boolean:strict' : 'boolean';
 
                         if ($walk->mixedBody) {
-                            $walk->findings[] = sprintf(
-                                '%s is a boolean in a body that is JSON and also a form. One rule set cannot accept '
-                                    .'the text a form carries and still refuse `null`, so it keeps `boolean`, which '
-                                    .'refuses the string `"true"` a form writes.',
+                            $walk->findings[] = self::mixedBodyFinding(
                                 $label,
+                                'a boolean',
+                                'boolean',
+                                '`"1"` and `1` get through, though the contract refuses them, and a form\'s `"true"` is refused, though the contract accepts it.',
                             );
                         }
                     }
@@ -1447,6 +1455,23 @@ final readonly class RuleSetBuilder
                 .'where `readOnly` is an annotation). So a request does not have to carry it and no '
                 .'presence rule is emitted. Its other rules judge it when it is sent.',
             $label,
+        );
+    }
+
+    /**
+     * What a body that is JSON and a form says of a scalar field: it keeps the loose rule, and the sentence names what
+     * a JSON client gets through. A gap rather than a stricter rule, so it counts in the build warning, and it leaves
+     * nothing unenforced for the doctor to report.
+     */
+    private static function mixedBodyFinding(string $label, string $noun, string $rule, string $effect): string
+    {
+        return sprintf(
+            '%s is %s in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
+                .'still refuse a string in JSON, so it keeps `%s`: a JSON client\'s %s',
+            $label,
+            $noun,
+            $rule,
+            $effect,
         );
     }
 

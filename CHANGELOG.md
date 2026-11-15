@@ -39,6 +39,12 @@ tags: [versions, conventions, planning]
   An application on an older Laravel 12 updates Laravel first. The build re-emits every request that has an integer, a
   number or a boolean in a JSON body.
   [Request validation](./docs/guide/code-generation/request-validation.md#a-json-body-keeps-its-types).
+- **A body that is JSON and a form at once says what a JSON client gets through.** It keeps the loose `integer`,
+  `numeric` and `boolean`, since one rule set cannot read a form's text and refuse a JSON string, and the generated file
+  now has one finding per integer, number and boolean field: `"42"` and `true` for an integer, `"1.5"` for a number,
+  `"1"` and `1` for a boolean (whose finding also says a form's `"true"` is refused). The rules did not change. These
+  are gaps rather than a stricter request, so `spec:build` counts them in its warning, and `spec:doctor` stays silent on
+  them. [Request validation](./docs/guide/code-generation/request-validation.md#a-json-body-keeps-its-types).
 - **`spec:build` no longer counts a finding that says the request is stricter than the contract.** Its "read a
   constraint they do not enforce" warning counts the requests that read something and enforce nothing for it. An
   integral float refused by `integer:strict`, a `mimetypes` rule refusing a file named like PHP, a recursion refused

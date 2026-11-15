@@ -164,16 +164,18 @@ function statusForBuiltRules(Schema $body, array $payload, bool $bodyRequired = 
  * The same request as {@see statusForBuiltRules()}, with the keys the 422 names.
  *
  * @param  array<string, mixed>  $payload
+ * @param  list<string>  $mediaTypes  what the body declares, over the one schema; the request sent is JSON whatever
+ *                                    they are
  * @return array{0: int, 1: list<string>}
  */
-function responseForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true): array
+function responseForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true, array $mediaTypes = ['application/json']): array
 {
     $built = RuleSetBuilder::for(new Operation(
         index: 0,
         method: HttpMethod::Post,
         path: PathTemplate::fromString('/_generated/built'),
         operationId: 'built',
-        requestBody: new RequestBody(['application/json' => $body], $bodyRequired),
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), $bodyRequired),
     ))->rules;
 
     $rules = frameworkRules($built);
@@ -245,6 +247,23 @@ it('accepts a JSON integer, number and boolean as sent', function (Schema $body,
     'true' => [scalarBody(SchemaType::Boolean), true],
     'false' => [scalarBody(SchemaType::Boolean), false],
     'null for a nullable integer' => [scalarBody(SchemaType::Integer, nullable: true), null],
+]);
+
+// D33: a body that is JSON and a form keeps the loose rules, because one rule set cannot read a form's text and refuse
+// a JSON string. So a JSON client's `"42"` passes there, and the generated file says so. This pins the stated limit,
+// and the JSON-only operation beside it refuses the same value (the runtime branch is #133).
+it('keeps the loose scalar rules for a body that is JSON and a form', function (Schema $body, mixed $value): void {
+    $mixed = responseForBuiltRules($body, ['field' => $value], mediaTypes: ['application/json', 'application/x-www-form-urlencoded']);
+    $jsonOnly = responseForBuiltRules($body, ['field' => $value]);
+
+    expect($mixed)->toBe([200, []])
+        ->and($jsonOnly)->toBe([422, ['field']]);
+})->with([
+    'an integer as a string' => [scalarBody(SchemaType::Integer), '42'],
+    'an integer as true' => [scalarBody(SchemaType::Integer), true],
+    'a number as a string' => [scalarBody(SchemaType::Number), '1.5'],
+    'a boolean as the string one' => [scalarBody(SchemaType::Boolean), '1'],
+    'a boolean as 1' => [scalarBody(SchemaType::Boolean), 1],
 ]);
 
 // Laravel finds the size rules' kind by the name of the rule, `integer` or `numeric`, whatever follows the colon.

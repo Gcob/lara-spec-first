@@ -521,8 +521,10 @@ form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '
   kept because the four spellings are what a client of a query string or a form already sends, and the finding on the
   field says it accepts the two more.
 - **A body that is JSON and a form at once keeps `boolean`.** One rule set cannot accept the form's text and still
-  refuse `null`, so a form client's `"true"` is refused there and the field's finding says so. This is the exception
-  [the principle](#every-constraint-maps-or-reports) allows when matching the contract exactly would be far too complex.
+  refuse `null`, so a form client's `"true"` is refused there, and a JSON client's `"1"` and `1` get through. The
+  field's finding says both. The first is the exception [the principle](#every-constraint-maps-or-reports) allows when
+  matching the contract exactly would be far too complex, and the second is
+  [a JSON body's loose rule](#a-json-body-keeps-its-types) that no finding of the request being stricter covers.
 
 Pinned by execution tests for the query string, a form body, a multipart body and a JSON body. An earlier version of
 this page called the 422 the price of not using a looser rule, and a test pinned it: the maintainer reversed that, since
@@ -644,10 +646,10 @@ generated file's findings.
 
 **A constraint that maps to nothing is named per operation by `spec:doctor`**, and by the generated file's own findings
 for the reader who is already looking at the class. A few are still prose only (a form field PHP delivers under another
-field's key, some `dependentRequired` entries, the rest listed in
-[#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the doctor stays silent on them for now. Neither is a
-fallback for the other: one runs in CI before anything is generated, and the other answers "why is this field not
-enforced" at the moment somebody asks it.
+field's key, some `dependentRequired` entries, a JSON client's `"42"` on an integer of a body that is JSON and a form,
+the rest listed in [#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the doctor stays silent on them for
+now. Neither is a fallback for the other: one runs in CI before anything is generated, and the other answers "why is
+this field not enforced" at the moment somebody asks it.
 
 **The doctor reads data, and the generated file reads prose.** A rule set keeps its findings as sentences, and some of
 them are only worth saying: two media types over one schema, a rule stricter than the contract in one case. Gating an
@@ -687,8 +689,11 @@ refuses. A field of a body that is JSON and nothing else gets the `:strict` form
 - **A query parameter and a form or multipart field keep the loose rules**, since every value they carry is text.
 - **A form client of an operation that declares only JSON gets the JSON rules.** `age=30` from an HTML form is a 422
   there, where it was a 200: the contract declares no form, so that client is off-contract, and `rules()` is one array.
-- **A body that is JSON and a form at once keeps the loose rules**, for the reason
-  [above](#every-constraint-maps-or-reports): one rule set cannot serve both.
+- **A body that is JSON and a form at once keeps the loose rules, and a JSON client gets through what they accept.** One
+  rule set cannot read the text a form carries and still refuse a string in JSON, so an integer there accepts `"42"` and
+  `true`, a number accepts `"1.5"`, and a boolean accepts `"1"` and `1`, all of which the contract refuses. The
+  generated file says so in one finding per field, and `spec:doctor` stays silent on it, like the other prose-only
+  cases. [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them.
 - **`:strict` needs Laravel 12.22.** Before it the parameter is silently ignored, and the rule would accept a string,
   which is why the package requires `^12.22 || ^13.0`.
 

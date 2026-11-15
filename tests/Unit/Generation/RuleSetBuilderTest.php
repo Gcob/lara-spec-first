@@ -1579,18 +1579,43 @@ it('reads a boolean of a JSON body as a boolean and nothing looser', function ()
         ->and($set->findings)->toBe([]);
 });
 
-// One rule set cannot hold `boolean` and the form's spellings at once without
-// accepting `null`, so a body that is both keeps the JSON rule and says so.
-it('keeps boolean for a body that is JSON and a form, and says what that refuses', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: [
-        'application/json' => objectSchema(['active' => new Schema(types: [SchemaType::Boolean])]),
-        'application/x-www-form-urlencoded' => objectSchema(['active' => new Schema(types: [SchemaType::Boolean])]),
-    ]));
+// One rule set cannot read the text a form carries and still refuse a string in JSON, so a body that is both keeps
+// the loose rule, and the file says per field what a JSON client gets through. These are prose findings, not
+// "stricter than the contract": they are gaps, so they count in the build warning, and they leave nothing for the
+// doctor to report.
+it('says what a body that is JSON and a form lets through', function (SchemaType $type, string $rule, string $finding, string $mediaType): void {
+    $schema = objectSchema(['field' => new Schema(types: [$type])]);
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, $mediaType => $schema]));
 
-    expect($set->rules['active'])->toBe(['sometimes', 'boolean'])
-        ->and(implode("\n", $set->findings))->toContain('`active` is a boolean in a body that is JSON and also a form')
-        ->and(implode("\n", $set->findings))->toContain('refuses the string `"true"`');
-});
+    $named = array_values(array_filter($set->findings, static fn (string $text): bool => str_starts_with($text, '`field` is a')));
+
+    expect($set->rules['field'])->toBe(['sometimes', $rule])
+        ->and($named)->toBe([$finding])
+        ->and($set->stricter)->toBe([])
+        ->and($set->unenforced)->toBe([]);
+})->with([
+    'an integer' => [
+        SchemaType::Integer,
+        'integer',
+        '`field` is an integer in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
+            .'still refuse a string in JSON, so it keeps `integer`: a JSON client\'s `"42"` and `true` get through, though the '
+            .'contract refuses them.',
+    ],
+    'a number' => [
+        SchemaType::Number,
+        'numeric',
+        '`field` is a number in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
+            .'still refuse a string in JSON, so it keeps `numeric`: a JSON client\'s `"1.5"` gets through, though the '
+            .'contract refuses it.',
+    ],
+    'a boolean' => [
+        SchemaType::Boolean,
+        'boolean',
+        '`field` is a boolean in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
+            .'still refuse a string in JSON, so it keeps `boolean`: a JSON client\'s `"1"` and `1` get through, though the '
+            .'contract refuses them, and a form\'s `"true"` is refused, though the contract accepts it.',
+    ],
+])->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
 it('reads the booleans of an enumeration as every spelling of them', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
