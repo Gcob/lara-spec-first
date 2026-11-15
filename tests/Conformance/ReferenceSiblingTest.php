@@ -816,7 +816,16 @@ function siblingDtoClasses(array $operations): array
 // A recursion that closes on a hop further out than the one writing it. `B` is inside `A`, and `A` is written again
 // in `B`'s keywords: the marker is for `A`, so what `A` writes holds at every level, as it does when both are spelled
 // as an `allOf`. Ending the marker on `B` instead would drop `A`'s `required` at every level, without a word.
-it('cuts a recursion that closes on an outer hop with the outer hop\'s keywords, as the allOf spelling does', function (): void {
+//
+// When `A` adds no shape (nothing beside the `$ref`, or only annotations), no schema carries `A`'s position, and the
+// marker ends on the nearest hop inside it that does: `B`. Opening `A` under its own position there would leave a
+// marker no ancestor answers, and nothing below it would be validated.
+it('cuts a recursion that closes on an outer hop with the outer hop\'s keywords, as the allOf spelling does', function (
+    array $alias,
+    array $spelledAlias,
+    string $class,
+    string $keyword,
+): void {
     $node = ['Node' => ['type' => 'object', 'x-max-depth' => 2, 'properties' => ['label' => ['type' => 'string']]]];
     $read = static function (array $components) {
         $outcome = readSiblingDocument(['/nodes' => siblingPostPath(['$ref' => '#/components/schemas/A'])], $components);
@@ -827,22 +836,54 @@ it('cuts a recursion that closes on an outer hop with the outer hop\'s keywords,
     };
 
     $beside = $read([
-        'A' => ['$ref' => '#/components/schemas/B', 'required' => ['label']],
+        'A' => $alias,
         'B' => ['$ref' => '#/components/schemas/Node', 'properties' => ['next' => ['$ref' => '#/components/schemas/A']]],
         ...$node,
     ]);
     $spelled = $read([
-        'A' => ['allOf' => [['$ref' => '#/components/schemas/B'], ['required' => ['label']]]],
+        'A' => $spelledAlias,
         'B' => ['allOf' => [['$ref' => '#/components/schemas/Node'], ['properties' => ['next' => ['$ref' => '#/components/schemas/A']]]]],
         ...$node,
     ]);
     $rules = RuleSetBuilder::for($beside[0])->rules;
 
     expect($rules)->toEqual(RuleSetBuilder::for($spelled[0])->rules)
-        ->and($rules['next'])->toContain('required_array_keys:label')
+        ->and($rules['next'])->toContain($keyword)
+        ->and($rules)->toHaveKey('next.next.label')
         ->and(siblingDtoClasses($beside))->toEqual(siblingDtoClasses($spelled))
-        ->and(siblingDtoClasses($beside)['AInputDto']['next'])->toBe('AInputDto');
-});
+        ->and(siblingDtoClasses($beside)[$class]['next'])->toBe($class);
+})->with([
+    'required, which A adds' => [
+        ['$ref' => '#/components/schemas/B', 'required' => ['label']],
+        ['allOf' => [['$ref' => '#/components/schemas/B'], ['required' => ['label']]]],
+        'AInputDto',
+        'required_array_keys:label',
+    ],
+    'nothing beside the $ref' => [
+        ['$ref' => '#/components/schemas/B'],
+        ['$ref' => '#/components/schemas/B'],
+        'BInputDto',
+        'array',
+    ],
+    'a description' => [
+        ['$ref' => '#/components/schemas/B', 'description' => 'an A'],
+        ['$ref' => '#/components/schemas/B'],
+        'BInputDto',
+        'array',
+    ],
+    'deprecated' => [
+        ['$ref' => '#/components/schemas/B', 'deprecated' => true],
+        ['$ref' => '#/components/schemas/B'],
+        'BInputDto',
+        'array',
+    ],
+    'readOnly' => [
+        ['$ref' => '#/components/schemas/B', 'readOnly' => false],
+        ['$ref' => '#/components/schemas/B'],
+        'BInputDto',
+        'array',
+    ],
+]);
 
 // What an `allOf` written beside a `$ref` holds counts as what the keywords add, as the keywords themselves do. Without
 // it the wrapper has no name, a marker back at the alias finds no ancestor, and nothing below it is validated.

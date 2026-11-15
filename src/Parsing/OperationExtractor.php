@@ -637,21 +637,81 @@ final readonly class OperationExtractor
 
         $schema = $this->schema($node, $strategy, $walk, $content, $open);
 
-        // Wrapped from the innermost hop out, and every hop outside the one being built is open to its keywords: a
-        // `$ref` back at an outer hop, written in an inner hop's keywords, ends on that outer hop, which is the schema
-        // that carries the outer keywords. Open only the inner one and the marker would end on it, and the outer
-        // keywords would be lost at every level.
+        $entries = array_map(
+            static fn (SchemaPosition $hop): array => [$walk->pointer($hop), $walk->name($hop)],
+            $hops,
+        );
+
+        [$wrapped, $carries, $built] = $this->wrapHops($schema, $strategy, $walk, $hops, $open, $entries);
+
+        // Why: a marker for an outer hop that carries nothing has no ancestor to end on, and everything below it would
+        // go unvalidated. Which hops carry something is only known once their keywords are built, and a marker is made
+        // while they are, so the build is repeated once with each such hop standing for the nearest one inside it.
+        $innermostBuilt = $built === [] ? 0 : max($built);
+        $carriesNothing = array_filter($carries, static fn (bool $carried, int $index): bool => ! $carried && $index < $innermostBuilt, ARRAY_FILTER_USE_BOTH);
+
+        if ($carriesNothing === []) {
+            return $wrapped;
+        }
+
+        $inside = [$walk->pointer($content), $walk->name($content)];
+
+        foreach ($carries as $index => $carried) {
+            $entries[$index] = $carried ? $entries[$index] : $inside;
+            $inside = $entries[$index];
+        }
+
+        return $this->wrapHops($schema, $strategy, $walk, $hops, $open, $entries)[0];
+    }
+
+    /**
+     * The schema inside the hops, wrapped in the keywords written beside each `$ref`, from the innermost hop out.
+     *
+     * Every hop outside the one being built is open to its keywords, under the entry given for it: a `$ref` back at an
+     * outer hop, written in an inner hop's keywords, ends on that outer hop, which is the schema that carries the outer
+     * keywords. Open only the inner one and the marker would end on it, and the outer keywords would be lost at every
+     * level.
+     *
+     * @param  non-empty-list<SchemaPosition>|list<SchemaPosition>  $hops  outermost first
+     * @param  array<string, array{0: string, 1: string|null}>  $open  see {@see self::schema()}
+     * @param  array<int, array{0: string, 1: string|null}>  $entries  what a marker for each hop reports
+     * @return array{0: Schema, 1: array<int, bool>, 2: list<int>} the schema, whether each hop's wrapper carries the
+     *                                                             hop's own position (innermost hop first), and the
+     *                                                             hops whose keywords were built
+     *
+     * @throws RejectedConstructException
+     * @throws InvalidDocumentException
+     */
+    private function wrapHops(
+        Schema $schema,
+        VersionStrategy $strategy,
+        DocumentWalk $walk,
+        array $hops,
+        array $open,
+        array $entries,
+    ): array {
+        $carries = [];
+        $built = [];
+
         foreach (array_reverse(array_keys($hops)) as $index) {
             $outside = $open;
 
-            foreach (array_slice($hops, 0, $index) as $outer) {
-                $outside[$outer->key()] = [$walk->pointer($outer), $walk->name($outer)];
+            foreach (array_slice($hops, 0, $index, preserve_keys: true) as $outer => $hop) {
+                $outside[$hop->key()] = $entries[$outer];
             }
 
-            $schema = $this->besideReference($schema, $strategy, $walk, $hops[$index], $outside);
+            $wrapped = $this->besideReference($schema, $strategy, $walk, $hops[$index], $outside);
+
+            $carries[$index] = $wrapped->source === $walk->pointer($hops[$index]);
+
+            if ($wrapped !== $schema) {
+                $built[] = $index;
+            }
+
+            $schema = $wrapped;
         }
 
-        return $schema;
+        return [$schema, $carries, $built];
     }
 
     /**
