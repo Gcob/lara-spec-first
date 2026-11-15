@@ -23,9 +23,10 @@ how changes get merged.
 
 ## Project status
 
-`lara-spec-first` is young. Phase 1 shipped as `0.1.0` and [Phase 2](./README.md#phase-2-the-generated-pipeline) is in
-flight. The public API is not stable yet, and the package does not do anything useful for a consumer so far. The tooling
-below, however, is in place and works today.
+`lara-spec-first` is young. Phase 1 shipped as `0.1.0`, `0.2.0` shipped the request side of
+[Phase 2](./README.md#phase-2-the-generated-pipeline) (`FormRequest`s and input DTOs), and the rest of it is in flight.
+The public API is not stable yet, and the package does not do anything useful for a consumer so far. The tooling below,
+however, is in place and works today.
 
 Right now, the most valuable contribution is **design feedback**. Opening an issue to challenge an architectural
 decision is worth more to us today than a pull request.
