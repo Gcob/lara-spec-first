@@ -11,6 +11,7 @@ use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\InRule;
+use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 
@@ -86,12 +87,83 @@ it('maps a scalar type to the rule that means the same thing', function (
     expect(rulesFor(['field' => new Schema(types: [$type])]))->toBe(['field' => ['sometimes', $rule]]);
 })->with([
     'string' => [SchemaType::String, 'string'],
-    'integer' => [SchemaType::Integer, 'integer'],
+    // A JSON body keeps its types, so `"42"` is not an integer and `true` is not one either: `:strict` is what
+    // Laravel's loose `integer`, `numeric` and `boolean` do not do.
+    'integer' => [SchemaType::Integer, 'integer:strict'],
     // `numeric` rather than `number`: Laravel has no rule by that name, and
     // `numeric` is what accepts both an integer and a float.
-    'number' => [SchemaType::Number, 'numeric'],
-    'boolean' => [SchemaType::Boolean, 'boolean'],
+    'number' => [SchemaType::Number, 'numeric:strict'],
+    'boolean' => [SchemaType::Boolean, 'boolean:strict'],
 ]);
+
+it('keeps the loose scalar rules for a query parameter and a form field', function (): void {
+    $scalars = [
+        'count' => new Schema(types: [SchemaType::Integer]),
+        'ratio' => new Schema(types: [SchemaType::Number]),
+    ];
+
+    // The trap: the body is JSON, and the query walk comes after it on the same operation.
+    $queried = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['name' => new Schema(types: [SchemaType::String])])],
+        query: [
+            new QueryParameter('limit', $scalars['count']),
+            new QueryParameter('scale', $scalars['ratio']),
+        ],
+    ))->rules;
+    $form = RuleSetBuilder::for(operationWithInput(
+        content: ['application/x-www-form-urlencoded' => objectSchema($scalars)],
+    ))->rules;
+    $multipart = RuleSetBuilder::for(operationWithInput(
+        content: ['multipart/form-data' => objectSchema($scalars)],
+    ))->rules;
+
+    expect($queried['limit'])->toBe(['sometimes', 'integer'])
+        ->and($queried['scale'])->toBe(['sometimes', 'numeric'])
+        ->and($form['count'])->toBe(['sometimes', 'integer'])
+        ->and($form['ratio'])->toBe(['sometimes', 'numeric'])
+        ->and($multipart['count'])->toBe(['sometimes', 'integer'])
+        ->and($multipart['ratio'])->toBe(['sometimes', 'numeric']);
+});
+
+// `a.b` and `items.*` are as much the body as a top-level key is.
+it('reads every level of a JSON body as strict', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'a' => objectSchema(['b' => new Schema(types: [SchemaType::Integer])]),
+        'items' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Number])),
+        'flags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Boolean])),
+    ])]));
+
+    expect($set->rules['a.b'])->toBe(['sometimes', 'integer:strict'])
+        ->and($set->rules['items.*'])->toBe(['numeric:strict'])
+        ->and($set->rules['flags.*'])->toBe(['boolean:strict']);
+});
+
+// One sentence per request, however many integers it has, and none when it has no integer to refuse a
+// float for: the request is stricter than JSON Schema 2020-12 there, where `1.0` is an integer.
+it('says once that a JSON integer written as a float is refused', function (): void {
+    $json = static fn (array $properties) => RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema($properties)],
+    ));
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    $two = $json(['one' => $integer, 'two' => $integer]);
+    $none = $json(['ratio' => new Schema(types: [SchemaType::Number])]);
+    $form = RuleSetBuilder::for(operationWithInput(
+        content: ['application/x-www-form-urlencoded' => objectSchema(['one' => $integer])],
+    ));
+
+    $floats = array_values(array_filter(
+        $two->findings,
+        static fn (string $finding): bool => str_contains($finding, '`1.0`') && str_contains($finding, '`integer:strict`'),
+    ));
+
+    expect($floats)->toHaveCount(1)
+        ->and($two->stricter)->toBe($floats)
+        ->and($none->findings)->toBe([])
+        ->and($none->stricter)->toBe([])
+        ->and(implode("\n", $form->findings))->not->toContain('integer:strict')
+        ->and($form->stricter)->toBe([]);
+});
 
 it('reads nullability off the type list', function (): void {
     expect(rulesFor(['field' => new Schema(types: [SchemaType::String, SchemaType::Null])]))
@@ -107,9 +179,9 @@ it('asks for a required key the way its type allows', function (SchemaType $type
     expect(rulesFor(['field' => new Schema(types: [$type])], ['field']))
         ->toBe(['field' => array_values(array_filter([$rule, match ($type) {
             SchemaType::String => 'string',
-            SchemaType::Integer => 'integer',
-            SchemaType::Number => 'numeric',
-            SchemaType::Boolean => 'boolean',
+            SchemaType::Integer => 'integer:strict',
+            SchemaType::Number => 'numeric:strict',
+            SchemaType::Boolean => 'boolean:strict',
             SchemaType::Array, SchemaType::Object => 'array',
             SchemaType::Null => null,
         }, $type === SchemaType::Array ? 'list' : null]))]);
@@ -158,7 +230,7 @@ it('reads the required list on a PUT and reads it as empty on a PATCH', function
     expect(rulesFor($properties, ['title', 'body', 'published'], $method))->toBe([
         'title' => [$stringPresence, 'string'],
         'body' => [$stringPresence, 'string'],
-        'published' => [$booleanPresence, 'boolean'],
+        'published' => [$booleanPresence, 'boolean:strict'],
     ]);
 })->with([
     'put' => ['put', 'present', 'required'],
@@ -482,15 +554,15 @@ it('maps each constraint to the Laravel rule that means the same thing', functio
     // Beside `integer` or `numeric`, they compare the value.
     'minimum, maximum' => [
         new Schema(types: [SchemaType::Integer], minimum: 1.0, maximum: 9.0),
-        ['sometimes', 'integer', 'min:1', 'max:9'],
+        ['sometimes', 'integer:strict', 'min:1', 'max:9'],
     ],
     'exclusiveMinimum, exclusiveMaximum' => [
         new Schema(types: [SchemaType::Number], exclusiveMinimum: 0.0, exclusiveMaximum: 1.5),
-        ['sometimes', 'numeric', 'gt:0', 'lt:1.5'],
+        ['sometimes', 'numeric:strict', 'gt:0', 'lt:1.5'],
     ],
     'multipleOf' => [
         new Schema(types: [SchemaType::Number], multipleOf: 0.25),
-        ['sometimes', 'numeric', 'multiple_of:0.25'],
+        ['sometimes', 'numeric:strict', 'multiple_of:0.25'],
     ],
     'format: date' => [
         new Schema(types: [SchemaType::String], format: 'date'),
@@ -512,23 +584,23 @@ it('maps each constraint to the Laravel rule that means the same thing', functio
     // `int32` is a range, so it is two bounds, and a bound the contract states beside it is kept when it is tighter.
     'format: int32' => [
         new Schema(types: [SchemaType::Integer], format: 'int32'),
-        ['sometimes', 'integer', 'min:-2147483648', 'max:2147483647'],
+        ['sometimes', 'integer:strict', 'min:-2147483648', 'max:2147483647'],
     ],
     'format: int32 with tighter bounds' => [
         new Schema(types: [SchemaType::Integer], format: 'int32', minimum: 1.0, maximum: 100.0),
-        ['sometimes', 'integer', 'min:1', 'max:100'],
+        ['sometimes', 'integer:strict', 'min:1', 'max:100'],
     ],
     'format: int32 with looser bounds' => [
         new Schema(types: [SchemaType::Integer], format: 'int32', minimum: -5000000000.0, maximum: 5000000000.0),
-        ['sometimes', 'integer', 'min:-2147483648', 'max:2147483647'],
+        ['sometimes', 'integer:strict', 'min:-2147483648', 'max:2147483647'],
     ],
     'format: int32 with one tighter bound' => [
         new Schema(types: [SchemaType::Integer], format: 'int32', maximum: 10.0),
-        ['sometimes', 'integer', 'min:-2147483648', 'max:10'],
+        ['sometimes', 'integer:strict', 'min:-2147483648', 'max:10'],
     ],
     // `integer` is PHP's `FILTER_VALIDATE_INT`, which is the 64-bit range, and `numeric` takes any JSON number.
-    'format: int64 on an integer' => [new Schema(types: [SchemaType::Integer], format: 'int64'), ['sometimes', 'integer']],
-    'format: double on a number' => [new Schema(types: [SchemaType::Number], format: 'double'), ['sometimes', 'numeric']],
+    'format: int64 on an integer' => [new Schema(types: [SchemaType::Integer], format: 'int64'), ['sometimes', 'integer:strict']],
+    'format: double on a number' => [new Schema(types: [SchemaType::Number], format: 'double'), ['sometimes', 'numeric:strict']],
     // An annotation for a form to hide what is typed: it asserts nothing.
     'format: password' => [new Schema(types: [SchemaType::String], format: 'password'), ['sometimes', 'string']],
     // `D` gives PCRE's `$` the ECMA-262 reading, and `u` counts a multibyte
@@ -602,7 +674,7 @@ it('keys a nested object with dots, and asks the object for its required keys', 
     )], ['address']))->toBe([
         'address' => ['present', 'array', 'required_array_keys:city,floor'],
         'address.city' => ['sometimes', 'string'],
-        'address.floor' => ['sometimes', 'integer'],
+        'address.floor' => ['sometimes', 'integer:strict'],
         'address.note' => ['sometimes', 'string'],
     ]);
 });
@@ -657,7 +729,7 @@ it('makes an optional body all or none', function (): void {
         'city' => ['present_with:street,code', 'string'],
         // `present_with` even for an integer: `required_with` fires only on a
         // non-blank trigger, so `{"street": null}` would require nothing.
-        'code' => ['present_with:street,city', 'integer'],
+        'code' => ['present_with:street,city', 'integer:strict'],
     ]);
 });
 
@@ -670,7 +742,7 @@ it('merges allOf into one rule set', function (): void {
     // The tighter bound wins, and the required list accumulates.
     expect($set->rules)->toBe([
         'name' => ['present', 'string', 'max:20'],
-        'age' => ['sometimes', 'integer'],
+        'age' => ['sometimes', 'integer:strict'],
     ]);
 });
 
@@ -707,7 +779,7 @@ it('merges integer and number into integer', function (): void {
         'n' => new Schema(allOf: [new Schema(types: [SchemaType::Number]), new Schema(types: [SchemaType::Integer])]),
     ])]));
 
-    expect($set->rules['n'])->toBe(['sometimes', 'integer']);
+    expect($set->rules['n'])->toBe(['sometimes', 'integer:strict']);
 });
 
 // A dot is read as nesting before a key-list rule sees the data, and a comma
@@ -1276,7 +1348,7 @@ it('asks for no presence on a readOnly property the schema requires', function (
     )]));
 
     expect($set->rules)->toBe([
-        'id' => ['sometimes', 'integer'],
+        'id' => ['sometimes', 'integer:strict'],
         'name' => ['present', 'string'],
     ])->and(implode("\n", $set->findings))->toContain('`id` is `readOnly` and required')
         // 3.0 states it; 3.1 dropped the sentence, so a 3.1 document is read the same way, not by rule.
@@ -1318,7 +1390,7 @@ it('does not make a readOnly property required through dependentRequired either'
         dependentRequired: ['card' => ['id']],
     )]));
 
-    expect($set->rules['id'])->toBe(['sometimes', 'integer']);
+    expect($set->rules['id'])->toBe(['sometimes', 'integer:strict']);
 });
 
 it('says nothing about a readOnly property that is not required', function (): void {
@@ -1326,8 +1398,9 @@ it('says nothing about a readOnly property that is not required', function (): v
         ['id' => new Schema(types: [SchemaType::Integer], readOnly: true)],
     )]));
 
-    expect($set->rules)->toBe(['id' => ['sometimes', 'integer']])
-        ->and($set->findings)->toBe([]);
+    // The integral-float sentence is all it says: nothing about `id` itself.
+    expect($set->rules)->toBe(['id' => ['sometimes', 'integer:strict']])
+        ->and($set->findings)->toBe($set->stricter);
 });
 
 // PHP rewrites a query name before Laravel sees it: `.` and a space become `_`,
@@ -1497,27 +1570,52 @@ it('reads a boolean field of a form or multipart body the same way', function (s
         ->and(implode("\n", $set->findings))->toContain('`"1"` and `"0"` are accepted too');
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
-it('keeps boolean for a JSON body', function (): void {
+it('reads a boolean of a JSON body as a boolean and nothing looser', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['active' => new Schema(types: [SchemaType::Boolean])],
     )]));
 
-    expect($set->rules['active'])->toBe(['sometimes', 'boolean'])
+    expect($set->rules['active'])->toBe(['sometimes', 'boolean:strict'])
         ->and($set->findings)->toBe([]);
 });
 
-// One rule set cannot hold `boolean` and the form's spellings at once without
-// accepting `null`, so a body that is both keeps the JSON rule and says so.
-it('keeps boolean for a body that is JSON and a form, and says what that refuses', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: [
-        'application/json' => objectSchema(['active' => new Schema(types: [SchemaType::Boolean])]),
-        'application/x-www-form-urlencoded' => objectSchema(['active' => new Schema(types: [SchemaType::Boolean])]),
-    ]));
+// One rule set cannot read the text a form carries and still refuse a string in JSON, so a body that is both keeps
+// the loose rule, and the file says per field what a JSON client gets through. These are prose findings, not
+// "stricter than the contract": they are gaps, so they count in the build warning, and they leave nothing for the
+// doctor to report.
+it('says what a body that is JSON and a form lets through', function (SchemaType $type, string $rule, string $finding, string $mediaType): void {
+    $schema = objectSchema(['field' => new Schema(types: [$type])]);
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, $mediaType => $schema]));
 
-    expect($set->rules['active'])->toBe(['sometimes', 'boolean'])
-        ->and(implode("\n", $set->findings))->toContain('`active` is a boolean in a body that is JSON and also a form')
-        ->and(implode("\n", $set->findings))->toContain('refuses the string `"true"`');
-});
+    $named = array_values(array_filter($set->findings, static fn (string $text): bool => str_starts_with($text, '`field` is a')));
+
+    expect($set->rules['field'])->toBe(['sometimes', $rule])
+        ->and($named)->toBe([$finding])
+        ->and($set->stricter)->toBe([])
+        ->and($set->unenforced)->toBe([]);
+})->with([
+    'an integer' => [
+        SchemaType::Integer,
+        'integer',
+        '`field` is an integer in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
+            .'still refuse a string in JSON, so it keeps `integer`: a JSON client\'s `"42"` and `true` get through, though the '
+            .'contract refuses them.',
+    ],
+    'a number' => [
+        SchemaType::Number,
+        'numeric',
+        '`field` is a number in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
+            .'still refuse a string in JSON, so it keeps `numeric`: a JSON client\'s `"1.5"` gets through, though the '
+            .'contract refuses it.',
+    ],
+    'a boolean' => [
+        SchemaType::Boolean,
+        'boolean',
+        '`field` is a boolean in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
+            .'still refuse a string in JSON, so it keeps `boolean`: a JSON client\'s `"1"` and `1` get through, though the '
+            .'contract refuses them, and a form\'s `"true"` is refused, though the contract accepts it.',
+    ],
+])->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
 it('reads the booleans of an enumeration as every spelling of them', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
@@ -2311,6 +2409,33 @@ it('says in one finding that a deeper payload is refused and names x-max-depth a
         ->toContain('422');
 });
 
+// The four findings that say the request is stricter than the contract (D41): each is in `findings` and in `stricter`,
+// and none leaves a constraint unenforced. "Nothing below it is validated" is looser, and does.
+it('names the findings that say the request is stricter than the contract', function (RuleSet $set, bool $leavesUnenforced): void {
+    expect($set->findings)->not->toBe([])
+        ->and($set->stricter)->not->toBe([])
+        ->and(array_diff($set->stricter, $set->findings))->toBe([])
+        ->and($set->leavesUnenforced())->toBe($leavesUnenforced);
+})->with(function (): array {
+    $png = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $stricter = static fn (array $content): RuleSet => RuleSetBuilder::for(operationWithInput(content: $content));
+
+    return [
+        'the untyped root' => [
+            $stricter(['application/json' => new Schema(properties: ['name' => new Schema(types: [SchemaType::String])])]),
+            false,
+        ],
+        'a depth cut' => [$stricter(['application/json' => recursiveAddress(maxDepth: 2)]), false],
+        // An optional body: a required form says, looser, that an empty one reads as absent.
+        'mimetypes' => [RuleSetBuilder::for(operationWithInput(
+            content: ['multipart/form-data' => objectSchema(['avatar' => $png])],
+            bodyRequired: false,
+        )), false],
+        'an integral float' => [$stricter(['application/json' => objectSchema(['n' => new Schema(types: [SchemaType::Integer])])]), false],
+        'nothing below it is validated' => [RuleSetBuilder::for(fixtureOperation('recursion-allof-two-markers.yaml', 'createThing')), true],
+    ];
+});
+
 it('says the depth is the default when the schema states none', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]));
     $finding = implode("\n", $set->findings);
@@ -2669,7 +2794,7 @@ it('keeps presence and a finding for a field that two allOf branches point back 
     expect($set->rules)->toBe([
         'part' => ['sometimes'],
         'a' => ['sometimes', 'string'],
-        'b' => ['sometimes', 'integer'],
+        'b' => ['sometimes', 'integer:strict'],
     ])->and(implode("\n", $set->findings))
         ->toContain('`part` points back at `#/components/schemas/Left` and `#/components/schemas/Right`')
         ->toContain('nothing below it is validated');

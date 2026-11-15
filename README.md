@@ -43,7 +43,7 @@ search and a sidebar. It is the same content this repository carries, so each li
 
 ## Installation
 
-PHP 8.3 or newer, Laravel 12 or 13. The [full matrix](#requirements) is below.
+PHP 8.3 or newer, Laravel 12.22+ or 13. The [full matrix](#requirements) is below.
 
 ```bash
 composer require gcob/lara-spec-first
@@ -165,7 +165,7 @@ Every technology choice, its status, and the reasoning behind it live in
 |             | Supported     |
 | ----------- | ------------- |
 | **PHP**     | 8.3, 8.4, 8.5 |
-| **Laravel** | 12.x, 13.x    |
+| **Laravel** | 12.22+, 13.x  |
 
 ## Development Environment
 

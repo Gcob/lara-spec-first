@@ -255,12 +255,40 @@ it('reads the required list on a PUT and reads it as empty on a PATCH', function
     $patch = (string) file_get_contents(buildTree().'/Requests/UpdatePostRequest.php');
 
     expect($put)->toContain("'title' => ['present', 'string'],")
-        ->and($put)->toContain("'published' => ['required', 'boolean'],")
+        ->and($put)->toContain("'published' => ['required', 'boolean:strict'],")
         ->and($patch)->toContain("'title' => ['sometimes', 'string'],")
         // Every other constraint survives the emptied list: the type rules are
         // the same on both sides, which is what says the `PATCH` reads the
         // schema rather than a reduced copy of it.
-        ->and($patch)->toContain("'published' => ['sometimes', 'boolean'],");
+        ->and($patch)->toContain("'published' => ['sometimes', 'boolean:strict'],");
+});
+
+// A finding that says the request is stricter than the contract is in the file, and is not a gap: the warning counts
+// the requests that read something and enforce nothing for it.
+it('keeps a stricter-than-the-contract finding out of the build warning', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('strict-findings.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+    $request = (string) file_get_contents(buildTree().'/Requests/CreateCounterRequest.php');
+    // The emitter wraps a finding over lines of the docblock, so a phrase is read with the wrapping undone.
+    $prose = (string) preg_replace('/\s*\n\s*\*\s*/', ' ', $request);
+
+    expect($output->fetch())->not->toContain('read a constraint they do not enforce')
+        ->and($request)->toContain("'count' => ['sometimes', 'integer:strict'],")
+        ->and($prose)->toContain('so the request is stricter than the contract for them')
+        ->and($prose)->toContain('Nothing was read and left unenforced.');
+});
+
+it('still counts a request that leaves a constraint unenforced', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('doctor-unenforced-keyword.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+    $prose = (string) preg_replace('/\s*\n\s*\*\s*/', ' ', (string) file_get_contents(buildTree().'/Requests/CreateOrderRequest.php'));
+
+    expect($output->fetch())->toContain('1 generated request(s) read a constraint they do not enforce')
+        ->and($prose)->not->toContain('Nothing was read and left unenforced.');
 });
 
 // Scenario: a removed operation is pruned. The tree writer deletes anything it

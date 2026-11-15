@@ -24,6 +24,34 @@ tags: [versions, conventions, planning]
 
 ### Changed
 
+- **Breaking: a JSON body refuses what it used to coerce, and Laravel 12.22 is the new floor.** A request body that is
+  JSON and nothing else now validates an `integer`, a `number` and a `boolean` with Laravel's `integer:strict`,
+  `numeric:strict` and `boolean:strict`, at every level. **A request that answered 200 now answers 422** for a
+  whole-number string (`"42"`), `true` or `1.0` where the contract says integer, for a numeric string (`"1.5"`) where it
+  says number, and for `1`, `0`, `"1"` or `"0"` where it says boolean. Only the values the loose rule accepted change.
+  `1.0` is the one a JSON Schema validator accepts: PHP decodes it as a float, `is_int()` cannot tell it from `1.5`, and
+  the generated file says it is stricter than the contract in one finding per request. **A form client of a JSON-only
+  operation gets the same 422**: `age=30` from an HTML form to an operation whose contract declares only JSON was a 200,
+  and a form writes every number as text. The contract declares no form, so that client is off-contract, and `rules()`
+  is one array. A `query` parameter, a form-encoded or multipart field, and a body that is JSON and a form at once keep
+  the loose rules. **The floor of `illuminate/routing` and `illuminate/support` rises from `^12.0 || ^13.0` to
+  `^12.22 || ^13.0`**: `integer:strict` is silently ignored before Laravel 12.22 (`numeric:strict` and `boolean:strict`
+  exist from 12.21), so on 12.0 to 12.21 an integer would accept `"42"` and nothing would say so. An application on an
+  older Laravel 12 updates Laravel first. The build re-emits every request that has an integer, a number or a boolean in
+  a JSON body. [Request validation](./docs/guide/code-generation/request-validation.md#a-json-body-keeps-its-types).
+- **A body that is JSON and a form at once says what a JSON client gets through.** It keeps the loose `integer`,
+  `numeric` and `boolean`, since one rule set cannot read a form's text and refuse a JSON string, and the generated file
+  now has one finding per integer, number and boolean field: `"42"` and `true` for an integer, `"1.5"` for a number,
+  `"1"` and `1` for a boolean (whose finding also says a form's `"true"` is refused). The rules did not change. These
+  are gaps rather than a stricter request, so `spec:build` counts them in its warning, and `spec:doctor` stays silent on
+  them. [Request validation](./docs/guide/code-generation/request-validation.md#a-json-body-keeps-its-types).
+- **`spec:build` no longer counts a finding that says the request is stricter than the contract.** Its "read a
+  constraint they do not enforce" warning counts the requests that read something and enforce nothing for it. An
+  integral float refused by `integer:strict`, a `mimetypes` rule refusing a file named like PHP, a recursion refused
+  below its depth, and a body with `properties` and no `type` refusing a JSON root that is not an object are all
+  stricter, not looser, so they stay in the generated file's Findings block and out of the count, and a request with
+  only those keeps its "Nothing was read and left unenforced" line. A finding that nothing below a point is validated
+  still counts.
 - **A recursive request schema is validated down to a depth, and a deeper payload answers 422.** A schema that refers to
   itself (a tree, a comment thread, an `Address` holding an `Address`) used to stop at the point it repeated, so
   `parent: "oops"` passed and nothing below the first repeat was checked. The generated request now unrolls the
@@ -187,6 +215,10 @@ rather than one that was missing, and nothing downstream failed to say so.
 
 ### Fixed
 
+- **A JSON body accepted a string for an integer, a number or a boolean
+  ([#107](https://github.com/Gcob/lara-spec-first/issues/107)).** `"42"` passed as an integer, `"1.5"` as a number, and
+  `1` or `"0"` as a boolean, because Laravel's `integer`, `numeric` and `boolean` read what a form writes. The rules are
+  now strict for a body that is JSON alone, which is a breaking change listed under Changed.
 - **A position naming a schema written in another file was wrong**, and it was wrong in three readings at once: a
   refusal named a pointer into the root document, which has nothing at it and does not name the offending file; a
   recursion marker cut one level too late, because the parser hands back a _copy_ of an externally resolved node and the

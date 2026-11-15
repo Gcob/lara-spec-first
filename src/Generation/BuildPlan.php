@@ -55,7 +55,7 @@ final readonly class BuildPlan
     {
         return count(array_filter(
             $this->requests,
-            static fn (PlannedRequest $request): bool => $request->rules->findings !== [],
+            static fn (PlannedRequest $request): bool => $request->rules->leavesUnenforced(),
         ));
     }
 

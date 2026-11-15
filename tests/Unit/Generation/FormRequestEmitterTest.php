@@ -50,7 +50,7 @@ it('emits a final class extending the framework base', function (): void {
 it('writes the rule set as rules() returns it', function (): void {
     expect(emittedRequest(goldenOperation()))
         ->toContain("'email' => ['present', 'string', 'max:255', 'email'],")
-        ->toContain("'age' => ['sometimes', 'integer', 'min:18'],")
+        ->toContain("'age' => ['sometimes', 'integer:strict', 'min:18'],")
         ->toContain("'nickname' => ['sometimes', 'nullable', 'string'],")
         ->toContain("'tags.*' => ['string', 'distinct:strict'],")
         ->toContain("'address' => ['sometimes', 'array', 'required_array_keys:city'],")

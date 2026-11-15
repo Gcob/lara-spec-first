@@ -330,6 +330,8 @@ components:
                     type: string
                 published:
                     type: boolean
+                # A JSON body keeps its types: `integer:strict`, so `"5"` and `5.0` are
+                # a 422 where a form or a query string would have carried them as text.
                 readingMinutes:
                     type: integer
                     minimum: 1

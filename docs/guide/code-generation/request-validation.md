@@ -97,7 +97,7 @@ public function rules(): array
 {
     return [
         'email' => ['present', 'string', 'email', 'max:255'],
-        'age' => ['sometimes', 'integer', 'min:18'],
+        'age' => ['sometimes', 'integer:strict', 'min:18'],   // a JSON body keeps its types
         'notify' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],   // ?notify=true, a query parameter
     ];
 }
@@ -470,6 +470,7 @@ contract when it is not way too complicated to integrate in Laravel_.
   defect, and a stricter rule with its finding is a decision somebody can read. The cases today:
   [a boolean in a body that is JSON and a form at once](#every-constraint-maps-or-reports) keeps `boolean`, a file
   part's `mimetypes` refuses [a file named like PHP](../uploads.md#the-schema-names-the-file-part),
+  [a JSON integer written as a float](#a-json-body-keeps-its-types) (`1.0`) is refused by `integer:strict`,
   [a recursive schema is refused below its depth](#a-recursive-schema-is-validated-to-a-stated-depth), and
   `ConvertEmptyStringsToNull` makes a non-nullable string refuse `""`, which is the framework's and not a rule here, so
   [it is stated above](#patch-empties-the-required-list) rather than reported per field.
@@ -479,31 +480,31 @@ one becomes is this table's.
 
 **What a type, a nullability and an annotation each become:**
 
-| Schema                                                  | Laravel rule                                                                                                                                 |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type: string`                                          | `string`                                                                                                                                     |
-| `type: integer`                                         | `integer`                                                                                                                                    |
-| `type: number`                                          | `numeric`                                                                                                                                    |
-| `type: boolean`                                         | `boolean`, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                    |
-| `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                   |
-| `type: object`                                          | `array`, with each property keyed `field.child`. A JSON object arrives as a PHP array, and Laravel has no `object` rule                      |
-| `nullable`, `type: [..., "null"]`                       | `nullable`                                                                                                                                   |
-| `enum`                                                  | `Rule::in()` with the declared values                                                                                                        |
-| `const`                                                 | `Rule::in()` with the one value                                                                                                              |
-| `format: date`                                          | `date_format:Y-m-d`                                                                                                                          |
-| `format: date-time`                                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                                          |
-| `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`                                                                                                              |
-| `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                   |
-| `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                |
-| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer` is PHP's `FILTER_VALIDATE_INT`, which refuses what a 64-bit integer cannot hold, and `numeric` takes any JSON number |
-| `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                            |
+| Schema                                                  | Laravel rule                                                                                                                                                                                       |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type: string`                                          | `string`                                                                                                                                                                                           |
+| `type: integer`                                         | `integer:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                     |
+| `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                     |
+| `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                    |
+| `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                         |
+| `type: object`                                          | `array`, with each property keyed `field.child`. A JSON object arrives as a PHP array, and Laravel has no `object` rule                                                                            |
+| `nullable`, `type: [..., "null"]`                       | `nullable`                                                                                                                                                                                         |
+| `enum`                                                  | `Rule::in()` with the declared values                                                                                                                                                              |
+| `const`                                                 | `Rule::in()` with the one value                                                                                                                                                                    |
+| `format: date`                                          | `date_format:Y-m-d`                                                                                                                                                                                |
+| `format: date-time`                                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                                                                                                |
+| `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`                                                                                                                                                                    |
+| `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                                                                         |
+| `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                                                                      |
+| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer:strict` is `is_int()` on the decoded JSON, and `integer` is PHP's `FILTER_VALIDATE_INT`: both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number |
+| `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                                                                                  |
 
 **Laravel's `boolean` refuses the string `"true"`, so a boolean that arrives as text does not get it.** It accepts `1`,
 `0`, `"1"`, `"0"`, `true` and `false`, and OpenAPI's default `form` style writes a boolean in a query string as the text
 `true` (`?notify=true`), as a form-encoded or multipart body writes one. Every generated client would answer 422 to a
 contract it follows, which is a rule refusing what the contract accepts. So for **a `query` parameter and a field of a
-form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body keeps `boolean`,
-where `true` arrives already typed. Four things come with it:
+form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body gets
+[`boolean:strict`](#a-json-body-keeps-its-types), where `true` arrives already typed. Four things come with it:
 
 - **`false` is not in the list as a PHP value.** `Rule::in` compares `(string) false`, which is the empty string, and a
   list holding it would accept the `null` an empty value becomes, which a non-nullable boolean refuses.
@@ -520,8 +521,10 @@ where `true` arrives already typed. Four things come with it:
   kept because the four spellings are what a client of a query string or a form already sends, and the finding on the
   field says it accepts the two more.
 - **A body that is JSON and a form at once keeps `boolean`.** One rule set cannot accept the form's text and still
-  refuse `null`, so a form client's `"true"` is refused there and the field's finding says so. This is the exception
-  [the principle](#every-constraint-maps-or-reports) allows when matching the contract exactly would be far too complex.
+  refuse `null`, so a form client's `"true"` is refused there, and a JSON client's `"1"` and `1` get through. The
+  field's finding says both. The first is the exception [the principle](#every-constraint-maps-or-reports) allows when
+  matching the contract exactly would be far too complex, and the second is
+  [a JSON body's loose rule](#a-json-body-keeps-its-types) that no finding of the request being stricter covers.
 
 Pinned by execution tests for the query string, a form body, a multipart body and a JSON body. An earlier version of
 this page called the 422 the price of not using a looser rule, and a test pinned it: the maintainer reversed that, since
@@ -643,10 +646,10 @@ generated file's findings.
 
 **A constraint that maps to nothing is named per operation by `spec:doctor`**, and by the generated file's own findings
 for the reader who is already looking at the class. A few are still prose only (a form field PHP delivers under another
-field's key, some `dependentRequired` entries, the rest listed in
-[#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the doctor stays silent on them for now. Neither is a
-fallback for the other: one runs in CI before anything is generated, and the other answers "why is this field not
-enforced" at the moment somebody asks it.
+field's key, some `dependentRequired` entries, a JSON client's `"42"` on an integer of a body that is JSON and a form,
+the rest listed in [#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the doctor stays silent on them for
+now. Neither is a fallback for the other: one runs in CI before anything is generated, and the other answers "why is
+this field not enforced" at the moment somebody asks it.
 
 **The doctor reads data, and the generated file reads prose.** A rule set keeps its findings as sentences, and some of
 them are only worth saying: two media types over one schema, a rule stricter than the contract in one case. Gating an
@@ -660,6 +663,40 @@ the request does what the contract says there, since `required` takes effect on 
 says it in a finding and the doctor has nothing to report. The `Ignored` keywords are not in a rule set at all, since
 nothing reads them, and the reading collects them with their position instead. See
 [the doctor's Support findings](../doctor.md#what-it-checks).
+
+### A JSON body keeps its types
+
+**A JSON body keeps its types: `integer:strict`, `numeric:strict` and `boolean:strict`.** JSON writes `42`, `1.5` and
+`true` already typed, and `"42"` is a string. Laravel's loose `integer`, `numeric` and `boolean` read what a form or a
+query string writes, so on a JSON body they would accept `"42"`, `"1.5"` and `1` for a boolean, which the contract
+refuses. A field of a body that is JSON and nothing else gets the `:strict` form of its rule, at every level (`a.b`,
+`items.*`):
+
+- **`integer:strict` is `is_int()` on the decoded value.** `"42"`, `true` and `1.0` are refused. `min`, `max`, `gt`,
+  `lt` and `multiple_of` beside it still compare as numbers, since Laravel finds an integer or a number by the rule's
+  name, whatever follows the colon.
+- **`numeric:strict` refuses a string**, `"1.5"` and `"2"` alike. An integer is a number, so `2` passes.
+- **`boolean:strict` accepts `true` and `false` and nothing else**: not `1`, `0`, `"1"` or `"true"`.
+- **A whole number written as a float is refused for an integer (`1.0`, `1e2`), and that is stricter than JSON Schema
+  2020-12**, where `1.0` is an integer. PHP decodes it as a float, and `is_int()` cannot tell it from `1.5`. It is the
+  exception [the principle](#every-constraint-maps-or-reports) allows, so the generated file says it in one finding per
+  request that has an integer field, and a request with none says nothing.
+- **A finding that says the request is stricter is not a gap.** It is in the Findings block like any other, but
+  `spec:build` does not count it in its "read a constraint they do not enforce" warning, and the file keeps its "Nothing
+  was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly
+  every JSON request. The four are this one, `mimetypes` refusing a file named like PHP, a recursive schema refused
+  below its depth, and a body with `properties` and no `type` refusing a JSON root that is not an object.
+- **A query parameter and a form or multipart field keep the loose rules**, since every value they carry is text.
+- **A form client of an operation that declares only JSON gets the JSON rules.** `age=30` from an HTML form is a 422
+  there, where it was a 200: the contract declares no form, so that client is off-contract, and `rules()` is one array.
+- **A body that is JSON and a form at once keeps the loose rules, and a JSON client gets through what they accept.** One
+  rule set cannot read the text a form carries and still refuse a string in JSON, so an integer there accepts `"42"` and
+  `true`, a number accepts `"1.5"`, and a boolean accepts `"1"` and `1`, all of which the contract refuses. The
+  generated file says so in one finding per field, and `spec:doctor` stays silent on it, like the other prose-only
+  cases. [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them.
+- **`integer:strict` needs Laravel 12.22.** Before it the parameter is silently ignored, and an integer would accept
+  `"42"`. `numeric:strict` and `boolean:strict` exist from 12.21, so `integer:strict` is the rule that sets the floor,
+  and the reason the package requires `^12.22 || ^13.0`.
 
 ### A recursive schema is validated to a stated depth
 

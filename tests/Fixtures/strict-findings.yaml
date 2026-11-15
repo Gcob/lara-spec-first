@@ -1,0 +1,23 @@
+# A request whose only finding says it is stricter than the contract: a JSON integer is
+# `integer:strict`, which refuses `1.0` where JSON Schema 2020-12 reads it as an integer.
+# Nothing here is read and left unenforced, so the build has no warning to print for it.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /counters:
+    post:
+      operationId: createCounter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count:
+                  type: integer
+      responses:
+        '201':
+          description: Created
