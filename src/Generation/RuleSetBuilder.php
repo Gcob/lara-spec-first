@@ -772,6 +772,16 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * Whether a required top-level name of the body is asked through its siblings and not on its own, because the body
+     * is required and may be `null`: the request, not a rule, is what refuses it when it is missing.
+     */
+    private static function askedBySiblings(RuleWalk $walk, Schema $schema, string $prefix, string $name): bool
+    {
+        return $prefix === '' && $walk->nullableRequiredBody && ! isset($walk->unchecked[$name])
+            && in_array($name, $schema->required, true);
+    }
+
+    /**
      * How a body that may be absent, or `null`, asks for each required root property: through the keys of the others.
      *
      * @return callable(string, Schema): string
@@ -901,10 +911,10 @@ final readonly class RuleSetBuilder
             // responses. Its other rules still judge it when it is sent.
             // A required body that may be `null` asks through its siblings, so a lone required property is `sometimes`
             // and still gets the finding a required body writes for a `readOnly` one.
-            $askedAnyway = $prefix === '' && $walk->nullableRequiredBody && ! isset($walk->unchecked[$name])
-                && in_array($name, $schema->required, true);
+            $askedBySiblings = self::askedBySiblings($walk, $schema, $prefix, $name);
+            $readOnly = ($asked !== 'sometimes' || $askedBySiblings) && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`');
 
-            if (($asked !== 'sometimes' || $askedAnyway) && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`')) {
+            if ($readOnly) {
                 $walk->findings[] = self::readOnlyFinding('`'.$prefix.$name.'`');
                 $asked = 'sometimes';
             }
@@ -913,7 +923,13 @@ final readonly class RuleSetBuilder
                 $walk->rootAsksPresence = $walk->rootAsksPresence || self::refusesAbsence($asked);
             }
 
-            self::field($walk, self::fieldKey($name, $walk, $prefix), '`'.$prefix.$name.'`', $property, $asked, $contentTypes[$name] ?? null);
+            // Why: `required` refused `""` for an integer, a number or a boolean even where `ConvertEmptyStringsToNull` is
+            // gone, because it is implicit and their type rules are not. Asking through the siblings gives that up, so
+            // `filled` (implicit too, and silent when the key is absent) takes its place. A nullable property kept
+            // `present`, which let `""` through already.
+            $filled = $askedBySiblings && ! $readOnly && ! isset($walk->unchecked[$name]) && self::requiredRule($property) === 'required';
+
+            self::field($walk, self::fieldKey($name, $walk, $prefix), '`'.$prefix.$name.'`', $property, $asked, $contentTypes[$name] ?? null, $filled);
         }
 
         // A name the contract requires, or makes required by
@@ -955,7 +971,7 @@ final readonly class RuleSetBuilder
             if ($asked === 'sometimes') {
                 // A lone name of a required body that may be `null` has no sibling to follow and so no rule, but the
                 // request still asks for it (`REQUIRED_KEYS`), so the finding a required body writes for it stays.
-                if (! isset($dependents[$name]) && ! ($prefix === '' && $walk->nullableRequiredBody && in_array($name, $schema->required, true))) {
+                if (! isset($dependents[$name]) && ! self::askedBySiblings($walk, $schema, $prefix, $name)) {
                     continue;
                 }
 
@@ -1048,9 +1064,14 @@ final readonly class RuleSetBuilder
         Schema $written,
         string $presence,
         ?string $contentType = null,
+        bool $filled = false,
     ): void {
         $schema = AllOfMerger::merge($written, $walk->identity, $label);
         $rules = $presence === '' ? [] : [$presence];
+
+        if ($filled) {
+            $rules[] = 'filled';
+        }
 
         if ($contentType !== null && ! self::readsEncoding($schema, $walk, $label)) {
             self::reportUnreadEncoding($walk, $label, $schema, $contentType);

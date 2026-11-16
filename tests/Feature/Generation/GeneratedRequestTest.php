@@ -17,6 +17,7 @@ use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
@@ -2653,3 +2654,57 @@ it('returns null from dto() for a null body that requires a property', function 
         ->and($returns instanceof ReflectionNamedType ? $returns->getName() : null)->toEndWith('\\SchedulePostInputDto')
         ->and($returns?->allowsNull())->toBeTrue();
 });
+
+// Laravel skips every rule that is not implicit on a blank string, and `integer:strict`, `numeric:strict` and
+// `boolean:strict` are not. `required` is, which is how a required integer, number or boolean refused `""` in a project
+// that removed `ConvertEmptyStringsToNull`. A nullable required body asks through its siblings instead, so those keys
+// also get `filled`, and the answer stays the one the same body gives when it cannot be `null`.
+it('refuses an empty string for a required scalar of a nullable body, without ConvertEmptyStringsToNull', function (
+    array $properties,
+    array $mediaTypes,
+    string $content,
+    array $keys,
+): void {
+    ConvertEmptyStringsToNull::skipWhen(static fn (): bool => true);
+
+    try {
+        $answers = [];
+
+        foreach ([true, false] as $nullable) {
+            $class = emittedRequestClass(postWithRequiredObject($properties, array_keys($properties), array_values($mediaTypes), false, $nullable));
+            [$status, $errors] = errorsForRawJson($class, $content);
+            $errorKeys = array_keys($errors);
+            sort($errorKeys);
+            $answers[] = [$status, $errorKeys];
+        }
+    } finally {
+        ConvertEmptyStringsToNull::flushState();
+    }
+
+    expect($answers)->toBe([[422, $keys], [422, $keys]]);
+})->with([
+    'an integer and a boolean beside a string' => [
+        ['publishAt' => SchemaType::String, 'retries' => SchemaType::Integer, 'notify' => SchemaType::Boolean],
+        ['application/json'],
+        '{"publishAt":"2026-12-01T09:00:00Z","retries":"","notify":""}',
+        ['notify', 'retries'],
+    ],
+    'a number' => [
+        ['publishAt' => SchemaType::String, 'ratio' => SchemaType::Number],
+        ['application/json'],
+        '{"publishAt":"2026-12-01T09:00:00Z","ratio":""}',
+        ['ratio'],
+    ],
+    'an integer alone' => [
+        ['retries' => SchemaType::Integer],
+        ['application/json'],
+        '{"retries":""}',
+        ['retries'],
+    ],
+    'JSON and a form' => [
+        ['publishAt' => SchemaType::String, 'retries' => SchemaType::Integer, 'notify' => SchemaType::Boolean],
+        ['application/json', 'application/x-www-form-urlencoded'],
+        '{"publishAt":"2026-12-01T09:00:00Z","retries":"","notify":""}',
+        ['notify', 'retries'],
+    ],
+]);

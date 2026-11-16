@@ -460,20 +460,20 @@ anything else: a form, a `text/plain` content or an empty one that lacks the key
 and a JSON `null` is the one request let through. Every other payload gets the status and the error keys the same body
 gets when it cannot be `null`, open root or closed.
 
-**A body that is JSON and a form passes a JSON `null` and nothing else changes for a form client.** A name PHP rewrites
-(`user.name` arrives as `user_name`) stays unchecked there, as it is today, so it is neither in the siblings' rules nor
-in `REQUIRED_KEYS`, and the form's answers are the ones it had.
+**A body that is JSON and a form passes a JSON `null`, and a form client gets the same statuses and keys.** A name PHP
+rewrites (`user.name` arrives as `user_name`) stays unchecked there, as it is today, so it is neither in the siblings'
+rules nor in `REQUIRED_KEYS`, and the form's answers are the ones it had.
 
 **What a client sees change is one message.** A required key missing beside a sent sibling now reports `present_with`'s
 message ("must be present when ... is present") where it reported `present` or `required`; a key missing from `{}`
 reports the rule it always did. The status and the keys are the same. And the generated file no longer carries the
 finding about a form with no field when the body's required-key check refuses it.
 
-**One caveat comes with `present_with`, and it is the framework's.** Laravel's `ConvertEmptyStringsToNull` turns `""`
-into `null` before any rule runs, so a required integer still refuses `""` over HTTP. Without that middleware, Laravel
-skips a rule that is not implicit on a blank string, and `present_with` is implicit while `integer:strict` is not: a
-required key that moved from `required` to `present_with` would accept `""`. It is the same caveat
-[an optional integer already carries](#patch-empties-the-required-list), now for the required keys of a nullable body.
+**A required integer, number or boolean also gets `filled`.** `required` is implicit, so it refused `""` for them even
+where nothing turns `""` into `null`; `present_with` and `sometimes` are not, and Laravel skips `integer:strict`,
+`numeric:strict` and `boolean:strict` on a blank string. So `filled` takes `required`'s place beside the rule that asks
+through the siblings, and a project without `ConvertEmptyStringsToNull` still refuses `""` there. A nullable property
+keeps `present`, as before. Optional bodies do not get it: [their caveat](#patch-empties-the-required-list) stays.
 
 ## Nothing rewrites the rule set
 
@@ -543,8 +543,9 @@ type rule refuses every empty value anyway, so there the two say the same thing.
 turns `""` into `null` before any rule runs, so a string that is not nullable refuses `""` over HTTP whatever presence
 rule is emitted: `string` refuses `null`. A contract that means to accept an empty string declares the field nullable.
 Removing the middleware is not the fix it looks like: Laravel skips every rule that is not implicit on a blank string,
-so an optional integer would then accept `""`, which the contract refuses. Pinned by an execution test rather than
-worked around.
+so an optional integer, number or boolean would then accept `""`, which the contract refuses (a nullable required body
+does not: it adds `filled`, see [above](#a-nullable-body-null-or-whole)). Pinned by an execution test rather than worked
+around.
 
 ### An absent field gets no default
 

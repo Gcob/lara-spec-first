@@ -621,6 +621,35 @@ it('drops the empty-form finding when a nullable required body checks its requir
     'nothing required' => [nullableObjectSchema(['a' => new Schema(types: [SchemaType::String])]), true],
 ]);
 
+// `required` is implicit and refuses `""` for an integer, a number or a boolean even where nothing turns `""` into
+// `null`; `present_with` and `sometimes` do not. So a nullable required body adds `filled` to those, and only to those:
+// not a nullable one (`filled` refuses `null`, which it allows), not a string, not an optional body (its caveat stays).
+it('adds filled to a required scalar of a nullable required body only', function (
+    bool $nullableBody,
+    bool $bodyRequired,
+    SchemaType $type,
+    bool $nullableProperty,
+    bool $filled,
+): void {
+    $property = new Schema(types: [$type, ...($nullableProperty ? [SchemaType::Null] : [])]);
+    $body = new Schema(
+        types: [SchemaType::Object, ...($nullableBody ? [SchemaType::Null] : [])],
+        properties: ['n' => $property, 'other' => new Schema(types: [SchemaType::String])],
+        required: ['n'],
+    );
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body], bodyRequired: $bodyRequired));
+
+    expect(in_array('filled', $set->rules['n'], true))->toBe($filled);
+})->with([
+    'an integer' => [true, true, SchemaType::Integer, false, true],
+    'a number' => [true, true, SchemaType::Number, false, true],
+    'a boolean' => [true, true, SchemaType::Boolean, false, true],
+    'a nullable integer' => [true, true, SchemaType::Integer, true, false],
+    'a string' => [true, true, SchemaType::String, false, false],
+    'an integer of an optional body' => [true, false, SchemaType::Integer, false, false],
+    'an integer of a body that cannot be null' => [false, true, SchemaType::Integer, false, false],
+]);
+
 // --- Query parameters, whose presence is their own and never the method's ---
 
 it('keys a query parameter by its own name and its own required flag', function (): void {
