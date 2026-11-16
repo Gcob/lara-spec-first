@@ -82,6 +82,15 @@ final readonly class RuleSetBuilder
     private const MULTIPART = 'multipart/form-data';
 
     /**
+     * What a body required and read as a form says when nothing in it refuses an empty form: written by
+     * {@see self::rootFindings()} before the walk, and taken out again when the walk finds a required key.
+     */
+    private const EMPTY_FORM_FINDING = 'The body is required and read as a form, so a form with a `Content-Type` and no field '
+        .'(an empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is not '
+        ."read as an absent body: a form's fields need not show in the raw content, so the request cannot "
+        .'tell it from a body whose every field is optional, and accepts it unless a required property refuses it.';
+
+    /**
      * The media types a generated rule set covers.
      *
      * All three arrive through `all()`, so one rule set covers them and the order here is only the order a tie is
@@ -325,7 +334,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent);
     }
 
     /**
@@ -478,6 +487,7 @@ final readonly class RuleSetBuilder
         );
 
         self::planFormNames($schema, $walk);
+        $walk->requiredOnceSent = self::requiredOnceSent($operation, $schema, $body, $walk);
 
         $outside = self::enter($walk, $written, $schema, 'the body');
 
@@ -490,6 +500,15 @@ final readonly class RuleSetBuilder
         );
 
         self::leave($walk, $outside);
+
+        // Why: the finding is written before the walk, which is the only thing that knows a required key refuses an
+        // empty form. Taking it out afterwards leaves every other finding where it was.
+        if ($walk->rootAsksPresence) {
+            $walk->findings = array_values(array_filter(
+                $walk->findings,
+                static fn (string $finding): bool => $finding !== self::EMPTY_FORM_FINDING,
+            ));
+        }
 
         // The payload's root has no field for `array:` to sit on, so a closed
         // root becomes a closure comparing its top-level keys. Only the top
@@ -537,7 +556,8 @@ final readonly class RuleSetBuilder
             // A bracketed name closes every level above its leaf: each level is an array whose keys are the
             // ones the contract declares below it. A name PHP only renamed (`user.name` as `user_name`) has no
             // level to close, and the key check accepts what it delivers.
-            $path = $walk->formPaths[$name] ?? null;
+            // A name that collided has no `formPaths` entry, and a body that is JSON as well never closes a level.
+            $path = $walk->formPaths[$name] ?? (isset($walk->withheld[$name]) && ! $walk->mixedBody ? self::deliveredPath($name) : null);
 
             if ($path === null || count($path) < 2) {
                 $accepted[$name] = $delivered;
@@ -551,20 +571,33 @@ final readonly class RuleSetBuilder
         }
 
         // A form-only body closes each level to the keys the contract declares below it. A key `array:` cannot
-        // name (a comma in it) leaves that level open, and the finding below names what it then accepts.
+        // name (a comma in it) leaves that level open, and so does the key a declared name is delivered at. The
+        // finding below names what the key check then accepts.
+        $deliveredAt = [];
+
+        foreach (array_keys($schema->properties) as $name) {
+            $path = self::deliveredPath((string) $name);
+
+            if ($path !== null) {
+                $deliveredAt[self::pathKey($path)] = true;
+            }
+        }
+
         foreach ($steps as $level => $below) {
             $level = (string) $level;
             $keys = array_values(array_unique(array_values($below)));
 
-            if (array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) === []) {
-                $walk->rules[$level] = ['sometimes', 'array:'.implode(',', $keys)];
+            // Why: a value can sit at the key a declared name is delivered at (`filter[a]=x`), and `array:` would
+            // refuse it, so that level stays open and the finding below names what the key check accepts.
+            if (isset($deliveredAt[$level]) || array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) !== []) {
+                foreach (array_keys($below) as $name) {
+                    $accepted[(string) $name] = $level;
+                }
 
                 continue;
             }
 
-            foreach (array_keys($below) as $name) {
-                $accepted[(string) $name] = $level;
-            }
+            $walk->rules[$level] = ['sometimes', 'array:'.implode(',', $keys)];
         }
 
         if ($accepted !== []) {
@@ -751,6 +784,49 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * The keys a JSON object sent as an optional body must carry, by the rule their failure carries.
+     *
+     * **A rule cannot see `{}`**: every key is out of the data, so `present_with` asks for nothing. The request reads
+     * the raw content instead, and this is what it reads: each required name, with the rule it would get in a required
+     * body (`present` for a name `properties` does not declare). Only a body read as JSON gets one, and not a `PATCH`,
+     * which asks for nothing. Left out are the names the rules leave out for their own reason, whose findings stay
+     * true: a `*` name, a `readOnly` property, and a name a form client sends under another key (withheld, or
+     * unchecked, which a JSON client would otherwise be refused for).
+     *
+     * @return array<string, string>
+     *
+     * @throws ConflictingInputException
+     */
+    private static function requiredOnceSent(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): array
+    {
+        if ($body->required || ! $walk->jsonBody || $operation->method === HttpMethod::Patch) {
+            return [];
+        }
+
+        $keys = [];
+
+        foreach ($schema->required as $name) {
+            if (self::unescapableKey($name) !== null || isset($walk->withheld[$name]) || isset($walk->unchecked[$name])) {
+                continue;
+            }
+
+            if (! isset($schema->properties[$name])) {
+                $keys[$name] = 'present';
+
+                continue;
+            }
+
+            $property = $schema->properties[$name];
+
+            if (! self::isReadOnly($property, $walk, '`'.$name.'`')) {
+                $keys[$name] = self::requiredRule($property);
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
      * Every property of one object, keyed under its parent, with the presence a caller decides for the required ones.
      *
      * @param  callable(string, Schema): string  $presence  how a named property
@@ -812,6 +888,10 @@ final readonly class RuleSetBuilder
                 $asked = 'sometimes';
             }
 
+            if ($prefix === '') {
+                $walk->rootAsksPresence = $walk->rootAsksPresence || self::refusesAbsence($asked);
+            }
+
             self::field($walk, self::fieldKey($name, $walk, $prefix), '`'.$prefix.$name.'`', $property, $asked, $contentTypes[$name] ?? null);
         }
 
@@ -857,6 +937,10 @@ final readonly class RuleSetBuilder
                 }
 
                 $asked = self::withRule($dependents[$name]);
+            }
+
+            if ($prefix === '') {
+                $walk->rootAsksPresence = $walk->rootAsksPresence || self::refusesAbsence($asked);
             }
 
             $walk->rules[self::fieldKey($name, $walk, $prefix)] = [$asked];
@@ -2111,6 +2195,14 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * Whether a presence rule refuses a payload that leaves the key out, which `present_with:` does not do on its own.
+     */
+    private static function refusesAbsence(string $presence): bool
+    {
+        return $presence === 'present' || $presence === 'required';
+    }
+
+    /**
      * What the body's own root says that a rule set cannot act on, or that a reader would not guess from the rules.
      *
      * @return list<string>
@@ -2138,13 +2230,10 @@ final readonly class RuleSetBuilder
             $walk->stricter[] = $findings[array_key_last($findings)];
         }
 
-        // The request refuses an empty content for a required body when it is JSON or has no
-        // `Content-Type`. A form is the one it cannot read that way.
+        // The request refuses an empty content for a required body whatever its type, bar a form,
+        // which it cannot read that way.
         if ($body->required && $walk->formBody) {
-            $findings[] = 'The body is required and read as a form, so a form with a `Content-Type` and no field '
-                .'(an empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is not '
-                .'read as an absent body: a form\'s fields need not show in the raw content, so the request cannot '
-                .'tell it from a body whose every field is optional, and accepts it unless a required property refuses it.';
+            $findings[] = self::EMPTY_FORM_FINDING;
         }
 
         if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
@@ -2153,17 +2242,21 @@ final readonly class RuleSetBuilder
                     .'empty here. Every property is `sometimes`.',
                 self::list($schema->required),
             );
-        } elseif (! $body->required && $schema->required !== []) {
+        } elseif (! $body->required && $schema->required !== [] && $walk->formBody) {
+            // Why: a JSON body is not named here, since the request reads its raw content and refuses `{}` itself.
+            // A form is the one it cannot read that way: its fields need not show in the content.
             $alone = count(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required])) === 1;
 
             $findings[] = sprintf(
-                'The body may be absent entirely while its schema requires %s%s. A rule cannot tell a body sent as '
-                    .'`{}` from one that is not sent, since both leave every key out of the data, so `{}` is accepted, '
-                    .'which the contract refuses.',
+                'The body may be absent entirely while its schema requires %s%s. A rule cannot tell a body that is not '
+                    .'sent from a form that sends none of the body\'s keys, since both leave every key out of the data, '
+                    .'so the form is accepted, which the contract refuses.',
                 self::list($schema->required),
                 $alone
                     ? ' and declares nothing else. There is no other key to name, so it is `sometimes`'
-                    : ', so each is required only when another key of the body is sent',
+                    : (count($schema->required) === 1
+                        ? ', so it is required only when another key of the body is sent'
+                        : ', so each is required only when another key of the body is sent'),
             );
         }
 
@@ -2301,9 +2394,9 @@ final readonly class RuleSetBuilder
      * contract's name.
      *
      * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name and a declared
-     * one that is equal to what it becomes, or a bracketed name under a declared top-level one. None of them gets a
-     * rule, and one finding names them. A body that is JSON as well gets the same, since a rule for the declared name
-     * would judge the array a form builds.
+     * one that is equal to what it becomes, or a bracketed name below another declared name, at any depth (`filter[a]`
+     * and `filter[a][b]`). None of them gets a rule, and one finding names them. A body that is JSON as well gets the
+     * same, since a rule for the declared name would judge the array a form builds.
      *
      * **A body that is JSON as well keeps the rule keyed by the name the contract writes**, since a JSON client sends
      * exactly that, and the value a form client sends under the other name is not checked: no one rule set holds both
@@ -2380,15 +2473,25 @@ final readonly class RuleSetBuilder
 
             $groups[$key][] = $name;
 
-            // A bracketed name delivers below a top-level key, which another name may be.
-            $head = self::ruleKey($paths[$name][0] ?? '');
+            // A bracketed name delivers below a key another name uses: a strict prefix of its path, compared step by
+            // step (`filter[a]` is no prefix of `filter[ab][c]`). Beside JSON, only a top-level key counts: below it,
+            // the names keep their literal rule keys, which Laravel reads `[` in as a plain character.
+            $path = $paths[$name] ?? [];
 
-            if (count($paths[$name] ?? []) > 1) {
-                foreach ($names as $other) {
-                    if ($other !== $name && $effective[$other] === $head) {
-                        $overlaps[] = [$name, $other, $key, $head];
-                    }
+            foreach ($names as $other) {
+                $prefix = $paths[$other] ?? null;
+
+                if (
+                    $prefix === null
+                    || $other === $name
+                    || count($prefix) >= count($path)
+                    || array_slice($path, 0, count($prefix)) !== $prefix
+                    || (count($prefix) > 1 && $walk->mixedBody)
+                ) {
+                    continue;
                 }
+
+                $overlaps[] = [$name, $other, $key, self::pathKey($prefix)];
             }
         }
 

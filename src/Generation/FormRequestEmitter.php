@@ -153,6 +153,19 @@ final readonly class FormRequestEmitter
             );
         }
 
+        if ($set->requiredOnceSent !== []) {
+            $constants .= sprintf(
+                "    /**\n     * The keys a JSON object sent as the body must carry, which the rules ask for only through a sibling.\n"
+                    ."     * An empty object leaves every key out of the data, so the request reads them from the raw content.\n     */\n"
+                    ."    private const REQUIRED_KEYS = [%s];\n\n",
+                implode(', ', array_map(
+                    fn (string|int $name, string $rule): string => $this->literal((string) $name).' => '.$this->literal($rule),
+                    array_keys($set->requiredOnceSent),
+                    $set->requiredOnceSent,
+                )),
+            );
+        }
+
         if ($set->queryKeys !== []) {
             $constants .= sprintf(
                 "    /**\n     * The `query` parameters the contract declares, the only keys read from the query string.\n     */\n"
@@ -327,24 +340,33 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * The root checks, or nothing: a JSON body that is not an object is refused, and a closed root refuses the keys it
-     * does not declare.
+     * The root checks, or nothing: an optional JSON body refuses an object missing a key it requires, a JSON body that
+     * is not an object is refused, and a closed root refuses the keys it does not declare.
      *
-     * **A closure, and one emitted shape.** Laravel's `#[FailOnUnknownFields]` does the second from 12.x on, but not on
+     * **A closure, and one emitted shape.** Laravel's `#[FailOnUnknownFields]` does the third from 12.x on, but not on
      * the lowest Laravel this package supports, and an attribute behind a version gate with this closure underneath it
-     * anyway would be two shapes that have to stay equivalent. Both checks sit in the one closure, since a root that is
-     * not an object has no keys to compare, and answering for both would say the same thing twice.
+     * anyway would be two shapes that have to stay equivalent. All the checks sit in the one closure, since a root that
+     * is not an object has no keys to compare, and answering for both would say the same thing twice.
      *
-     * **The first check is the contract's own for a typed object, and stricter for an untyped one.** Laravel reads a
-     * JSON body as `(array) json_decode(...)`, so `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has
-     * a key for, and an open root with nothing required would accept them. Only a JSON request is checked (a form
-     * cannot send a non-object). An empty content is not a non-object but an absent body: it is refused when the body
-     * is `required`, which no rule says when every property is optional, and accepted when it is not. That check holds
-     * for a form body too, and reads a request as absent when it is JSON or has no `Content-Type` (a request with none
-     * carries no form field either). A request with a form `Content-Type` has its body read from the form bag, whose
-     * fields need not show in the raw content, so it is not read as absent. A schema that allows `null` allows it here.
+     * **The required-key check comes first, and reads the raw content.** An optional body whose schema requires
+     * properties asks for each through its siblings (`present_with`), which says nothing about `{}`: every key is out
+     * of the data. So a JSON object sent as the body that lacks a key `REQUIRED_KEYS` lists is refused on that key,
+     * with the rule it would get in a required body. It runs for a decoded JSON object only: an empty content is an
+     * absent body, and `null` is not an object. It is first so that a closed root, whose checks return early, keeps
+     * these errors too, and it skips a key `present_with` already refused, so each is named once.
      *
-     * **The second reads the top-level keys from the body rather than from `all()`**, by the same `bodyInput()`
+     * **The second is the contract's own for a typed object, and stricter for an untyped one.** Laravel reads a JSON
+     * body as `(array) json_decode(...)`, so `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has a key
+     * for, and an open root with nothing required would accept them. Only a JSON request is checked (a form cannot send
+     * a non-object). An empty content is not a non-object but an absent body: it is refused when the body is
+     * `required`, which no rule says when every property is optional, and accepted when it is not. That check holds for
+     * a form body too, and reads a request as absent whatever its `Content-Type` is, unless that is a form's (JSON,
+     * `text/plain`, none at all: a request with none carries no form field either). A request with a form
+     * `Content-Type` has its body read from the form bag, whose fields need not show in the raw content, so it is not
+     * read as absent. The type is compared without case, as PHP parses a form whatever the case of its type, and
+     * Symfony's `getFormat()` compares exactly. A schema that allows `null` allows it here.
+     *
+     * **The third reads the top-level keys from the body rather than from `all()`**, by the same `bodyInput()`
      * `validationData()` reads: the JSON bag, or the form bag, and the uploaded files either way, never
      * `getInputSource()`, which answers with the query string on a `GET` or a `HEAD`. The files are a bag of their own,
      * so a closed root that left them out would let an undeclared upload through. The query string is not the body, and
@@ -368,16 +390,35 @@ final readonly class FormRequestEmitter
             $lines = ['                $content = $this->getContent();', ''];
         }
 
-        // Why: a request with no `Content-Type` carries no form field either (a multipart always sets
-        // one), so no content is as absent as a body gets. A form with a type and no content is not read
-        // as absent, since its fields need not show in the content.
+        // Why: first, before the checks that return early, so a closed root keeps these errors too. The list is
+        // only ever filled for a body read as JSON, which is what reads `$content` above. An optional body is
+        // refused when it is a JSON object (`{}` or one with none of the keys), and `null` or an empty content is
+        // not one. A key `present_with` already refused has its error, so it is named once.
+        if ($set->requiredOnceSent !== []) {
+            $lines = [
+                ...$lines,
+                '                if ($this->isJson() && is_object(json_decode($content))) {',
+                '                    foreach (self::REQUIRED_KEYS as $key => $rule) {',
+                '                        if (! array_key_exists($key, $this->bodyInput()) && ! $validator->errors()->has((string) $key)) {',
+                '                            $validator->addFailure((string) $key, $rule);',
+                '                        }',
+                '                    }',
+                '                }',
+                '',
+            ];
+        }
+
+        // Why: a request whose type is not a form's reads nothing from the form bag, and one with no
+        // `Content-Type` carries no form field either (a multipart always sets one), so no content is as
+        // absent as a body gets. A form with a type and no content is not read as absent, since its fields
+        // need not show in the content. The type is lowered because `getFormat()` compares exactly.
         if ($set->requiredRoot) {
             $lines = [
                 ...$lines,
                 '                if (',
                 '                    trim($content) === \'\'',
                 '                    && $this->allFiles() === []',
-                '                    && ($this->isJson() || ! $this->headers->has(\'Content-Type\'))',
+                '                    && $this->getFormat(strtolower((string) $this->headers->get(\'Content-Type\'))) !== \'form\'',
                 '                ) {',
                 '                    $validator->addFailure('.$this->literal($set->rootKey).', \'required\');',
                 ...($set->closedKeys === null ? [] : ['', '                    return;']),

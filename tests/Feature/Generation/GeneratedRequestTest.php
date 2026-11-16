@@ -1570,6 +1570,61 @@ it('gives a collision no rule, so a form value passes unchecked and does not rea
         ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => 'anything'])[0])->toBe(422);
 });
 
+/**
+ * A `POST` with a form body made of the given properties, every one an integer but the ones named in `$strings`.
+ *
+ * @param  list<string>  $names
+ * @param  list<string>  $strings
+ */
+function postWithBracketedNames(string $mediaType, array $names, bool $closed, array $strings = []): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/bracketed'),
+        operationId: 'sendBracketed',
+        requestBody: new RequestBody([$mediaType => new Schema(
+            types: [SchemaType::Object],
+            properties: array_map(
+                static fn (string $name): Schema => new Schema(types: [in_array($name, $strings, true) ? SchemaType::String : SchemaType::Integer]),
+                array_combine($names, $names),
+            ),
+            additionalProperties: $closed ? false : null,
+        )], true),
+    );
+}
+
+// `filter[a]` and `filter[a][b]` are one key to a rule: a rule on either would refuse the other's valid value. Neither
+// has one, so either side passes. The closed body still refuses what lands beside them, and the level the first one is
+// delivered at stays open for its own value. Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
+it('accepts either side of a collision below a bracketed name, and refuses an undeclared key beside it', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithBracketedNames($mediaType, ['filter[a]', 'filter[a][b]', 'filter[c]'], closed: true, strings: ['filter[a]']));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => 'x']])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['b' => '1']]])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['evil' => '1']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['c' => 'x']])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// The two names have no rule, so `formPaths` does not hand their values to `dto()`: they are `Optional` there, and a
+// valid `filter[a]=x` stops reaching it (D47).
+it('leaves both names of a collision below a bracketed name out of dto', function (): void {
+    $class = emittedRequestClass(postWithBracketedNames('multipart/form-data', ['filter[a]', 'filter[a][b]', 'plain'], closed: false, strings: ['filter[a]', 'plain']));
+
+    expect(dtoThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => 'x'], 'plain' => 'x']))->toBe([200, ['plain' => 'x']])
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['b' => '1']], 'plain' => 'x']))->toBe([200, ['plain' => 'x']]);
+});
+
+// Green before this change: the kernel already refused these, and only the unit test of the rule shape said so.
+it('refuses what lands beside a name bracketed more than once in a closed form body', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithBracketedNames($mediaType, ['filter[created][gte]', 'filter[x]'], closed: true));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['created' => ['gte' => '1'], 'x' => '2']])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['evil' => '1']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => 'abc'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['created' => ['lt' => '5']]])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
 // PHP renames a part of `$_FILES` the way it does a field (`my.file` arrives as `my_file`), so a
 // required upload under a dotted name is judged by the key it arrives as, and read back by `dto()`.
 it('judges and builds an upload whose part name PHP rewrites', function (): void {
@@ -1891,6 +1946,97 @@ it('refuses an empty content when the body is required', function (bool $typed, 
 ]);
 
 /**
+ * A `POST` whose JSON body is an object of strings that requires some of them, and may be absent.
+ *
+ * @param  list<string>  $names  the declared properties
+ * @param  list<string>  $required
+ */
+function postWithOptionalJsonRequiring(array $names, array $required, bool $nullable = false): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/reports'),
+        operationId: 'reportThing',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+            properties: array_fill_keys($names, new Schema(types: [SchemaType::String])),
+            required: $required,
+        )], false),
+    );
+}
+
+/**
+ * One request through the real kernel carrying `$content` as its JSON body, as sent, and what it answered.
+ *
+ * @param  class-string<FormRequest>  $class
+ * @return array{0: int, 1: array<string, list<string>>} the status, and the messages by the key they were answered on
+ */
+function errorsForRawJson(string $class, string $content): array
+{
+    Route::post('/_generated/raw-json-errors-of', fn () => response()->json(app($class)->validated()));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/raw-json-errors-of',
+        'POST',
+        [],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        $content,
+    ));
+
+    /** @var array<string, list<string>> $errors */
+    $errors = json_decode((string) $response->getContent(), true)['errors'] ?? [];
+
+    return [$response->getStatusCode(), $errors];
+}
+
+// A rule cannot tell `{}` from an absent body, since both leave every key out of the data, but the raw content can:
+// `{}` is a body, and the contract refuses a body that lacks a key it requires. An absent body still passes.
+it('refuses an empty JSON object on an optional body that requires properties', function (
+    array $names,
+    array $required,
+    bool $nullable,
+    string $content,
+    int $status,
+    array $keys,
+): void {
+    $class = emittedRequestClass(postWithOptionalJsonRequiring(array_values($names), array_values($required), $nullable));
+
+    [$answered, $errors] = errorsForRawJson($class, $content);
+
+    expect($answered)->toBe($status)
+        ->and(array_keys($errors))->toBe($keys);
+})->with([
+    'two properties, an empty object' => [['a', 'b'], ['a'], false, '{}', 422, ['a']],
+    'two properties, only a key it does not declare' => [['a', 'b'], ['a'], false, '{"zzz":1}', 422, ['a']],
+    'two properties, the required one' => [['a', 'b'], ['a'], false, '{"a":"x"}', 200, []],
+    'two properties, an empty content' => [['a', 'b'], ['a'], false, '', 200, []],
+    'two properties, blanks' => [['a', 'b'], ['a'], false, "  \n", 200, []],
+    'one property, an empty object' => [['a'], ['a'], false, '{}', 422, ['a']],
+    'one property, an empty content' => [['a'], ['a'], false, '', 200, []],
+    'a nullable root, null' => [['a', 'b'], ['a'], true, 'null', 200, []],
+    'every required key, an empty object' => [['a', 'b', 'c'], ['a', 'c'], false, '{}', 422, ['a', 'c']],
+    'a dotted name, an empty object' => [['user.name', 'b'], ['user.name'], false, '{}', 422, ['user.name']],
+]);
+
+// `present_with` already refuses a key when a sibling was sent, so the loop adds its failure only to a key with none:
+// one message per key, never two.
+it('names a missing required key once when a sibling was sent', function (array $names, array $required, string $content, array $keys): void {
+    $class = emittedRequestClass(postWithOptionalJsonRequiring(array_values($names), array_values($required)));
+
+    [$status, $errors] = errorsForRawJson($class, $content);
+
+    expect($status)->toBe(422)
+        ->and(array_keys($errors))->toBe($keys)
+        ->and(array_map('count', $errors))->each->toBe(1);
+})->with([
+    'a sibling sent' => [['a', 'b', 'c'], ['a', 'c'], '{"b":"x"}', ['a', 'c']],
+    'a dotted name, a sibling sent' => [['user.name', 'b'], ['user.name'], '{"b":"x"}', ['user.name']],
+]);
+
+/**
  * One request through the real kernel carrying `$content` with the `Content-Type` as given, or none: what
  * `curl -X POST url` sends, which `Request::create()` would otherwise default to a form's.
  *
@@ -1899,6 +2045,17 @@ it('refuses an empty content when the body is required', function (bool $typed, 
  * @param  array<string, mixed>  $files
  */
 function statusForContentType(string $class, ?string $contentType, string $content = '', array $parameters = [], array $files = []): int
+{
+    return responseForContentType($class, $contentType, $content, $parameters, $files)->getStatusCode();
+}
+
+/**
+ * What the emitted class answers to one request, whose `Content-Type` is set or removed as written.
+ *
+ * @param  array<string, mixed>  $parameters
+ * @param  array<string, UploadedFile>  $files
+ */
+function responseForContentType(string $class, ?string $contentType, string $content = '', array $parameters = [], array $files = []): SymfonyResponse
 {
     Route::post('/_generated/typed-content', fn () => response()->json(app($class)->validated()));
 
@@ -1916,7 +2073,7 @@ function statusForContentType(string $class, ?string $contentType, string $conte
         $request->headers->remove('Content-Type');
     }
 
-    return app(HttpKernel::class)->handle($request)->getStatusCode();
+    return app(HttpKernel::class)->handle($request);
 }
 
 /**
@@ -1935,6 +2092,34 @@ function postWithOptionalFormObject(array $mediaTypes, bool $bodyRequired = true
             types: [SchemaType::Object],
             properties: ['q' => new Schema(types: [SchemaType::String])],
         )), $bodyRequired),
+    );
+}
+
+/**
+ * A `POST` whose body is a form object requiring one string.
+ */
+function postWithRequiredFormField(): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/search'),
+        operationId: 'searchForm',
+        requestBody: new RequestBody(
+            [
+                'application/x-www-form-urlencoded' => new Schema(
+                    types: [SchemaType::Object],
+                    properties: ['q' => new Schema(types: [SchemaType::String])],
+                    required: ['q'],
+                ),
+                'multipart/form-data' => new Schema(
+                    types: [SchemaType::Object],
+                    properties: ['q' => new Schema(types: [SchemaType::String])],
+                    required: ['q'],
+                ),
+            ],
+            true,
+        ),
     );
 }
 
@@ -1980,15 +2165,68 @@ it('does not read a form with a content type and no fields as an absent body', f
         ->and(statusForContentType($class, 'multipart/form-data; boundary=x'))->toBe(200);
 });
 
+// The premise of leaving the empty-form finding out where a required field exists: that field refuses an empty
+// form on its own, so no extra check is owed.
+it('refuses an empty form when the body requires a field', function (string $contentType): void {
+    $class = emittedRequestClass(postWithRequiredFormField());
+
+    $response = responseForContentType($class, $contentType);
+    $errors = json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR)['errors'] ?? [];
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and(array_keys((array) $errors))->toBe(['q']);
+})->with([
+    'urlencoded' => ['application/x-www-form-urlencoded'],
+    'multipart' => ['multipart/form-data; boundary=x'],
+]);
+
 it('does not refuse an upload sent with no content type', function (): void {
     $class = emittedRequestClass(postWithOptionalFormObject(['multipart/form-data']));
 
     expect(statusForContentType($class, null, files: ['avatar' => realUpload('x', 'a.txt')]))->toBe(200);
 });
 
-// Only a JSON request is read as an absent body: a request that is not JSON has its body read from
-// the form bag, and a form's fields need not show in the raw content.
-it('does not read an empty content as an absent body when the request is not JSON', function (): void {
+// An empty content is an absent body for every type but a form's: a form's fields need not show in the raw
+// content (PHP leaves `php://input` empty for a multipart), but nothing else is read from the form bag.
+it('refuses an empty content of a type that is not a form when the body is required', function (string $contentType, string $content, bool $json): void {
+    $operation = $json ? postWithOptionalJsonObject() : postWithOptionalFormObject(['multipart/form-data']);
+    $class = emittedRequestClass($operation);
+
+    $response = responseForContentType($class, $contentType, $content);
+    $errors = json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR)['errors'] ?? [];
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and(array_keys((array) $errors))->toBe(['body']);
+})->with([
+    'plain, form body' => ['text/plain', '', false],
+    'xml, form body' => ['application/xml', '', false],
+    'plain with a charset, form body' => ['text/plain; charset=utf-8', '', false],
+    'blanks, form body' => ['text/plain', "  \n", false],
+    'plain, JSON body' => ['text/plain', '', true],
+    'xml, JSON body' => ['application/xml', '', true],
+    'plain with a charset, JSON body' => ['text/plain; charset=utf-8', '', true],
+    'blanks, JSON body' => ['text/plain', "  \n", true],
+]);
+
+// Off-contract content is not an absent body: the request reads nothing from it, so it is not refused here.
+it('does not read a content of a type that is not a form as an absent body when it has content', function (): void {
+    $class = emittedRequestClass(postWithOptionalFormObject(['multipart/form-data']));
+
+    expect(statusForContentType($class, 'text/plain', 'hello'))->toBe(200);
+});
+
+// Symfony compares a format's type exactly, but PHP parses a form whatever the case of its type, so a form with
+// fields and an empty raw content is not an absent body when its type is spelled in capitals.
+it('does not read a form whose type is spelled in capitals as an absent body', function (): void {
+    $class = emittedRequestClass(postWithOptionalFormObject(['multipart/form-data', 'application/x-www-form-urlencoded']));
+
+    expect(statusForContentType($class, 'Application/X-WWW-Form-Urlencoded', '', ['q' => 'x']))->toBe(200)
+        ->and(statusForContentType($class, 'Multipart/Form-Data; boundary=x'))->toBe(200)
+        ->and(statusForContentType($class, 'multipart/form-data; boundary=x'))->toBe(200);
+});
+
+// A request that is a form has its body read from the form bag, and a form's fields need not show in the raw content.
+it('does not read an empty content as an absent body when the request is a form', function (): void {
     $class = emittedRequestClass(postWithOptionalJsonObject());
     Route::post('/_generated/form-to-json', fn () => response()->json(app($class)->validated()));
 

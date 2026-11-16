@@ -258,10 +258,11 @@ it('does not require a lone property when the whole body may be absent', functio
         bodyRequired: false,
     ));
 
-    // One required property has no sibling to name, and Laravel cannot tell
-    // an absent body from an empty one.
+    // One required property has no sibling to name, and Laravel cannot tell an absent body from an empty
+    // one: the request reads the raw JSON itself, so the finding is gone and the key is listed.
     expect($set->rules)->toBe(['name' => ['sometimes', 'string']])
-        ->and(implode('', $set->findings))->toContain('may be absent entirely');
+        ->and($set->requiredOnceSent)->toBe(['name' => 'present'])
+        ->and(implode('', $set->findings))->not->toContain('may be absent entirely');
 });
 
 // The finding is about a required key with no sibling to name. A body that
@@ -296,19 +297,202 @@ it('says that an empty form is not read as an absent body when the body is requi
     'JSON only, required' => [['application/json'], true, false],
 ]);
 
-// An optional body with two required properties asks each through the other, so `{}` is accepted, and no rule
-// can tell it from an absent body.
-it('says that an optional body requiring two properties accepts an empty object', function (): void {
+// The finding is about a form no rule refuses. A required key asked with `present` or `required` already refuses
+// an empty form, so there the finding would be noise. A key that only follows another (`dependentRequired`), one
+// the request leaves unchecked, a `readOnly` one and a `PATCH` ask nothing of an empty form: the finding stays.
+it('drops the empty-form finding when a required field already refuses an empty form', function (
+    array $media,
+    string $method,
+    Schema $body,
+    bool $says,
+): void {
     $set = RuleSetBuilder::for(operationWithInput(
-        content: ['application/json' => objectSchema(
+        method: $method,
+        content: array_fill_keys($media, $body),
+    ));
+
+    expect(str_contains(implode("\n", $set->findings), 'a form with a `Content-Type` and no field'))->toBe($says);
+})->with([
+    'a required string' => [
+        ['application/x-www-form-urlencoded'], 'post',
+        objectSchema(['a' => new Schema(types: [SchemaType::String]), 'b' => new Schema(types: [SchemaType::String])], ['a']),
+        false,
+    ],
+    'a required integer' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(['a' => new Schema(types: [SchemaType::Integer])], ['a']),
+        false,
+    ],
+    'a required file part' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(['cover' => new Schema(types: [SchemaType::String], isFilePart: true)], ['cover']),
+        false,
+    ],
+    'a required name properties does not declare' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(['q' => new Schema(types: [SchemaType::String])], ['id']),
+        false,
+    ],
+    'JSON and a form, a required name PHP does not rewrite' => [
+        ['application/json', 'multipart/form-data'], 'post',
+        objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+        false,
+    ],
+    'a PATCH with a required list' => [
+        ['multipart/form-data'], 'patch',
+        objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+        true,
+    ],
+    'a required readOnly property alone' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id']),
+        true,
+    ],
+    'a required name withheld by a collision' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(
+            ['user.name' => new Schema(types: [SchemaType::String]), 'user_name' => new Schema(types: [SchemaType::String])],
+            ['user.name'],
+        ),
+        true,
+    ],
+    'a property required only through dependentRequired' => [
+        ['multipart/form-data'], 'post',
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['card' => new Schema(types: [SchemaType::String]), 'postcode' => new Schema(types: [SchemaType::String])],
+            dependentRequired: ['card' => ['postcode']],
+        ),
+        true,
+    ],
+    'JSON and a form, the only required name PHP rewrites' => [
+        ['application/json', 'multipart/form-data'], 'post',
+        objectSchema(['user.name' => new Schema(types: [SchemaType::String])], ['user.name']),
+        true,
+    ],
+]);
+
+// An optional body with two required properties asks each through the other, so a form that sends none of them is
+// accepted, and no rule can tell it from an absent body. A JSON body has the raw content to read, so only a body read
+// as a form says so.
+it('says that an optional form body requiring two properties accepts a form with none of them', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['multipart/form-data' => objectSchema(
             ['a' => new Schema(types: [SchemaType::String]), 'b' => new Schema(types: [SchemaType::String])],
             ['a', 'b'],
         )],
         bodyRequired: false,
     ));
 
-    expect(implode("\n", $set->findings))->toContain('`{}` is accepted, which the contract refuses');
+    expect(implode("\n", $set->findings))->toContain('from a form that sends none of the body\'s keys, since both leave every key out of the data, so the form is accepted, which the contract refuses');
 });
+
+// The finding is about a form, since the request closes the JSON gap itself: it is written for a body read as a
+// form, alone or beside JSON, and never for a body that is JSON only. It names a form, not `{}`.
+it('says what an optional body lets through only when it is read as a form', function (
+    array $media,
+    array $properties,
+    array $required,
+    ?string $says,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: array_fill_keys($media, objectSchema(
+            array_fill_keys($properties, new Schema(types: [SchemaType::String])),
+            array_values($required),
+        )),
+        bodyRequired: false,
+    ));
+    $findings = implode("\n", $set->findings);
+
+    expect(str_contains($findings, 'may be absent entirely'))->toBe($says !== null)
+        ->and($findings)->not->toContain('`{}`');
+
+    if ($says !== null) {
+        expect($findings)->toContain($says)
+            ->toContain('a form that sends none of the body\'s keys');
+    }
+})->with([
+    'JSON only' => [['application/json'], ['a', 'b'], ['a'], null],
+    'a form only, one name' => [['multipart/form-data'], ['a', 'b'], ['a'], 'so it is required only when another key of the body is sent'],
+    'a form only, two names' => [['multipart/form-data'], ['a', 'b'], ['a', 'b'], 'so each is required only when another key of the body is sent'],
+    'JSON and a form, one name' => [['application/json', 'multipart/form-data'], ['a', 'b'], ['a'], 'so it is required only when another key of the body is sent'],
+    'JSON and a form, two names' => [['application/json', 'application/x-www-form-urlencoded'], ['a', 'b'], ['a', 'b'], 'so each is required only when another key of the body is sent'],
+    'a form only, no sibling' => [['multipart/form-data'], ['a'], ['a'], 'declares nothing else'],
+]);
+
+// The keys an optional JSON body must carry once it is sent, which the rules ask for only through a sibling: the rule
+// each would get in a required body. The request reads them from the raw content, since a rule cannot see `{}`.
+it('lists the keys an optional JSON body requires once it is sent', function (
+    array $media,
+    string $method,
+    bool $bodyRequired,
+    Schema $body,
+    array $expected,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: array_fill_keys($media, $body),
+        bodyRequired: $bodyRequired,
+    ));
+
+    expect($set->requiredOnceSent)->toBe($expected);
+})->with([
+    'a string and an integer' => [
+        ['application/json'], 'post', false,
+        objectSchema(['a' => new Schema(types: [SchemaType::String]), 'n' => new Schema(types: [SchemaType::Integer])], ['a', 'n']),
+        ['a' => 'present', 'n' => 'required'],
+    ],
+    'a nullable string' => [
+        ['application/json'], 'post', false,
+        objectSchema(['a' => new Schema(types: [SchemaType::String, SchemaType::Null])], ['a']),
+        ['a' => 'present'],
+    ],
+    'a name properties does not declare' => [
+        ['application/json'], 'post', false,
+        objectSchema(['a' => new Schema(types: [SchemaType::String])], ['ghost']),
+        ['ghost' => 'present'],
+    ],
+    'a readOnly name and a name with a star left out' => [
+        ['application/json'], 'post', false,
+        objectSchema(
+            [
+                'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+                'x*y' => new Schema(types: [SchemaType::String]),
+                'b' => new Schema(types: [SchemaType::String]),
+            ],
+            ['id', 'x*y', 'b'],
+        ),
+        ['b' => 'present'],
+    ],
+    'nothing required' => [
+        ['application/json'], 'post', false,
+        objectSchema(['a' => new Schema(types: [SchemaType::String])]),
+        [],
+    ],
+    'a required body' => [
+        ['application/json'], 'post', true,
+        objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+        [],
+    ],
+    'a PATCH' => [
+        ['application/json'], 'patch', false,
+        objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+        [],
+    ],
+    'a form only' => [
+        ['multipart/form-data'], 'post', false,
+        objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+        [],
+    ],
+    'JSON and a form, the rewritten name left out' => [
+        ['application/json', 'multipart/form-data'], 'post', false,
+        objectSchema(
+            ['user.name' => new Schema(types: [SchemaType::String]), 'a' => new Schema(types: [SchemaType::String])],
+            ['user.name', 'a'],
+        ),
+        ['a' => 'present'],
+    ],
+]);
 
 // --- Query parameters, whose presence is their own and never the method's ---
 
@@ -1955,6 +2139,92 @@ it('leaves the head of a bracketed name open when the body is open', function ()
 
     expect(array_keys($set->rules))->toBe(['page.size']);
 });
+
+// `filter[a]` is `filter => [a => ...]` and `filter[a][b]` is `filter => [a => [b => ...]]`: the second lands below the
+// key the first uses, whatever the depth, so no rule can tell their values apart. One finding per pair, and none for
+// names that only share a level or start alike.
+it('treats a bracketed name below another bracketed name as a collision', function (bool $closed, array $names, array $unchecked, int $collisions, array $kept): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($names)),
+        additionalProperties: $closed ? false : null,
+    )]));
+
+    $found = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'is delivered by a form as')));
+
+    expect($found)->toHaveCount($collisions)
+        ->and(array_keys($set->rules))->toBe($kept)
+        ->and(array_keys($set->uncheckedNames))->toEqualCanonicalizing($unchecked);
+
+    if ($collisions === 1) {
+        expect($found[0])->toStartWith('`filter[a][b]` is delivered by a form as `filter.a.b`, below the key `filter.a` that `filter[a]` uses');
+    }
+})->with([
+    'an open body' => [false, ['filter[a]', 'filter[a][b]'], ['filter[a][b]', 'filter[a]'], 1, []],
+    // The closing rule of `filter` stays, and neither name has a rule of its own.
+    'a closed body' => [true, ['filter[a]', 'filter[a][b]'], ['filter[a][b]', 'filter[a]'], 1, ['filter']],
+    'a chain of three' => [false, ['filter', 'filter[a]', 'filter[a][b]'], ['filter[a]', 'filter[a][b]', 'filter'], 3, []],
+    'siblings at depth' => [false, ['filter[a][b]', 'filter[a][c]'], [], 0, ['filter.a.b', 'filter.a.c']],
+    'a name that only starts like the other' => [false, ['filter[a]', 'filter[ab][c]'], [], 0, ['filter.a', 'filter.ab.c']],
+]);
+
+// A form and JSON client share one rule set: `filter[a]` stays a literal key for JSON, which Laravel reads `[` in as a
+// plain character, so nothing collides there, and the JSON client keeps both type checks.
+it('keeps the literal rule keys of names below one another in a body that is JSON and a form', function (bool $closed): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'filter[a]' => new Schema(types: [SchemaType::String]),
+            'filter[a][b]' => new Schema(types: [SchemaType::Integer]),
+            ...($closed ? ['filter[c]' => new Schema(types: [SchemaType::Integer])] : []),
+        ],
+        additionalProperties: $closed ? false : null,
+    );
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $schema,
+        'multipart/form-data' => $schema,
+    ]));
+
+    expect($set->rules)->toBe([
+        'filter[a]' => ['sometimes', 'string'],
+        'filter[a][b]' => ['sometimes', 'integer'],
+        ...($closed ? ['filter[c]' => ['sometimes', 'integer']] : []),
+    ])
+        ->and($set->rules)->not->toHaveKey('filter')
+        ->and(array_keys($set->uncheckedNames))->toBe(['filter[a]', 'filter[a][b]', ...($closed ? ['filter[c]'] : [])])
+        ->and(implode("\n", $set->findings))->not->toContain('is delivered by a form as');
+})->with(['an open body' => [false], 'a closed body' => [true]]);
+
+// The levels above a collision close like those above any bracketed name, except the level a name is delivered at: a
+// value sits there (`filter[a]=x`), so `array:` would refuse it.
+it('closes the levels above a collision and leaves open the level a name is delivered at', function (array $properties, array $rules, array $closedKeys, string $finding, bool $says): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($properties)),
+        additionalProperties: false,
+    )]));
+
+    // `toEqual`: the closing rule is written after the rules of the names themselves.
+    expect($set->rules)->toEqual($rules)
+        ->and($set->closedKeys)->toBe($closedKeys)
+        ->and(implode("\n", $set->findings))->toContain($finding)
+        ->and(str_contains(implode("\n", $set->findings), 'closed to its declared names'))->toBe($says);
+})->with([
+    'a name beside the level it opens' => [
+        ['filter[a]', 'filter[a][b]', 'filter[c]'],
+        ['filter' => ['sometimes', 'array:a,c'], 'filter.c' => ['sometimes', 'integer']],
+        ['filter'],
+        'so the key check accepts `filter.a`',
+        true,
+    ],
+    'two names delivered under one bracketed key' => [
+        ['a.b[c]', 'a_b[c]'],
+        ['a_b' => ['sometimes', 'array:c']],
+        ['a_b'],
+        '`a.b[c]` and `a_b[c]` reach Laravel under one name, `a_b.c`',
+        false,
+    ],
+]);
 
 // `user.name` and `user_name` are one key once PHP has delivered them, so the closed root takes the
 // second for the first, and the file says so.

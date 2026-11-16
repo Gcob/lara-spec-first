@@ -200,21 +200,29 @@ body read only as a form closes the head with its own rule, `'page' => ['sometim
 and `page=abc` are refused as the contract refuses them. A name with more brackets closes every level above its leaf:
 `filter[created][gte]` beside `filter[x]` gives `'filter' => ['sometimes', 'array:created,x']` and
 `'filter.created' => ['sometimes', 'array:gte']`, so `filter[evil]=1`, `filter=abc` and `filter[created][lt]=5` are
-refused. Only a level whose key `array:` cannot name (one with a comma in it) stays open, and the generated file says
-the key check accepts it. For a name with no bracket (`user.name`), nothing tells `user_name` apart from it: the key
-check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a bracketed
-name in a body that is JSON too, whose head is not closed. A name that collides with another (below) is already named by
-the collision finding, and when the key it arrives under is one the contract declares, the closed body says nothing more
-about it.
+refused. Only two kinds of level stay open, and the generated file says the key check accepts them: one whose key
+`array:` cannot name (a comma in it), and the key a declared name is delivered at, because a value can sit there and
+`array:` would refuse it (below). For a name with no bracket (`user.name`), nothing tells `user_name` apart from it: the
+key check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a
+bracketed name in a body that is JSON too, whose head is not closed. A name that collides with another (below) is
+already named by the collision finding, and when the key it arrives under is one the contract declares, the closed body
+says nothing more about it. A collided bracketed name closes the levels above it like any other: `filter[a]`,
+`filter[a][b]` and `filter[c]` give `'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and
+`filter.a` stays open for the value of `filter[a]`. Two names a form delivers under one bracketed key (`a.b[c]` beside
+`a_b[c]`, both `a_b.c`) close `a_b` to `c`.
 
 **Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
-as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), so
-the data cannot say which one was sent. Neither gets a rule, none takes part in `required_with` or `dependentRequired`
-(a `dependentRequired` it triggers says which dependency it loses), and their DTO properties are `Optional`. Two names
-that differ only by a character PHP rewrites also derive one PHP property name, so the DTO refuses them with its own
-error before this finding is reached; it is the bracketed case that gets here in a build. The same holds when the body
-is JSON as well: a rule for `page` would judge the array a form builds from `page[size]=3`, and a valid form client
-would be refused, so the JSON client loses the rule on `page` too, and the finding says neither name has one.
+as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), and
+so do `filter[a]` and `filter[a][b]`, at any depth: a name collides with another when the other's delivered path is a
+strict prefix of its own, step by step, so `filter[a]` beside `filter[ab][c]` is no collision. The data cannot say which
+one was sent. Neither gets a rule, none takes part in `required_with` or `dependentRequired` (a `dependentRequired` it
+triggers says which dependency it loses), and their DTO properties are `Optional`. Two names that differ only by a
+character PHP rewrites also derive one PHP property name, so the DTO refuses them with its own error before this finding
+is reached; it is the bracketed case that gets here in a build. The same holds when the body is JSON as well: a rule for
+`page` would judge the array a form builds from `page[size]=3`, and a valid form client would be refused, so the JSON
+client loses the rule on `page` too, and the finding says neither name has one. That holds for a top-level key only:
+below it (`filter[a]` beside `filter[a][b]`), a body that is JSON as well keeps both names as written, with their own
+type rules, since Laravel reads `[` as a plain character.
 
 **A body that is JSON and a form at once keeps the rule for the name the contract writes, and a form client's value is
 not checked.** A JSON client sends `user.name` exactly, and a rule keyed by it is right for that client. A form client
@@ -285,14 +293,21 @@ name of the contract is it). The key is written in the generated `after()`.
 
 **An empty content is an absent body, and the body's `required` decides.** A required body sent as nothing is refused on
 the body's own key, with Laravel's `required` message, since no rule says so when every property is optional (they are
-all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one, that passes either way. The
-check is for a JSON body and a form body alike, and it reads two kinds of request as absent: one that is JSON, and one
-with no `Content-Type` at all (`curl -X POST url` and `fetch(url, { method: 'POST' })` send none when there is no body).
-A request with no `Content-Type` carries no form field either, since a multipart always sets one, and one with an
-uploaded file is never read as absent. What stays ambiguous is a form: a request with a form `Content-Type` and no
-content has its body read from the form bag, whose fields need not show in the raw content (PHP leaves `php://input`
-empty for `multipart/form-data`), so an empty `application/x-www-form-urlencoded` body and a multipart with no parts are
-not read as an absent body, and the generated file says so in a finding whenever a required body is read as a form.
+all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one: a required body accepts it
+when no property is required, and an optional JSON body that requires properties refuses it, key by key. The check is
+for a JSON body and a form body alike, and it reads any request whose type is not a form's as absent: one that is JSON,
+one that is `text/plain` or `application/xml`, and one with no `Content-Type` at all (`curl -X POST url` and
+`fetch(url, { method: 'POST' })` send none when there is no body). The type is compared without case, and its parameters
+(`; charset=utf-8`) do not count. A request with no `Content-Type` carries no form field either, since a multipart
+always sets one, and one with an uploaded file is never read as absent. What stays ambiguous is a form: a request with a
+form `Content-Type` and no content has its body read from the form bag, whose fields need not show in the raw content
+(PHP leaves `php://input` empty for `multipart/form-data`), so an empty `application/x-www-form-urlencoded` body and a
+multipart with no parts are not read as an absent body, whatever the case its type is spelled in, and the generated file
+says so in a finding whenever a required body is read as a form and no required field already refuses an empty form. A
+required key asked with `present` or `required` (a required property, a required file part, a required name `properties`
+does not declare) refuses a form that sends no field on its own, so the finding would only be noise there. A key that
+follows another through `dependentRequired`, a `readOnly` one, a name the request leaves unchecked and a `PATCH` ask
+nothing of an empty form, and keep the finding.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body
@@ -380,18 +395,25 @@ required ones would accept a body made of an optional key alone, which is a body
 
 **What those three rules do, case by case:**
 
-| The client sends | Outcome                                                                        |
-| ---------------- | ------------------------------------------------------------------------------ |
-| Nothing, or `{}` | Valid. No field sees a sibling present, so none of them is required            |
-| `street` alone   | Refused. `city` and `code` both see `street`, and both become required         |
-| All three        | Validated against the rest of their rules, exactly as a required body would be |
+| The client sends                                 | Outcome                                                                                                                                               |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nothing                                          | Valid. No field sees a sibling present, so none of them is required                                                                                   |
+| `{}`, or only keys the contract does not declare | Refused for a JSON request, by the generated `after()` (a `422` for a client that asks for JSON). Accepted for a form, and the generated file says so |
+| `street` alone                                   | Refused. `city` and `code` both see `street`, and both become required                                                                                |
+| All three                                        | Validated against the rest of their rules, exactly as a required body would be                                                                        |
 
 When the body declares one key and requires it, there is nothing else to name, and it becomes `sometimes`. With two or
 more required, each is asked for through the others, so a body that sends none of them asks for none. A rule cannot tell
-a body sent as `{}` from one that is not sent, since both leave every key out of the data, so `{}` is accepted whenever
-the body is optional and requires something, and the generated file says so. (The empty content the request refuses is a
-required body's, never an optional one's.) With nothing required, every field was already `sometimes` and an absent body
-was already valid.
+a body sent as `{}` from one that is not sent, since both leave every key out of the data, so the rules alone would
+accept `{}` whenever the body is optional and requires something. **A JSON request closes that gap in the generated
+`after()`, which reads the raw content:** an empty content is an absent body and passes, and a JSON object that lacks a
+required key is refused on that key, whatever else it carries (`{}`, or `{"zzz": 1}`), with the rule the key would get
+in a required body. The keys are one `REQUIRED_KEYS` constant in the generated file, and a key `present_with` already
+refused is named once. **Only a form keeps the gap**: an empty form cannot be told from an absent body, and a form's
+required names arrive rewritten or nested (`user_name`, `page.size`), so the generated file says in a finding that a
+form that sends none of the body's keys is accepted, which the contract refuses. (The empty content the request refuses
+is a required body's, never an optional one's.) With nothing required, every field was already `sometimes` and an absent
+body was already valid.
 
 **The cost is noise, and it is bounded.** Eight required properties mean eight rules naming seven siblings each, in a
 file nobody edits by hand. Nothing else in the rule set grows that way, and an optional body that requires properties is
@@ -405,7 +427,9 @@ return no rules when `$this->validationData()` is empty reads better on the page
    stops looking empty, the body's required fields fire, and a request the contract allows answers 422. `present_with`
    asks about the sibling fields instead, which is the question the contract asked.
 2. **`rules()` stops being the whole answer**, which [nothing is allowed to do here](#nothing-rewrites-the-rule-set),
-   whatever the hook it is done through.
+   whatever the hook it is done through. The `{}` refusal above sits in the generated `after()`, beside the root checks,
+   and reads the raw body instead of changing `rules()`, so `rules()` stays the whole rule set and the generated file
+   still holds the whole answer.
 
 ## Nothing rewrites the rule set
 

@@ -59,6 +59,10 @@ final readonly class RuleSet
      * @param  list<string>  $stricter  the findings that say the request is stricter than the contract, which are in
      *                                  `findings` too. Nothing is left unenforced by one, so the build does not count a
      *                                  request for them alone
+     * @param  array<string, string>  $requiredOnceSent  the keys a JSON object sent as the body must carry, which the
+     *                                                   rules ask for only through a sibling: the name as written =>
+     *                                                   the rule its failure carries (`present` or `required`). A rule
+     *                                                   cannot see `{}`, so the request reads the raw content
      */
     public function __construct(
         public array $rules = [],
@@ -76,6 +80,7 @@ final readonly class RuleSet
         public array $unenforced = [],
         public array $documentFaults = [],
         public array $stricter = [],
+        public array $requiredOnceSent = [],
     ) {}
 
     /**
