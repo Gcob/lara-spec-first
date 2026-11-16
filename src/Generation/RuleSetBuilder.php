@@ -2230,8 +2230,8 @@ final readonly class RuleSetBuilder
             $walk->stricter[] = $findings[array_key_last($findings)];
         }
 
-        // The request refuses an empty content for a required body when it is JSON or has no
-        // `Content-Type`. A form is the one it cannot read that way.
+        // The request refuses an empty content for a required body whatever its type, bar a form,
+        // which it cannot read that way.
         if ($body->required && $walk->formBody) {
             $findings[] = self::EMPTY_FORM_FINDING;
         }

@@ -41,17 +41,23 @@ tags: [versions, conventions, planning]
   content, or only blanks, answers `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)),
   on the body's own key (`body`, or `_body` when a property is named `body`). It was accepted when no property refused
-  the empty body, and when a required property did, it was already refused on that key and the body's key now joins it.
-  A form type (`application/x-www-form-urlencoded`, `multipart/form-data`) is still not read as absent, spelled in
-  capitals or not, and a request with no `Content-Type` or with JSON was already read as absent. This is a breaking
-  change: a client that sent such a request and got a `200` now gets a refusal. Send the body, or make it optional in
-  the contract.
+  the empty body, and when a required property did, it was already refused on the property's own key and the body's key
+  now joins it. A form type (`application/x-www-form-urlencoded`, `multipart/form-data`) is still not read as absent,
+  spelled in capitals or not, and a request with no `Content-Type` or with JSON was already read as absent. This is a
+  breaking change: a client that sent such a request and got a `200` now gets a refusal. Send the body, or make it
+  optional in the contract.
 - **The input DTO property of a name a form delivers below another name is now `Optional`, and a value sent under it no
   longer reaches `dto()`.** In a body read only as a form, `filter[a]` beside `filter[a][b]` (and a name below one that
   is itself below another) now collide, so neither has a rule and neither is read back into the DTO. A required one's
   property type gains `Optional` (`string` becomes `Optional|string`). A valid `filter[a]=x` is still accepted, and no
   longer arrives in `dto()`. This is a breaking change for code that read that property: it holds `Optional` where it
   held the value. Read the value from the request instead (`$request->input('filter.a')`).
+- **A closed form body that declares two names under one bracketed key now refuses an undeclared key below it, where it
+  used to accept it.** `a.b[c]` beside `a_b[c]` are both delivered as `a_b.c`, and the level above is now closed (`a_b`
+  takes only `c`), where the key check accepted anything under `a_b`. A request that sent `a_b[evil]=1` to such a body
+  and got a `200` now gets a `422` to a client that asks for JSON (see
+  [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
+  This is a breaking change: drop the key, or declare it.
 
 ### Fixed
 
@@ -66,11 +72,9 @@ tags: [versions, conventions, planning]
   `filter[a]` refused it (a closed body refused a valid `filter[a]=x` instead, since the level above `filter.a.b` was
   closed to `b`). Both names now get the collision finding and no rule, as `page` beside `page[size]` does, at any
   depth, and the closed body still refuses `filter[evil]=1`, `filter=abc` and `filter[created][lt]=5` while it accepts
-  what the contract declares. Two names a form delivers under one bracketed key (`a.b[c]` beside `a_b[c]`) now also
-  close the level above it (`a_b` takes only `c`), where the key check accepted anything under `a_b`. `spec:doctor`
-  stays silent on the collided names (prose only, [#119](https://github.com/Gcob/lara-spec-first/issues/119)). A body
-  that is JSON and a form is unchanged. This closes the refusal the `0.2.0` `Known limits` lists for
-  [#113](https://github.com/Gcob/lara-spec-first/issues/113).
+  what the contract declares. `spec:doctor` stays silent on the collided names (prose only,
+  [#119](https://github.com/Gcob/lara-spec-first/issues/119)). A body that is JSON and a form is unchanged. This closes
+  the refusal the `0.2.0` `Known limits` lists for [#113](https://github.com/Gcob/lara-spec-first/issues/113).
 
 ## [0.2.0] - 2026-11-15
 

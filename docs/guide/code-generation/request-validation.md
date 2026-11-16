@@ -293,9 +293,10 @@ name of the contract is it). The key is written in the generated `after()`.
 
 **An empty content is an absent body, and the body's `required` decides.** A required body sent as nothing is refused on
 the body's own key, with Laravel's `required` message, since no rule says so when every property is optional (they are
-all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one, that passes either way. The
-check is for a JSON body and a form body alike, and it reads any request whose type is not a form's as absent: one that
-is JSON, one that is `text/plain` or `application/xml`, and one with no `Content-Type` at all (`curl -X POST url` and
+all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one: a required body accepts it
+when no property is required, and an optional JSON body that requires properties refuses it, key by key. The check is
+for a JSON body and a form body alike, and it reads any request whose type is not a form's as absent: one that is JSON,
+one that is `text/plain` or `application/xml`, and one with no `Content-Type` at all (`curl -X POST url` and
 `fetch(url, { method: 'POST' })` send none when there is no body). The type is compared without case, and its parameters
 (`; charset=utf-8`) do not count. A request with no `Content-Type` carries no form field either, since a multipart
 always sets one, and one with an uploaded file is never read as absent. What stays ambiguous is a form: a request with a
