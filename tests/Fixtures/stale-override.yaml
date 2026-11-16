@@ -1,0 +1,42 @@
+# Two operations with a custom controller each, written at test time under
+# `LsfChild\`: one whose `routeAction` has fallen behind its generated parent (the
+# operation states a body, so the parent declares a request first), and one whose
+# `routeAction` still matches (a path parameter and nothing to validate).
+#
+# The children live in a temporary directory rather than in `tests/Fixtures`:
+# each extends a parent generated under a per-test namespace, which static
+# analysis of this directory would report as an unknown class.
+openapi: 3.0.3
+info:
+    title: Fixture API
+    version: 1.0.0
+paths:
+    /users/{id}:
+        patch:
+            operationId: updateUser
+            x-controller: LsfChild\StaleController
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema: { type: string }
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            properties:
+                                name: { type: string }
+            responses:
+                '200': { description: A user }
+        get:
+            operationId: showUser
+            x-controller: LsfChild\FreshController
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema: { type: string }
+            responses:
+                '200': { description: A user }

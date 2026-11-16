@@ -25,6 +25,18 @@ tags: [versions, conventions, planning]
 
 ## [Unreleased]
 
+### Added
+
+- **`spec:build` names a custom controller whose `routeAction` no longer fits the parent it regenerated.** When the
+  contract gains or loses a request or a path parameter, a child that still declares the old list is a class PHP refuses
+  to load at its first request. The build now prints one header and one line per such child, with the signature to paste
+  (the request is written fully qualified, so the line loads in a child with no `use` for it), and still exits `0`: it
+  warns rather than refuses, since a refused build would never generate the request class the child has to match. It
+  reads the file and never loads the class, and it counts parameters only: a renamed request class or a narrowed type is
+  still reported by PHP when the class loads, and by PHPStan before. A child that extends something other than its
+  generated parent, or that gets `routeAction` from a trait, is not checked. This closes the second half of the `0.2.0`
+  `Known limits` item for [#112](https://github.com/Gcob/lara-spec-first/issues/112).
+
 ### Changed
 
 - **An optional JSON body that requires properties now refuses `{}`, and an object that carries none of them, where it
@@ -58,6 +70,10 @@ tags: [versions, conventions, planning]
   and got a `200` now gets a `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   This is a breaking change: drop the key, or declare it.
+- **`ext-tokenizer` is now a declared requirement.** `spec:build` reads a custom controller with PHP's tokenizer to
+  compare its `routeAction` with the generated parent. This is not a breaking change: every Laravel application already
+  has the extension, since the framework requires it, and `composer` only now says so in this package's own
+  `composer.json`.
 
 ### Fixed
 

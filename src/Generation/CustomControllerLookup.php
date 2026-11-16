@@ -84,19 +84,33 @@ final readonly class CustomControllerLookup
      */
     public function exists(string $class): bool
     {
+        return $this->fileOf($class) !== null;
+    }
+
+    /**
+     * The file the autoloader would load this class from, found without loading it.
+     *
+     * **The answer {@see self::exists()} is made of, so existence is still asked in one place.** The build reads a
+     * custom controller's source to compare its `routeAction` with the parent's, and reading needs the path the answer
+     * came from. Every PSR-4 candidate is checked first, then `findFile` for a classmapped class.
+     */
+    public function fileOf(string $class): ?string
+    {
         foreach ($this->candidates($class) as $candidate) {
             if (is_file($candidate)) {
-                return true;
+                return $candidate;
             }
         }
 
         foreach ($this->loaders as $loader) {
-            if ($loader->findFile($class) !== false) {
-                return true;
+            $found = $loader->findFile($class);
+
+            if ($found !== false) {
+                return $found;
             }
         }
 
-        return false;
+        return null;
     }
 
     /**

@@ -142,8 +142,10 @@ The mechanism is ordinary PHP, and that is the point: **generated abstract class
 human-written concrete classes.**
 
 Say an operation gains a required parameter. The build rewrites the generated abstract, whose method signature changes.
-Every concrete subclass a developer wrote now fails to satisfy its parent, and PHP, plus PHPStan at
-[level 8](../../project/stack.md), says so immediately, by name, before anything runs.
+Every concrete subclass a developer wrote now fails to satisfy its parent. PHPStan at [level 8](../../project/stack.md)
+says so immediately, by name, before anything runs. PHP refuses the class at its first load, which is the first request,
+so `spec:build` names each child whose `routeAction` no longer fits, with the signature to paste
+([the build names it](../controllers.md#the-signature-is-the-contract)).
 
 That is the whole payoff of Spec-First expressed in one behavior: **a change to the contract becomes a compile-time
 error in the code that implements it, not a 500 in production.** It is also why the generated side must be free to

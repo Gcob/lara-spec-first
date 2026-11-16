@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Composer\Autoload\ClassLoader;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
 use Gcob\LaraSpecFirst\Tests\Fixtures\CustomControllers\WrittenController;
 
@@ -70,4 +71,38 @@ it('answers without loading the class', function (): void {
     expect(class_exists($class, autoload: false))->toBeFalse('something loaded the fixture already')
         ->and(CustomControllerLookup::fromAutoloader()->exists($class))->toBeTrue()
         ->and(class_exists($class, autoload: false))->toBeFalse('the lookup loaded the class');
+});
+
+// The file, not only that there is one: `spec:build` reads a custom controller to
+// compare its `routeAction` with the parent's, and reading needs the path the
+// existence answer came from.
+it('names the file a class was found in', function (): void {
+    $lookup = CustomControllerLookup::fromAutoloader();
+    $first = sys_get_temp_dir().'/lsf-lookup-'.bin2hex(random_bytes(6));
+    $second = $first.'-second';
+
+    // A prefix no other test uses, because a mapping lasts for the whole process.
+    // Mapped on Composer's own loader, the one the lookup reads prefixes from.
+    foreach (spl_autoload_functions() ?: [] as $autoloader) {
+        if (is_array($autoloader) && $autoloader[0] instanceof ClassLoader) {
+            $autoloader[0]->setPsr4('LsfTwoDirs\\', [$first, $second]);
+
+            break;
+        }
+    }
+
+    mkdir($first);
+    mkdir($second);
+    file_put_contents($second.'/OnlyInSecond.php', "<?php\n\ndeclare(strict_types=1);\n");
+
+    try {
+        expect($lookup->fileOf(WrittenController::class))
+            ->toBe(dirname(__DIR__, 2).'/Fixtures/CustomControllers/WrittenController.php')
+            ->and($lookup->fileOf('App\\Http\\Controllers\\NotWrittenYetController'))->toBeNull()
+            ->and($lookup->fileOf('LsfTwoDirs\\OnlyInSecond'))->toBe(realpath($second).'/OnlyInSecond.php');
+    } finally {
+        @unlink($second.'/OnlyInSecond.php');
+        @rmdir($first);
+        @rmdir($second);
+    }
 });

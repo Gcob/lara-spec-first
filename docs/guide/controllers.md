@@ -84,6 +84,34 @@ is asked for rename detection rather than for signatures, and the two must not b
 a bound model, and the parent will declare that type when it does. A child may narrow the return type, `array` where the
 parent says `mixed`, but not the parameters, which is ordinary PHP variance rather than a rule of this package.
 
+**A child whose signature fell behind is named by the build, and the build still succeeds.** When the contract gains or
+loses a request or a path parameter, a custom child that still declares the old list is a class PHP will refuse to load,
+and it does so at its first load, which is the first request. So `spec:build` prints one header and one line per such
+child, with the signature to paste:
+
+```text
+WARN  1 custom controller(s) declare a routeAction that no longer matches the parameters their generated parent
+declares, so PHP will refuse to load them. Give each the signature below:
+
+  App\Http\Controllers\UpdateUserController  routeAction(\App\Http\Generated\Requests\UpdateUserRequest $request, string $id)
+```
+
+The request type is written fully qualified, so the line loads as pasted into a child that has no `use` for it. Three
+choices sit behind that:
+
+- **It warns rather than refuses.** The developer cannot make the child match a request class the refused build never
+  generated, so a refusal would wait on the very file it blocks. A warning changes no generated file and no exit status.
+- **It reads the file and never loads the class.** A child that no longer fits is a fatal error at load, and loading it
+  to ask would end the build that is naming it. The file is tokenized with PHP's [`PhpToken`](../project/stack.md), so
+  no class is ever resolved.
+- **It counts parameters and nothing else.** The count is the part that never flags a class PHP would load, because it
+  needs no class resolved. A renamed request class or a narrowed type is not judged here: PHP reports it when the class
+  loads, and PHPStan before that.
+
+Only a child that extends exactly the generated parent of its operation is checked. A child that extends something else,
+declares no `routeAction`, or gets one from a trait is left alone, and so is a `routeAction` the file does not write in
+its own class body.
+
 **And a path parameter that cannot be a PHP variable is refused, naming it.** `{2fa}` is a legal route parameter and
 `$2fa` is not a variable, so the build says so rather than emitting a file that will not parse; `{this}` is the same
 problem from a different direction, and so is `{request}` on an operation with something to validate, since the

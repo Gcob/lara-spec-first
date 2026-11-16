@@ -1086,7 +1086,9 @@ to route.
 **Adding a body to that operation later changes `routeAction`'s signature, and every custom child stops compiling until
 it follows.** That is [the split doing its job](./index.md#the-split-makes-a-change-loud) rather than a defect: the
 contract gained a statement about what a client may send, and a custom controller that never heard about it is exactly
-what a static analysis error should be reporting.
+what a static analysis error should be reporting. `spec:build` names it too, with the signature to paste
+([the signature is the contract](../controllers.md#the-signature-is-the-contract)), because PHP itself refuses the class
+only at its first load.
 
 ## The type hint is what runs it
 
