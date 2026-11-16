@@ -13,7 +13,8 @@ covers: >
     scenario holds, why nothing runs it and what ten cards have done with it so far, how a card cites a file, what the
     board's Status, Phase, Lot, Kind, Order and Milestone fields mean, who moves them and why a card's body stops
     carrying one the moment the board does, what `just status` prints and how to read it, where a closed card belongs
-    and which disagreements between the board, git, the pull requests and CI it flags as drift, and the grouping
+    and which disagreements between the board, git, the pull requests and CI it flags as drift, what the
+    `waiting-on-maintainer` label means and how a question and its decision are posted on a card, and the grouping
     mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
@@ -636,6 +637,10 @@ rewritten, and going hunting for it across sketches no lot has cut yet would be 
 `just check-markers --online` requires every open card carrying it to be named by at least one marker. The rule and its
 consequence are in [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leaves-a-marker).
 
+**The `waiting-on-maintainer` label is the other one a card can carry for a question.** `decision` says what a card is
+made of, and `waiting-on-maintainer` says whose move it is now. The two are not the same, and
+[a card that waits on the maintainer](#a-card-that-waits-on-the-maintainer) says when each applies.
+
 ### What `just status` prints
 
 `just status` answers "what is in flight, and what comes next?" from the board, GitHub and git, so nobody has to open
@@ -650,10 +655,13 @@ the board and cross-check it against the branches. It prints a one-line header (
   wait to be published and how many are done, and its open cards grouped by status. `1.0` is never shown here, since it
   is the bar for a stable release and not the next one.
 
-Two more sections close the page. The cards that wait on the maintainer print an empty answer today, and **Drift** lists
-every place where the board disagrees with the issues, the pull requests, git or CI, one line each, `#<card>` first,
-what is wrong, then the fix. The header carries the count. It names the drift and never fixes it: moving a card is
-somebody's decision, and the status cannot tick a box of a `Done when` for them.
+- **Maintainer's turn:** the open cards that carry the `waiting-on-maintainer` label, by number, with their status and
+  either the question posted on each or `decision card`. When nothing waits, it says so.
+
+One more section closes the page. **Drift** lists every place where the board disagrees with the issues, the pull
+requests, git or CI, one line each, `#<card>` first, what is wrong, then the fix. The header carries the count. It names
+the drift and never fixes it: moving a card is somebody's decision, and the status cannot tick a box of a `Done when`
+for them.
 
 **A pull request serves the cards it closes, and otherwise the card its branch names.** The branch is
 `{type}/{card}/{context}`, as [the branch names](../../CONTRIBUTING.md#branch-names) say, so the second segment is a
@@ -688,6 +696,11 @@ or with no milestone has no release to wait for, so it is never drift for being 
 holds `## Assumptions` or `## Discovery` (a `Todo` card has nothing left open, as
 [above](#a-todo-card-has-nothing-left-open)), or one with no `## Done when`.
 
+**Drift in the label and its question:** a card carries `waiting-on-maintainer` with no question posted on it (unless it
+is a `decision` card, which needs none), a card has an open question and no label, a closed card still carries the
+label, and a `decision` card in `Todo`, `In Progress` or `In review` without it. A `decision` card in `Backlog` waits on
+its lot rather than on an answer, so it is never drift for lacking the label.
+
 **It reads and never writes.** It asks GitHub only for reads, and runs one `git fetch --prune` of the remote that names
 this repository. It reads that remote's branches, never the local ones, so two machines with the same board give the
 same page, byte for byte. It needs `gh` signed in with the `project` scope, the same reason as `just card-context` (see
@@ -698,6 +711,43 @@ found some. Exit `2` means it could not: `gh` or git failed, or the checkout is 
 `gh` resolves the fork, whose pull requests would sit beside this board, so it stops and names the fix,
 `gh repo set-default Gcob/lara-spec-first`. When no git remote names this repository it stops and names
 `git remote add upstream https://github.com/Gcob/lara-spec-first.git`.
+
+## A card that waits on the maintainer
+
+**The `waiting-on-maintainer` label means the next move is the maintainer's.** It goes on a card that cannot move until
+somebody who owns the decision has answered a question posted on it, and on every [`decision`](#the-board) card from
+`Todo` on, since the answer is the work. A `decision` card in `Backlog` does not carry it: it waits on its lot being
+cut, not on an answer. [`just status`](#what-just-status-prints) lists the cards that carry the label under
+**Maintainer's turn**, so a maintainer opens the page and sees what is theirs.
+
+**A question is posted as a comment on the card, and its first line opens with a fixed marker:**
+
+```text
+**Question Q<n> for the maintainer:** what does `dto()` return for a null body?
+```
+
+The rest of that first line is the question as a title, which is what `just status` prints. Everything after the first
+line is free: the options, what each gains and loses, and the answer the author would code if nobody replies. `Q<n>` is
+the question's number, so the reply can name it.
+
+**The decision is a later comment on the same card, opening the same way:**
+
+```text
+**Decided (D<n>):** A, because the contract says a null body is not an empty one.
+```
+
+A decision answers every question before it. A question posted after a decision is open again, and a card can wait
+several times.
+
+**Only a maintainer's or a collaborator's comment counts.** The marker works when the comment's author is the
+repository's owner, a member of its organization or a collaborator. Anyone else can write the same words and nothing
+happens, so a stranger can neither put a card in the maintainer's queue nor close a question. A comment that opens with
+anything else (`**Question:`, a space before the stars, the marker on the second line) is a comment, nothing more.
+
+**The reply is not the only place the decision lives.** It is also written into the card's `Decisions`, with its reason,
+as [any settled decision is](#a-todo-card-has-nothing-left-open), because a comment is easy to lose in a long thread and
+the body is what the next developer reads. The label comes off with the reply, in the same move: a closed card, or a
+card with no open question that is not a `decision` card, still carrying it shows up in `just status` as drift.
 
 ## What this project deliberately does not use
 

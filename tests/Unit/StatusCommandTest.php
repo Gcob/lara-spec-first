@@ -758,7 +758,7 @@ it('says so when no release milestone is open, and never shows 1.0 there', funct
         ->and($run['out'])->not->toContain('Release 1.0');
 });
 
-it('prints the header, and the sections a later scope fills', function (): void {
+it('prints the header, and the sections that have nothing to say', function (): void {
     $project = statusProject(['ci' => [statusRun('a'), statusRun('b')]]);
     $sha = statusGit($project['work'], ['rev-parse', '--short', 'origin/main']);
 
@@ -856,13 +856,16 @@ it('reads every page of a list', function (): void {
     $project = statusProject([
         'cards' => statusPages(
             [statusCard(['number' => 50, 'title' => 'First page', 'order' => 10])],
-            [statusCard(['number' => 51, 'title' => 'Second page', 'order' => 20]), statusCard(['number' => 52, 'title' => 'Under review', 'status' => 'In review'])],
+            [statusCard(['number' => 51, 'title' => 'Second page', 'order' => 20, 'labels' => ['waiting-on-maintainer']]), statusCard(['number' => 52, 'title' => 'Under review', 'status' => 'In review'])],
         ),
         'prs' => statusPages(
             [statusPr(['number' => 60, 'branch' => 'feature/99/elsewhere'])],
             [statusPr(['number' => 61, 'branch' => 'feature/52/second', 'checks' => [['name' => 'lint', 'conclusion' => 'SUCCESS']]])],
         ),
-        'comments' => statusPages([statusComment(['issue' => 50])], [statusComment(['issue' => 51])]),
+        'comments' => statusPages(
+            [statusComment(['issue' => 50]), statusComment(['issue' => 51, 'body' => 'A note before the question.'])],
+            [statusComment(['issue' => 51, 'body' => '**Question Q4 for the maintainer:** is this on page two?'])],
+        ),
         'merged' => statusPages(range(1, 100), range(101, 200), range(201, 250)),
     ]);
 
@@ -872,15 +875,15 @@ it('reads every page of a list', function (): void {
     expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusSection($run['out'], 'Next (Todo, by Order)'))->toBe([
             '  10  #50  First page',
-            '  20  #51  Second page',
+            '  20  #51  Second page    waits on the maintainer',
         ])
+        ->and(statusSection($run['out'], "Maintainer's turn"))->toBe(['  #51  Todo  question: is this on page two?'])
         ->and(statusSection($run['out'], 'Now'))->toBe([
             '  #52 In review  Under review',
             '      PR #61 · CI green (1 check)',
         ]);
 
-    // Every list is asked page by page: a REST list through `--paginate --slurp`, as the GraphQL ones are. A comment
-    // only shows once a later scope prints the cards that wait, so here the flags are what proves the second page is read.
+    // Every list is asked page by page: a REST list through `--paginate --slurp`, as the GraphQL ones are.
     foreach (statusGhCalls($project) as $call) {
         if ($call[0] === 'api') {
             expect($call)->toContain('--paginate')->and($call)->toContain('--slurp');
@@ -1206,4 +1209,168 @@ it('sorts the drift by card, with the findings that name no card first', functio
             'count' => 5,
             'header' => 5,
         ]);
+});
+
+it('lists the cards that wait on the maintainer, with the question posted on each', function (): void {
+    $project = statusProject([
+        'cards' => [
+            statusCard(['number' => 111, 'title' => 'Accept null', 'order' => 20, 'labels' => ['waiting-on-maintainer']]),
+            statusCard(['number' => 45, 'title' => 'Which bar', 'order' => 10, 'labels' => ['decision', 'waiting-on-maintainer']]),
+            statusCard(['number' => 90, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+            statusCard(['number' => 91, 'status' => 'Backlog']),
+        ],
+        'comments' => [
+            statusComment(['issue' => 111, 'body' => "**Question Q24 for the maintainer:** what does dto() return for a null body?\r\n\r\nA. null.\nB. an empty array."]),
+            statusComment(['issue' => 90, 'body' => "A plain note first.\n\nThe next move is yours."]),
+            statusComment(['issue' => 90, 'body' => '**Question Q3 for the maintainer:**   which floor?  ']),
+            statusComment(['issue' => 91, 'body' => 'Nothing to decide here.']),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    // The title line only, the marker stripped, the cards by number, and the status column as wide as its widest status.
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusSection($run['out'], "Maintainer's turn"))->toBe([
+            '  #45   Todo     decision card',
+            '  #90   Backlog  question: which floor?',
+            '  #111  Todo     question: what does dto() return for a null body?',
+        ])
+        ->and(statusSection($run['out'], 'Next (Todo, by Order)'))->toBe([
+            '  10  #45   Which bar      waits on the maintainer',
+            '  20  #111  Accept null    waits on the maintainer',
+        ]);
+});
+
+it('reads a question answered by a later decision as closed', function (): void {
+    $project = statusProject([
+        'cards' => [
+            statusCard(['number' => 10, 'status' => 'Backlog']),
+            statusCard(['number' => 11, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+            statusCard(['number' => 12, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+        ],
+        'comments' => [
+            statusComment(['issue' => 10, 'body' => '**Question Q1 for the maintainer:** first?']),
+            statusComment(['issue' => 10, 'body' => '**Decided (D1):** A, because it is simpler.']),
+            statusComment(['issue' => 11, 'body' => '**Question Q2 for the maintainer:** first?']),
+            statusComment(['issue' => 11, 'body' => '**Decided (D2):** A.']),
+            statusComment(['issue' => 11, 'body' => '**Question Q3 for the maintainer:** and second?']),
+            statusComment(['issue' => 12, 'body' => '**Question Q4 for the maintainer:** asked first?']),
+            statusComment(['issue' => 12, 'body' => '**Question Q5 for the maintainer:** asked again, and last?']),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    // #10 is answered and carries no label: not waiting, and no W2. #11 was answered, then asked again: open again. #12
+    // has two questions and no decision: the latest is the one shown.
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusSection($run['out'], "Maintainer's turn"))->toBe([
+            '  #11  Backlog  question: and second?',
+            '  #12  Backlog  question: asked again, and last?',
+        ]);
+});
+
+it('counts only an exact marker from a maintainer or a collaborator', function (): void {
+    $question = '**Question Q9 for the maintainer:** which one?';
+    $project = statusProject([
+        'cards' => [
+            // Nothing here is a question, so none of these cards carries the label and none is waiting.
+            statusCard(['number' => 20, 'status' => 'Backlog']),
+            statusCard(['number' => 21, 'status' => 'Backlog']),
+            statusCard(['number' => 22, 'status' => 'Backlog']),
+            statusCard(['number' => 23, 'status' => 'Backlog']),
+            statusCard(['number' => 24, 'status' => 'Backlog']),
+            statusCard(['number' => 25, 'status' => 'Backlog']),
+            // A question from the maintainer, from a member and from a collaborator is one.
+            statusCard(['number' => 30, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+            statusCard(['number' => 31, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+            statusCard(['number' => 32, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+            // An outsider's decision does not close it.
+            statusCard(['number' => 33, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+        ],
+        'comments' => [
+            statusComment(['issue' => 20, 'body' => '**Question: which one?']),
+            statusComment(['issue' => 21, 'body' => $question, 'association' => 'NONE']),
+            statusComment(['issue' => 22, 'body' => $question, 'association' => 'CONTRIBUTOR']),
+            statusComment(['issue' => 23, 'body' => '**Question Q9 for the maintainer:* which one?']),
+            statusComment(['issue' => 24, 'body' => "Thinking out loud.\n".$question]),
+            statusComment(['issue' => 25, 'body' => ' '.$question]),
+            statusComment(['issue' => 30, 'body' => $question, 'association' => 'OWNER']),
+            statusComment(['issue' => 31, 'body' => $question, 'association' => 'MEMBER']),
+            statusComment(['issue' => 32, 'body' => $question, 'association' => 'COLLABORATOR']),
+            statusComment(['issue' => 33, 'body' => $question]),
+            statusComment(['issue' => 33, 'body' => '**Decided (D9):** A.', 'association' => 'NONE']),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusSection($run['out'], "Maintainer's turn"))->toBe([
+            '  #30  Backlog  question: which one?',
+            '  #31  Backlog  question: which one?',
+            '  #32  Backlog  question: which one?',
+            '  #33  Backlog  question: which one?',
+        ]);
+});
+
+it('flags a waiting card with no question posted, and a posted question with no label', function (): void {
+    $project = statusProject([
+        'cards' => [
+            // W1: the label, and no question; or a question already answered.
+            statusCard(['number' => 30, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+            statusCard(['number' => 31, 'status' => 'Backlog', 'labels' => ['waiting-on-maintainer']]),
+            // A decision card with the label needs no question.
+            statusCard(['number' => 32, 'status' => 'Backlog', 'labels' => ['decision', 'waiting-on-maintainer']]),
+            // W2: an open question and no label.
+            statusCard(['number' => 33, 'status' => 'Backlog']),
+        ],
+        'comments' => [
+            statusComment(['issue' => 31, 'body' => '**Question Q1 for the maintainer:** which?']),
+            statusComment(['issue' => 31, 'body' => '**Decided (D1):** A.']),
+            statusComment(['issue' => 33, 'body' => '**Question Q2 for the maintainer:** which?']),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out']))->toBe([
+            'lines' => [
+                '  #30  Carries waiting-on-maintainer, but no question is posted on it. Post the question, or take the label off.',
+                '  #31  Carries waiting-on-maintainer, but no question is posted on it. Post the question, or take the label off.',
+                '  #33  A question is open, but the card does not carry waiting-on-maintainer. Add the label.',
+            ],
+            'count' => 3,
+            'header' => 3,
+        ]);
+});
+
+it('flags a closed card still waiting, and a decision card in Todo that does not wait', function (): void {
+    $project = statusProject([
+        'cards' => [
+            // W3: closed, and still waiting.
+            statusCard(['number' => 40, 'status' => 'Done', 'state' => 'CLOSED', 'labels' => ['waiting-on-maintainer']]),
+            // W4: a decision card in Todo, without the label; one in Backlog waits on its lot, so it is fine.
+            statusCard(['number' => 41, 'order' => 10, 'labels' => ['decision']]),
+            statusCard(['number' => 42, 'status' => 'Backlog', 'labels' => ['decision']]),
+            // A closed decision card needs nothing.
+            statusCard(['number' => 43, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Decision', 'labels' => ['decision']]),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    // A closed card never waits, so the section stays empty.
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out']))->toBe([
+            'lines' => [
+                '  #40  Closed, but still carries waiting-on-maintainer. Take the label off: it comes off with the decision.',
+                '  #41  A decision card in Todo waits on the maintainer, but lacks waiting-on-maintainer. Add the label.',
+            ],
+            'count' => 2,
+            'header' => 2,
+        ])
+        ->and(statusSection($run['out'], "Maintainer's turn"))->toBe(['  Nothing waits on the maintainer.']);
 });

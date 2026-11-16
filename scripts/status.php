@@ -64,8 +64,17 @@ const OWNER = 'Gcob';
 const PROJECT_NUMBER = 1;
 const REPOSITORY = 'Gcob/lara-spec-first';
 
-/** The label that says the next move is the maintainer's. */
+/** The label that says the next move is the maintainer's, and the one a decision card carries. */
 const WAITING_LABEL = 'waiting-on-maintainer';
+const DECISION_LABEL = 'decision';
+
+/**
+ * What opens the first line of a question posted on a card, and of the decision that answers it. Only a comment from
+ * one of these author associations counts.
+ */
+const QUESTION_MARKER = '/^\*\*Question Q\d+ for the maintainer:\*\*/';
+const DECISION_MARKER = '/^\*\*Decided \(D\d+\):\*\*/';
+const MAINTAINER_ASSOCIATIONS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 
 /** The board's statuses, in the order the sections list them. */
 const STATUS_IN_REVIEW = 'In review';
@@ -215,16 +224,14 @@ function build_report(string $root): array
     $main = read_main($root, $upstream);
     $branches = read_branches($root, $upstream);
 
-    // Read and checked, but only the sections of the later scopes print them.
-    unset($comments);
-
-    $findings = find_drift($cards, $pullRequests, $merged, $milestones, $main, $branches);
+    $questions = open_questions($comments);
+    $findings = find_drift($cards, $questions, $pullRequests, $merged, $milestones, $main, $branches);
     $sections = [
         sprintf('%s · main %s · CI %s · drift %d', substr(REPOSITORY, (int) strpos(REPOSITORY, '/') + 1), $main['sha'], $main['ci'], count($findings)),
         section_now($cards, $pullRequests, $branches),
         section_next($cards),
         section_release($cards, $milestones),
-        "Maintainer's turn\n  Nothing waits on the maintainer.",
+        section_maintainer($cards, $questions),
         section_drift($findings),
     ];
 
@@ -485,9 +492,10 @@ function read_cards(string $root): array
 }
 
 /**
- * Every issue comment, read in full. Nothing prints from them yet, but a list that cannot be read is an error today.
+ * Every issue comment, read in full, in the order GitHub lists them (oldest first). A comment on a pull request is one
+ * too: it names a number that is no card, and nothing reads it.
  *
- * @return list<array<mixed>>
+ * @return list<array{card: int, body: string, association: string}>
  */
 function read_comments(string $root): array
 {
@@ -495,15 +503,48 @@ function read_comments(string $root): array
 
     foreach (rest_pages($root, 'repos/{owner}/{repo}/issues/comments?per_page=100', 'the issue comments') as $page) {
         foreach ($page as $comment) {
-            if (! is_array($comment)) {
+            if (
+                ! is_array($comment)
+                || ! is_string($comment['issue_url'] ?? null)
+                || preg_match('#/issues/(\d+)$#', $comment['issue_url'], $number) !== 1
+                || ! is_string($comment['body'] ?? null)
+                || ! is_string($comment['author_association'] ?? null)
+            ) {
                 throw new RuntimeException('gh answered something unexpected for the issue comments.');
             }
 
-            $comments[] = $comment;
+            $comments[] = ['card' => (int) $number[1], 'body' => $comment['body'], 'association' => $comment['author_association']];
         }
     }
 
     return $comments;
+}
+
+/**
+ * The question each card still waits on: the title line of its latest question that no decision followed.
+ *
+ * @param  list<array{card: int, body: string, association: string}>  $comments
+ * @return array<int, string>
+ */
+function open_questions(array $comments): array
+{
+    $open = [];
+
+    foreach ($comments as $comment) {
+        if (! in_array($comment['association'], MAINTAINER_ASSOCIATIONS, true)) {
+            continue;
+        }
+
+        $firstLine = rtrim(strtok($comment['body'], "\n") ?: '', "\r");
+
+        if (preg_match(QUESTION_MARKER, $firstLine, $marker) === 1) {
+            $open[$comment['card']] = trim(substr($firstLine, strlen($marker[0])));
+        } elseif (preg_match(DECISION_MARKER, $firstLine) === 1) {
+            unset($open[$comment['card']]);
+        }
+    }
+
+    return $open;
 }
 
 /**
@@ -744,6 +785,7 @@ function describe_checks(array $checks): string
  * Every place where the board, the issues, the pull requests, git and CI disagree.
  *
  * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, string>  $questions
  * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
  * @param  list<array{number: int, serves: list<int>}>  $merged
  * @param  list<array{title: string, open: bool}>  $milestones
@@ -751,7 +793,7 @@ function describe_checks(array $checks): string
  * @param  array<string, int>  $branches
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
  */
-function find_drift(array $cards, array $pullRequests, array $merged, array $milestones, array $main, array $branches): array
+function find_drift(array $cards, array $questions, array $pullRequests, array $merged, array $milestones, array $main, array $branches): array
 {
     $findings = [
         ...drift_main($main),
@@ -759,6 +801,7 @@ function find_drift(array $cards, array $pullRequests, array $merged, array $mil
         ...drift_pull_requests($cards, $pullRequests, $merged),
         ...drift_branches($cards, $pullRequests, $branches),
         ...drift_queue($cards),
+        ...drift_waiting($cards, $questions),
     ];
 
     // The findings that name no card come first (`main`, then a pull request by its number), then the cards in order.
@@ -1043,6 +1086,46 @@ function drift_queue(array $cards): array
     return $findings;
 }
 
+/**
+ * W1 to W4: the label that says the next move is the maintainer's, against the questions posted on the cards.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, string>  $questions
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function drift_waiting(array $cards, array $questions): array
+{
+    $findings = [];
+
+    foreach ($cards as $card) {
+        $number = $card['number'];
+        $waits = in_array(WAITING_LABEL, $card['labels'], true);
+        $isDecision = in_array(DECISION_LABEL, $card['labels'], true);
+        $hasQuestion = isset($questions[$number]);
+
+        if ($card['state'] !== 'OPEN') {
+            if ($waits) {
+                $findings[] = finding('W3', $number, null, 'Closed, but still carries '.WAITING_LABEL.'. Take the label off: it comes off with the decision.');
+            }
+
+            continue;
+        }
+
+        // A decision card from Todo on is the maintainer's whether or not a question is posted, so W4 speaks for it.
+        if ($isDecision && ! $waits && in_array($card['status'], [STATUS_TODO, STATUS_IN_PROGRESS, STATUS_IN_REVIEW], true)) {
+            $findings[] = finding('W4', $number, null, 'A decision card in '.$card['status'].' waits on the maintainer, but lacks '.WAITING_LABEL.'. Add the label.');
+        } elseif ($hasQuestion && ! $waits) {
+            $findings[] = finding('W2', $number, null, 'A question is open, but the card does not carry '.WAITING_LABEL.'. Add the label.');
+        }
+
+        if ($waits && ! $isDecision && ! $hasQuestion) {
+            $findings[] = finding('W1', $number, null, 'Carries '.WAITING_LABEL.', but no question is posted on it. Post the question, or take the label off.');
+        }
+    }
+
+    return $findings;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Printing
 // ---------------------------------------------------------------------------------------------------------------
@@ -1204,6 +1287,39 @@ function section_release(array $cards, array $milestones): string
         foreach ($groups as $status => $numbers) {
             $lines[] = '  '.pad_right((string) $status, $width).'  '.implode(', ', $numbers);
         }
+    }
+
+    return implode("\n", $lines);
+}
+
+/**
+ * The open cards that carry the waiting label, by number, with the question posted on each.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, string>  $questions
+ */
+function section_maintainer(array $cards, array $questions): string
+{
+    $waiting = array_values(array_filter(
+        $cards,
+        static fn (array $card): bool => $card['state'] === 'OPEN' && in_array(WAITING_LABEL, $card['labels'], true),
+    ));
+
+    if ($waiting === []) {
+        return "Maintainer's turn\n  Nothing waits on the maintainer.";
+    }
+
+    $numberWidth = max(array_map(static fn (array $card): int => strlen('#'.$card['number']), $waiting));
+    $statuses = array_map(static fn (array $card): string => $card['status'] ?? 'No status', $waiting);
+    $statusWidth = max(array_map('mb_strlen', $statuses));
+    $lines = ["Maintainer's turn"];
+
+    foreach ($waiting as $index => $card) {
+        $what = isset($questions[$card['number']])
+            ? rtrim('question: '.$questions[$card['number']])
+            : (in_array(DECISION_LABEL, $card['labels'], true) ? 'decision card' : 'no question posted');
+
+        $lines[] = '  '.pad_right('#'.$card['number'], $numberWidth).'  '.pad_right($statuses[$index], $statusWidth).'  '.$what;
     }
 
     return implode("\n", $lines);
