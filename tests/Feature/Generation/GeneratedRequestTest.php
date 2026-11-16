@@ -20,6 +20,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -2405,6 +2406,35 @@ it('reads an optional boolean query parameter as null when it is absent, with th
         ->and($notify('?notify=false'))->toBeFalse()
         ->and($notify('?notify=true'))->toBeTrue()
         ->and($notify('?notify=0'))->toBeFalse();
+});
+
+// The read the finding suggests for a bracketed boolean, run as written: it names `filter.active`, the key PHP
+// delivers, where `validated('filter[active]')` and `query->has('filter[active]')` would find nothing.
+it('reads a bracketed boolean query parameter with the read its finding suggests', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listBracketed',
+        queryParameters: [new QueryParameter('filter[active]', new Schema(types: [SchemaType::Boolean]))],
+    ));
+
+    Route::get('/_generated/bracketed-active', function () use ($class) {
+        $request = app($class);
+
+        return response()->json(['active' => Arr::has($request->query->all(), 'filter.active') ? filter_var($request->validated('filter.active'), FILTER_VALIDATE_BOOL) : null]);
+    });
+
+    $active = static fn (string $query): mixed => json_decode((string) app(HttpKernel::class)->handle(Request::create(
+        '/_generated/bracketed-active'.$query,
+        'GET',
+        server: ['HTTP_ACCEPT' => 'application/json'],
+    ))->getContent(), true)['active'];
+
+    expect($active(''))->toBeNull()
+        ->and($active('?filter[other]=1'))->toBeNull()
+        ->and($active('?filter[active]=false'))->toBeFalse()
+        ->and($active('?filter[active]=true'))->toBeTrue();
 });
 
 // `has()` reads the body as well as the query string, so an open body carrying a key named like the

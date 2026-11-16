@@ -99,21 +99,22 @@ tags: [versions, conventions, planning]
   name PHP appends to, delivers under no name, or that overlaps another one keeps its keywords in the report, and the
   doctor still exits `2` for it. This is a breaking change: every move on the exit-code axis is major, in either
   direction, so a CI step that expected `2` here will see `0`. Update what it expects.
-- **`spec:doctor` now reports the keywords of a plain `query` name that overlaps a bracketed one, so its exit code can
-  rise from `0` to `2`.** `page` beside `page[size]`, `ids` beside `ids[]` and `page` beside `page[*]` get no rule (see
-  `Fixed`), so the `required` and each bound the plain name states are unenforced, where the doctor reported nothing for
-  it while its rule judged the other name's value. This is a breaking change: every move on the exit-code axis is major,
-  in either direction, so a green CI step that expected `0` here can turn red. Declare the names so they do not overlap,
-  or accept what the report says.
+- **`spec:doctor` now reports the keywords of a plain `query` name that overlaps a name PHP rewrites, appends to or
+  reads as a wildcard, so its exit code can rise from `0` to `2`.** `page` beside `page[size]`, `user_name` beside
+  `user.name`, `ids` beside `ids[]` and `page` beside `page[*]` get no rule (see `Fixed`), so the `required` and each
+  bound the plain name states are unenforced, where the doctor reported nothing for it while its rule judged the other
+  name's value. This is a breaking change: every move on the exit-code axis is major, in either direction, so a green CI
+  step that expected `0` here can turn red. Declare the names so they do not overlap, or accept what the report says.
 
 ### Fixed
 
-- **A plain `query` name beside a bracketed, appended or `*` one of its head refused a valid request, with no finding.**
-  `?page[size]=3` arrives as `page => [size => 3]`, so the `integer` rule of `page` refused a request the contract
-  allows, and `?ids[]=1` was judged by the rule of `ids` the same way. `page` beside `page[size]`, `ids` beside `ids[]`
-  and `page` beside `page[*]` now get no rule, neither name has one, and the generated file says so in a finding. A
-  wrong `?page=abc` passes beside `page[size]`, since no rule can tell the two apart. A plain name beside a body key is
-  still refused. See [#110](https://github.com/Gcob/lara-spec-first/issues/110).
+- **A plain `query` name beside a name PHP rewrites, appends to or reads as a wildcard refused a valid request, with no
+  finding.** `?page[size]=3` arrives as `page => [size => 3]`, so the `integer` rule of `page` refused a request the
+  contract allows, and `?ids[]=1` was judged by the rule of `ids` the same way. `page` beside `page[size]`, `user_name`
+  beside `user.name`, `ids` beside `ids[]` and `page` beside `page[*]` now get no rule, neither name has one, and the
+  generated file says so in a finding. A wrong `?page=abc` passes beside `page[size]`, since no rule can tell the two
+  apart. A plain name beside a body key is still refused. See
+  [#110](https://github.com/Gcob/lara-spec-first/issues/110).
 - **The "a form with a `Content-Type` and no field" finding no longer appears where a required field, or the body's
   required-key check, already refuses an empty form.** A required body read as a form got it even when a required
   property, a required file part or a required name `properties` does not declare was already refusing the empty form,

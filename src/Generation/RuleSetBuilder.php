@@ -1685,17 +1685,27 @@ final readonly class RuleSetBuilder
             ? ''
             : sprintf(' %s %s accepted too, which the contract does not write for a boolean.', $quote($digits), count($digits) === 1 ? 'is' : 'are');
 
+        // The code the finding hands over reads the key PHP delivers the name under (`filter.active` for
+        // `filter[active]`), asked of the query bag: the request's own `has()` reads the body too. A nested key needs
+        // `Arr::has()`, since `query->has()` takes a head only.
+        $delivered = self::deliveredPath(trim($label, '`')) ?? [trim($label, '`')];
+        $key = self::pathKey($delivered);
+        $sent = count($delivered) === 1
+            ? sprintf('$request->query->has(\'%s\')', $key)
+            : sprintf('\\Illuminate\\Support\\Arr::has($request->query->all(), \'%s\')', $key);
+
         $walk->findings[] = $walk->textSource === 'query string'
             ? sprintf(
                 '%1$s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
                     .'Laravel\'s `boolean` refuses it. It accepts %4$s.%2$s '
                     .'`validated(\'%3$s\')` holds the string as sent, and `"false"` is a truthy string in PHP: '
-                    .'read it with `$request->query->has(\'%3$s\') ? filter_var($request->validated(\'%3$s\'), '
+                    .'read it with `%5$s ? filter_var($request->validated(\'%3$s\'), '
                     .'FILTER_VALIDATE_BOOL) : null`, which is `null` when it was not sent.',
                 $label,
                 $tooMany,
-                trim($label, '`'),
+                $key,
                 $quote($words),
+                $sent,
             )
             : sprintf(
                 '%1$s is a boolean read from a form body, where every value is text and Laravel\'s `boolean` '

@@ -619,7 +619,7 @@ final readonly class FormRequestEmitter
             $findings[] = sprintf(
                 '`dto()` returns the body as `%s`%s, built from `validated()`, which keeps returning '
                     .'Laravel\'s array. A `query` parameter is not a property of it: read one with '
-                    .'`validated(\'name\')`.',
+                    .'`validated(\'key\')`, under the key it arrives under (`page.size` for `page[size]`).',
                 CommentText::safe($planned->dto),
                 self::dtoIsNullable($planned->rules) ? ', or `null` when the body is `null`' : '',
             );

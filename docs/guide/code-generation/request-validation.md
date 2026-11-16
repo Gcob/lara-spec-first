@@ -216,7 +216,8 @@ covers the three plain-name cases: `page` beside `page[size]`, `ids` beside `ids
 share, and the doctor still reports what each name states (`required`, a bound). **The cost is stated, and it is a
 gap:** with no rule, `?page=abc` beside `page[size]` passes, since nothing can tell the two apart, and neither name
 reaches `QUERY_KEYS`. A plain name beside a body key is still [refused](#a-name-declared-twice-is-refused), before it is
-given no rule.
+given no rule. The context and the alternatives are in
+[ADR 0002](../../project/decisions/0002-no-rule-for-overlapping-query-names.md).
 
 **A top-level body name PHP rewrites is keyed by the name PHP delivers, when the body is read only as a form.** A
 form-encoded or multipart body goes through the same parser as the query string: `user.name=ada` arrives as `user_name`,

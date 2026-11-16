@@ -32,7 +32,7 @@ use Illuminate\Validation\Validator;
  *     does.
  *   - `dto()` returns the body as `NewUserPartialInputDto`, built from `validated()`, which keeps
  *     returning Laravel's array. A `query` parameter is not a property of it: read one with
- *     `validated('name')`.
+ *     `validated('key')`, under the key it arrives under (`page.size` for `page[size]`).
  *   - The body is required and read as a form, so a form with a `Content-Type` and no field (an
  *     empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is
  *     not read as an absent body: a form's fields need not show in the raw content, so the request
