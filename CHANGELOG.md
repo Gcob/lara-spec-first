@@ -25,6 +25,15 @@ tags: [versions, conventions, planning]
 
 ## [Unreleased]
 
+### Fixed
+
+- **The "a form with a `Content-Type` and no field" finding no longer appears where a required field already refuses an
+  empty form.** A required body read as a form got it even when a required property, a required file part or a required
+  name `properties` does not declare was already refusing the empty form, so the finding named a gap the request did not
+  have. It stays where nothing refuses an empty form (a `PATCH`, a `readOnly` or `dependentRequired` key alone, a name
+  PHP rewrites or a collision withholds). Nothing the request accepts or refuses changes: only the generated file's
+  findings do.
+
 ## [0.2.0] - 2026-11-15
 
 The first release that reads a schema. `spec:build` turns the request body and the `query` parameters of each operation

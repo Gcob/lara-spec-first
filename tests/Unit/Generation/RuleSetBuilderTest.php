@@ -296,6 +296,81 @@ it('says that an empty form is not read as an absent body when the body is requi
     'JSON only, required' => [['application/json'], true, false],
 ]);
 
+// The finding is about a form no rule refuses. A required key asked with `present` or `required` already refuses
+// an empty form, so there the finding would be noise. A key that only follows another (`dependentRequired`), one
+// the request leaves unchecked, a `readOnly` one and a `PATCH` ask nothing of an empty form: the finding stays.
+it('drops the empty-form finding when a required field already refuses an empty form', function (
+    array $media,
+    string $method,
+    Schema $body,
+    bool $says,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: array_fill_keys($media, $body),
+    ));
+
+    expect(str_contains(implode("\n", $set->findings), 'a form with a `Content-Type` and no field'))->toBe($says);
+})->with([
+    'a required string' => [
+        ['application/x-www-form-urlencoded'], 'post',
+        objectSchema(['a' => new Schema(types: [SchemaType::String]), 'b' => new Schema(types: [SchemaType::String])], ['a']),
+        false,
+    ],
+    'a required integer' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(['a' => new Schema(types: [SchemaType::Integer])], ['a']),
+        false,
+    ],
+    'a required file part' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(['cover' => new Schema(types: [SchemaType::String], isFilePart: true)], ['cover']),
+        false,
+    ],
+    'a required name properties does not declare' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(['q' => new Schema(types: [SchemaType::String])], ['id']),
+        false,
+    ],
+    'JSON and a form, a required name PHP does not rewrite' => [
+        ['application/json', 'multipart/form-data'], 'post',
+        objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+        false,
+    ],
+    'a PATCH with a required list' => [
+        ['multipart/form-data'], 'patch',
+        objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+        true,
+    ],
+    'a required readOnly property alone' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id']),
+        true,
+    ],
+    'a required name withheld by a collision' => [
+        ['multipart/form-data'], 'post',
+        objectSchema(
+            ['user.name' => new Schema(types: [SchemaType::String]), 'user_name' => new Schema(types: [SchemaType::String])],
+            ['user.name'],
+        ),
+        true,
+    ],
+    'a property required only through dependentRequired' => [
+        ['multipart/form-data'], 'post',
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['card' => new Schema(types: [SchemaType::String]), 'postcode' => new Schema(types: [SchemaType::String])],
+            dependentRequired: ['card' => ['postcode']],
+        ),
+        true,
+    ],
+    'JSON and a form, the only required name PHP rewrites' => [
+        ['application/json', 'multipart/form-data'], 'post',
+        objectSchema(['user.name' => new Schema(types: [SchemaType::String])], ['user.name']),
+        true,
+    ],
+]);
+
 // An optional body with two required properties asks each through the other, so `{}` is accepted, and no rule
 // can tell it from an absent body.
 it('says that an optional body requiring two properties accepts an empty object', function (): void {

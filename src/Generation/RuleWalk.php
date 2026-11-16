@@ -98,6 +98,12 @@ final class RuleWalk
     public bool $requiredRoot = false;
 
     /**
+     * Whether a top-level key of the body is asked with `present` or `required`, after every downgrade, which is what
+     * refuses a form that sends no field. A key that only follows another (`present_with`) does not count.
+     */
+    public bool $rootAsksPresence = false;
+
+    /**
      * The key the request's failures about the body itself are answered on.
      */
     public string $rootKey = 'body';

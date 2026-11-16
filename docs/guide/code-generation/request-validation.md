@@ -292,7 +292,11 @@ A request with no `Content-Type` carries no form field either, since a multipart
 uploaded file is never read as absent. What stays ambiguous is a form: a request with a form `Content-Type` and no
 content has its body read from the form bag, whose fields need not show in the raw content (PHP leaves `php://input`
 empty for `multipart/form-data`), so an empty `application/x-www-form-urlencoded` body and a multipart with no parts are
-not read as an absent body, and the generated file says so in a finding whenever a required body is read as a form.
+not read as an absent body, and the generated file says so in a finding whenever a required body is read as a form and
+no required field already refuses an empty form. A required key asked with `present` or `required` (a required property,
+a required file part, a required name `properties` does not declare) refuses a form that sends no field on its own, so
+the finding would only be noise there. A key that follows another through `dependentRequired`, a `readOnly` one, a name
+the request leaves unchecked and a `PATCH` ask nothing of an empty form, and keep the finding.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body

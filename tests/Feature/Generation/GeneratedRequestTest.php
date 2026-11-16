@@ -1900,6 +1900,17 @@ it('refuses an empty content when the body is required', function (bool $typed, 
  */
 function statusForContentType(string $class, ?string $contentType, string $content = '', array $parameters = [], array $files = []): int
 {
+    return responseForContentType($class, $contentType, $content, $parameters, $files)->getStatusCode();
+}
+
+/**
+ * What the emitted class answers to one request, whose `Content-Type` is set or removed as written.
+ *
+ * @param  array<string, mixed>  $parameters
+ * @param  array<string, UploadedFile>  $files
+ */
+function responseForContentType(string $class, ?string $contentType, string $content = '', array $parameters = [], array $files = []): SymfonyResponse
+{
     Route::post('/_generated/typed-content', fn () => response()->json(app($class)->validated()));
 
     $request = Request::create(
@@ -1916,7 +1927,7 @@ function statusForContentType(string $class, ?string $contentType, string $conte
         $request->headers->remove('Content-Type');
     }
 
-    return app(HttpKernel::class)->handle($request)->getStatusCode();
+    return app(HttpKernel::class)->handle($request);
 }
 
 /**
@@ -1935,6 +1946,34 @@ function postWithOptionalFormObject(array $mediaTypes, bool $bodyRequired = true
             types: [SchemaType::Object],
             properties: ['q' => new Schema(types: [SchemaType::String])],
         )), $bodyRequired),
+    );
+}
+
+/**
+ * A `POST` whose body is a form object requiring one string.
+ */
+function postWithRequiredFormField(): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/search'),
+        operationId: 'searchForm',
+        requestBody: new RequestBody(
+            [
+                'application/x-www-form-urlencoded' => new Schema(
+                    types: [SchemaType::Object],
+                    properties: ['q' => new Schema(types: [SchemaType::String])],
+                    required: ['q'],
+                ),
+                'multipart/form-data' => new Schema(
+                    types: [SchemaType::Object],
+                    properties: ['q' => new Schema(types: [SchemaType::String])],
+                    required: ['q'],
+                ),
+            ],
+            true,
+        ),
     );
 }
 
@@ -1979,6 +2018,21 @@ it('does not read a form with a content type and no fields as an absent body', f
     expect(statusForContentType($class, 'application/x-www-form-urlencoded'))->toBe(200)
         ->and(statusForContentType($class, 'multipart/form-data; boundary=x'))->toBe(200);
 });
+
+// The premise of leaving the empty-form finding out where a required field exists: that field refuses an empty
+// form on its own, so no extra check is owed.
+it('refuses an empty form when the body requires a field', function (string $contentType): void {
+    $class = emittedRequestClass(postWithRequiredFormField());
+
+    $response = responseForContentType($class, $contentType);
+    $errors = json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR)['errors'] ?? [];
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and(array_keys((array) $errors))->toBe(['q']);
+})->with([
+    'urlencoded' => ['application/x-www-form-urlencoded'],
+    'multipart' => ['multipart/form-data; boundary=x'],
+]);
 
 it('does not refuse an upload sent with no content type', function (): void {
     $class = emittedRequestClass(postWithOptionalFormObject(['multipart/form-data']));

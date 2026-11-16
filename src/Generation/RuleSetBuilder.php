@@ -82,6 +82,15 @@ final readonly class RuleSetBuilder
     private const MULTIPART = 'multipart/form-data';
 
     /**
+     * What a body required and read as a form says when nothing in it refuses an empty form: written by
+     * {@see self::rootFindings()} before the walk, and taken out again when the walk finds a required key.
+     */
+    private const EMPTY_FORM_FINDING = 'The body is required and read as a form, so a form with a `Content-Type` and no field '
+        .'(an empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is not '
+        ."read as an absent body: a form's fields need not show in the raw content, so the request cannot "
+        .'tell it from a body whose every field is optional, and accepts it unless a required property refuses it.';
+
+    /**
      * The media types a generated rule set covers.
      *
      * All three arrive through `all()`, so one rule set covers them and the order here is only the order a tie is
@@ -491,6 +500,15 @@ final readonly class RuleSetBuilder
 
         self::leave($walk, $outside);
 
+        // Why: the finding is written before the walk, which is the only thing that knows a required key refuses an
+        // empty form. Taking it out afterwards leaves every other finding where it was.
+        if ($walk->rootAsksPresence) {
+            $walk->findings = array_values(array_filter(
+                $walk->findings,
+                static fn (string $finding): bool => $finding !== self::EMPTY_FORM_FINDING,
+            ));
+        }
+
         // The payload's root has no field for `array:` to sit on, so a closed
         // root becomes a closure comparing its top-level keys. Only the top
         // level: every nested object that closes itself already carries
@@ -812,6 +830,10 @@ final readonly class RuleSetBuilder
                 $asked = 'sometimes';
             }
 
+            if ($prefix === '') {
+                $walk->rootAsksPresence = $walk->rootAsksPresence || self::refusesAbsence($asked);
+            }
+
             self::field($walk, self::fieldKey($name, $walk, $prefix), '`'.$prefix.$name.'`', $property, $asked, $contentTypes[$name] ?? null);
         }
 
@@ -857,6 +879,10 @@ final readonly class RuleSetBuilder
                 }
 
                 $asked = self::withRule($dependents[$name]);
+            }
+
+            if ($prefix === '') {
+                $walk->rootAsksPresence = $walk->rootAsksPresence || self::refusesAbsence($asked);
             }
 
             $walk->rules[self::fieldKey($name, $walk, $prefix)] = [$asked];
@@ -2111,6 +2137,14 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * Whether a presence rule refuses a payload that leaves the key out, which `present_with:` does not do on its own.
+     */
+    private static function refusesAbsence(string $presence): bool
+    {
+        return $presence === 'present' || $presence === 'required';
+    }
+
+    /**
      * What the body's own root says that a rule set cannot act on, or that a reader would not guess from the rules.
      *
      * @return list<string>
@@ -2141,10 +2175,7 @@ final readonly class RuleSetBuilder
         // The request refuses an empty content for a required body when it is JSON or has no
         // `Content-Type`. A form is the one it cannot read that way.
         if ($body->required && $walk->formBody) {
-            $findings[] = 'The body is required and read as a form, so a form with a `Content-Type` and no field '
-                .'(an empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is not '
-                .'read as an absent body: a form\'s fields need not show in the raw content, so the request cannot '
-                .'tell it from a body whose every field is optional, and accepts it unless a required property refuses it.';
+            $findings[] = self::EMPTY_FORM_FINDING;
         }
 
         if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
