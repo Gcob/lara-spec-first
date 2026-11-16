@@ -97,6 +97,64 @@ it('declares dto() returning the input DTO, built from validated()', function ()
         ->toContain('`dto()` returns the body as `CreateUserInputDto`');
 });
 
+/**
+ * A `/things` operation whose object body is read as `$mediaType`, for `dto()`'s return type.
+ */
+function nullableBodyOperation(HttpMethod $method, string $mediaType, bool $nullable, bool $required): Operation
+{
+    return new Operation(
+        index: 0,
+        method: $method,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody([$mediaType => new Schema(
+            types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+            required: ['name'],
+        )], $required),
+    );
+}
+
+// The request lets a JSON `null` through exactly when its root is nullable and read as JSON, so `dto()` is nullable
+// in the same cases. A form cannot send `null`, so a nullable root read only as a form keeps the plain type.
+it('declares dto() nullable only for a nullable JSON body', function (
+    HttpMethod $method,
+    string $mediaType,
+    bool $nullable,
+    bool $required,
+    string $signature,
+    bool $returnsNull,
+): void {
+    $emitted = emittedRequest(nullableBodyOperation($method, $mediaType, $nullable, $required), controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain($signature)
+        ->and(str_contains($emitted, 'return null;'))->toBe($returnsNull)
+        ->and(str_contains($emitted, 'or `null` when the body is `null`'))->toBe($returnsNull);
+})->with([
+    'a required nullable JSON body' => [HttpMethod::Post, 'application/json', true, true, 'public function dto(): ?CreateThingInputDto', true],
+    'a PATCH nullable JSON body' => [HttpMethod::Patch, 'application/json', true, true, 'public function dto(): ?CreateThingPartialInputDto', true],
+    'an optional nullable JSON body' => [HttpMethod::Post, 'application/json', true, false, 'public function dto(): ?CreateThingPartialInputDto', true],
+    'a non-nullable JSON body' => [HttpMethod::Post, 'application/json', false, true, 'public function dto(): CreateThingInputDto', false],
+    'a nullable multipart body' => [HttpMethod::Post, 'multipart/form-data', true, true, 'public function dto(): CreateThingInputDto', false],
+]);
+
+// Pint rewrites what it dislikes in a consumer's project, and the build rewrites it back: the new `dto()` lines are
+// held to the same formatter as the golden. The body requires a property, so the file also carries the rules and the
+// root checks of a nullable required body.
+it('emits a nullable dto() Pint has nothing to change in', function (): void {
+    $path = (string) tempnam(sys_get_temp_dir(), 'lsf-nullable-dto-').'.php';
+    file_put_contents($path, emittedRequest(
+        nullableBodyOperation(HttpMethod::Post, 'application/json', nullable: true, required: true),
+        controllerShortName: 'CreateThingController',
+    ));
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $path], dirname(__DIR__, 3));
+    $pint->run();
+    unlink($path);
+
+    expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
 // `validated()` leaves out an array with child rules when none of its children was sent. `dto()`
 // reads with that off, and puts it back, so `validated()` is what Laravel returns after a `dto()`
 // call as before it. Run against Laravel in tests/Feature/Generation/GeneratedDeclaredArraysTest.php.
@@ -278,7 +336,7 @@ it('emits no root check for a form body, and the empty-content check only when i
 
 // An optional JSON body that requires properties cannot refuse `{}` by a rule, so the request reads the raw content:
 // the keys are one constant, keyed by name and valued by the rule their failure carries, and one loop adds them.
-it('emits the required-key check only for an optional body read as JSON', function (string $media, bool $bodyRequired, array $required, bool $expected): void {
+it('emits the required-key check only for an optional JSON body or a nullable required one', function (string $media, bool $bodyRequired, array $required, bool $expected): void {
     $operation = new Operation(
         index: 0,
         method: HttpMethod::Post,
@@ -304,6 +362,66 @@ it('emits the required-key check only for an optional body read as JSON', functi
     'required, JSON' => ['application/json', true, ['name', 'size'], false],
     'optional, a form only' => ['multipart/form-data', false, ['name', 'size'], false],
     'optional, requiring nothing' => ['application/json', false, [], false],
+]);
+
+/**
+ * A `/things` operation whose body requires `name` and `age`, read as the given media types.
+ *
+ * @param  list<string>  $mediaTypes
+ */
+function nullableRequiringOperation(array $mediaTypes, bool $nullable, bool $bodyRequired = true): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, new Schema(
+            types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+            properties: [
+                'name' => new Schema(types: [SchemaType::String]),
+                'age' => new Schema(types: [SchemaType::Integer]),
+            ],
+            required: ['name', 'age'],
+        )), $bodyRequired),
+    );
+}
+
+// A required body whose root allows `null` asks for its required keys through each other, so a rule cannot refuse `{}`
+// either: it gets the same constant and loop as an optional body, and `dto()` is nullable. The same body that cannot be
+// `null` keeps its plain rules and has neither.
+it('emits the required-key check for a nullable required JSON body', function (array $mediaTypes, bool $nullable, bool $expected): void {
+    $emitted = emittedRequest(nullableRequiringOperation(array_values($mediaTypes), $nullable), controllerShortName: 'CreateThingController');
+
+    expect(str_contains($emitted, "private const REQUIRED_KEYS = ['name' => 'present', 'age' => 'required'];"))->toBe($expected)
+        ->and(str_contains($emitted, '$validator->addFailure((string) $key, $rule);'))->toBe($expected)
+        ->and(str_contains($emitted, 'public function dto(): ?CreateThingInputDto'))->toBe($nullable);
+})->with([
+    'JSON, nullable' => [['application/json'], true, true],
+    'JSON and a form, nullable' => [['application/json', 'application/x-www-form-urlencoded'], true, true],
+    'JSON, not nullable' => [['application/json'], false, false],
+    'JSON and a form, not nullable' => [['application/json', 'application/x-www-form-urlencoded'], false, false],
+]);
+
+// Why the two conditions differ: an optional body may be absent, so the loop waits for a JSON object, while a required
+// body may only be `null`, so the loop runs on anything else (a form, a `text/plain` content, an empty one), which is
+// the answer it always had.
+it('switches the required-key check on whether the body is required', function (bool $bodyRequired, string $present, string $absent): void {
+    $emitted = emittedRequest(nullableRequiringOperation(['application/json'], true, $bodyRequired), controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain($present)
+        ->and($emitted)->not->toContain($absent);
+})->with([
+    'required' => [
+        true,
+        'if (! ($this->isJson() && trim($content) === \'null\')) {',
+        'if ($this->isJson() && is_object(json_decode($content))) {',
+    ],
+    'optional' => [
+        false,
+        'if ($this->isJson() && is_object(json_decode($content))) {',
+        'if (! ($this->isJson() && trim($content) === \'null\')) {',
+    ],
 ]);
 
 // A form delivers `user.name` as `user_name`, and `validated()` holds it there, so `dto()` puts the value

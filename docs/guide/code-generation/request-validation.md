@@ -38,8 +38,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 > - `PATCH` is `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema
 >   `default`.
 > - A request whose body is an object has `dto()`, which returns the body as
->   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()`, and `validated()` itself keeps
->   returning Laravel's array.
+>   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()` (or `null` for a `null` body), and
+>   `validated()` itself keeps returning Laravel's array.
 > - A recursive schema is validated down to the depth it states with `x-max-depth` (three when it says nothing), and a
 >   payload deeper than that is refused, with a finding in the generated file that names the extension. Unrolling is
 >   capped at 1,000 rule keys per operation: a deeper branching schema is cut at one lower level on every branch, with a
@@ -278,8 +278,9 @@ the body the same way, so such a body has its rules and its `dto()`.
 open root with nothing required would accept all three. The generated request checks the root itself, in the same
 `after()` closure as the closed root's key check, below: the raw body is decoded without `assoc`, because `{}` and `[]`
 are both `[]` with it, and anything but an object is answered with Laravel's `array` message on a `body` key. A schema
-that allows `null` allows it here. Only a request that is JSON is checked: a form cannot send a non-object, so a body
-read only as a form has no such check.
+that allows `null` allows it here, and the required properties do not refuse it either (see
+[a nullable body, `null` or whole](#a-nullable-body-null-or-whole)). Only a request that is JSON is checked: a form
+cannot send a non-object, so a body read only as a form has no such check.
 
 **`[]` is a list, so it is refused for an object body, and a client has to send `{}`.** It is also what PHP's
 `json_encode([])` writes, and so what Laravel's `postJson($uri)` and Guzzle's `'json' => []` send when they are given an
@@ -303,11 +304,11 @@ always sets one, and one with an uploaded file is never read as absent. What sta
 form `Content-Type` and no content has its body read from the form bag, whose fields need not show in the raw content
 (PHP leaves `php://input` empty for `multipart/form-data`), so an empty `application/x-www-form-urlencoded` body and a
 multipart with no parts are not read as an absent body, whatever the case its type is spelled in, and the generated file
-says so in a finding whenever a required body is read as a form and no required field already refuses an empty form. A
-required key asked with `present` or `required` (a required property, a required file part, a required name `properties`
-does not declare) refuses a form that sends no field on its own, so the finding would only be noise there. A key that
-follows another through `dependentRequired`, a `readOnly` one, a name the request leaves unchecked and a `PATCH` ask
-nothing of an empty form, and keep the finding.
+says so in a finding whenever a required body is read as a form and no required field, or the body's required-key check,
+already refuses an empty form. A required key asked with `present` or `required` (a required property, a required file
+part, a required name `properties` does not declare) refuses a form that sends no field on its own, so the finding would
+only be noise there. A key that follows another through `dependentRequired`, a `readOnly` one, a name the request leaves
+unchecked and a `PATCH` ask nothing of an empty form, and keep the finding.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body
@@ -431,6 +432,50 @@ return no rules when `$this->validationData()` is empty reads better on the page
    and reads the raw body instead of changing `rules()`, so `rules()` stays the whole rule set and the generated file
    still holds the whole answer.
 
+### A nullable body, `null` or whole
+
+**A required body whose schema allows `null` accepts a JSON `null`, and its required properties ask through each other,
+as an optional body's do.** Laravel reads a JSON `null` as `[]`, so a plain `present` on a required key would answer 422
+to a payload the contract allows. The rules are the optional body's: each required key is `present_with` the others, and
+`sometimes` when it has none. It holds for a body read as JSON, alone or beside a form, that is not a `PATCH` (a `PATCH`
+and an optional body already let `null` through).
+
+```php
+// A required requestBody, type: [object, 'null'], whose schema requires publishAt and declares timezone too.
+'publishAt' => ['present_with:timezone', 'string'],
+'timezone' => ['sometimes', 'string'],
+```
+
+| The client sends                                 | Outcome                                                                                     |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `null`                                           | Valid, and `dto()` returns `null`                                                           |
+| `{}`, or only keys the contract does not declare | Refused, on each required key, by the generated `after()`                                   |
+| A whole body                                     | Validated against the rest of their rules, exactly as a body that cannot be `null` would be |
+
+**The check that keeps `{}` a 422 is the optional body's, with one difference.** A rule cannot see `{}`, so the
+generated `after()` reads the raw content and refuses each key of `REQUIRED_KEYS` that is missing, with the rule it
+would get in a body that cannot be `null` (`present`, or `required` for an integer, a number or a boolean). An optional
+body may be absent, so there the check waits for a JSON object. A required body may only be `null`, so the check runs on
+anything else: a form, a `text/plain` content or an empty one that lacks the keys is refused on them as it always was,
+and a JSON `null` is the one request let through. Every other payload gets the status and the error keys the same body
+gets when it cannot be `null`, open root or closed.
+
+**A body that is JSON and a form passes a JSON `null`, and a form client gets the same statuses and keys.** A name PHP
+rewrites (`user.name` arrives as `user_name`) stays unchecked there, as it is today, so it is neither in the siblings'
+rules nor in `REQUIRED_KEYS`, and the form's answers are the ones it had.
+
+**What a client sees change is two messages.** A required key missing beside a sent sibling now reports `present_with`'s
+message ("must be present when ... is present") where it reported `present` or `required`, and an empty or `null`
+integer, number or boolean reports `filled`'s ("must have a value") where it reported `required`'s; a key missing from
+`{}` reports the rule it always did. The status and the keys are the same. And the generated file no longer carries the
+finding about a form with no field when the body's required-key check refuses it.
+
+**A required integer, number or boolean also gets `filled`.** `required` is implicit, so it refused `""` for them even
+where nothing turns `""` into `null`; `present_with` and `sometimes` are not, and Laravel skips `integer:strict`,
+`numeric:strict` and `boolean:strict` on a blank string. So `filled` takes `required`'s place beside the rule that asks
+through the siblings, and a project without `ConvertEmptyStringsToNull` still refuses `""` there. A nullable property
+keeps `present`, as before. Optional bodies do not get it: [their caveat](#patch-empties-the-required-list) stays.
+
 ## Nothing rewrites the rule set
 
 **`rules()` returns the same array for every request, and no trait, parent class or hook is allowed to change it.** The
@@ -499,8 +544,9 @@ type rule refuses every empty value anyway, so there the two say the same thing.
 turns `""` into `null` before any rule runs, so a string that is not nullable refuses `""` over HTTP whatever presence
 rule is emitted: `string` refuses `null`. A contract that means to accept an empty string declares the field nullable.
 Removing the middleware is not the fix it looks like: Laravel skips every rule that is not implicit on a blank string,
-so an optional integer would then accept `""`, which the contract refuses. Pinned by an execution test rather than
-worked around.
+so an optional integer, number or boolean would then accept `""`, which the contract refuses (a nullable required body
+does not: it adds `filled`, see [above](#a-nullable-body-null-or-whole)). Pinned by an execution test rather than worked
+around.
 
 ### An absent field gets no default
 
@@ -986,6 +1032,16 @@ property of the validator.
 **`validated()` keeps returning Laravel's array**, and `dto()` leaves it as it found it. It is the framework's own
 method, `validated()` and `validated('email')` both have callers, and a generated class that changed what they hand back
 would be this package redefining something it does not own. The DTO sits beside it, under a name of ours.
+
+**`dto()` returns `null` for a `null` body, wherever a JSON body allows `null`.** When the body's schema allows `null`
+and the body is read as JSON (JSON only, or JSON and a form), the request lets a JSON `null` through, and `dto()` is
+typed `?CreateUserInputDto` with `if ($this->isJson() && trim($this->getContent()) === 'null') { return null; }` first.
+The contract says the payload is `null`, and a DTO of `Optional`s would say "an object with nothing in it", which is
+something else. That holds for an optional body, a `PATCH` and a required body that requires nothing, whose DTO used to
+be built from `null` and came out empty, and for a required body that requires a property, which now lets `null` through
+(see [a nullable body, `null` or whole](#a-nullable-body-null-or-whole)). An absent optional body is not `null`: it has
+no content, passes, and keeps the DTO of `Optional`s. A body that cannot be `null`, or a nullable one read only as a
+form (a form cannot send `null`), keeps the plain return type.
 
 **Its properties are the body schema's, and a query parameter is not one of them.** The rule set merges the two, so
 `validated()` carries both; the DTO mirrors the body and nothing else, because the body is where its name comes from.

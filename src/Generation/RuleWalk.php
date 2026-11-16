@@ -104,12 +104,19 @@ final class RuleWalk
     public bool $rootAsksPresence = false;
 
     /**
-     * The keys a JSON object sent as the body must carry, by the rule their failure carries: what
-     * {@see RuleSet::$requiredOnceSent} says.
+     * The keys a JSON object sent as the body must carry once it is sent, by the rule their failure carries: what
+     * {@see RuleSet::$requiredOnceSent} says. An optional body and a required one that allows `null` have them.
      *
      * @var array<string, string>
      */
     public array $requiredOnceSent = [];
+
+    /**
+     * Whether the body is required, is not a `PATCH`, is read as JSON and has a root that allows `null`: the one
+     * required body whose required keys follow their siblings, like an optional body's, since `null` reaches the rules
+     * as `[]`.
+     */
+    public bool $nullableRequiredBody = false;
 
     /**
      * The key the request's failures about the body itself are answered on.
