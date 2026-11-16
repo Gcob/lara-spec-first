@@ -17,7 +17,9 @@ use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
  * **The refusals are checked at the prompt rather than after the edit**, and each of them would otherwise be found
  * later by something else — the reader refuses a name PHP could not carry, and the planner refuses one inside the
  * generated tree or in a namespace nothing maps. Found then, it means a specification already edited and a command that
- * then declines to finish. Found here, it means the prompt asks again.
+ * then declines to finish. Found here, it means the prompt asks again. The exception is a name the build refuses only
+ * because of another operation's `x-controller`: that needs the whole document, so `MakeCommand` plans it once the
+ * prompt returns, and the command ends without asking again.
  *
  * @see docs/guide/controllers.md — "spec:make is the only way in"
  */

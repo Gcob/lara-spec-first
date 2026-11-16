@@ -7,6 +7,12 @@
 start
 :spec:make, for one operation;
 
+if (Would the build refuse the document?) then (yes)
+  :Print the build's refusal, write nothing; <<refusal>>
+  stop
+else (no)
+endif
+
 if (Does the operation declare x-controller?) then (no)
 
   if (Is the document vendored?) then (yes)
@@ -33,6 +39,12 @@ if (Does the operation declare x-controller?) then (no)
   else (yes)
   endif
 
+  if (Would the build refuse\nthe name you typed?) then (yes)
+    :Print the build's refusal,\nleave the document alone; <<refusal>>
+    stop
+  else (no)
+  endif
+
   :Insert on a temporary copy;
   :Read the copy back through\nthe normal reading pipeline;
 
@@ -47,13 +59,18 @@ if (Does the operation declare x-controller?) then (no)
 else (yes)
 endif
 
-if (Does the class file already exist?) then (yes)
-  :Leave it exactly as it is,\nand say so; <<refusal>>
+if (Would the build refuse the document\nas it now reads?) then (yes)
+  :Print the build's refusal, write nothing; <<refusal>>
   stop
 else (no)
 endif
 
-:Write the class: the extends, the comment,\nand routeAction calling the parent; <<yours>>
+if (Does the class file already exist?) then (yes)
+  :Leave it exactly as it is,\nand say so; <<refusal>>
+else (no)
+  :Write the class: the extends, the comment,\nand routeAction calling the parent; <<yours>>
+endif
+
 :Run spec:build, so the parent exists\nand the route points here;
 stop
 @enduml
