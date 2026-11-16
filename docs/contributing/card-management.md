@@ -190,10 +190,12 @@ every one that turns out to need work is a `Decision` card of its own.
 session and `wayfinder` for a lot being cut. **Those two names are search terms rather than links**, since the pages
 documenting them move and a dead link here would be worse than a name somebody can look up. They are named here because
 they exist and they fit, not because anything depends on them: nothing in this repository invokes them, no command
-checks for them, and a card cut without one is not worse for it. **What does not carry over is their paper trail.** They
-write a `CONTEXT.md` glossary and ADRs under `docs/adr/`, and this project already answers both questions elsewhere, in
-[`documentation.md`](./documentation.md#document-inventory) and in the `Open` rows of [`stack.md`](../project/stack.md).
-Taking the interview and leaving the filing is the way to use them here.
+checks for them, and a card cut without one is not worse for it. **What does not carry over is their `CONTEXT.md`
+glossary.** They write it beside ADRs under `docs/adr/`, and this project keeps neither there. Its terms are in
+[`glossary.md`](../guide/glossary.md), what is still undecided is in the `Open` rows of
+[`stack.md`](../project/stack.md), and its ADRs, when a decision earns one, live in
+[`docs/project/decisions/`](../project/decisions/index.md). Taking the interview and leaving its filing is the way to
+use them here.
 
 ## Work that overflows a card is done inside it
 
@@ -469,8 +471,11 @@ specification is emptying the first two sections and settling what they turned u
 - **A boundary is a decision.** What the card does not do is written there, with the card that does it. That is where a
   boundary goes now, and it is still not an `Out of scope` section, for the reason
   [below](#what-this-project-deliberately-does-not-use).
-- **A decision that outlives the card goes into the documentation**, in the file that owns its topic, and the card
-  points at it under `Where to look`. A card closes; the reason the package refuses something does not.
+- **A decision that outlives the card goes into the documentation**: the file that owns its topic states the rule and
+  its one-line reason. When the decision
+  [earns an ADR](../project/decisions/index.md#an-adr-is-for-what-a-newcomer-needs), the ADR holds the context and the
+  alternatives turned down, and the card points at both under `Where to look`. A card closes; the reason the package
+  refuses something does not.
 - **`Where to look` is permalinks and nothing else.** A sentence beside a link is a second description of what the link
   already shows, and the two drift. Why a permalink rather than a path is
   [further down](#a-card-cites-a-file-as-a-permalink).

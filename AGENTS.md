@@ -122,6 +122,8 @@ Two traps worth knowing before you go in:
   [`documentation.md`](./docs/contributing/documentation.md#a-rule-here-is-contested-by-building-not-by-arguing).
 - **Do not invent stack decisions.** If a row in [`docs/project/stack.md`](./docs/project/stack.md) says `Undecided` or
   `Planned`, surface the choice to the user rather than silently picking one and writing it into config.
+- **A decision that [earns an ADR](./docs/project/decisions/index.md#an-adr-is-for-what-a-newcomer-needs) gets it in the
+  same pull request.** Link it from the topic file that states the rule.
 - **Docker is a convenience, not the source of truth.** Any command runnable via Docker must be runnable natively
   through the same Composer script.
 - **Public API is expensive to change.** Once the package is published, class names, config keys, and Artisan command
