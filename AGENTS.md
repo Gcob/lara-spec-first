@@ -152,6 +152,10 @@ Two traps worth knowing before you go in:
   not yours to make, or touches a migration or the published contract. Whether the branch then ships as one pull request
   or several is decided once, when the pull request is opened, and the reasoning for all of it is in
   [`card-management.md`](./docs/contributing/card-management.md#work-that-overflows-a-card-is-done-inside-it).
+- **To see what is in flight and what comes next, run `just status`.** It prints the cards `In review` and `In Progress`
+  with their pull requests and CI, the `Todo` queue in `Order`, and the next release, read-only through `gh` and git.
+  The board's fields and what the command prints are in
+  [`card-management.md`](./docs/contributing/card-management.md#what-just-status-prints).
 - **Before coding a card, read its lot card.** A card does not name it: the board does, as the one item of `Kind` `Lot`
   carrying the card's `Lot`. `just card-context <n>` prints the card and then that lot card, read-only through `gh`.
     - **No `Lot`, on a gate or a breaking-change card:** it prints the card alone, and the card is enough. Those phases

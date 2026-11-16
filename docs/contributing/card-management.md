@@ -11,8 +11,9 @@ covers: >
     what a finished lot owes the next one, the path from a lot's sketch to a card an agent can take and when two cards
     may be worked on at once, when a card is written and what a Backlog card is worth before then, what an Acceptance
     scenario holds, why nothing runs it and what ten cards have done with it so far, how a card cites a file, what the
-    board's Status, Phase, Lot and Kind fields mean, who moves them and why a card's body stops carrying one the moment
-    the board does, and the grouping mechanisms this project declines to use.
+    board's Status, Phase, Lot, Kind, Order and Milestone fields mean, who moves them and why a card's body stops
+    carrying one the moment the board does, what `just status` prints and how to read it, and the grouping mechanisms
+    this project declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -36,8 +37,11 @@ tags: [planning, conventions, workflow, scope, onboarding]
 >   divergence is written in the pull request, and only when the original plan was wrong.
 > - The template is the [issue form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/task.md).
 >   This file is where its reasoning lives.
-> - `Status` moves with the work; `Phase` and `Kind` are set at triage and `Lot` when that lot is cut. The board holds
->   all four, and a card's body carries one only until it gets there.
+> - `Status` moves with the work; `Phase` and `Kind` are set at triage and `Lot` when that lot is cut. The board keeps
+>   each of them, and a card's body carries one only until it gets there. `Order` is the queue, and `Milestone` is the
+>   release a card ships in.
+> - `just status` prints what is in flight, what comes next and the next release, from the board, GitHub and git. It
+>   only reads, so run it before asking what to work on.
 
 Three lots have been cut so far, and each one needed a review to find the same two failures: a card small enough to be a
 checkbox on another one, and a card large enough to be a lot. This file exists so that the next lot does not pay for
@@ -571,19 +575,33 @@ lot card is opened for them.
 
 ## The board
 
-One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Four fields carry meaning.
+One project board, at [projects/1](https://github.com/users/Gcob/projects/1). Six fields carry meaning: five are fields
+of the board, and `Milestone` is the issue's own.
 
-| Field    | Values                                                                    | Who moves it                                                             |
-| -------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `Status` | `Backlog`, `Todo`, `In Progress`, `In review`, `Ready to publish`, `Done` | Whoever is doing the work, as it moves                                   |
-| `Phase`  | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after                                              |
-| `Lot`    | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after; on a lot card, when it is created |
-| `Kind`   | `Feature`, `Docs`, `Decision`, `Chore`, `Lot`                             | Set at triage, rarely after                                              |
+| Field       | Values                                                                    | Who moves it                                                             |
+| ----------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `Status`    | `Backlog`, `Todo`, `In Progress`, `In review`, `Ready to publish`, `Done` | Whoever is doing the work, as it moves                                   |
+| `Phase`     | `Phase 1`, `Phase 2`, `Phase 3`, `Gate 0.x`, `Gate 1.0`, `BC enforcement` | Set at triage, rarely after                                              |
+| `Lot`       | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after; on a lot card, when it is created |
+| `Kind`      | `Feature`, `Docs`, `Decision`, `Chore`, `Lot`                             | Set at triage, rarely after                                              |
+| `Order`     | A number, in steps of 10 (`10`, `20`, `30`)                               | The maintainer, by hand, when a card goes to `Todo`                      |
+| `Milestone` | A release such as `0.3.0`, or `1.0`, or none                              | Set at triage, and when a card is planned for a release                  |
 
 `Status` is the only field that moves often, and what each value claims about a card is
 [above](#cards-are-cut-when-the-lot-opens-not-before): `Backlog` is a sketch, `Todo` is a specification. The one a
 newcomer cannot guess is `Ready to publish`, which is work already merged and waiting on a release rather than on a
 reviewer, and that is what separates it from `In review`.
+
+**`Order` is the queue, and only a `Todo` card needs one.** The lowest number is worked first, ties go to the lower card
+number, and a `Todo` card with none comes last. Steps of 10 leave room to slot a card in by hand (`15`) without
+renumbering the others. A lot card is never in the queue, so it carries none. The field is a Number on the board, not a
+body line, so moving a card in the queue is one edit and no card is rewritten.
+
+**`Milestone` means three things.** A `0.x.y` milestone is the release a card ships in, and it closes when that release
+is tagged. `1.0` is the bar for a stable release, not a release to plan for: what a team needs to write its next
+endpoints spec-first, and the gates that freeze the public names. A card with no milestone is not planned for any
+release yet. An issue has one milestone, so a card is on a release or on `1.0`, and a card on `1.0` stays there until
+the maintainer decides which release it ships in.
 
 **A card can legitimately carry no `Phase` either.** [#68](https://github.com/Gcob/lara-spec-first/issues/68), which
 asks how ownership gets declared in the contract, is a positioning question rather than a feature, and forcing it into a
@@ -617,11 +635,46 @@ rewritten, and going hunting for it across sketches no lot has cut yet would be 
 `just check-markers --online` requires every open card carrying it to be named by at least one marker. The rule and its
 consequence are in [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leaves-a-marker).
 
+### What `just status` prints
+
+`just status` answers "what is in flight, and what comes next?" from the board, GitHub and git, so nobody has to open
+the board and cross-check it against the branches. It prints a one-line header (the repository, `main`, whether CI on
+`main` is green, and a drift count) and then:
+
+- **Now:** every open card `In review` or `In Progress`, with its pull requests and how each one's CI stands (a red one
+  names the failed checks), or, when it has no pull request, its branches on the upstream and how far ahead of `main`
+  they are. A lot card is never listed.
+- **Next:** the `Todo` cards in the order of their `Order`, the ones with none last, with the milestone each ships in.
+- **Release:** the open release milestone with the lowest version, how many of its issues are closed, how many of those
+  wait to be published and how many are done, and its open cards grouped by status. `1.0` is never shown here, since it
+  is the bar for a stable release and not the next one.
+
+Two more sections close the page, the cards that wait on the maintainer and the drift between the board and git, and
+both print an empty answer today.
+
+**A pull request serves the cards it closes, and otherwise the card its branch names.** The branch is
+`{type}/{card}/{context}`, as [the branch names](../../CONTRIBUTING.md#branch-names) say, so the second segment is a
+card number. A branch whose name ends in `-claude-spike` is a trial, not a card's work, and is skipped.
+
+**It reads and never writes.** It asks GitHub only for reads, and runs one `git fetch --prune` of the remote that names
+this repository. It reads that remote's branches, never the local ones, so two machines with the same board give the
+same page, byte for byte. It needs `gh` signed in with the `project` scope, the same reason as `just card-context` (see
+[the agent guide](../../AGENTS.md)), so CI does not run it.
+
+**It stops rather than mix sources.** Exit `0` means it printed. Exit `2` means it could not: `gh` or git failed, or the
+checkout is not this repository. In a fork's clone `gh` resolves the fork, whose pull requests would sit beside this
+board, so it stops and names the fix, `gh repo set-default Gcob/lara-spec-first`. When no git remote names this
+repository it stops and names `git remote add upstream https://github.com/Gcob/lara-spec-first.git`.
+
 ## What this project deliberately does not use
 
 **No epics, and no card broken into GitHub sub-issues.** `Phase` and `Lot` already group cards, and a second grouping
 mechanism drifts from the first. The board's `Parent issue` and `Sub-issues progress` fields stay unused, named here
 because their presence otherwise reads as an invitation.
+
+**A milestone is not a second grouping mechanism either.** It groups cards by the release they ship in, where `Phase`
+and `Lot` group them by theme, so a card's milestone answers a question neither of those can, and none of the three
+doubles another.
 
 **A [lot card](#a-lot-has-a-card-of-its-own) is not that epic.** It carries what a lot's cards share, and nothing about
 which cards those are: membership stays on the `Lot` field, so there is still one grouping mechanism and nothing to
