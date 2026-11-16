@@ -570,7 +570,7 @@ it('asks a nullable body\'s required keys through each other', function (
         ['application/json'], 'post', nullableObjectSchema([], ['ghost']),
         [],
         ['ghost' => 'present'],
-        ['The body requires `ghost` without declaring it under `properties`'],
+        ['The body requires `ghost` without declaring it under `properties`, so the request asks for the key'],
     ],
     'a lone readOnly name is sometimes, out of the map, and keeps its finding' => [
         ['application/json'], 'post', nullableObjectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id']),

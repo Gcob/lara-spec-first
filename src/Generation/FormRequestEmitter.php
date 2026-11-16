@@ -43,6 +43,24 @@ final readonly class FormRequestEmitter
 
     private const VALIDATOR_CLASS = 'Illuminate\\Validation\\Validator';
 
+    /**
+     * The raw content of a JSON `null` body, as the emitted code compares it (after `trim()`). Written once: the
+     * `dto()` guard, the required-key check and the root check all test for it.
+     */
+    private const NULL_CONTENT = "'null'";
+
+    /**
+     * What `dto()` starts with when the body may be `null`: the payload is `null`, so `dto()` says so.
+     *
+     * A JSON `null` is the one body that is neither an object nor absent, and a DTO of `Optional`s would say "an object
+     * with nothing in it". An absent optional body has an empty content, not `null`, and keeps the DTO.
+     */
+    private const NULL_BODY = "\n"
+        ."        // Why: a `null` body is the payload `null`, not an object with nothing in it.\n"
+        .'        if ($this->isJson() && trim($this->getContent()) === '.self::NULL_CONTENT.") {\n"
+        ."            return null;\n"
+        ."        }\n";
+
     public function __construct(
         private string $namespace,
         private string $specPath,
@@ -304,20 +322,9 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * What `dto()` starts with when the body may be `null`: the payload is `null`, so `dto()` says so.
-     *
-     * A JSON `null` is the one body that is neither an object nor absent, and a DTO of `Optional`s would say "an object
-     * with nothing in it". An absent optional body has an empty content, not `null`, and keeps the DTO.
-     */
-    private const NULL_BODY = "\n"
-        ."        // Why: a `null` body is the payload `null`, not an object with nothing in it.\n"
-        ."        if (\$this->isJson() && trim(\$this->getContent()) === 'null') {\n"
-        ."            return null;\n"
-        ."        }\n";
-
-    /**
      * Whether `dto()` may return `null`: when the request lets a JSON `null` through, which is its root check's
-     * condition (`after()`), so the two cannot drift. A form cannot send `null`.
+     * condition (`after()`), so the type cannot drift from the check. The guard in `dto()` and the checks in `after()`
+     * each test for the content itself, through {@see self::NULL_CONTENT}. A form cannot send `null`.
      */
     private static function dtoIsNullable(RuleSet $set): bool
     {
@@ -430,7 +437,7 @@ final readonly class FormRequestEmitter
             $lines = [
                 ...$lines,
                 $set->requiredRoot
-                    ? '                if (! ($this->isJson() && trim($content) === \'null\')) {'
+                    ? '                if (! ($this->isJson() && trim($content) === '.self::NULL_CONTENT.')) {'
                     : '                if ($this->isJson() && is_object(json_decode($content))) {',
                 '                    foreach (self::REQUIRED_KEYS as $key => $rule) {',
                 '                        if (! array_key_exists($key, $this->bodyInput()) && ! $validator->errors()->has((string) $key)) {',
@@ -469,7 +476,7 @@ final readonly class FormRequestEmitter
                 ...$lines,
                 '                // Why: decoded without `assoc`, because `{}` and `[]` are both `[]` with it.',
                 '                if ($this->isJson() && trim($content) !== \'\' && ! is_object(json_decode($content))'
-                    .($set->nullableRoot ? ' && trim($content) !== \'null\'' : '').') {',
+                    .($set->nullableRoot ? ' && trim($content) !== '.self::NULL_CONTENT : '').') {',
                 '                    $validator->addFailure('.$this->literal($set->rootKey).', \'array\');',
                 ...($set->closedKeys === null ? [] : ['', '                    return;']),
                 '                }',

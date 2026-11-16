@@ -977,7 +977,7 @@ final readonly class RuleSetBuilder
 
         if ($undeclared !== []) {
             $walk->findings[] = sprintf(
-                '%s requires %s without declaring %s under `properties`, so the rule set asks for the '
+                '%s requires %s without declaring %s under `properties`, so the request asks for the '
                     .'key and says nothing about the value.',
                 $prefix === '' ? 'The body' : '`'.rtrim($prefix, '.').'`',
                 self::list($undeclared),

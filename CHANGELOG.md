@@ -76,10 +76,11 @@ tags: [versions, conventions, planning]
   `composer.json`.
 - **On an operation whose JSON body allows `null`, `dto()` is now typed `?X` and returns `null` for a `null` body, where
   it returned a DTO of `Optional`s.** That is an optional body, a `PATCH` and a required body that requires nothing,
-  each sent a JSON `null`. An absent optional body (no content) still gives the DTO. A body that cannot be `null`, and a
-  nullable one read only as a form, keep the plain type. This is a breaking change: `$request->dto()->toArray()` on such
-  an operation now fails at runtime when a client sends `null`, and static analysis asks for a null check. Handle
-  `null`, for instance `$request->dto()?->toArray()`.
+  each sent a JSON `null`. A required body that requires a property is typed `?X` too: it now lets `null` through (see
+  `Fixed`), so there static analysis asks for the null check as well. An absent optional body (no content) still gives
+  the DTO. A body that cannot be `null`, and a nullable one read only as a form, keep the plain type. This is a breaking
+  change: `$request->dto()->toArray()` on such an operation now fails at runtime when a client sends `null`, and static
+  analysis asks for a null check. Handle `null`, for instance `$request->dto()?->toArray()`.
 
 ### Fixed
 
@@ -108,10 +109,12 @@ tags: [versions, conventions, planning]
   is read as JSON (JSON only, or JSON and a form) and is not a `PATCH`. A JSON `null` reaches the rules as `[]`, so the
   `present` on each required key refused a payload the contract allows. Each required key now asks through its siblings
   (`present_with`), as an optional body's do, and the generated request still refuses `{}` and every other body the
-  contract refused, on the same keys and with the same status: only `null` passes, and `dto()` returns `null` for it.
-  One message changes: a key missing beside a sent sibling reports `present_with`'s ("must be present when ... is
-  present") where it reported `present` or `required`. A form client of a body that is JSON and a form gets the answers
-  it always had. This closes the refusal the `0.2.0` `Known limits` lists for
+  contract refused, on the same keys and with the same status under Laravel's `ConvertEmptyStringsToNull`, which a
+  default application has: only `null` passes, and `dto()` returns `null` for it. One message changes: a key missing
+  beside a sent sibling reports `present_with`'s ("must be present when ... is present") where it reported `present` or
+  `required`. A required integer of such a body accepts `""` only where a project removed `ConvertEmptyStringsToNull`,
+  as an optional integer already does. A form client of a body that is JSON and a form gets the answers it always had.
+  This closes the refusal the `0.2.0` `Known limits` lists for
   [#111](https://github.com/Gcob/lara-spec-first/issues/111).
 
 ## [0.2.0] - 2026-11-15
