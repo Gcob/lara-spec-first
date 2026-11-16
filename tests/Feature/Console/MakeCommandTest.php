@@ -268,6 +268,249 @@ it('reports a missing specification the way the build does', function (): void {
 });
 
 /*
+ * A document the build would refuse is refused before anything is written.
+ *
+ * The class `spec:make` writes extends a parent the build generates, and the build's own refusals (a path parameter
+ * PHP cannot declare, two operations claiming one request) are the very reasons that class could not compile. A class
+ * written first stays: the command never overwrites a file a developer owns.
+ *
+ * @see docs/guide/code-generation/scaffolding.md — "Three refusals"
+ */
+
+/**
+ * A specification of the `paths` given, under the temporary root and made the configured one.
+ *
+ * @param  string  $paths  the body of the `paths:` mapping, indented by four spaces
+ */
+function specificationOf(string $paths): string
+{
+    $path = scaffoldRoot().'/openapi.yaml';
+
+    file_put_contents($path, <<<YAML
+        openapi: 3.0.3
+        info:
+            title: Fixture API
+            version: 1.0.0
+        paths:
+        {$paths}
+        YAML);
+
+    config()->set('lara-spec-first.spec.path', $path);
+
+    return $path;
+}
+
+/**
+ * An operation `showUser` the build accepts, declaring its own controller.
+ */
+function acceptedOperation(string $tag = 'Users'): string
+{
+    return sprintf(<<<'YAML'
+            /users/{id}:
+                get:
+                    operationId: showUser
+                    tags: [%s]
+                    x-controller: LsfMake\Http\Controllers\UserController
+                    responses:
+                        '200': { description: A user }
+        YAML, $tag)
+        ."\n";
+}
+
+/**
+ * An operation the build refuses, because its path parameter cannot be a PHP variable.
+ */
+function refusedOperation(string $tag = 'Users'): string
+{
+    return sprintf(<<<'YAML'
+            /codes/{2fa}:
+                get:
+                    operationId: showCode
+                    tags: [%s]
+                    x-controller: LsfMake\Http\Controllers\CodeController
+                    responses:
+                        '200': { description: A code }
+        YAML, $tag)
+        ."\n";
+}
+
+it('refuses before writing a child when the build would refuse the document', function (string $paths, string $operation, string $reason): void {
+    specificationOf($paths);
+
+    $output = make(['operation' => $operation], 1);
+
+    expect($output)->toContain($reason)
+        ->and(scaffoldedFiles())->toBe([])
+        ->and(is_dir(scaffoldGeneratedTree()))->toBeFalse();
+})->with([
+    'a path parameter that is not a variable' => [
+        <<<'YAML'
+                /codes/{2fa}:
+                    get:
+                        operationId: showCode
+                        x-controller: LsfMake\Http\Controllers\CodeController
+                        responses:
+                            '200': { description: A code }
+            YAML,
+        'showCode',
+        'cannot be a PHP variable',
+    ],
+    'a path parameter named this' => [
+        <<<'YAML'
+                /things/{this}:
+                    get:
+                        operationId: showThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '200': { description: A thing }
+            YAML,
+        'showThing',
+        'cannot be a PHP variable',
+    ],
+    'a path parameter named request beside a body' => [
+        <<<'YAML'
+                /things/{request}:
+                    post:
+                        operationId: createThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        requestBody:
+                            content:
+                                application/json:
+                                    schema:
+                                        type: object
+                                        properties:
+                                            name: { type: string }
+                        responses:
+                            '201': { description: Created }
+            YAML,
+        'createThing',
+        'path parameter `{request}`',
+    ],
+    'two operations whose requests are one class' => [
+        <<<'YAML'
+                /first:
+                    post:
+                        operationId: showUser
+                        x-controller: LsfMake\Http\Controllers\FirstController
+                        requestBody:
+                            content:
+                                application/json:
+                                    schema:
+                                        type: object
+                                        properties:
+                                            name: { type: string }
+                        responses:
+                            '201': { description: Created }
+                /second:
+                    post:
+                        operationId: show-user
+                        x-controller: LsfMake\Http\Controllers\SecondController
+                        requestBody:
+                            content:
+                                application/json:
+                                    schema:
+                                        type: object
+                                        properties:
+                                            name: { type: string }
+                        responses:
+                            '201': { description: Created }
+            YAML,
+        'showUser',
+        'both generate the request class',
+    ],
+    'a body property and a query parameter with one name' => [
+        <<<'YAML'
+                /things:
+                    post:
+                        operationId: createThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        parameters:
+                            - { name: name, in: query, schema: { type: string } }
+                        requestBody:
+                            content:
+                                application/json:
+                                    schema:
+                                        type: object
+                                        properties:
+                                            name: { type: string }
+                        responses:
+                            '201': { description: Created }
+            YAML,
+        'createThing',
+        'both as a property of its request body',
+    ],
+]);
+
+it('refuses a singular form when another operation would stop the build', function (): void {
+    specificationOf(acceptedOperation().refusedOperation());
+
+    $output = make(['operation' => 'showUser'], 1);
+
+    expect($output)->toContain('cannot be a PHP variable')
+        ->and(scaffoldedFiles())->toBe([])
+        ->and(is_dir(scaffoldGeneratedTree()))->toBeFalse();
+});
+
+it('refuses a bulk form before listing or asking when the build would refuse', function (array $arguments): void {
+    specificationOf(acceptedOperation().refusedOperation());
+
+    $output = make($arguments + ['--yes' => true, '--no-interaction' => true], 1);
+
+    expect($output)->toContain('cannot be a PHP variable')
+        ->and($output)->not->toContain('file(s) to create')
+        ->and(scaffoldedFiles())->toBe([])
+        ->and(is_dir(scaffoldGeneratedTree()))->toBeFalse();
+})->with([
+    'every operation' => [['--all' => true]],
+    'every operation of a tag' => [['--tag' => 'Users']],
+]);
+
+it('refuses before offering the row when the document would not build', function (): void {
+    $path = specificationOf(<<<'YAML'
+            /posts:
+                get:
+                    operationId: listPosts
+                    responses:
+                        '200': { description: Posts }
+        YAML."\n".refusedOperation());
+    $before = file_get_contents($path);
+
+    $output = make(['operation' => 'listPosts', '--yes' => true, '--no-interaction' => true], 1);
+
+    expect($output)->toContain('cannot be a PHP variable')
+        ->and($output)->not->toContain('declares no `x-controller`')
+        ->and(file_get_contents($path))->toBe($before)
+        ->and(scaffoldedFiles())->toBe([]);
+});
+
+// A proposal keeps the operation's own short name, so it adds no collision the document does not already carry, and
+// planning the document as read is enough to see it.
+it('refuses a proposal another operation already claims, before offering it', function (): void {
+    $path = specificationOf(<<<'YAML'
+            /posts:
+                get:
+                    operationId: listPosts
+                    responses:
+                        '200': { description: Posts }
+            /others:
+                get:
+                    operationId: listOthers
+                    x-controller: LsfMake\Http\Controllers\Other\ListPostsController
+                    responses:
+                        '200': { description: Others }
+        YAML);
+    $before = file_get_contents($path);
+
+    $output = make(['operation' => 'listPosts', '--yes' => true, '--no-interaction' => true], 1);
+
+    expect($output)->toContain('both generate the class name')
+        ->and($output)->not->toContain('declares no `x-controller`')
+        ->and(file_get_contents($path))->toBe($before)
+        ->and(scaffoldedFiles())->toBe([])
+        ->and(is_dir(scaffoldRoot().'/Http/Controllers/Other'))->toBeFalse();
+});
+
+/*
  * And then it builds, which is the half that makes the file it just wrote work.
  *
  * A developer adds `x-controller` and runs this command: the class it names has no

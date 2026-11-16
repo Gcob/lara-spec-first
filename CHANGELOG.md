@@ -75,6 +75,12 @@ tags: [versions, conventions, planning]
   what the contract declares. `spec:doctor` stays silent on the collided names (prose only,
   [#119](https://github.com/Gcob/lara-spec-first/issues/119)). A body that is JSON and a form is unchanged. This closes
   the refusal the `0.2.0` `Known limits` lists for [#113](https://github.com/Gcob/lara-spec-first/issues/113).
+- **`spec:make` plans the build before it writes anything.** A document the build refuses (a path parameter named
+  `request`, `this` or `2fa`, two operations claiming one request name, a body property and a query parameter with one
+  name) used to leave a child controller that did not compile, which the command then never overwrote. It is now refused
+  first, with the build's own message and exit status, and nothing is written: no class, and no line in the
+  specification. This closes the first half of the `0.2.0` `Known limits` item for
+  [#112](https://github.com/Gcob/lara-spec-first/issues/112).
 
 ## [0.2.0] - 2026-11-15
 

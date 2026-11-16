@@ -7,8 +7,10 @@ namespace Gcob\LaraSpecFirst\Console;
 use Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
+use Gcob\LaraSpecFirst\Generation\BuildPlanner;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
 use Gcob\LaraSpecFirst\Generation\OperationSelector;
+use Gcob\LaraSpecFirst\Generation\ProjectRelativePath;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Scaffolding\CustomControllerName;
 use Gcob\LaraSpecFirst\Scaffolding\CustomControllerScaffold;
@@ -87,11 +89,19 @@ final class MakeCommand extends Command
         }
 
         $namespace = rtrim($this->requiredString($config, 'lara-spec-first.generated.namespace'), '\\');
-        $selected = $this->select($form, $specPath, $remote);
 
-        if ($selected === null) {
+        // Shared with the build plan, the scaffold planner and the writer, so the three
+        // ask the autoloader the same question at the same moment: existence, once
+        // Composer's negative-lookup cache has been read, does not change again
+        // during this command's own run.
+        $lookup = CustomControllerLookup::fromAutoloader();
+        $read = $this->select($form, $specPath, $remote);
+
+        if ($read === null) {
             return self::FAILURE;
         }
+
+        ['selected' => $selected, 'document' => $document] = $read;
 
         // The one operation the singular form named may have no `x-controller` yet,
         // and offering to add it is the whole point of this command being the way
@@ -99,22 +109,26 @@ final class MakeCommand extends Command
         // always had — read again, because the contract is what decides, and it
         // just changed.
         if ($form === 'operation' && ($selected[0] ?? null) !== null && $selected[0]->controller === null) {
+            // Before the offer rather than after the edit: a document the build
+            // would refuse is never touched.
+            $this->assertBuildable($namespace, $specPath, $lookup, $document);
+
             if (! $this->offerTheExtension($config, $remote, $specPath, $selected[0])) {
                 return self::FAILURE;
             }
 
-            $selected = $this->select($form, $specPath, $remote);
+            $read = $this->select($form, $specPath, $remote);
 
-            if ($selected === null) {
+            if ($read === null) {
                 return self::FAILURE;
             }
+
+            ['selected' => $selected, 'document' => $document] = $read;
         }
 
-        // Shared with the planner and the writer both, so the two ask the
-        // autoloader the same question at the same moment: existence, once
-        // Composer's negative-lookup cache has been read, does not change again
-        // during this command's own run.
-        $lookup = CustomControllerLookup::fromAutoloader();
+        // Before anything is listed, asked or written, on the document as it now is.
+        $this->assertBuildable($namespace, $specPath, $lookup, $document);
+
         $planner = new ScaffoldPlanner($namespace, $lookup);
         $planned = $planner->plan($selected);
         $undeclarable = $planner->undeclarable($selected);
@@ -138,11 +152,12 @@ final class MakeCommand extends Command
     }
 
     /**
-     * The operations the form named, read from the document as it is now — or null, having already reported the reading
-     * pipeline's first fault, if there is one.
+     * The operations the form named, beside the whole document they come from, read as it is now — or null, having
+     * already reported the reading pipeline's first fault, if there is one.
      *
-     * @return list<Operation>|null never empty when it is not null: every form refuses rather than selecting nothing,
-     *                              so a caller reading `[0]` is safe
+     * @return array{selected: list<Operation>, document: list<Operation>}|null `selected` is never empty: every form
+     *                                                                          refuses rather than selecting nothing,
+     *                                                                          so a caller reading `[0]` is safe
      */
     private function select(string $form, string $specPath, RemoteReferenceGuard $remote): ?array
     {
@@ -154,11 +169,35 @@ final class MakeCommand extends Command
 
         $selector = new OperationSelector($operations);
 
-        return match ($form) {
-            'operation' => $selector->named((string) $this->argument('operation')),
-            'tag' => $selector->tagged((string) $this->option('tag')),
-            default => $selector->all(),
-        };
+        return [
+            'selected' => match ($form) {
+                'operation' => $selector->named((string) $this->argument('operation')),
+                'tag' => $selector->tagged((string) $this->option('tag')),
+                default => $selector->all(),
+            },
+            'document' => $operations,
+        ];
+    }
+
+    /**
+     * Refuse, before anything is written, a document `spec:build` would refuse.
+     *
+     * **The whole document, not the selection.** The build refuses for any operation's fault, so a class written for
+     * one operation of a document the build will not accept has no generated parent until the document is fixed, and
+     * the command never overwrites a file a developer owns. The plan is discarded: only its refusals are wanted, and
+     * they are the build's own, so the message and the exit status are exactly what `spec:build` prints.
+     *
+     * @param  list<Operation>  $document  every operation, in the order the document writes them
+     *
+     * @throws SpecException whatever {@see BuildPlanner::plan()} refuses
+     */
+    private function assertBuildable(
+        string $namespace,
+        string $specPath,
+        CustomControllerLookup $lookup,
+        array $document,
+    ): void {
+        (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), $lookup))->plan($document);
     }
 
     /**

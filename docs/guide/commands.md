@@ -108,6 +108,12 @@ a mistyped invocation from scaffolding a whole contract.
 flags you passed. The two questions it answers are the `x-controller` proposal and the bulk forms' confirmation. Why it
 is not spelled `--force`: [`controllers.md`](./controllers.md#specmake-is-the-only-way-in).
 
+**Before it writes anything, it plans the build as `spec:build` does.** A document the build would refuse (a path
+parameter PHP cannot declare, two operations claiming one request name) is refused first, with the build's own message
+and exit status, writing no class and no line in your specification: a class written for it would extend a parent that
+is never generated, and the command never overwrites a file you own. It plans the whole document rather than the
+operations you named, since the build refuses for any operation's fault.
+
 **A run that created something then runs `spec:build`, and exits with the build's code.** A scaffold on its own connects
 nothing: the class it just wrote extends a generated parent whose name comes from the `x-controller` the build has not
 read yet, so without the build the new file does not even load. A bulk run you decline ends there instead, with no files

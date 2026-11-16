@@ -215,11 +215,11 @@ file for one operation, extending that operation's generated parent. Its argumen
 [names what it cannot scaffold](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step). What it
 writes is deliberately almost nothing: the `extends`, the comment about that one line, and the signature to override.
 
-![The five decisions spec:make walks, from a missing extension to the build it runs at the end](../diagrams/spec-make.svg)
+![The seven decisions spec:make walks, from a document the build would refuse to the build it runs at the end](../diagrams/spec-make.svg)
 
 _What `spec:make` decides, and where it stops._
 
-The whole command in one picture, and the subsections below take each branch in turn. Four of its five decisions are
+The whole command in one picture, and the subsections below take each branch in turn. Six of its seven decisions are
 refusals, which is the shape of a command that edits the source of truth and writes a file a developer will then own:
 the nominal path is short, and everything else is a reason to stop and hand the decision back.
 
@@ -245,13 +245,16 @@ class UserController extends \App\Http\Generated\Controllers\UserController
 }
 ```
 
-**And the command builds when it is done.** A developer adds `x-controller` and runs `spec:make`: the class it names has
-no generated parent yet, because that parent's name comes from the extension the build has not read. The file would not
-load, in the very moment they are looking at it. So `spec:make` calls `spec:build` after writing, which also
-[points the route at the child](#two-classes-found-by-name), since that target is resolved at build time. **This is not
-[the invariant](./code-generation/index.md#a-build-never-destroys-your-work) in reverse:** the rule is that the build
-never creates a class you will own, and nothing says the command that does may not ask the build to catch up. It is
-skipped after a declined bulk confirmation, because a refusal is respected whole.
+**And the command plans the build first, then builds when it is done.** Before it edits the specification or writes a
+file, it plans the build as `spec:build` would, so a document the build would refuse (a path parameter PHP cannot
+declare, two operations claiming one request name) is refused with the build's own message and nothing is written: the
+run that ends in `spec:build` is one the build accepts. A developer adds `x-controller` and runs `spec:make`: the class
+it names has no generated parent yet, because that parent's name comes from the extension the build has not read. The
+file would not load, in the very moment they are looking at it. So `spec:make` calls `spec:build` after writing, which
+also [points the route at the child](#two-classes-found-by-name), since that target is resolved at build time. **This is
+not [the invariant](./code-generation/index.md#a-build-never-destroys-your-work) in reverse:** the rule is that the
+build never creates a class you will own, and nothing says the command that does may not ask the build to catch up. It
+is skipped after a declined bulk confirmation, because a refusal is respected whole.
 
 #### The scaffold is not a publishable stub
 
