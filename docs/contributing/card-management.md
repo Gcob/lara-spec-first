@@ -14,8 +14,9 @@ covers: >
     board's Status, Phase, Lot, Kind, Order and Milestone fields mean, who moves them and why a card's body stops
     carrying one the moment the board does, what `just status` prints and how to read it, where a closed card belongs
     and which disagreements between the board, git, the pull requests and CI it flags as drift, what the
-    `waiting-on-maintainer` label means and how a question and its decision are posted on a card, and the grouping
-    mechanisms this project declines to use.
+    `waiting-on-maintainer` label means and how a question and its decision are posted on a card, why no milestone means
+    a card is not planned and what the `edge-case` label asks of a card that waits, and the grouping mechanisms this
+    project declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -42,6 +43,8 @@ tags: [planning, conventions, workflow, scope, onboarding]
 > - `Status` moves with the work; `Phase` and `Kind` are set at triage and `Lot` when that lot is cut. The board keeps
 >   each of them, and a card's body carries one only until it gets there. `Order` is the queue, and `Milestone` is the
 >   release a card ships in.
+> - A card past `Backlog` has a milestone, since no milestone means not planned. A gap that waits with its reason and
+>   its triggers carries the `edge-case` label and no release milestone.
 > - `just status` prints what is in flight, what comes next and the next release, from the board, GitHub and git, and
 >   flags every place where they disagree. It only reads, so run it before asking what to work on.
 
@@ -418,18 +421,19 @@ bug, where hand-written expectations would have encoded the bug.
 offers when somebody opens an issue. This file carries its reasoning; the form carries its shape. When the two disagree,
 the form is what people actually fill in, so fix the form first and then say why here.
 
-Eight sections, of which two only ever appear on a `Backlog` card and most of the rest are absent on any given one:
+Nine sections, of which two only ever appear on a `Backlog` card and most of the rest are absent on any given one:
 
-| Section         | Carries                                                                  | Dropped by                        |
-| --------------- | ------------------------------------------------------------------------ | --------------------------------- |
-| `Why`           | The problem in two sentences, and how to reproduce a bug from review     | Nobody                            |
-| `Ready when`    | Card numbers that have to land first, and nothing else                   | Any card that nothing blocks      |
-| `Assumptions`   | What is believed and could be checked by reading the code or the docs    | Every card, on reaching `Todo`    |
-| `Discovery`     | What is known not to be known, and needs research or a trial to find out | Every card, on reaching `Todo`    |
-| `Decisions`     | Settled decisions and their reasons, boundaries included                 | Any card that settled nothing     |
-| `Where to look` | Permalinks, and no prose                                                 | Any card with nothing to point at |
-| `Acceptance`    | One to three Gherkin scenarios                                           | Every card but a `Feature`        |
-| `Done when`     | Only the delta on top of the three places and `composer check`           | Nobody                            |
+| Section           | Carries                                                                  | Dropped by                        |
+| ----------------- | ------------------------------------------------------------------------ | --------------------------------- |
+| `Why`             | The problem in two sentences, and how to reproduce a bug from review     | Nobody                            |
+| `Ready when`      | Card numbers that have to land first, and nothing else                   | Any card that nothing blocks      |
+| `Assumptions`     | What is believed and could be checked by reading the code or the docs    | Every card, on reaching `Todo`    |
+| `Discovery`       | What is known not to be known, and needs research or a trial to find out | Every card, on reaching `Todo`    |
+| `Decisions`       | Settled decisions and their reasons, boundaries included                 | Any card that settled nothing     |
+| `Why it can wait` | An edge case's reason, and the triggers that move it to `Todo`           | Every card but an `edge-case`     |
+| `Where to look`   | Permalinks, and no prose                                                 | Any card with nothing to point at |
+| `Acceptance`      | One to three Gherkin scenarios                                           | Every card but a `Feature`        |
+| `Done when`       | Only the delta on top of the three places and `composer check`           | Nobody                            |
 
 So a `Todo` `Docs` card with no blocker and nothing to settle is two sections, a `Chore` card is rarely more, and only a
 `Feature` card routinely carries six.
@@ -637,6 +641,11 @@ rewritten, and going hunting for it across sketches no lot has cut yet would be 
 `just check-markers --online` requires every open card carrying it to be named by at least one marker. The rule and its
 consequence are in [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leaves-a-marker).
 
+**The `edge-case` label marks a gap that waits with a reason.** It is the third label a card can carry beside
+`nice-to-have` and `follow-up`, and the only one with a rule:
+[no milestone means not planned](#no-milestone-means-not-planned), and the card says why it can wait and what ends the
+wait.
+
 **The `waiting-on-maintainer` label is the other one a card can carry for a question.** `decision` says what a card is
 made of, and `waiting-on-maintainer` says whose move it is now. The two are not the same, and
 [a card that waits on the maintainer](#a-card-that-waits-on-the-maintainer) says when each applies.
@@ -701,6 +710,10 @@ is a `decision` card, which needs none), a card has an open question and no labe
 label, and a `decision` card in `Todo`, `In Progress` or `In review` without it. A `decision` card in `Backlog` waits on
 its lot rather than on an answer, so it is never drift for lacking the label.
 
+**Drift in the milestones:** a card in `Todo`, `In Progress`, `In review` or `Ready to publish` with no milestone, an
+open `edge-case` card with no `## Why it can wait` section, and an open `edge-case` card on a release milestone
+(`0.x.y`; one on `1.0` is fine, since it is the bar for a stable release and not a release).
+
 **It reads and never writes.** It asks GitHub only for reads, and runs one `git fetch --prune` of the remote that names
 this repository. It reads that remote's branches, never the local ones, so two machines with the same board give the
 same page, byte for byte. It needs `gh` signed in with the `project` scope, the same reason as `just card-context` (see
@@ -748,6 +761,31 @@ anything else (`**Question:`, a space before the stars, the marker on the second
 as [any settled decision is](#a-todo-card-has-nothing-left-open), because a comment is easy to lose in a long thread and
 the body is what the next developer reads. The label comes off with the reply, in the same move: a closed card, or a
 card with no open question that is not a `decision` card, still carrying it shows up in `just status` as drift.
+
+## No milestone means not planned
+
+**A card past `Backlog` has a milestone, and a card with none is not planned for anything.** `Todo`, `In Progress`,
+`In review` and `Ready to publish` each say the card is going to ship: the release in its `Milestone` is where, and
+`1.0` counts, since a card on it is part of the bar for a stable release. A `Backlog` card has none yet, and a `Done`
+card is history, so neither is asked for one. A card worked because it touches the files of a card already in progress
+takes that card's milestone rather than its own guess. [`just status`](#what-just-status-prints) names a card in one of
+those four statuses with no milestone, and the fix is to give it one.
+
+**A card that waits, with its reason, carries the `edge-case` label and no release milestone.** An edge case is a gap
+that is real and rare: a contract the package accepts that it should refuse, or a shape nobody has met yet, with nothing
+passing that the contract forbids. Planning it for the next release would spend the release on something no user has
+asked for, and leaving it in `Backlog` unexplained would lose the reason it waits. So it stays in `Backlog`, carries the
+label, and its body has a `## Why it can wait` section: the reason, then `Moves to Todo when:` and the triggers as a
+list, each something you could watch happen (a user reports it, a card touches the same code, the `1.0` gate opens).
+
+**It is not the same as `nice-to-have` or `follow-up`.** `nice-to-have` is a feature worth doing after `1.0`, and
+`follow-up` is a card filed out of other work. An edge case is a gap in what already ships, and it is the only one of
+the three with a rule of its own: the reason it waits and the triggers that end the wait.
+
+**When a trigger fires, the card leaves the label behind.** The label comes off, a release milestone goes on, and the
+card is rewritten for `Todo` like any other, and its `## Why it can wait` section is deleted. `just status` says so when
+a card carries both the label and a release: either a trigger fired and the label is stale, or the milestone is, and the
+card is not planned.
 
 ## What this project deliberately does not use
 

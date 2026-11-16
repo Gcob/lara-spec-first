@@ -58,6 +58,21 @@ Boundaries worth writing down when the card touches them:
 
 -
 
+## Why it can wait
+
+<!--
+Edge-case cards only, the ones carrying the `edge-case` label and no release milestone. The
+reason: what passes today that should not, or what is refused for a shape nobody has met, and
+why that costs nothing yet. Then `Moves to Todo when:` and its triggers as a list, each one
+something you could see happen: a user reports it, a card touches the same code, the 1.0 gate
+opens. When one fires, take the label off, give the card a release milestone and rewrite it
+for Todo. Delete this section on every other card.
+-->
+
+Moves to Todo when:
+
+-
+
 ## Where to look
 
 <!--

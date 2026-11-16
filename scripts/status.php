@@ -68,6 +68,9 @@ const REPOSITORY = 'Gcob/lara-spec-first';
 const WAITING_LABEL = 'waiting-on-maintainer';
 const DECISION_LABEL = 'decision';
 
+/** The label of a card that waits, with its reason and its triggers, and ships in no release yet. */
+const EDGE_CASE_LABEL = 'edge-case';
+
 /**
  * What opens the first line of a question posted on a card, and of the decision that answers it. Only a comment from
  * one of these author associations counts.
@@ -802,6 +805,7 @@ function find_drift(array $cards, array $questions, array $pullRequests, array $
         ...drift_branches($cards, $pullRequests, $branches),
         ...drift_queue($cards),
         ...drift_waiting($cards, $questions),
+        ...drift_milestones($cards),
     ];
 
     // The findings that name no card come first (`main`, then a pull request by its number), then the cards in order.
@@ -1120,6 +1124,41 @@ function drift_waiting(array $cards, array $questions): array
 
         if ($waits && ! $isDecision && ! $hasQuestion) {
             $findings[] = finding('W1', $number, null, 'Carries '.WAITING_LABEL.', but no question is posted on it. Post the question, or take the label off.');
+        }
+    }
+
+    return $findings;
+}
+
+/**
+ * M1, E1 and E2: a card past `Backlog` has a milestone, and an edge case waits with no release.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function drift_milestones(array $cards): array
+{
+    $findings = [];
+
+    foreach ($cards as $card) {
+        $number = $card['number'];
+
+        // No milestone means not planned: `1.0` counts as one, and a lot card in `Todo` is an opened lot.
+        if ($card['onBoard'] && $card['milestone'] === null && in_array($card['status'], [STATUS_TODO, STATUS_IN_PROGRESS, STATUS_IN_REVIEW, STATUS_READY_TO_PUBLISH], true)) {
+            $findings[] = finding('M1', $number, null, $card['status'].' with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.');
+        }
+
+        // A closed edge case is history, and an issue off the board has no body to read (B1 speaks for it).
+        if ($card['state'] !== 'OPEN' || ! in_array(EDGE_CASE_LABEL, $card['labels'], true)) {
+            continue;
+        }
+
+        if ($card['onBoard'] && preg_match('/^## Why it can wait[ \t]*\r?$/m', $card['body']) !== 1) {
+            $findings[] = finding('E1', $number, null, 'An edge case with no ## Why it can wait. Write the reason it waits and its triggers, under Moves to Todo when:.');
+        }
+
+        if ($card['milestone'] !== null && is_release_milestone($card['milestone'])) {
+            $findings[] = finding('E2', $number, null, 'An edge case on release '.$card['milestone'].'. A trigger fired, so take '.EDGE_CASE_LABEL.' off; or take the milestone off, since an edge case ships in no release yet.');
         }
     }
 

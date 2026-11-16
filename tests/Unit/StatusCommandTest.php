@@ -137,7 +137,8 @@ function statusCard(array $overrides): array
         'order' => null,
         'state' => 'OPEN',
         'stateReason' => null,
-        'milestone' => null,
+        // A card past Backlog is planned, so it starts on `1.0` (M1): a test that is about a missing milestone says `null`.
+        'milestone' => in_array($overrides['status'] ?? 'Todo', ['Todo', 'In Progress', 'In review', 'Ready to publish'], true) ? '1.0' : null,
         'labels' => [],
         'labelsNext' => false,
         'onBoard' => true,
@@ -692,9 +693,9 @@ it('lists the Todo cards by Order, then by number, with the unordered ones last'
         ->and(statusSection($run['out'], 'Next (Todo, by Order)'))->toBe([
             '  10  #31  Second  0.3.0',
             '  10  #32  Thirds  0.3.0',
-            '  20  #30  Fourth',
+            '  20  #30  Fourth  1.0',
             '  30  #34  Fifths  0.3.0  waits on the maintainer',
-            '   -  #33  Sixths',
+            '   -  #33  Sixths  1.0',
         ]);
 });
 
@@ -705,7 +706,7 @@ it('cuts a long title with three dots', function (): void {
     $run = statusRunScript($project);
 
     expect(statusSection($run['out'], 'Next (Todo, by Order)'))->toBe([
-        '  10  #40  Read a multipart part\'s default contentType for the docum...',
+        '  10  #40  Read a multipart part\'s default contentType for the docum...  1.0',
     ]);
 });
 
@@ -874,8 +875,8 @@ it('reads every page of a list', function (): void {
     // PR #60 serves a card the board does not have: drift, and every page still shows.
     expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusSection($run['out'], 'Next (Todo, by Order)'))->toBe([
-            '  10  #50  First page',
-            '  20  #51  Second page    waits on the maintainer',
+            '  10  #50  First page   1.0',
+            '  20  #51  Second page  1.0  waits on the maintainer',
         ])
         ->and(statusSection($run['out'], "Maintainer's turn"))->toBe(['  #51  Todo  question: is this on page two?'])
         ->and(statusSection($run['out'], 'Now'))->toBe([
@@ -1237,8 +1238,8 @@ it('lists the cards that wait on the maintainer, with the question posted on eac
             '  #111  Todo     question: what does dto() return for a null body?',
         ])
         ->and(statusSection($run['out'], 'Next (Todo, by Order)'))->toBe([
-            '  10  #45   Which bar      waits on the maintainer',
-            '  20  #111  Accept null    waits on the maintainer',
+            '  10  #45   Which bar    1.0  waits on the maintainer',
+            '  20  #111  Accept null  1.0  waits on the maintainer',
         ]);
 });
 
@@ -1373,4 +1374,94 @@ it('flags a closed card still waiting, and a decision card in Todo that does not
             'header' => 2,
         ])
         ->and(statusSection($run['out'], "Maintainer's turn"))->toBe(['  Nothing waits on the maintainer.']);
+});
+
+it('flags a card past Backlog with no milestone', function (): void {
+    $project = statusProject([
+        'cards' => [
+            // M1: every status past Backlog needs a milestone, a lot card in Todo included.
+            statusCard(['number' => 60, 'status' => 'Todo', 'order' => 10, 'milestone' => null]),
+            statusCard(['number' => 61, 'status' => 'In Progress', 'milestone' => null]),
+            statusCard(['number' => 62, 'status' => 'In review', 'milestone' => null]),
+            statusCard(['number' => 63, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => null]),
+            statusCard(['number' => 64, 'status' => 'Todo', 'kind' => 'Lot', 'milestone' => null]),
+            // Fine: Backlog is not planned yet, 1.0 counts as a milestone, a release milestone is one, and Done is history.
+            statusCard(['number' => 65, 'status' => 'Backlog']),
+            statusCard(['number' => 66, 'status' => 'Todo', 'order' => 20, 'milestone' => '1.0']),
+            statusCard(['number' => 67, 'status' => 'Todo', 'order' => 30, 'milestone' => '0.3.0']),
+            statusCard(['number' => 68, 'status' => 'Done', 'state' => 'CLOSED']),
+        ],
+        'milestones' => [statusMilestone(['title' => '0.3.0']), statusMilestone(['title' => '1.0'])],
+        'prs' => [statusPr(['number' => 90, 'branch' => 'feature/62/under-review', 'checks' => [['name' => 'lint', 'conclusion' => 'SUCCESS']]])],
+        'merged' => [],
+    ]);
+    statusPushBranch($project, 'feature/61/started', 0);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out']))->toBe([
+            'lines' => [
+                '  #60  Todo with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
+                '  #61  In Progress with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
+                '  #62  In review with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
+                '  #63  Ready to publish with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
+                '  #64  Todo with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
+            ],
+            'count' => 5,
+            'header' => 5,
+        ]);
+});
+
+it('flags an edge case without its reason, or planned for a release', function (): void {
+    $withReason = "## Decisions\n\nSettled.\n\n## Why it can wait\n\nNothing passes that the contract refuses.\n\nMoves to Todo when:\n\n- a user reports it\n";
+    $project = statusProject([
+        'cards' => [
+            // E1: no `## Why it can wait` section, or the words only inside a paragraph.
+            statusCard(['number' => 70, 'status' => 'Backlog', 'labels' => ['edge-case'], 'body' => STATUS_COMPLETE_BODY]),
+            statusCard(['number' => 71, 'status' => 'Backlog', 'labels' => ['edge-case'], 'body' => "## Decisions\n\nWhy it can wait is not written yet.\n"]),
+            // E2: a release milestone. Both rules can speak about one card.
+            statusCard(['number' => 72, 'status' => 'Backlog', 'labels' => ['edge-case'], 'milestone' => '0.3.0', 'body' => $withReason]),
+            statusCard(['number' => 73, 'status' => 'Backlog', 'labels' => ['edge-case'], 'milestone' => '0.3.0', 'body' => STATUS_COMPLETE_BODY]),
+            // A closed edge case is history, and an issue off the board has no body to read: B1 speaks for it.
+            statusCard(['number' => 74, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Docs', 'labels' => ['edge-case'], 'milestone' => '0.3.0', 'body' => STATUS_COMPLETE_BODY]),
+            statusCard(['number' => 75, 'status' => 'Backlog', 'labels' => ['edge-case'], 'onBoard' => false]),
+            // The same words on a card that is not an edge case are nobody's business.
+            statusCard(['number' => 76, 'status' => 'Backlog', 'body' => STATUS_COMPLETE_BODY]),
+        ],
+        'milestones' => [statusMilestone(['title' => '0.3.0'])],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out']))->toBe([
+            'lines' => [
+                '  #70  An edge case with no ## Why it can wait. Write the reason it waits and its triggers, under Moves to Todo when:.',
+                '  #71  An edge case with no ## Why it can wait. Write the reason it waits and its triggers, under Moves to Todo when:.',
+                '  #72  An edge case on release 0.3.0. A trigger fired, so take edge-case off; or take the milestone off, since an edge case ships in no release yet.',
+                '  #73  An edge case with no ## Why it can wait. Write the reason it waits and its triggers, under Moves to Todo when:.',
+                '  #73  An edge case on release 0.3.0. A trigger fired, so take edge-case off; or take the milestone off, since an edge case ships in no release yet.',
+                '  #75  Open, but not on the board. Add it and triage it.',
+            ],
+            'count' => 6,
+            'header' => 6,
+        ]);
+});
+
+it('accepts an edge case that waits with no milestone, or on 1.0', function (): void {
+    $withReason = "## Decisions\n\nSettled.\n\n## Why it can wait\r\n\r\nNothing passes that the contract refuses.\n\nMoves to Todo when:\n\n- the 1.0 gate opens\n";
+    $project = statusProject([
+        'cards' => [
+            statusCard(['number' => 80, 'status' => 'Backlog', 'labels' => ['edge-case'], 'body' => $withReason]),
+            statusCard(['number' => 81, 'status' => 'Backlog', 'labels' => ['edge-case'], 'milestone' => '1.0', 'body' => $withReason]),
+        ],
+        'milestones' => [statusMilestone(['title' => '1.0'])],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusDrift($run['out']))->toBe(['lines' => [], 'count' => 0, 'header' => 0])
+        ->and($run['out'])->toEndWith("\nDrift: none.\n");
 });
