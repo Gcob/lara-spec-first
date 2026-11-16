@@ -256,6 +256,37 @@ paths:
             responses:
                 '202': { description: Reported }
 
+    /posts/{postId}/schedule:
+        # A required JSON body that may be `null` and requires a property. `null` reads
+        # as "unschedule", so the request must let it through, and a plain `present` on
+        # `publishAt` would refuse it (Laravel reads `null` as `[]`). The rules ask
+        # through each other instead (`present_with:timezone`), and the request reads
+        # the raw content for what a rule cannot see: read its `REQUIRED_KEYS` and its
+        # `dto()`, which is `?SchedulePostInputDto`. Then
+        # `curl -d 'null'` and the whole body for the generated parent's `501`, and
+        # `curl -d '{}'` for a `422` on `publishAt`.
+        put:
+            operationId: schedulePost
+            summary: Schedule a post, or unschedule it with null
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: [object, 'null']
+                            required: [publishAt]
+                            properties:
+                                publishAt:
+                                    type: string
+                                    format: date-time
+                                timezone:
+                                    type: string
+            responses:
+                '202': { description: Scheduled }
+
     /posts/{postId}/legacy-comments:
         # Deprecated with a sunset date. Both reach the generated file's findings,
         # and both are what the doctor will enforce once it exists: a deprecation

@@ -83,12 +83,12 @@ tags: [versions, conventions, planning]
 
 ### Fixed
 
-- **The "a form with a `Content-Type` and no field" finding no longer appears where a required field already refuses an
-  empty form.** A required body read as a form got it even when a required property, a required file part or a required
-  name `properties` does not declare was already refusing the empty form, so the finding named a gap the request did not
-  have. It stays where nothing refuses an empty form (a `PATCH`, a `readOnly` or `dependentRequired` key alone, a name
-  PHP rewrites or a collision withholds). Nothing the request accepts or refuses changes: only the generated file's
-  findings do.
+- **The "a form with a `Content-Type` and no field" finding no longer appears where a required field, or the body's
+  required-key check, already refuses an empty form.** A required body read as a form got it even when a required
+  property, a required file part or a required name `properties` does not declare was already refusing the empty form,
+  so the finding named a gap the request did not have. It stays where nothing refuses an empty form (a `PATCH`, a
+  `readOnly` or `dependentRequired` key alone, a name PHP rewrites or a collision withholds). Nothing the request
+  accepts or refuses changes: only the generated file's findings do.
 - **A body read only as a form that declared `filter[a]` and `filter[a][b]` refused a valid request, with no finding.**
   PHP delivers `filter[a][b]=1` as `filter => [a => [b => 1]]`, so `filter.a` became an array and the `string` rule of
   `filter[a]` refused it (a closed body refused a valid `filter[a]=x` instead, since the level above `filter.a.b` was
@@ -104,6 +104,15 @@ tags: [versions, conventions, planning]
   specification. A name typed at the `x-controller` offer is planned too, so one the build would refuse leaves the
   specification as it was. This closes the first half of the `0.2.0` `Known limits` item for
   [#112](https://github.com/Gcob/lara-spec-first/issues/112).
+- **A required body that allows `null` and requires a property accepts a JSON `null`, where it answered 422.** The body
+  is read as JSON (JSON only, or JSON and a form) and is not a `PATCH`. A JSON `null` reaches the rules as `[]`, so the
+  `present` on each required key refused a payload the contract allows. Each required key now asks through its siblings
+  (`present_with`), as an optional body's do, and the generated request still refuses `{}` and every other body the
+  contract refused, on the same keys and with the same status: only `null` passes, and `dto()` returns `null` for it.
+  One message changes: a key missing beside a sent sibling reports `present_with`'s ("must be present when ... is
+  present") where it reported `present` or `required`. A form client of a body that is JSON and a form gets the answers
+  it always had. This closes the refusal the `0.2.0` `Known limits` lists for
+  [#111](https://github.com/Gcob/lara-spec-first/issues/111).
 
 ## [0.2.0] - 2026-11-15
 

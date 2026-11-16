@@ -155,8 +155,9 @@ final readonly class FormRequestEmitter
 
         if ($set->requiredOnceSent !== []) {
             $constants .= sprintf(
-                "    /**\n     * The keys a JSON object sent as the body must carry, which the rules ask for only through a sibling.\n"
-                    ."     * An empty object leaves every key out of the data, so the request reads them from the raw content.\n     */\n"
+                "    /**\n     * The keys the body must carry once it is sent, which the rules ask for only through a sibling: an optional\n"
+                    ."     * body's, and a required body's that may be `null`. An empty object leaves every key out of the data, so the\n"
+                    ."     * request reads them from the raw content.\n     */\n"
                     ."    private const REQUIRED_KEYS = [%s];\n\n",
                 implode(', ', array_map(
                     fn (string|int $name, string $rule): string => $this->literal((string) $name).' => '.$this->literal($rule),
@@ -366,8 +367,8 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * The root checks, or nothing: an optional JSON body refuses an object missing a key it requires, a JSON body that
-     * is not an object is refused, and a closed root refuses the keys it does not declare.
+     * The root checks, or nothing: a body that may be absent or `null` refuses what is sent without a key it requires,
+     * a JSON body that is not an object is refused, and a closed root refuses the keys it does not declare.
      *
      * **A closure, and one emitted shape.** Laravel's `#[FailOnUnknownFields]` does the third from 12.x on, but not on
      * the lowest Laravel this package supports, and an attribute behind a version gate with this closure underneath it
@@ -376,10 +377,14 @@ final readonly class FormRequestEmitter
      *
      * **The required-key check comes first, and reads the raw content.** An optional body whose schema requires
      * properties asks for each through its siblings (`present_with`), which says nothing about `{}`: every key is out
-     * of the data. So a JSON object sent as the body that lacks a key `REQUIRED_KEYS` lists is refused on that key,
-     * with the rule it would get in a required body. It runs for a decoded JSON object only: an empty content is an
-     * absent body, and `null` is not an object. It is first so that a closed root, whose checks return early, keeps
-     * these errors too, and it skips a key `present_with` already refused, so each is named once.
+     * of the data, and a required body whose root allows `null` asks the same way, since `null` reaches the rules as
+     * `[]`. So what is sent as the body without a key `REQUIRED_KEYS` lists is refused on that key, with the rule it
+     * would get in a required body that cannot be `null`. **For an optional body it runs for a decoded JSON object
+     * only:** an empty content is an absent body, and `null` is not an object. **For a required body it runs for
+     * anything but a JSON `null`:** a form or a `text/plain` content that lacks the keys, and an empty content, are
+     * refused on them as they were before the keys followed their siblings, and only `null` is let through. It is first
+     * so that a closed root, whose checks return early, keeps these errors too, and it skips a key `present_with`
+     * already refused, so each is named once.
      *
      * **The second is the contract's own for a typed object, and stricter for an untyped one.** Laravel reads a JSON
      * body as `(array) json_decode(...)`, so `"Ada"`, `42` and `[1,2]` reach the rules as a list that no rule has a key
@@ -417,13 +422,16 @@ final readonly class FormRequestEmitter
         }
 
         // Why: first, before the checks that return early, so a closed root keeps these errors too. The list is
-        // only ever filled for a body read as JSON, which is what reads `$content` above. An optional body is
-        // refused when it is a JSON object (`{}` or one with none of the keys), and `null` or an empty content is
-        // not one. A key `present_with` already refused has its error, so it is named once.
+        // only ever filled for a body read as JSON, which is what reads `$content` above. An optional body may be
+        // absent, so it is refused when it is a JSON object (`{}` or one with none of the keys), and `null` or an
+        // empty content is not one. A required body may only be `null`, so it is refused for anything else. A key
+        // `present_with` already refused has its error, so it is named once.
         if ($set->requiredOnceSent !== []) {
             $lines = [
                 ...$lines,
-                '                if ($this->isJson() && is_object(json_decode($content))) {',
+                $set->requiredRoot
+                    ? '                if (! ($this->isJson() && trim($content) === \'null\')) {'
+                    : '                if ($this->isJson() && is_object(json_decode($content))) {',
                 '                    foreach (self::REQUIRED_KEYS as $key => $rule) {',
                 '                        if (! array_key_exists($key, $this->bodyInput()) && ! $validator->errors()->has((string) $key)) {',
                 '                            $validator->addFailure((string) $key, $rule);',

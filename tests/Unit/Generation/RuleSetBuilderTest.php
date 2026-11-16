@@ -494,6 +494,133 @@ it('lists the keys an optional JSON body requires once it is sent', function (
     ],
 ]);
 
+/**
+ * An object schema that allows `null`, which is the root of a body that may be `null` or whole.
+ *
+ * @param  array<string, Schema>  $properties
+ * @param  list<string>  $required
+ */
+function nullableObjectSchema(array $properties, array $required = []): Schema
+{
+    return new Schema(types: [SchemaType::Object, SchemaType::Null], properties: $properties, required: $required);
+}
+
+/**
+ * A nullable root that requires `street`, `age` (an integer) and the dotted `user.name`, beside an optional `note`.
+ */
+function nullableAddressSchema(): Schema
+{
+    return nullableObjectSchema(
+        [
+            'street' => new Schema(types: [SchemaType::String]),
+            'age' => new Schema(types: [SchemaType::Integer]),
+            'user.name' => new Schema(types: [SchemaType::String]),
+            'note' => new Schema(types: [SchemaType::String]),
+        ],
+        ['street', 'age', 'user.name'],
+    );
+}
+
+// `null` is a body the contract allows, and it reaches the rules as `[]`, so a plain `present` on a required key would
+// refuse it. A required body whose root allows `null` therefore asks for each required key through its siblings, as an
+// optional body does: nothing sent, nothing required. What a rule cannot see, `{}`, is the request's to refuse from the
+// raw content, so the map lists the names it reads, as written, with the rule a required body would give each.
+it('asks a nullable body\'s required keys through each other', function (
+    array $media,
+    string $method,
+    Schema $body,
+    array $asked,
+    array $once,
+    array $says,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(method: $method, content: array_fill_keys($media, $body)));
+
+    foreach ($asked as $key => $rule) {
+        expect($set->rules[$key][0] ?? null)->toBe($rule);
+    }
+
+    expect($set->requiredOnceSent)->toBe($once);
+
+    foreach ($says as $text) {
+        expect(implode("\n", $set->findings))->toContain($text);
+    }
+})->with([
+    'JSON only, three required and one optional' => [
+        ['application/json'], 'post', nullableAddressSchema(),
+        [
+            'street' => 'present_with:age,user\.name,note',
+            'age' => 'present_with:street,user\.name,note',
+            'user\.name' => 'present_with:street,age,note',
+            'note' => 'sometimes',
+        ],
+        ['street' => 'present', 'age' => 'required', 'user.name' => 'present'],
+        [],
+    ],
+    'JSON and a form: both keys of a rewritten sibling, and the rewritten name left out of the map' => [
+        ['application/json', 'application/x-www-form-urlencoded'], 'post', nullableAddressSchema(),
+        [
+            'street' => 'present_with:age,user\.name,user_name,note',
+            'age' => 'present_with:street,user\.name,user_name,note',
+            'user\.name' => 'sometimes',
+        ],
+        ['street' => 'present', 'age' => 'required'],
+        [],
+    ],
+    'a lone undeclared name has no rule, keeps its finding and is in the map' => [
+        ['application/json'], 'post', nullableObjectSchema([], ['ghost']),
+        [],
+        ['ghost' => 'present'],
+        ['The body requires `ghost` without declaring it under `properties`'],
+    ],
+    'a lone readOnly name is sometimes, out of the map, and keeps its finding' => [
+        ['application/json'], 'post', nullableObjectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id']),
+        ['id' => 'sometimes'],
+        [],
+        ['`id` is `readOnly` and required'],
+    ],
+    'the same body not nullable asks as it always did' => [
+        ['application/json'], 'post', objectSchema(
+            ['street' => new Schema(types: [SchemaType::String]), 'age' => new Schema(types: [SchemaType::Integer])],
+            ['street', 'age'],
+        ),
+        ['street' => 'present', 'age' => 'required'],
+        [],
+        [],
+    ],
+    'a form-only nullable body is not read as JSON' => [
+        ['multipart/form-data'], 'post', nullableObjectSchema(
+            ['street' => new Schema(types: [SchemaType::String]), 'age' => new Schema(types: [SchemaType::Integer])],
+            ['street', 'age'],
+        ),
+        ['street' => 'present', 'age' => 'required'],
+        [],
+        [],
+    ],
+    'a PATCH asks nothing' => [
+        ['application/json'], 'patch', nullableAddressSchema(),
+        ['street' => 'sometimes', 'age' => 'sometimes', 'user\.name' => 'sometimes'],
+        [],
+        [],
+    ],
+]);
+
+// The same finding, the same reason to drop it: the body is required and read as a form, and a required key an empty
+// form cannot satisfy refuses it. For a nullable body that is the request's own check of the required keys (the rules
+// only follow a sibling), so the finding goes where the map is not empty and stays where it is.
+it('drops the empty-form finding when a nullable required body checks its required keys', function (Schema $body, bool $says): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $body,
+        'application/x-www-form-urlencoded' => $body,
+    ]));
+
+    expect(str_contains(implode("\n", $set->findings), 'a form with a `Content-Type` and no field'))->toBe($says);
+})->with([
+    'a required string' => [nullableObjectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']), false],
+    'a required name properties does not declare' => [nullableObjectSchema(['q' => new Schema(types: [SchemaType::String])], ['id']), false],
+    'the only required name is one PHP rewrites' => [nullableObjectSchema(['user.name' => new Schema(types: [SchemaType::String])], ['user.name']), true],
+    'nothing required' => [nullableObjectSchema(['a' => new Schema(types: [SchemaType::String])]), true],
+]);
+
 // --- Query parameters, whose presence is their own and never the method's ---
 
 it('keys a query parameter by its own name and its own required flag', function (): void {
@@ -2531,7 +2658,8 @@ it('keeps the presence a required recursive field asks for beside the cut', func
 
 // A schema that allows `null` allows it at the cut as well, and nothing else: no Laravel rule says "null or absent"
 // (`missing` refuses `null`, `prohibited` lets `""` and `[]` through), so the field carries the package's own.
-// What the contract asks of the key stays beside it.
+// What the contract asks of the key stays beside it: here the root allows `null` too, so the key is asked through its
+// sibling and not with a plain `present`, which would refuse a `null` body.
 it('lets a nullable recursive field be null at the cut and nothing else', function (): void {
     $optional = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 1,
@@ -2544,7 +2672,7 @@ it('lets a nullable recursive field be null at the cut and nothing else', functi
     )]));
 
     expect($optional->rules['parent.parent'])->toEqual(['sometimes', new NullOrAbsent])
-        ->and($required->rules['parent'])->toEqual(['present', new NullOrAbsent]);
+        ->and($required->rules['parent'])->toEqual(['present_with:city', new NullOrAbsent]);
 });
 
 it('reads the rule at a list element cut as the rule alone', function (): void {

@@ -472,6 +472,8 @@ final readonly class RuleSetBuilder
         $walk->jsonRoot = $walk->jsonBody;
         $walk->nullableRoot = $schema->isNullable();
         $walk->requiredRoot = $body->required;
+        $walk->nullableRequiredBody = $body->required && $walk->jsonRoot && $walk->nullableRoot
+            && $operation->method !== HttpMethod::Patch;
         $walk->rootKey = self::rootKey($schema, $operation);
 
         // The root goes through the same sweep a field does, minus what the
@@ -502,8 +504,9 @@ final readonly class RuleSetBuilder
         self::leave($walk, $outside);
 
         // Why: the finding is written before the walk, which is the only thing that knows a required key refuses an
-        // empty form. Taking it out afterwards leaves every other finding where it was.
-        if ($walk->rootAsksPresence) {
+        // empty form, and the map of a nullable required body, which the request checks as well, is built before it.
+        // Taking the finding out afterwards leaves every other finding where it was.
+        if ($walk->rootAsksPresence || ($walk->nullableRequiredBody && $walk->requiredOnceSent !== [])) {
             $walk->findings = array_values(array_filter(
                 $walk->findings,
                 static fn (string $finding): bool => $finding !== self::EMPTY_FORM_FINDING,
@@ -743,12 +746,13 @@ final readonly class RuleSetBuilder
      *
      * - A `PATCH` is a partial update, so the schema's list describes a representation the client is not sending all
      *   of: every property is `sometimes`.
-     * - An optional body may be absent entirely, and a plain presence rule would then refuse a request the contract
-     *   allows. What the contract means is "a body or none", and `*_with` naming every other key the body may carry
-     *   says exactly that: nothing sent, nothing required; any key sent — a required one or an optional one — and the
-     *   required ones follow. Naming only the required siblings would accept a body made of optional keys alone, which
-     *   the contract refuses.
-     * - Otherwise the schema's list is read as written.
+     * - An optional body may be absent entirely, and a body whose root allows `null` may be `null`, which reaches the
+     *   rules as `[]`: a plain presence rule would refuse either, which the contract allows. What the contract means is
+     *   "a body or none" (or "`null` or a body"), and `*_with` naming every other key the body may carry says exactly
+     *   that: nothing sent, nothing required; any key sent — a required one or an optional one — and the required ones
+     *   follow. Naming only the required siblings would accept a body made of optional keys alone, which the contract
+     *   refuses.
+     * - Otherwise (a required body that cannot be `null`) the schema's list is read as written.
      *
      * @return callable(string, Schema): string
      */
@@ -758,24 +762,8 @@ final readonly class RuleSetBuilder
             return static fn (string $name, Schema $property): string => 'sometimes';
         }
 
-        if (! $body->required) {
-            return static function (string $name, Schema $property) use ($schema, $walk): string {
-                if (! in_array($name, $schema->required, true)) {
-                    return 'sometimes';
-                }
-
-                $siblings = array_values(array_filter(
-                    array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required]),
-                    static fn (string $other): bool => $other !== $name && self::unescapableKey($other) === null,
-                ));
-
-                // The key each sibling answers to, which is not always the name the contract writes.
-                $keys = array_values(array_unique(array_merge(
-                    ...array_map(static fn (string $other): array => self::triggerKeys($other, $walk, ''), $siblings),
-                )));
-
-                return $keys === [] ? 'sometimes' : self::withRule($keys);
-            };
+        if (! $body->required || $walk->nullableRequiredBody) {
+            return self::throughSiblings($schema, $walk);
         }
 
         return static fn (string $name, Schema $property): string => in_array($name, $schema->required, true)
@@ -784,14 +772,42 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The keys a JSON object sent as an optional body must carry, by the rule their failure carries.
+     * How a body that may be absent, or `null`, asks for each required root property: through the keys of the others.
+     *
+     * @return callable(string, Schema): string
+     */
+    private static function throughSiblings(Schema $schema, RuleWalk $walk): callable
+    {
+        return static function (string $name, Schema $property) use ($schema, $walk): string {
+            if (! in_array($name, $schema->required, true)) {
+                return 'sometimes';
+            }
+
+            $siblings = array_values(array_filter(
+                array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required]),
+                static fn (string $other): bool => $other !== $name && self::unescapableKey($other) === null,
+            ));
+
+            // The key each sibling answers to, which is not always the name the contract writes.
+            $keys = array_values(array_unique(array_merge(
+                ...array_map(static fn (string $other): array => self::triggerKeys($other, $walk, ''), $siblings),
+            )));
+
+            return $keys === [] ? 'sometimes' : self::withRule($keys);
+        };
+    }
+
+    /**
+     * The keys a JSON object sent as the body must carry once it is sent, by the rule their failure carries: an
+     * optional body's, and a required body's whose root allows `null`.
      *
      * **A rule cannot see `{}`**: every key is out of the data, so `present_with` asks for nothing. The request reads
      * the raw content instead, and this is what it reads: each required name, with the rule it would get in a required
-     * body (`present` for a name `properties` does not declare). Only a body read as JSON gets one, and not a `PATCH`,
-     * which asks for nothing. Left out are the names the rules leave out for their own reason, whose findings stay
-     * true: a `*` name, a `readOnly` property, and a name a form client sends under another key (withheld, or
-     * unchecked, which a JSON client would otherwise be refused for).
+     * body that cannot be `null` (`present` for a name `properties` does not declare). Only a body read as JSON gets
+     * one, and not a `PATCH`, which asks for nothing, nor a required body that cannot be `null`, whose rules already
+     * refuse `{}`. Left out are the names the rules leave out for their own reason, whose findings stay true: a `*`
+     * name, a `readOnly` property, and a name a form client sends under another key (withheld, or unchecked, which a
+     * JSON client would otherwise be refused for).
      *
      * @return array<string, string>
      *
@@ -799,7 +815,7 @@ final readonly class RuleSetBuilder
      */
     private static function requiredOnceSent(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): array
     {
-        if ($body->required || ! $walk->jsonBody || $operation->method === HttpMethod::Patch) {
+        if (($body->required && ! $walk->nullableRequiredBody) || ! $walk->jsonBody || $operation->method === HttpMethod::Patch) {
             return [];
         }
 
@@ -883,7 +899,12 @@ final readonly class RuleSetBuilder
             // A request never has to carry what only a response does: OpenAPI
             // reads `required` on a `readOnly` property as a promise about
             // responses. Its other rules still judge it when it is sent.
-            if ($asked !== 'sometimes' && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`')) {
+            // A required body that may be `null` asks through its siblings, so a lone required property is `sometimes`
+            // and still gets the finding a required body writes for a `readOnly` one.
+            $askedAnyway = $prefix === '' && $walk->nullableRequiredBody && ! isset($walk->unchecked[$name])
+                && in_array($name, $schema->required, true);
+
+            if (($asked !== 'sometimes' || $askedAnyway) && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`')) {
                 $walk->findings[] = self::readOnlyFinding('`'.$prefix.$name.'`');
                 $asked = 'sometimes';
             }
@@ -932,18 +953,25 @@ final readonly class RuleSetBuilder
             $asked = $presence($name, new Schema);
 
             if ($asked === 'sometimes') {
-                if (! isset($dependents[$name])) {
+                // A lone name of a required body that may be `null` has no sibling to follow and so no rule, but the
+                // request still asks for it (`REQUIRED_KEYS`), so the finding a required body writes for it stays.
+                if (! isset($dependents[$name]) && ! ($prefix === '' && $walk->nullableRequiredBody && in_array($name, $schema->required, true))) {
                     continue;
                 }
 
-                $asked = self::withRule($dependents[$name]);
+                if (isset($dependents[$name])) {
+                    $asked = self::withRule($dependents[$name]);
+                }
             }
 
             if ($prefix === '') {
                 $walk->rootAsksPresence = $walk->rootAsksPresence || self::refusesAbsence($asked);
             }
 
-            $walk->rules[self::fieldKey($name, $walk, $prefix)] = [$asked];
+            if ($asked !== 'sometimes') {
+                $walk->rules[self::fieldKey($name, $walk, $prefix)] = [$asked];
+            }
+
             $undeclared[] = $name;
         }
 

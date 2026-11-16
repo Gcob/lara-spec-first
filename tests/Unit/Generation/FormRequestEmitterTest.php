@@ -336,7 +336,7 @@ it('emits no root check for a form body, and the empty-content check only when i
 
 // An optional JSON body that requires properties cannot refuse `{}` by a rule, so the request reads the raw content:
 // the keys are one constant, keyed by name and valued by the rule their failure carries, and one loop adds them.
-it('emits the required-key check only for an optional body read as JSON', function (string $media, bool $bodyRequired, array $required, bool $expected): void {
+it('emits the required-key check only for an optional JSON body or a nullable required one', function (string $media, bool $bodyRequired, array $required, bool $expected): void {
     $operation = new Operation(
         index: 0,
         method: HttpMethod::Post,
@@ -362,6 +362,66 @@ it('emits the required-key check only for an optional body read as JSON', functi
     'required, JSON' => ['application/json', true, ['name', 'size'], false],
     'optional, a form only' => ['multipart/form-data', false, ['name', 'size'], false],
     'optional, requiring nothing' => ['application/json', false, [], false],
+]);
+
+/**
+ * A `/things` operation whose body requires `name` and `age`, read as the given media types.
+ *
+ * @param  list<string>  $mediaTypes
+ */
+function nullableRequiringOperation(array $mediaTypes, bool $nullable, bool $bodyRequired = true): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, new Schema(
+            types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+            properties: [
+                'name' => new Schema(types: [SchemaType::String]),
+                'age' => new Schema(types: [SchemaType::Integer]),
+            ],
+            required: ['name', 'age'],
+        )), $bodyRequired),
+    );
+}
+
+// A required body whose root allows `null` asks for its required keys through each other, so a rule cannot refuse `{}`
+// either: it gets the same constant and loop as an optional body, and `dto()` is nullable. The same body that cannot be
+// `null` keeps its plain rules and has neither.
+it('emits the required-key check for a nullable required JSON body', function (array $mediaTypes, bool $nullable, bool $expected): void {
+    $emitted = emittedRequest(nullableRequiringOperation(array_values($mediaTypes), $nullable), controllerShortName: 'CreateThingController');
+
+    expect(str_contains($emitted, "private const REQUIRED_KEYS = ['name' => 'present', 'age' => 'required'];"))->toBe($expected)
+        ->and(str_contains($emitted, '$validator->addFailure((string) $key, $rule);'))->toBe($expected)
+        ->and(str_contains($emitted, 'public function dto(): ?CreateThingInputDto'))->toBe($nullable);
+})->with([
+    'JSON, nullable' => [['application/json'], true, true],
+    'JSON and a form, nullable' => [['application/json', 'application/x-www-form-urlencoded'], true, true],
+    'JSON, not nullable' => [['application/json'], false, false],
+    'JSON and a form, not nullable' => [['application/json', 'application/x-www-form-urlencoded'], false, false],
+]);
+
+// Why the two conditions differ: an optional body may be absent, so the loop waits for a JSON object, while a required
+// body may only be `null`, so the loop runs on anything else (a form, a `text/plain` content, an empty one), which is
+// the answer it always had.
+it('switches the required-key check on whether the body is required', function (bool $bodyRequired, string $present, string $absent): void {
+    $emitted = emittedRequest(nullableRequiringOperation(['application/json'], true, $bodyRequired), controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain($present)
+        ->and($emitted)->not->toContain($absent);
+})->with([
+    'required' => [
+        true,
+        'if (! ($this->isJson() && trim($content) === \'null\')) {',
+        'if ($this->isJson() && is_object(json_decode($content))) {',
+    ],
+    'optional' => [
+        false,
+        'if ($this->isJson() && is_object(json_decode($content))) {',
+        'if (! ($this->isJson() && trim($content) === \'null\')) {',
+    ],
 ]);
 
 // A form delivers `user.name` as `user_name`, and `validated()` holds it there, so `dto()` puts the value
