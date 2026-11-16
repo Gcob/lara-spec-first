@@ -21,9 +21,10 @@ tags: [stack, dependencies, versions, php, laravel, ci, decisions]
 
 The technology choices behind `lara-spec-first`, and the reasoning that produced them.
 
-Phase 1 shipped as `0.1.0` and [Phase 2](../../README.md#phase-2-the-generated-pipeline) is in flight. `composer.json`
-now declares the `Decided` rows below; the `Planned` ones are not installed yet. **The Status column is binding:** a
-`Planned` or `Undecided` row is not a settled decision and must not be presented as one.
+Phase 1 shipped as `0.1.0`, `0.2.0` shipped the request side of
+[Phase 2](../../README.md#phase-2-the-generated-pipeline) (`FormRequest`s and input DTOs), and the rest of it is in
+flight. `composer.json` now declares the `Decided` rows below; the `Planned` ones are not installed yet. **The Status
+column is binding:** a `Planned` or `Undecided` row is not a settled decision and must not be presented as one.
 
 ## Every choice, with its status
 

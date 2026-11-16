@@ -8,7 +8,8 @@ covers: >
     becomes which Laravel rule and what happens to the ones that map to nothing, why nothing rewrites the rule set at
     request time, why the generated request is `final` and where the three things a developer would extend it for
     already live, why the validated payload reaches the controller as a DTO and what an absent field is in it, where
-    each field is read from (the body for a body field, the query string for a declared `query` parameter), how deep a
+    each field is read from (the body for a body field, the query string for a declared `query` parameter), what a
+    client gets when its request is refused and how an application makes every refusal a JSON `422`, how deep a
     recursive schema is validated and what a deeper payload gets, which media types are read and why one operation
     declares one of them, what an operation with nothing to validate gets, and how the request reaches `routeAction`
     without changing what a custom child may override.
@@ -29,6 +30,9 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 >   [what is built](#what-is-built-today).
 > - One rule set per operation, derived from the request body and the query parameters. The path's own parameters stay
 >   the router's.
+> - **Only a client that asks for JSON gets the `422`** (`Accept: application/json`, or an XHR request). Any other
+>   client gets a redirect back, and its errors are lost. An application that wants a JSON `422` for every refusal says
+>   so in [its exception handling](#what-a-client-gets-when-a-request-is-refused).
 > - A body field is read from the body and a `query` parameter from the query string, never from each other: the request
 >   overrides `validationData()` so the URL cannot satisfy a body field, nor the body a query parameter.
 > - `PATCH` is `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema
@@ -85,6 +89,51 @@ to ship on its own.
 **The input DTO is built.** `spec:build` writes [the DTO](#the-payload-arrives-as-a-dto) of every body that is an
 object, in the `Data` sub-namespace, and the request returns it from `dto()`. A request whose operation has no body, or
 whose body is not an object, has no `dto()`: its `query` parameters are read with `validated('name')`.
+
+## What a client gets when a request is refused
+
+**A generated request is a Laravel `FormRequest`, so a refusal is answered the way Laravel answers one, and this package
+changes nothing about it.** What the client gets depends on what it asks for:
+
+| The client                                                                              | What a failed validation answers                                   |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Asks for JSON: `Accept: application/json` (or `application/problem+json`) comes first   | `422`, and the errors as JSON                                      |
+| An XHR request: `X-Requested-With: XMLHttpRequest`, and an `Accept` that takes any type | `422`, and the errors as JSON                                      |
+| Any other: a `curl` with no `Accept`, an HTML form, a browser, an HTTP client's default | A `302` redirect back to the previous URL, and the errors are lost |
+
+**Only a client asking for JSON gets the `422`.** A client that sends `*/*` or nothing is redirected, and a redirect
+back from a request with no previous page lands on the root. In a test, `postJson()` gets the `422` and `post()` gets
+the `302`.
+
+**The redirect carries no errors, because the generated routes run no session middleware.** Laravel flashes the errors
+into the session, and nothing on these routes starts or saves one, so the client lands on the previous page with nothing
+to show. An HTML form that needs its errors back has to run on a route that starts the session, which is the
+application's to arrange.
+
+**An API usually wants the `422` for everybody, and that is the application's to decide**, since the generated request
+is [`final`](#the-generated-request-is-final) and nothing generated carries a global setting. Laravel has two ways, both
+its own:
+
+1. **Render every exception as JSON on the API routes**, with
+   [`shouldRenderJsonWhen`](https://laravel.com/docs/12.x/errors#rendering-exceptions) in `bootstrap/app.php`. A
+   validation failure then answers a `422` with JSON whatever the client sent, and so does every other exception on
+   those routes:
+
+    ```php
+    ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(
+            fn (Request $request, Throwable $e): bool => $request->is('api/*') || $request->expectsJson(),
+        );
+    })
+    ```
+
+2. **Make every request on a route group ask for JSON**, with a middleware that sets `Accept: application/json` before
+   the request is validated, applied to the group the generated routes live in. Laravel's
+   [form request documentation](https://laravel.com/docs/12.x/validation#form-request-validation) describes what the
+   client then gets.
+
+**The package registers neither**, because the generated routes are loaded into an application that may serve pages and
+an API from one tree, and a global JSON setting is not a decision a generator can take for it.
 
 ## One rule set, body and query
 

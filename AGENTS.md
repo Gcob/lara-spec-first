@@ -23,18 +23,19 @@ Guidance for AI coding agents working on `lara-spec-first`.
 This package is **Spec-First**: the OpenAPI contract is the source of truth, and PHP follows from it. When a change
 would make the code authoritative over the spec, it is going the wrong way.
 
-Phase 1 shipped as `0.1.0`, and [Phase 2](./README.md#phase-2-the-generated-pipeline) is in flight. It reads a
-specification file, refuses what it cannot serve, and generates the PHP that serves it: `spec:build` emits the routes
-and one controller per operation, and the provider loads them at boot without opening a specification. `x-controller` is
-read, so an operation that declares one gets a parent it may extend and a route that points at the child once that class
-exists; an operation that declares none stays `final`. `spec:make` scaffolds that child on request, for one operation, a
-`--tag` or `--all`, offers to write `x-controller` into the specification when it is missing, and builds afterwards; the
-build itself never scaffolds, it names the invocation. `spec:doctor` reports what the package will honor, what it will
-not, and the routing table that results, read-only always and asserted to be. Validation is built: `spec:build` emits
-one `FormRequest` per operation that states anything about its input and declares it as `routeAction`'s first parameter,
-with the whole mapping table applied and whatever no Laravel rule means the same as named in the generated file's own
-findings rather than dropped. It also emits one input DTO pair per request body, `NewUserInputDto` and
-`NewUserPartialInputDto`, and the request returns the one its method reads from `dto()`. There is no response DTO. The
+Phase 1 shipped as `0.1.0`, `0.2.0` shipped the request side of [Phase 2](./README.md#phase-2-the-generated-pipeline)
+(`FormRequest`s and input DTOs), and the rest of it is in flight. It reads a specification file, refuses what it cannot
+serve, and generates the PHP that serves it: `spec:build` emits the routes and one controller per operation, and the
+provider loads them at boot without opening a specification. `x-controller` is read, so an operation that declares one
+gets a parent it may extend and a route that points at the child once that class exists; an operation that declares none
+stays `final`. `spec:make` scaffolds that child on request, for one operation, a `--tag` or `--all`, offers to write
+`x-controller` into the specification when it is missing, and builds afterwards; the build itself never scaffolds, it
+names the invocation. `spec:doctor` reports what the package will honor, what it will not, and the routing table that
+results, read-only always and asserted to be. Validation is built: `spec:build` emits one `FormRequest` per operation
+that states anything about its input and declares it as `routeAction`'s first parameter, with the whole mapping table
+applied and whatever no Laravel rule means the same as named in the generated file's own findings rather than dropped.
+It also emits one input DTO pair per request body, `NewUserInputDto` and `NewUserPartialInputDto`, and the request
+returns the one its method reads from `dto()`. There is no response DTO. The
 [project board](https://github.com/users/Gcob/projects/1) is the authoritative list of what exists and what is in
 flight, and `gh issue list --repo Gcob/lara-spec-first` reads it from a session. An open card is work that is not done,
 which a checked box in a file could only claim as accurately as somebody remembered to edit it.

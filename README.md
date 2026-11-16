@@ -87,6 +87,15 @@ Two things to do before your second build:
 Every command, flag and exit code is in [`docs/guide/commands.md`](./docs/guide/commands.md), and what changed in each
 version is in [`CHANGELOG.md`](./CHANGELOG.md).
 
+**Before `1.0`, an upgrade can break your build.** A `0.x` makes no compatibility promise, and a minor release can
+refuse a contract that built before or change a signature you extend. Each such change is listed in the changelog under
+the release that made it, with upgrade notes when it asks for a change in your code, so read the entry before you
+upgrade, and pin a minor in the meantime:
+
+```bash
+composer require gcob/lara-spec-first:^0.2
+```
+
 ---
 
 ## Roadmap
@@ -95,7 +104,8 @@ We are building in public. The [project board](https://github.com/users/Gcob/pro
 is in flight, what is done, and in which order. This section is the shape of the whole thing, and
 [CONTRIBUTING.md](./CONTRIBUTING.md) is how to get involved.
 
-**Where we are:** Phase 1 shipped as `0.1.0`. Phase 2 is in progress.
+**Where we are:** Phase 1 shipped as `0.1.0`, and Phase 2 is in progress: `0.2.0` shipped its first half, the generated
+request validation and the input DTOs. The response side is next.
 
 ### Phase 1: the foundation
 
@@ -114,6 +124,13 @@ It is `spec:build` and `spec:doctor` doing more rather than new commands, with t
 and the mock server). It carries the generated request validation, the response DTOs and their factories, `x-model` and
 the CRUD defaults, `security` becoming a real authorization check, the Faker mocks, pagination and rate limiting, and
 the sanitized public copy of the specification.
+
+**`0.2.0` shipped the request side.** `spec:build` reads the schemas of the request body and the `query` parameters and
+writes one `FormRequest` per operation and the input DTOs, with the rules the contract states and a named finding for
+every constraint no Laravel rule can hold. `spec:doctor` reports what a request cannot enforce, and the known gaps are
+listed in the [changelog](./CHANGELOG.md). **What remains of Phase 2:** the response DTOs and their factories, `x-model`
+and the CRUD defaults, `security` as an authorization check, the Faker mocks, pagination and rate limiting, and the
+sanitized public copy.
 
 **Four configuration blocks are inert until this phase lands**, and `config/lara-spec-first.php` says which beside each
 one. Changing one has no effect today.
