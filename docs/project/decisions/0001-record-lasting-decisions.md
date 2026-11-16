@@ -60,4 +60,4 @@ the two share a decision.
   catches an anchor that no longer resolves, `just docs-build` a link to a missing file, and review a reason that no
   longer matches its ADR.
 - **An ADR departs from the heading rules of `documentation.md` on purpose**, and that guide states the exception in one
-  place, so a review does not flag it again.
+  place.

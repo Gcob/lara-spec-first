@@ -41,7 +41,8 @@ that made them:
   [ADR 0001](./0001-record-lasting-decisions.md) is one.
 
 **Never write one for how the maintainer's own tooling runs the work**, such as the order a maintainer takes cards in or
-how a pull request gets reviewed. Nor does a bug fix earn one: the test that pins it already says what the package does.
+which automated helpers the maintainer runs. Nor does a bug fix earn one: the test that pins it already says what the
+package does.
 
 **It is written in the pull request that makes the decision**, not afterward, and the topic file it touches links it.
 
