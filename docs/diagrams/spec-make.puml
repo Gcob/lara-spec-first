@@ -39,6 +39,12 @@ if (Does the operation declare x-controller?) then (no)
   else (yes)
   endif
 
+  if (Would the build refuse\nthe name you typed?) then (yes)
+    :Print the build's refusal,\nleave the document alone; <<refusal>>
+    stop
+  else (no)
+  endif
+
   :Insert on a temporary copy;
   :Read the copy back through\nthe normal reading pipeline;
 

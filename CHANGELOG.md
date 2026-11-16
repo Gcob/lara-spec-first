@@ -79,7 +79,8 @@ tags: [versions, conventions, planning]
   `request`, `this` or `2fa`, two operations claiming one request name, a body property and a query parameter with one
   name) used to leave a child controller that did not compile, which the command then never overwrote. It is now refused
   first, with the build's own message and exit status, and nothing is written: no class, and no line in the
-  specification. This closes the first half of the `0.2.0` `Known limits` item for
+  specification. A name typed at the `x-controller` offer is planned too, so one the build would refuse leaves the
+  specification as it was. This closes the first half of the `0.2.0` `Known limits` item for
   [#112](https://github.com/Gcob/lara-spec-first/issues/112).
 
 ## [0.2.0] - 2026-11-15

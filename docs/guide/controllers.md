@@ -215,11 +215,11 @@ file for one operation, extending that operation's generated parent. Its argumen
 [names what it cannot scaffold](./code-generation/scaffolding.md#scaffolding-is-specmake-not-a-build-step). What it
 writes is deliberately almost nothing: the `extends`, the comment about that one line, and the signature to override.
 
-![The seven decisions spec:make walks, from a document the build would refuse to the build it runs at the end](../diagrams/spec-make.svg)
+![The eight decisions spec:make walks, from a document the build would refuse to the build it runs at the end](../diagrams/spec-make.svg)
 
 _What `spec:make` decides, and where it stops._
 
-The whole command in one picture, and the subsections below take each branch in turn. Six of its seven decisions are
+The whole command in one picture, and the subsections below take each branch in turn. Seven of its eight decisions are
 refusals, which is the shape of a command that edits the source of truth and writes a file a developer will then own:
 the nominal path is short, and everything else is a reason to stop and hand the decision back.
 
@@ -314,6 +314,17 @@ accepted, and from that moment the document decides the class name: changing `ma
 next insertion proposes and nothing that was already inserted. That is the whole reason
 [`x-controller` is the only source of an extendable name](#the-contract-decides-what-is-customizable), stated from the
 other direction.
+
+**A name you type is planned with the rest of the document before it is written.** Another operation's `x-controller`
+may already take the short name you typed, and the build would refuse the pair after the line was in your specification
+and the class on disk. So once the prompt returns, the command plans the build with your name in place of the proposal,
+and a name the build would refuse is refused with the build's own message, exit status `1`, and the specification as it
+was. The prompt does not ask again, because planning a whole document on every keystroke of a retry would make the
+prompt lag: run the command again with another name. A proposal never needs this, since it keeps the operation's own
+short name, and the plan that runs before the offer has already seen it. The limit of that earlier plan: when this
+operation's own derived name collides with another operation's `x-controller`, the command refuses before the prompt,
+even though a name you typed there would let the document build. The message names a fix that works (an `operationId`
+that does not collide), and adding the line by hand still works.
 
 Answering no leaves a copyable block and the exact line, which is
 [the pattern this package already uses](./code-generation/scaffolding.md#the-build-names-the-command) when a human

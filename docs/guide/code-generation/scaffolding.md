@@ -53,7 +53,9 @@ Four refusals are worth naming, because each of them protects something this sub
   operations claiming one request name, a body property and a query parameter with one name). The class it would have
   written could not compile, because it extends a parent the build never generates for that document, and the command
   never overwrites a file you own, so a class written first would stay broken after you fixed the document. It plans the
-  whole document, not the operations you named, since one operation's fault stops the build for all of them.
+  whole document, not the operations you named, since one operation's fault stops the build for all of them. A name you
+  type at the `x-controller` offer is planned too, before the line is written, so one the build would refuse leaves your
+  specification as it was.
 - **A file that already exists is left exactly as it is**, and the command says so and succeeds. A developer asked for
   the class to exist and it does; overwriting it is the one thing this command must never do, and the check that
   prevents it runs immediately before the write rather than only at planning time, because a confirmation prompt is long

@@ -113,7 +113,7 @@ final class MakeCommand extends Command
             // would refuse is never touched.
             $this->assertBuildable($namespace, $specPath, $lookup, $document);
 
-            if (! $this->offerTheExtension($config, $remote, $specPath, $selected[0])) {
+            if (! $this->offerTheExtension($config, $remote, $specPath, $selected[0], $namespace, $lookup, $document)) {
                 return self::FAILURE;
             }
 
@@ -238,13 +238,25 @@ final class MakeCommand extends Command
      * build would have generated anyway, so the common case is a keystroke. What ends up in the document is what was
      * submitted; from then on the document decides, and the configured namespace never renames it.
      *
+     * **A typed name is planned before it is written.** The proposal keeps the operation's own short name, so planning
+     * the document as read already covered it; a name someone typed can claim a short name another operation's
+     * `x-controller` already takes, which only the build would refuse, after the specification was edited. It is
+     * planned once the prompt returns rather than inside the prompt's `validate`, which Laravel Prompts runs again on
+     * every keystroke after a failed submit.
+     *
+     * @param  list<Operation>  $document  every operation, as read before the offer
      * @return bool whether the document now carries the extension
+     *
+     * @throws SpecException whatever the build would refuse for the name that was typed
      */
     private function offerTheExtension(
         Repository $config,
         RemoteReferenceGuard $remote,
         string $specPath,
         Operation $operation,
+        string $namespace,
+        CustomControllerLookup $lookup,
+        array $document,
     ): bool {
         $name = new CustomControllerName(
             $this->requiredString($config, 'lara-spec-first.make.controllers'),
@@ -299,6 +311,8 @@ final class MakeCommand extends Command
         ));
 
         if ($this->saysYes()) {
+            // Not planned again: the proposal keeps this operation's own short name, so the plan
+            // that ran before the offer already saw this exact claim.
             $refusal = $name->reasonToRefuse($value);
 
             if ($refusal !== null) {
@@ -352,6 +366,13 @@ final class MakeCommand extends Command
 
             return false;
         }
+
+        $this->assertBuildable($namespace, $specPath, $lookup, array_map(
+            static fn (Operation $other): Operation => $other->identity() === $operation->identity()
+                ? $other->withController($chosen)
+                : $other,
+            $document,
+        ));
 
         (new ExtensionInsertion($remote))->insert($specPath, $operation, $location, $chosen);
 

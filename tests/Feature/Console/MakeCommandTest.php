@@ -676,6 +676,20 @@ it('accepts a leading separator typed at the prompt', function (): void {
         ->and(is_file(scaffoldRoot().'/Http/Controllers/ListPostsController.php'))->toBeTrue();
 });
 
+// Only a typed name can bring a collision the document did not already carry, so it is planned with the rest of the
+// document after the prompt returns and before the line is written.
+it('refuses a typed x-controller the build would refuse, and leaves the specification alone', function (): void {
+    $path = editableSpecification();
+    $before = file_get_contents($path);
+
+    $output = makeAnswering(['operation' => 'listPosts'], 'LsfMake\\Http\\Controllers\\UserController', 1);
+
+    expect($output)->toContain('both generate the same parent')
+        ->and(file_get_contents($path))->toBe($before)
+        ->and(scaffoldedFiles())->toBe([])
+        ->and(is_dir(scaffoldGeneratedTree()))->toBeFalse();
+});
+
 // A document whose operation the locator cannot place is still a document this
 // package builds from, so the command prints the row and says why it did not offer.
 it('prints the row without offering when it cannot place the line', function (): void {
