@@ -18,7 +18,8 @@ tags: [decisions, documentation, conventions]
 >   alternatives.
 > - The ADR directory sits under `docs/project/`, because users read these decisions too.
 
-**Status:** Accepted · **Card:** [#152](https://github.com/Gcob/lara-spec-first/issues/152)
+**Status:** Accepted · **Card:** [#152](https://github.com/Gcob/lara-spec-first/issues/152) · **Pull request:**
+[#160](https://github.com/Gcob/lara-spec-first/pull/160)
 
 ## Context
 
