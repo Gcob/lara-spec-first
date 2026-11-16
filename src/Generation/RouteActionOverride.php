@@ -74,7 +74,7 @@ final readonly class RouteActionOverride
                 $imports = [];
                 $group = false;
 
-                if (($tokens[$at + 2] ?? null)?->text === '{') {
+                if (self::is($tokens[$at + 2] ?? null, '{')) {
                     $namespaceDepth = 1;
                 }
 
@@ -153,7 +153,7 @@ final readonly class RouteActionOverride
         $extends = null;
         $at = $from;
 
-        for ($count = count($tokens); $at < $count && $tokens[$at]->text !== '{'; $at++) {
+        for ($count = count($tokens); $at < $count && ! self::is($tokens[$at], '{'); $at++) {
             if ($tokens[$at]->id === T_EXTENDS) {
                 $name = $tokens[$at + 1] ?? null;
                 $extends = $name !== null ? self::resolve($name, $namespace, $imports, $group) : null;
@@ -183,7 +183,7 @@ final readonly class RouteActionOverride
                 }
 
                 if ($name?->id === T_STRING && strcasecmp($name->text, 'routeAction') === 0
-                    && ($tokens[$at + 2] ?? null)?->text === '(') {
+                    && self::is($tokens[$at + 2] ?? null, '(')) {
                     return self::readParameters($tokens, $at + 2, $extends);
                 }
             }
@@ -212,7 +212,7 @@ final readonly class RouteActionOverride
                 if ($depth === 0) {
                     break;
                 }
-            } elseif ($depth === 1 && $token->text === ',') {
+            } elseif ($depth === 1 && self::is($token, ',')) {
                 $segments[] = [];
 
                 continue;
@@ -257,7 +257,7 @@ final readonly class RouteActionOverride
                 $depth--;
             } elseif ($depth === 0 && $token->id === T_ELLIPSIS) {
                 $variadic = true;
-            } elseif ($depth === 0 && $token->text === '=') {
+            } elseif ($depth === 0 && self::is($token, '=')) {
                 $default = true;
             }
         }
@@ -276,15 +276,15 @@ final readonly class RouteActionOverride
     {
         $statement = [[]];
 
-        for ($at++, $count = count($tokens); $at < $count && $tokens[$at]->text !== ';'; $at++) {
+        for ($at++, $count = count($tokens); $at < $count && ! self::is($tokens[$at], ';'); $at++) {
             $token = $tokens[$at];
 
             // A brace or a trailing separator means a group: which names it binds is not read.
-            if ($token->text === '{' || $token->id === T_NS_SEPARATOR) {
+            if (self::is($token, '{') || $token->id === T_NS_SEPARATOR) {
                 return [self::skipToSemicolon($tokens, $at), true];
             }
 
-            if ($token->text === ',') {
+            if (self::is($token, ',')) {
                 $statement[] = [];
 
                 continue;
@@ -315,7 +315,7 @@ final readonly class RouteActionOverride
      */
     private static function skipToSemicolon(array $tokens, int $at): int
     {
-        for ($count = count($tokens); $at < $count && $tokens[$at]->text !== ';'; $at++) {
+        for ($count = count($tokens); $at < $count && ! self::is($tokens[$at], ';'); $at++) {
             // Nothing to read: the position is the answer.
         }
 
@@ -371,12 +371,22 @@ final readonly class RouteActionOverride
 
     private static function opens(PhpToken $token): bool
     {
-        return in_array($token->text, ['(', '[', '{'], true)
-            || in_array($token->id, [T_ATTRIBUTE, T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true);
+        return in_array($token->id, [ord('('), ord('['), ord('{'), T_ATTRIBUTE, T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true);
     }
 
     private static function closes(PhpToken $token): bool
     {
-        return in_array($token->text, [')', ']', '}'], true);
+        return in_array($token->id, [ord(')'), ord(']'), ord('}')], true);
+    }
+
+    /**
+     * Whether the token is this one-character punctuation.
+     *
+     * **By id, never by text.** The tokenizer cuts an interpolated string into pieces, and a piece such as the `)` of
+     * `"user $id ($name)"` has the text of a bracket without being one. Only a real punctuation token has the id.
+     */
+    private static function is(?PhpToken $token, string $character): bool
+    {
+        return $token?->id === ord($character);
     }
 }

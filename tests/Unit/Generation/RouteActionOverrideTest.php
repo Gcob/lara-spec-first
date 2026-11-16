@@ -65,6 +65,28 @@ it('reads the parameters a custom routeAction declares', function (
     ],
     'the method written RouteAction' => ['public function RouteAction(string $id): mixed { return 1; }', 1, 1, false],
     'returned by reference' => ['public function &routeAction(string $id): mixed { return 1; }', 1, 1, false],
+    // The tokenizer cuts an interpolated string into pieces, and a piece can be exactly one bracket: it is text, not
+    // code, so it opens and closes nothing.
+    'a method above it whose string ends in a closing parenthesis' => [
+        'public function note(string $id, string $name): string { return "Updated user $id ($name)"; }'
+            ."\n    ".'public function routeAction(string $id): mixed { return 1; }',
+        1, 1, false,
+    ],
+    'a method above it whose string holds a bare opening parenthesis' => [
+        'public function note(string $id, string $name): string { return "$id($name"; }'
+            ."\n    ".'public function routeAction(string $id): mixed { return 1; }',
+        1, 1, false,
+    ],
+    'a method above it whose string holds a bare closing brace' => [
+        'public function note(string $id): string { return "{$id}}"; }'
+            ."\n    ".'public function routeAction(string $id): mixed { return 1; }',
+        1, 1, false,
+    ],
+    'a method above it whose string holds a bare opening brace' => [
+        'public function note(string $id): string { return "$id{"; }'
+            ."\n    ".'public function routeAction(string $id): mixed { return 1; }',
+        1, 1, false,
+    ],
 ]);
 
 it('resolves the class a custom controller extends', function (

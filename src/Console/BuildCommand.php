@@ -239,7 +239,7 @@ final class BuildCommand extends Command
 
             $override = RouteActionOverride::read($source, $custom);
 
-            // PHP class names are case-insensitive, and `x-controller` may be written with a leading separator.
+            // PHP class names are case-insensitive.
             if ($override === null
                 || $override->extends === null
                 || strcasecmp($override->extends, ltrim($controller->fullyQualifiedName($namespace), '\\')) !== 0) {
@@ -247,13 +247,12 @@ final class BuildCommand extends Command
             }
 
             $request = $controller->request;
-            $parameters = count($controller->operation->path->parameterNames) + ($request === null ? 0 : 1);
 
-            if ($override->fits($parameters)) {
+            if ($override->fits(RouteActionSignature::count($controller->operation, $request !== null))) {
                 continue;
             }
 
-            $stale[ltrim($custom, '\\')] = 'routeAction('.RouteActionSignature::declaration(
+            $stale[$custom] = 'routeAction('.RouteActionSignature::declaration(
                 $controller->operation,
                 $request === null ? null : '\\'.$request->fullyQualifiedName($namespace),
             ).')';

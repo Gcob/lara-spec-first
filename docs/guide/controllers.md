@@ -110,7 +110,8 @@ choices sit behind that:
 
 Only a child that extends exactly the generated parent of its operation is checked. A child that extends something else,
 declares no `routeAction`, or gets one from a trait is left alone, and so is a `routeAction` the file does not write in
-its own class body.
+its own class body. A parent imported through a group `use` (`use App\{A, B};`) keeps the child silent too: the file
+does not say which names the group binds, so the name is not guessed at.
 
 **And a path parameter that cannot be a PHP variable is refused, naming it.** `{2fa}` is a legal route parameter and
 `$2fa` is not a variable, so the build says so rather than emitting a file that will not parse; `{this}` is the same

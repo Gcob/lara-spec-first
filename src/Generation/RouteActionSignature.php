@@ -65,6 +65,17 @@ final readonly class RouteActionSignature
     }
 
     /**
+     * How many parameters {@see self::declaration()} writes, for a reader that compares counts and has no use for the
+     * text.
+     *
+     * **Here, with the two lists it counts,** so a parameter added to them cannot leave a second count behind.
+     */
+    public static function count(Operation $operation, bool $hasRequest): int
+    {
+        return count($operation->path->parameterNames) + ($hasRequest ? 1 : 0);
+    }
+
+    /**
      * The same parameters as arguments, for a child calling `parent::`.
      */
     public static function arguments(Operation $operation, bool $hasRequest): string
