@@ -32,9 +32,10 @@ final readonly class RuleSet
      * @param  bool  $multipart  whether `multipart/form-data` is the only media type read, which is the one body a part
      *                           can be a file in. The DTO asks the same question the rules did, and takes the answer
      *                           from here
-     * @param  list<string>  $queryKeys  the names of the `query` parameters that have a rule, as written in the
-     *                                   document. The emitted request reads exactly these from the query string and
-     *                                   everything else from the body, so each rule key has one source
+     * @param  list<string>  $queryKeys  the keys the `query` parameters that have a rule arrive under, each once: the
+     *                                   name PHP delivers (`page` for `page[size]`), which is the name itself for most.
+     *                                   The emitted request reads exactly these from the query string and everything
+     *                                   else from the body, so each rule key has one source
      * @param  array<string, list<string>>  $formPaths  for a body read only as a form, where `dto()` finds the value of
      *                                                  each name PHP rewrites: the contract's name => the path it is
      *                                                  delivered under

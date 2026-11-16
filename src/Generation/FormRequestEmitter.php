@@ -142,9 +142,10 @@ final readonly class FormRequestEmitter
      * The constants the generated class reads its keys from, or nothing.
      *
      * `BODY_KEYS` is the closed-root check's, `FORM_NAMES` is where `dto()` finds a form value under a name PHP
-     * rewrote, and `QUERY_KEYS` is what `validationData()` takes from the query string. `QUERY_KEYS` and `FORM_NAMES`
-     * are keyed by the names the document writes. `BODY_KEYS` holds the names the body arrives under, which is how
-     * PHP's own bags key them: the name the document writes, and for a form the one PHP gives it.
+     * rewrote, and `QUERY_KEYS` is what `validationData()` takes from the query string. `FORM_NAMES` is keyed by the
+     * names the document writes. `BODY_KEYS` and `QUERY_KEYS` hold the keys the values arrive under, which is how PHP's
+     * own bags key them: the name the document writes, and for a name PHP rewrites the one it gives it (`page` for a
+     * `query` parameter `page[size]`).
      */
     private function keyConstants(RuleSet $set): string
     {
@@ -187,7 +188,7 @@ final readonly class FormRequestEmitter
 
         if ($set->queryKeys !== []) {
             $constants .= sprintf(
-                "    /**\n     * The `query` parameters the contract declares, the only keys read from the query string.\n     */\n"
+                "    /**\n     * The keys the contract's `query` parameters arrive under, the only ones read from the query string.\n     */\n"
                     ."    private const QUERY_KEYS = [%s];\n\n",
                 implode(', ', array_map($this->literal(...), $set->queryKeys)),
             );
@@ -203,7 +204,7 @@ final readonly class FormRequestEmitter
      * source in the contract. So a required body field supplied in the URL passed, a `query` parameter was satisfied by
      * a body key of the same name, and a body integer sent as `?age=31` reached `validated()` as the string `"31"`. The
      * build already refuses one name declared in both places, so each key can be read from the one place it belongs to:
-     * the body's keys from the body, and the declared `query` parameters, by name, from the query string.
+     * the body's keys from the body, and the keys the declared `query` parameters arrive under, from the query string.
      *
      * **The body is read from the body, never through `input()` or `getInputSource()`**, which answer with the query
      * string on a `GET` or a `HEAD`. The uploads are merged the way Laravel's own `all()` merges them, with the text

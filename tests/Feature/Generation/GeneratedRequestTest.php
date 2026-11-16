@@ -1430,26 +1430,30 @@ it('builds the DTO of a body that left out a required readOnly property, at the 
         ->and(dtoThroughEmitted($class, 'POST', ['title' => 'A', 'address' => []])[0])->toBe(422);
 });
 
-// PHP turns `.` and a space in a query name into `_` and `page[size]` into a
-// nested array before Laravel sees the request, so a rule keyed by the name the
-// contract writes can never find it. The request accepts what the contract does.
-it('accepts a request carrying the query names PHP rewrites', function (): void {
+// PHP turns `.` and a space in a query name into `_` and `page[size]` into a nested array before Laravel sees the
+// request. The rules are keyed by what PHP delivers, so each value is judged, answers on `page.size`, and reaches
+// `validated()` nested and as the string a query string sends.
+it('validates the query names PHP rewrites under the key PHP delivers', function (): void {
     $class = emittedRequestClass(new Operation(
         index: 0,
         method: HttpMethod::Get,
         path: PathTemplate::fromString('/things'),
         operationId: 'listRewritten',
         queryParameters: [
+            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer], minimum: 1.0), required: true),
             new QueryParameter('user.name', new Schema(types: [SchemaType::String]), required: true),
-            new QueryParameter('a b', new Schema(types: [SchemaType::Integer]), required: true),
-            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer]), required: true),
             new QueryParameter('limit', new Schema(types: [SchemaType::Integer])),
         ],
     ));
 
-    expect(sendThroughEmitted($class, 'GET', '?user.name=ada&a%20b=1&page[size]=3&limit=2'))->toBe([200, ['limit' => '2']])
-        ->and(sendThroughEmitted($class, 'GET')[0])->toBe(200)
-        ->and(sendThroughEmitted($class, 'GET', '?limit=x')[0])->toBe(422);
+    expect(sendThroughEmitted($class, 'GET', '?page[size]=3&user.name=ada&limit=2'))
+        ->toEqual([200, ['page' => ['size' => '3'], 'user_name' => 'ada', 'limit' => '2']])
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=abc&user.name=ada')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=0&user.name=ada')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?user.name=ada')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=3')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=3&page[evil]=1&user.name=ada'))
+        ->toEqual([200, ['page' => ['size' => '3'], 'user_name' => 'ada']]);
 });
 
 /**

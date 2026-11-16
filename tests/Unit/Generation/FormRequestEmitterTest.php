@@ -518,6 +518,27 @@ it('reads only the declared query keys when the operation has no body', function
         ->and($emitted)->not->toContain('isJson');
 });
 
+// PHP delivers `page[size]` as `page => [size => ...]`, so the query bag has one key, `page`, and that is the one
+// `validationData()` reads. The rule is keyed by the path, which is how Laravel finds the value inside it.
+it('names the key a rewritten query name arrives under in QUERY_KEYS', function (): void {
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/users'),
+        operationId: 'listUsers',
+        queryParameters: [
+            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('page[number]', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect($emitted)
+        ->toContain("private const QUERY_KEYS = ['page'];")
+        ->toContain("The keys the contract's `query` parameters arrive under, the only ones read from the query string.")
+        ->toContain("'page.size' => [")
+        ->toContain("'page.number' => [");
+});
+
 // Authorization is the route's and a Policy's. A generated answer here would be
 // a second place to look for one decision.
 it('authorizes everything and says why', function (): void {

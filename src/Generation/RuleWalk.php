@@ -153,6 +153,14 @@ final class RuleWalk
     public array $formHeads = [];
 
     /**
+     * The top-level keys the body's values arrive under, which a `query` parameter shares the data with: each name the
+     * root schema declares, and for a form the name PHP gives it. Empty for a body the walk reads no keys from.
+     *
+     * @var list<string>
+     */
+    public array $bodyKeys = [];
+
+    /**
      * The top-level names whose value the request cannot check when a form sends it, by the reason, worded to follow
      * "the request cannot check it in a form body: ".
      *

@@ -291,6 +291,26 @@ it('names what a Partial keyword leaves unenforced, and exits 2', function (): v
         ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
 });
 
+// A name PHP rewrites has a rule under the key PHP delivers, so nothing it states is left unenforced and the doctor
+// exits 0. A name PHP appends to has no key a rule can hold: it keeps its `required` and its bound in the report.
+it('exits 0 for a query name PHP rewrites, and 2 for one PHP appends to', function (): void {
+    [$rewrittenExit, $rewritten] = doctorJson('doctor-query-bracketed.yaml');
+    [$appendedExit, $appended] = doctorJson('doctor-query-appended.yaml');
+
+    $partial = doctorSupportFindings($appended, 'partial');
+
+    // One finding per keyword.
+    expect($rewrittenExit)->toBe(0)
+        ->and(doctorSupportFindings($rewritten, 'partial'))->toBe([])
+        ->and($appendedExit)->toBe(2)
+        ->and($partial)->toHaveCount(2)
+        ->and($partial[0]['class'])->toBe('package_limit')
+        ->and($partial[0]['message'])->toContain('writes `required`')
+        ->and($partial[0]['message'])->toContain('`ids[]`')
+        ->and($partial[1]['message'])->toContain('writes `minimum`')
+        ->and($partial[1]['message'])->toContain('`ids[]`');
+});
+
 // `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not
 // read as a file is left out of the rules, and that is a package limit it names: a keyword the matrix rates as honored
 // in general. Its own section is "Parameters, bodies, responses", not "Schemas". The type OpenAPI gives a part anyway

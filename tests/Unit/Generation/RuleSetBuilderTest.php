@@ -722,8 +722,8 @@ it('merges the body and the query into one rule set, body first', function (): v
     expect(array_keys($set->rules))->toBe(['email', 'notify']);
 });
 
-// The emitted request reads exactly these names from the query string, so the list
-// is the parameters that have a rule, as the document writes them.
+// The emitted request reads exactly these keys from the query string, so the list
+// is the parameters that have a rule, by the key each arrives under.
 it('names the query parameters that have a rule', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['email' => new Schema(types: [SchemaType::String])])],
@@ -754,15 +754,21 @@ it('refuses a name declared by both the body and a query parameter', function ()
 });
 
 // A `query` parameter is merged into the data the body is validated against, so a key of the body's own
-// failures that is its name would answer for both.
-it('answers on a root key no query parameter has either', function (): void {
+// failures that is its name would answer for both. A name PHP rewrites is validated under the key it is delivered
+// as, and that is the one compared (`" body"` is `body`, and `body[x]` is `body.x`, a key apart).
+it('answers on a root key no query parameter has either', function (string $name, string $rootKey): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['title' => new Schema(types: [SchemaType::String])])],
-        query: [new QueryParameter('body', new Schema(types: [SchemaType::String]), required: true)],
+        query: [new QueryParameter($name, new Schema(types: [SchemaType::String]), required: true)],
     ));
 
-    expect($set->rootKey)->toBe('_body');
-});
+    expect($set->rootKey)->toBe($rootKey);
+})->with([
+    'a name equal to it' => ['body', '_body'],
+    'a name PHP delivers as it' => [' body', '_body'],
+    'a name delivered below it' => ['body[x]', 'body'],
+    'a name delivered under no key' => ['[x]', 'body'],
+]);
 
 // A form delivers `page[size]` below `page` and `user.name` as `user_name`, so a query parameter
 // with that name is the same key to Laravel, and validationData() drops the body's copy of it.
@@ -1743,11 +1749,75 @@ it('says nothing about a readOnly property that is not required', function (): v
         ->and($set->findings)->toBe($set->stricter);
 });
 
-// PHP rewrites a query name before Laravel sees it: `.` and a space become `_`,
-// and `page[size]` becomes a nested array. No key a rule names is ever found, so
-// the name is reported rather than given a rule that refuses or ignores every
-// request.
-it('reports a query name PHP rewrites, and gives it no rule', function (string $name): void {
+// PHP rewrites a query name before Laravel sees it: `.` and a space become `_`, and `page[size]` becomes a
+// nested array. The value is there, under the key PHP delivers, so the rule is keyed by that key (measured with
+// `parse_str()`, which the request's query bag is built from) and the name the contract writes stays the label.
+it('keys a query name PHP rewrites by the key PHP delivers', function (string $name, Schema $schema, array $rules, string $head, ?string $finding): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter($name, $schema, required: true)],
+    ));
+
+    expect($set->rules)->toBe($rules)
+        ->and($set->queryKeys)->toBe([$head])
+        ->and($set->unenforced)->toBe([]);
+
+    if ($finding === null) {
+        expect($set->findings)->toBe([]);
+    } else {
+        expect(implode("\n", $set->findings))->toContain($finding);
+    }
+})->with([
+    'a bracketed name' => ['page[size]', new Schema(types: [SchemaType::Integer]), ['page.size' => ['required', 'integer']], 'page', null],
+    'three levels' => ['filter[created][gte]', new Schema(types: [SchemaType::Integer]), ['filter.created.gte' => ['required', 'integer']], 'filter', null],
+    'a dot' => ['user.name', new Schema(types: [SchemaType::Integer]), ['user_name' => ['required', 'integer']], 'user_name', null],
+    'a space' => ['a b', new Schema(types: [SchemaType::Integer]), ['a_b' => ['required', 'integer']], 'a_b', null],
+    'a dot inside the brackets, which PHP keeps' => ['page[a.b]', new Schema(types: [SchemaType::Integer]), ['page.a\.b' => ['required', 'integer']], 'page', null],
+    'a leading space, which PHP drops' => [' a', new Schema(types: [SchemaType::Integer]), ['a' => ['required', 'integer']], 'a', null],
+    'an array, as presence only' => ['filter[ids]', new Schema(types: [SchemaType::Array]), ['filter.ids' => ['present']], 'filter', '`filter[ids]` is a `query` parameter typed `array`'],
+    'an object, as sometimes' => ['filter[range]', new Schema(types: [SchemaType::Object]), ['filter.range' => ['sometimes']], 'filter', '`filter[range]` is a `query` parameter typed `object`'],
+]);
+
+// A query bag holds `page => [size => ...]`, so `validationData()` reads the key `page` once, however many names
+// are delivered below it.
+it('reads each query key once however many rewritten names share it', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [
+            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('page[number]', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('limit', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect($set->queryKeys)->toBe(['page', 'limit'])
+        ->and($set->rules)->toBe([
+            'page.size' => ['sometimes', 'integer'],
+            'page.number' => ['sometimes', 'integer'],
+            'limit' => ['sometimes', 'integer'],
+        ]);
+});
+
+// Two names on separate paths are two keys, however much of the text they share: `filter[a]` is no prefix of
+// `filter[ab][c]`.
+it('keeps the rule of rewritten query names that are not on one path', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [
+            new QueryParameter('filter[a]', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('filter[ab][c]', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect($set->rules)->toBe(['filter.a' => ['sometimes', 'integer'], 'filter.ab.c' => ['sometimes', 'integer']])
+        ->and($set->queryKeys)->toBe(['filter'])
+        ->and($set->findings)->toBe([]);
+});
+
+// PHP gives a name that appends (`ids[]`, each value at the next free index) or that it delivers nowhere (`[x]`) no
+// key a rule can hold, and a `*` is Laravel's wildcard in a rule key. Each keeps a finding and no rule, and the doctor
+// still sees what the contract asks of it.
+it('keeps reporting a query name PHP appends to or delivers under no name', function (string $name, string $reason): void {
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [
@@ -1758,9 +1828,77 @@ it('reports a query name PHP rewrites, and gives it no rule', function (string $
 
     expect($set->rules)->toBe(['limit' => ['sometimes', 'integer']])
         ->and($set->queryKeys)->toBe(['limit'])
+        ->and($set->unenforced)->toBe(['required' => ['`'.$name.'`']])
         ->and(implode("\n", $set->findings))->toContain('`'.$name.'`')
-        ->and(implode("\n", $set->findings))->toContain('PHP rewrites');
-})->with(['user.name', 'a b', 'page[size]']);
+        ->and(implode("\n", $set->findings))->toContain($reason);
+})->with([
+    'a list' => ['ids[]', 'whose name PHP appends to'],
+    'a list of objects' => ['a[][b]', 'whose name PHP appends to'],
+    'a list with a tail' => ['a[]b', 'whose name PHP appends to'],
+    'no name' => ['[x]', 'whose name PHP delivers under no name'],
+    'a wildcard below a key' => ['page[*]', 'carries a `*`'],
+]);
+
+// The `*` is checked first: a name that PHP also rewrites would get the wildcard key `page.*` otherwise.
+it('keeps a star in a bracketed query name out of the rule keys', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('page[*]', new Schema(types: [SchemaType::Integer]), required: true)],
+    ));
+
+    expect($set->rules)->toBe([])
+        ->and(implode("\n", $set->findings))->not->toContain('page.*');
+});
+
+// One key holds the body's value and the query's, so a rule for the query's would judge the body's. No rule is
+// emitted for it, so the build is not choosing which half of the contract to enforce, and the body's own rules are
+// what they were: this is a finding, not the refusal a plain name gets.
+it('keeps reporting a query name delivered under a key the body arrives under', function (array $content, string $name, string $key): void {
+    $query = new QueryParameter($name, new Schema(types: [SchemaType::Integer]), required: true);
+    $alone = RuleSetBuilder::for(operationWithInput(content: $content));
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: [$query]));
+
+    expect($set->rules)->toBe($alone->rules)
+        ->and($set->queryKeys)->toBe([])
+        ->and($set->unenforced)->toBe(['required' => ['`'.$name.'`']])
+        ->and(implode("\n", $set->findings))->toContain('`'.$name.'` is a `query` parameter that PHP delivers under `'.$key.'`, a key the body arrives under too');
+})->with([
+    'a JSON body property' => [['application/json' => objectSchema(['page' => new Schema(types: [SchemaType::Integer])])], 'page[size]', 'page'],
+    'a form body bracketed name' => [['application/x-www-form-urlencoded' => objectSchema(['page[number]' => new Schema(types: [SchemaType::Integer])])], 'page[size]', 'page'],
+    'a JSON body name a query dot becomes' => [['application/json' => objectSchema(['user_name' => new Schema(types: [SchemaType::String])])], 'user.name', 'user_name'],
+]);
+
+// Names that arrive under one key, or one below the other, cannot be told apart in the query bag: a rule for a
+// rewritten one would judge its neighbor's value too. A plain name keeps its rule for now, and the rewritten names go
+// without, each pair of them told once.
+it('gives no rule to a rewritten query name that overlaps another query name', function (array $names, array $kept, int $pairs, string $finding): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: array_values(array_map(
+            static fn (string $name): QueryParameter => new QueryParameter($name, new Schema(types: [SchemaType::Integer]), required: true),
+            $names,
+        )),
+    ));
+    $lost = array_map(
+        static fn (string $name): string => '`'.$name.'`',
+        array_values(array_diff($names, $kept)),
+    );
+
+    expect(array_keys($set->rules))->toBe(array_keys($kept))
+        ->and($set->queryKeys)->toBe(array_values(array_unique($kept)))
+        ->and($set->unenforced['required'] ?? [])->toBe($lost)
+        ->and(implode("\n", $set->findings))->toContain($finding)
+        ->and(substr_count(implode("\n", $set->findings), 'overlapping keys'))->toBe($pairs);
+})->with([
+    'a plain name and a bracketed one below it' => [['page', 'page[size]'], ['page' => 'page'], 1, '`page[size]` and `page` are `query` parameters PHP delivers under overlapping keys (`page.size` and `page`)'],
+    'a rewritten name and the plain name it becomes' => [['user_name', 'user.name'], ['user_name' => 'user_name'], 1, '`user.name` and `user_name` are `query` parameters PHP delivers under overlapping keys (`user_name` and `user_name`)'],
+    'a bracketed name below another bracketed name' => [['filter[a]', 'filter[a][b]'], [], 1, '`filter[a]` and `filter[a][b]` are `query` parameters PHP delivers under overlapping keys (`filter.a` and `filter.a.b`)'],
+    'two rewritten names under one key' => [['a.b', 'a b'], [], 1, '`a.b` and `a b` are `query` parameters PHP delivers under overlapping keys (`a_b` and `a_b`)'],
+    'a plain name and a list it is appended to' => [['ids', 'ids[]'], ['ids' => 'ids'], 0, 'whose name PHP appends to'],
+    'an index and a list PHP appends at any index of' => [['ids[1]', 'ids[]'], [], 1, '`ids[1]` and `ids[]` are `query` parameters PHP delivers under overlapping keys (`ids.1` and `ids`)'],
+    'a plain name and a wildcard below it' => [['page', 'page[*]'], ['page' => 'page'], 0, 'carries a `*`'],
+    'a chain of three, told by pairs' => [['filter', 'filter[a]', 'filter[a][b]'], ['filter' => 'filter'], 3, '`filter[a][b]` and `filter`'],
+]);
 
 // Laravel's `mimetypes` reads the type libmagic sniffs from the content, and a
 // real CSV, Markdown or YAML file sniffs as `text/plain` (an XML file as
@@ -2490,10 +2628,15 @@ it('names the keyword and the field for each way a read keyword is left unenforc
         [],
     ],
     // A field the rule set drops whole states constraints nothing enforces, and the doctor names each one.
-    'a query parameter whose name PHP rewrites' => [
+    'a query parameter PHP appends to' => [
+        [],
+        [new QueryParameter('ids[]', new Schema(types: [SchemaType::Integer], minimum: 1.0, maximum: 100.0), required: true)],
+        ['required' => ['`ids[]`'], 'minimum' => ['`ids[]`'], 'maximum' => ['`ids[]`']],
+    ],
+    'a bracketed query parameter, now enforced' => [
         [],
         [new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer], minimum: 1.0, maximum: 100.0), required: true)],
-        ['required' => ['`page[size]`'], 'minimum' => ['`page[size]`'], 'maximum' => ['`page[size]`']],
+        [],
     ],
     'a query parameter whose name carries a star' => [
         [],

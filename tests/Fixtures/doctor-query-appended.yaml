@@ -1,0 +1,20 @@
+# A `query` name PHP appends to (`ids[]`: each value takes the next free index) has no key a rule can hold, so the
+# doctor names the `required` and the bound it states, and exits 2.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      parameters:
+        - name: ids[]
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: OK

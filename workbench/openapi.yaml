@@ -79,6 +79,9 @@ paths:
             tags: [Posts]
             parameters:
                 - { name: page, in: query, schema: { type: integer } }
+                # The JSON:API filter style. PHP delivers `filter[author]` as `filter => [author => ...]`,
+                # so the request validates it as `filter.author`, and `validated()` holds it nested.
+                - { name: 'filter[author]', in: query, schema: { type: integer, minimum: 1 } }
                 # `?drafts=true` is how OpenAPI writes a boolean in a query string. The
                 # generated request accepts it, and says in its findings that
                 # `validated('drafts')` holds the string as sent.

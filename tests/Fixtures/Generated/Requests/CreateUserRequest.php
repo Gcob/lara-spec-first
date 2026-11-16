@@ -62,7 +62,7 @@ final class CreateUserRequest extends FormRequest
     private const BODY_KEYS = ['email', 'age', 'nickname', 'role', 'tags', 'address', 'website'];
 
     /**
-     * The `query` parameters the contract declares, the only keys read from the query string.
+     * The keys the contract's `query` parameters arrive under, the only ones read from the query string.
      */
     private const QUERY_KEYS = ['notify'];
 

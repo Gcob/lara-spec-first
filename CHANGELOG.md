@@ -81,6 +81,24 @@ tags: [versions, conventions, planning]
   the DTO. A body that cannot be `null`, and a nullable one read only as a form, keep the plain type. This is a breaking
   change: `$request->dto()->toArray()` on such an operation now fails at runtime when a client sends `null`, and static
   analysis asks for a null check. Handle `null`, for instance `$request->dto()?->toArray()`.
+- **A `query` name PHP rewrites is now validated under the key PHP delivers, where it was reported and never checked.**
+  `page[size]` is validated as `page.size`, `filter[created][gte]` as `filter.created.gte`, and the names PHP only
+  renames follow (`user.name` arrives as `user_name`, `a b` as `a_b`). The error key is `page.size`, `validated()` holds
+  the value nested and as the string a query string sends (`['page' => ['size' => '3']]`), and `QUERY_KEYS` in the
+  generated request holds the key each parameter arrives under (`page`). Three requests that answered `200` now answer
+  `422` to a client that asks for JSON, each of them already refused by the contract: a value of the wrong type
+  (`?page[size]=abc` for an integer), a value outside a bound (`?page[size]=0` against `minimum: 1`), and a request that
+  leaves out a required `page[size]`. A name PHP appends to (`ids[]`, `a[][b]`, `a[]b`) or delivers under no name
+  (`[x]`), and a rewritten name that arrives under a key the body uses or that overlaps another `query` name, keep their
+  finding and get no rule. This is a breaking change: a client that sent one of the three requests above and got a `200`
+  now gets a refusal. Send the value the contract describes, or loosen the contract. This closes the `0.2.0`
+  `Known limits` item for [#110](https://github.com/Gcob/lara-spec-first/issues/110).
+- **`spec:doctor` no longer reports the keywords of a `query` name PHP rewrites, so its exit code can drop from `2` to
+  `0`.** It reported `required` and each bound of `page[size]` or `user.name` as unenforced, since they had no rule.
+  They have one now (see the entry above), so a document whose only `Partial` findings were those names exits `0`. A
+  name PHP appends to, delivers under no name, or that overlaps another one keeps its keywords in the report, and the
+  doctor still exits `2` for it. This is a breaking change: every move on the exit-code axis is major, in either
+  direction, so a CI step that expected `2` here will see `0`. Update what it expects.
 
 ### Fixed
 

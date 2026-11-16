@@ -1,0 +1,25 @@
+# A `query` name PHP rewrites is validated under the key PHP delivers (`page[size]` as `page.size`, `user.name` as
+# `user_name`), so the doctor owes nothing for the `required` and the bound it states.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      parameters:
+        - name: page[size]
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: user.name
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
