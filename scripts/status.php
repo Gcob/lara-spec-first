@@ -228,7 +228,7 @@ function build_report(string $root): array
     $milestones = read_milestones($root);
     $main = read_main($root, $upstream);
     $branches = read_branches($root, $upstream);
-    $release = read_latest_release($root);
+    $release = read_latest_release($root, $upstream);
 
     $questions = open_questions($comments);
     $findings = find_drift($cards, $questions, $pullRequests, $merged, $milestones, $main, $branches, $release);
@@ -726,22 +726,33 @@ function read_branches(string $root, string $upstream): array
 }
 
 /**
- * The latest release: the newest `v<major>.<minor>.<patch>` tag by the date it was made, as the upstream has it (the
- * fetch brings the tags that point into its history). A prerelease tag is no release. Null when there is none.
+ * The latest release: the newest `v<major>.<minor>.<patch>` tag the upstream has, by the date of the commit it tags. A
+ * prerelease tag is no release. Null when there is none.
+ *
+ * The tags come from `git ls-remote`, never from the local ones: a fetch does not remove a tag deleted on the upstream,
+ * and a clone may hold tags it got from another remote. The commit a tag names is in the clone after the fetch, which
+ * brings the tags that point into the upstream's history; its date is the commit's, not the tag's.
  *
  * @return array{name: string, at: int}|null
  */
-function read_latest_release(string $root): ?array
+function read_latest_release(string $root, string $upstream): ?array
 {
+    $commits = [];
+
+    foreach (explode("\n", git($root, ['ls-remote', '--tags', $upstream])) as $line) {
+        // An annotated tag is listed twice: the tag object, then the commit it names, as `<name>^{}`.
+        if (preg_match('#^([0-9a-f]{40,64})\trefs/tags/(v\d+\.\d+\.\d+)(\^\{\})?$#', $line, $found) === 1) {
+            $commits[$found[2]] = $found[1];
+        }
+    }
+
     $latest = null;
 
-    foreach (explode("\n", git($root, ['for-each-ref', '--format=%(refname:strip=2) %(creatordate:unix)', 'refs/tags'])) as $line) {
-        if (preg_match('/^(v\d+\.\d+\.\d+) (\d+)$/', $line, $found) !== 1) {
-            continue;
-        }
+    foreach ($commits as $name => $commit) {
+        $at = (int) git($root, ['log', '-1', '--format=%ct', $commit]);
 
-        if ($latest === null || (int) $found[2] > $latest['at']) {
-            $latest = ['name' => $found[1], 'at' => (int) $found[2]];
+        if ($latest === null || $at > $latest['at']) {
+            $latest = ['name' => $name, 'at' => $at];
         }
     }
 

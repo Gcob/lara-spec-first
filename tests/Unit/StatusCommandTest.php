@@ -415,6 +415,11 @@ function statusProject(array $data = []): array
         statusPushTag($project, (string) $tag, (string) $date);
     }
 
+    // A tag only this clone has: fetching never removes a local tag, and it is not the upstream's release.
+    foreach ($listOf('localTags') as $tag => $date) {
+        statusPushTag($project, (string) $tag, (string) $date, localOnly: true);
+    }
+
     $files = [
         'board.json' => statusGraphqlPages($boardPages, ['user', 'projectV2', 'items']),
         'issues.json' => statusGraphqlPages(
@@ -479,20 +484,30 @@ function statusPushBranch(array $project, string $branch, int $ahead): void
 }
 
 /**
- * Put an annotated tag on the upstream's `main`, made at `$date`, and leave no local copy: the script has to fetch it.
+ * Put a tag on a new commit of the upstream's `main`, made at `$date` (the date the script reads), and leave no local
+ * copy of the tag: the script has to fetch it. `$localOnly` keeps the tag, on a commit that never leaves the work tree.
  *
  * @param  array{dir: string, work: string, origin: string, bin: string, state: string}  $project
  */
-function statusPushTag(array $project, string $tag, string $date): void
+function statusPushTag(array $project, string $tag, string $date, bool $localOnly = false): void
 {
-    $process = new Process(
-        ['git', 'tag', '--annotate', '--message', $tag, $tag, 'main'],
-        $project['work'],
-        ['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1', 'GIT_COMMITTER_DATE' => $date],
-    );
-    $process->mustRun();
+    $environment = ['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1', 'GIT_COMMITTER_DATE' => $date, 'GIT_AUTHOR_DATE' => $date];
 
-    statusGit($project['work'], ['push', '--quiet', 'origin', 'refs/tags/'.$tag]);
+    if ($localOnly) {
+        statusGit($project['work'], ['checkout', '--quiet', '-b', 'never-pushed', 'main']);
+    }
+
+    (new Process(['git', 'commit', '--quiet', '--allow-empty', '-m', 'chore: release '.$tag], $project['work'], $environment))->mustRun();
+    (new Process(['git', 'tag', '--annotate', '--message', $tag, $tag], $project['work'], $environment))->mustRun();
+
+    if ($localOnly) {
+        statusGit($project['work'], ['checkout', '--quiet', 'main']);
+        statusGit($project['work'], ['branch', '--quiet', '-D', 'never-pushed']);
+
+        return;
+    }
+
+    statusGit($project['work'], ['push', '--quiet', 'origin', 'main', 'refs/tags/'.$tag]);
     statusGit($project['work'], ['tag', '--delete', $tag]);
 }
 
@@ -1069,6 +1084,20 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             '  #41  Done, but its release 0.3.0 has not shipped. Move it back to Ready to publish.',
             '  #47  Ready to publish, but it was released in v0.2.0. Move it to Done.',
         ]);
+});
+
+it('reads releases from the upstream, so a tag only this clone has is not one', function (): void {
+    $project = statusProject([
+        'tags' => ['v0.1.0' => '2026-11-01T00:00:00Z'],
+        // Fetched from elsewhere, or deleted on GitHub since: the clone keeps it, the upstream does not have it.
+        'localTags' => ['v0.2.0' => '2026-11-12T00:00:00Z'],
+        'cards' => [statusCard(['number' => 40, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0'])],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusDrift($run['out']))->toBe(['lines' => [], 'count' => 0, 'header' => 0]);
 });
 
 it('says nothing about a release when the upstream has no release tag', function (): void {

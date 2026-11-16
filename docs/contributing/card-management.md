@@ -716,10 +716,11 @@ for lacking the label.
 open `edge-case` card with no `## Why it can wait` section, and an open `edge-case` card on a release milestone
 (`0.x.y`; one on `1.0` is fine, since it is the bar for a stable release and not a release).
 
-**It reads and never writes.** It asks GitHub only for reads, and runs one `git fetch --prune` of the remote that names
-this repository. It reads that remote's branches, never the local ones, so two machines with the same board give the
-same page, byte for byte. It needs `gh` signed in with the `project` scope, the same reason as `just card-context` (see
-[the agent guide](../../AGENTS.md)), so CI does not run it.
+**It reads and never writes.** It asks GitHub only for reads, and runs one `git fetch --prune` and one
+`git ls-remote --tags` of the remote that names this repository. It reads that remote's branches and its release tags
+(`git ls-remote`, dated by the commit each one names), never the local ones, so two machines with the same board give
+the same page, byte for byte. It needs `gh` signed in with the `project` scope, the same reason as `just card-context`
+(see [the agent guide](../../AGENTS.md)), so CI does not run it.
 
 **It stops rather than mix sources.** Exit `0` means it printed and found no drift, and exit `1` that it printed and
 found some (`just status` ends with that exit code and no "Recipe failed" line of its own, since the page is the
