@@ -1873,7 +1873,7 @@ it('keeps reporting a query name delivered under a key the body arrives under', 
     'a JSON body name a query dot becomes' => [['application/json' => objectSchema(['user_name' => new Schema(types: [SchemaType::String])])], 'user.name', 'user_name'],
 ]);
 
-// Names that arrive under one key, or one below the other, cannot be told apart in the query bag: a rule for one
+// Names that arrive under one key, or one below the other, share a value in the query bag: a rule for one
 // would judge its neighbor's value too. None of them gets a rule, a plain name included, and each pair is told once.
 it('gives no rule to a rewritten query name that overlaps another query name', function (array $names, int $pairs, string $finding): void {
     $set = RuleSetBuilder::for(operationWithInput(

@@ -1459,7 +1459,7 @@ it('validates the query names PHP rewrites under the key PHP delivers', function
 
 // `?page[size]=3` reaches Laravel as `page => [size => 3]` and `?ids[]=1` as `ids => [1]`, and a rule for the plain
 // name would judge that array and refuse a request the contract allows. Neither name has a rule, so each is sent alone and passes, and so does a
-// wrong `page`: the limit the finding states, since no rule can tell the two apart.
+// wrong `page`: the gap the finding states, since `page` has no rule.
 it('accepts a rewritten query name sent alone beside the plain name it overlaps', function (): void {
     $class = emittedRequestClass(new Operation(
         index: 0,

@@ -112,9 +112,8 @@ tags: [versions, conventions, planning]
   finding.** `?page[size]=3` arrives as `page => [size => 3]`, so the `integer` rule of `page` refused a request the
   contract allows, and `?ids[]=1` was judged by the rule of `ids` the same way. `page` beside `page[size]`, `user_name`
   beside `user.name`, `ids` beside `ids[]` and `page` beside `page[*]` now get no rule, neither name has one, and the
-  generated file says so in a finding. A wrong `?page=abc` passes beside `page[size]`, since no rule can tell the two
-  apart. A plain name beside a body key is still refused. See
-  [#110](https://github.com/Gcob/lara-spec-first/issues/110).
+  generated file says so in a finding. A wrong `?page=abc` passes beside `page[size]`, since `page` has no rule. A plain
+  name beside a body key is still refused. See [#110](https://github.com/Gcob/lara-spec-first/issues/110).
 - **The "a form with a `Content-Type` and no field" finding no longer appears where a required field, or the body's
   required-key check, already refuses an empty form.** A required body read as a form got it even when a required
   property, a required file part or a required name `properties` does not declare was already refusing the empty form,

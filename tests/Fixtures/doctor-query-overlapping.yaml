@@ -1,5 +1,5 @@
-# A plain `query` name beside a bracketed one it overlaps (`page` and `page[size]`) has no rule: no rule can tell
-# the two values apart. The doctor still reports what the plain name states (`required` and `minimum`), where it
+# A plain `query` name beside a bracketed one it overlaps (`page` and `page[size]`) has no rule: a rule for
+# either would judge the other's value. The doctor still reports what the plain name states (`required` and `minimum`), where it
 # reported nothing for it while its rule judged `page[size]`'s array.
 openapi: 3.0.3
 info:

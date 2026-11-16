@@ -18,7 +18,7 @@ tags: [decisions, validation, query-parameters]
 >   `ids[]`, `user_name` and `user.name`), neither gets a rule. A finding names the pair and `spec:doctor` reports what
 >   each states.
 > - A rule for either would judge the other's value, so a plain name's rule refused a request the contract allows.
-> - The cost is a gap: `?page=abc` passes beside `page[size]`, since nothing can tell the two values apart.
+> - The cost is a gap: `?page=abc` passes beside `page[size]`, since `page` has no rule.
 
 **Status:** Accepted · **Card:** [#110](https://github.com/Gcob/lara-spec-first/issues/110) · **Pull request:**
 [#161](https://github.com/Gcob/lara-spec-first/pull/161)
@@ -54,23 +54,27 @@ rule.
 
 ## Alternatives turned down
 
-- **Keep the plain name's rule.** It is the behavior before this decision. It was turned down because the rule judges
-  the array PHP built for the other name, so it refuses `?page[size]=3`, a request the contract allows, with no finding.
-  A generated request never refuses what the contract accepts without saying so.
+- **Keep the plain name's rule, with a finding.** It is the behavior before this decision, made honest. It was turned
+  down because the rule judges the array PHP built for the other name, so it refuses `?page[size]=3`, a request the
+  contract allows. A generated request refuses only what the contract refuses, and a finding is accepted for a gap only
+  when matching the contract is far too complicated. Giving the plain name no rule is simpler than keeping it.
 - **Refuse the contract at build time**, as a name declared twice by the body and a `query` parameter is refused. It was
   turned down because that refusal exists to stop the build from choosing which half of the contract to enforce, and
   here no rule is emitted for either name, so there is no choice to make. Refusing would also stop a contract that
   builds today.
-- **Write a rule that reads the shape of the delivered value** and judges it as the plain name or as the nested one. It
-  was turned down because it is a mechanism of its own for a case this rare, and it still could not tell `page=abc` from
-  a `page` that PHP built for `page[size]` without reading the other parameter's name at request time.
+- **Write a rule that reads the shape of the value.** A scalar is `page`'s, an array is `page[size]`'s, and such a rule
+  could judge each, so `?page=abc` would still be refused. It was turned down for its cost: it is a custom rule, with
+  its own messages and its own tests, for a contract this rare. It is not impossible, and it stays an open question for
+  a follow-up.
 
 ## Consequences
 
 - **A request the contract allows is no longer refused.** `?page[size]=3` and `?ids[]=1` pass beside their plain
   neighbors.
-- **A request the contract refuses can pass.** `?page=abc` beside `page[size]` is accepted, because no rule separates
-  the two. The finding in the generated file says so, the guide says so, and the CHANGELOG records it.
+- **A request the contract refuses can pass.** `?page=abc` beside `page[size]` is accepted, because `page` has no rule.
+  The finding in the generated file says so, the guide says so, and the CHANGELOG records it.
 - **`spec:doctor` can exit `2` where it exited `0`.** The plain name's keywords are now unenforced, and the doctor
   reports them.
+- **Whether a rule that reads the shape of the value should replace this is open.** If it is built, a later record
+  replaces this one.
 - **This does not settle `style: deepObject`.** An object parameter written that way is still reported, not validated.

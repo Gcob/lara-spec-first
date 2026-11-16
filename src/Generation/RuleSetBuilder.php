@@ -2924,8 +2924,8 @@ final readonly class RuleSetBuilder
     private static function queryNamesOverlap(string $name, string $other, array $path, array $otherPath, bool $otherLoses): string
     {
         return sprintf(
-            '`%s` and `%s` are `query` parameters PHP delivers under overlapping keys (`%s` and `%s`), so no rule can '
-                .'tell their values apart. None is emitted for %s, and neither %s type nor presence is enforced.',
+            '`%s` and `%s` are `query` parameters PHP delivers under overlapping keys (`%s` and `%s`), so a rule for '
+                .'either would judge the other\'s value too. None is emitted for %s, and neither %s type nor presence is enforced.',
             $name,
             $other,
             self::pathKey($path),
