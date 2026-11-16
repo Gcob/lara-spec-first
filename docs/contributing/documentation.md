@@ -3,12 +3,12 @@ title: Documentation Guide
 audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
-    principle, how a lasting decision is shared between its ADR and its topic file, and what happens when a subject
-    outgrows one file, the audience vocabulary and the directory each audience owns and the voice each one is written
-    in, how a rule in this file is contested, the front matter metadata schema and tag vocabulary, the summary every
-    document opens with and how it differs from a `covers` claim, the three rules that keep a document readable in one
-    pass and the junior developer test that calibrates them, how a diagram is built and when one earns its place, the
-    catalogue of doc smells and the correction each one calls for, and the inventory of every document.
+    principle, how a decision is shared between its ADR and its topic file, and what happens when a subject outgrows one
+    file, the audience vocabulary and the directory each audience owns and the voice each one is written in, how a rule
+    in this file is contested, the front matter metadata schema and tag vocabulary, the summary every document opens
+    with and how it differs from a `covers` claim, the three rules that keep a document readable in one pass and the
+    junior developer test that calibrates them, how a diagram is built and when one earns its place, the catalogue of
+    doc smells and the correction each one calls for, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
@@ -99,18 +99,22 @@ The rules:
 Signs the rule is being broken: the same decision justified in two places; a section that re-explains something the
 reader was already sent elsewhere to read; a file whose title no longer covers everything inside it.
 
-### A lasting decision is an ADR, and its topic file links it
+### An ADR holds the reasoning
 
-**A decision that outlives its card is recorded as an [ADR](../project/decisions/index.md), and the topic file it
-touches keeps the rule and a one-line reason, with a link.** The ADR owns the context and the alternatives turned down.
-That is the rule above applied to a decision: the one line is the pointer, and the reasoning has exactly one home.
-[ADR 0001](../project/decisions/0001-record-lasting-decisions.md) is the decision behind it.
+**A decision that [earns an ADR](../project/decisions/index.md#an-adr-is-for-what-a-newcomer-needs) is recorded as one,
+and the topic file it touches keeps the rule and a one-line reason, with a link.** The ADR owns the context and the
+alternatives turned down. That is the rule above applied to a decision: the one line is the pointer, and the reasoning
+has exactly one home. [ADR 0001](../project/decisions/0001-record-lasting-decisions.md) is the decision behind it.
 
-- **The ADR is written in the pull request that makes the decision**, not afterward. The index says
-  [which decisions earn one](../project/decisions/index.md#a-decision-earns-an-adr-when-a-newcomer-needs-it).
 - **A topic file that argues at length for a decision that has an ADR is the same decision justified in two places.**
-  Cut it down to the rule and the line, and link.
-- **A decision recorded before this rule stays in its topic file** until its ADR is written.
+  Cut it down to the rule and the line, and link. This is the one case where
+  [the rejected alternative](#the-reasoning-stays-the-chronology-goes) leaves the topic file.
+- **An ADR is an exception to three rules of this file, and the exception stops there.** Its four fixed section headings
+  (Context, Decision, Alternatives turned down, Consequences) are labels rather than
+  [short claims](#headings-are-short-claims), and one of them is named `Decision`, which
+  [a decision is a sentence](#a-decision-is-a-sentence) retired as a prefix. The labels stay because the format is the
+  one a newcomer has met elsewhere. What keeps the reader out of [the decision tunnel](#doc-smells) is the rest of the
+  shape: the title is the decision as a claim, and the "In brief" states it before any context.
 
 ### A large subject becomes a directory
 
@@ -827,7 +831,8 @@ decided and argues for it, and all of that stays.
 What it names is narrative, not justification:
 
 - **Keep** the decision, the reason that holds it up, and the alternative that was rejected with why it was. A reader
-  who disagrees needs all three to argue with it.
+  who disagrees needs all three to argue with it. A decision with an [ADR](#an-adr-holds-the-reasoning) keeps the reason
+  and the alternative there, and the topic file keeps a line and a link.
 - **Cut** the sequence of events that produced it: what was tried first, what an earlier version did, what came up in
   discussion, what was built and then removed before anything shipped.
 

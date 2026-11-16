@@ -1,18 +1,18 @@
 ---
-title: "ADR 0001: Record lasting decisions"
+title: "ADR 0001: Lasting decisions are recorded as ADRs"
 audience: Users and contributors
 covers: >
-    The decision to record each lasting decision as an ADR under `docs/project/decisions/`, why the topic files alone
-    were not enough, the alternatives turned down, and how an ADR sits with the one-topic-one-file rule.
+    The decision to record a lasting decision as an ADR under `docs/project/decisions/`, why the topic files alone were
+    not enough, and the alternatives turned down.
 read_before: Asking why decisions are written down the way they are, or proposing a different home for them.
 tags: [decisions, documentation, conventions]
 ---
 
-# ADR 0001: Record lasting decisions
+# ADR 0001: Lasting decisions are recorded as ADRs
 
 > **In brief**
 >
-> - Each lasting decision is recorded as an ADR in `docs/project/decisions/`, in the pull request that makes it.
+> - A lasting decision is recorded as an ADR in `docs/project/decisions/`, in the pull request that makes it.
 > - Decisions lived in topic files and in notes outside the repository, so GitHub could not explain the project alone.
 > - The topic file keeps the rule and a one-line reason, and links the ADR. The ADR owns the context and the
 >   alternatives.
@@ -37,12 +37,13 @@ contributor file to find out why the package refuses something.
 
 ## Decision
 
-**A lasting decision is recorded as an ADR in `docs/project/decisions/`, in the pull request that makes it.** The
-directory, the sections an ADR carries and the kinds of decision that earn one are in the [index](./index.md).
+**A decision that earns an ADR is recorded as one in `docs/project/decisions/`, in the pull request that makes it.** The
+[index](./index.md#an-adr-is-for-what-a-newcomer-needs) says which decisions earn one, and holds the directory and the
+sections an ADR carries. This one qualifies: where a project keeps its decisions is a public contributing rule.
 
 **The topic file keeps the rule and its one-line reason, and links the ADR.** The ADR owns the context and the
-alternatives turned down. That is the one-topic-one-file rule applied to a decision: the one line is the pointer, and
-the reasoning has exactly one home.
+alternatives turned down. [`documentation.md`](../../contributing/documentation.md#an-adr-holds-the-reasoning) says how
+the two share a decision.
 
 ## Alternatives turned down
 
@@ -56,6 +57,7 @@ the reasoning has exactly one home.
 ## Consequences
 
 - **The rule and its reason now live in two files.** The link between them has to be kept. `just docs-check-anchors`
-  catches a broken link, and review catches a reason that no longer matches its ADR.
-- **The decisions made before this one are not recorded yet.** Each stays in its topic file until somebody checks it
-  against the code and writes its ADR.
+  catches an anchor that no longer resolves, `just docs-build` a link to a missing file, and review a reason that no
+  longer matches its ADR.
+- **An ADR departs from the heading rules of `documentation.md` on purpose**, and that guide states the exception in one
+  place, so a review does not flag it again.
