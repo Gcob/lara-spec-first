@@ -274,7 +274,7 @@ it('reports a missing specification the way the build does', function (): void {
  * PHP cannot declare, two operations claiming one request) are the very reasons that class could not compile. A class
  * written first stays: the command never overwrites a file a developer owns.
  *
- * @see docs/guide/code-generation/scaffolding.md — "Four refusals"
+ * @see docs/guide/code-generation/scaffolding.md — "Scaffolding is spec:make, not a build step"
  */
 
 /**
