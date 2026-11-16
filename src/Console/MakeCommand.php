@@ -90,10 +90,8 @@ final class MakeCommand extends Command
 
         $namespace = rtrim($this->requiredString($config, 'lara-spec-first.generated.namespace'), '\\');
 
-        // Shared with the build plan, the scaffold planner and the writer, so the three
-        // ask the autoloader the same question at the same moment: existence, once
-        // Composer's negative-lookup cache has been read, does not change again
-        // during this command's own run.
+        // One lookup for the build plan, the scaffold planner and the writer, so all
+        // three ask existence through the same loaders.
         $lookup = CustomControllerLookup::fromAutoloader();
         $read = $this->select($form, $specPath, $remote);
 
@@ -242,7 +240,7 @@ final class MakeCommand extends Command
      * the document as read already covered it; a name someone typed can claim a short name another operation's
      * `x-controller` already takes, which only the build would refuse, after the specification was edited. It is
      * planned once the prompt returns rather than inside the prompt's `validate`, which Laravel Prompts runs again on
-     * every keystroke after a failed submit.
+     * every keystroke after a failed submit. A refusal ends the command: there is no loop to ask again.
      *
      * @param  list<Operation>  $document  every operation, as read before the offer
      * @return bool whether the document now carries the extension

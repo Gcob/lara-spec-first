@@ -274,7 +274,7 @@ it('reports a missing specification the way the build does', function (): void {
  * PHP cannot declare, two operations claiming one request) are the very reasons that class could not compile. A class
  * written first stays: the command never overwrites a file a developer owns.
  *
- * @see docs/guide/code-generation/scaffolding.md — "Three refusals"
+ * @see docs/guide/code-generation/scaffolding.md — "Four refusals"
  */
 
 /**
@@ -451,8 +451,8 @@ it('refuses a singular form when another operation would stop the build', functi
         ->and(is_dir(scaffoldGeneratedTree()))->toBeFalse();
 });
 
-it('refuses a bulk form before listing or asking when the build would refuse', function (array $arguments): void {
-    specificationOf(acceptedOperation().refusedOperation());
+it('refuses a bulk form before listing or asking when the build would refuse', function (array $arguments, string $refusedTag): void {
+    specificationOf(acceptedOperation().refusedOperation($refusedTag));
 
     $output = make($arguments + ['--yes' => true, '--no-interaction' => true], 1);
 
@@ -461,8 +461,9 @@ it('refuses a bulk form before listing or asking when the build would refuse', f
         ->and(scaffoldedFiles())->toBe([])
         ->and(is_dir(scaffoldGeneratedTree()))->toBeFalse();
 })->with([
-    'every operation' => [['--all' => true]],
-    'every operation of a tag' => [['--tag' => 'Users']],
+    'every operation' => [['--all' => true], 'Users'],
+    // The refused operation is outside the tag, so only a plan of the whole document can refuse it.
+    'every operation of a tag' => [['--tag' => 'Users'], 'Other'],
 ]);
 
 it('refuses before offering the row when the document would not build', function (): void {
