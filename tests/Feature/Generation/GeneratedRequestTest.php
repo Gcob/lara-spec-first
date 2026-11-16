@@ -1570,6 +1570,61 @@ it('gives a collision no rule, so a form value passes unchecked and does not rea
         ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => 'anything'])[0])->toBe(422);
 });
 
+/**
+ * A `POST` with a form body made of the given properties, every one an integer but the ones named in `$strings`.
+ *
+ * @param  list<string>  $names
+ * @param  list<string>  $strings
+ */
+function postWithBracketedNames(string $mediaType, array $names, bool $closed, array $strings = []): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/bracketed'),
+        operationId: 'sendBracketed',
+        requestBody: new RequestBody([$mediaType => new Schema(
+            types: [SchemaType::Object],
+            properties: array_map(
+                static fn (string $name): Schema => new Schema(types: [in_array($name, $strings, true) ? SchemaType::String : SchemaType::Integer]),
+                array_combine($names, $names),
+            ),
+            additionalProperties: $closed ? false : null,
+        )], true),
+    );
+}
+
+// `filter[a]` and `filter[a][b]` are one key to a rule: a rule on either would refuse the other's valid value. Neither
+// has one, so either side passes. The closed body still refuses what lands beside them, and the level the first one is
+// delivered at stays open for its own value. Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
+it('accepts either side of a collision below a bracketed name, and refuses an undeclared key beside it', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithBracketedNames($mediaType, ['filter[a]', 'filter[a][b]', 'filter[c]'], closed: true, strings: ['filter[a]']));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => 'x']])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['b' => '1']]])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['evil' => '1']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['c' => 'x']])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// The two names have no rule, so `formPaths` does not hand their values to `dto()`: they are `Optional` there, and a
+// valid `filter[a]=x` stops reaching it (D47).
+it('leaves both names of a collision below a bracketed name out of dto', function (): void {
+    $class = emittedRequestClass(postWithBracketedNames('multipart/form-data', ['filter[a]', 'filter[a][b]', 'plain'], closed: false, strings: ['filter[a]', 'plain']));
+
+    expect(dtoThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => 'x'], 'plain' => 'x']))->toBe([200, ['plain' => 'x']])
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['b' => '1']], 'plain' => 'x']))->toBe([200, ['plain' => 'x']]);
+});
+
+// Green before this change: the kernel already refused these, and only the unit test of the rule shape said so.
+it('refuses what lands beside a name bracketed more than once in a closed form body', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithBracketedNames($mediaType, ['filter[created][gte]', 'filter[x]'], closed: true));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['created' => ['gte' => '1'], 'x' => '2']])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['evil' => '1']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => 'abc'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['created' => ['lt' => '5']]])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
 // PHP renames a part of `$_FILES` the way it does a field (`my.file` arrives as `my_file`), so a
 // required upload under a dotted name is judged by the key it arrives as, and read back by `dto()`.
 it('judges and builds an upload whose part name PHP rewrites', function (): void {

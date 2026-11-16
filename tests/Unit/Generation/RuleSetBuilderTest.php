@@ -2140,6 +2140,92 @@ it('leaves the head of a bracketed name open when the body is open', function ()
     expect(array_keys($set->rules))->toBe(['page.size']);
 });
 
+// `filter[a]` is `filter => [a => ...]` and `filter[a][b]` is `filter => [a => [b => ...]]`: the second lands below the
+// key the first uses, whatever the depth, so no rule can tell their values apart. One finding per pair, and none for
+// names that only share a level or start alike.
+it('treats a bracketed name below another bracketed name as a collision', function (bool $closed, array $names, array $unchecked, int $collisions, array $kept): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($names)),
+        additionalProperties: $closed ? false : null,
+    )]));
+
+    $found = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'is delivered by a form as')));
+
+    expect($found)->toHaveCount($collisions)
+        ->and(array_keys($set->rules))->toBe($kept)
+        ->and(array_keys($set->uncheckedNames))->toEqualCanonicalizing($unchecked);
+
+    if ($collisions === 1) {
+        expect($found[0])->toStartWith('`filter[a][b]` is delivered by a form as `filter.a.b`, below the key `filter.a` that `filter[a]` uses');
+    }
+})->with([
+    'an open body' => [false, ['filter[a]', 'filter[a][b]'], ['filter[a][b]', 'filter[a]'], 1, []],
+    // The closing rule of `filter` stays, and neither name has a rule of its own.
+    'a closed body' => [true, ['filter[a]', 'filter[a][b]'], ['filter[a][b]', 'filter[a]'], 1, ['filter']],
+    'a chain of three' => [false, ['filter', 'filter[a]', 'filter[a][b]'], ['filter[a]', 'filter[a][b]', 'filter'], 3, []],
+    'siblings at depth' => [false, ['filter[a][b]', 'filter[a][c]'], [], 0, ['filter.a.b', 'filter.a.c']],
+    'a name that only starts like the other' => [false, ['filter[a]', 'filter[ab][c]'], [], 0, ['filter.a', 'filter.ab.c']],
+]);
+
+// A form and JSON client share one rule set: `filter[a]` stays a literal key for JSON, which Laravel reads `[` in as a
+// plain character, so nothing collides there, and the JSON client keeps both type checks.
+it('keeps the literal rule keys of names below one another in a body that is JSON and a form', function (bool $closed): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'filter[a]' => new Schema(types: [SchemaType::String]),
+            'filter[a][b]' => new Schema(types: [SchemaType::Integer]),
+            ...($closed ? ['filter[c]' => new Schema(types: [SchemaType::Integer])] : []),
+        ],
+        additionalProperties: $closed ? false : null,
+    );
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $schema,
+        'multipart/form-data' => $schema,
+    ]));
+
+    expect($set->rules)->toBe([
+        'filter[a]' => ['sometimes', 'string'],
+        'filter[a][b]' => ['sometimes', 'integer'],
+        ...($closed ? ['filter[c]' => ['sometimes', 'integer']] : []),
+    ])
+        ->and($set->rules)->not->toHaveKey('filter')
+        ->and(array_keys($set->uncheckedNames))->toBe(['filter[a]', 'filter[a][b]', ...($closed ? ['filter[c]'] : [])])
+        ->and(implode("\n", $set->findings))->not->toContain('is delivered by a form as');
+})->with(['an open body' => [false], 'a closed body' => [true]]);
+
+// The levels above a collision close like those above any bracketed name, except the level a name is delivered at: a
+// value sits there (`filter[a]=x`), so `array:` would refuse it.
+it('closes the levels above a collision and leaves open the level a name is delivered at', function (array $properties, array $rules, array $closedKeys, string $finding, bool $says): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($properties)),
+        additionalProperties: false,
+    )]));
+
+    // `toEqual`: the closing rule is written after the rules of the names themselves.
+    expect($set->rules)->toEqual($rules)
+        ->and($set->closedKeys)->toBe($closedKeys)
+        ->and(implode("\n", $set->findings))->toContain($finding)
+        ->and(str_contains(implode("\n", $set->findings), 'closed to its declared names'))->toBe($says);
+})->with([
+    'a name beside the level it opens' => [
+        ['filter[a]', 'filter[a][b]', 'filter[c]'],
+        ['filter' => ['sometimes', 'array:a,c'], 'filter.c' => ['sometimes', 'integer']],
+        ['filter'],
+        'so the key check accepts `filter.a`',
+        true,
+    ],
+    'two names delivered under one bracketed key' => [
+        ['a.b[c]', 'a_b[c]'],
+        ['a_b' => ['sometimes', 'array:c']],
+        ['a_b'],
+        '`a.b[c]` and `a_b[c]` reach Laravel under one name, `a_b.c`',
+        false,
+    ],
+]);
+
 // `user.name` and `user_name` are one key once PHP has delivered them, so the closed root takes the
 // second for the first, and the file says so.
 it('says what a closed form body accepts that the contract does not', function (array $media): void {

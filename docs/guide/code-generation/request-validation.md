@@ -200,21 +200,29 @@ body read only as a form closes the head with its own rule, `'page' => ['sometim
 and `page=abc` are refused as the contract refuses them. A name with more brackets closes every level above its leaf:
 `filter[created][gte]` beside `filter[x]` gives `'filter' => ['sometimes', 'array:created,x']` and
 `'filter.created' => ['sometimes', 'array:gte']`, so `filter[evil]=1`, `filter=abc` and `filter[created][lt]=5` are
-refused. Only a level whose key `array:` cannot name (one with a comma in it) stays open, and the generated file says
-the key check accepts it. For a name with no bracket (`user.name`), nothing tells `user_name` apart from it: the key
-check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a bracketed
-name in a body that is JSON too, whose head is not closed. A name that collides with another (below) is already named by
-the collision finding, and when the key it arrives under is one the contract declares, the closed body says nothing more
-about it.
+refused. Only two kinds of level stay open, and the generated file says the key check accepts them: one whose key
+`array:` cannot name (a comma in it), and the key a declared name is delivered at, because a value can sit there and
+`array:` would refuse it (below). For a name with no bracket (`user.name`), nothing tells `user_name` apart from it: the
+key check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a
+bracketed name in a body that is JSON too, whose head is not closed. A name that collides with another (below) is
+already named by the collision finding, and when the key it arrives under is one the contract declares, the closed body
+says nothing more about it. A collided bracketed name closes the levels above it like any other: `filter[a]`,
+`filter[a][b]` and `filter[c]` give `'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and
+`filter.a` stays open for the value of `filter[a]`. Two names a form delivers under one bracketed key (`a.b[c]` beside
+`a_b[c]`, both `a_b.c`) close `a_b` to `c`.
 
 **Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
-as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), so
-the data cannot say which one was sent. Neither gets a rule, none takes part in `required_with` or `dependentRequired`
-(a `dependentRequired` it triggers says which dependency it loses), and their DTO properties are `Optional`. Two names
-that differ only by a character PHP rewrites also derive one PHP property name, so the DTO refuses them with its own
-error before this finding is reached; it is the bracketed case that gets here in a build. The same holds when the body
-is JSON as well: a rule for `page` would judge the array a form builds from `page[size]=3`, and a valid form client
-would be refused, so the JSON client loses the rule on `page` too, and the finding says neither name has one.
+as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), and
+so do `filter[a]` and `filter[a][b]`, at any depth: a name collides with another when the other's delivered path is a
+strict prefix of its own, step by step, so `filter[a]` beside `filter[ab][c]` is no collision. The data cannot say which
+one was sent. Neither gets a rule, none takes part in `required_with` or `dependentRequired` (a `dependentRequired` it
+triggers says which dependency it loses), and their DTO properties are `Optional`. Two names that differ only by a
+character PHP rewrites also derive one PHP property name, so the DTO refuses them with its own error before this finding
+is reached; it is the bracketed case that gets here in a build. The same holds when the body is JSON as well: a rule for
+`page` would judge the array a form builds from `page[size]=3`, and a valid form client would be refused, so the JSON
+client loses the rule on `page` too, and the finding says neither name has one. That holds for a top-level key only:
+below it (`filter[a]` beside `filter[a][b]`), a body that is JSON as well keeps both names as written, with their own
+type rules, since Laravel reads `[` as a plain character.
 
 **A body that is JSON and a form at once keeps the rule for the name the contract writes, and a form client's value is
 not checked.** A JSON client sends `user.name` exactly, and a rule keyed by it is right for that client. A form client

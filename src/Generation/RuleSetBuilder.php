@@ -556,7 +556,8 @@ final readonly class RuleSetBuilder
             // A bracketed name closes every level above its leaf: each level is an array whose keys are the
             // ones the contract declares below it. A name PHP only renamed (`user.name` as `user_name`) has no
             // level to close, and the key check accepts what it delivers.
-            $path = $walk->formPaths[$name] ?? null;
+            // A name that collided has no `formPaths` entry, and a body that is JSON as well never closes a level.
+            $path = $walk->formPaths[$name] ?? (isset($walk->withheld[$name]) && ! $walk->mixedBody ? self::deliveredPath($name) : null);
 
             if ($path === null || count($path) < 2) {
                 $accepted[$name] = $delivered;
@@ -570,20 +571,33 @@ final readonly class RuleSetBuilder
         }
 
         // A form-only body closes each level to the keys the contract declares below it. A key `array:` cannot
-        // name (a comma in it) leaves that level open, and the finding below names what it then accepts.
+        // name (a comma in it) leaves that level open, and so does the key a declared name is delivered at. The
+        // finding below names what the key check then accepts.
+        $deliveredAt = [];
+
+        foreach (array_keys($schema->properties) as $name) {
+            $path = self::deliveredPath((string) $name);
+
+            if ($path !== null) {
+                $deliveredAt[self::pathKey($path)] = true;
+            }
+        }
+
         foreach ($steps as $level => $below) {
             $level = (string) $level;
             $keys = array_values(array_unique(array_values($below)));
 
-            if (array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) === []) {
-                $walk->rules[$level] = ['sometimes', 'array:'.implode(',', $keys)];
+            // Why: a value can sit at the key a declared name is delivered at (`filter[a]=x`), and `array:` would
+            // refuse it, so that level stays open and the finding below names what the key check accepts.
+            if (isset($deliveredAt[$level]) || array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) !== []) {
+                foreach (array_keys($below) as $name) {
+                    $accepted[(string) $name] = $level;
+                }
 
                 continue;
             }
 
-            foreach (array_keys($below) as $name) {
-                $accepted[(string) $name] = $level;
-            }
+            $walk->rules[$level] = ['sometimes', 'array:'.implode(',', $keys)];
         }
 
         if ($accepted !== []) {
@@ -2380,9 +2394,9 @@ final readonly class RuleSetBuilder
      * contract's name.
      *
      * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name and a declared
-     * one that is equal to what it becomes, or a bracketed name under a declared top-level one. None of them gets a
-     * rule, and one finding names them. A body that is JSON as well gets the same, since a rule for the declared name
-     * would judge the array a form builds.
+     * one that is equal to what it becomes, or a bracketed name below another declared name, at any depth (`filter[a]`
+     * and `filter[a][b]`). None of them gets a rule, and one finding names them. A body that is JSON as well gets the
+     * same, since a rule for the declared name would judge the array a form builds.
      *
      * **A body that is JSON as well keeps the rule keyed by the name the contract writes**, since a JSON client sends
      * exactly that, and the value a form client sends under the other name is not checked: no one rule set holds both
@@ -2459,15 +2473,25 @@ final readonly class RuleSetBuilder
 
             $groups[$key][] = $name;
 
-            // A bracketed name delivers below a top-level key, which another name may be.
-            $head = self::ruleKey($paths[$name][0] ?? '');
+            // A bracketed name delivers below a key another name uses: a strict prefix of its path, compared step by
+            // step (`filter[a]` is no prefix of `filter[ab][c]`). Beside JSON, only a top-level key counts: below it,
+            // the names keep their literal rule keys, which Laravel reads `[` in as a plain character.
+            $path = $paths[$name] ?? [];
 
-            if (count($paths[$name] ?? []) > 1) {
-                foreach ($names as $other) {
-                    if ($other !== $name && $effective[$other] === $head) {
-                        $overlaps[] = [$name, $other, $key, $head];
-                    }
+            foreach ($names as $other) {
+                $prefix = $paths[$other] ?? null;
+
+                if (
+                    $prefix === null
+                    || $other === $name
+                    || count($prefix) >= count($path)
+                    || array_slice($path, 0, count($prefix)) !== $prefix
+                    || (count($prefix) > 1 && $walk->mixedBody)
+                ) {
+                    continue;
                 }
+
+                $overlaps[] = [$name, $other, $key, self::pathKey($prefix)];
             }
         }
 
