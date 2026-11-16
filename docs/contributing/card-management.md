@@ -599,9 +599,9 @@ newcomer cannot guess is `Ready to publish`, which is work already merged and wa
 reviewer, and that is what separates it from `In review`.
 
 **`Order` is the queue, and only a `Todo` card needs one.** The lowest number is worked first, ties go to the lower card
-number, and a `Todo` card with none comes last. Steps of 10 leave room to slot a card in by hand (`15`) without
-renumbering the others. A lot card is never in the queue, so it carries none. The field is a Number on the board, not a
-body line, so moving a card in the queue is one edit and no card is rewritten.
+number, and a `Todo` card with none comes last. Steps of 10 leave room to slot a card in by hand (`15`, or a decimal
+such as `15.5` once `15` is taken) without renumbering the others. A lot card is never in the queue, so it carries none.
+The field is a Number on the board, not a body line, so moving a card in the queue is one edit and no card is rewritten.
 
 **`Milestone` means three things.** A `0.x.y` milestone is the release a card ships in, and it closes when that release
 is tagged. `1.0` is the bar for a stable release, not a release to plan for: what a team needs to write its next
@@ -641,10 +641,9 @@ rewritten, and going hunting for it across sketches no lot has cut yet would be 
 `just check-markers --online` requires every open card carrying it to be named by at least one marker. The rule and its
 consequence are in [`CONTRIBUTING.md`](../../CONTRIBUTING.md#deferred-work-leaves-a-marker).
 
-**The `edge-case` label marks a gap that waits with a reason.** It is the third label a card can carry beside
-`nice-to-have` and `follow-up`, and the only one with a rule:
-[no milestone means not planned](#no-milestone-means-not-planned), and the card says why it can wait and what ends the
-wait.
+**The `edge-case` label marks a gap that waits with a reason.** It sits beside `nice-to-have` and `follow-up`, which
+carry no rule of their own: [no milestone means not planned](#no-milestone-means-not-planned), and the card says why it
+can wait and what ends the wait.
 
 **The `waiting-on-maintainer` label is the other one a card can carry for a question.** `decision` says what a card is
 made of, and `waiting-on-maintainer` says whose move it is now. The two are not the same, and
@@ -654,7 +653,7 @@ made of, and `waiting-on-maintainer` says whose move it is now. The two are not 
 
 `just status` answers "what is in flight, and what comes next?" from the board, GitHub and git, so nobody has to open
 the board and cross-check it against the branches. It prints a one-line header (the repository, `main`, whether CI on
-`main` is green, and a drift count) and then:
+`main` is green, counting its check runs and its commit statuses, and a drift count) and then:
 
 - **Now:** every open card `In review` or `In Progress`, with its pull requests and how each one's CI stands (a red one
   names the failed checks), or, when it has no pull request, its branches on the upstream and how far ahead of `main`
@@ -663,7 +662,6 @@ the board and cross-check it against the branches. It prints a one-line header (
 - **Release:** the open release milestone with the lowest version, how many of its issues are closed, how many of those
   wait to be published and how many are done, and its open cards grouped by status. `1.0` is never shown here, since it
   is the bar for a stable release and not the next one.
-
 - **Maintainer's turn:** the open cards that carry the `waiting-on-maintainer` label, by number, with their status and
   either the question posted on each or `decision card`. When nothing waits, it says so.
 
@@ -674,25 +672,28 @@ for them.
 
 **A pull request serves the cards it closes, and otherwise the card its branch names.** The branch is
 `{type}/{card}/{context}`, as [the branch names](../../CONTRIBUTING.md#branch-names) say, so the second segment is a
-card number. A branch whose name ends in `-claude-spike` is a trial, not a card's work, and is skipped.
+card number. A branch whose name ends in `-spike` is a trial, not a card's work, and is skipped.
 
 **Where a closed card belongs.** A closed card is in `Done` when it is a `Docs`, `Decision` or `Lot` card (the docs site
 publishes on merge, and a lot card closes with its lesson), or when it was closed as not planned, since that ships
-nothing. Any other closed card is in `Ready to publish` until its release is tagged, and then in `Done`. A card on `1.0`
-or with no milestone has no release to wait for, so it is never drift for being in `Done`.
+nothing. Any other closed card is in `Ready to publish` until the next release is tagged, and then in `Done`: the card
+ships in the first release tagged after it closed, whatever its milestone, so a closed card on `1.0` waits there too. A
+card in `Done` on `1.0` or with no milestone is never drift for it, since the release it shipped in is not on the card.
 
 **Drift between the board and the issues:**
 
 - An open issue that is not on the board.
 - An open card in `Ready to publish` or `Done`: close the issue, or move the card back.
 - A closed card in neither of those two, or in the one it does not belong in by the paragraph above.
-- A card in `Ready to publish` whose release milestone (`0.x.y`) is closed, which means the release shipped, and a card
-  in `Done` whose release milestone is still open, which means it did not.
+- A card in `Ready to publish` that closed before the latest release was tagged (`v<major>.<minor>.<patch>`, the newest
+  by date, a prerelease excepted), which means it shipped in that release, whatever its milestone. And a card in `Done`
+  whose release milestone (`0.x.y`) is still open, which means it did not ship.
 
 **Drift between the board, the pull requests and git:**
 
 - An open pull request that serves no card, or a card that is closed or not on the board.
-- A card an open pull request serves, draft included, that is not `In review`.
+- A card an open pull request serves, draft included, that is not `In review`. A lot card is exempt: its lesson pull
+  request is not work on the card, and a lot card never goes `In review`.
 - A card `In review` that no open pull request serves. When a merged one does, the line names both fixes: close the card
   if every box of its `Done when` is ticked, and move it back to `In Progress` if not, since a card can take several
   pull requests.
@@ -706,9 +707,10 @@ holds `## Assumptions` or `## Discovery` (a `Todo` card has nothing left open, a
 [above](#a-todo-card-has-nothing-left-open)), or one with no `## Done when`.
 
 **Drift in the label and its question:** a card carries `waiting-on-maintainer` with no question posted on it (unless it
-is a `decision` card, which needs none), a card has an open question and no label, a closed card still carries the
-label, and a `decision` card in `Todo`, `In Progress` or `In review` without it. A `decision` card in `Backlog` waits on
-its lot rather than on an answer, so it is never drift for lacking the label.
+is a `decision` card, which needs none), a card has an open question and no label (a `decision` card in `Backlog`
+excepted, see below), a closed card still carries the label, and a `decision` card in `Todo`, `In Progress` or
+`In review` without it. A `decision` card in `Backlog` waits on its lot rather than on an answer, so it is never drift
+for lacking the label.
 
 **Drift in the milestones:** a card in `Todo`, `In Progress`, `In review` or `Ready to publish` with no milestone, an
 open `edge-case` card with no `## Why it can wait` section, and an open `edge-case` card on a release milestone
@@ -720,8 +722,9 @@ same page, byte for byte. It needs `gh` signed in with the `project` scope, the 
 [the agent guide](../../AGENTS.md)), so CI does not run it.
 
 **It stops rather than mix sources.** Exit `0` means it printed and found no drift, and exit `1` that it printed and
-found some. Exit `2` means it could not: `gh` or git failed, or the checkout is not this repository. In a fork's clone
-`gh` resolves the fork, whose pull requests would sit beside this board, so it stops and names the fix,
+found some (`just status` ends with that exit code and no "Recipe failed" line of its own, since the page is the
+answer). Exit `2` means it could not: `gh` or git failed, or the checkout is not this repository. In a fork's clone `gh`
+resolves the fork, whose pull requests would sit beside this board, so it stops and names the fix,
 `gh repo set-default Gcob/lara-spec-first`. When no git remote names this repository it stops and names
 `git remote add upstream https://github.com/Gcob/lara-spec-first.git`.
 

@@ -170,8 +170,10 @@ writes.
 
 1. **Packagist picks the tag up** through the GitHub hook. Check the version on
    [`packagist.org/packages/gcob/lara-spec-first`](https://packagist.org/packages/gcob/lara-spec-first).
-2. **The release's milestone closes, and every card it carries moves from `Ready to publish` to `Done`.** That is the
-   board rule, and it is the factory's. `just status` then stops showing that release and shows the next one.
+2. **The release's milestone closes, and every card in `Ready to publish` that closed before the tag moves to `Done`.**
+   That is the board rule, and it is the factory's: a card ships in the first release tagged after it closes, so this
+   includes a card on `1.0`, which no release milestone carries. `just status` then stops showing that release and shows
+   the next one, and flags any card it left behind.
 
 ## What this document does not cover
 

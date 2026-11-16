@@ -19,7 +19,8 @@ declare(strict_types=1);
  *   - Release: the open release milestone (`0.x.y`) with the lowest version, how many
  *     of its issues are closed, and its open cards by status. `1.0` is the V1 bar, not
  *     a release, so it never shows here;
- *   - Maintainer's turn, which prints its empty answer for now;
+ *   - Maintainer's turn: the open cards that carry the waiting label, with the question
+ *     posted on each;
  *   - Drift: every place where the board, the issues, the pull requests, git and CI
  *     disagree, one line each, with the fix. The header carries the count.
  *
@@ -102,7 +103,7 @@ query($endCursor: String) {
       items(first: 100, after: $endCursor) {
         pageInfo { hasNextPage endCursor }
         nodes {
-          content { __typename ... on Issue { number body } }
+          content { __typename ... on Issue { number body repository { nameWithOwner } } }
           fieldValues(first: 100) {
             pageInfo { hasNextPage }
             nodes {
@@ -128,6 +129,7 @@ query($owner: String!, $name: String!, $endCursor: String) {
         title
         state
         stateReason
+        closedAt
         milestone { title }
         labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
       }
@@ -226,9 +228,10 @@ function build_report(string $root): array
     $milestones = read_milestones($root);
     $main = read_main($root, $upstream);
     $branches = read_branches($root, $upstream);
+    $release = read_latest_release($root);
 
     $questions = open_questions($comments);
-    $findings = find_drift($cards, $questions, $pullRequests, $merged, $milestones, $main, $branches);
+    $findings = find_drift($cards, $questions, $pullRequests, $merged, $milestones, $main, $branches, $release);
     $sections = [
         sprintf('%s · main %s · CI %s · drift %d', substr(REPOSITORY, (int) strpos(REPOSITORY, '/') + 1), $main['sha'], $main['ci'], count($findings)),
         section_now($cards, $pullRequests, $branches),
@@ -426,9 +429,21 @@ function upstream_remote(string $root): string
 }
 
 /**
+ * A card's `Order`: a whole number stays an integer, so `10` and `10.0` are one value, and a decimal stays as it is.
+ */
+function order_of(mixed $value): int|float|null
+{
+    if (! is_int($value) && ! is_float($value)) {
+        return null;
+    }
+
+    return floor((float) $value) === (float) $value ? (int) $value : $value;
+}
+
+/**
  * Every issue of the repository, with what the board says about it.
  *
- * @return array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>
+ * @return array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>
  */
 function read_cards(string $root): array
 {
@@ -438,6 +453,13 @@ function read_cards(string $root): array
         $content = $item['content'] ?? null;
 
         if (! is_array($content) || ($content['__typename'] ?? null) !== 'Issue' || ! is_int($content['number'] ?? null)) {
+            continue;
+        }
+
+        // The board may hold issues of other repositories: one with this card's number is not this card.
+        $repository = is_array($content['repository'] ?? null) ? $content['repository']['nameWithOwner'] ?? null : null;
+
+        if (! is_string($repository) || strcasecmp($repository, REPOSITORY) !== 0) {
             continue;
         }
 
@@ -454,7 +476,7 @@ function read_cards(string $root): array
         $items[$content['number']] = [
             'status' => is_string($fields['Status'] ?? null) ? $fields['Status'] : null,
             'kind' => is_string($fields['Kind'] ?? null) ? $fields['Kind'] : null,
-            'order' => is_int($fields['Order'] ?? null) || is_float($fields['Order'] ?? null) ? (int) $fields['Order'] : null,
+            'order' => order_of($fields['Order'] ?? null),
             'body' => is_string($content['body'] ?? null) ? $content['body'] : '',
         ];
     }
@@ -479,6 +501,7 @@ function read_cards(string $root): array
             'title' => $issue['title'],
             'state' => $issue['state'],
             'stateReason' => is_string($issue['stateReason'] ?? null) ? $issue['stateReason'] : null,
+            'closedAt' => is_string($issue['closedAt'] ?? null) ? $issue['closedAt'] : null,
             'milestone' => is_string($milestone) ? $milestone : null,
             'labels' => $labels,
             'onBoard' => $item !== null,
@@ -653,6 +676,22 @@ function read_main(string $root, string $upstream): array
         }
     }
 
+    // An outside CI reports a commit status, not a check run, and is as much a part of `main` being red as one.
+    foreach (rest_pages($root, 'repos/{owner}/{repo}/commits/main/status?per_page=100', 'commit statuses on main') as $page) {
+        foreach (is_array($page['statuses'] ?? null) ? $page['statuses'] : [] as $status) {
+            if (! is_array($status)) {
+                throw new RuntimeException('gh answered something unexpected for the commit statuses on main.');
+            }
+
+            $state = $status['state'] ?? null;
+            $checks[] = [
+                'name' => is_string($status['context'] ?? null) ? $status['context'] : '?',
+                'finished' => $state !== 'pending',
+                'passed' => $state === 'success',
+            ];
+        }
+    }
+
     return [
         'sha' => git($root, ['rev-parse', '--short', $upstream.'/main']),
         'ci' => describe_checks($checks),
@@ -673,8 +712,8 @@ function read_branches(string $root, string $upstream): array
     foreach (explode("\n", git($root, ['for-each-ref', '--format=%(refname)', 'refs/remotes/'.$upstream])) as $ref) {
         $name = substr($ref, strlen($prefix));
 
-        // A phase-A trial is not the card's work, and `HEAD` and `main` are not a card's branch.
-        if ($ref === '' || in_array($name, ['HEAD', 'main'], true) || str_ends_with($name, '-claude-spike')) {
+        // A trial branch (`*-spike`) is not the card's work, and `HEAD` and `main` are not a card's branch.
+        if ($ref === '' || in_array($name, ['HEAD', 'main'], true) || str_ends_with($name, '-spike')) {
             continue;
         }
 
@@ -684,6 +723,29 @@ function read_branches(string $root, string $upstream): array
     ksort($branches);
 
     return $branches;
+}
+
+/**
+ * The latest release: the newest `v<major>.<minor>.<patch>` tag by the date it was made, as the upstream has it (the
+ * fetch brings the tags that point into its history). A prerelease tag is no release. Null when there is none.
+ *
+ * @return array{name: string, at: int}|null
+ */
+function read_latest_release(string $root): ?array
+{
+    $latest = null;
+
+    foreach (explode("\n", git($root, ['for-each-ref', '--format=%(refname:strip=2) %(creatordate:unix)', 'refs/tags'])) as $line) {
+        if (preg_match('/^(v\d+\.\d+\.\d+) (\d+)$/', $line, $found) !== 1) {
+            continue;
+        }
+
+        if ($latest === null || (int) $found[2] > $latest['at']) {
+            $latest = ['name' => $found[1], 'at' => (int) $found[2]];
+        }
+    }
+
+    return $latest;
 }
 
 /**
@@ -787,20 +849,21 @@ function describe_checks(array $checks): string
 /**
  * Every place where the board, the issues, the pull requests, git and CI disagree.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  array<int, string>  $questions
  * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
  * @param  list<array{number: int, serves: list<int>}>  $merged
  * @param  list<array{title: string, open: bool}>  $milestones
  * @param  array{sha: string, ci: string, failed: list<string>}  $main
  * @param  array<string, int>  $branches
+ * @param  array{name: string, at: int}|null  $release
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
  */
-function find_drift(array $cards, array $questions, array $pullRequests, array $merged, array $milestones, array $main, array $branches): array
+function find_drift(array $cards, array $questions, array $pullRequests, array $merged, array $milestones, array $main, array $branches, ?array $release): array
 {
     $findings = [
         ...drift_main($main),
-        ...drift_board($cards, $milestones),
+        ...drift_board($cards, $milestones, $release),
         ...drift_pull_requests($cards, $pullRequests, $merged),
         ...drift_branches($cards, $pullRequests, $branches),
         ...drift_queue($cards),
@@ -871,11 +934,12 @@ function home_of_closed(array $card): array
 /**
  * B1 to B6: the board against the issues.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  list<array{title: string, open: bool}>  $milestones
+ * @param  array{name: string, at: int}|null  $release  the latest release, which a card closed before it shipped in
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
  */
-function drift_board(array $cards, array $milestones): array
+function drift_board(array $cards, array $milestones, ?array $release): array
 {
     $releaseIsOpen = [];
 
@@ -890,7 +954,7 @@ function drift_board(array $cards, array $milestones): array
     foreach ($cards as $card) {
         $number = $card['number'];
         $status = $card['status'] ?? 'No status';
-        $release = $card['milestone'] !== null ? ($releaseIsOpen[$card['milestone']] ?? null) : null;
+        $opening = $card['milestone'] !== null ? ($releaseIsOpen[$card['milestone']] ?? null) : null;
 
         if (! $card['onBoard']) {
             // A closed issue that never reached the board is old history, not drift.
@@ -915,9 +979,10 @@ function drift_board(array $cards, array $milestones): array
             $findings[] = finding('B3', $number, null, 'Closed, but '.$status.'. Move it to '.$home['status'].'.');
         } elseif ($home['status'] === STATUS_DONE && $status === STATUS_READY_TO_PUBLISH) {
             $findings[] = finding('B4', $number, null, 'Ready to publish, but '.$home['why'].'. Move it to Done.');
-        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && $release === false) {
-            $findings[] = finding('B5', $number, null, 'Ready to publish, but its release '.$card['milestone'].' has shipped. Move it to Done.');
-        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && $release === true) {
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && $release !== null && $card['closedAt'] !== null && strtotime($card['closedAt']) < $release['at']) {
+            // Whatever its milestone: a card on `1.0` waits for the next release like any other, and shipped in it.
+            $findings[] = finding('B5', $number, null, 'Ready to publish, but it was released in '.$release['name'].'. Move it to Done.');
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && $opening === true) {
             $findings[] = finding('B6', $number, null, 'Done, but its release '.$card['milestone'].' has not shipped. Move it back to Ready to publish.');
         }
     }
@@ -938,7 +1003,7 @@ function pull_request_numbers(array $numbers): string
 /**
  * G1 to G4: the board against the pull requests.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
  * @param  list<array{number: int, serves: list<int>}>  $merged
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
@@ -972,7 +1037,8 @@ function drift_pull_requests(array $cards, array $pullRequests, array $merged): 
         $status = $card['status'] ?? 'No status';
         $open = array_column(array_filter($pullRequests, static fn (array $pr): bool => in_array($number, $pr['serves'], true)), 'number');
 
-        if ($open !== [] && $status !== STATUS_IN_REVIEW) {
+        // A lot card never goes `In review`: its lesson pull request is not work on the card.
+        if ($open !== [] && $status !== STATUS_IN_REVIEW && $card['kind'] !== 'Lot') {
             $findings[] = finding('G3', $number, null, $status.', but '.pull_request_numbers($open).(count($open) === 1 ? ' serves' : ' serve').' it. Move it to In review.');
         }
 
@@ -1002,7 +1068,7 @@ function drift_pull_requests(array $cards, array $pullRequests, array $merged): 
  * G5 and G6: the board against the upstream's branches. A lot card is exempt: nobody works on one directly. A card an
  * open pull request serves is G3's, not these.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
  * @param  array<string, int>  $branches
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
@@ -1049,7 +1115,7 @@ function drift_branches(array $cards, array $pullRequests, array $branches): arr
 /**
  * O1, O2, T1 and T2: the `Todo` cards, which are the queue.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
  */
 function drift_queue(array $cards): array
@@ -1093,7 +1159,7 @@ function drift_queue(array $cards): array
 /**
  * W1 to W4: the label that says the next move is the maintainer's, against the questions posted on the cards.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  array<int, string>  $questions
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
  */
@@ -1118,7 +1184,7 @@ function drift_waiting(array $cards, array $questions): array
         // A decision card from Todo on is the maintainer's whether or not a question is posted, so W4 speaks for it.
         if ($isDecision && ! $waits && in_array($card['status'], [STATUS_TODO, STATUS_IN_PROGRESS, STATUS_IN_REVIEW], true)) {
             $findings[] = finding('W4', $number, null, 'A decision card in '.$card['status'].' waits on the maintainer, but lacks '.WAITING_LABEL.'. Add the label.');
-        } elseif ($hasQuestion && ! $waits) {
+        } elseif ($hasQuestion && ! $waits && ! ($isDecision && $card['status'] === STATUS_BACKLOG)) {
             $findings[] = finding('W2', $number, null, 'A question is open, but the card does not carry '.WAITING_LABEL.'. Add the label.');
         }
 
@@ -1133,7 +1199,7 @@ function drift_waiting(array $cards, array $questions): array
 /**
  * M1, E1 and E2: a card past `Backlog` has a milestone, and an edge case waits with no release.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
  */
 function drift_milestones(array $cards): array
@@ -1188,7 +1254,7 @@ function commits(int $count): string
 }
 
 /**
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
  * @param  array<string, int>  $branches
  */
@@ -1240,7 +1306,7 @@ function section_now(array $cards, array $pullRequests, array $branches): string
 }
 
 /**
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  */
 function section_next(array $cards): string
 {
@@ -1278,7 +1344,7 @@ function section_next(array $cards): string
 }
 
 /**
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  list<array{title: string, open: bool}>  $milestones
  */
 function section_release(array $cards, array $milestones): string
@@ -1334,7 +1400,7 @@ function section_release(array $cards, array $milestones): string
 /**
  * The open cards that carry the waiting label, by number, with the question posted on each.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  array<int, string>  $questions
  */
 function section_maintainer(array $cards, array $questions): string

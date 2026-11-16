@@ -156,9 +156,12 @@ card-context card:
 
 # `status` runs on the host too, and wraps a script, not a Composer script: it needs gh and a token with the project
 # scope, and the PHP image has no gh. It only reads GitHub and git, and writes nothing.
+# Drift is exit 1 by design, so the recipe keeps that exit code and drops just's own "Recipe failed" line: the page is
+# the answer, and a real error (exit 2) already says what went wrong on standard error.
 # What it prints and how to read it: docs/contributing/card-management.md, "What `just status` prints".
 
 # Print what is in flight, what comes next and the next release.
+[no-exit-message]
 status:
     php scripts/status.php
 
