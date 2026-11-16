@@ -58,6 +58,21 @@ Boundaries worth writing down when the card touches them:
 
 -
 
+## Why it can wait
+
+<!--
+Edge-case cards only, the ones carrying the `edge-case` label and no release milestone. The
+reason: what passes today that should not, or what is refused for a shape nobody has met, and
+why that costs nothing yet. Then `Moves to Todo when:` and its triggers as a list, each one
+something you could see happen: a user reports it, a card touches the same code, the 1.0 gate
+opens. When one fires, take the label off, give the card a release milestone and rewrite it
+for Todo. Delete this section on every other card.
+-->
+
+Moves to Todo when:
+
+-
+
 ## Where to look
 
 <!--
@@ -97,7 +112,7 @@ Lot:
 Kind:
 
 <!--
-Six rules this form assumes. Each names where its reasoning lives, and what makes a card
+Seven rules this form assumes. Each names where its reasoning lives, and what makes a card
 the right size is in docs/contributing/card-management.md.
 
 - Cite a file or a line as a permalink pinned to a commit, never as a bare path.
@@ -112,6 +127,9 @@ the right size is in docs/contributing/card-management.md.
 - Nothing runs the scenarios above. `Given` is a state, `When` is one trigger, `Then` is
   something you could watch happen. What other cards have done with them, none of it binding,
   is in card-management.md#an-acceptance-scenario-is-a-sentence-nothing-runs
+- A card blocked by a question for the maintainer carries the `waiting-on-maintainer` label, and the
+  question is posted as a comment with its marker line, which the decision answers the same way.
+  card-management.md#a-card-that-waits-on-the-maintainer
 - Whoever starts the work checks the card against the tree first. A decision that no longer
   holds stops the work and goes back to whoever settled it, rather than being decided again.
   card-management.md#a-todo-card-has-nothing-left-open

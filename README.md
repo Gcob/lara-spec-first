@@ -107,6 +107,9 @@ is in flight, what is done, and in which order. This section is the shape of the
 **Where we are:** Phase 1 shipped as `0.1.0`, and Phase 2 is in progress: `0.2.0` shipped its first half, the generated
 request validation and the input DTOs. The response side is next.
 
+**The next release** is the board filtered on its milestone, the open one named `0.x.y` with the lowest version, and
+`just status` prints it.
+
 ### Phase 1: the foundation
 
 One operation in a specification becomes one route that answers, and everything the package will not honor is said out

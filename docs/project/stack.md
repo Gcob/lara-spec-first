@@ -101,7 +101,8 @@ Two consequences shaped the floor:
 A stack decision is a durable commitment, not an implementation detail:
 
 - **Record the reasoning, not just the value.** Every row above should let a reader six months from now understand _why_
-  without redoing the research.
+  without redoing the research. A choice that [earns an ADR](./decisions/index.md#an-adr-is-for-what-a-newcomer-needs),
+  a support floor for one, keeps a line in its row and links the ADR.
 - **Move a row to `Decided` in the same change that installs it.** The table drifts fastest when a dependency lands and
   the status is updated "later".
 - **Raising a minimum version is breaking.** PHP or Laravel floors, dropped majors, and removed extension points all
