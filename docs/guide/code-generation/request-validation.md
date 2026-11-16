@@ -464,9 +464,10 @@ gets when it cannot be `null`, open root or closed.
 rewrites (`user.name` arrives as `user_name`) stays unchecked there, as it is today, so it is neither in the siblings'
 rules nor in `REQUIRED_KEYS`, and the form's answers are the ones it had.
 
-**What a client sees change is one message.** A required key missing beside a sent sibling now reports `present_with`'s
-message ("must be present when ... is present") where it reported `present` or `required`; a key missing from `{}`
-reports the rule it always did. The status and the keys are the same. And the generated file no longer carries the
+**What a client sees change is two messages.** A required key missing beside a sent sibling now reports `present_with`'s
+message ("must be present when ... is present") where it reported `present` or `required`, and an empty or `null`
+integer, number or boolean reports `filled`'s ("must have a value") where it reported `required`'s; a key missing from
+`{}` reports the rule it always did. The status and the keys are the same. And the generated file no longer carries the
 finding about a form with no field when the body's required-key check refuses it.
 
 **A required integer, number or boolean also gets `filled`.** `required` is implicit, so it refused `""` for them even

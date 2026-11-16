@@ -110,10 +110,11 @@ tags: [versions, conventions, planning]
   `present` on each required key refused a payload the contract allows. Each required key now asks through its siblings
   (`present_with`), as an optional body's do, and the generated request still refuses `{}` and every other body the
   contract refused, on the same keys and with the same status, with or without Laravel's `ConvertEmptyStringsToNull`:
-  only `null` passes, and `dto()` returns `null` for it. One message changes: a key missing beside a sent sibling
-  reports `present_with`'s ("must be present when ... is present") where it reported `present` or `required`. A form
-  client of a body that is JSON and a form gets the same statuses and keys. This closes the refusal the `0.2.0`
-  `Known limits` lists for [#111](https://github.com/Gcob/lara-spec-first/issues/111).
+  only `null` passes, and `dto()` returns `null` for it. Two messages change, and no status or key does: a key missing
+  beside a sent sibling reports `present_with`'s ("must be present when ... is present") where it reported `present` or
+  `required`, and an empty or `null` integer, number or boolean reports `filled`'s ("must have a value") where it
+  reported `required`'s. A form client of a body that is JSON and a form gets the same statuses and keys. This closes
+  the refusal the `0.2.0` `Known limits` lists for [#111](https://github.com/Gcob/lara-spec-first/issues/111).
 
 ## [0.2.0] - 2026-11-15
 
