@@ -276,6 +276,36 @@ it('emits no root check for a form body, and the empty-content check only when i
     'optional' => [false, false],
 ]);
 
+// An optional JSON body that requires properties cannot refuse `{}` by a rule, so the request reads the raw content:
+// the keys are one constant, keyed by name and valued by the rule their failure carries, and one loop adds them.
+it('emits the required-key check only for an optional body read as JSON', function (string $media, bool $bodyRequired, array $required, bool $expected): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody([$media => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'name' => new Schema(types: [SchemaType::String]),
+                'size' => new Schema(types: [SchemaType::Integer]),
+            ],
+            required: array_values($required),
+        )], $bodyRequired),
+    );
+
+    $emitted = emittedRequest($operation, controllerShortName: 'CreateThingController');
+
+    expect(str_contains($emitted, "private const REQUIRED_KEYS = ['name' => 'present', 'size' => 'required'];"))->toBe($expected)
+        ->and(str_contains($emitted, '$validator->addFailure((string) $key, $rule);'))->toBe($expected)
+        ->and(str_contains($emitted, 'REQUIRED_KEYS'))->toBe($expected);
+})->with([
+    'optional, JSON' => ['application/json', false, ['name', 'size'], true],
+    'required, JSON' => ['application/json', true, ['name', 'size'], false],
+    'optional, a form only' => ['multipart/form-data', false, ['name', 'size'], false],
+    'optional, requiring nothing' => ['application/json', false, [], false],
+]);
+
 // A form delivers `user.name` as `user_name`, and `validated()` holds it there, so `dto()` puts the value
 // back under the name the contract writes. Written only when a name is rewritten.
 it('puts the names a form delivered back before dto() builds the DTO', function (): void {

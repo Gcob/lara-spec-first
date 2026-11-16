@@ -334,7 +334,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent);
     }
 
     /**
@@ -487,6 +487,7 @@ final readonly class RuleSetBuilder
         );
 
         self::planFormNames($schema, $walk);
+        $walk->requiredOnceSent = self::requiredOnceSent($operation, $schema, $body, $walk);
 
         $outside = self::enter($walk, $written, $schema, 'the body');
 
@@ -766,6 +767,49 @@ final readonly class RuleSetBuilder
         return static fn (string $name, Schema $property): string => in_array($name, $schema->required, true)
             ? self::requiredRule($property)
             : 'sometimes';
+    }
+
+    /**
+     * The keys a JSON object sent as an optional body must carry, by the rule their failure carries.
+     *
+     * **A rule cannot see `{}`**: every key is out of the data, so `present_with` asks for nothing. The request reads
+     * the raw content instead, and this is what it reads: each required name, with the rule it would get in a required
+     * body (`present` for a name `properties` does not declare). Only a body read as JSON gets one, and not a `PATCH`,
+     * which asks for nothing. Left out are the names the rules leave out for their own reason, whose findings stay
+     * true: a `*` name, a `readOnly` property, and a name a form client sends under another key (withheld, or
+     * unchecked, which a JSON client would otherwise be refused for).
+     *
+     * @return array<string, string>
+     *
+     * @throws ConflictingInputException
+     */
+    private static function requiredOnceSent(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): array
+    {
+        if ($body->required || ! $walk->jsonBody || $operation->method === HttpMethod::Patch) {
+            return [];
+        }
+
+        $keys = [];
+
+        foreach ($schema->required as $name) {
+            if (self::unescapableKey($name) !== null || isset($walk->withheld[$name]) || isset($walk->unchecked[$name])) {
+                continue;
+            }
+
+            if (! isset($schema->properties[$name])) {
+                $keys[$name] = 'present';
+
+                continue;
+            }
+
+            $property = $schema->properties[$name];
+
+            if (! self::isReadOnly($property, $walk, '`'.$name.'`')) {
+                $keys[$name] = self::requiredRule($property);
+            }
+        }
+
+        return $keys;
     }
 
     /**
@@ -2184,17 +2228,21 @@ final readonly class RuleSetBuilder
                     .'empty here. Every property is `sometimes`.',
                 self::list($schema->required),
             );
-        } elseif (! $body->required && $schema->required !== []) {
+        } elseif (! $body->required && $schema->required !== [] && $walk->formBody) {
+            // Why: a JSON body is not named here, since the request reads its raw content and refuses `{}` itself.
+            // A form is the one it cannot read that way: its fields need not show in the content.
             $alone = count(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required])) === 1;
 
             $findings[] = sprintf(
-                'The body may be absent entirely while its schema requires %s%s. A rule cannot tell a body sent as '
-                    .'`{}` from one that is not sent, since both leave every key out of the data, so `{}` is accepted, '
-                    .'which the contract refuses.',
+                'The body may be absent entirely while its schema requires %s%s. A rule cannot tell a body that is not '
+                    .'sent from a form that sends none of the body\'s keys, since both leave every key out of the data, '
+                    .'so the form is accepted, which the contract refuses.',
                 self::list($schema->required),
                 $alone
                     ? ' and declares nothing else. There is no other key to name, so it is `sometimes`'
-                    : ', so each is required only when another key of the body is sent',
+                    : (count($schema->required) === 1
+                        ? ', so it is required only when another key of the body is sent'
+                        : ', so each is required only when another key of the body is sent'),
             );
         }
 

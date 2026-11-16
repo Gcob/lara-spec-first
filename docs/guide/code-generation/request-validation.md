@@ -386,18 +386,25 @@ required ones would accept a body made of an optional key alone, which is a body
 
 **What those three rules do, case by case:**
 
-| The client sends | Outcome                                                                        |
-| ---------------- | ------------------------------------------------------------------------------ |
-| Nothing, or `{}` | Valid. No field sees a sibling present, so none of them is required            |
-| `street` alone   | Refused. `city` and `code` both see `street`, and both become required         |
-| All three        | Validated against the rest of their rules, exactly as a required body would be |
+| The client sends                                 | Outcome                                                                                                                                               |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nothing                                          | Valid. No field sees a sibling present, so none of them is required                                                                                   |
+| `{}`, or only keys the contract does not declare | Refused for a JSON request, by the generated `after()` (a `422` for a client that asks for JSON). Accepted for a form, and the generated file says so |
+| `street` alone                                   | Refused. `city` and `code` both see `street`, and both become required                                                                                |
+| All three                                        | Validated against the rest of their rules, exactly as a required body would be                                                                        |
 
 When the body declares one key and requires it, there is nothing else to name, and it becomes `sometimes`. With two or
 more required, each is asked for through the others, so a body that sends none of them asks for none. A rule cannot tell
-a body sent as `{}` from one that is not sent, since both leave every key out of the data, so `{}` is accepted whenever
-the body is optional and requires something, and the generated file says so. (The empty content the request refuses is a
-required body's, never an optional one's.) With nothing required, every field was already `sometimes` and an absent body
-was already valid.
+a body sent as `{}` from one that is not sent, since both leave every key out of the data, so the rules alone would
+accept `{}` whenever the body is optional and requires something. **A JSON request closes that gap in the generated
+`after()`, which reads the raw content:** an empty content is an absent body and passes, and a JSON object that lacks a
+required key is refused on that key, whatever else it carries (`{}`, or `{"zzz": 1}`), with the rule the key would get
+in a required body. The keys are one `REQUIRED_KEYS` constant in the generated file, and a key `present_with` already
+refused is named once. **Only a form keeps the gap**: an empty form cannot be told from an absent body, and a form's
+required names arrive rewritten or nested (`user_name`, `page.size`), so the generated file says in a finding that a
+form that sends none of the body's keys is accepted, which the contract refuses. (The empty content the request refuses
+is a required body's, never an optional one's.) With nothing required, every field was already `sometimes` and an absent
+body was already valid.
 
 **The cost is noise, and it is bounded.** Eight required properties mean eight rules naming seven siblings each, in a
 file nobody edits by hand. Nothing else in the rule set grows that way, and an optional body that requires properties is
@@ -411,7 +418,9 @@ return no rules when `$this->validationData()` is empty reads better on the page
    stops looking empty, the body's required fields fire, and a request the contract allows answers 422. `present_with`
    asks about the sibling fields instead, which is the question the contract asked.
 2. **`rules()` stops being the whole answer**, which [nothing is allowed to do here](#nothing-rewrites-the-rule-set),
-   whatever the hook it is done through.
+   whatever the hook it is done through. The `{}` refusal above sits in the generated `after()`, beside the root checks,
+   and reads the raw body instead of changing `rules()`, so `rules()` stays the whole rule set and the generated file
+   still holds the whole answer.
 
 ## Nothing rewrites the rule set
 

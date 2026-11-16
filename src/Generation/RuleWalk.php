@@ -104,6 +104,14 @@ final class RuleWalk
     public bool $rootAsksPresence = false;
 
     /**
+     * The keys a JSON object sent as the body must carry, by the rule their failure carries: what
+     * {@see RuleSet::$requiredOnceSent} says.
+     *
+     * @var array<string, string>
+     */
+    public array $requiredOnceSent = [];
+
+    /**
      * The key the request's failures about the body itself are answered on.
      */
     public string $rootKey = 'body';

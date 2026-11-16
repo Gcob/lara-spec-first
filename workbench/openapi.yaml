@@ -228,6 +228,34 @@ paths:
             responses:
                 '201': { description: Attached }
 
+    /posts/{postId}/reports:
+        # An optional JSON body that requires a property. `requestBody.required: false`
+        # means the whole payload may be absent, never that `reason` became optional,
+        # so the rules say `sometimes` (a lone property has no sibling to name) and
+        # cannot tell `{}` from no body. The generated request reads the raw content
+        # instead: read its `REQUIRED_KEYS`, then `curl -d '{}'` it for a `422` on
+        # `reason`, and the same with no body at all for the generated parent's `501`.
+        post:
+            operationId: reportPost
+            summary: Report a post
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: false
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [reason]
+                            properties:
+                                reason:
+                                    type: string
+                                note:
+                                    type: string
+            responses:
+                '202': { description: Reported }
+
     /posts/{postId}/legacy-comments:
         # Deprecated with a sunset date. Both reach the generated file's findings,
         # and both are what the doctor will enforce once it exists: a deprecation

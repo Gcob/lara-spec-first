@@ -27,6 +27,15 @@ tags: [versions, conventions, planning]
 
 ### Changed
 
+- **An optional JSON body that requires properties now refuses `{}`, and an object that carries none of them, where it
+  used to pass.** A body with `requestBody.required: false` and a schema that requires `reason` meant "a body, or none",
+  but a rule cannot tell `{}` from no body, so `{}` and `{"zzz": 1}` were accepted. They answer `422` to a client that
+  asks for JSON (see
+  [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)),
+  on each required key the object lacks. An absent body (no content, or only blanks) and a JSON `null` on a nullable
+  body still pass. A form that sends none of the body's keys is still accepted, and the generated file says so in a
+  finding. The finding no longer names `{}`, and a JSON-only body no longer carries it. This is a breaking change: a
+  client that sent `{}` and got a `200` now gets a refusal. Send the key, or send no body.
 - **A required body sent with an empty content and a type that is not a form is refused, where it used to pass.** An
   `application/xml` or `text/plain` request (compared without case, parameters like `; charset=utf-8` ignored) with no
   content, or only blanks, answers `422` to a client that asks for JSON (see

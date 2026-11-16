@@ -1891,6 +1891,97 @@ it('refuses an empty content when the body is required', function (bool $typed, 
 ]);
 
 /**
+ * A `POST` whose JSON body is an object of strings that requires some of them, and may be absent.
+ *
+ * @param  list<string>  $names  the declared properties
+ * @param  list<string>  $required
+ */
+function postWithOptionalJsonRequiring(array $names, array $required, bool $nullable = false): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/reports'),
+        operationId: 'reportThing',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+            properties: array_fill_keys($names, new Schema(types: [SchemaType::String])),
+            required: $required,
+        )], false),
+    );
+}
+
+/**
+ * One request through the real kernel carrying `$content` as its JSON body, as sent, and what it answered.
+ *
+ * @param  class-string<FormRequest>  $class
+ * @return array{0: int, 1: array<string, list<string>>} the status, and the messages by the key they were answered on
+ */
+function errorsForRawJson(string $class, string $content): array
+{
+    Route::post('/_generated/raw-json-errors-of', fn () => response()->json(app($class)->validated()));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/raw-json-errors-of',
+        'POST',
+        [],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        $content,
+    ));
+
+    /** @var array<string, list<string>> $errors */
+    $errors = json_decode((string) $response->getContent(), true)['errors'] ?? [];
+
+    return [$response->getStatusCode(), $errors];
+}
+
+// A rule cannot tell `{}` from an absent body, since both leave every key out of the data, but the raw content can:
+// `{}` is a body, and the contract refuses a body that lacks a key it requires. An absent body still passes.
+it('refuses an empty JSON object on an optional body that requires properties', function (
+    array $names,
+    array $required,
+    bool $nullable,
+    string $content,
+    int $status,
+    array $keys,
+): void {
+    $class = emittedRequestClass(postWithOptionalJsonRequiring(array_values($names), array_values($required), $nullable));
+
+    [$answered, $errors] = errorsForRawJson($class, $content);
+
+    expect($answered)->toBe($status)
+        ->and(array_keys($errors))->toBe($keys);
+})->with([
+    'two properties, an empty object' => [['a', 'b'], ['a'], false, '{}', 422, ['a']],
+    'two properties, only a key it does not declare' => [['a', 'b'], ['a'], false, '{"zzz":1}', 422, ['a']],
+    'two properties, the required one' => [['a', 'b'], ['a'], false, '{"a":"x"}', 200, []],
+    'two properties, an empty content' => [['a', 'b'], ['a'], false, '', 200, []],
+    'two properties, blanks' => [['a', 'b'], ['a'], false, "  \n", 200, []],
+    'one property, an empty object' => [['a'], ['a'], false, '{}', 422, ['a']],
+    'one property, an empty content' => [['a'], ['a'], false, '', 200, []],
+    'a nullable root, null' => [['a', 'b'], ['a'], true, 'null', 200, []],
+    'every required key, an empty object' => [['a', 'b', 'c'], ['a', 'c'], false, '{}', 422, ['a', 'c']],
+    'a dotted name, an empty object' => [['user.name', 'b'], ['user.name'], false, '{}', 422, ['user.name']],
+]);
+
+// `present_with` already refuses a key when a sibling was sent, so the loop adds its failure only to a key with none:
+// one message per key, never two.
+it('names a missing required key once when a sibling was sent', function (array $names, array $required, string $content, array $keys): void {
+    $class = emittedRequestClass(postWithOptionalJsonRequiring(array_values($names), array_values($required)));
+
+    [$status, $errors] = errorsForRawJson($class, $content);
+
+    expect($status)->toBe(422)
+        ->and(array_keys($errors))->toBe($keys)
+        ->and(array_map('count', $errors))->each->toBe(1);
+})->with([
+    'a sibling sent' => [['a', 'b', 'c'], ['a', 'c'], '{"b":"x"}', ['a', 'c']],
+    'a dotted name, a sibling sent' => [['user.name', 'b'], ['user.name'], '{"b":"x"}', ['user.name']],
+]);
+
+/**
  * One request through the real kernel carrying `$content` with the `Content-Type` as given, or none: what
  * `curl -X POST url` sends, which `Request::create()` would otherwise default to a form's.
  *
