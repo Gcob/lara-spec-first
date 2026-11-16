@@ -29,6 +29,9 @@ The package is usable today, but its public API is not stable before `1.0`: a mi
 [the installation section of the README](./README.md#installation) says how to pin a minor in the meantime. The tooling
 below is in place and works today.
 
+What is in flight and what comes next lives on the [project board](https://github.com/users/Gcob/projects/1), and
+`just status` prints it from the checkout, with the next release.
+
 Right now, the most valuable contribution is **design feedback**. Opening an issue to challenge an architectural
 decision is worth more to us today than a pull request.
 

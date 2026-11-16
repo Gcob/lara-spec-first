@@ -4,7 +4,7 @@ audience: Contributors
 covers: >
     How a version of this package is cut: what has to be true before a release is prepared, what `just release-prep`
     does on its own and what it leaves to judgment, the checks `just release` runs and what its prompt does and does not
-    guard against, what the GitHub release carries, and what the board and the plan owe afterwards.
+    guard against, what the GitHub release carries, and what the board owes afterwards.
 read_before: Preparing a release, tagging one, or changing the `release-prep` or `release` recipes.
 tags: [workflow, versions, contributing, ci, conventions]
 ---
@@ -20,7 +20,7 @@ tags: [workflow, versions, contributing, ci, conventions]
 >   at a terminal, so the real run cannot happen by accident, from a pipe, or with a missing flag.
 > - Only the maintainer tags, by rule: the factory's rules forbid it, and the script does not enforce it against an
 >   agent that means to.
-> - Packagist publishes the version from the tag, and the board and the plan are synced afterwards.
+> - Packagist publishes the version from the tag, and the board is synced afterwards.
 
 A version of this package is cut in three steps by two different hands: the factory prepares everything up to a merged
 release pull request, the maintainer tags, and the factory then syncs the board. This file is the single description of
@@ -170,9 +170,10 @@ writes.
 
 1. **Packagist picks the tag up** through the GitHub hook. Check the version on
    [`packagist.org/packages/gcob/lara-spec-first`](https://packagist.org/packages/gcob/lara-spec-first).
-2. **Every card the release carries moves from `Ready to publish` to `Done`.** That is the board rule, and it is the
-   factory's.
-3. **The lot's `run.md` gets the release line:** the version, the tag's SHA and the date.
+2. **The release's milestone closes, and every card in `Ready to publish` that closed before the tag moves to `Done`.**
+   That is the board rule, and it is the factory's: a card ships in the first release tagged after it closes, so this
+   includes a card on `1.0`, which no release milestone carries. `just status` then stops showing that release and shows
+   the next one, and flags any card it left behind.
 
 ## What this document does not cover
 
