@@ -19,7 +19,9 @@ declare(strict_types=1);
  *   - Release: the open release milestone (`0.x.y`) with the lowest version, how many
  *     of its issues are closed, and its open cards by status. `1.0` is the V1 bar, not
  *     a release, so it never shows here;
- *   - Maintainer's turn and Drift, which print their empty answers for now.
+ *   - Maintainer's turn, which prints its empty answer for now;
+ *   - Drift: every place where the board, the issues, the pull requests, git and CI
+ *     disagree, one line each, with the fix. The header carries the count.
  *
  * The same board and the same git give the same bytes: plain text, sorted, no colour
  * and no clock time. Git is read from the upstream's branches only, never from the
@@ -39,6 +41,9 @@ declare(strict_types=1);
  * resolves and which git remote names this one, and stops when they are not
  * Gcob/lara-spec-first.
  *
+ * What counts as drift is in docs/contributing/card-management.md, "What `just status` prints":
+ * a rule id (B1, G3, O2...) names each case, and each is one function below.
+ *
  * Which card a pull request serves: the cards it closes (`closingIssuesReferences`)
  * when it closes any, otherwise the card its branch names, `{type}/{card}/{context}`.
  * A branch serves the card its name gives the same way.
@@ -47,10 +52,11 @@ declare(strict_types=1);
  *
  *   php scripts/status.php
  *
- * It takes no argument. Exit codes: 0 it printed, 2 a real error (no `gh`, `gh` or git
- * failing, the wrong repository or remote, an answer the script does not recognise) or a
- * usage error. On exit 2 nothing but the error is printed, on standard error. It is not
- * run by CI: it needs a token with the `project` scope, which CI does not have.
+ * It takes no argument. Exit codes: 0 no drift, 1 drift (the page is printed), 2 a real
+ * error (no `gh`, `gh` or git failing, the wrong repository or remote, an answer the script
+ * does not recognise) or a usage error. On exit 2 nothing but the error is printed, on
+ * standard error. It is not run by CI: it needs a token with the `project` scope, which CI
+ * does not have.
  */
 
 /** The board and the repository its cards live in. */
@@ -72,7 +78,10 @@ const STATUS_DONE = 'Done';
 /** A title longer than this is cut, the dots included. */
 const TITLE_WIDTH = 60;
 
-const USAGE = "usage: php scripts/status.php\n\nTakes no argument. It prints what is in flight, what comes next and the next release.\n";
+/** The kinds of card that need no release: the docs site publishes on merge, and a lot card closes with its lesson. */
+const KINDS_WITHOUT_RELEASE = ['Docs', 'Decision', 'Lot'];
+
+const USAGE = "usage: php scripts/status.php\n\nTakes no argument. It prints what is in flight, what comes next and the next release, and the drift between them.\n";
 
 const QUERY_BOARD = <<<'GRAPHQL'
 query($endCursor: String) {
@@ -174,15 +183,17 @@ function main(array $argv): int
         return 2;
     }
 
-    fwrite(STDOUT, $report);
+    fwrite(STDOUT, $report['page']);
 
-    return 0;
+    return $report['drift'] > 0 ? 1 : 0;
 }
 
 /**
  * Read everything, then print it: nothing reaches standard output before every read has worked.
+ *
+ * @return array{page: string, drift: int}
  */
-function build_report(string $root): string
+function build_report(string $root): array
 {
     $slug = trim(gh($root, ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'], 'the repository'));
 
@@ -199,7 +210,7 @@ function build_report(string $root): string
     $cards = read_cards($root);
     $comments = read_comments($root);
     $pullRequests = read_pull_requests($root);
-    read_merged_pull_requests($root);
+    $merged = read_merged_pull_requests($root);
     $milestones = read_milestones($root);
     $main = read_main($root, $upstream);
     $branches = read_branches($root, $upstream);
@@ -207,17 +218,17 @@ function build_report(string $root): string
     // Read and checked, but only the sections of the later scopes print them.
     unset($comments);
 
-    $drift = 0;
+    $findings = find_drift($cards, $pullRequests, $merged, $milestones, $main, $branches);
     $sections = [
-        sprintf('%s · main %s · CI %s · drift %d', substr(REPOSITORY, (int) strpos(REPOSITORY, '/') + 1), $main['sha'], $main['ci'], $drift),
+        sprintf('%s · main %s · CI %s · drift %d', substr(REPOSITORY, (int) strpos(REPOSITORY, '/') + 1), $main['sha'], $main['ci'], count($findings)),
         section_now($cards, $pullRequests, $branches),
         section_next($cards),
         section_release($cards, $milestones),
         "Maintainer's turn\n  Nothing waits on the maintainer.",
-        'Drift: none.',
+        section_drift($findings),
     ];
 
-    return implode("\n\n", $sections)."\n";
+    return ['page' => implode("\n\n", $sections)."\n", 'drift' => count($findings)];
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -510,11 +521,7 @@ function read_pull_requests(string $root): array
         }
 
         $owner = 'pull request #'.$pr['number'];
-        $serves = array_values(array_filter(array_map(
-            static fn (array $reference): mixed => $reference['number'] ?? null,
-            nested_nodes($pr['closingIssuesReferences'] ?? null, 'closing references', $owner),
-        ), 'is_int'));
-        $serves = $serves === [] ? array_filter([card_of_branch($pr['headRefName'])]) : $serves;
+        $serves = served_cards($pr['headRefName'], nested_nodes($pr['closingIssuesReferences'] ?? null, 'closing references', $owner));
 
         $rollup = $pr['commits']['nodes'][0]['commit']['statusCheckRollup'] ?? null;
         $contexts = is_array($rollup) ? nested_nodes($rollup['contexts'] ?? null, 'check contexts', $owner) : [];
@@ -523,7 +530,7 @@ function read_pull_requests(string $root): array
             'number' => $pr['number'],
             'branch' => $pr['headRefName'],
             'draft' => ($pr['isDraft'] ?? false) === true,
-            'serves' => array_values($serves),
+            'serves' => $serves,
             'ci' => describe_checks(array_map('check_of_context', $contexts)),
         ];
     }
@@ -534,13 +541,28 @@ function read_pull_requests(string $root): array
 }
 
 /**
- * Every merged pull request, read in full and checked. Nothing prints from them yet.
+ * Every merged pull request, read in full, with the cards each served.
+ *
+ * @return list<array{number: int, serves: list<int>}>
  */
-function read_merged_pull_requests(string $root): void
+function read_merged_pull_requests(string $root): array
 {
+    $merged = [];
+
     foreach (graphql_nodes($root, QUERY_MERGED_PULL_REQUESTS, ['repository', 'pullRequests'], 'the merged pull requests', true) as $pr) {
-        nested_nodes($pr['closingIssuesReferences'] ?? null, 'closing references', 'pull request #'.($pr['number'] ?? '?'));
+        if (! is_int($pr['number'] ?? null) || ! is_string($pr['headRefName'] ?? null)) {
+            throw new RuntimeException('gh answered something unexpected for the merged pull requests.');
+        }
+
+        $merged[] = [
+            'number' => $pr['number'],
+            'serves' => served_cards($pr['headRefName'], nested_nodes($pr['closingIssuesReferences'] ?? null, 'closing references', 'pull request #'.$pr['number'])),
+        ];
     }
+
+    usort($merged, static fn (array $a, array $b): int => $a['number'] <=> $b['number']);
+
+    return $merged;
 }
 
 /**
@@ -566,7 +588,7 @@ function read_milestones(string $root): array
 /**
  * `main` as the upstream has it, and what CI says about it.
  *
- * @return array{sha: string, ci: string}
+ * @return array{sha: string, ci: string, failed: list<string>}
  */
 function read_main(string $root, string $upstream): array
 {
@@ -587,7 +609,11 @@ function read_main(string $root, string $upstream): array
         }
     }
 
-    return ['sha' => git($root, ['rev-parse', '--short', $upstream.'/main']), 'ci' => describe_checks($checks)];
+    return [
+        'sha' => git($root, ['rev-parse', '--short', $upstream.'/main']),
+        'ci' => describe_checks($checks),
+        'failed' => failed_checks($checks),
+    ];
 }
 
 /**
@@ -624,6 +650,25 @@ function card_of_branch(string $branch): ?int
     return preg_match('#^[^/]+/(\d+)/#', $branch, $found) === 1 ? (int) $found[1] : null;
 }
 
+/**
+ * The cards a pull request serves: the ones it closes when it closes any, otherwise the one its branch names.
+ *
+ * @param  list<array<mixed>>  $references  its `closingIssuesReferences`
+ * @return list<int>
+ */
+function served_cards(string $branch, array $references): array
+{
+    $closed = array_values(array_filter(array_column($references, 'number'), 'is_int'));
+
+    if ($closed !== []) {
+        return $closed;
+    }
+
+    $named = card_of_branch($branch);
+
+    return $named === null ? [] : [$named];
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // CI
 // ---------------------------------------------------------------------------------------------------------------
@@ -656,6 +701,17 @@ function check_of_context(array $context): array
 }
 
 /**
+ * The names of the checks that finished and did not pass.
+ *
+ * @param  list<array{name: string, finished: bool, passed: bool}>  $checks
+ * @return list<string>
+ */
+function failed_checks(array $checks): array
+{
+    return array_values(array_column(array_filter($checks, static fn (array $check): bool => $check['finished'] && ! $check['passed']), 'name'));
+}
+
+/**
  * Four words: `green (N checks)` when every check finished well, `red: <names>` when one finished badly, `running` when
  * one has not finished, `no checks` when there is none. Red wins over running, since it is what to fix.
  *
@@ -667,7 +723,7 @@ function describe_checks(array $checks): string
         return 'no checks';
     }
 
-    $failed = array_column(array_filter($checks, static fn (array $check): bool => $check['finished'] && ! $check['passed']), 'name');
+    $failed = failed_checks($checks);
 
     if ($failed !== []) {
         return 'red: '.implode(', ', $failed);
@@ -678,6 +734,313 @@ function describe_checks(array $checks): string
     }
 
     return sprintf('green (%d %s)', count($checks), count($checks) === 1 ? 'check' : 'checks');
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Drift
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Every place where the board, the issues, the pull requests, git and CI disagree.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
+ * @param  list<array{number: int, serves: list<int>}>  $merged
+ * @param  list<array{title: string, open: bool}>  $milestones
+ * @param  array{sha: string, ci: string, failed: list<string>}  $main
+ * @param  array<string, int>  $branches
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function find_drift(array $cards, array $pullRequests, array $merged, array $milestones, array $main, array $branches): array
+{
+    $findings = [
+        ...drift_main($main),
+        ...drift_board($cards, $milestones),
+        ...drift_pull_requests($cards, $pullRequests, $merged),
+        ...drift_branches($cards, $pullRequests, $branches),
+        ...drift_queue($cards),
+    ];
+
+    // The findings that name no card come first (`main`, then a pull request by its number), then the cards in order.
+    $place = static fn (array $finding): array => [
+        $finding['card'] !== null ? 2 : ($finding['pr'] !== null ? 1 : 0),
+        $finding['card'] ?? $finding['pr'] ?? 0,
+        $finding['rule'],
+    ];
+
+    usort($findings, static fn (array $a, array $b): int => $place($a) <=> $place($b));
+
+    return $findings;
+}
+
+/**
+ * @return array{rule: string, card: int|null, pr: int|null, text: string}
+ */
+function finding(string $rule, ?int $card, ?int $pr, string $text): array
+{
+    return ['rule' => $rule, 'card' => $card, 'pr' => $pr, 'text' => $text];
+}
+
+/**
+ * C1: a check on `main` finished and failed.
+ *
+ * @param  array{sha: string, ci: string, failed: list<string>}  $main
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function drift_main(array $main): array
+{
+    if ($main['failed'] === []) {
+        return [];
+    }
+
+    return [finding('C1', null, null, 'CI on main failed: '.implode(', ', $main['failed']).'. Repair main before anything else.')];
+}
+
+function is_release_milestone(string $title): bool
+{
+    return preg_match('/^0\.\d+\.\d+$/', $title) === 1;
+}
+
+/**
+ * Where a closed card belongs, and why when it is `Done`: a closed card waits in `Ready to publish` for its release,
+ * unless it needs none.
+ *
+ * @param  array{kind: string|null, stateReason: string|null}  $card
+ * @return array{status: string, why: string}
+ */
+function home_of_closed(array $card): array
+{
+    if (in_array($card['kind'], KINDS_WITHOUT_RELEASE, true)) {
+        return ['status' => STATUS_DONE, 'why' => 'it is a '.$card['kind'].' card, which needs no release'];
+    }
+
+    if ($card['stateReason'] === 'NOT_PLANNED') {
+        return ['status' => STATUS_DONE, 'why' => 'it was closed as not planned, so it ships nothing'];
+    }
+
+    return ['status' => STATUS_READY_TO_PUBLISH, 'why' => 'it ships in a release'];
+}
+
+/**
+ * B1 to B6: the board against the issues.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  list<array{title: string, open: bool}>  $milestones
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function drift_board(array $cards, array $milestones): array
+{
+    $releaseIsOpen = [];
+
+    foreach ($milestones as $milestone) {
+        if (is_release_milestone($milestone['title'])) {
+            $releaseIsOpen[$milestone['title']] = $milestone['open'];
+        }
+    }
+
+    $findings = [];
+
+    foreach ($cards as $card) {
+        $number = $card['number'];
+        $status = $card['status'] ?? 'No status';
+        $release = $card['milestone'] !== null ? ($releaseIsOpen[$card['milestone']] ?? null) : null;
+
+        if (! $card['onBoard']) {
+            // A closed issue that never reached the board is old history, not drift.
+            if ($card['state'] === 'OPEN') {
+                $findings[] = finding('B1', $number, null, 'Open, but not on the board. Add it and triage it.');
+            }
+
+            continue;
+        }
+
+        if ($card['state'] === 'OPEN') {
+            if (in_array($status, [STATUS_READY_TO_PUBLISH, STATUS_DONE], true)) {
+                $findings[] = finding('B2', $number, null, $status.', but its issue is open. Close the issue, or move the card back.');
+            }
+
+            continue;
+        }
+
+        $home = home_of_closed($card);
+
+        if (! in_array($status, [STATUS_READY_TO_PUBLISH, STATUS_DONE], true)) {
+            $findings[] = finding('B3', $number, null, 'Closed, but '.$status.'. Move it to '.$home['status'].'.');
+        } elseif ($home['status'] === STATUS_DONE && $status === STATUS_READY_TO_PUBLISH) {
+            $findings[] = finding('B4', $number, null, 'Ready to publish, but '.$home['why'].'. Move it to Done.');
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && $release === false) {
+            $findings[] = finding('B5', $number, null, 'Ready to publish, but its release '.$card['milestone'].' has shipped. Move it to Done.');
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && $release === true) {
+            $findings[] = finding('B6', $number, null, 'Done, but its release '.$card['milestone'].' has not shipped. Move it back to Ready to publish.');
+        }
+    }
+
+    return $findings;
+}
+
+/**
+ * The pull request numbers, as `PR #1, #2`.
+ *
+ * @param  list<int>  $numbers
+ */
+function pull_request_numbers(array $numbers): string
+{
+    return 'PR #'.implode(', #', $numbers);
+}
+
+/**
+ * G1 to G4: the board against the pull requests.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
+ * @param  list<array{number: int, serves: list<int>}>  $merged
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function drift_pull_requests(array $cards, array $pullRequests, array $merged): array
+{
+    $findings = [];
+
+    foreach ($pullRequests as $pr) {
+        if ($pr['serves'] === []) {
+            $findings[] = finding('G1', null, $pr['number'], 'serves no card (branch '.$pr['branch'].'). Rename the branch to {type}/{card}/{context}, or link the card it closes.');
+        }
+
+        foreach ($pr['serves'] as $number) {
+            $card = $cards[$number] ?? null;
+
+            if ($card === null || ! $card['onBoard']) {
+                $findings[] = finding('G2', $number, null, 'PR #'.$pr['number'].' serves it, but it is not on the board. Add the card to the board, or fix the branch name.');
+            } elseif ($card['state'] === 'CLOSED') {
+                $findings[] = finding('G2', $number, null, 'PR #'.$pr['number'].' serves it, but it is closed. Link the card it really serves, or reopen this one.');
+            }
+        }
+    }
+
+    foreach ($cards as $card) {
+        if ($card['state'] !== 'OPEN' || ! $card['onBoard']) {
+            continue;
+        }
+
+        $number = $card['number'];
+        $status = $card['status'] ?? 'No status';
+        $open = array_column(array_filter($pullRequests, static fn (array $pr): bool => in_array($number, $pr['serves'], true)), 'number');
+
+        if ($open !== [] && $status !== STATUS_IN_REVIEW) {
+            $findings[] = finding('G3', $number, null, $status.', but '.pull_request_numbers($open).(count($open) === 1 ? ' serves' : ' serve').' it. Move it to In review.');
+        }
+
+        if ($open !== [] || $status !== STATUS_IN_REVIEW) {
+            continue;
+        }
+
+        $done = array_column(array_filter($merged, static fn (array $pr): bool => in_array($number, $pr['serves'], true)), 'number');
+
+        if ($done === []) {
+            $findings[] = finding('G4', $number, null, 'In review, but no pull request serves it. Move it back to In Progress or Todo.');
+
+            continue;
+        }
+
+        $findings[] = finding('G4', $number, null, sprintf(
+            'In review, but no open pull request serves it, and %s (merged) does. If every box of its Done when is ticked, close it and move it to %s; otherwise move it back to In Progress, since another pull request is coming.',
+            pull_request_numbers($done),
+            home_of_closed($card)['status'],
+        ));
+    }
+
+    return $findings;
+}
+
+/**
+ * G5 and G6: the board against the upstream's branches. A lot card is exempt: nobody works on one directly. A card an
+ * open pull request serves is G3's, not these.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
+ * @param  array<string, int>  $branches
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function drift_branches(array $cards, array $pullRequests, array $branches): array
+{
+    $findings = [];
+
+    foreach ($cards as $card) {
+        if ($card['state'] !== 'OPEN' || ! $card['onBoard'] || $card['kind'] === 'Lot') {
+            continue;
+        }
+
+        $number = $card['number'];
+        $served = array_filter($pullRequests, static fn (array $pr): bool => in_array($number, $pr['serves'], true)) !== [];
+        $named = array_filter($branches, static fn (int $ahead, string $name): bool => card_of_branch($name) === $number, ARRAY_FILTER_USE_BOTH);
+
+        if ($served) {
+            continue;
+        }
+
+        if (in_array($card['status'], [STATUS_BACKLOG, STATUS_TODO], true)) {
+            $ahead = array_filter($named, static fn (int $count): bool => $count > 0);
+
+            if ($ahead !== []) {
+                $findings[] = finding('G5', $number, null, sprintf(
+                    '%s, but %s. Move it to In Progress, or delete the stale branch.',
+                    $card['status'],
+                    count($ahead) === 1
+                        ? 'branch '.array_key_first($ahead).' is '.commits(reset($ahead)).' ahead of main'
+                        : 'branches '.implode(', ', array_map(static fn (string $name, int $count): string => $name.' ('.commits($count).')', array_keys($ahead), $ahead)).' are ahead of main',
+                ));
+            }
+        }
+
+        if ($card['status'] === STATUS_IN_PROGRESS && $named === []) {
+            $findings[] = finding('G6', $number, null, 'In Progress, but nothing is on a branch and no pull request is open. Push its branch when the card starts, or move it back to Todo.');
+        }
+    }
+
+    return $findings;
+}
+
+/**
+ * O1, O2, T1 and T2: the `Todo` cards, which are the queue.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|null, body: string}>  $cards
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function drift_queue(array $cards): array
+{
+    $todo = array_filter($cards, static fn (array $card): bool => $card['state'] === 'OPEN' && $card['onBoard'] && $card['status'] === STATUS_TODO);
+    $findings = [];
+
+    foreach ($todo as $card) {
+        $number = $card['number'];
+
+        // A lot card is never in the queue, so it has no place in it to share or to miss.
+        if ($card['kind'] !== 'Lot') {
+            if ($card['order'] === null) {
+                $findings[] = finding('O1', $number, null, 'Todo with no Order. Give it one, or it has no place in the queue.');
+            } else {
+                $sharing = array_column(array_filter($todo, static fn (array $other): bool => $other['kind'] !== 'Lot' && $other['order'] === $card['order'] && $other['number'] !== $number), 'number');
+
+                if ($sharing !== []) {
+                    $findings[] = finding('O2', $number, null, 'Todo with Order '.$card['order'].', like #'.implode(', #', $sharing).'. Give each card its own, so the queue has one order.');
+                }
+            }
+        }
+
+        $open = array_values(array_filter(
+            ['## Assumptions', '## Discovery'],
+            static fn (string $heading): bool => preg_match('/^'.preg_quote($heading, '/').'[ \t]*\r?$/m', $card['body']) === 1,
+        ));
+
+        if ($open !== []) {
+            $findings[] = finding('T1', $number, null, 'Todo, but its body still has '.implode(' and ', $open).'. A Todo card has nothing left open: settle each into Decisions and delete the section.');
+        }
+
+        if (preg_match('/^## Done when[ \t]*\r?$/m', $card['body']) !== 1) {
+            $findings[] = finding('T2', $number, null, 'Todo, but its body has no ## Done when. Add it: a Todo card says how to tell it is done.');
+        }
+    }
+
+    return $findings;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -800,7 +1163,7 @@ function section_release(array $cards, array $milestones): string
 {
     $releases = array_column(array_filter(
         $milestones,
-        static fn (array $milestone): bool => $milestone['open'] && preg_match('/^0\.\d+\.\d+$/', $milestone['title']) === 1,
+        static fn (array $milestone): bool => $milestone['open'] && is_release_milestone($milestone['title']),
     ), 'title');
 
     if ($releases === []) {
@@ -841,6 +1204,29 @@ function section_release(array $cards, array $milestones): string
         foreach ($groups as $status => $numbers) {
             $lines[] = '  '.pad_right((string) $status, $width).'  '.implode(', ', $numbers);
         }
+    }
+
+    return implode("\n", $lines);
+}
+
+/**
+ * @param  list<array{rule: string, card: int|null, pr: int|null, text: string}>  $findings
+ */
+function section_drift(array $findings): string
+{
+    if ($findings === []) {
+        return 'Drift: none.';
+    }
+
+    $keys = array_map(
+        static fn (array $finding): string => $finding['card'] !== null ? '#'.$finding['card'] : ($finding['pr'] !== null ? 'PR #'.$finding['pr'] : 'main'),
+        $findings,
+    );
+    $width = max(array_map('strlen', $keys));
+    $lines = ['Drift ('.count($findings).')'];
+
+    foreach ($findings as $index => $finding) {
+        $lines[] = '  '.pad_right($keys[$index], $width).'  '.$finding['text'];
     }
 
     return implode("\n", $lines);

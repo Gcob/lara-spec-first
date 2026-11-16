@@ -12,8 +12,9 @@ covers: >
     may be worked on at once, when a card is written and what a Backlog card is worth before then, what an Acceptance
     scenario holds, why nothing runs it and what ten cards have done with it so far, how a card cites a file, what the
     board's Status, Phase, Lot, Kind, Order and Milestone fields mean, who moves them and why a card's body stops
-    carrying one the moment the board does, what `just status` prints and how to read it, and the grouping mechanisms
-    this project declines to use.
+    carrying one the moment the board does, what `just status` prints and how to read it, where a closed card belongs
+    and which disagreements between the board, git, the pull requests and CI it flags as drift, and the grouping
+    mechanisms this project declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -40,8 +41,8 @@ tags: [planning, conventions, workflow, scope, onboarding]
 > - `Status` moves with the work; `Phase` and `Kind` are set at triage and `Lot` when that lot is cut. The board keeps
 >   each of them, and a card's body carries one only until it gets there. `Order` is the queue, and `Milestone` is the
 >   release a card ships in.
-> - `just status` prints what is in flight, what comes next and the next release, from the board, GitHub and git. It
->   only reads, so run it before asking what to work on.
+> - `just status` prints what is in flight, what comes next and the next release, from the board, GitHub and git, and
+>   flags every place where they disagree. It only reads, so run it before asking what to work on.
 
 Three lots have been cut so far, and each one needed a review to find the same two failures: a card small enough to be a
 checkbox on another one, and a card large enough to be a lot. This file exists so that the next lot does not pay for
@@ -649,22 +650,54 @@ the board and cross-check it against the branches. It prints a one-line header (
   wait to be published and how many are done, and its open cards grouped by status. `1.0` is never shown here, since it
   is the bar for a stable release and not the next one.
 
-Two more sections close the page, the cards that wait on the maintainer and the drift between the board and git, and
-both print an empty answer today.
+Two more sections close the page. The cards that wait on the maintainer print an empty answer today, and **Drift** lists
+every place where the board disagrees with the issues, the pull requests, git or CI, one line each, `#<card>` first,
+what is wrong, then the fix. The header carries the count. It names the drift and never fixes it: moving a card is
+somebody's decision, and the status cannot tick a box of a `Done when` for them.
 
 **A pull request serves the cards it closes, and otherwise the card its branch names.** The branch is
 `{type}/{card}/{context}`, as [the branch names](../../CONTRIBUTING.md#branch-names) say, so the second segment is a
 card number. A branch whose name ends in `-claude-spike` is a trial, not a card's work, and is skipped.
+
+**Where a closed card belongs.** A closed card is in `Done` when it is a `Docs`, `Decision` or `Lot` card (the docs site
+publishes on merge, and a lot card closes with its lesson), or when it was closed as not planned, since that ships
+nothing. Any other closed card is in `Ready to publish` until its release is tagged, and then in `Done`. A card on `1.0`
+or with no milestone has no release to wait for, so it is never drift for being in `Done`.
+
+**Drift between the board and the issues:**
+
+- An open issue that is not on the board.
+- An open card in `Ready to publish` or `Done`: close the issue, or move the card back.
+- A closed card in neither of those two, or in the one it does not belong in by the paragraph above.
+- A card in `Ready to publish` whose release milestone (`0.x.y`) is closed, which means the release shipped, and a card
+  in `Done` whose release milestone is still open, which means it did not.
+
+**Drift between the board, the pull requests and git:**
+
+- An open pull request that serves no card, or a card that is closed or not on the board.
+- A card an open pull request serves, draft included, that is not `In review`.
+- A card `In review` that no open pull request serves. When a merged one does, the line names both fixes: close the card
+  if every box of its `Done when` is ticked, and move it back to `In Progress` if not, since a card can take several
+  pull requests.
+- A `Backlog` or `Todo` card with a branch ahead of `main`, which means work started: move it to `In Progress`, or
+  delete the stale branch. And an `In Progress` card with no branch and no open pull request: push its branch when the
+  card starts, since a branch with no commit yet still counts. A lot card is exempt from both.
+- A failed check on `main`.
+
+**Drift in the queue:** a `Todo` card with no `Order`, two `Todo` cards with the same one, a `Todo` body that still
+holds `## Assumptions` or `## Discovery` (a `Todo` card has nothing left open, as
+[above](#a-todo-card-has-nothing-left-open)), or one with no `## Done when`.
 
 **It reads and never writes.** It asks GitHub only for reads, and runs one `git fetch --prune` of the remote that names
 this repository. It reads that remote's branches, never the local ones, so two machines with the same board give the
 same page, byte for byte. It needs `gh` signed in with the `project` scope, the same reason as `just card-context` (see
 [the agent guide](../../AGENTS.md)), so CI does not run it.
 
-**It stops rather than mix sources.** Exit `0` means it printed. Exit `2` means it could not: `gh` or git failed, or the
-checkout is not this repository. In a fork's clone `gh` resolves the fork, whose pull requests would sit beside this
-board, so it stops and names the fix, `gh repo set-default Gcob/lara-spec-first`. When no git remote names this
-repository it stops and names `git remote add upstream https://github.com/Gcob/lara-spec-first.git`.
+**It stops rather than mix sources.** Exit `0` means it printed and found no drift, and exit `1` that it printed and
+found some. Exit `2` means it could not: `gh` or git failed, or the checkout is not this repository. In a fork's clone
+`gh` resolves the fork, whose pull requests would sit beside this board, so it stops and names the fix,
+`gh repo set-default Gcob/lara-spec-first`. When no git remote names this repository it stops and names
+`git remote add upstream https://github.com/Gcob/lara-spec-first.git`.
 
 ## What this project deliberately does not use
 

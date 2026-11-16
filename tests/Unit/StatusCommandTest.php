@@ -23,6 +23,9 @@ use Symfony\Component\Process\Process;
 
 const STATUS_SLUG = 'Gcob/lara-spec-first';
 
+/** The body of a card that is ready to be `Todo`: nothing left open, and a `Done when`. */
+const STATUS_COMPLETE_BODY = "## Decisions\n\nSettled.\n\n## Done when\n\n- [ ] It works.\n";
+
 const STATUS_FAKE_GH = <<<'SH'
 #!/bin/sh
 # Records the call, then answers from the files the test wrote. A file `fail-<route>`
@@ -119,13 +122,13 @@ afterEach(function (): void {
  * A card, as the board and the issue list both see it.
  *
  * @param  array<string, mixed>  $overrides
- * @return array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, body: string}
+ * @return array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, onBoard: bool, body: string}
  */
 function statusCard(array $overrides): array
 {
     $number = $overrides['number'];
 
-    /** @var array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, body: string} */
+    /** @var array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, onBoard: bool, body: string} */
     return array_merge([
         'number' => $number,
         'title' => 'Card '.$number,
@@ -137,7 +140,8 @@ function statusCard(array $overrides): array
         'milestone' => null,
         'labels' => [],
         'labelsNext' => false,
-        'body' => '',
+        'onBoard' => true,
+        'body' => STATUS_COMPLETE_BODY,
     ], $overrides);
 }
 
@@ -164,6 +168,38 @@ function statusPr(array $overrides): array
 function statusMilestone(array $overrides): array
 {
     return array_merge(['state' => 'open', 'open_issues' => 0, 'closed_issues' => 0], $overrides);
+}
+
+/**
+ * A merged pull request: the cards it closes and the branch it came from.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array{number: int, branch: string, closes: list<int>}
+ */
+function statusMerged(array $overrides): array
+{
+    /** @var array{number: int, branch: string, closes: list<int>} */
+    return array_merge(['branch' => 'merged-thing', 'closes' => []], $overrides);
+}
+
+/**
+ * @param  int|array{number: int, branch: string, closes: list<int>}  $merged  a bare number is a pull request with no
+ *                                                                             card
+ * @return array<string, mixed>
+ */
+function statusMergedNode(int|array $merged): array
+{
+    $merged = is_int($merged) ? statusMerged(['number' => $merged]) : $merged;
+
+    return [
+        'number' => $merged['number'],
+        'headRefName' => $merged['branch'],
+        'mergedAt' => '2026-11-01T12:00:00Z',
+        'closingIssuesReferences' => [
+            'pageInfo' => ['hasNextPage' => false],
+            'nodes' => array_map(static fn (int $number): array => ['number' => $number], $merged['closes']),
+        ],
+    ];
 }
 
 /**
@@ -221,7 +257,7 @@ function statusSplit(array $list): array
 }
 
 /**
- * @param  array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, body: string}  $card
+ * @param  array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, onBoard: bool, body: string}  $card
  * @return array<string, mixed>
  */
 function statusBoardItem(array $card): array
@@ -242,7 +278,7 @@ function statusBoardItem(array $card): array
 }
 
 /**
- * @param  array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, body: string}  $card
+ * @param  array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, onBoard: bool, body: string}  $card
  * @return array<string, mixed>
  */
 function statusIssueNode(array $card): array
@@ -315,9 +351,10 @@ function statusGraphqlPages(array $pages, array $path): array
 /**
  * A repository with a bare `origin`, a fake `gh`, and a clean board: no card, no pull request, `main` green.
  *
- * Each key of `$data` is one list the fake answers with, as a plain list (one page) or as `statusPages()`: `cards`,
- * `issues` (issues that are not on the board), `prs`, `merged` (pull request numbers), `milestones`, `comments`, `ci`
- * (the check runs of `main`) and `slug` (what `gh repo view` answers).
+ * Each key of `$data` is one list the fake answers with, as a plain list (one page) or as `statusPages()`: `cards` (a
+ * card with `onBoard` false is an issue the board does not have), `prs`, `merged` (a pull request number, or a
+ * `statusMerged()`), `milestones`, `comments`, `ci` (the check runs of `main`) and `slug` (what `gh repo view`
+ * answers).
  *
  * @param  array<string, mixed>  $data
  * @return array{dir: string, work: string, origin: string, bin: string, state: string}
@@ -355,18 +392,8 @@ function statusProject(array $data = []): array
 
     $listOf = static fn (string $key): array => (array) ($data[$key] ?? []);
 
-    /** @var list<list<array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, body: string}>> $cardPages */
+    /** @var list<list<array{number: int, title: string, status: string, kind: string, order: int|null, state: string, stateReason: string|null, milestone: string|null, labels: list<string>, labelsNext: bool, onBoard: bool, body: string}>> $cardPages */
     $cardPages = statusSplit($listOf('cards'));
-    $issuePages = statusSplit($listOf('issues'));
-    $issueNodes = [];
-
-    foreach ($cardPages as $index => $cards) {
-        $issueNodes[$index] = array_map('statusIssueNode', $cards);
-    }
-
-    foreach ($issuePages as $index => $issues) {
-        $issueNodes[$index] = [...($issueNodes[$index] ?? []), ...$issues];
-    }
 
     /** @var list<list<array{number: int, branch: string, draft: bool, closes: list<int>, checks: list<array<string, mixed>>}>> $prPages */
     $prPages = statusSplit($listOf('prs'));
@@ -374,25 +401,20 @@ function statusProject(array $data = []): array
 
     $files = [
         'board.json' => statusGraphqlPages(
-            array_map(static fn (array $cards): array => array_map('statusBoardItem', $cards), $cardPages),
+            array_map(static fn (array $cards): array => array_map('statusBoardItem', array_values(array_filter($cards, static fn (array $card): bool => $card['onBoard']))), $cardPages),
             ['user', 'projectV2', 'items'],
         ),
-        'issues.json' => statusGraphqlPages(array_values($issueNodes), ['repository', 'issues']),
+        'issues.json' => statusGraphqlPages(
+            array_map(static fn (array $cards): array => array_map('statusIssueNode', $cards), $cardPages),
+            ['repository', 'issues'],
+        ),
         'comments.json' => statusSplit($listOf('comments')),
         'prs-open.json' => statusGraphqlPages(
             array_map(static fn (array $prs): array => array_map('statusPrNode', $prs), $prPages),
             ['repository', 'pullRequests'],
         ),
         'prs-merged.json' => statusGraphqlPages(
-            array_map(static fn (array $numbers): array => array_map(
-                static fn (mixed $number): array => [
-                    'number' => $number,
-                    'headRefName' => 'feature/'.(is_int($number) ? $number : 0).'/done',
-                    'mergedAt' => '2026-11-01T12:00:00Z',
-                    'closingIssuesReferences' => ['pageInfo' => ['hasNextPage' => false], 'nodes' => []],
-                ],
-                $numbers,
-            ), statusSplit($listOf('merged'))),
+            array_map(static fn (array $merged): array => array_map('statusMergedNode', $merged), statusSplit($listOf('merged'))),
             ['repository', 'pullRequests'],
         ),
         'milestones.json' => statusSplit($listOf('milestones')),
@@ -512,6 +534,24 @@ function statusSection(string $output, string $heading): array
 }
 
 /**
+ * What the Drift section says: its findings, one line each, and the count in its heading and in the header.
+ *
+ * @return array{lines: list<string>, count: int, header: int}
+ */
+function statusDrift(string $output): array
+{
+    $lines = explode("\n", $output);
+    $heading = array_values(array_filter($lines, static fn (string $line): bool => preg_match('/^Drift \(\d+\)$/', $line) === 1));
+    preg_match('/ · drift (\d+)$/', $lines[0], $header);
+
+    return [
+        'lines' => $heading === [] ? [] : statusSection($output, $heading[0]),
+        'count' => $heading === [] ? 0 : (int) substr($heading[0], 7, -1),
+        'header' => (int) ($header[1] ?? -1),
+    ];
+}
+
+/**
  * What a test compares to see that a run left the repository as it found it.
  *
  * @param  array{dir: string, work: string, origin: string, bin: string, state: string}  $project
@@ -612,7 +652,8 @@ it('prints the cards in flight with their branch, pull request and CI', function
 
     $run = statusRunScript($project);
 
-    expect($run['exit'])->toBe(0, $run['err'])
+    // #18 is `In Progress` with nothing on a branch: that is the one drift, and the page still prints.
+    expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusSection($run['out'], 'Now'))->toBe([
             '  #11 In review    Beta',
             '      PR #21 · CI green (2 checks)',
@@ -646,7 +687,8 @@ it('lists the Todo cards by Order, then by number, with the unordered ones last'
 
     $run = statusRunScript($project);
 
-    expect($run['exit'])->toBe(0, $run['err'])
+    // Two cards share an Order and one has none: drift, and the queue still prints.
+    expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusSection($run['out'], 'Next (Todo, by Order)'))->toBe([
             '  10  #31  Second  0.3.0',
             '  10  #32  Thirds  0.3.0',
@@ -691,7 +733,8 @@ it('reports the next release as the open release milestone with the lowest versi
 
     $run = statusRunScript($project);
 
-    expect($run['exit'])->toBe(0, $run['err'])
+    // The cards are bare (no PR, no Order): drift, and the release still prints.
+    expect($run['exit'])->toBe(1, $run['err'])
         ->and($run['out'])->toContain("\nRelease 0.3.0: 3 of 8 closed (1 ready to publish, 2 done)\n")
         ->and($run['out'])->not->toContain('Release 0.10.0')
         ->and(statusSection($run['out'], 'Release 0.3.0: 3 of 8 closed (1 ready to publish, 2 done)'))->toBe([
@@ -710,12 +753,12 @@ it('says so when no release milestone is open, and never shows 1.0 there', funct
 
     $run = statusRunScript($project);
 
-    expect($run['exit'])->toBe(0, $run['err'])
+    expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusSection($run['out'], 'Release'))->toBe(['  No release milestone is open.'])
         ->and($run['out'])->not->toContain('Release 1.0');
 });
 
-it('prints the header, and the sections that later scopes fill', function (): void {
+it('prints the header, and the sections a later scope fills', function (): void {
     $project = statusProject(['ci' => [statusRun('a'), statusRun('b')]]);
     $sha = statusGit($project['work'], ['rev-parse', '--short', 'origin/main']);
 
@@ -730,18 +773,18 @@ it('prints the header, and the sections that later scopes fill', function (): vo
         ->and($run['out'])->toEndWith("\nDrift: none.\n");
 });
 
-it('says what main\'s CI is in the header', function (array $runs, string $expected): void {
+it('says what main\'s CI is in the header', function (array $runs, string $expected, int $drift): void {
     $project = statusProject(['ci' => $runs]);
 
     $run = statusRunScript($project);
 
-    expect(explode("\n", $run['out'])[0])->toEndWith($expected.' · drift 0');
+    expect(explode("\n", $run['out'])[0])->toEndWith(' · CI '.$expected.' · drift '.$drift);
 })->with([
-    'every run green, skipped or neutral' => [[statusRun('a'), statusRun('b', conclusion: 'skipped'), statusRun('c', conclusion: 'neutral')], 'CI green (3 checks)'],
-    'a failed run' => [[statusRun('a'), statusRun('tests (8.3)', conclusion: 'failure'), statusRun('docs', conclusion: 'cancelled')], 'CI red: tests (8.3), docs'],
-    'a run still going' => [[statusRun('a'), statusRun('b', 'in_progress', null)], 'CI running'],
-    'a failed run and one going' => [[statusRun('tests', conclusion: 'failure'), statusRun('b', 'queued', null)], 'CI red: tests'],
-    'no run' => [[], 'CI no checks'],
+    'every run green, skipped or neutral' => [[statusRun('a'), statusRun('b', conclusion: 'skipped'), statusRun('c', conclusion: 'neutral')], 'green (3 checks)', 0],
+    'a failed run' => [[statusRun('a'), statusRun('tests (8.3)', conclusion: 'failure'), statusRun('docs', conclusion: 'cancelled')], 'red: tests (8.3), docs', 1],
+    'a run still going' => [[statusRun('a'), statusRun('b', 'in_progress', null)], 'running', 0],
+    'a failed run and one going' => [[statusRun('tests', conclusion: 'failure'), statusRun('b', 'queued', null)], 'red: tests', 1],
+    'no run' => [[], 'no checks', 0],
 ]);
 
 it('asks GitHub only questions, and leaves the repository as it found it', function (): void {
@@ -825,7 +868,8 @@ it('reads every page of a list', function (): void {
 
     $run = statusRunScript($project);
 
-    expect($run['exit'])->toBe(0, $run['err'])
+    // PR #60 serves a card the board does not have: drift, and every page still shows.
+    expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusSection($run['out'], 'Next (Todo, by Order)'))->toBe([
             '  10  #50  First page',
             '  20  #51  Second page',
@@ -884,4 +928,282 @@ it('prints the same bytes for the same board, whatever the local branches', func
     expect($first['exit'])->toBe(0, $first['err'])
         ->and($second['out'])->toBe($first['out'])
         ->and($second['out'])->not->toContain('local-only');
+});
+
+it('exits 0 and prints no drift for a board that matches git', function (): void {
+    $project = statusProject([
+        'milestones' => [
+            statusMilestone(['title' => '0.3.0']),
+            statusMilestone(['title' => '1.0']),
+            statusMilestone(['title' => '0.2.0', 'state' => 'closed']),
+        ],
+        'cards' => [
+            statusCard(['number' => 10, 'status' => 'Todo', 'order' => 10]),
+            statusCard(['number' => 11, 'status' => 'Todo', 'order' => 20]),
+            statusCard(['number' => 12, 'status' => 'In Progress']),
+            statusCard(['number' => 13, 'status' => 'In review']),
+            statusCard(['number' => 14, 'status' => 'Backlog']),
+            statusCard(['number' => 15, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
+            statusCard(['number' => 16, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Docs', 'milestone' => '0.3.0']),
+            statusCard(['number' => 17, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0']),
+            statusCard(['number' => 18, 'status' => 'Done', 'state' => 'CLOSED']),
+            statusCard(['number' => 19, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Lot']),
+            statusCard(['number' => 20, 'status' => 'Done', 'state' => 'CLOSED', 'stateReason' => 'NOT_PLANNED']),
+            statusCard(['number' => 21, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
+            statusCard(['number' => 22, 'status' => 'In Progress', 'kind' => 'Lot']),
+            statusCard(['number' => 23, 'status' => 'Todo', 'kind' => 'Lot']),
+            statusCard(['number' => 24, 'status' => 'Done', 'state' => 'CLOSED', 'onBoard' => false]),
+        ],
+        'prs' => [statusPr(['number' => 40, 'branch' => 'feature/13/under-review', 'checks' => [['name' => 'lint', 'conclusion' => 'SUCCESS']]])],
+        'merged' => [statusMerged(['number' => 41, 'branch' => 'feature/15/merged', 'closes' => [15]])],
+    ]);
+    statusPushBranch($project, 'feature/12/started', 0);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusDrift($run['out']))->toBe(['lines' => [], 'count' => 0, 'header' => 0])
+        ->and($run['out'])->toEndWith("\nDrift: none.\n");
+});
+
+it('flags an open issue missing from the board, and a card whose status contradicts its issue', function (): void {
+    $project = statusProject([
+        'cards' => [
+            statusCard(['number' => 30, 'status' => 'Todo', 'onBoard' => false]),
+            statusCard(['number' => 31, 'status' => 'Done']),
+            statusCard(['number' => 32, 'status' => 'Ready to publish']),
+            statusCard(['number' => 33, 'status' => 'Todo', 'state' => 'CLOSED']),
+            statusCard(['number' => 34, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'kind' => 'Docs']),
+            statusCard(['number' => 35, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'kind' => 'Lot']),
+            statusCard(['number' => 36, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'stateReason' => 'NOT_PLANNED']),
+            statusCard(['number' => 37, 'status' => 'Ready to publish', 'state' => 'CLOSED']),
+            statusCard(['number' => 38, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Decision']),
+            statusCard(['number' => 39, 'status' => 'Todo', 'state' => 'CLOSED', 'onBoard' => false]),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out']))->toBe([
+            'lines' => [
+                '  #30  Open, but not on the board. Add it and triage it.',
+                '  #31  Done, but its issue is open. Close the issue, or move the card back.',
+                '  #32  Ready to publish, but its issue is open. Close the issue, or move the card back.',
+                '  #33  Closed, but Todo. Move it to Ready to publish.',
+                '  #34  Ready to publish, but it is a Docs card, which needs no release. Move it to Done.',
+                '  #35  Ready to publish, but it is a Lot card, which needs no release. Move it to Done.',
+                '  #36  Ready to publish, but it was closed as not planned, so it ships nothing. Move it to Done.',
+            ],
+            'count' => 7,
+            'header' => 7,
+        ]);
+});
+
+it('flags a Ready to publish card whose release shipped, and a Done card whose release has not', function (): void {
+    $project = statusProject([
+        'milestones' => [
+            statusMilestone(['title' => '0.2.0', 'state' => 'closed']),
+            statusMilestone(['title' => '0.3.0']),
+            statusMilestone(['title' => '1.0']),
+        ],
+        'cards' => [
+            statusCard(['number' => 40, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
+            statusCard(['number' => 41, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
+            statusCard(['number' => 42, 'status' => 'Done', 'state' => 'CLOSED']),
+            statusCard(['number' => 43, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0']),
+            statusCard(['number' => 44, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
+            statusCard(['number' => 45, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
+            statusCard(['number' => 46, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Docs', 'milestone' => '0.3.0']),
+            statusCard(['number' => 47, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0']),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out'])['lines'])->toBe([
+            '  #40  Ready to publish, but its release 0.2.0 has shipped. Move it to Done.',
+            '  #41  Done, but its release 0.3.0 has not shipped. Move it back to Ready to publish.',
+        ]);
+});
+
+it('flags a pull request that serves no card, or a closed one', function (): void {
+    $project = statusProject([
+        'cards' => [
+            statusCard(['number' => 50, 'status' => 'Ready to publish', 'state' => 'CLOSED']),
+            statusCard(['number' => 51, 'status' => 'In review', 'onBoard' => false]),
+            statusCard(['number' => 52, 'status' => 'In review']),
+            statusCard(['number' => 53, 'status' => 'In review']),
+        ],
+        'prs' => [
+            statusPr(['number' => 70, 'branch' => 'wip-thing']),
+            statusPr(['number' => 71, 'branch' => 'feature/50/closed-card']),
+            statusPr(['number' => 72, 'branch' => 'feature/51/not-on-the-board']),
+            statusPr(['number' => 73, 'branch' => 'feature/52/fine']),
+            statusPr(['number' => 74, 'branch' => 'wip-two', 'closes' => [53]]),
+            statusPr(['number' => 75, 'branch' => 'feature/999/ghost']),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out'])['lines'])->toBe([
+            '  PR #70  serves no card (branch wip-thing). Rename the branch to {type}/{card}/{context}, or link the card it closes.',
+            '  #50     PR #71 serves it, but it is closed. Link the card it really serves, or reopen this one.',
+            '  #51     Open, but not on the board. Add it and triage it.',
+            '  #51     PR #72 serves it, but it is not on the board. Add the card to the board, or fix the branch name.',
+            '  #999    PR #75 serves it, but it is not on the board. Add the card to the board, or fix the branch name.',
+        ]);
+});
+
+it('flags a card whose status contradicts its pull requests', function (): void {
+    $project = statusProject([
+        'cards' => [
+            statusCard(['number' => 60, 'status' => 'Todo', 'order' => 10]),
+            statusCard(['number' => 61, 'status' => 'In Progress']),
+            statusCard(['number' => 62, 'status' => 'In review']),
+            statusCard(['number' => 63, 'status' => 'In review']),
+            statusCard(['number' => 64, 'status' => 'In review']),
+            statusCard(['number' => 65, 'status' => 'In review', 'kind' => 'Docs']),
+            statusCard(['number' => 66, 'status' => 'In review']),
+        ],
+        'prs' => [
+            statusPr(['number' => 80, 'branch' => 'feature/60/drafted', 'draft' => true]),
+            statusPr(['number' => 81, 'branch' => 'feature/61/started']),
+            statusPr(['number' => 82, 'branch' => 'feature/62/fine']),
+            statusPr(['number' => 83, 'branch' => 'feature/66/second']),
+            statusPr(['number' => 84, 'branch' => 'feature/61/again']),
+        ],
+        'merged' => [
+            statusMerged(['number' => 90, 'branch' => 'wip-thing', 'closes' => [63]]),
+            statusMerged(['number' => 91, 'branch' => 'docs/65/merged']),
+            statusMerged(['number' => 92, 'branch' => 'feature/66/first']),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out'])['lines'])->toBe([
+            '  #60  Todo, but PR #80 serves it. Move it to In review.',
+            '  #61  In Progress, but PR #81, #84 serve it. Move it to In review.',
+            '  #63  In review, but no open pull request serves it, and PR #90 (merged) does. If every box of its Done when is ticked, close it and move it to Ready to publish; otherwise move it back to In Progress, since another pull request is coming.',
+            '  #64  In review, but no pull request serves it. Move it back to In Progress or Todo.',
+            '  #65  In review, but no open pull request serves it, and PR #91 (merged) does. If every box of its Done when is ticked, close it and move it to Done; otherwise move it back to In Progress, since another pull request is coming.',
+        ]);
+});
+
+it('flags a card whose status contradicts its branches upstream', function (): void {
+    $project = statusProject([
+        'cards' => [
+            statusCard(['number' => 70, 'status' => 'Todo', 'order' => 10]),
+            statusCard(['number' => 71, 'status' => 'Backlog']),
+            statusCard(['number' => 72, 'status' => 'Todo', 'order' => 20]),
+            statusCard(['number' => 73, 'status' => 'Todo', 'order' => 30]),
+            statusCard(['number' => 74, 'status' => 'Todo', 'order' => 40]),
+            statusCard(['number' => 75, 'status' => 'In Progress']),
+            statusCard(['number' => 76, 'status' => 'In Progress']),
+            statusCard(['number' => 77, 'status' => 'In Progress', 'kind' => 'Lot']),
+            statusCard(['number' => 78, 'status' => 'Todo', 'kind' => 'Lot']),
+            statusCard(['number' => 79, 'status' => 'In Progress']),
+            statusCard(['number' => 80, 'status' => 'Todo', 'order' => 50]),
+        ],
+        'prs' => [
+            statusPr(['number' => 100, 'branch' => 'feature/79/open']),
+            statusPr(['number' => 101, 'branch' => 'feature/80/open']),
+        ],
+    ]);
+    statusPushBranch($project, 'feature/70/stale', 2);
+    statusPushBranch($project, 'feature/71/stale', 1);
+    statusPushBranch($project, 'feature/72/just-created', 0);
+    statusPushBranch($project, 'feature/73/trial-claude-spike', 2);
+    statusPushBranch($project, 'feature/76/just-created', 0);
+    statusPushBranch($project, 'feature/78/lot-branch', 1);
+    statusPushBranch($project, 'feature/80/open', 1);
+    // A branch that only exists on this machine is not on the upstream.
+    statusGit($project['work'], ['checkout', '--quiet', '-b', 'feature/74/local-only', 'main']);
+    statusGit($project['work'], ['commit', '--quiet', '--allow-empty', '-m', 'chore: local work']);
+    statusGit($project['work'], ['checkout', '--quiet', 'main']);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out'])['lines'])->toBe([
+            '  #70  Todo, but branch feature/70/stale is 2 commits ahead of main. Move it to In Progress, or delete the stale branch.',
+            '  #71  Backlog, but branch feature/71/stale is 1 commit ahead of main. Move it to In Progress, or delete the stale branch.',
+            '  #75  In Progress, but nothing is on a branch and no pull request is open. Push its branch when the card starts, or move it back to Todo.',
+            '  #79  In Progress, but PR #100 serves it. Move it to In review.',
+            '  #80  Todo, but PR #101 serves it. Move it to In review.',
+        ]);
+});
+
+it('flags a red main', function (): void {
+    $red = statusProject(['ci' => [statusRun('lint'), statusRun('tests (8.3)', conclusion: 'failure'), statusRun('docs', 'in_progress', null)]]);
+
+    $run = statusRunScript($red);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out'])['lines'])->toBe(['  main  CI on main failed: tests (8.3). Repair main before anything else.']);
+
+    $going = statusProject(['ci' => [statusRun('lint'), statusRun('docs', 'in_progress', null)]]);
+
+    $run = statusRunScript($going);
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusDrift($run['out'])['lines'])->toBe([]);
+});
+
+it('flags a Todo card with no Order, a shared Order, or a body that is still a sketch', function (): void {
+    $project = statusProject(['cards' => [
+        statusCard(['number' => 110]),
+        statusCard(['number' => 111, 'order' => 10]),
+        statusCard(['number' => 112, 'order' => 10]),
+        statusCard(['number' => 113, 'order' => 20, 'body' => "## Assumptions\n\nMaybe.\n\n## Discovery\n\nUnknown.\n\n## Done when\n\n- [ ] Yes.\n"]),
+        statusCard(['number' => 114, 'order' => 30, 'body' => "## Discovery\r\n\r\nUnknown.\r\n\r\n## Done when\r\n\r\n- [ ] Yes.\r\n"]),
+        statusCard(['number' => 115, 'order' => 40, 'body' => "## Decisions\n\nSettled.\n"]),
+        statusCard(['number' => 116, 'order' => 50]),
+        statusCard(['number' => 117, 'kind' => 'Lot']),
+        statusCard(['number' => 118, 'order' => 60, 'body' => "We checked our assumptions and our discovery.\n\n## Done when\n\n- [ ] Yes.\n"]),
+        statusCard(['number' => 119, 'status' => 'Backlog', 'body' => "## Assumptions\n\nMaybe.\n"]),
+    ]]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out'])['lines'])->toBe([
+            '  #110  Todo with no Order. Give it one, or it has no place in the queue.',
+            '  #111  Todo with Order 10, like #112. Give each card its own, so the queue has one order.',
+            '  #112  Todo with Order 10, like #111. Give each card its own, so the queue has one order.',
+            '  #113  Todo, but its body still has ## Assumptions and ## Discovery. A Todo card has nothing left open: settle each into Decisions and delete the section.',
+            '  #114  Todo, but its body still has ## Discovery. A Todo card has nothing left open: settle each into Decisions and delete the section.',
+            '  #115  Todo, but its body has no ## Done when. Add it: a Todo card says how to tell it is done.',
+        ]);
+});
+
+it('sorts the drift by card, with the findings that name no card first', function (): void {
+    $project = statusProject([
+        'ci' => [statusRun('tests', conclusion: 'failure')],
+        'cards' => [
+            statusCard(['number' => 5, 'status' => 'Done']),
+            statusCard(['number' => 3, 'body' => 'A sketch.']),
+        ],
+        'prs' => [statusPr(['number' => 70, 'branch' => 'wip-thing'])],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out']))->toBe([
+            'lines' => [
+                '  main    CI on main failed: tests. Repair main before anything else.',
+                '  PR #70  serves no card (branch wip-thing). Rename the branch to {type}/{card}/{context}, or link the card it closes.',
+                '  #3      Todo with no Order. Give it one, or it has no place in the queue.',
+                '  #3      Todo, but its body has no ## Done when. Add it: a Todo card says how to tell it is done.',
+                '  #5      Done, but its issue is open. Close the issue, or move the card back.',
+            ],
+            'count' => 5,
+            'header' => 5,
+        ]);
 });
