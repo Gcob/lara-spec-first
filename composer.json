@@ -25,6 +25,7 @@
     },
     "require": {
         "php": "^8.3",
+        "ext-tokenizer": "*",
         "devizzent/cebe-php-openapi": "^1.1",
         "illuminate/routing": "^12.22 || ^13.0",
         "illuminate/support": "^12.22 || ^13.0",

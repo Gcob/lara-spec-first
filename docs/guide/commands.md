@@ -74,9 +74,13 @@ WARN  3 of 12 operation(s) have no implementation and answer 501.
 ```
 
 The warning is the point rather than a caveat: an operation nothing implements answers `501`, and a contract full of
-them should not read as a finished application. The commands under it are
+them should not read as a finished application. The commands in that warning are
 [summarized by tag](./code-generation/scaffolding.md#the-build-names-the-command) so that a two-hundred-operation
 contract answers with a list rather than a wall.
+
+A custom controller whose `routeAction` no longer fits its regenerated parent gets a warning of its own, one controller
+per line with the signature to paste, and the build still exits `0`
+([the signature is the contract](./controllers.md#the-signature-is-the-contract)).
 
 Why it plans everything before writing anything, and why it never scaffolds:
 [`code-generation/index.md`](./code-generation/index.md#the-build-command-specbuild).

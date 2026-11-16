@@ -9,10 +9,13 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
+use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
 use Gcob\LaraSpecFirst\Generation\GeneratedTree;
 use Gcob\LaraSpecFirst\Generation\OperationSelector;
 use Gcob\LaraSpecFirst\Generation\PlannedController;
 use Gcob\LaraSpecFirst\Generation\ProjectRelativePath;
+use Gcob\LaraSpecFirst\Generation\RouteActionOverride;
+use Gcob\LaraSpecFirst\Generation\RouteActionSignature;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Console\Command;
@@ -86,10 +89,19 @@ final class BuildCommand extends Command
             return self::FAILURE;
         }
 
+        // Trimmed once, for the planner and for the stale-override check: both
+        // build a class name from it, and a trailing separator the code accepts
+        // would otherwise make the second one compare the wrong name.
+        $generated = rtrim($namespace, '\\');
+
+        // One lookup for the planner and for the check after it, so both ask the
+        // autoloader the same question about the same custom controllers.
+        $lookup = CustomControllerLookup::fromAutoloader();
+
         // Named from the project root rather than absolutely: a generated file
         // may end up committed, and a machine's path in a repository is a diff
         // nobody made.
-        $plan = (new BuildPlanner(rtrim($namespace, '\\'), ProjectRelativePath::from($specPath)))
+        $plan = (new BuildPlanner($generated, ProjectRelativePath::from($specPath), $lookup))
             ->plan($operations);
 
         $configured = $config->get(GeneratedRoutesLocator::SETTING);
@@ -118,6 +130,8 @@ final class BuildCommand extends Command
         // is the line to revisit — {@see BuildPlan::routedToGeneratedParent()}
         // counts routes rather than making the claim itself.
         $this->reportRequests($plan);
+
+        $this->reportStaleOverrides($plan, $generated, $lookup);
 
         $unimplemented = $plan->routedToGeneratedParent();
 
@@ -186,6 +200,76 @@ final class BuildCommand extends Command
                     .'in the Findings block of the file.',
                 $unenforced,
             ));
+        }
+    }
+
+    /**
+     * Names each custom controller whose `routeAction` PHP will refuse to load over the parent this build just wrote.
+     *
+     * **A warning, never a refusal.** The developer cannot make the child match a request class a refused build never
+     * generated, so refusing would wait on the very file it blocks. A warning changes no generated file and no exit
+     * code, which keeps the build depending on a custom controller for its existence alone.
+     *
+     * **The file is read, never loaded:** an override that no longer fits is a compile-time fatal, and loading it to
+     * ask would end this command. Only a child that extends exactly the parent generated for its operation is judged,
+     * and only by a parameter count; a type PHP reports at load is not this command's to guess.
+     *
+     * **Named, one per line, because each is the developer's file and each needs an edit.** The request type is printed
+     * fully qualified, so the line loads as pasted into a child with no `use` for it.
+     *
+     * @see docs/guide/controllers.md — "The signature is the contract"
+     */
+    private function reportStaleOverrides(BuildPlan $plan, string $namespace, CustomControllerLookup $lookup): void
+    {
+        $stale = [];
+
+        foreach ($plan->controllers as $controller) {
+            $custom = $controller->name->customController;
+
+            if ($custom === null || ! $controller->routesToCustomController()) {
+                continue;
+            }
+
+            $file = $lookup->fileOf($custom);
+            $source = $file === null ? false : @file_get_contents($file);
+
+            if ($source === false) {
+                continue;
+            }
+
+            $override = RouteActionOverride::read($source, $custom);
+
+            // PHP class names are case-insensitive.
+            if ($override === null
+                || $override->extends === null
+                || strcasecmp($override->extends, ltrim($controller->fullyQualifiedName($namespace), '\\')) !== 0) {
+                continue;
+            }
+
+            $request = $controller->request;
+
+            if ($override->fits(RouteActionSignature::count($controller->operation, $request !== null))) {
+                continue;
+            }
+
+            $stale[$custom] = 'routeAction('.RouteActionSignature::declaration(
+                $controller->operation,
+                $request === null ? null : '\\'.$request->fullyQualifiedName($namespace),
+            ).')';
+        }
+
+        if ($stale === []) {
+            return;
+        }
+
+        $this->components->warn(sprintf(
+            '%d custom controller(s) declare a routeAction that no longer matches the parameters their generated parent '
+                .'declares, so PHP will refuse to load them. Give each the signature below:',
+            count($stale),
+        ));
+
+        foreach ($stale as $class => $signature) {
+            $this->line('  '.$class.'  '.$signature);
         }
     }
 

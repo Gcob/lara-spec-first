@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Composer\Autoload\ClassLoader;
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
 use Gcob\LaraSpecFirst\Http\Controllers\SpecController;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
@@ -1024,4 +1025,136 @@ it('fails naming the flag when an allowed reference was never vendored', functio
         ->and($output->fetch())
         ->toContain('https://example.com/schemas.yaml')
         ->toContain('php artisan spec:build --update-refs');
+});
+
+/*
+ * A custom controller whose `routeAction` has fallen behind its regenerated parent.
+ *
+ * PHP refuses such a class at its first load, which is at request time, so the
+ * build is the first place anything can name it. It warns and never refuses:
+ * refusing would deadlock, since the child cannot be made to match a request class
+ * the refused build never generated.
+ *
+ * The children are written at test time into a directory mapped on Composer's own
+ * loader (the lookup reads prefixes from there, which `spl_autoload_register` above
+ * would not give it), and a stale one is a fatal if loaded, so the file is read and
+ * the class is asserted to stay undeclared.
+ *
+ * @see docs/guide/controllers.md — "The signature is the contract"
+ */
+
+/**
+ * Where the children live: one name for the whole run, a directory that exists only while a test needs it.
+ */
+function childRootPath(): string
+{
+    static $root = null;
+
+    return $root ??= sys_get_temp_dir().'/lsf-child-'.bin2hex(random_bytes(6));
+}
+
+function childRoot(): string
+{
+    static $mapped = false;
+
+    $root = childRootPath();
+
+    if (! is_dir($root)) {
+        mkdir($root);
+    }
+
+    if (! $mapped) {
+        foreach (spl_autoload_functions() ?: [] as $autoloader) {
+            if (is_array($autoloader) && $autoloader[0] instanceof ClassLoader) {
+                $autoloader[0]->setPsr4('LsfChild\\', [$root]);
+
+                break;
+            }
+        }
+
+        $mapped = true;
+    }
+
+    return $root;
+}
+
+function removeChildren(): void
+{
+    $root = childRootPath();
+
+    if (is_dir($root)) {
+        array_map('unlink', glob($root.'/*.php') ?: []);
+        rmdir($root);
+    }
+}
+
+function writeChild(string $short, string $parameters): void
+{
+    file_put_contents(childRoot().'/'.$short.'.php', sprintf(
+        "<?php\n\ndeclare(strict_types=1);\n\nnamespace LsfChild;\n\n"
+        ."final class %s extends \\%s\\Controllers\\%s\n{\n"
+        ."    public function routeAction(%s): mixed\n    {\n        return 'mine';\n    }\n}\n",
+        $short,
+        buildNamespace(),
+        $short,
+        $parameters,
+    ));
+}
+
+/**
+ * Builds the stale-override document with its two children, and gives back the output.
+ */
+function buildStaleOverrides(): string
+{
+    config()->set('lara-spec-first.spec.path', specFixturePath('stale-override.yaml'));
+
+    writeChild('StaleController', 'string $id');
+    writeChild('FreshController', 'string $id');
+
+    $output = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(0);
+
+    return $output->fetch();
+}
+
+describe('a custom controller whose routeAction fell behind its parent', function (): void {
+    afterEach(fn () => removeChildren());
+
+    it('names a custom controller whose routeAction no longer fits its parent', function (): void {
+        $output = buildStaleOverrides();
+        $request = '\\'.buildNamespace().'\\Requests\\UpdateUserRequest';
+
+        expect($output)
+            ->toContain('so PHP will refuse to load them')
+            ->toContain('LsfChild\\StaleController')
+            ->toContain('routeAction('.$request.' $request, string $id)')
+            ->and($output)->not->toContain('FreshController')
+            // The file was read, never loaded: a load of this child is a compile-time fatal.
+            ->and(class_exists('LsfChild\\StaleController', false))->toBeFalse();
+
+        // A namespace configured with a trailing separator is one the build accepts, so the
+        // check has to read it the same way: the raw value would compare `Ns\\Controllers\...`
+        // with the child's `extends`, find no match, and go quiet without saying so.
+        config()->set('lara-spec-first.generated.namespace', buildNamespace().'\\');
+
+        $again = buildStaleOverrides();
+
+        expect($again)
+            ->toContain('so PHP will refuse to load them')
+            ->toContain('routeAction('.$request.' $request, string $id)')
+            ->and($again)->not->toContain('\\\\');
+    });
+
+    // `WrittenController` declares `routeAction()` over a parent of one parameter, which
+    // would read as stale by count: it is silent because it extends nothing, and a class
+    // that does not extend its parent is not this check's to judge.
+    it('says nothing about a custom controller that does not extend its parent', function (): void {
+        config()->set('lara-spec-first.spec.path', specFixturePath('custom-controllers.yaml'));
+
+        $output = new BufferedOutput;
+
+        expect(app(Kernel::class)->call('spec:build', [], $output))->toBe(0)
+            ->and($output->fetch())->not->toContain('refuse to load');
+    });
 });

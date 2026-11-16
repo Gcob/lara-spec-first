@@ -179,10 +179,11 @@ Every technology choice, its status, and the reasoning behind it live in
 
 ## Requirements
 
-|             | Supported     |
-| ----------- | ------------- |
-| **PHP**     | 8.3, 8.4, 8.5 |
-| **Laravel** | 12.22+, 13.x  |
+|               | Supported                                      |
+| ------------- | ---------------------------------------------- |
+| **PHP**       | 8.3, 8.4, 8.5                                  |
+| **Laravel**   | 12.22+, 13.x                                   |
+| **Extension** | `tokenizer` (every Laravel application has it) |
 
 ## Development Environment
 
