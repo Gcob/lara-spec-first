@@ -340,9 +340,11 @@ final readonly class FormRequestEmitter
      * a key for, and an open root with nothing required would accept them. Only a JSON request is checked (a form
      * cannot send a non-object). An empty content is not a non-object but an absent body: it is refused when the body
      * is `required`, which no rule says when every property is optional, and accepted when it is not. That check holds
-     * for a form body too, and reads a request as absent when it is JSON or has no `Content-Type` (a request with none
-     * carries no form field either). A request with a form `Content-Type` has its body read from the form bag, whose
-     * fields need not show in the raw content, so it is not read as absent. A schema that allows `null` allows it here.
+     * for a form body too, and reads a request as absent whatever its `Content-Type` is, unless that is a form's (JSON,
+     * `text/plain`, none at all: a request with none carries no form field either). A request with a form
+     * `Content-Type` has its body read from the form bag, whose fields need not show in the raw content, so it is not
+     * read as absent. The type is compared without case, as PHP parses a form whatever the case of its type, and
+     * Symfony's `getFormat()` compares exactly. A schema that allows `null` allows it here.
      *
      * **The second reads the top-level keys from the body rather than from `all()`**, by the same `bodyInput()`
      * `validationData()` reads: the JSON bag, or the form bag, and the uploaded files either way, never
@@ -368,16 +370,17 @@ final readonly class FormRequestEmitter
             $lines = ['                $content = $this->getContent();', ''];
         }
 
-        // Why: a request with no `Content-Type` carries no form field either (a multipart always sets
-        // one), so no content is as absent as a body gets. A form with a type and no content is not read
-        // as absent, since its fields need not show in the content.
+        // Why: a request whose type is not a form's reads nothing from the form bag, and one with no
+        // `Content-Type` carries no form field either (a multipart always sets one), so no content is as
+        // absent as a body gets. A form with a type and no content is not read as absent, since its fields
+        // need not show in the content. The type is lowered because `getFormat()` compares exactly.
         if ($set->requiredRoot) {
             $lines = [
                 ...$lines,
                 '                if (',
                 '                    trim($content) === \'\'',
                 '                    && $this->allFiles() === []',
-                '                    && ($this->isJson() || ! $this->headers->has(\'Content-Type\'))',
+                '                    && $this->getFormat(strtolower((string) $this->headers->get(\'Content-Type\'))) !== \'form\'',
                 '                ) {',
                 '                    $validator->addFailure('.$this->literal($set->rootKey).', \'required\');',
                 ...($set->closedKeys === null ? [] : ['', '                    return;']),

@@ -270,7 +270,7 @@ it('emits no root check for a form body, and the empty-content check only when i
 
     expect($emitted)->not->toContain('json_decode')
         ->and(str_contains($emitted, 'function after()'))->toBe($expected)
-        ->and(str_contains($emitted, "! \$this->headers->has('Content-Type')"))->toBe($expected);
+        ->and(str_contains($emitted, "\$this->getFormat(strtolower((string) \$this->headers->get('Content-Type'))) !== 'form'"))->toBe($expected);
 })->with([
     'required' => [true, true],
     'optional' => [false, false],

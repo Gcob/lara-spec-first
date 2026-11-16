@@ -2040,9 +2040,47 @@ it('does not refuse an upload sent with no content type', function (): void {
     expect(statusForContentType($class, null, files: ['avatar' => realUpload('x', 'a.txt')]))->toBe(200);
 });
 
-// Only a JSON request is read as an absent body: a request that is not JSON has its body read from
-// the form bag, and a form's fields need not show in the raw content.
-it('does not read an empty content as an absent body when the request is not JSON', function (): void {
+// An empty content is an absent body for every type but a form's: a form's fields need not show in the raw
+// content (PHP leaves `php://input` empty for a multipart), but nothing else is read from the form bag.
+it('refuses an empty content of a type that is not a form when the body is required', function (string $contentType, string $content, bool $json): void {
+    $operation = $json ? postWithOptionalJsonObject() : postWithOptionalFormObject(['multipart/form-data']);
+    $class = emittedRequestClass($operation);
+
+    $response = responseForContentType($class, $contentType, $content);
+    $errors = json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR)['errors'] ?? [];
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and(array_keys((array) $errors))->toBe(['body']);
+})->with([
+    'plain, form body' => ['text/plain', '', false],
+    'xml, form body' => ['application/xml', '', false],
+    'plain with a charset, form body' => ['text/plain; charset=utf-8', '', false],
+    'blanks, form body' => ['text/plain', "  \n", false],
+    'plain, JSON body' => ['text/plain', '', true],
+    'xml, JSON body' => ['application/xml', '', true],
+    'plain with a charset, JSON body' => ['text/plain; charset=utf-8', '', true],
+    'blanks, JSON body' => ['text/plain', "  \n", true],
+]);
+
+// Off-contract content is not an absent body: the request reads nothing from it, so it is not refused here.
+it('does not read a content of a type that is not a form as an absent body when it has content', function (): void {
+    $class = emittedRequestClass(postWithOptionalFormObject(['multipart/form-data']));
+
+    expect(statusForContentType($class, 'text/plain', 'hello'))->toBe(200);
+});
+
+// Symfony compares a format's type exactly, but PHP parses a form whatever the case of its type, so a form with
+// fields and an empty raw content is not an absent body when its type is spelled in capitals.
+it('does not read a form whose type is spelled in capitals as an absent body', function (): void {
+    $class = emittedRequestClass(postWithOptionalFormObject(['multipart/form-data', 'application/x-www-form-urlencoded']));
+
+    expect(statusForContentType($class, 'Application/X-WWW-Form-Urlencoded', '', ['q' => 'x']))->toBe(200)
+        ->and(statusForContentType($class, 'Multipart/Form-Data; boundary=x'))->toBe(200)
+        ->and(statusForContentType($class, 'multipart/form-data; boundary=x'))->toBe(200);
+});
+
+// A request that is a form has its body read from the form bag, and a form's fields need not show in the raw content.
+it('does not read an empty content as an absent body when the request is a form', function (): void {
     $class = emittedRequestClass(postWithOptionalJsonObject());
     Route::post('/_generated/form-to-json', fn () => response()->json(app($class)->validated()));
 

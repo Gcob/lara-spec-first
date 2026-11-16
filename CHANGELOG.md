@@ -25,6 +25,19 @@ tags: [versions, conventions, planning]
 
 ## [Unreleased]
 
+### Changed
+
+- **A required body sent with an empty content and a type that is not a form is refused, where it used to pass.** An
+  `application/xml` or `text/plain` request (compared without case, parameters like `; charset=utf-8` ignored) with no
+  content, or only blanks, answers `422` to a client that asks for JSON (see
+  [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)),
+  on the body's own key (`body`, or `_body` when a property is named `body`). It was accepted when no property refused
+  the empty body, and when a required property did, it was already refused on that key and the body's key now joins it.
+  A form type (`application/x-www-form-urlencoded`, `multipart/form-data`) is still not read as absent, spelled in
+  capitals or not, and a request with no `Content-Type` or with JSON was already read as absent. This is a breaking
+  change: a client that sent such a request and got a `200` now gets a refusal. Send the body, or make it optional in
+  the contract.
+
 ### Fixed
 
 - **The "a form with a `Content-Type` and no field" finding no longer appears where a required field already refuses an
