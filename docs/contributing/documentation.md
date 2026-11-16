@@ -3,12 +3,12 @@ title: Documentation Guide
 audience: Contributors
 covers: >
     How documentation is written and organized in this repository: the docs-follow-code rule, the one-topic-one-file
-    principle and what happens when a subject outgrows one file, the audience vocabulary and the directory each audience
-    owns and the voice each one is written in, how a rule in this file is contested, the front matter metadata schema
-    and tag vocabulary, the summary every document opens with and how it differs from a `covers` claim, the three rules
-    that keep a document readable in one pass and the junior developer test that calibrates them, how a diagram is built
-    and when one earns its place, the catalogue of doc smells and the correction each one calls for, and the inventory
-    of every document.
+    principle, how a lasting decision is shared between its ADR and its topic file, and what happens when a subject
+    outgrows one file, the audience vocabulary and the directory each audience owns and the voice each one is written
+    in, how a rule in this file is contested, the front matter metadata schema and tag vocabulary, the summary every
+    document opens with and how it differs from a `covers` claim, the three rules that keep a document readable in one
+    pass and the junior developer test that calibrates them, how a diagram is built and when one earns its place, the
+    catalogue of doc smells and the correction each one calls for, and the inventory of every document.
 read_before: Writing, moving, or restructuring any documentation.
 tags: [documentation, conventions, metadata, code-review, onboarding]
 ---
@@ -98,6 +98,19 @@ The rules:
 
 Signs the rule is being broken: the same decision justified in two places; a section that re-explains something the
 reader was already sent elsewhere to read; a file whose title no longer covers everything inside it.
+
+### A lasting decision is an ADR, and its topic file links it
+
+**A decision that outlives its card is recorded as an [ADR](../project/decisions/index.md), and the topic file it
+touches keeps the rule and a one-line reason, with a link.** The ADR owns the context and the alternatives turned down.
+That is the rule above applied to a decision: the one line is the pointer, and the reasoning has exactly one home.
+[ADR 0001](../project/decisions/0001-record-lasting-decisions.md) is the decision behind it.
+
+- **The ADR is written in the pull request that makes the decision**, not afterward. The index says
+  [which decisions earn one](../project/decisions/index.md#a-decision-earns-an-adr-when-a-newcomer-needs-it).
+- **A topic file that argues at length for a decision that has an ADR is the same decision justified in two places.**
+  Cut it down to the rule and the line, and link.
+- **A decision recorded before this rule stays in its topic file** until its ADR is written.
 
 ### A large subject becomes a directory
 
@@ -933,6 +946,8 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 
 `docs/project/`, for `Users and contributors`:
 
+- [`decisions/index.md`](../project/decisions/index.md)
+    - [`0001-record-lasting-decisions.md`](../project/decisions/0001-record-lasting-decisions.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:
