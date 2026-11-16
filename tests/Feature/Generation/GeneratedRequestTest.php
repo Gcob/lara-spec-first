@@ -17,6 +17,7 @@ use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
@@ -1862,11 +1863,11 @@ it('refuses a file named like PHP even when its type is the declared one', funct
 /**
  * A `POST` whose JSON body is an object that asks for nothing, so no rule has a key to fail on.
  */
-function postWithOptionalJsonObject(bool $typed = true, bool $closed = false, bool $nullable = false, bool $bodyRequired = true): Operation
+function postWithOptionalJsonObject(bool $typed = true, bool $closed = false, bool $nullable = false, bool $bodyRequired = true, HttpMethod $method = HttpMethod::Post): Operation
 {
     return new Operation(
         index: 0,
-        method: HttpMethod::Post,
+        method: $method,
         path: PathTemplate::fromString('/search'),
         operationId: 'searchThings',
         requestBody: new RequestBody(['application/json' => new Schema(
@@ -1943,6 +1944,72 @@ it('refuses an empty content when the body is required', function (bool $typed, 
 ])->with([
     'nothing' => [''],
     'blanks' => ["  \n"],
+]);
+
+/**
+ * One request through the real kernel carrying `$content` as its JSON body, as sent, to a route that answers with what
+ * `dto()` returned: `null` is `{"dto": null}`.
+ *
+ * @param  class-string<FormRequest>  $class
+ * @return array{0: int, 1: array<array-key, mixed>|null} the status, and the DTO as an array (null for no DTO)
+ */
+function dtoForRawJson(string $class, string $method, string $content): array
+{
+    Route::match([$method], '/_generated/raw-json-dto', fn () => response()->json(['dto' => app($class)->dto()?->toArray()]));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/raw-json-dto',
+        $method,
+        [],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        $content,
+    ));
+
+    /** @var array{dto?: array<array-key, mixed>|null} $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), $decoded['dto'] ?? null];
+}
+
+/**
+ * The operation of one shape of nullable JSON body, for `dto()`.
+ */
+function nullableJsonBody(string $shape): Operation
+{
+    if ($shape === 'optional, requires q') {
+        return postWithOptionalJsonRequiring(['q'], ['q'], nullable: true);
+    }
+
+    return postWithOptionalJsonObject(
+        nullable: true,
+        bodyRequired: $shape !== 'optional, requires nothing',
+        method: $shape === 'PATCH, requires nothing' ? HttpMethod::Patch : HttpMethod::Post,
+    );
+}
+
+// A `null` body is the payload `null`: the request lets it through, and a DTO of `Optional`s would say "an object with
+// nothing in it". An absent optional body is not `null`, it has no content, so it keeps the DTO.
+it('returns null from dto() for a null body', function (string $shape, string $method, string $content, int $status, ?array $dto): void {
+    $class = emittedRequestClass(nullableJsonBody($shape));
+
+    expect(dtoForRawJson($class, $method, $content))->toBe([$status, $dto]);
+})->with([
+    'optional, requires nothing: null' => ['optional, requires nothing', 'POST', 'null', 200, null],
+    'optional, requires nothing: an object' => ['optional, requires nothing', 'POST', '{"q":"x"}', 200, ['q' => 'x']],
+    'optional, requires nothing: {}' => ['optional, requires nothing', 'POST', '{}', 200, []],
+    'optional, requires nothing: absent' => ['optional, requires nothing', 'POST', '', 200, []],
+    'PATCH, requires nothing: null' => ['PATCH, requires nothing', 'PATCH', 'null', 200, null],
+    'PATCH, requires nothing: an object' => ['PATCH, requires nothing', 'PATCH', '{"q":"x"}', 200, ['q' => 'x']],
+    'PATCH, requires nothing: {}' => ['PATCH, requires nothing', 'PATCH', '{}', 200, []],
+    'required, requires nothing: null' => ['required, requires nothing', 'POST', 'null', 200, null],
+    'required, requires nothing: an object' => ['required, requires nothing', 'POST', '{"q":"x"}', 200, ['q' => 'x']],
+    'required, requires nothing: {}' => ['required, requires nothing', 'POST', '{}', 200, []],
+    'optional, requires q: null' => ['optional, requires q', 'POST', 'null', 200, null],
+    'optional, requires q: an object' => ['optional, requires q', 'POST', '{"q":"x"}', 200, ['q' => 'x']],
+    'optional, requires q: {}' => ['optional, requires q', 'POST', '{}', 422, null],
+    'optional, requires q: absent' => ['optional, requires q', 'POST', '', 200, []],
 ]);
 
 /**
@@ -2385,4 +2452,259 @@ it('answers 422 for a value breaking a constraint written beside a $ref', functi
     'an amount under the floor' => [['amount' => 0], 422],
     'the type of the referenced schema still holds' => [['amount' => 'one'], 422],
     'a label with only a description beside it' => [['label' => 'a label longer than three'], 200],
+]);
+
+/**
+ * A `POST` whose body is a required object that requires some of its properties, and allows `null` or not.
+ *
+ * @param  array<string, SchemaType>  $properties  the declared properties, by type
+ * @param  list<string>  $required
+ * @param  list<string>  $mediaTypes
+ */
+function postWithRequiredObject(array $properties, array $required, array $mediaTypes = ['application/json'], bool $closed = false, bool $nullable = true): Operation
+{
+    $schema = new Schema(
+        types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+        properties: array_map(static fn (SchemaType $type): Schema => new Schema(types: [$type]), $properties),
+        required: $required,
+        additionalProperties: $closed ? false : null,
+    );
+
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/schedule'),
+        operationId: 'schedulePost',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $schema), true),
+    );
+}
+
+/**
+ * What one request through the real kernel to a route that answers with `dto()` got back: the status, the keys it was
+ * refused on, and the DTO as an array (`null` for a `null` body or a refusal).
+ *
+ * @param  class-string<FormRequest>  $class
+ * @param  array<string, mixed>  $parameters  form fields
+ * @return array{0: int, 1: list<string>, 2: array<array-key, mixed>|null}
+ */
+function dtoForContentType(string $class, ?string $contentType, string $content = '', array $parameters = []): array
+{
+    Route::post('/_generated/typed-content-dto', fn () => response()->json(['dto' => app($class)->dto()?->toArray()]));
+
+    $request = Request::create(
+        '/_generated/typed-content-dto',
+        'POST',
+        $parameters,
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json'] + ($contentType === null ? [] : ['CONTENT_TYPE' => $contentType]),
+        $content,
+    );
+
+    if ($contentType === null) {
+        $request->headers->remove('Content-Type');
+    }
+
+    $response = app(HttpKernel::class)->handle($request);
+
+    /** @var array{dto?: array<array-key, mixed>|null, errors?: array<string, mixed>} $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), array_keys($decoded['errors'] ?? []), $decoded['dto'] ?? null];
+}
+
+// A JSON `null` reaches the rules as `[]`, so a `present` on a required key refused a body the contract allows. The keys
+// now ask through each other, and the request refuses `{}` from the raw content, so only `null` itself passes.
+it('accepts null for a nullable body that requires a property', function (
+    array $properties,
+    array $required,
+    array $mediaTypes,
+    bool $closed,
+    string $content,
+): void {
+    $class = emittedRequestClass(postWithRequiredObject($properties, array_values($required), array_values($mediaTypes), $closed));
+
+    expect(statusForRawJson($class, $content))->toBe(200);
+})->with([
+    'one required property, alone' => [['publishAt' => SchemaType::String], ['publishAt'], ['application/json'], false],
+    'two required and one optional' => [
+        ['a' => SchemaType::String, 'b' => SchemaType::String, 'c' => SchemaType::String], ['a', 'b'], ['application/json'], false,
+    ],
+    'a required integer, which asked for `required`' => [['age' => SchemaType::Integer], ['age'], ['application/json'], false],
+    'a dotted name' => [['user.name' => SchemaType::String], ['user.name'], ['application/json'], false],
+    'a closed root' => [['publishAt' => SchemaType::String], ['publishAt'], ['application/json'], true],
+    'JSON and a form, requiring a string' => [
+        ['publishAt' => SchemaType::String], ['publishAt'], ['application/json', 'application/x-www-form-urlencoded'], false,
+    ],
+])->with([
+    'null' => ['null'],
+    'null between blanks' => ["  null\n"],
+]);
+
+/**
+ * Every payload the twin test sends: a raw JSON content, or the fields of a form, and the status both bodies answer.
+ *
+ * @return array<string, array{0: list<string>, 1: bool, 2: string|array<string, string>, 3: int}>
+ */
+function nullableTwinRows(): array
+{
+    $json = [
+        '{}' => ['{}', 422],
+        'an optional key only' => ['{"note":"x"}', 422],
+        'one required key' => ['{"street":"a"}', 422],
+        'an empty integer, which arrives as null' => ['{"street":"a","user.name":"b","age":""}', 422],
+        'an undeclared key only' => ['{"x":1}', 422],
+        'a whole body' => ['{"street":"a","user.name":"b","age":1}', 200],
+        'a string' => ['"Ada"', 422],
+        'a list' => ['[1,2]', 422],
+        'an empty content' => ['', 422],
+        'malformed' => ['{', 422],
+    ];
+    $forms = [
+        'a form with no field' => [[], 422],
+        'a form with only an undeclared field' => [['x' => '1'], 422],
+        'a form with only the rewritten name' => [['user_name' => 'b'], 422],
+        'a whole form' => [['street' => 'a', 'user_name' => 'b', 'age' => '1'], 200],
+    ];
+    $rows = [];
+
+    foreach ([
+        'JSON only, open' => [['application/json'], false],
+        'JSON only, closed' => [['application/json'], true],
+        'JSON and a form, open' => [['application/json', 'application/x-www-form-urlencoded'], false],
+        'JSON and a form, closed' => [['application/json', 'application/x-www-form-urlencoded'], true],
+    ] as $shape => [$mediaTypes, $closed]) {
+        foreach ($json as $payload => [$content, $status]) {
+            $rows[$shape.': '.$payload] = [$mediaTypes, $closed, $content, $status];
+        }
+
+        foreach (count($mediaTypes) === 2 ? $forms : [] as $payload => [$fields, $status]) {
+            $rows[$shape.': '.$payload] = [$mediaTypes, $closed, $fields, $status];
+        }
+    }
+
+    return $rows;
+}
+
+// Only a JSON `null` changes: everything else is the answer the same body gives when it cannot be `null`, the one the
+// contract always asked for. Compared as a set, since the root's own key can come before a missing key now.
+it('answers every other body as the same body not nullable does', function (array $mediaTypes, bool $closed, string|array $payload, int $status): void {
+    $properties = ['street' => SchemaType::String, 'user.name' => SchemaType::String, 'age' => SchemaType::Integer, 'note' => SchemaType::String];
+    $required = ['street', 'user.name', 'age'];
+    $answers = [];
+
+    foreach ([true, false] as $nullable) {
+        $class = emittedRequestClass(postWithRequiredObject($properties, $required, array_values($mediaTypes), $closed, $nullable));
+
+        if (is_string($payload)) {
+            $answers[] = errorsForRawJson($class, $payload);
+        } else {
+            $response = responseForContentType($class, 'application/x-www-form-urlencoded', parameters: $payload);
+            /** @var array<string, list<string>> $errors */
+            $errors = json_decode((string) $response->getContent(), true)['errors'] ?? [];
+            $answers[] = [$response->getStatusCode(), $errors];
+        }
+    }
+
+    [[$nullableStatus, $nullableErrors], [$twinStatus, $twinErrors]] = $answers;
+    $nullableKeys = array_keys($nullableErrors);
+    $twinKeys = array_keys($twinErrors);
+    sort($nullableKeys);
+    sort($twinKeys);
+
+    expect($twinStatus)->toBe($status)
+        ->and($nullableStatus)->toBe($twinStatus)
+        ->and($nullableKeys)->toBe($twinKeys)
+        // The key is the name as written, never the escaped one the rules are keyed by.
+        ->and(implode(',', $nullableKeys))->not->toContain('\\');
+})->with(fn (): array => nullableTwinRows());
+
+// A body with no declared key is not `null` either, whatever its type says it is: a form with an undeclared field, a
+// `text/plain` content, a content with no `Content-Type` at all. They are refused on the required key, as the body that
+// cannot be `null` refuses them, and the three answers that pass reach `dto()` without a 500.
+it('refuses a body with no declared key on a nullable required body, whatever its type', function (
+    ?string $contentType,
+    string $content,
+    array $parameters,
+    int $status,
+): void {
+    $class = emittedRequestClass(postWithRequiredObject(['publishAt' => SchemaType::String], ['publishAt']));
+
+    [$answered, $keys] = dtoForContentType($class, $contentType, $content, $parameters);
+
+    expect($answered)->toBe($status)
+        ->and($keys === [])->toBe($status === 200)
+        ->and($status === 200 || in_array('publishAt', $keys, true))->toBeTrue();
+})->with([
+    'a form with only an undeclared field' => ['application/x-www-form-urlencoded', '', ['x' => '1'], 422],
+    'a text/plain content' => ['text/plain', 'hello', [], 422],
+    'no Content-Type, with content' => [null, 'x=1', [], 422],
+    'a JSON null' => ['application/json', 'null', [], 200],
+    'a whole JSON body' => ['application/json', '{"publishAt":"2026-12-01T09:00:00Z"}', [], 200],
+    'a whole form' => ['application/x-www-form-urlencoded', '', ['publishAt' => '2026-12-01T09:00:00Z'], 200],
+]);
+
+// The body requires a property, so `dto()` builds the full type from a whole body and gives nothing for `null`.
+it('returns null from dto() for a null body that requires a property', function (): void {
+    $class = emittedRequestClass(postWithRequiredObject(['street' => SchemaType::String, 'age' => SchemaType::Integer], ['street', 'age']));
+    $returns = (new ReflectionMethod($class, 'dto'))->getReturnType();
+
+    expect(dtoForRawJson($class, 'POST', 'null'))->toBe([200, null])
+        ->and(dtoForRawJson($class, 'POST', '{"street":"a","age":1}'))->toBe([200, ['street' => 'a', 'age' => 1]])
+        ->and($returns instanceof ReflectionNamedType ? $returns->getName() : null)->toEndWith('\\SchedulePostInputDto')
+        ->and($returns?->allowsNull())->toBeTrue();
+});
+
+// Laravel skips every rule that is not implicit on a blank string, and `integer:strict`, `numeric:strict` and
+// `boolean:strict` are not. `required` is, which is how a required integer, number or boolean refused `""` in a project
+// that removed `ConvertEmptyStringsToNull`. A nullable required body asks through its siblings instead, so those keys
+// also get `filled`, and the answer stays the one the same body gives when it cannot be `null`.
+it('refuses an empty string for a required scalar of a nullable body, without ConvertEmptyStringsToNull', function (
+    array $properties,
+    array $mediaTypes,
+    string $content,
+    array $keys,
+): void {
+    ConvertEmptyStringsToNull::skipWhen(static fn (): bool => true);
+
+    try {
+        $answers = [];
+
+        foreach ([true, false] as $nullable) {
+            $class = emittedRequestClass(postWithRequiredObject($properties, array_keys($properties), array_values($mediaTypes), false, $nullable));
+            [$status, $errors] = errorsForRawJson($class, $content);
+            $errorKeys = array_keys($errors);
+            sort($errorKeys);
+            $answers[] = [$status, $errorKeys];
+        }
+    } finally {
+        ConvertEmptyStringsToNull::flushState();
+    }
+
+    expect($answers)->toBe([[422, $keys], [422, $keys]]);
+})->with([
+    'an integer and a boolean beside a string' => [
+        ['publishAt' => SchemaType::String, 'retries' => SchemaType::Integer, 'notify' => SchemaType::Boolean],
+        ['application/json'],
+        '{"publishAt":"2026-12-01T09:00:00Z","retries":"","notify":""}',
+        ['notify', 'retries'],
+    ],
+    'a number' => [
+        ['publishAt' => SchemaType::String, 'ratio' => SchemaType::Number],
+        ['application/json'],
+        '{"publishAt":"2026-12-01T09:00:00Z","ratio":""}',
+        ['ratio'],
+    ],
+    'an integer alone' => [
+        ['retries' => SchemaType::Integer],
+        ['application/json'],
+        '{"retries":""}',
+        ['retries'],
+    ],
+    'JSON and a form' => [
+        ['publishAt' => SchemaType::String, 'retries' => SchemaType::Integer, 'notify' => SchemaType::Boolean],
+        ['application/json', 'application/x-www-form-urlencoded'],
+        '{"publishAt":"2026-12-01T09:00:00Z","retries":"","notify":""}',
+        ['notify', 'retries'],
+    ],
 ]);

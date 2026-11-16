@@ -74,15 +74,22 @@ tags: [versions, conventions, planning]
   compare its `routeAction` with the generated parent. This is not a breaking change: every Laravel application already
   has the extension, since the framework requires it, and `composer` only now says so in this package's own
   `composer.json`.
+- **On an operation whose JSON body allows `null`, `dto()` is now typed `?X` and returns `null` for a `null` body, where
+  it returned a DTO of `Optional`s.** That is an optional body, a `PATCH` and a required body that requires nothing,
+  each sent a JSON `null`. A required body that requires a property is typed `?X` too: it now lets `null` through (see
+  `Fixed`), so there static analysis asks for the null check as well. An absent optional body (no content) still gives
+  the DTO. A body that cannot be `null`, and a nullable one read only as a form, keep the plain type. This is a breaking
+  change: `$request->dto()->toArray()` on such an operation now fails at runtime when a client sends `null`, and static
+  analysis asks for a null check. Handle `null`, for instance `$request->dto()?->toArray()`.
 
 ### Fixed
 
-- **The "a form with a `Content-Type` and no field" finding no longer appears where a required field already refuses an
-  empty form.** A required body read as a form got it even when a required property, a required file part or a required
-  name `properties` does not declare was already refusing the empty form, so the finding named a gap the request did not
-  have. It stays where nothing refuses an empty form (a `PATCH`, a `readOnly` or `dependentRequired` key alone, a name
-  PHP rewrites or a collision withholds). Nothing the request accepts or refuses changes: only the generated file's
-  findings do.
+- **The "a form with a `Content-Type` and no field" finding no longer appears where a required field, or the body's
+  required-key check, already refuses an empty form.** A required body read as a form got it even when a required
+  property, a required file part or a required name `properties` does not declare was already refusing the empty form,
+  so the finding named a gap the request did not have. It stays where nothing refuses an empty form (a `PATCH`, a
+  `readOnly` or `dependentRequired` key alone, a name PHP rewrites or a collision withholds). Nothing the request
+  accepts or refuses changes: only the generated file's findings do.
 - **A body read only as a form that declared `filter[a]` and `filter[a][b]` refused a valid request, with no finding.**
   PHP delivers `filter[a][b]=1` as `filter => [a => [b => 1]]`, so `filter.a` became an array and the `string` rule of
   `filter[a]` refused it (a closed body refused a valid `filter[a]=x` instead, since the level above `filter.a.b` was
@@ -98,6 +105,16 @@ tags: [versions, conventions, planning]
   specification. A name typed at the `x-controller` offer is planned too, so one the build would refuse leaves the
   specification as it was. This closes the first half of the `0.2.0` `Known limits` item for
   [#112](https://github.com/Gcob/lara-spec-first/issues/112).
+- **A required body that allows `null` and requires a property accepts a JSON `null`, where it answered 422.** The body
+  is read as JSON (JSON only, or JSON and a form) and is not a `PATCH`. A JSON `null` reaches the rules as `[]`, so the
+  `present` on each required key refused a payload the contract allows. Each required key now asks through its siblings
+  (`present_with`), as an optional body's do, and the generated request still refuses `{}` and every other body the
+  contract refused, on the same keys and with the same status, with or without Laravel's `ConvertEmptyStringsToNull`:
+  only `null` passes, and `dto()` returns `null` for it. Two messages change, and no status or key does: a key missing
+  beside a sent sibling reports `present_with`'s ("must be present when ... is present") where it reported `present` or
+  `required`, and an empty or `null` integer, number or boolean reports `filled`'s ("must have a value") where it
+  reported `required`'s. A form client of a body that is JSON and a form gets the same statuses and keys. This closes
+  the refusal the `0.2.0` `Known limits` lists for [#111](https://github.com/Gcob/lara-spec-first/issues/111).
 
 ## [0.2.0] - 2026-11-15
 

@@ -464,6 +464,10 @@ A child overriding `create()` receives the
 [generated input DTO](./code-generation/request-validation.md#the-payload-arrives-as-a-dto) and never touches the
 request object or the route signature. `routeAction` owns the HTTP seam; the CRUD method owns the work.
 
+**Open ([#95](https://github.com/Gcob/lara-spec-first/issues/95)):** the seam above assumes `dto()` is not nullable. On
+an operation whose JSON body allows `null`, `dto()` is `?CreateUserInputDto`, so a CRUD method that takes the plain DTO
+needs a decision on what a `null` body means there. Which one is not made yet.
+
 ### `x-model` turns on the model layer
 
 **`x-model` is the switch for the whole persistence layer.** Declaring it gives an operation a model contract, a default
