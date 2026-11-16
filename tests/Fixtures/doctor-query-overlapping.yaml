@@ -1,0 +1,25 @@
+# A plain `query` name beside a bracketed one it overlaps (`page` and `page[size]`) has no rule: no rule can tell
+# the two values apart. The doctor still reports what the plain name states (`required` and `minimum`), where it
+# reported nothing for it while its rule judged `page[size]`'s array.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page[size]
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK

@@ -311,6 +311,20 @@ it('exits 0 for a query name PHP rewrites, and 2 for one PHP appends to', functi
         ->and($partial[1]['message'])->toContain('`ids[]`');
 });
 
+// A plain name that overlaps a bracketed one has no rule, so what it states is left unenforced and the doctor exits
+// 2: a contract that exited 0 before can turn a green CI red.
+it('exits 2 for a plain query name beside a bracketed one it overlaps', function (): void {
+    [$exit, $report] = doctorJson('doctor-query-overlapping.yaml');
+
+    $partial = doctorSupportFindings($report, 'partial');
+
+    expect($exit)->toBe(2)
+        ->and($partial)->toHaveCount(2)
+        ->and($partial[0]['message'])->toContain('writes `required`')
+        ->and($partial[0]['message'])->toContain('`page`')
+        ->and($partial[1]['message'])->toContain('writes `minimum`');
+});
+
 // `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not
 // read as a file is left out of the rules, and that is a package limit it names: a keyword the matrix rates as honored
 // in general. Its own section is "Parameters, bodies, responses", not "Schemas". The type OpenAPI gives a part anyway

@@ -205,11 +205,18 @@ is a finding and not a refusal, as it is for [a name declared twice](#a-name-dec
 emitted for it, so the build is not choosing which half of the contract to enforce, and every contract that built before
 still builds.
 
-**Two query names that overlap get no rule when one of them is rewritten.** They arrive under one key (`user.name` and
-`user_name`, `a.b` and `a b`), or one is below the other (`page[size]` and `page`, `filter[a]` and `filter[a][b]`, an
-index `ids[1]` beside the list `ids[]`, which PHP appends at any index of). It is compared step by step and never as
-strings, so `filter[a]` does not overlap `filter[ab][c]`, and it is the comparison the form body uses. A finding names
-each overlapping pair, and each name that was rewritten goes without a rule.
+**Two query names PHP delivers under one key get no rule, and one finding names them.** They arrive under one key
+(`user.name` and `user_name`, `a.b` and `a b`), or one is below the other (`page[size]` and `page`, `filter[a]` and
+`filter[a][b]`, an index `ids[1]` beside the list `ids[]`, which PHP appends at any index of). The query bag cannot say
+which value a rule judges: `?page[size]=3` arrives as `page => [size => 3]`, and a rule for the plain `page` would judge
+that array and refuse a request the contract allows. So **neither name has a rule, the plain one included**, and that
+covers the three plain-name cases: `page` beside `page[size]`, `ids` beside `ids[]` (and `ids[1]` beside `ids[]`), and
+`page` beside `page[*]`. It is compared step by step and never as strings, so `filter[a]` does not overlap
+`filter[ab][c]`, and it is the comparison the form body uses. A finding names each overlapping pair and the keys they
+share, and the doctor still reports what each name states (`required`, a bound). **The cost is stated, and it is a
+gap:** with no rule, `?page=abc` beside `page[size]` passes, since nothing can tell the two apart, and neither name
+reaches `QUERY_KEYS`. A plain name beside a body key is still [refused](#a-name-declared-twice-is-refused), before it is
+given no rule.
 
 **A top-level body name PHP rewrites is keyed by the name PHP delivers, when the body is read only as a form.** A
 form-encoded or multipart body goes through the same parser as the query string: `user.name=ada` arrives as `user_name`,

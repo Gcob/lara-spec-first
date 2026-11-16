@@ -1456,6 +1456,30 @@ it('validates the query names PHP rewrites under the key PHP delivers', function
         ->toEqual([200, ['page' => ['size' => '3'], 'user_name' => 'ada']]);
 });
 
+// `?page[size]=3` reaches Laravel as `page => [size => 3]` and `?ids[]=1` as `ids => [1]`, and a rule for the plain
+// name would judge that array and refuse a request the contract allows. Neither name has a rule, so each is sent alone and passes, and so does a
+// wrong `page`: the limit the finding states, since no rule can tell the two apart.
+it('accepts a rewritten query name sent alone beside the plain name it overlaps', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listOverlapping',
+        queryParameters: [
+            new QueryParameter('page', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('ids', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('ids[]', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('limit', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', '?page[size]=3')[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'GET', '?ids[]=1&ids[]=2')[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'GET', '?page=abc')[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'GET', '?limit=abc')[0])->toBe(422);
+});
+
 /**
  * A `POST` carrying a body of the given media types, whose properties are names PHP rewrites in a form.
  *

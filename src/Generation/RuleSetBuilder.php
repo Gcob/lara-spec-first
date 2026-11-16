@@ -272,6 +272,23 @@ final readonly class RuleSetBuilder
 
             array_push($walk->findings, ...$plan['findings']);
 
+            // A plain name is refused where a rewritten one only keeps its finding (the plan above): the name is
+            // the contract's own key, so the build would be choosing which half of the contract to enforce. Before
+            // the skip below, so that a plain name the overlap leaves without a rule is refused all the same.
+            if ($plan['plain']) {
+                $plainKey = self::ruleKey($parameter->name);
+
+                if (isset($walk->formHeads[$parameter->name])) {
+                    $bodyName = $walk->formHeads[$parameter->name][0];
+
+                    throw ConflictingInputException::deliveredFieldDeclaredTwice($operation->label(), $bodyName, $parameter->name);
+                }
+
+                if (isset($walk->rules[$plainKey])) {
+                    throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
+                }
+            }
+
             if ($plan['key'] === null) {
                 self::leaveFieldUnenforced($walk, '`'.$parameter->name.'`', $parameter->schema, $parameter->required);
 
@@ -279,20 +296,6 @@ final readonly class RuleSetBuilder
             }
 
             $key = $plan['key'];
-
-            // A plain name is refused where a rewritten one only keeps its finding (the plan above): the name is
-            // the contract's own key, so the build would be choosing which half of the contract to enforce.
-            if (! $plan['rewritten']) {
-                if (isset($walk->formHeads[$parameter->name])) {
-                    $bodyName = $walk->formHeads[$parameter->name][0];
-
-                    throw ConflictingInputException::deliveredFieldDeclaredTwice($operation->label(), $bodyName, $parameter->name);
-                }
-
-                if (isset($walk->rules[$key])) {
-                    throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
-                }
-            }
 
             if (! in_array($plan['head'], $queryKeys, true)) {
                 $queryKeys[] = $plan['head'];
@@ -2718,12 +2721,14 @@ final readonly class RuleSetBuilder
      *   than refusing it, as no rule is emitted and so it does not choose which half of the contract to enforce, which
      *   is why a plain name there is refused.
      *
-     * **A rewritten name that overlaps another query name gets no rule either**: the same key (`user.name` and
-     * `user_name`, `a.b` and `a b`), or one path below the other (`page` and `page[size]`), compared step by step with
-     * {@see self::isBelow()}. One finding names each overlapping pair. A name PHP appends to claims the path above its
-     * appended step, since the value can land at any index there.
+     * **Two names that overlap get no rule, a plain name included**: the same key (`user.name` and `user_name`, `a.b`
+     * and `a b`), or one path below the other (`page` and `page[size]`, `ids` and `ids[]`), compared step by step with
+     * {@see self::isBelow()}. A rule for either would judge the other's value (`?page[size]=3` arrives as
+     * `page => [size => 3]`), so `?page=abc` passes: the cost, which the finding states. One finding names each
+     * overlapping pair. A name PHP appends to claims the path above its appended step, since the value can land at any
+     * index there. A plain name is still refused beside a body key, whether or not it overlaps.
      *
-     * @return array<int, array{key: string|null, head: string, rewritten: bool, findings: list<string>}> by parameter
+     * @return array<int, array{key: string|null, head: string, plain: bool, findings: list<string>}> by parameter
      */
     private static function planQueryNames(Operation $operation, RuleWalk $walk): array
     {
@@ -2732,6 +2737,7 @@ final readonly class RuleSetBuilder
         $findings = [];
         $claims = [];
         $candidates = [];
+        $plain = [];
 
         foreach ($operation->queryParameters as $index => $parameter) {
             $name = $parameter->name;
@@ -2757,6 +2763,8 @@ final readonly class RuleSetBuilder
             } elseif ($path === [$name]) {
                 $keys[$index] = self::ruleKey($name);
                 $claims[$index] = $path;
+                $plain[$index] = true;
+                $candidates[] = $index;
             } elseif (in_array($path[0], $walk->bodyKeys, true)) {
                 $findings[$index][] = self::queryNameUnderBodyKey($name, $path[0]);
             } else {
@@ -2796,7 +2804,7 @@ final readonly class RuleSetBuilder
             static fn (int $index): array => [
                 'key' => $keys[$index],
                 'head' => $heads[$index],
-                'rewritten' => in_array($index, $candidates, true),
+                'plain' => isset($plain[$index]),
                 'findings' => $findings[$index],
             ],
             array_keys($keys),
@@ -2898,7 +2906,7 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The finding for two `query` names whose paths overlap, one of which has a rule it would have had.
+     * The finding for two `query` names whose paths overlap, at least one of which would have had a rule.
      *
      * @param  list<string>  $path
      * @param  list<string>  $otherPath
