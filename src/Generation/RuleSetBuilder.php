@@ -340,13 +340,19 @@ final readonly class RuleSetBuilder
             }
 
             self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
+
+            $path = self::deliveredPath($parameter->name);
+
+            if ($plan['shaped'] && $path !== null && isset($walk->rules[$key])) {
+                $walk->whenNotArray[$key] = $path;
+            }
         }
 
         $walk->exceeded = $walk->exceeded || $walk->unrolledKeys() > self::MAX_UNROLLED_KEYS;
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray);
     }
 
     /**
@@ -734,8 +740,10 @@ final readonly class RuleSetBuilder
      * The key a `query` parameter's value is validated under: its name, and for one PHP rewrites, the path PHP delivers
      * it under, which is what the body's own failures must not share (`" body"` arrives as `body`, and `body[x]` as
      * `body.x`, a key apart). A name PHP delivers under no path keeps the name as written.
+     *
+     * @internal Public so the request's finding can name the key of a name PHP rewrites.
      */
-    private static function queryKey(string $name): string
+    public static function queryKey(string $name): string
     {
         $path = self::deliveredPath($name);
 
@@ -1687,25 +1695,34 @@ final readonly class RuleSetBuilder
 
         // The code the finding hands over reads the key PHP delivers the name under (`filter.active` for
         // `filter[active]`), asked of the query bag: the request's own `has()` reads the body too. A nested key needs
-        // `Arr::has()`, since `query->has()` takes a head only.
+        // `Arr::has()`, since `query->has()` takes a head only. A step that holds a dot (`filter[a.b]`) is no dotted
+        // key at all, so the read goes by the list of steps, out of `validated()`, which holds it nested under that dot.
         $delivered = self::deliveredPath(trim($label, '`')) ?? [trim($label, '`')];
         $key = self::pathKey($delivered);
-        $sent = count($delivered) === 1
-            ? sprintf('$request->query->has(\'%s\')', $key)
-            : sprintf('\\Illuminate\\Support\\Arr::has($request->query->all(), \'%s\')', $key);
+
+        if (array_filter($delivered, static fn (string $step): bool => str_contains($step, '.')) !== []) {
+            $steps = implode(', ', array_map(static fn (string $step): string => var_export($step, true), $delivered));
+            $holds = sprintf('data_get($request->validated(), [%s])', $steps);
+            $read = sprintf('($value = %s) === null ? null : filter_var($value, FILTER_VALIDATE_BOOL)', $holds);
+        } else {
+            $holds = sprintf('validated(\'%s\')', $key);
+            $sent = count($delivered) === 1
+                ? sprintf('$request->query->has(\'%s\')', $key)
+                : sprintf('\\Illuminate\\Support\\Arr::has($request->query->all(), \'%s\')', $key);
+            $read = sprintf('%s ? filter_var($request->validated(\'%s\'), FILTER_VALIDATE_BOOL) : null', $sent, $key);
+        }
 
         $walk->findings[] = $walk->textSource === 'query string'
             ? sprintf(
                 '%1$s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
-                    .'Laravel\'s `boolean` refuses it. It accepts %4$s.%2$s '
-                    .'`validated(\'%3$s\')` holds the string as sent, and `"false"` is a truthy string in PHP: '
-                    .'read it with `%5$s ? filter_var($request->validated(\'%3$s\'), '
-                    .'FILTER_VALIDATE_BOOL) : null`, which is `null` when it was not sent.',
+                    .'Laravel\'s `boolean` refuses it. It accepts %3$s.%2$s '
+                    .'`%4$s` holds the string as sent, and `"false"` is a truthy string in PHP: '
+                    .'read it with `%5$s`, which is `null` when it was not sent.',
                 $label,
                 $tooMany,
-                $key,
                 $quote($words),
-                $sent,
+                $holds,
+                $read,
             )
             : sprintf(
                 '%1$s is a boolean read from a form body, where every value is text and Laravel\'s `boolean` '
@@ -2731,14 +2748,18 @@ final readonly class RuleSetBuilder
      *   than refusing it, as no rule is emitted and so it does not choose which half of the contract to enforce, which
      *   is why a plain name there is refused.
      *
-     * **Two names that overlap get no rule, a plain name included**: the same key (`user.name` and `user_name`, `a.b`
-     * and `a b`), or one path below the other (`page` and `page[size]`, `ids` and `ids[]`), compared step by step with
-     * {@see self::isBelow()}. A rule for either would judge the other's value (`?page[size]=3` arrives as
-     * `page => [size => 3]`), so `?page=abc` passes: the cost, which the finding states. One finding names each
-     * overlapping pair. A name PHP appends to claims the path above its appended step, since the value can land at any
-     * index there. A plain name is still refused beside a body key, whether or not it overlaps.
+     * **Two names that arrive under the same key get no rule**: `user.name` and `user_name`, `a.b` and `a b`. The value
+     * of one is the value of the other, so a rule for either would judge both. So does a name at an index of a list
+     * another appends to (`ids[1]` and `ids[]`: PHP appends at any index). One finding names each such pair.
      *
-     * @return array<int, array{key: string|null, head: string, plain: bool, findings: list<string>}> by parameter
+     * **A name above the names PHP nests under it keeps its rules, behind a shape check**: `page` beside `page[size]`,
+     * `ids` beside `ids[]`, `filter[a]` beside `filter[a][b]`. PHP builds an array for the nested one, so the plain
+     * name's rules judge the value only when it is not an array ({@see self::build()} records it in
+     * {@see RuleSet::$whenNotArray}), and the nested names keep theirs. A path is compared with {@see self::isBelow()},
+     * step by step, and a name PHP appends to claims the path above its appended step. No finding: it has its rules. A
+     * plain name is still refused beside a body key, whether or not it loses its rule.
+     *
+     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, findings: list<string>}>
      */
     private static function planQueryNames(Operation $operation, RuleWalk $walk): array
     {
@@ -2748,6 +2769,7 @@ final readonly class RuleSetBuilder
         $claims = [];
         $candidates = [];
         $plain = [];
+        $appends = [];
 
         foreach ($operation->queryParameters as $index => $parameter) {
             $name = $parameter->name;
@@ -2769,6 +2791,9 @@ final readonly class RuleSetBuilder
 
                 if (($appended ?? $path) !== null) {
                     $claims[$index] = $appended ?? $path;
+                    if ($appended !== null) {
+                        $appends[$index] = true;
+                    }
                 }
             } elseif ($path === [$name]) {
                 $keys[$index] = self::ruleKey($name);
@@ -2785,28 +2810,39 @@ final readonly class RuleSetBuilder
             }
         }
 
+        $shaped = [];
+
         foreach ($candidates as $index) {
             foreach ($claims as $other => $claim) {
-                if ($other === $index || ! self::overlaps($claims[$index], $claim)) {
+                if ($other === $index) {
                     continue;
                 }
 
-                $keys[$index] = null;
+                $mine = $claims[$index];
+                $otherAppends = isset($appends[$other]);
 
-                // Two candidates share one finding, written on the first of them.
-                $otherLoses = in_array($other, $candidates, true);
+                if (! $otherAppends && $mine === $claim) {
+                    $keys[$index] = null;
 
-                if ($otherLoses && $other < $index) {
-                    continue;
+                    // Two candidates share one finding, written on the first of them.
+                    if ($other > $index || ! in_array($other, $candidates, true)) {
+                        $findings[$index][] = self::queryNamesShareKey(
+                            $operation->queryParameters[$index]->name,
+                            $operation->queryParameters[$other]->name,
+                            self::pathKey($mine),
+                        );
+                    }
+                } elseif ($otherAppends && self::isBelow($mine, $claim)) {
+                    $keys[$index] = null;
+                    $findings[$index][] = self::queryNameBelowAppend(
+                        $operation->queryParameters[$index]->name,
+                        $operation->queryParameters[$other]->name,
+                        self::pathKey($claim),
+                        self::pathKey($mine),
+                    );
+                } elseif (self::isBelow($claim, $mine) || ($otherAppends && $mine === $claim)) {
+                    $shaped[$index] = true;
                 }
-
-                $findings[$index][] = self::queryNamesOverlap(
-                    $operation->queryParameters[$index]->name,
-                    $operation->queryParameters[$other]->name,
-                    $claims[$index],
-                    $claim,
-                    $otherLoses,
-                );
             }
         }
 
@@ -2815,6 +2851,7 @@ final readonly class RuleSetBuilder
                 'key' => $keys[$index],
                 'head' => $heads[$index],
                 'plain' => isset($plain[$index]),
+                'shaped' => $keys[$index] !== null && isset($shaped[$index]),
                 'findings' => $findings[$index],
             ],
             array_keys($keys),
@@ -2851,17 +2888,6 @@ final readonly class RuleSetBuilder
         }
 
         return null;
-    }
-
-    /**
-     * Whether two paths a name can arrive under overlap: they are equal, or one is below the other.
-     *
-     * @param  list<string>  $a
-     * @param  list<string>  $b
-     */
-    private static function overlaps(array $a, array $b): bool
-    {
-        return $a === $b || self::isBelow($a, $b) || self::isBelow($b, $a);
     }
 
     /**
@@ -2916,22 +2942,32 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The finding for two `query` names whose paths overlap, at least one of which would have had a rule.
-     *
-     * @param  list<string>  $path
-     * @param  list<string>  $otherPath
+     * The finding for two `query` names PHP delivers under one key: the value of one is the value of the other.
      */
-    private static function queryNamesOverlap(string $name, string $other, array $path, array $otherPath, bool $otherLoses): string
+    private static function queryNamesShareKey(string $name, string $other, string $key): string
     {
         return sprintf(
-            '`%s` and `%s` are `query` parameters PHP delivers under overlapping keys (`%s` and `%s`), so a rule for '
-                .'either would judge the other\'s value too. None is emitted for %s, and neither %s type nor presence is enforced.',
+            '`%s` and `%s` are `query` parameters PHP delivers under one key (`%s`), so the value of one is the value '
+                .'of the other. None is emitted for either, and neither their type nor presence is enforced.',
             $name,
             $other,
-            self::pathKey($path),
-            self::pathKey($otherPath),
-            $otherLoses ? 'either' : '`'.$name.'`',
-            $otherLoses ? 'their' : 'its',
+            $key,
+        );
+    }
+
+    /**
+     * The finding for a `query` name that sits at an index of a list another name appends to.
+     */
+    private static function queryNameBelowAppend(string $name, string $other, string $above, string $key): string
+    {
+        return sprintf(
+            '`%1$s` and `%2$s` are `query` parameters whose keys overlap: PHP appends `%2$s` at any index of `%3$s`, so '
+                .'a value at `%4$s` can be the appended one. None is emitted for `%1$s`, and neither its type nor '
+                .'presence is enforced.',
+            $name,
+            $other,
+            $above,
+            $key,
         );
     }
 

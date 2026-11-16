@@ -1,0 +1,24 @@
+# Two `query` names PHP delivers under one key (`user.name` and `user_name`) have no rule: the value of one is the
+# value of the other. The doctor names what each states (`required` and `minimum`), as it does for a name PHP appends to.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      parameters:
+        - name: user_name
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: user.name
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK

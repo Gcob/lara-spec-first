@@ -1,6 +1,5 @@
-# A plain `query` name beside a bracketed one it overlaps (`page` and `page[size]`) has no rule: a rule for
-# either would judge the other's value. The doctor still reports what the plain name states (`required` and `minimum`), where it
-# reported nothing for it while its rule judged `page[size]`'s array.
+# A plain `query` name beside the name PHP nests under it (`page` and `page[size]`) keeps its rules, judged only
+# when its value is not an array, so the doctor owes nothing for the `required` and the bound it states.
 openapi: 3.0.3
 info:
   title: Fixture API

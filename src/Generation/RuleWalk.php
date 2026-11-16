@@ -24,6 +24,14 @@ final class RuleWalk
     public array $rules = [];
 
     /**
+     * The rule keys a `query` name judges only when its value is not an array, with the path PHP delivers each under:
+     * the names PHP nests under them carry the array.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $whenNotArray = [];
+
+    /**
      * @var list<string>
      */
     public array $findings = [];

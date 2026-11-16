@@ -1457,9 +1457,9 @@ it('validates the query names PHP rewrites under the key PHP delivers', function
         ->toEqual([200, ['page' => ['size' => '3'], 'user_name' => 'ada']]);
 });
 
-// `?page[size]=3` reaches Laravel as `page => [size => 3]` and `?ids[]=1` as `ids => [1]`, and a rule for the plain
-// name would judge that array and refuse a request the contract allows. Neither name has a rule, so each is sent alone and passes, and so does a
-// wrong `page`: the gap the finding states, since `page` has no rule.
+// `?page[size]=3` reaches Laravel as `page => [size => 3]` and `?ids[]=1` as `ids => [1]`, so a rule for the plain name
+// meets an array it was never written for. It judges the value only when it is not one, so each nested name is
+// accepted sent alone, and the plain name's own rules still hold (next test).
 it('accepts a rewritten query name sent alone beside the plain name it overlaps', function (): void {
     $class = emittedRequestClass(new Operation(
         index: 0,
@@ -1475,10 +1475,58 @@ it('accepts a rewritten query name sent alone beside the plain name it overlaps'
         ],
     ));
 
-    expect(sendThroughEmitted($class, 'GET', '?page[size]=3')[0])->toBe(200)
+    expect(sendThroughEmitted($class, 'GET', '?page[size]=3'))->toBe([200, ['page' => ['size' => '3']]])
         ->and(sendThroughEmitted($class, 'GET', '?ids[]=1&ids[]=2')[0])->toBe(200)
-        ->and(sendThroughEmitted($class, 'GET', '?page=abc')[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=abc')[0])->toBe(422)
         ->and(sendThroughEmitted($class, 'GET', '?limit=abc')[0])->toBe(422);
+});
+
+// A plain name beside the names PHP nests under it keeps its rules, and `validated()` keeps its value: `?page=2` is
+// `validated('page') === '2'`, as it was before a nested name was declared beside it.
+it('keeps a plain query name enforced beside the names PHP nests under it', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listNested',
+        queryParameters: [
+            new QueryParameter('page', new Schema(types: [SchemaType::Integer], minimum: 1.0)),
+            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer], minimum: 1.0)),
+            new QueryParameter('filter', new Schema(types: [SchemaType::String])),
+            new QueryParameter('filter[a]', new Schema(types: [SchemaType::String])),
+            new QueryParameter('filter[a][b]', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', '?page=2'))->toBe([200, ['page' => '2']])
+        ->and(sendThroughEmitted($class, 'GET', '?page=abc')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?page=0')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=3'))->toBe([200, ['page' => ['size' => '3']]])
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=0')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=3&page[evil]=1'))->toBe([200, ['page' => ['size' => '3']]])
+        ->and(sendThroughEmitted($class, 'GET', '?filter=x'))->toBe([200, ['filter' => 'x']])
+        ->and(sendThroughEmitted($class, 'GET', '?filter[a]=x'))->toBe([200, ['filter' => ['a' => 'x']]])
+        ->and(sendThroughEmitted($class, 'GET', '?filter[a][b]=3'))->toBe([200, ['filter' => ['a' => ['b' => '3']]]])
+        ->and(sendThroughEmitted($class, 'GET', '?filter[a][b]=x')[0])->toBe(422);
+});
+
+// The array PHP builds for the nested names stands in for the plain name, so a required `page` is not asked for when
+// only `page[size]` is sent: the blind spot the guide states. A required `page` is still asked for when nothing is.
+it('asks for a required plain query name only when no nested name is sent either', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listRequiredPage',
+        queryParameters: [
+            new QueryParameter('page', new Schema(types: [SchemaType::Integer]), required: true),
+            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer])),
+        ],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', '')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?page=2'))->toBe([200, ['page' => '2']])
+        ->and(sendThroughEmitted($class, 'GET', '?page[size]=3'))->toBe([200, ['page' => ['size' => '3']]]);
 });
 
 /**
@@ -2435,6 +2483,34 @@ it('reads a bracketed boolean query parameter with the read its finding suggests
         ->and($active('?filter[other]=1'))->toBeNull()
         ->and($active('?filter[active]=false'))->toBeFalse()
         ->and($active('?filter[active]=true'))->toBeTrue();
+});
+
+// The same for a name with a dot inside the brackets, which no dotted key can spell: the read goes by the steps, and
+// finds what `validated()` holds under the dot.
+it('reads a boolean query parameter with a dot inside its brackets with the read its finding suggests', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listDotted',
+        queryParameters: [new QueryParameter('filter[a.b]', new Schema(types: [SchemaType::Boolean]))],
+    ));
+
+    Route::get('/_generated/dotted-active', function () use ($class) {
+        $request = app($class);
+
+        return response()->json(['active' => ($value = data_get($request->validated(), ['filter', 'a.b'])) === null ? null : filter_var($value, FILTER_VALIDATE_BOOL)]);
+    });
+
+    $active = static fn (string $query): mixed => json_decode((string) app(HttpKernel::class)->handle(Request::create(
+        '/_generated/dotted-active'.$query,
+        'GET',
+        server: ['HTTP_ACCEPT' => 'application/json'],
+    ))->getContent(), true)['active'];
+
+    expect($active(''))->toBeNull()
+        ->and($active('?filter[a.b]=false'))->toBeFalse()
+        ->and($active('?filter[a.b]=true'))->toBeTrue();
 });
 
 // `has()` reads the body as well as the query string, so an open body carrying a key named like the

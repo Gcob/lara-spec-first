@@ -1780,6 +1780,8 @@ it('keys a query name PHP rewrites by the key PHP delivers', function (string $n
     // The finding hands over code to read the value, so it names the key PHP delivers (`filter.active`) and never the
     // contract's name, which finds nothing in the query bag.
     'a boolean, read under the delivered key' => ['filter[active]', new Schema(types: [SchemaType::Boolean]), ['filter.active' => ['required', new InRule(['true', 'false', '1', '0'])]], 'filter', '`\Illuminate\Support\Arr::has($request->query->all(), \'filter.active\') ? filter_var($request->validated(\'filter.active\'), FILTER_VALIDATE_BOOL) : null`'],
+    // A step that holds a dot is no dotted key: `validated()` holds the value nested under it, so the read goes by steps.
+    'a boolean, with a dot inside the brackets' => ['filter[a.b]', new Schema(types: [SchemaType::Boolean]), ['filter.a\\.b' => ['required', new InRule(['true', 'false', '1', '0'])]], 'filter', "`data_get(\$request->validated(), ['filter', 'a.b'])` holds the string as sent"],
     'an object, as sometimes' => ['filter[range]', new Schema(types: [SchemaType::Object]), ['filter.range' => ['sometimes']], 'filter', '`filter[range]` is a `query` parameter typed `object`'],
 ]);
 
@@ -1873,9 +1875,10 @@ it('keeps reporting a query name delivered under a key the body arrives under', 
     'a JSON body name a query dot becomes' => [['application/json' => objectSchema(['user_name' => new Schema(types: [SchemaType::String])])], 'user.name', 'user_name'],
 ]);
 
-// Names that arrive under one key, or one below the other, share a value in the query bag: a rule for one
-// would judge its neighbor's value too. None of them gets a rule, a plain name included, and each pair is told once.
-it('gives no rule to a rewritten query name that overlaps another query name', function (array $names, int $pairs, string $finding): void {
+// PHP gives two names one value when they arrive under the same key (`user.name` and `user_name`), or when one is
+// an index of a list the other appends to (`ids[1]` and `ids[]`): the value of one is the value of the other, so a rule
+// for either would judge both. Neither gets a rule, and each pair is told once.
+it('gives no rule to a rewritten query name that overlaps another query name', function (array $names, string $marker, string $finding): void {
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: array_values(array_map(
@@ -1889,22 +1892,18 @@ it('gives no rule to a rewritten query name that overlaps another query name', f
     );
 
     expect($set->rules)->toBe([])
+        ->and($set->whenNotArray)->toBe([])
         ->and($set->queryKeys)->toBe([])
         ->and($set->unenforced['required'])->toBe($lost)
         ->and(implode("\n", $set->findings))->toContain($finding)
-        ->and(substr_count(implode("\n", $set->findings), 'overlapping keys'))->toBe($pairs);
+        ->and(substr_count(implode("\n", $set->findings), $marker))->toBe(1);
 })->with([
-    'a plain name and a bracketed one below it' => [['page', 'page[size]'], 1, '`page` and `page[size]` are `query` parameters PHP delivers under overlapping keys (`page` and `page.size`)'],
-    'a rewritten name and the plain name it becomes' => [['user_name', 'user.name'], 1, '`user_name` and `user.name` are `query` parameters PHP delivers under overlapping keys (`user_name` and `user_name`)'],
-    'a bracketed name below another bracketed name' => [['filter[a]', 'filter[a][b]'], 1, '`filter[a]` and `filter[a][b]` are `query` parameters PHP delivers under overlapping keys (`filter.a` and `filter.a.b`)'],
-    'two rewritten names under one key' => [['a.b', 'a b'], 1, '`a.b` and `a b` are `query` parameters PHP delivers under overlapping keys (`a_b` and `a_b`)'],
-    'a plain name and a list it is appended to' => [['ids', 'ids[]'], 1, '`ids` and `ids[]` are `query` parameters PHP delivers under overlapping keys (`ids` and `ids`)'],
-    'an index and a list PHP appends at any index of' => [['ids[1]', 'ids[]'], 1, '`ids[1]` and `ids[]` are `query` parameters PHP delivers under overlapping keys (`ids.1` and `ids`)'],
-    'a plain name and a wildcard below it' => [['page', 'page[*]'], 1, '`page` and `page[*]` are `query` parameters PHP delivers under overlapping keys (`page` and `page.*`)'],
-    'a chain of three, told by pairs' => [['filter', 'filter[a]', 'filter[a][b]'], 3, '`filter` and `filter[a][b]`'],
+    'a rewritten name and the plain name it becomes' => [['user_name', 'user.name'], 'under one key', '`user_name` and `user.name` are `query` parameters PHP delivers under one key (`user_name`)'],
+    'two rewritten names under one key' => [['a.b', 'a b'], 'under one key', '`a.b` and `a b` are `query` parameters PHP delivers under one key (`a_b`)'],
+    'an index and a list PHP appends at any index of' => [['ids[1]', 'ids[]'], 'at any index', '`ids[1]` and `ids[]` are `query` parameters whose keys overlap: PHP appends `ids[]` at any index of `ids`'],
 ]);
 
-// What the pairs above leave out: the name beside an overlapping pair is untouched, and two names that share a head but
+// What the exact-key pairs above leave out: the name beside a pair is untouched, and two names that share a head but
 // no path are no pair: `filter[a]` is no prefix of `filter[ab][c]`, so both keep their rules and `filter` is read.
 it('gives no rule to either of two query names PHP delivers under one key', function (array $names, array $rules, array $queryKeys, array $lost): void {
     $set = RuleSetBuilder::for(operationWithInput(
@@ -1916,12 +1915,54 @@ it('gives no rule to either of two query names PHP delivers under one key', func
     ));
 
     expect($set->rules)->toBe(array_fill_keys([...$rules, 'limit'], ['required', 'integer']))
+        ->and($set->whenNotArray)->toBe([])
         ->and($set->queryKeys)->toBe($queryKeys)
         ->and($set->unenforced['required'] ?? [])->toBe($lost);
 })->with([
-    'a third name beside an overlapping pair' => [['page', 'page[size]'], [], ['limit'], ['`page`', '`page[size]`']],
+    'a third name beside a pair' => [['user_name', 'user.name'], [], ['limit'], ['`user_name`', '`user.name`']],
     'two names on different paths of one head' => [['filter[a]', 'filter[ab][c]'], ['filter.a', 'filter.ab.c'], ['filter', 'limit'], []],
 ]);
+
+// A name beside the names PHP nests under it (`page` beside `page[size]`, `ids` beside `ids[]`) keeps its rules. PHP
+// builds `page => [size => 3]` for the nested one, so the rules judge it only when its value is not an array, and the
+// plain name stays in `QUERY_KEYS`, so `validated('page')` carries `?page=2` as it did before.
+it('keeps a plain query name behind a shape check beside the names PHP nests under it', function (array $names, array $rules, array $shaped, array $lost, array $queryKeys): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: array_values(array_map(
+            static fn (string $name): QueryParameter => new QueryParameter($name, new Schema(types: [SchemaType::Integer], minimum: 1.0), required: true),
+            $names,
+        )),
+    ));
+
+    expect(array_keys($set->rules))->toBe($rules)
+        ->and($set->whenNotArray)->toBe($shaped)
+        ->and($set->queryKeys)->toBe($queryKeys)
+        ->and($set->unenforced['required'] ?? [])->toBe($lost)
+        ->and(implode("\n", $set->findings))->not->toContain('under one key')
+        ->and(implode("\n", $set->findings))->not->toContain('keys overlap');
+})->with([
+    'a plain name and a bracketed one below it' => [['page', 'page[size]'], ['page', 'page.size'], ['page' => ['page']], [], ['page']],
+    'a plain name and a list it is appended to' => [['ids', 'ids[]'], ['ids'], ['ids' => ['ids']], ['`ids[]`'], ['ids']],
+    'a plain name and a wildcard below it' => [['page', 'page[*]'], ['page'], ['page' => ['page']], ['`page[*]`'], ['page']],
+    'a plain name and a rewritten one below it' => [['user_name', 'user_name[x]'], ['user_name', 'user_name.x'], ['user_name' => ['user_name']], [], ['user_name']],
+    'a bracketed name below another bracketed name' => [['filter[a]', 'filter[a][b]'], ['filter.a', 'filter.a.b'], ['filter.a' => ['filter', 'a']], [], ['filter']],
+    'a chain of three' => [['filter', 'filter[a]', 'filter[a][b]'], ['filter', 'filter.a', 'filter.a.b'], ['filter' => ['filter'], 'filter.a' => ['filter', 'a']], [], ['filter']],
+]);
+
+// An array or an object parameter's rules do not judge the shape of the value, so there is nothing to skip.
+it('leaves a query name typed array without a shape check', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [
+            new QueryParameter('filter[ids]', new Schema(types: [SchemaType::Array]), required: true),
+            new QueryParameter('filter[ids][0]', new Schema(types: [SchemaType::Integer]), required: true),
+        ],
+    ));
+
+    expect($set->rules)->toBe(['filter.ids' => ['present'], 'filter.ids.0' => ['required', 'integer']])
+        ->and($set->whenNotArray)->toBe([]);
+});
 
 // A plain name beside a body key is refused, and that comes before the overlap: a contract that is refused today stays
 // refused, whatever else the plain name overlaps.

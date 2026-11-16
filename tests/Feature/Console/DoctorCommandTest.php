@@ -311,17 +311,21 @@ it('exits 0 for a query name PHP rewrites, and 2 for one PHP appends to', functi
         ->and($partial[1]['message'])->toContain('`ids[]`');
 });
 
-// A plain name that overlaps a bracketed one has no rule, so what it states is left unenforced and the doctor exits
-// 2: a contract that exited 0 before can turn a green CI red.
-it('exits 2 for a plain query name beside a bracketed one it overlaps', function (): void {
-    [$exit, $report] = doctorJson('doctor-query-overlapping.yaml');
+// A plain name beside the name PHP nests under it keeps its rules, so the doctor exits 0. Two names under one key have
+// no rule, so what each states is left unenforced and the doctor exits 2: a contract that exited 0 before can turn a
+// green CI red.
+it('exits 0 for a plain query name beside the names PHP nests under it, and 2 for two names under one key', function (): void {
+    [$nestedExit, $nested] = doctorJson('doctor-query-overlapping.yaml');
+    [$sameExit, $same] = doctorJson('doctor-query-same-key.yaml');
 
-    $partial = doctorSupportFindings($report, 'partial');
+    $partial = doctorSupportFindings($same, 'partial');
 
-    expect($exit)->toBe(2)
+    expect($nestedExit)->toBe(0)
+        ->and(doctorSupportFindings($nested, 'partial'))->toBe([])
+        ->and($sameExit)->toBe(2)
         ->and($partial)->toHaveCount(2)
         ->and($partial[0]['message'])->toContain('writes `required`')
-        ->and($partial[0]['message'])->toContain('`page`')
+        ->and($partial[0]['message'])->toContain('`user_name`')
         ->and($partial[1]['message'])->toContain('writes `minimum`');
 });
 

@@ -32,7 +32,7 @@ use Illuminate\Validation\Validator;
  *     does.
  *   - `dto()` returns the body as `CreateUserInputDto`, built from `validated()`, which keeps
  *     returning Laravel's array. A `query` parameter is not a property of it: read one with
- *     `validated('key')`, under the key it arrives under (`page.size` for `page[size]`).
+ *     `validated('name')`.
  *   - An `integer` in this JSON body is `integer:strict`, which refuses a whole number written
  *     with a fraction or an exponent (`1.0`, `1e2`). JSON Schema 2020-12 reads those as integers,
  *     so the request is stricter than the contract for them. The same rule is what refuses `"42"`

@@ -65,6 +65,11 @@ final readonly class RuleSet
      *                                                   the rules ask for only through a sibling: the name as written
      *                                                   => the rule its failure carries (`present` or `required`). A
      *                                                   rule cannot see `{}`, so the request reads the raw content
+     * @param  array<string, list<string>>  $whenNotArray  the rule keys of a `query` name that sits above names PHP
+     *                                                     nests under it (`page` above `page[size]`), each with the
+     *                                                     path PHP delivers it under: the request judges them only when
+     *                                                     their value is not an array, which is what the nested names
+     *                                                     are
      */
     public function __construct(
         public array $rules = [],
@@ -83,6 +88,7 @@ final readonly class RuleSet
         public array $documentFaults = [],
         public array $stricter = [],
         public array $requiredOnceSent = [],
+        public array $whenNotArray = [],
     ) {}
 
     /**
@@ -108,6 +114,15 @@ final readonly class RuleSet
         }
 
         return false;
+    }
+
+    /**
+     * Whether the emitted file calls `Rule`: for an enumeration, or to judge a name only when its value is not an
+     * array.
+     */
+    public function usesRule(): bool
+    {
+        return $this->whenNotArray !== [] || $this->usesInRule();
     }
 
     /**

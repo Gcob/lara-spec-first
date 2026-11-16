@@ -205,20 +205,33 @@ is a finding and not a refusal, as it is for [a name declared twice](#a-name-dec
 emitted for it, so the build is not choosing which half of the contract to enforce, and every contract that built before
 still builds.
 
-**Two query names PHP delivers under one key get no rule, and one finding names them.** They arrive under one key
-(`user.name` and `user_name`, `a.b` and `a b`), or one is below the other (`page[size]` and `page`, `filter[a]` and
-`filter[a][b]`, an index `ids[1]` beside the list `ids[]`, which PHP appends at any index of). The query bag holds one
-value under that key: `?page[size]=3` arrives as `page => [size => 3]`, and a rule for the plain `page` would judge that
-array and refuse a request the contract allows. So **neither name has a rule, the plain one included**, and that covers
-the three plain-name cases: `page` beside `page[size]`, `ids` beside `ids[]` (and `ids[1]` beside `ids[]`), and `page`
-beside `page[*]`. It is compared step by step and never as strings, so `filter[a]` does not overlap `filter[ab][c]`, and
-it is the comparison the form body uses. A finding names each overlapping pair and the keys they share, and the doctor
-still reports what each name states (`required`, a bound). **The cost is stated, and it is a gap:** `?page=abc` beside
-`page[size]` passes, since `page` has no rule. A rule that read the shape of the value (a scalar for `page`, an array
-for `page[size]`) could judge both, but it would be a custom rule for a contract this rare, so it is not built, and
-whether it should be is open. Neither name reaches `QUERY_KEYS`. A plain name beside a body key is still
-[refused](#a-name-declared-twice-is-refused), before it is given no rule. The context and the alternatives are in
-[ADR 0002](../../project/decisions/0002-no-rule-for-overlapping-query-names.md).
+**A plain query name keeps its rules beside the names PHP nests under it.** `page` beside `page[size]`, `ids` beside
+`ids[]`, `filter[a]` beside `filter[a][b]`: `?page[size]=3` arrives as `page => [size => 3]`, so a rule for the plain
+`page` would judge that array and refuse a request the contract allows. The plain name's rules are therefore wrapped in
+Laravel's own `Rule::when()` and judge the value only when it is not an array, and each nested name keeps its rules:
+
+```php
+'page' => Rule::when(
+    fn (Fluent $input): bool => ! is_array($input->get('page')),
+    ['sometimes', 'integer', 'min:1'],
+    ['array'],
+),
+'page.size' => ['sometimes', 'integer'],
+```
+
+`?page=abc` and `?page=0` answer 422 on `page`, `?page=2` passes and `validated('page')` is `'2'`, `?page[size]=3`
+passes, and `?page[size]=abc` answers 422 on `page.size`. `page` stays in `QUERY_KEYS`. There is no finding, since the
+name has its rules, and `spec:doctor` reports nothing for it. The one thing the shape check cannot tell is a `page` the
+client left out from the nested names it sent instead: the array stands in for it, so a required `page` is not asked for
+when `page[size]` is sent. The comparison is step by step and never by string, so `filter[a]` is no ancestor of
+`filter[ab][c]`, and it is the one the form body uses. The reasoning is in
+[ADR 0002](../../project/decisions/0002-judge-plain-query-names-by-shape.md).
+
+**Two query names PHP delivers under one key get no rule, and one finding names them.** `user.name` and `user_name`,
+`a.b` and `a b` arrive as the same key, so the value of one is the value of the other and no rule can tell them apart:
+the same goes for `ids[1]` beside `ids[]`, since PHP appends at any index. Neither name has a rule, a finding names each
+pair, the doctor still reports what each states (`required`, a bound), and neither reaches `QUERY_KEYS`. A plain name
+beside a body key is still [refused](#a-name-declared-twice-is-refused), before it is given no rule.
 
 **A top-level body name PHP rewrites is keyed by the name PHP delivers, when the body is read only as a form.** A
 form-encoded or multipart body goes through the same parser as the query string: `user.name=ada` arrives as `user_name`,
@@ -818,12 +831,13 @@ exit code on those would fail a pipeline over a remark. So the builder also reco
 and the fields it was left unenforced on, for the four ways a keyword it reads comes out that way: a `format` no rule
 means the same as, a `pattern` across the ECMA-262 / PCRE boundary, a `contentMediaType` no rule can match, and a
 keyword stated where nothing reads it. A field the rule set drops whole is the same thing at larger scale: a query name
-PHP appends to or delivers under no name, one that overlaps another or shares its key with the body, and a body key with
-a `*` Laravel reads as a wildcard, get no rule key at all, so its `required` and every keyword it states are recorded
-for it, under the field's name. `required` on a `readOnly` property is not one of them: the request does what the
-contract says there, since `required` takes effect on the response only, so the generated file says it in a finding and
-the doctor has nothing to report. The `Ignored` keywords are not in a rule set at all, since nothing reads them, and the
-reading collects them with their position instead. See [the doctor's Support findings](../doctor.md#what-it-checks).
+PHP appends to or delivers under no name, two that arrive under one key or one that shares its key with the body, and a
+body key with a `*` Laravel reads as a wildcard, get no rule key at all, so its `required` and every keyword it states
+are recorded for it, under the field's name. `required` on a `readOnly` property is not one of them: the request does
+what the contract says there, since `required` takes effect on the response only, so the generated file says it in a
+finding and the doctor has nothing to report. The `Ignored` keywords are not in a rule set at all, since nothing reads
+them, and the reading collects them with their position instead. See
+[the doctor's Support findings](../doctor.md#what-it-checks).
 
 ### A JSON body keeps its types
 

@@ -628,6 +628,73 @@ it('emits bytes Pint has nothing to change in', function (): void {
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
 });
 
+// A plain `query` name beside the names PHP nests under it is judged only when its value is not an array: Laravel's
+// own `Rule::when()`, with the rules the name would have had anyway, and `array` for the value PHP built for the
+// nested names (which also keeps `validated()` from carrying an undeclared key below it). The class is read by Pint, so
+// a consumer's formatter has nothing to rewrite.
+it('writes a plain query name behind Rule::when beside the names PHP nests under it', function (): void {
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listThings',
+        queryParameters: [
+            new QueryParameter('page', new Schema(types: [SchemaType::Integer], minimum: 1.0)),
+            new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('filter[a.b]', new Schema(types: [SchemaType::String])),
+            new QueryParameter('filter[a.b][c]', new Schema(types: [SchemaType::String])),
+        ],
+    ));
+
+    expect($emitted)
+        ->toContain("use Illuminate\\Support\\Fluent;\n")
+        ->toContain("use Illuminate\\Validation\\Rule;\n")
+        ->toContain(
+            "            'page' => Rule::when(\n"
+            ."                fn (Fluent \$input): bool => ! is_array(\$input->get('page')),\n"
+            ."                ['sometimes', 'integer', 'min:1'],\n"
+            ."                ['array'],\n"
+            .'            ),'
+        )
+        ->toContain("            'page.size' => ['sometimes', 'integer'],")
+        // A step that holds a dot cannot be written as one dotted key.
+        ->toContain("fn (Fluent \$input): bool => ! is_array(data_get(\$input, ['filter', 'a.b'])),")
+        ->toContain("private const QUERY_KEYS = ['page', 'filter'];");
+
+    $file = tempnam(sys_get_temp_dir(), 'lsf-request-').'.php';
+    file_put_contents($file, $emitted);
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $file], dirname(__DIR__, 3));
+    $pint->run();
+    unlink($file);
+
+    expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
+// The `dto()` finding names the key a rewritten `query` name is read under only for a request that has one, with its
+// own example, so the others carry no key they never use.
+it('names the key of a rewritten query name in the dto finding only where there is one', function (): void {
+    /** @param  list<QueryParameter>  $query */
+    $withBody = static fn (array $query): Operation => new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'sendThings',
+        requestBody: new RequestBody(['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['title' => new Schema(types: [SchemaType::String])],
+        )], true),
+        queryParameters: array_values($query),
+    );
+
+    expect(emittedRequest($withBody([new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer]))])))
+        ->toContain("`validated('page.size')` for `page[size]`");
+
+    foreach ([[new QueryParameter('limit', new Schema(types: [SchemaType::Integer]))], []] as $query) {
+        expect(emittedRequest($withBody($query)))->not->toContain('under the key it arrives under');
+    }
+});
+
 // An integer key survives: a property named "2024" is a valid payload, and a
 // spread renumbers it to 0. `array_diff_key()`, `+` and `array_replace_recursive()`
 // all keep the key.
