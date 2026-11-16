@@ -74,6 +74,12 @@ tags: [versions, conventions, planning]
   compare its `routeAction` with the generated parent. This is not a breaking change: every Laravel application already
   has the extension, since the framework requires it, and `composer` only now says so in this package's own
   `composer.json`.
+- **On an operation whose JSON body allows `null`, `dto()` is now typed `?X` and returns `null` for a `null` body, where
+  it returned a DTO of `Optional`s.** That is an optional body, a `PATCH` and a required body that requires nothing,
+  each sent a JSON `null`. An absent optional body (no content) still gives the DTO. A body that cannot be `null`, and a
+  nullable one read only as a form, keep the plain type. This is a breaking change: `$request->dto()->toArray()` on such
+  an operation now fails at runtime when a client sends `null`, and static analysis asks for a null check. Handle
+  `null`, for instance `$request->dto()?->toArray()`.
 
 ### Fixed
 

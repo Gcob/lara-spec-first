@@ -97,6 +97,64 @@ it('declares dto() returning the input DTO, built from validated()', function ()
         ->toContain('`dto()` returns the body as `CreateUserInputDto`');
 });
 
+/**
+ * A `/things` operation whose object body is read as `$mediaType`, for `dto()`'s return type.
+ */
+function nullableBodyOperation(HttpMethod $method, string $mediaType, bool $nullable, bool $required): Operation
+{
+    return new Operation(
+        index: 0,
+        method: $method,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody([$mediaType => new Schema(
+            types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+            required: ['name'],
+        )], $required),
+    );
+}
+
+// The request lets a JSON `null` through exactly when its root is nullable and read as JSON, so `dto()` is nullable
+// in the same cases. A form cannot send `null`, so a nullable root read only as a form keeps the plain type.
+it('declares dto() nullable only for a nullable JSON body', function (
+    HttpMethod $method,
+    string $mediaType,
+    bool $nullable,
+    bool $required,
+    string $signature,
+    bool $returnsNull,
+): void {
+    $emitted = emittedRequest(nullableBodyOperation($method, $mediaType, $nullable, $required), controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain($signature)
+        ->and(str_contains($emitted, 'return null;'))->toBe($returnsNull)
+        ->and(str_contains($emitted, 'or `null` when the body is `null`'))->toBe($returnsNull);
+})->with([
+    'a required nullable JSON body' => [HttpMethod::Post, 'application/json', true, true, 'public function dto(): ?CreateThingInputDto', true],
+    'a PATCH nullable JSON body' => [HttpMethod::Patch, 'application/json', true, true, 'public function dto(): ?CreateThingPartialInputDto', true],
+    'an optional nullable JSON body' => [HttpMethod::Post, 'application/json', true, false, 'public function dto(): ?CreateThingPartialInputDto', true],
+    'a non-nullable JSON body' => [HttpMethod::Post, 'application/json', false, true, 'public function dto(): CreateThingInputDto', false],
+    'a nullable multipart body' => [HttpMethod::Post, 'multipart/form-data', true, true, 'public function dto(): CreateThingInputDto', false],
+]);
+
+// Pint rewrites what it dislikes in a consumer's project, and the build rewrites it back: the new `dto()` lines are
+// held to the same formatter as the golden. The body requires a property, so the file also carries the rules and the
+// root checks of a nullable required body.
+it('emits a nullable dto() Pint has nothing to change in', function (): void {
+    $path = (string) tempnam(sys_get_temp_dir(), 'lsf-nullable-dto-').'.php';
+    file_put_contents($path, emittedRequest(
+        nullableBodyOperation(HttpMethod::Post, 'application/json', nullable: true, required: true),
+        controllerShortName: 'CreateThingController',
+    ));
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $path], dirname(__DIR__, 3));
+    $pint->run();
+    unlink($path);
+
+    expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
 // `validated()` leaves out an array with child rules when none of its children was sent. `dto()`
 // reads with that off, and puts it back, so `validated()` is what Laravel returns after a `dto()`
 // call as before it. Run against Laravel in tests/Feature/Generation/GeneratedDeclaredArraysTest.php.

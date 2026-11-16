@@ -1862,11 +1862,11 @@ it('refuses a file named like PHP even when its type is the declared one', funct
 /**
  * A `POST` whose JSON body is an object that asks for nothing, so no rule has a key to fail on.
  */
-function postWithOptionalJsonObject(bool $typed = true, bool $closed = false, bool $nullable = false, bool $bodyRequired = true): Operation
+function postWithOptionalJsonObject(bool $typed = true, bool $closed = false, bool $nullable = false, bool $bodyRequired = true, HttpMethod $method = HttpMethod::Post): Operation
 {
     return new Operation(
         index: 0,
-        method: HttpMethod::Post,
+        method: $method,
         path: PathTemplate::fromString('/search'),
         operationId: 'searchThings',
         requestBody: new RequestBody(['application/json' => new Schema(
@@ -1943,6 +1943,72 @@ it('refuses an empty content when the body is required', function (bool $typed, 
 ])->with([
     'nothing' => [''],
     'blanks' => ["  \n"],
+]);
+
+/**
+ * One request through the real kernel carrying `$content` as its JSON body, as sent, to a route that answers with what
+ * `dto()` returned: `null` is `{"dto": null}`.
+ *
+ * @param  class-string<FormRequest>  $class
+ * @return array{0: int, 1: array<array-key, mixed>|null} the status, and the DTO as an array (null for no DTO)
+ */
+function dtoForRawJson(string $class, string $method, string $content): array
+{
+    Route::match([$method], '/_generated/raw-json-dto', fn () => response()->json(['dto' => app($class)->dto()?->toArray()]));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/raw-json-dto',
+        $method,
+        [],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        $content,
+    ));
+
+    /** @var array{dto?: array<array-key, mixed>|null} $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), $decoded['dto'] ?? null];
+}
+
+/**
+ * The operation of one shape of nullable JSON body, for `dto()`.
+ */
+function nullableJsonBody(string $shape): Operation
+{
+    if ($shape === 'optional, requires q') {
+        return postWithOptionalJsonRequiring(['q'], ['q'], nullable: true);
+    }
+
+    return postWithOptionalJsonObject(
+        nullable: true,
+        bodyRequired: $shape !== 'optional, requires nothing',
+        method: $shape === 'PATCH, requires nothing' ? HttpMethod::Patch : HttpMethod::Post,
+    );
+}
+
+// A `null` body is the payload `null`: the request lets it through, and a DTO of `Optional`s would say "an object with
+// nothing in it". An absent optional body is not `null`, it has no content, so it keeps the DTO.
+it('returns null from dto() for a null body', function (string $shape, string $method, string $content, int $status, ?array $dto): void {
+    $class = emittedRequestClass(nullableJsonBody($shape));
+
+    expect(dtoForRawJson($class, $method, $content))->toBe([$status, $dto]);
+})->with([
+    'optional, requires nothing: null' => ['optional, requires nothing', 'POST', 'null', 200, null],
+    'optional, requires nothing: an object' => ['optional, requires nothing', 'POST', '{"q":"x"}', 200, ['q' => 'x']],
+    'optional, requires nothing: {}' => ['optional, requires nothing', 'POST', '{}', 200, []],
+    'optional, requires nothing: absent' => ['optional, requires nothing', 'POST', '', 200, []],
+    'PATCH, requires nothing: null' => ['PATCH, requires nothing', 'PATCH', 'null', 200, null],
+    'PATCH, requires nothing: an object' => ['PATCH, requires nothing', 'PATCH', '{"q":"x"}', 200, ['q' => 'x']],
+    'PATCH, requires nothing: {}' => ['PATCH, requires nothing', 'PATCH', '{}', 200, []],
+    'required, requires nothing: null' => ['required, requires nothing', 'POST', 'null', 200, null],
+    'required, requires nothing: an object' => ['required, requires nothing', 'POST', '{"q":"x"}', 200, ['q' => 'x']],
+    'required, requires nothing: {}' => ['required, requires nothing', 'POST', '{}', 200, []],
+    'optional, requires q: null' => ['optional, requires q', 'POST', 'null', 200, null],
+    'optional, requires q: an object' => ['optional, requires q', 'POST', '{"q":"x"}', 200, ['q' => 'x']],
+    'optional, requires q: {}' => ['optional, requires q', 'POST', '{}', 422, null],
+    'optional, requires q: absent' => ['optional, requires q', 'POST', '', 200, []],
 ]);
 
 /**

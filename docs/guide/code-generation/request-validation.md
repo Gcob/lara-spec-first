@@ -38,8 +38,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 > - `PATCH` is `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema
 >   `default`.
 > - A request whose body is an object has `dto()`, which returns the body as
->   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()`, and `validated()` itself keeps
->   returning Laravel's array.
+>   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()` (or `null` for a `null` body), and
+>   `validated()` itself keeps returning Laravel's array.
 > - A recursive schema is validated down to the depth it states with `x-max-depth` (three when it says nothing), and a
 >   payload deeper than that is refused, with a finding in the generated file that names the extension. Unrolling is
 >   capped at 1,000 rule keys per operation: a deeper branching schema is cut at one lower level on every branch, with a
@@ -986,6 +986,15 @@ property of the validator.
 **`validated()` keeps returning Laravel's array**, and `dto()` leaves it as it found it. It is the framework's own
 method, `validated()` and `validated('email')` both have callers, and a generated class that changed what they hand back
 would be this package redefining something it does not own. The DTO sits beside it, under a name of ours.
+
+**`dto()` returns `null` for a `null` body, wherever a JSON body allows `null`.** When the body's schema allows `null`
+and the body is read as JSON (JSON only, or JSON and a form), the request lets a JSON `null` through, and `dto()` is
+typed `?CreateUserInputDto` with `if ($this->isJson() && trim($this->getContent()) === 'null') { return null; }` first.
+The contract says the payload is `null`, and a DTO of `Optional`s would say "an object with nothing in it", which is
+something else. That holds for an optional body, a `PATCH` and a required body that requires nothing, whose DTO used to
+be built from `null` and came out empty. An absent optional body is not `null`: it has no content, passes, and keeps the
+DTO of `Optional`s. A body that cannot be `null`, or a nullable one read only as a form (a form cannot send `null`),
+keeps the plain return type.
 
 **Its properties are the body schema's, and a query parameter is not one of them.** The rule set merges the two, so
 `validated()` carries both; the DTO mirrors the body and nothing else, because the body is where its name comes from.

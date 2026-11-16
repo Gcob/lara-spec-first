@@ -265,6 +265,9 @@ final readonly class FormRequestEmitter
      * DTO. The `assert` is for the static analysis of the class a consumer reads: `getValidatorInstance()` is typed as
      * the contract, and the flag is on the validator Laravel builds.
      *
+     * **It returns `null` for a `null` body, and is typed `?X` then**: when the root is nullable and read as JSON, the
+     * request lets a JSON `null` through and the payload is `null`, not an object with nothing in it.
+     *
      * @see docs/guide/code-generation/request-validation.md — "The payload arrives as a DTO"
      */
     private function dto(PlannedRequest $planned): string
@@ -277,10 +280,12 @@ final readonly class FormRequestEmitter
             ? '$validator->validated()'
             : '$this->contractNames($validator->validated())';
 
+        $nullable = self::dtoIsNullable($planned->rules);
+
         return sprintf(<<<'PHP'
 
-                public function dto(): %1$s
-                {
+                public function dto(): %3$s%1$s
+                {%4$s
                     $validator = $this->getValidatorInstance();
                     assert($validator instanceof Validator);
 
@@ -294,7 +299,28 @@ final readonly class FormRequestEmitter
                     }
                 }
 
-            PHP, $planned->dto, $payload).$this->contractNames($planned->rules);
+            PHP, $planned->dto, $payload, $nullable ? '?' : '', $nullable ? self::NULL_BODY : '').$this->contractNames($planned->rules);
+    }
+
+    /**
+     * What `dto()` starts with when the body may be `null`: the payload is `null`, so `dto()` says so.
+     *
+     * A JSON `null` is the one body that is neither an object nor absent, and a DTO of `Optional`s would say "an object
+     * with nothing in it". An absent optional body has an empty content, not `null`, and keeps the DTO.
+     */
+    private const NULL_BODY = "\n"
+        ."        // Why: a `null` body is the payload `null`, not an object with nothing in it.\n"
+        ."        if (\$this->isJson() && trim(\$this->getContent()) === 'null') {\n"
+        ."            return null;\n"
+        ."        }\n";
+
+    /**
+     * Whether `dto()` may return `null`: when the request lets a JSON `null` through, which is its root check's
+     * condition (`after()`), so the two cannot drift. A form cannot send `null`.
+     */
+    private static function dtoIsNullable(RuleSet $set): bool
+    {
+        return $set->nullableRoot && $set->jsonRoot;
     }
 
     /**
@@ -575,10 +601,11 @@ final readonly class FormRequestEmitter
 
         if ($planned->dto !== null) {
             $findings[] = sprintf(
-                '`dto()` returns the body as `%s`, built from `validated()`, which keeps returning '
+                '`dto()` returns the body as `%s`%s, built from `validated()`, which keeps returning '
                     .'Laravel\'s array. A `query` parameter is not a property of it: read one with '
                     .'`validated(\'name\')`.',
                 CommentText::safe($planned->dto),
+                self::dtoIsNullable($planned->rules) ? ', or `null` when the body is `null`' : '',
             );
         }
 
