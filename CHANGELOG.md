@@ -403,8 +403,9 @@ card that closes it.
 - **`spec:make` writes a child controller before the build's refusals run.** An operation the build refuses leaves a
   child that does not compile, the package never overwrites it, and an existing child whose operation gains a request
   breaks only at runtime. [#112](https://github.com/Gcob/lara-spec-first/issues/112).
-- **A few findings of a generated request are wider or narrower than the gap they name**, for an empty body and for
-  bracketed form names. None refuses a valid request. [#113](https://github.com/Gcob/lara-spec-first/issues/113).
+- **A form body that declares a bracketed name inside another refuses a valid request**, with no finding: `filter[a]`
+  beside `filter[a][b]`. A few other findings of a generated request are wider or narrower than the gap they name, for
+  an empty body and for bracketed form names. [#113](https://github.com/Gcob/lara-spec-first/issues/113).
 - **`spec:doctor` is silent on some constraints the generated file only mentions in prose**: a form field PHP delivers
   under another field's key, a `dependentRequired` entry the rule set drops, a `query` parameter typed array or object,
   and a few more. [#119](https://github.com/Gcob/lara-spec-first/issues/119).
