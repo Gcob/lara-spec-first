@@ -173,6 +173,27 @@ tags: [versions, conventions, planning]
   `0.2.0` `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109), except the values of a
   map beside declared `properties` or beside `query` parameters, which are reported and not validated (and typed `mixed`
   on the DTO of a map body), until [#169](https://github.com/Gcob/lara-spec-first/issues/169).
+- **`spec:doctor` compares a part's `encoding` with the default of the document's own OpenAPI version, so its exit code
+  can rise from `0` to `2`.** A `contentType` written under `encoding` on a part the request does not read as a file is
+  reported unless it is that part's default, and the default was the union of every version's. Each minor is now read by
+  its latest patch text (3.0.x as 3.0.4, 3.1.x as 3.1.1, so a 3.1.0 document gets 3.1.1's defaults), since a patch
+  corrects the text of its minor and the specification says tooling should not consider it. The doctor now exits `2`
+  where it exited `0` for `application/octet-stream` on a plain string, number, integer or boolean part, or an array of
+  them, at 3.0 and at 3.1 (3.1.0's default for a primitive, which 3.1.1 corrected to `text/plain`); a 3.0 `format: byte`
+  string is not one, since `application/octet-stream` is its default there. A part the doctor already reported (for
+  `format` or `contentMediaType`, so the exit stays `2`) gains an `encoding` finding: `text/plain` on a 3.0
+  `format: binary` part of a form-encoded or mixed body, typed or not, and on a 3.0 `format: byte` string;
+  `application/octet-stream` on a 3.1 `type: string` file part of a form-encoded or mixed body, and on a 3.1
+  `format: byte` string; and `text/plain` on a file part with no `type`, at either version. A `RequestBody` built by
+  hand (`new RequestBody` with no table) keeps the widest defaults, except for a file part with no `type`, which reports
+  `text/plain`. A 3.1 string with a `contentEncoding` reads as a plain string, since the schema does not carry the
+  keyword yet: its `application/octet-stream` is reported and a `text/plain` on it is not
+  ([#146](https://github.com/Gcob/lara-spec-first/issues/146)). Nothing a request answers changes: no rule changes, only
+  a finding and the doctor's exit. This is a breaking change: every move on the exit-code axis is major, in either
+  direction, so a green CI step that expected `0` here can turn red. Write the default of the document's version, or
+  drop the `encoding` entry. The reasoning is in
+  [ADR 0005](./docs/project/decisions/0005-read-default-content-type-by-latest-patch.md). This closes the `0.2.0`
+  `Known limits` item for [#131](https://github.com/Gcob/lara-spec-first/issues/131).
 
 ### Fixed
 
@@ -218,6 +239,9 @@ tags: [versions, conventions, planning]
   `required`, and an empty or `null` integer, number or boolean reports `filled`'s ("must have a value") where it
   reported `required`'s. A form client of a body that is JSON and a form gets the same statuses and keys. This closes
   the refusal the `0.2.0` `Known limits` lists for [#111](https://github.com/Gcob/lara-spec-first/issues/111).
+- **A 3.0 `format: binary` part written `contentType: text/plain` was reported in a `multipart/form-data` body alone and
+  read as the default in a form-encoded or mixed one.** 3.0 gives it `application/octet-stream`, so all three bodies now
+  report it. See [#131](https://github.com/Gcob/lara-spec-first/issues/131).
 
 ## [0.2.0] - 2026-11-15
 

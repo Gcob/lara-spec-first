@@ -348,6 +348,30 @@ it('reports encoding on a part that is not a file', function (): void {
         ->and($partial[0]['message'])->not->toContain('"Schemas"');
 });
 
+// The default `contentType` is the one the document's own version gives. One contract, written at 3.0.3 and at 3.1.0
+// (read with 3.1.1's table): `count` writes a default of both, `note` writes the default of neither, and `token`, a
+// `format: byte` string, writes `application/octet-stream`, which is its 3.0.4 default and not its 3.1.1 one.
+it('reads the default contentType of a part for the document version', function (string $fixture, array $named): void {
+    [$exit, $report] = doctorJson($fixture);
+
+    $findings = array_values(array_filter(
+        doctorSupportFindings($report, 'partial'),
+        static fn (array $finding): bool => str_contains($finding['message'], 'post /parts writes `encoding`'),
+    ));
+
+    expect($exit)->toBe(2)
+        ->and($findings)->toHaveCount(1);
+
+    foreach (['count', 'note', 'token'] as $part) {
+        in_array($part, $named, true)
+            ? expect($findings[0]['message'])->toContain('`'.$part.'`')
+            : expect($findings[0]['message'])->not->toContain('`'.$part.'`');
+    }
+})->with([
+    'a 3.0 document' => ['doctor-encoding-defaults-3.0.yaml', ['note']],
+    'a 3.1 document' => ['doctor-encoding-defaults-3.1.yaml', ['note', 'token']],
+]);
+
 // A malformed `encoding` is a fault in the document, and the doctor's zero exit promises nothing was dropped without
 // a decision: the request is looser than the contract (a YAML list narrows nothing, an entry for a part the schema
 // does not declare is never read), so the exit is the document's, `1`, with the operation as the position.

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
@@ -13,6 +14,8 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
+use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 
 /*
@@ -44,6 +47,7 @@ function objectSchema(array $properties, array $required = []): Schema
  * @param  array<string, Schema>  $content
  * @param  list<QueryParameter>  $query
  * @param  array<string, array<string, string>>  $encoding  media type, then part, then its `contentType`
+ * @param  EncodingDefaults|null  $encodingDefaults  null is a body built by hand, which gets the widest table
  */
 function operationWithInput(
     string $method = 'post',
@@ -52,13 +56,14 @@ function operationWithInput(
     array $query = [],
     string $path = '/things',
     array $encoding = [],
+    ?EncodingDefaults $encodingDefaults = null,
 ): Operation {
     return new Operation(
         index: 0,
         method: HttpMethod::from($method),
         path: PathTemplate::fromString($path),
         operationId: 'doThing',
-        requestBody: $content === [] ? null : new RequestBody($content, $bodyRequired, $encoding),
+        requestBody: $content === [] ? null : new RequestBody($content, $bodyRequired, $encoding, $encodingDefaults ?? new EncodingDefaults),
         queryParameters: $query,
     );
 }
@@ -1687,6 +1692,9 @@ it('reports the minimum size of a file, which no rule carries', function (): voi
  * Only a top-level part of a multipart body is read, by the name the contract writes. A part the body does not read as
  * a file (a non-file part, a mixed body, a form) is reported unless its type is OpenAPI's default for it, and the
  * document's own faults (a part the schema does not declare) go in the generated file alone.
+ *
+ * This body is built by hand, so it holds every version's default. The tests after this one give the document's own
+ * version's.
  */
 it('narrows a file part from encoding', function (
     array $properties,
@@ -1792,16 +1800,6 @@ it('narrows a file part from encoding', function (
                 'tags' => ['sometimes', 'array', 'list'], 'tags.*' => ['string'], 'rows' => ['sometimes', 'array', 'list'], 'rows.*' => ['array'],
                 'doc' => ['sometimes', 'file']],
             [], []],
-        // The versions disagree (3.1.0 gives a primitive `application/octet-stream`, 3.0 and 3.1.1 `text/plain`), so a
-        // contract is never asked which one it meant: every type written being one of them is silent.
-        'the default of another version, spelled out' => [
-            ['note' => $text, 'count' => new Schema(types: [SchemaType::Integer]), 'free' => new Schema],
-            ['note' => 'application/octet-stream', 'count' => 'text/plain, application/octet-stream', 'free' => 'application/octet-stream'],
-            $multipart,
-            ['note' => ['sometimes', 'string'], 'count' => ['sometimes', 'integer'], 'free' => ['sometimes']],
-            [], []],
-        'a file part in a form, with the default 3.1.1 gives a string' => [['avatar' => $file], ['avatar' => 'text/plain'], ['application/x-www-form-urlencoded'],
-            ['avatar' => ['sometimes', 'string']], [], ['format' => ['`avatar`']]],
         'an object is not given a primitive default' => [['data' => objectSchema([])], ['data' => 'text/plain'], $multipart,
             ['data' => ['sometimes', 'array']], ['The `encoding` of `data` declares `contentType: text/plain`'], ['encoding' => ['`data`']]],
         'a default beside another type is not the default' => [['note' => $text], ['note' => 'text/plain, image/png'], $multipart,
@@ -1853,6 +1851,127 @@ it('narrows a file part from encoding', function (
             ['`encoding` names `ghost`, which the body does not declare'], []],
         'JSON, where encoding does not apply' => [['avatar' => $file], ['avatar' => 'image/png'], ['application/json'],
             ['avatar' => ['sometimes', 'string']], [], ['format' => ['`avatar`']]],
+    ];
+});
+
+/**
+ * The `encoding` finding and the `encoding` entry of `unenforced` a part leaves under one version's table.
+ *
+ * @param  array<string, Schema>  $properties
+ * @param  list<string>  $mediaTypes
+ * @param  array<string, string>  $encoding  part, then its `contentType`
+ * @return array{0: bool, 1: bool} whether the finding was written, and whether `encoding` is left unenforced
+ */
+function encodingReportedWith(?EncodingDefaults $table, array $properties, array $mediaTypes, array $encoding): array
+{
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: array_fill_keys($mediaTypes, objectSchema($properties)),
+        encoding: ['multipart/form-data' => $encoding, 'application/x-www-form-urlencoded' => $encoding],
+        encodingDefaults: $table,
+    ));
+
+    $part = array_key_first($encoding);
+
+    return [
+        str_contains(implode("\n", $set->findings), 'The `encoding` of `'.$part.'` declares'),
+        in_array('`'.$part.'`', $set->unenforced['encoding'] ?? [], true),
+    ];
+}
+
+// A part's default `contentType` is the one its document's own version gives it, so a type is silent only where that
+// version names it. Each row runs under 3.0.4's table and 3.1.1's, as the strategies hand them.
+it('reports a contentType that is not a default of the document version', function (
+    Schema $part,
+    string $contentType,
+    array $mediaTypes,
+    bool $reportedAt30,
+    bool $reportedAt31,
+): void {
+    assert(array_is_list($mediaTypes));
+
+    foreach ([[(new OpenApi30Strategy)->encodingDefaults(), $reportedAt30], [(new OpenApi31Strategy)->encodingDefaults(), $reportedAt31]] as [$table, $reported]) {
+        expect(encodingReportedWith($table, ['part' => $part], $mediaTypes, ['part' => $contentType]))
+            ->toBe([$reported, $reported]);
+    }
+})->with(function (): array {
+    $form = ['application/x-www-form-urlencoded'];
+    $mixed = ['multipart/form-data', 'application/json'];
+    $multipart = ['multipart/form-data'];
+    $typedFile = new Schema(types: [SchemaType::String], isFilePart: true);
+    $text = new Schema(types: [SchemaType::String]);
+    $byte = new Schema(types: [SchemaType::String], format: 'byte');
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    return [
+        'a typed file part written text/plain, in a form' => [$typedFile, 'text/plain', $form, true, false],
+        'a typed file part written text/plain, in a mixed body' => [$typedFile, 'text/plain', $mixed, true, false],
+        'a typed file part written application/octet-stream, in a form' => [$typedFile, 'application/octet-stream', $form, false, true],
+        'a plain string written application/octet-stream' => [$text, 'application/octet-stream', $multipart, true, true],
+        'an integer written both types' => [$integer, 'text/plain, application/octet-stream', $multipart, true, true],
+        'an integer written text/plain' => [$integer, 'text/plain', $multipart, false, false],
+        'a byte string written application/octet-stream' => [$byte, 'application/octet-stream', $multipart, false, true],
+        'a byte string written text/plain' => [$byte, 'text/plain', $multipart, true, false],
+        'a file part with no type written text/plain' => [new Schema(isFilePart: true), 'text/plain', $form, true, true],
+        'a file part with no type written application/octet-stream' => [new Schema(isFilePart: true), 'application/octet-stream', $form, false, false],
+        'an array of integers written application/octet-stream' => [new Schema(types: [SchemaType::Array], items: $integer), 'application/octet-stream', $multipart, true, true],
+        'an array of byte strings written application/octet-stream' => [new Schema(types: [SchemaType::Array], items: $byte), 'application/octet-stream', $multipart, false, true],
+        'an object written application/json' => [objectSchema([]), 'application/json', $multipart, false, false],
+        'a part with no type, no file, written application/octet-stream' => [new Schema, 'application/octet-stream', $multipart, false, false],
+    ];
+});
+
+// The card's own case: a 3.0 binary part's `text/plain` is not its default, in a form and a mixed body (where it used
+// to read as a default) and in a multipart body alone (where it was already reported, since the request reads the part
+// as a file and no `mimetypes` rule matches a text type). At 3.1 the three differ on purpose: 3.1.1 gives a
+// `type: string` file part `text/plain`, so a form or a mixed body is silent on it and reports `application/octet-stream`,
+// while a multipart body alone reads the part as a file, where `application/octet-stream` means any bytes.
+it('reports a 3.0 binary part written text/plain in every body', function (
+    array $mediaTypes,
+    string $contentType,
+    bool $reportedAt30,
+    bool $reportedAt31,
+): void {
+    assert(array_is_list($mediaTypes));
+
+    $file = new Schema(types: [SchemaType::String], isFilePart: true);
+
+    foreach ([[(new OpenApi30Strategy)->encodingDefaults(), $reportedAt30], [(new OpenApi31Strategy)->encodingDefaults(), $reportedAt31]] as [$table, $reported]) {
+        expect(encodingReportedWith($table, ['avatar' => $file], $mediaTypes, ['avatar' => $contentType]))
+            ->toBe([$reported, $reported]);
+    }
+})->with([
+    'a form, text/plain' => [['application/x-www-form-urlencoded'], 'text/plain', true, false],
+    'a mixed body, text/plain' => [['multipart/form-data', 'application/json'], 'text/plain', true, false],
+    'a multipart body alone, text/plain' => [['multipart/form-data'], 'text/plain', true, true],
+    'a form, application/octet-stream' => [['application/x-www-form-urlencoded'], 'application/octet-stream', false, true],
+    'a mixed body, application/octet-stream' => [['multipart/form-data', 'application/json'], 'application/octet-stream', false, true],
+    'a multipart body alone, application/octet-stream' => [['multipart/form-data'], 'application/octet-stream', false, false],
+]);
+
+// A body built by hand names no version, so it holds both defaults of each kind of part and reports nothing a version
+// could call one. The exception is a file part with no `type`: every version gives it `application/octet-stream`.
+it('keeps the widest defaults for a request body built by hand', function (
+    Schema $part,
+    string $contentType,
+    array $mediaTypes,
+    bool $reported,
+): void {
+    assert(array_is_list($mediaTypes));
+
+    expect(encodingReportedWith(null, ['part' => $part], $mediaTypes, ['part' => $contentType]))
+        ->toBe([$reported, $reported]);
+})->with(function (): array {
+    $form = ['application/x-www-form-urlencoded'];
+    $multipart = ['multipart/form-data'];
+
+    return [
+        'application/octet-stream on a plain string' => [new Schema(types: [SchemaType::String]), 'application/octet-stream', $multipart, false],
+        'application/octet-stream on an integer' => [new Schema(types: [SchemaType::Integer]), 'application/octet-stream', $multipart, false],
+        'text/plain on a typed file part' => [new Schema(types: [SchemaType::String], isFilePart: true), 'text/plain', $form, false],
+        'application/octet-stream on a typed file part' => [new Schema(types: [SchemaType::String], isFilePart: true), 'application/octet-stream', $form, false],
+        'text/plain on a byte string' => [new Schema(types: [SchemaType::String], format: 'byte'), 'text/plain', $multipart, false],
+        'application/octet-stream on a byte string' => [new Schema(types: [SchemaType::String], format: 'byte'), 'application/octet-stream', $multipart, false],
+        'text/plain on a file part with no type' => [new Schema(isFilePart: true), 'text/plain', $form, true],
     ];
 });
 

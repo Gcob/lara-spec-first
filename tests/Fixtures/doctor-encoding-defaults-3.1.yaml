@@ -1,0 +1,35 @@
+# The same contract as `doctor-encoding-defaults-3.0.yaml`, at 3.1.0, so a 3.1.0 document is read with the table of 3.1.1.
+# What the pair proves: `count` writes the default of both versions (`text/plain` on an integer), `note` writes it at
+# neither (`application/octet-stream` on a plain string), and `token` writes it at 3.0 only (`application/octet-stream`
+# on a `format: byte` string, which 3.1.1 gives `text/plain`).
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /parts:
+    post:
+      operationId: createParts
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                count:
+                  type: integer
+                note:
+                  type: string
+                token:
+                  type: string
+                  format: byte
+            encoding:
+              count:
+                contentType: text/plain
+              note:
+                contentType: application/octet-stream
+              token:
+                contentType: application/octet-stream
+      responses:
+        '201':
+          description: Created

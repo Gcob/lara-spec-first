@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Contract\Audience;
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
@@ -16,6 +17,9 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
 use Gcob\LaraSpecFirst\Parsing\ExtractionResult;
 use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
+use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
+use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
+use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategy;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -437,6 +441,18 @@ it('reads encoding contentType from the raw document', function (): void {
     // `caption` and `document` write no `contentType`, so they have no entry, and no other media type has one.
     expect($body?->encoding)->toBe(['multipart/form-data' => ['avatar' => 'image/png, image/jpeg']]);
 });
+
+// The default `contentType` of a part is the one thing a 3.0 and a 3.1 spelling of a part mean differently, so the
+// strategy of the document's own version hands the body its table, and the body never says which version it was.
+it('carries the encoding defaults of its version on a request body', function (string $fixture, VersionStrategy $strategy): void {
+    $body = extractionFrom($fixture)->operations[0]->requestBody;
+
+    expect($body?->encodingDefaults)->toEqual($strategy->encodingDefaults())
+        ->and($body?->encodingDefaults)->not->toEqual(new EncodingDefaults);
+})->with([
+    'a 3.0 document' => ['doctor-encoding-defaults-3.0.yaml', new OpenApi30Strategy],
+    'a 3.1 document' => ['doctor-encoding-defaults-3.1.yaml', new OpenApi31Strategy],
+]);
 
 // A `contentType` that is not a string is still something the author wrote, so it stays in the contract as written
 // (a rule can then say it read nothing from it), where dropping it would make the part look as if it wrote none. A

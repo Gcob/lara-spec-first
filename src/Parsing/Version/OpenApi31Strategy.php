@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing\Version;
 
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 
@@ -39,6 +40,22 @@ final class OpenApi31Strategy implements VersionStrategy
         }
 
         throw InvalidDocumentException::missingRootKey($this->version(), self::REQUIRED_ROOT_KEYS);
+    }
+
+    /**
+     * 3.1.1's table, which 3.1.2 repeats and which a 3.1.0 document is read with: a string and a number, an integer or
+     * a boolean are `text/plain`, a `type: string` file part included (`contentMediaType` does not move it) and a
+     * `format: byte` string too. A string with a `contentEncoding` is `application/octet-stream`, which the schema does
+     * not carry, so it reads as a plain string.
+     */
+    public function encodingDefaults(): EncodingDefaults
+    {
+        return new EncodingDefaults(
+            typedFile: ['text/plain'],
+            string: ['text/plain'],
+            byteString: ['text/plain'],
+            scalar: ['text/plain'],
+        );
     }
 
     /**

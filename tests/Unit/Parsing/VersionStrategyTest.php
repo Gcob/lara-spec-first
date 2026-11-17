@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
@@ -9,6 +10,7 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\UnsupportedVersionException;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
+use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategy;
 use Gcob\LaraSpecFirst\Parsing\Version\VersionStrategyFactory;
 
 it('selects a strategy per version', function (SpecVersion $version, string $expected): void {
@@ -238,3 +240,46 @@ it('drops a dependentRequired entry it cannot read', function (mixed $written, a
     'a dependency that is not a list' => [['card' => 'billing_address'], []],
     'a name that is not a string' => [['card' => ['billing_address', 12]], ['card' => ['billing_address']]],
 ]);
+
+// A minor is read by its latest patch text, since a patch corrects the text of its minor: 3.0.x by 3.0.4, which adds
+// `format: byte` to the `application/octet-stream` row, and 3.1.x by 3.1.1, which gives a primitive `text/plain` where
+// 3.1.0 gave it `application/octet-stream`.
+it('gives a part the default contentTypes its own version names', function (
+    VersionStrategy $strategy,
+    array $typedFile,
+    array $string,
+    array $byteString,
+    array $scalar,
+): void {
+    $table = $strategy->encodingDefaults();
+
+    expect($table->typedFile)->toEqualCanonicalizing($typedFile)
+        ->and($table->string)->toEqualCanonicalizing($string)
+        ->and($table->byteString)->toEqualCanonicalizing($byteString)
+        ->and($table->scalar)->toEqualCanonicalizing($scalar);
+
+    // No table gives a part a default the union of every version did not already give it, so no finding that exists
+    // without a version disappears with one.
+    $widest = new EncodingDefaults;
+
+    expect(array_diff($table->typedFile, $widest->typedFile))->toBe([])
+        ->and(array_diff($table->string, $widest->string))->toBe([])
+        ->and(array_diff($table->byteString, $widest->byteString))->toBe([])
+        ->and(array_diff($table->scalar, $widest->scalar))->toBe([]);
+})->with([
+    '3.0, read as 3.0.4' => [new OpenApi30Strategy, ['application/octet-stream'], ['text/plain'], ['application/octet-stream'], ['text/plain']],
+    '3.1, read as 3.1.1' => [new OpenApi31Strategy, ['text/plain'], ['text/plain'], ['text/plain'], ['text/plain']],
+]);
+
+// A body built by hand names no version, so it holds both: the table that reports nothing a version could call a default.
+it('holds the widest defaults when no version gave a table', function (): void {
+    $widest = new EncodingDefaults;
+    $both = ['text/plain', 'application/octet-stream'];
+
+    expect($widest->typedFile)->toEqualCanonicalizing($both)
+        ->and($widest->string)->toEqualCanonicalizing($both)
+        ->and($widest->byteString)->toEqualCanonicalizing($both)
+        ->and($widest->scalar)->toEqualCanonicalizing($both)
+        ->and($widest)->not->toEqual((new OpenApi30Strategy)->encodingDefaults())
+        ->and($widest)->not->toEqual((new OpenApi31Strategy)->encodingDefaults());
+});

@@ -382,7 +382,7 @@ final readonly class OperationExtractor
         // A body declaring no readable schema says nothing this package can
         // generate from, and an empty RequestBody would read as "a body with no
         // constraints" rather than as the silence it is.
-        return $content === [] ? null : new RequestBody($content, $body->required === true, $encoding);
+        return $content === [] ? null : new RequestBody($content, $body->required === true, $encoding, $strategy->encodingDefaults());
     }
 
     /**
@@ -398,7 +398,10 @@ final readonly class OperationExtractor
      * the request would say nothing about a restriction the author wrote. Only `null` is dropped: a key with nothing in
      * it writes none.
      *
-     * The Encoding Object is the same in 3.0 and 3.1, so no {@see VersionStrategy} method is involved.
+     * **The Encoding Object is not the same in 3.0 and 3.1.** The `contentType` a part gets when it writes none
+     * differs, and that is read through {@see VersionStrategy::encodingDefaults()}, carried on the request body. And
+     * from 3.1.0, a `style`, `explode` or `allowReserved` written beside `contentType` makes it ignored, which this
+     * does not read (`uploads.md` says only `contentType` is).
      *
      * @return array<string, mixed>
      */
