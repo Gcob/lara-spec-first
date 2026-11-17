@@ -203,16 +203,17 @@ it('folds const into the enum it is', function (): void {
         ->toBe(['a', 'b']);
 });
 
-// Only `false` is a constraint this package reads. A schema under the keyword
-// is a rule for fields whose names are not known in advance, which no Laravel
-// rule reaches, so it comes back as the silence it will be treated as.
-it('reads additionalProperties only when it is a boolean', function (mixed $written, ?bool $expected): void {
-    expect((new OpenApi31Strategy)->normalizeSchema(['additionalProperties' => $written])->additionalProperties)
-        ->toBe($expected);
+// `additionalProperties` stays the boolean every reader tests: `false` and `true` are carried as written, and a schema
+// under it is the value schema's own field, so the boolean is `null` and the schema is not lost.
+it('reads additionalProperties as a boolean and carries a schema under its own field', function (mixed $written, ?bool $expected, bool $schema): void {
+    $normalized = (new OpenApi31Strategy)->normalizeSchema(['additionalProperties' => $written]);
+
+    expect($normalized->additionalProperties)->toBe($expected)
+        ->and($normalized->additionalPropertiesSchema !== null)->toBe($schema);
 })->with([
-    'forbidden' => [false, false],
-    'allowed' => [true, true],
-    'a schema' => [new Schema(types: [SchemaType::String]), null],
+    'forbidden' => [false, false, false],
+    'allowed' => [true, true, false],
+    'a schema' => [new Schema(types: [SchemaType::String]), null, true],
 ]);
 
 // `dependentRequired` is handed back raw, like the 3.1 keywords around it, and

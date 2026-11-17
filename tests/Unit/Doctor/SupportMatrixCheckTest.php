@@ -601,6 +601,57 @@ it('gates the exit code as a package limit, never as a document fault', function
         ->and(supportMatrixReport([...$limits, $fault])->exitCode())->toBe(1);
 });
 
+// The doctor reported a schema under `additionalProperties` as `Ignored` before the contract carried it. Where the build
+// derives no rule from the schema at all, it is still a finding, now `Partial`, and the exit code stays `2`.
+it('keeps reporting an additionalProperties schema where no rule set reads the schema', function (array $content, array $query, string $site): void {
+    assert(array_is_list($query));
+
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest($content, $query)]);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($findings[0]->level)->toBe(SupportLevel::Partial)
+        ->and($findings[0]->message)->toContain('`additionalProperties`')
+        ->and($findings[0]->message)->toContain($site)
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
+})->with(function (): Generator {
+    $value = new Schema(types: [SchemaType::Integer]);
+
+    yield 'a typeless body' => [['application/json' => new Schema(additionalPropertiesSchema: $value)], [], 'The body'];
+    yield 'an array body of maps' => [
+        ['application/json' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value))],
+        [],
+        'The body',
+    ];
+    yield 'a query parameter typed object' => [
+        [],
+        [new QueryParameter('filter', new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String])))],
+        '`filter`',
+    ];
+});
+
+// The value schema is walked like any child, so a keyword nothing reads that it writes is `Ignored` at its own position,
+// and the map is not: it is `Partial`, since the contract carries it.
+it('reports a keyword written inside an additionalProperties schema', function (): void {
+    $at = '#/paths/~1things/post/requestBody/content/application~1json/schema/additionalProperties/deprecated';
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['id' => new Schema(types: [SchemaType::Integer])],
+        additionalPropertiesSchema: new Schema(types: [SchemaType::String], ignored: ['deprecated' => $at]),
+    )])]);
+
+    $levels = [];
+
+    foreach ($findings as $finding) {
+        $levels[$finding->level->value ?? ''][] = $finding->pointer;
+    }
+
+    expect($levels)->toBe([
+        SupportLevel::Ignored->value => [$at],
+        SupportLevel::Partial->value => ['#/paths/~1things/post'],
+    ]);
+});
+
 // --- Keywords written beside a $ref, at 3.1 ---
 
 it('names an Ignored keyword written beside a $ref in a 3.1 request', function (): void {

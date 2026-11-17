@@ -110,6 +110,15 @@ components:
           allOf:
             - $ref: '#/components/schemas/Code'
           maxLength: 3
+        scores:
+          # A schema under `additionalProperties` is the same claim in both versions, by value and by `$ref`.
+          type: object
+          additionalProperties:
+            type: integer
+        labels:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Code'
       # 3.0 spells one example with the singular key.
       example:
         name: Ada

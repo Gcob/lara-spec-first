@@ -8,6 +8,7 @@ use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\Response;
+use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
@@ -15,6 +16,7 @@ use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
 use Gcob\LaraSpecFirst\Parsing\ExtractionResult;
 use Gcob\LaraSpecFirst\Parsing\OperationExtractor;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * The read is assumed clean here: every fixture this helper is used against has a readable document, so unwrapping
@@ -468,3 +470,105 @@ it('reads an inline and a referenced body with the same encoding', function (): 
         ->toBe($operations[0]->requestBody?->encoding)
         ->toBe(['multipart/form-data' => ['avatar' => 'image/png, image/jpeg']]);
 });
+
+/**
+ * The operations of a document whose `POST /things` writes the given body schema and answers `201` with the given
+ * response schema, written to a temporary file because one key is all that changes between the cases.
+ *
+ * @param  array<string, mixed>  $body
+ * @param  array<string, mixed>  $response
+ * @param  array<string, mixed>  $components  `components.schemas`
+ * @return list<Operation>
+ */
+function extractMapDocument(array $body, array $components = [], string $version = '3.1.0', array $response = ['type' => 'string']): array
+{
+    $document = [
+        'openapi' => $version,
+        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
+        'paths' => ['/things' => ['post' => [
+            'operationId' => 'createThing',
+            'requestBody' => ['content' => ['application/json' => ['schema' => $body]]],
+            'responses' => ['201' => ['description' => 'Created', 'content' => ['application/json' => ['schema' => $response]]]],
+        ]]],
+    ];
+
+    if ($components !== []) {
+        $document['components'] = ['schemas' => $components];
+    }
+
+    $path = sys_get_temp_dir().'/lsf-map-'.bin2hex(random_bytes(6)).'.yaml';
+    file_put_contents($path, Yaml::dump($document, 12));
+
+    try {
+        return extractDocumentAt($path);
+    } finally {
+        unlink($path);
+    }
+}
+
+// The keyword carries a schema as well as a boolean: `additionalProperties` keeps its type and stays `null`, and the
+// schema sits beside it, so a reader of the boolean never has to tell the two apart.
+it('carries a schema written under additionalProperties into the contract', function (
+    string $version,
+    array $value,
+    string $where,
+    ?string $name,
+    ?string $source,
+): void {
+    $map = ['type' => 'object', 'additionalProperties' => $value];
+    $wrapped = match ($where) {
+        'body' => $map,
+        'property' => ['type' => 'object', 'properties' => ['meta' => $map]],
+        default => ['type' => 'string'],
+    };
+    $operation = extractMapDocument(
+        $wrapped,
+        ['Tag' => ['type' => 'string', 'maxLength' => 5]],
+        $version,
+        $where === 'response' ? $map : ['type' => 'string'],
+    )[0];
+
+    $schema = match ($where) {
+        'body' => $operation->requestBody?->content['application/json'],
+        'property' => $operation->requestBody?->content['application/json']->properties['meta'],
+        default => $operation->response('201')?->content['application/json'],
+    };
+
+    expect($schema?->additionalProperties)->toBeNull()
+        ->and($schema?->additionalPropertiesSchema)->toBeInstanceOf(Schema::class)
+        ->and($schema?->additionalPropertiesSchema?->name)->toBe($name)
+        ->and($schema?->additionalPropertiesSchema?->source)->toBe($source)
+        ->and($schema?->additionalPropertiesSchema?->types)->toBe([SchemaType::String])
+        ->and($schema?->additionalPropertiesSchema?->maxLength)->toBe($name === null ? null : 5);
+})->with(function (): Generator {
+    foreach (['3.0.3', '3.1.0'] as $version) {
+        foreach (['body', 'property', 'response'] as $where) {
+            yield "inline, {$version}, {$where}" => [$version, ['type' => 'string'], $where, null, null];
+            yield "a \$ref, {$version}, {$where}" => [$version, ['$ref' => '#/components/schemas/Tag'], $where, 'Tag', '#/components/schemas/Tag'];
+        }
+    }
+});
+
+it('carries no value schema for additionalProperties written as a boolean', function (bool $written): void {
+    $body = extractMapDocument(['type' => 'object', 'additionalProperties' => $written])[0]->requestBody?->content['application/json'];
+
+    expect($body?->additionalProperties)->toBe($written)
+        ->and($body?->additionalPropertiesSchema)->toBeNull();
+})->with([true, false]);
+
+// A schema that closes on itself through the keyword must end in a marker at the second level: the walk follows the
+// value schema like any child, and the position it is written at is what it knows it has already been in.
+it('cuts a recursion that closes through additionalProperties', function (string $version): void {
+    $body = extractMapDocument(
+        ['$ref' => '#/components/schemas/Node'],
+        ['Node' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Node']]],
+        $version,
+    )[0]->requestBody?->content['application/json'];
+
+    $inner = $body?->additionalPropertiesSchema;
+
+    expect($body?->name)->toBe('Node')
+        ->and($inner?->name)->toBe('Node')
+        ->and($inner?->recursesTo)->toBe('#/components/schemas/Node')
+        ->and($inner?->additionalPropertiesSchema)->toBeNull();
+})->with(['3.0.3', '3.1.0']);

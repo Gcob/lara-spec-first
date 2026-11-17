@@ -32,10 +32,10 @@ final readonly class Schema
      *                             specification across files renames nothing. The wrapper the reading builds around a
      *                             `$ref` with keywords beside it takes the name of the alias that wrote them only when
      *                             those keywords add shape a DTO holds (`required`, `properties`, a type, `items`, an
-     *                             `enum`, or an `allOf` branch that adds one), and is unnamed otherwise: the schema it
-     *                             wraps keeps its own name, so a constraint beside a `$ref` renames no class. What a
-     *                             generator calls the class it emits is its own decision; this is only what the author
-     *                             called the schema
+     *                             `enum`, `additionalProperties`, or an `allOf` branch that adds one), and is unnamed
+     *                             otherwise: the schema it wraps keeps its own name, so a constraint beside a `$ref`
+     *                             renames no class. What a generator calls the class it emits is its own decision; this
+     *                             is only what the author called the schema
      * @param  string|null  $source  where the schema this one names is written, spelled the way every position is: a
      *                               bare JSON Pointer for the root document, and `path.yaml#/pointer` for another file.
      *                               Set exactly when `name` is, and null for a schema written inline, whose position is
@@ -57,9 +57,10 @@ final readonly class Schema
      *                                                          makes required. Raw, and safe to carry: it holds names,
      *                                                          so no pointer can hide in it
      * @param  bool|null  $additionalProperties  false forbids unknown fields, true allows them, and null is a document
-     *                                           that said nothing or gave a schema this package does not read. The
-     *                                           parser defaults the keyword to true, so keeping the three apart means
-     *                                           reading what the document wrote rather than what the parser answers
+     *                                           that said nothing or gave a schema, which is
+     *                                           {@see self::$additionalPropertiesSchema}'s. The parser defaults the
+     *                                           keyword to true, so keeping the three apart means reading what the
+     *                                           document wrote rather than what the parser answers
      * @param  float|null  $exclusiveMinimum  the 3.1 spelling, always: a bound standing on its own rather than a
      *                                        boolean modifying a sibling. A 3.0 `minimum` carrying
      *                                        `exclusiveMinimum: true` arrives here with the bound moved and `minimum`
@@ -79,6 +80,11 @@ final readonly class Schema
      *                                          is. Only this node's own: a keyword written on a child is the child's.
      *                                          The values are positions and never the keywords' values, which hold
      *                                          schemas the walk did not resolve
+     * @param  Schema|null  $additionalPropertiesSchema  the schema every value of this object must satisfy, written
+     *                                                   under `additionalProperties`: a map's value. Null for a
+     *                                                   document that wrote no schema there, and for `true` and `false`
+     *                                                   too, which are {@see self::$additionalProperties}'s. Appended
+     *                                                   last, so a field of the constructor keeps its place
      */
     public function __construct(
         public ?string $name = null,
@@ -111,6 +117,7 @@ final readonly class Schema
         public ?int $maxDepth = null,
         public ?string $source = null,
         public array $ignored = [],
+        public ?Schema $additionalPropertiesSchema = null,
     ) {}
 
     /**

@@ -136,6 +136,7 @@ final readonly class RuleSetBuilder
         'dependentRequired',
         'allOf',
         'additionalProperties',
+        'additionalPropertiesSchema',
         'isFilePart',
         'contentMediaType',
         'recursesTo',
@@ -317,6 +318,10 @@ final readonly class RuleSetBuilder
             // never appears, so even presence would refuse a valid request.
             // It is `sometimes` whatever its `required` flag, and said so.
             if ($merged->soleType() === SchemaType::Array) {
+                if (self::holdsValueSchema($merged)) {
+                    $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
+                }
+
                 $walk->rules[$key] = [$presence];
                 $walk->findings[] = sprintf(
                     '`%s` is a `query` parameter typed `array`. Its `style` and `explode` serialization is '
@@ -328,6 +333,10 @@ final readonly class RuleSetBuilder
             }
 
             if ($merged->soleType() === SchemaType::Object) {
+                if (self::holdsValueSchema($merged)) {
+                    $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
+                }
+
                 $walk->rules[$key] = ['sometimes'];
                 $walk->findings[] = sprintf(
                     '`%s` is a `query` parameter typed `object`. Its default serialization sends one key per '
@@ -423,13 +432,51 @@ final readonly class RuleSetBuilder
             return true;
         }
 
-        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
+        foreach (self::children($schema) as $child) {
             if (self::hasFilePart($child)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether a schema holds a value schema (one written under `additionalProperties`) anywhere in it. A recursion
+     * marker has nothing under it, so it ends the walk.
+     *
+     * Asked where a whole schema is dropped with no sweep over it, so what it says about its values still reaches the
+     * report.
+     */
+    private static function holdsValueSchema(Schema $schema): bool
+    {
+        if ($schema->additionalPropertiesSchema !== null) {
+            return true;
+        }
+
+        foreach (self::children($schema) as $child) {
+            if (self::holdsValueSchema($child)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Every schema written directly under this one: its properties, its `allOf` branches, its items and its value
+     * schema, in that order.
+     *
+     * @return list<Schema>
+     */
+    private static function children(Schema $schema): array
+    {
+        return [
+            ...array_values($schema->properties),
+            ...$schema->allOf,
+            ...($schema->items === null ? [] : [$schema->items]),
+            ...($schema->additionalPropertiesSchema === null ? [] : [$schema->additionalPropertiesSchema]),
+        ];
     }
 
     /**
@@ -486,6 +533,10 @@ final readonly class RuleSetBuilder
         }
 
         if (! self::isObjectBody($schema)) {
+            if (self::holdsValueSchema($schema)) {
+                $walk->leaveUnenforced('additionalProperties', 'The body');
+            }
+
             return null;
         }
 
@@ -2277,10 +2328,13 @@ final readonly class RuleSetBuilder
 
         // Why: `isFilePart` is the normal form's one flag for two spellings, and no contract has the word. A finding
         // naming it sends the reader looking for a keyword that is not in their file, so it says what they wrote.
+        // The value schema is the same: the contract's keyword is `additionalProperties`, whatever it holds.
         $named = array_map(
-            static fn (string $keyword): string => $keyword === 'isFilePart'
-                ? ($schema->contentMediaType === null ? 'format' : 'contentMediaType')
-                : $keyword,
+            static fn (string $keyword): string => match ($keyword) {
+                'isFilePart' => $schema->contentMediaType === null ? 'format' : 'contentMediaType',
+                'additionalPropertiesSchema' => 'additionalProperties',
+                default => $keyword,
+            },
             $stated,
         );
 

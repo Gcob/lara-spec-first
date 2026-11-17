@@ -1185,9 +1185,10 @@ give the two directions one name. **The name is the schema's and never the `$ref
 renames nothing, and two different schemas that give one class are a build error naming the class and where each is
 written ([what it says](./dto-anatomy.md#one-class-three-members)). **A 3.1 `$ref` with keywords beside it keeps the
 class of the schema it names when they add no shape a DTO holds**: `Alias: {$ref: Node, maxLength: 3}` is
-`NodeInputDto`. One that writes `required`, `properties`, a type, `items`, `enum` or `additionalProperties` is a schema
-of its own, and gets a class after the alias when the alias has a name, and after the operation or the field when it has
-not. The exact spellings are public API surface under [rule 4](../openapi-support.md#the-four-rules) and belong to
+`NodeInputDto`. One that writes `required`, `properties`, a type, `items`, `enum` or `additionalProperties` (`false`,
+`true` or a schema) is a schema of its own, and gets a class after the alias when the alias has a name, and after the
+operation or the field when it has not. The exact spellings are public API surface under
+[rule 4](../openapi-support.md#the-four-rules) and belong to
 [the name freeze](../../../README.md#before-10-freeze-what-a-major-would-cost).
 
 ## Nothing to validate, no class

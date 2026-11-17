@@ -597,6 +597,21 @@ it('takes the name of the one schema an allOf wraps', function (): void {
     expect(dtoNames($plan->dtos))->toBe(['PetInputDto', 'PetPartialInputDto']);
 });
 
+// A value schema written beside the `$ref` is shape a DTO holds, as `required` is: the wrapper is a schema of its own,
+// named after the request, and `PetInputDto` stays the class of `Pet` alone. The map itself is not carried beside the
+// properties yet, so both carry the same ones.
+it('gives its own class to an allOf wrapper that writes an additionalProperties schema', function (bool $writesMap, string $class): void {
+    $pet = dtoSchema(['name' => dtoString()], name: 'Pet', source: '#/components/schemas/Pet');
+    $wrapper = new Schema(allOf: [$pet], additionalPropertiesSchema: $writesMap ? dtoString() : null);
+    $plan = planDtos([dtoOperation('createPet', ['application/json' => $wrapper])]);
+
+    expect(dtoNames($plan->dtos))->toBe([$class, str_replace('InputDto', 'PartialInputDto', $class)])
+        ->and(array_map(static fn ($property): string => $property->key, dtoNamed($plan, $class)->properties))->toBe(['name']);
+})->with([
+    'with a value schema' => [true, 'CreatePetInputDto'],
+    'without one' => [false, 'PetInputDto'],
+]);
+
 it('does not name a composition after one of its branches', function (): void {
     $composition = new Schema(allOf: [
         dtoSchema(['a' => dtoString()], name: 'Base', source: '#/components/schemas/Base'),

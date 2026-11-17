@@ -758,7 +758,12 @@ final class InputDtoPlanner
             return in_array($schema->recursesTo, $positions, true);
         }
 
-        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
+        foreach ([
+            ...array_values($schema->properties),
+            ...$schema->allOf,
+            ...($schema->items === null ? [] : [$schema->items]),
+            ...($schema->additionalPropertiesSchema === null ? [] : [$schema->additionalPropertiesSchema]),
+        ] as $child) {
             if (self::pointsBackInto($child, $positions)) {
                 return true;
             }
@@ -792,7 +797,12 @@ final class InputDtoPlanner
             return true;
         }
 
-        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
+        foreach ([
+            ...array_values($schema->properties),
+            ...$schema->allOf,
+            ...($schema->items === null ? [] : [$schema->items]),
+            ...($schema->additionalPropertiesSchema === null ? [] : [$schema->additionalPropertiesSchema]),
+        ] as $child) {
             if (self::hasFilePart($child)) {
                 return true;
             }

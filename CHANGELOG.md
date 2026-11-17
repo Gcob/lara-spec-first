@@ -107,6 +107,27 @@ tags: [versions, conventions, planning]
   red. Rename one of the two, or accept what the report says. A plain name beside the names PHP nests under it (`page`
   beside `page[size]`) keeps its rules, so the doctor reports nothing for it.
 
+- **A schema written under `additionalProperties` is now read into the contract, and `spec:doctor` reports it `Partial`
+  where it reported `Ignored`.** `additionalProperties: {type: integer}` on a body, a property or a `query` parameter,
+  and the same beside a `$ref` at 3.1 (`{$ref: Base, additionalProperties: {$ref: Pet}}`, with the `$ref` followed), is
+  carried as the schema every value must satisfy. The generated request still derives no rule from it, so the generated
+  file and the doctor name it as unenforced, and the exit code is `2` either way. A keyword written inside the value
+  schema is reported at its own position. This is not a breaking change: the request enforces the same as before and the
+  doctor exits with the same code.
+- **An `allOf` whose branches write an `additionalProperties` schema is now merged, and refused when the schema
+  contradicts a property another branch declares.** Two branches writing one are combined, and one branch's schema
+  applies to the properties the other declares, as JSON Schema reads it, so
+  `allOf: [{properties: {name: {type: string}}}, {additionalProperties: {type: integer}}]` fails the build with the
+  operation named, and `spec:doctor` reports it as a package limit, where the build accepted it because the schema was
+  ignored. A branch that writes `additionalProperties: false` still closes the merged object. This is a breaking change:
+  a document that builds today and writes such branches stops building. Make the branches agree.
+- **A wrapper that writes an `additionalProperties` schema now has an input DTO class of its own.** A 3.0 body written
+  `allOf: [{$ref: Pet}], additionalProperties: {type: string}` was `PetInputDto` and is now `CreatePetInputDto`, with
+  the same properties, and a 3.1 `Alias: {$ref: Pet, additionalProperties: {type: string}}` was `PetInputDto` and is now
+  `AliasInputDto`. The wrapper is a schema of its own, as one that writes `required` is, and a class named after `Pet`
+  could not tell the two apart. This is a breaking change: code that imports or type-hints the old class name no longer
+  finds it. Use the new name.
+
 ### Fixed
 
 - **A plain `query` name beside the names PHP nests under it refused a valid request, with no finding.** `?page[size]=3`

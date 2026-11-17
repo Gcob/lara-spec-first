@@ -1231,6 +1231,53 @@ it('says nothing about a nested object that allows undeclared fields', function 
     expect(implode('', $set->findings))->not->toContain('additionalProperties');
 });
 
+// A value schema is a constraint on every key the object has, and no rule carries it yet: the object with `properties`
+// and a value schema is reported, at the root and nested, and the doctor's data names the keyword as the author wrote it.
+it('reports an additionalProperties schema no rule carries', function (bool $nested): void {
+    $map = new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
+    $body = $nested ? objectSchema(['meta' => $map]) : $map;
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body]));
+    $label = $nested ? '`meta`' : 'The body itself';
+
+    expect(array_keys($set->unenforced))->toBe(['additionalProperties'])
+        ->and(implode("\n", $set->findings))->toContain($label.' states `additionalProperties`, which nothing in this rule set enforces.')
+        ->and(implode("\n", $set->findings))->not->toContain('additionalPropertiesSchema');
+})->with(['at the root' => [false], 'nested' => [true]]);
+
+// Where no sweep runs, the schema is still reported: the doctor reported it `Ignored` before it was read, and reading it
+// must not make it quieter. A root that is not an object, and a `query` parameter typed `object` or `array`, are the two
+// places a schema is dropped whole.
+it('leaves an additionalProperties schema unenforced where no sweep reads the schema', function (array $content, array $query, string $label): void {
+    assert(array_is_list($query));
+
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query));
+
+    expect($set->unenforced)->toBe(['additionalProperties' => [$label]]);
+})->with(function (): Generator {
+    $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]));
+
+    yield 'a body with no type and no property' => [
+        ['application/json' => new Schema(additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]))],
+        [],
+        'The body',
+    ];
+    yield 'an array body of maps' => [
+        ['application/json' => new Schema(types: [SchemaType::Array], items: $map)],
+        [],
+        'The body',
+    ];
+    yield 'a query parameter typed object' => [
+        [],
+        [new QueryParameter('filter', new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String])))],
+        '`filter`',
+    ];
+    yield 'a query parameter typed array of maps' => [
+        [],
+        [new QueryParameter('filters', new Schema(types: [SchemaType::Array], items: $map))],
+        '`filters`',
+    ];
+});
+
 it('says why a field got no type rule at all', function (Schema $schema, string $reason): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['field' => $schema])],

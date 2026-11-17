@@ -21,6 +21,11 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
  * rather than a contradiction: a branch writing `additionalProperties: false` forbids every property the *other*
  * branches declare, which almost never is what its author meant, and reading it either way would be guessing.
  *
+ * **A schema under `additionalProperties` is intersected exactly.** Both branches writing one merge into the two
+ * combined, and one branch's applies to every property the other declares and it does not, so a contradiction with a
+ * declared property is refused like any other. A closed branch wins over a value schema: the merged object takes no
+ * extra key, so there is no value left for it to judge.
+ *
  * Kept apart from {@see RuleSetBuilder} because it is a statement about the contract rather than about Laravel, and
  * because it recurses on its own.
  *
@@ -79,6 +84,16 @@ final readonly class AllOfMerger
                 : $property;
         }
 
+        // JSON Schema judges each branch on its own, so a branch's value schema reaches every property the other
+        // branch declares and it does not. One both declare is each branch's own: neither value schema applies to it.
+        foreach (array_diff_key($a->properties, $b->properties) as $name => $property) {
+            $properties[$name] = self::underValueSchema($property, $b->additionalPropertiesSchema, $identity, $where.'.'.$name);
+        }
+
+        foreach (array_diff_key($b->properties, $a->properties) as $name => $property) {
+            $properties[$name] = self::underValueSchema($property, $a->additionalPropertiesSchema, $identity, $where.'.'.$name);
+        }
+
         $dependentRequired = $a->dependentRequired;
 
         foreach ($b->dependentRequired as $trigger => $names) {
@@ -126,7 +141,41 @@ final readonly class AllOfMerger
             allOf: self::unfoldedMarkers($a, $b),
             recursesTo: $a->recursesTo ?? $b->recursesTo,
             maxDepth: self::depth($a, $b),
+            additionalPropertiesSchema: match (true) {
+                $a->additionalProperties === false || $b->additionalProperties === false => null,
+                $a->additionalPropertiesSchema !== null && $b->additionalPropertiesSchema !== null => self::combine(
+                    self::merge($a->additionalPropertiesSchema, $identity, $where.'.*'),
+                    self::merge($b->additionalPropertiesSchema, $identity, $where.'.*'),
+                    $identity,
+                    $where.'.*',
+                ),
+                default => $a->additionalPropertiesSchema ?? $b->additionalPropertiesSchema,
+            },
         );
+    }
+
+    /**
+     * A property declared by one branch, with the value schema another branch writes applied to it.
+     *
+     * The property keeps its own name and source: the value schema adds constraints to it and is not what it is called,
+     * and a property that the value schema's name replaced would be taken for that schema by whatever reads the name.
+     *
+     * @throws ConflictingInputException
+     */
+    private static function underValueSchema(Schema $property, ?Schema $value, string $identity, string $where): Schema
+    {
+        if ($value === null) {
+            return $property;
+        }
+
+        $combined = self::combine(
+            self::merge($property, $identity, $where),
+            self::merge($value, $identity, $where),
+            $identity,
+            $where,
+        );
+
+        return new Schema(...[...get_object_vars($combined), 'name' => $property->name, 'source' => $property->source]);
     }
 
     /**
@@ -358,6 +407,7 @@ final readonly class AllOfMerger
             recursesTo: $schema->recursesTo,
             maxDepth: $schema->maxDepth,
             source: $schema->source,
+            additionalPropertiesSchema: $schema->additionalPropertiesSchema,
         );
     }
 }
