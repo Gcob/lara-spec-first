@@ -1,4 +1,4 @@
-# One integer part, and nothing else the doctor reports, so its exit code is the whole answer: ``application/octet-stream` is not, so the exit is 2 (it was 0 while the default of every version was read)`.
+# One integer part writing `application/octet-stream`, which is not an integer's default, so the doctor's exit is 2 (it was 0 while every version's default was read).
 openapi: 3.1.0
 info:
   title: Fixture API

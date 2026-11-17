@@ -50,6 +50,9 @@ final class OpenApi31Strategy implements VersionStrategy
      * `application/octet-stream` when it writes a `contentEncoding`, which the schema does not carry yet: until it
      * does, a correct `{type: string, contentEncoding: base64}` part written `application/octet-stream` must not be
      * reported, and nothing tells it from a plain string.
+     *
+     * TODO (#146): give a string with a `contentEncoding` its own row (`application/octet-stream`), and narrow these
+     * two rows to `text/plain`.
      */
     public function encodingDefaults(): EncodingDefaults
     {
