@@ -293,3 +293,30 @@ it('counts the operations whose route lands on their generated parent', function
     expect($plan->routedToGeneratedParent())->toBe(2)
         ->and($plan->controllers)->toHaveCount(3);
 });
+
+/*
+ * The response DTOs are planned with the controllers, because each controller says what its statuses answer with.
+ */
+
+// Each direction keeps its own names, so only the plan sees both: a response schema `UserInput` and a request schema
+// `User` are one class.
+it('refuses a response DTO name already taken by an input DTO', function (): void {
+    expect(static fn (): BuildPlan => planner()->plan(extractFixture('response-name-taken-by-input.yaml')))
+        ->toThrow(
+            UnusableNameException::class,
+            'The schema written at "#/components/schemas/User" generates the input DTO "UserInputDto" for a request, and the schema written at "#/components/schemas/UserInput" generates a response DTO of the same name',
+        );
+});
+
+it('writes each controller with the response types of its statuses', function (): void {
+    $plan = planner()->plan(extractFixture('response-statuses.yaml'));
+    $controller = collect($plan->files)
+        ->first(static fn (GeneratedFile $file): bool => $file->relativePath === 'Controllers/UpdateUserController.php');
+
+    assert($controller instanceof GeneratedFile);
+
+    expect(preg_replace('/\s*\n \*\s+/', ' ', $controller->contents))
+        ->toContain('The `200` response is `UserDto`')
+        ->toContain('The `422` response is `ValidationErrorDto`')
+        ->toContain('The `204` response has no DTO: it declares no body.');
+});

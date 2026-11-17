@@ -214,6 +214,25 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     }
 
     /**
+     * A response schema and a request schema that would generate one DTO class.
+     *
+     * Only a response schema named like a request's plus `Input` can meet it: a response DTO ends in `Dto`, and an
+     * input DTO in `InputDto`.
+     */
+    public static function responseDtoTakenByInput(string $shortName, string $inputPosition, string $responsePosition): self
+    {
+        return new self(sprintf(
+            'The schema written at "%s" generates the input DTO "%s" for a request, and the schema written at "%s" '.
+            'generates a response DTO of the same name. A response DTO takes its name from the schema it describes '.
+            'and "Dto", and an input DTO adds "InputDto", so a response schema named "UserInput" meets a request '.
+            'schema named "User". Rename one of the schemas.',
+            $inputPosition,
+            $shortName,
+            $responsePosition,
+        ));
+    }
+
+    /**
      * A schema name that leaves no class name behind.
      */
     public static function schemaNameUnusable(string $name, string $position): self

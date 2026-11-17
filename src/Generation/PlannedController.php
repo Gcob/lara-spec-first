@@ -17,6 +17,10 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 final readonly class PlannedController
 {
     /**
+     * @param  list<StatusResponse>  $responses  what each status the operation declares answers with, in document
+     *                                           order. Part of the pairing for the same reason as the name: the
+     *                                           controller's findings say it, and the response DTOs are planned before
+     *                                           the controller is written so that they can
      * @param  bool  $customControllerExists  whether a file for {@see ControllerName::$customController} can be found,
      *                                        resolved once per build
      * @param  RequestName|null  $request  the generated request `routeAction` declares, or null for an operation with
@@ -27,6 +31,7 @@ final readonly class PlannedController
     public function __construct(
         public Operation $operation,
         public ControllerName $name,
+        public array $responses,
         public bool $customControllerExists = false,
         public ?RequestName $request = null,
     ) {}

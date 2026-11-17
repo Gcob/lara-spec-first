@@ -8,6 +8,7 @@ use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 
@@ -45,9 +46,13 @@ final class ResponseDtoPlanner extends DtoPlanner
      */
     public function plan(array $operations): ResponsePlan
     {
+        $statuses = [];
+
         foreach ($operations as $operation) {
+            $statuses[$operation->label()] = [];
+
             foreach ($operation->responses as $response) {
-                $this->root($operation, $response);
+                $statuses[$operation->label()][] = $this->status($operation, $response);
             }
         }
 
@@ -64,7 +69,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             );
         }
 
-        return new ResponsePlan($dtos);
+        return new ResponsePlan($dtos, $statuses);
     }
 
     protected function suffix(): string
@@ -101,63 +106,145 @@ final class ResponseDtoPlanner extends DtoPlanner
     }
 
     /**
-     * The DTO one response answers with, when it has one.
+     * What one declared status answers with: the DTO of its JSON body, or the reason it has none.
+     *
+     * **A list has no class of its own** ({@see StatusResponse}): the body is an array and its items are the DTO, one
+     * level at a time for a list of lists.
      *
      * @throws UnusableNameException
      * @throws ConflictingInputException
      */
-    private function root(Operation $operation, Response $response): void
+    private function status(Operation $operation, Response $response): StatusResponse
     {
-        $written = self::jsonSchema($response);
+        $status = $response->status;
 
-        if ($written === null) {
-            return;
+        if ($response->content === []) {
+            return StatusResponse::without($status, 'it declares no body');
         }
 
-        $this->identity = $operation->label();
-        $label = 'the `'.$response->status.'` response';
-        $merged = AllOfMerger::merge($written, $this->identity, $label);
+        $json = self::jsonSchema($response);
 
-        if (! RuleSetBuilder::isObjectBody($merged) || $merged->properties === []) {
-            return;
+        if ($json === null) {
+            return StatusResponse::without($status, 'it declares no JSON media type');
+        }
+
+        [$mediaType, $written] = $json;
+
+        $this->identity = $operation->label();
+        $label = 'the `'.$status.'` response';
+        $stem = self::stem($operation);
+        $base = $stem.self::statusName($status).'Response';
+        $inline = DocumentPointer::forOperation($operation).'/responses/'.DocumentPointer::escape($status)
+            .'/content/'.DocumentPointer::escape($mediaType).'/schema';
+        $merged = AllOfMerger::merge($written, $this->identity, $label);
+        $list = false;
+
+        while ($merged->soleType() === SchemaType::Array) {
+            if ($merged->items === null) {
+                return StatusResponse::without($status, 'its body is a list with no `items`');
+            }
+
+            $written = $merged->items;
+            $merged = AllOfMerger::merge($written, $this->identity, $label);
+            $inline = self::within($inline, '/items');
+            $base .= 'Item';
+            $list = true;
+        }
+
+        if (! RuleSetBuilder::isObjectBody($merged)) {
+            return StatusResponse::without(
+                $status,
+                $list ? 'its body is a list of values that are not objects' : 'its body is not an object or a list',
+            );
+        }
+
+        if ($merged->properties === []) {
+            return StatusResponse::without(
+                $status,
+                $list ? 'its body is a list of objects with no `properties`' : 'its body is an object with no `properties`',
+            );
         }
 
         [$name, $source] = $this->nameOf($written, $merged);
 
+        $this->ancestors = RuleSetBuilder::definitions($written, $merged, $this->identity, $label);
+
         if ($name === null || $source === null) {
-            return;
+            $shortName = $this->register(
+                $base.$this->suffix(),
+                $written,
+                $merged,
+                $inline,
+                $base,
+                sprintf('derived from the operation "%s" and the status "%s"', $operation->label(), $status),
+                sprintf(
+                    'Class name derived from the operation\'s name, `%s`, and the status `%s`, because the %s is '
+                        .'written inline and has no name of its own.',
+                    $stem,
+                    $status,
+                    $list ? 'list\'s item' : 'response',
+                ),
+                false,
+            );
+        } else {
+            $named = $this->className($name, $source);
+            $shortName = $this->register(
+                $named.$this->suffix(),
+                $written,
+                $merged,
+                $source,
+                $named,
+                'the schema\'s name',
+                self::namedAfter($name, $source),
+                true,
+            );
         }
 
-        $this->ancestors = RuleSetBuilder::definitions($written, $merged, $this->identity, $label);
-        $base = $this->className($name, $source);
-        $shortName = $this->register(
-            $base.$this->suffix(),
-            $written,
-            $merged,
-            $source,
-            $base,
-            'the schema\'s name',
-            self::namedAfter($name, $source),
-            true,
-        );
-
-        $reader = ['label' => $this->identity, 'status' => $response->status];
+        $reader = ['label' => $this->identity, 'status' => $status];
 
         if (! in_array($reader, $this->readers[$shortName] ?? [], true)) {
             $this->readers[$shortName][] = $reader;
         }
+
+        return StatusResponse::of($status, $shortName, $list);
     }
 
     /**
-     * The schema of a response's JSON body, or null when it has none: no body, or only media types that are not JSON.
+     * The operation's name as a class-name stem: its `operationId`, or its method and path when it has none.
+     *
+     * The same derivation the generated request takes its name from, so `CreateUserRequest` and
+     * `CreateUser201ResponseDto` read as one endpoint.
      */
-    private static function jsonSchema(Response $response): ?Schema
+    private static function stem(Operation $operation): string
+    {
+        $declared = $operation->operationId === null ? null : DerivedName::fromOperationId($operation->operationId);
+
+        return $declared ?? DerivedName::fromMethodAndPath($operation);
+    }
+
+    /**
+     * A status as the part of a class name that follows the operation: `201`, `2XX`, `Default`.
+     */
+    private static function statusName(string $status): string
+    {
+        return strtolower($status) === 'default'
+            ? 'Default'
+            : strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $status));
+    }
+
+    /**
+     * The media type and schema of a response's JSON body, or null when it has none: no body, or only media types that
+     * are not JSON.
+     *
+     * @return array{0: string, 1: Schema}|null
+     */
+    private static function jsonSchema(Response $response): ?array
     {
         foreach ($response->content as $mediaType => $schema) {
-            $mediaType = strtolower((string) $mediaType);
+            $lower = strtolower((string) $mediaType);
 
-            if ($mediaType === 'application/json' || str_ends_with($mediaType, '+json')) {
-                return $schema;
+            if ($lower === 'application/json' || str_ends_with($lower, '+json')) {
+                return [(string) $mediaType, $schema];
             }
         }
 

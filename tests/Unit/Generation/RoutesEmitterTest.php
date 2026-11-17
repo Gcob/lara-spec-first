@@ -40,7 +40,7 @@ function emittedRoutes(array $rows, string $specPath = 'openapi.yaml'): string
             operationId: $row[2] ?? null,
         );
 
-        $planned[] = new PlannedController($operation, ControllerName::for($operation));
+        $planned[] = new PlannedController($operation, ControllerName::for($operation), []);
     }
 
     return (new RoutesEmitter('App\\Http\\Generated', $specPath))->emit($planned)->contents;
@@ -121,7 +121,7 @@ describe('the metadata the routes file carries', function (): void {
             path: PathTemplate::fromString('/users'),
             operationId: 'listUsers',
         );
-        $planned = new PlannedController($operation, ControllerName::for($operation));
+        $planned = new PlannedController($operation, ControllerName::for($operation), []);
 
         expect((new RoutesEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit([$planned])->relativePath)
             ->toBe(GeneratedRoutesLocator::FILE);
