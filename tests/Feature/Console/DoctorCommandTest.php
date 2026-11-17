@@ -291,6 +291,44 @@ it('names what a Partial keyword leaves unenforced, and exits 2', function (): v
         ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
 });
 
+// A name PHP rewrites has a rule under the key PHP delivers, so nothing it states is left unenforced and the doctor
+// exits 0. A name PHP appends to has no key a rule can hold: it keeps its `required` and its bound in the report.
+it('exits 0 for a query name PHP rewrites, and 2 for one PHP appends to', function (): void {
+    [$rewrittenExit, $rewritten] = doctorJson('doctor-query-bracketed.yaml');
+    [$appendedExit, $appended] = doctorJson('doctor-query-appended.yaml');
+
+    $partial = doctorSupportFindings($appended, 'partial');
+
+    // One finding per keyword.
+    expect($rewrittenExit)->toBe(0)
+        ->and(doctorSupportFindings($rewritten, 'partial'))->toBe([])
+        ->and($appendedExit)->toBe(2)
+        ->and($partial)->toHaveCount(2)
+        ->and($partial[0]['class'])->toBe('package_limit')
+        ->and($partial[0]['message'])->toContain('writes `required`')
+        ->and($partial[0]['message'])->toContain('`ids[]`')
+        ->and($partial[1]['message'])->toContain('writes `minimum`')
+        ->and($partial[1]['message'])->toContain('`ids[]`');
+});
+
+// A plain name beside the name PHP nests under it keeps its rules, so the doctor exits 0. Two names under one key have
+// no rule, so what each states is left unenforced and the doctor exits 2: a contract that exited 0 before can turn a
+// green CI red.
+it('exits 0 for a plain query name beside the names PHP nests under it, and 2 for two names under one key', function (): void {
+    [$nestedExit, $nested] = doctorJson('doctor-query-overlapping.yaml');
+    [$sameExit, $same] = doctorJson('doctor-query-same-key.yaml');
+
+    $partial = doctorSupportFindings($same, 'partial');
+
+    expect($nestedExit)->toBe(0)
+        ->and(doctorSupportFindings($nested, 'partial'))->toBe([])
+        ->and($sameExit)->toBe(2)
+        ->and($partial)->toHaveCount(2)
+        ->and($partial[0]['message'])->toContain('writes `required`')
+        ->and($partial[0]['message'])->toContain('`user_name`')
+        ->and($partial[1]['message'])->toContain('writes `minimum`');
+});
+
 // `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not
 // read as a file is left out of the rules, and that is a package limit it names: a keyword the matrix rates as honored
 // in general. Its own section is "Parameters, bodies, responses", not "Schemas". The type OpenAPI gives a part anyway

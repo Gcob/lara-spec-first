@@ -81,9 +81,45 @@ tags: [versions, conventions, planning]
   the DTO. A body that cannot be `null`, and a nullable one read only as a form, keep the plain type. This is a breaking
   change: `$request->dto()->toArray()` on such an operation now fails at runtime when a client sends `null`, and static
   analysis asks for a null check. Handle `null`, for instance `$request->dto()?->toArray()`.
+- **A `query` name PHP rewrites is now validated under the key PHP delivers, where it was reported and never checked.**
+  `page[size]` is validated as `page.size`, `filter[created][gte]` as `filter.created.gte`, and the names PHP only
+  renames follow (`user.name` arrives as `user_name`, `a b` as `a_b`). The error key is `page.size`, `validated()` holds
+  the value nested and as the string a query string sends (`['page' => ['size' => '3']]`), and `QUERY_KEYS` in the
+  generated request holds the key each parameter arrives under (`page`). Three requests that answered `200` now answer
+  `422` to a client that asks for JSON, each of them already refused by the contract: a value of the wrong type
+  (`?page[size]=abc` for an integer), a value outside a bound (`?page[size]=0` against `minimum: 1`), and a request that
+  leaves out a required `page[size]`. A name PHP appends to (`ids[]`, `a[][b]`, `a[]b`) or delivers under no name
+  (`[x]`), and a rewritten name that arrives under a key the body uses or under the same key as another `query` name,
+  keep their finding and get no rule. This is a breaking change: a client that sent one of the three requests above and
+  got a `200` now gets a refusal. Send the value the contract describes, or loosen the contract. This closes the `0.2.0`
+  `Known limits` item for [#110](https://github.com/Gcob/lara-spec-first/issues/110).
+- **`spec:doctor` no longer reports the keywords of a `query` name PHP rewrites, so its exit code can drop from `2` to
+  `0`.** It reported `required` and each bound of `page[size]` or `user.name` as unenforced, since they had no rule.
+  They have one now (see the entry above), so a document whose only `Partial` findings were those names exits `0`. A
+  name PHP appends to, delivers under no name, or that arrives under the same key as another one keeps its keywords in
+  the report, and the doctor still exits `2` for it. This is a breaking change: every move on the exit-code axis is
+  major, in either direction, so a CI step that expected `2` here will see `0`. Update what it expects.
+- **`spec:doctor` now reports the keywords of a plain `query` name that arrives under the same key as a name PHP
+  rewrites, so its exit code can rise from `0` to `2`.** `user_name` beside `user.name` (and `a_b` beside `a b`) get no
+  rule, since the value of one is the value of the other (see `Fixed`), so the `required` and each bound the plain name
+  states are unenforced, where the doctor reported nothing for it while its rule judged both. This is a breaking change:
+  every move on the exit-code axis is major, in either direction, so a green CI step that expected `0` here can turn
+  red. Rename one of the two, or accept what the report says. A plain name beside the names PHP nests under it (`page`
+  beside `page[size]`) keeps its rules, so the doctor reports nothing for it.
 
 ### Fixed
 
+- **A plain `query` name beside the names PHP nests under it refused a valid request, with no finding.** `?page[size]=3`
+  arrives as `page => [size => 3]`, so the `integer` rule of `page` refused a request the contract allows (`422`, now
+  `200`), and `?ids[]=1` was judged by the rule of `ids` the same way. `page` beside `page[size]`, `ids` beside `ids[]`,
+  `page` beside `page[*]` and `filter[a]` beside `filter[a][b]` now judge the plain name's value only when it is not an
+  array, with Laravel's own `Rule::when()`: `?page=abc` and `?page=0` are still `422`, `?page=2` still reaches
+  `validated('page')`, and the nested names keep their rules. The array PHP builds is kept out of `validated()` when it
+  is unchecked: only what a rule below it validates stays (`page.size`), and beside `ids[]` or `page[*]`, which have no
+  rule, `?ids[]=-5&ids[]=abc` answers `200` with no `ids` in `validated()`. Two names that arrive under the same key
+  (`user_name` beside `user.name`) cannot be told apart, so they get no rule and the generated file says so in a
+  finding. A plain name beside a body key is still refused. See
+  [#110](https://github.com/Gcob/lara-spec-first/issues/110).
 - **The "a form with a `Content-Type` and no field" finding no longer appears where a required field, or the body's
   required-key check, already refuses an empty form.** A required body read as a form got it even when a required
   property, a required file part or a required name `properties` does not declare was already refusing the empty form,

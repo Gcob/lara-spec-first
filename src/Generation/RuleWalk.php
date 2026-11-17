@@ -24,6 +24,22 @@ final class RuleWalk
     public array $rules = [];
 
     /**
+     * The rule keys a `query` name judges only when its value is not an array, with the path PHP delivers each under:
+     * the names PHP nests under them carry the array.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $whenNotArray = [];
+
+    /**
+     * The keys of {@see self::$whenNotArray} with no rule on any name below them: Laravel keeps an `array` key's
+     * unchecked content in `validated()` unless a rule sits below it, so the array is dropped with `exclude` instead.
+     *
+     * @var list<string>
+     */
+    public array $dropsArray = [];
+
+    /**
      * @var list<string>
      */
     public array $findings = [];
@@ -151,6 +167,14 @@ final class RuleWalk
      * @var array<string, list<string>>
      */
     public array $formHeads = [];
+
+    /**
+     * The top-level keys the body's values arrive under, which a `query` parameter shares the data with: each name the
+     * root schema declares, and for a form the name PHP gives it. Empty for a body the walk reads no keys from.
+     *
+     * @var list<string>
+     */
+    public array $bodyKeys = [];
 
     /**
      * The top-level names whose value the request cannot check when a form sends it, by the reason, worded to follow

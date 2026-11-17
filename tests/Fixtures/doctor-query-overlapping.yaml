@@ -1,0 +1,24 @@
+# A plain `query` name beside the name PHP nests under it (`page` and `page[size]`) keeps its rules, judged only
+# when its value is not an array, so the doctor owes nothing for the `required` and the bound it states.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page[size]
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK

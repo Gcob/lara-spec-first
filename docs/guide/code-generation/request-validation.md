@@ -62,19 +62,19 @@ how the class reaches the controller that needs `$validated`.
 `spec:build` emits one `final` `FormRequest` per operation that states anything about its input, into the `Requests`
 sub-namespace of the generated tree, and declares it as `routeAction`'s first parameter. What a rule set contains today:
 
-| Built                                                                                                        | Reported and not enforced                                                                                               |
-| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| Every row of [the mapping table](#every-constraint-maps-or-reports): types, bounds, `format`, `enum`, arrays | A `format` no Laravel rule means the same as, `uri` the most common                                                     |
-| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`                | A `pattern` across [the ECMA-262 / PCRE boundary](../openapi-support.md#strings-and-numbers)                            |
-| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                               | An `encoding` `contentType` no rule can hold: a text type, or a part that is not a file ([`uploads.md`](../uploads.md)) |
-| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children   | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for                                   |
-| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                            | A `query` name PHP rewrites (`user.name`, `a b`, `page[size]`), which no rule key can find                              |
-| A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)        | A form client's value for a top-level name PHP rewrites, in a body that is JSON too                                     |
-|                                                                                                              | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
-|                                                                                                              | A bound on a field that states no single type                                                                           |
-| A `query` parameter, with its own `required`                                                                 |                                                                                                                         |
-| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed      |                                                                                                                         |
-| [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size |                                                                                                                         |
+| Built                                                                                                         | Reported and not enforced                                                                                               |
+| ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Every row of [the mapping table](#every-constraint-maps-or-reports): types, bounds, `format`, `enum`, arrays  | A `format` no Laravel rule means the same as, `uri` the most common                                                     |
+| `required` for an integer, a number or a boolean, `present` for every other type, `sometimes`                 | A `pattern` across [the ECMA-262 / PCRE boundary](../openapi-support.md#strings-and-numbers)                            |
+| [`PATCH` reading the required list as empty](#patch-empties-the-required-list)                                | An `encoding` `contentType` no rule can hold: a text type, or a part that is not a file ([`uploads.md`](../uploads.md)) |
+| [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children    | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for                                   |
+| `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                             | A `query` name PHP appends to (`ids[]`) or delivers under no name, or under a key the body arrives under                |
+| A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)         | A form client's value for a top-level name PHP rewrites, in a body that is JSON too                                     |
+|                                                                                                               | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
+|                                                                                                               | A bound on a field that states no single type                                                                           |
+| A `query` parameter, with its own `required`, and a name PHP rewrites keyed by what it delivers (`page.size`) |                                                                                                                         |
+| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed       |                                                                                                                         |
+| [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size  |                                                                                                                         |
 
 **A body declared only in media types this package does not read gets no class**, the same as an operation stating
 nothing, and `spec:build` warns about it on a line of its own: unlike that operation, this one states something nobody
@@ -88,7 +88,8 @@ to ship on its own.
 
 **The input DTO is built.** `spec:build` writes [the DTO](#the-payload-arrives-as-a-dto) of every body that is an
 object, in the `Data` sub-namespace, and the request returns it from `dto()`. A request whose operation has no body, or
-whose body is not an object, has no `dto()`: its `query` parameters are read with `validated('name')`.
+whose body is not an object, has no `dto()`: its `query` parameters are read with `validated('name')`, and one whose
+name PHP rewrites with the key PHP delivers it under (`validated('page.size')`).
 
 ## What a client gets when a request is refused
 
@@ -154,12 +155,12 @@ public function rules(): array
 
 **A parameter's `in` decides whether it reaches the rule set at all**, and three of the four locations do not:
 
-| `in`     | Where its constraints land                                                                                                                   |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `query`  | The rule set, keyed by the parameter's own name, with its own `required` flag deciding presence.                                             |
-| `path`   | Nowhere. The router matches the URI, and a value it matched is [a string in the signature](../controllers.md#the-signature-is-the-contract). |
-| `header` | Nowhere, and the doctor says so.                                                                                                             |
-| `cookie` | Nowhere, and the doctor says so.                                                                                                             |
+| `in`     | Where its constraints land                                                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query`  | The rule set, keyed by the parameter's own name (by the key PHP delivers it under when it rewrites the name), with its own `required` flag deciding presence. |
+| `path`   | Nowhere. The router matches the URI, and a value it matched is [a string in the signature](../controllers.md#the-signature-is-the-contract).                  |
+| `header` | Nowhere, and the doctor says so.                                                                                                                              |
+| `cookie` | Nowhere, and the doctor says so.                                                                                                                              |
 
 **A query parameter's presence comes from its own `required` flag, not from the body's `required` list.** They are
 different keywords in different places: a Parameter Object carries `required: true` itself, so that parameter asks for
@@ -177,12 +178,63 @@ request. An object is worse off still: the default style sends one key per prope
 parameter's own name, so even its presence would refuse a valid request, and it is `sometimes` whatever its `required`
 flag. The generated file says so in both cases.
 
-**A query name PHP rewrites gets no rule at all.** PHP parses the query string before Laravel sees it: a `.` or a space
-in a name becomes `_`, so `user.name` arrives as `user_name`, and `[` opens a nested array, so `page[size]` arrives as
-`page => [size => 3]`. No rule key finds the name the contract writes, so a rule for it would never judge what was sent:
-an optional parameter would never be validated, and a required one would answer 422 to every valid request. It is
-treated as [a field name carrying `*`](#every-constraint-maps-or-reports) is: no rule, a finding that says why, and the
-request accepts what the contract accepts. It is not in the list of names `validationData()` reads either.
+**A query name PHP rewrites is validated under the key PHP delivers.** PHP parses the query string before Laravel sees
+it: a `.` or a space in a name becomes `_`, so `user.name` arrives as `user_name`, and `[` opens a nested array, so
+`page[size]` arrives as `page => [size => 3]`. The value is there, under that key, so the rule is keyed by it:
+`page.size`, `user_name`, `a_b`, and `filter.created.gte` for `filter[created][gte]`. The key is asked of PHP itself
+(`parse_str()`, the parser the query bag is built from), as a form body's names are, and the name the contract writes
+stays the label of every finding. The rule is the one the parameter's type would get anywhere else: for a required
+integer with a `minimum`, `?page[size]=abc` and `?page[size]=0` answer 422 on `page.size`, and a request that leaves
+`page[size]` out answers 422 too. `validated()` holds the value nested and as the string a query string sends:
+`['page' => ['size' => '3']]`. **`QUERY_KEYS` holds the key each parameter arrives under**, `page` for `page[size]` and
+`page[number]`, once.
+
+**There is no rule on the head, because a query string is not closed.** An undeclared key is ignored on any `query`
+parameter, so `page[evil]=1` beside an optional `page[size]`, or `page=abc`, is an undeclared key that passes and that
+`validated()` does not carry. A body read only as a form closes each level of its bracketed names, but a query string is
+open the way the contract's other `query` parameters are.
+
+**Some names keep a finding and get no rule**, and the doctor still reports them. A name PHP appends to (`ids[]`,
+`a[][b]`, `a[]b`) arrives at the next free index of a list, so no fixed key holds the value, and a name PHP delivers
+under no name (`[x]`) has no key at all. A name with a `*` is
+[a field name carrying `*`](#every-constraint-maps-or-reports): Laravel reads it as a wildcard and offers no escape. **A
+rewritten name whose head is a key the body also arrives under keeps its finding too**: a JSON body with a property
+`page` and a `query` parameter `page[size]`, a form body with `page[number]` and the same parameter, a JSON property
+`user_name` and a parameter `user.name`. One key holds both values, so a rule for the query's would judge the body's. It
+is a finding and not a refusal, as it is for [a name declared twice](#a-name-declared-twice-is-refused): no rule is
+emitted for it, so the build is not choosing which half of the contract to enforce, and every contract that built before
+still builds.
+
+**A plain query name keeps its rules beside the names PHP nests under it.** `page` beside `page[size]`, `ids` beside
+`ids[]`, `filter[a]` beside `filter[a][b]`: `?page[size]=3` arrives as `page => [size => 3]`, so a rule for the plain
+`page` would judge that array and refuse a request the contract allows. The plain name's rules are therefore wrapped in
+Laravel's own `Rule::when()` and judge the value only when it is not an array, and each nested name keeps its rules:
+
+```php
+'page' => Rule::when(
+    fn (Fluent $input): bool => ! is_array($input->get('page')),
+    ['sometimes', 'integer', 'min:1'],
+    ['array'],
+),
+'page.size' => ['sometimes', 'integer'],
+```
+
+`?page=abc` and `?page=0` answer 422 on `page`, `?page=2` passes and `validated('page')` is `'2'`, `?page[size]=3`
+passes, and `?page[size]=abc` answers 422 on `page.size`. `page` stays in `QUERY_KEYS`. The third argument, `['array']`,
+is for a plain name with a rule below it: Laravel keeps an array's unchecked content out of `validated()` only then.
+With no rule below (`ids` beside `ids[]`, `page` beside `page[*]`) it is `['exclude']`, so `?ids[]=-5&ids[]=abc` passes
+without an `ids` in `validated()`, instead of an array nobody checked. There is no finding, since the name has its
+rules, and `spec:doctor` reports nothing for it. The one thing the shape check cannot tell is a `page` the client left
+out from the nested names it sent instead: the array stands in for it, so a required `page` is not asked for when
+`page[size]` is sent. The comparison is step by step and never by string, so `filter[a]` is no ancestor of
+`filter[ab][c]`, and it is the one the form body uses. The reasoning is in
+[ADR 0002](../../project/decisions/0002-judge-plain-query-names-by-shape.md).
+
+**Two query names PHP delivers under one key get no rule, and one finding names them.** `user.name` and `user_name`,
+`a.b` and `a b` arrive as the same key, so the value of one is the value of the other and no rule can tell them apart:
+the same goes for `ids[1]` beside `ids[]`, since PHP appends at any index. Neither name has a rule, a finding names each
+pair, the doctor still reports what each states (`required`, a bound), and neither reaches `QUERY_KEYS`. A plain name
+beside a body key is still [refused](#a-name-declared-twice-is-refused), before it is given no rule.
 
 **A top-level body name PHP rewrites is keyed by the name PHP delivers, when the body is read only as a form.** A
 form-encoded or multipart body goes through the same parser as the query string: `user.name=ada` arrives as `user_name`,
@@ -338,12 +390,13 @@ public function validationData(): array
 }
 ```
 
-**`QUERY_KEYS` is the declared `query` parameters, by name, and it is the only thing taken from the query string.**
-Every other key comes from the body, and a body key that happens to carry a declared query name is dropped, so it can
-neither satisfy that parameter nor be refused for being the wrong type. Which source a key has is no more a runtime
-choice than `rules()` is: the build already knows, and writes it down as a constant. An operation with no body reads
-only the query string, an operation with no `query` parameter reads only the body, and `rules()` is the same array in
-every case.
+**`QUERY_KEYS` is the keys the declared `query` parameters arrive under, and it is the only thing taken from the query
+string.** That is the name for most, and the head PHP delivers for one it rewrites (`page` for `page[size]`). Every
+other key comes from the body, and a body key that happens to carry one of them is dropped, so it can neither satisfy
+that parameter nor be refused for being the wrong type. A body key a rewritten parameter shares its head with is never
+one of them, since that parameter has no rule and is not in the list. Which source a key has is no more a runtime choice
+than `rules()` is: the build already knows, and writes it down as a constant. An operation with no body reads only the
+query string, an operation with no `query` parameter reads only the body, and `rules()` is the same array in every case.
 
 **The body is the JSON bag when the request is JSON and the form bag otherwise, with the uploaded files merged in the
 way Laravel merges them.** It is never `input()` or `getInputSource()`, which answer with the query string on a `GET` or
@@ -375,6 +428,11 @@ form delivers `user.name` as `user_name` and `page[size]` below `page`, so a `qu
 `page`, is the same key as that body property and is refused the same way. The message names the body's name and the
 parameter, which is the key a form delivers it under. A body that is JSON only keeps `user.name` as written, and
 `user_name` beside it is two names.
+
+**A rewritten `query` name under a key the body arrives under is not refused.** `page[size]` beside a body property
+`page` would be the same shape of collision, but no rule is emitted for it, so the build is not choosing which half of
+the contract to enforce: it keeps its finding, as [any name PHP rewrites](#one-rule-set-body-and-query) can. A plain
+name is refused because it would have a rule.
 
 **Path-item parameters merge with the operation's, and the operation wins on a name they share.** That is OpenAPI's own
 rule, not one this package invents, and it is a merge rather than a collision.
@@ -776,11 +834,12 @@ exit code on those would fail a pipeline over a remark. So the builder also reco
 and the fields it was left unenforced on, for the four ways a keyword it reads comes out that way: a `format` no rule
 means the same as, a `pattern` across the ECMA-262 / PCRE boundary, a `contentMediaType` no rule can match, and a
 keyword stated where nothing reads it. A field the rule set drops whole is the same thing at larger scale: a query name
-PHP rewrites, and a body key with a `*` Laravel reads as a wildcard, get no rule key at all, so its `required` and every
-keyword it states are recorded for it, under the field's name. `required` on a `readOnly` property is not one of them:
-the request does what the contract says there, since `required` takes effect on the response only, so the generated file
-says it in a finding and the doctor has nothing to report. The `Ignored` keywords are not in a rule set at all, since
-nothing reads them, and the reading collects them with their position instead. See
+PHP appends to or delivers under no name, two that arrive under one key or one that shares its key with the body, and a
+body key with a `*` Laravel reads as a wildcard, get no rule key at all, so its `required` and every keyword it states
+are recorded for it, under the field's name. `required` on a `readOnly` property is not one of them: the request does
+what the contract says there, since `required` takes effect on the response only, so the generated file says it in a
+finding and the doctor has nothing to report. The `Ignored` keywords are not in a rule set at all, since nothing reads
+them, and the reading collects them with their position instead. See
 [the doctor's Support findings](../doctor.md#what-it-checks).
 
 ### A JSON body keeps its types

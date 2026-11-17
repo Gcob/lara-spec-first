@@ -8,6 +8,7 @@ use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
+use Illuminate\Support\Fluent;
 
 /**
  * Turns one operation's input into the PHP of its generated `FormRequest`.
@@ -112,8 +113,12 @@ final readonly class FormRequestEmitter
         $set = $planned->rules;
         $imports = [$this->import(self::BASE_CLASS)];
 
-        if ($set->usesInRule()) {
+        if ($set->usesRule()) {
             $imports[] = $this->import(self::RULE_CLASS);
+        }
+
+        if ($set->whenNotArray !== []) {
+            $imports[] = $this->import(Fluent::class);
         }
 
         if ($set->usesNullOrAbsent()) {
@@ -142,9 +147,10 @@ final readonly class FormRequestEmitter
      * The constants the generated class reads its keys from, or nothing.
      *
      * `BODY_KEYS` is the closed-root check's, `FORM_NAMES` is where `dto()` finds a form value under a name PHP
-     * rewrote, and `QUERY_KEYS` is what `validationData()` takes from the query string. `QUERY_KEYS` and `FORM_NAMES`
-     * are keyed by the names the document writes. `BODY_KEYS` holds the names the body arrives under, which is how
-     * PHP's own bags key them: the name the document writes, and for a form the one PHP gives it.
+     * rewrote, and `QUERY_KEYS` is what `validationData()` takes from the query string. `FORM_NAMES` is keyed by the
+     * names the document writes. `BODY_KEYS` and `QUERY_KEYS` hold the keys the values arrive under, which is how PHP's
+     * own bags key them: the name the document writes, and for a name PHP rewrites the one it gives it (`page` for a
+     * `query` parameter `page[size]`).
      */
     private function keyConstants(RuleSet $set): string
     {
@@ -187,7 +193,7 @@ final readonly class FormRequestEmitter
 
         if ($set->queryKeys !== []) {
             $constants .= sprintf(
-                "    /**\n     * The `query` parameters the contract declares, the only keys read from the query string.\n     */\n"
+                "    /**\n     * The keys the contract's `query` parameters arrive under, the only ones read from the query string.\n     */\n"
                     ."    private const QUERY_KEYS = [%s];\n\n",
                 implode(', ', array_map($this->literal(...), $set->queryKeys)),
             );
@@ -203,7 +209,7 @@ final readonly class FormRequestEmitter
      * source in the contract. So a required body field supplied in the URL passed, a `query` parameter was satisfied by
      * a body key of the same name, and a body integer sent as `?age=31` reached `validated()` as the string `"31"`. The
      * build already refuses one name declared in both places, so each key can be read from the one place it belongs to:
-     * the body's keys from the body, and the declared `query` parameters, by name, from the query string.
+     * the body's keys from the body, and the keys the declared `query` parameters arrive under, from the query string.
      *
      * **The body is read from the body, never through `input()` or `getInputSource()`**, which answer with the query
      * string on a `GET` or a `HEAD`. The uploads are merged the way Laravel's own `all()` merges them, with the text
@@ -526,15 +532,43 @@ final readonly class FormRequestEmitter
         $lines = [];
 
         foreach ($set->rules as $key => $rules) {
-            $lines[] = sprintf(
-                '            %s => [%s],',
-                // Cast: PHP turned a key like "2024" into an integer on the way in.
-                $this->literal((string) $key),
-                implode(', ', array_map($this->rule(...), $rules)),
-            );
+            // Cast: PHP turned a key like "2024" into an integer on the way in.
+            $key = (string) $key;
+            $list = '['.implode(', ', array_map($this->rule(...), $rules)).']';
+
+            if (isset($set->whenNotArray[$key])) {
+                $lines[] = sprintf(
+                    "            %s => Rule::when(\n                fn (Fluent \$input): bool => ! is_array(%s),\n                %s,\n                ['%s'],\n            ),",
+                    $this->literal($key),
+                    $this->valueAt($set->whenNotArray[$key]),
+                    $list,
+                    in_array($key, $set->dropsArray, true) ? 'exclude' : 'array',
+                );
+
+                continue;
+            }
+
+            $lines[] = sprintf('            %s => %s,', $this->literal($key), $list);
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The read of a key's value out of the data a condition receives: one dotted key, or a list of steps when one of
+     * them holds a dot, which a dotted key cannot spell.
+     *
+     * @param  list<string>  $path
+     */
+    private function valueAt(array $path): string
+    {
+        foreach ($path as $step) {
+            if (str_contains($step, '.')) {
+                return 'data_get($input, ['.implode(', ', array_map($this->literal(...), $path)).'])';
+            }
+        }
+
+        return '$input->get('.$this->literal(implode('.', $path)).')';
     }
 
     /**
@@ -586,6 +620,27 @@ final readonly class FormRequestEmitter
     }
 
     /**
+     * The clause that names the key a `query` name PHP rewrites is read under, with the first such name of the request
+     * that has a rule, or nothing when there is none: a request with no rewritten name has nothing to say about a key.
+     */
+    private function rewrittenQueryExample(PlannedRequest $planned): string
+    {
+        foreach ($planned->operation->queryParameters as $parameter) {
+            $key = RuleSetBuilder::queryKey($parameter->name);
+
+            if ($key !== $parameter->name && ! str_contains($key, '\\') && isset($planned->rules->rules[$key])) {
+                return sprintf(
+                    ', under the key it arrives under for a name PHP rewrites (`validated(\'%s\')` for `%s`)',
+                    CommentText::safe($key),
+                    CommentText::safe($parameter->name),
+                );
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * What the build knew and the reader cannot see.
      *
      * **Everything the rule set could not express is here**, which is the half that makes an incomplete rule set honest
@@ -618,9 +673,10 @@ final readonly class FormRequestEmitter
             $findings[] = sprintf(
                 '`dto()` returns the body as `%s`%s, built from `validated()`, which keeps returning '
                     .'Laravel\'s array. A `query` parameter is not a property of it: read one with '
-                    .'`validated(\'name\')`.',
+                    .'`validated(\'name\')`%s.',
                 CommentText::safe($planned->dto),
                 self::dtoIsNullable($planned->rules) ? ', or `null` when the body is `null`' : '',
+                $this->rewrittenQueryExample($planned),
             );
         }
 
