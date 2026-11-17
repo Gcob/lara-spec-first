@@ -36,10 +36,11 @@ final readonly class AllOfMerger
     /**
      * @param  string  $identity  the operation's label, for a refusal's message
      * @param  string  $where  the field the schema sits on, for the same
+     * @param  bool  $response  whether the schema is one a response sends, which a refusal words for a response
      *
      * @throws ConflictingInputException
      */
-    public static function merge(Schema $schema, string $identity, string $where): Schema
+    public static function merge(Schema $schema, string $identity, string $where, bool $response = false): Schema
     {
         if ($schema->allOf === []) {
             return $schema;
@@ -48,7 +49,7 @@ final readonly class AllOfMerger
         $merged = self::withoutAllOf($schema);
 
         foreach ($schema->allOf as $branch) {
-            $merged = self::combine($merged, self::merge($branch, $identity, $where), $identity, $where);
+            $merged = self::combine($merged, self::merge($branch, $identity, $where, $response), $identity, $where, $response);
         }
 
         return $merged;
@@ -57,12 +58,13 @@ final readonly class AllOfMerger
     /**
      * @throws ConflictingInputException
      */
-    private static function combine(Schema $a, Schema $b, string $identity, string $where): Schema
+    private static function combine(Schema $a, Schema $b, string $identity, string $where, bool $response): Schema
     {
         $refuse = static fn (string $what): ConflictingInputException => ConflictingInputException::contradictoryAllOf(
             $identity,
             $where,
             $what,
+            $response,
         );
 
         self::assertNoClosedTrap($a, $b, $refuse);
@@ -76,10 +78,11 @@ final readonly class AllOfMerger
             // would drop it, with every constraint inside it.
             $properties[$name] = isset($properties[$name])
                 ? self::combine(
-                    self::merge($properties[$name], $identity, $where.'.'.$name),
-                    self::merge($property, $identity, $where.'.'.$name),
+                    self::merge($properties[$name], $identity, $where.'.'.$name, $response),
+                    self::merge($property, $identity, $where.'.'.$name, $response),
                     $identity,
                     $where.'.'.$name,
+                    $response,
                 )
                 : $property;
         }
@@ -87,11 +90,11 @@ final readonly class AllOfMerger
         // JSON Schema judges each branch on its own, so a branch's value schema reaches every property the other
         // branch declares and it does not. One both declare is each branch's own: neither value schema applies to it.
         foreach (array_diff_key($a->properties, $b->properties) as $name => $property) {
-            $properties[$name] = self::underValueSchema($property, $b->additionalPropertiesSchema, $identity, $where.'.'.$name);
+            $properties[$name] = self::underValueSchema($property, $b->additionalPropertiesSchema, $identity, $where.'.'.$name, $response);
         }
 
         foreach (array_diff_key($b->properties, $a->properties) as $name => $property) {
-            $properties[$name] = self::underValueSchema($property, $a->additionalPropertiesSchema, $identity, $where.'.'.$name);
+            $properties[$name] = self::underValueSchema($property, $a->additionalPropertiesSchema, $identity, $where.'.'.$name, $response);
         }
 
         $dependentRequired = $a->dependentRequired;
@@ -110,10 +113,11 @@ final readonly class AllOfMerger
             dependentRequired: $dependentRequired,
             items: match (true) {
                 $a->items !== null && $b->items !== null => self::combine(
-                    self::merge($a->items, $identity, $where.'.*'),
-                    self::merge($b->items, $identity, $where.'.*'),
+                    self::merge($a->items, $identity, $where.'.*', $response),
+                    self::merge($b->items, $identity, $where.'.*', $response),
                     $identity,
                     $where.'.*',
+                    $response,
                 ),
                 default => $a->items ?? $b->items,
             },
@@ -144,10 +148,11 @@ final readonly class AllOfMerger
             additionalPropertiesSchema: match (true) {
                 $a->additionalProperties === false || $b->additionalProperties === false => null,
                 $a->additionalPropertiesSchema !== null && $b->additionalPropertiesSchema !== null => self::combine(
-                    self::merge($a->additionalPropertiesSchema, $identity, $where.'.*'),
-                    self::merge($b->additionalPropertiesSchema, $identity, $where.'.*'),
+                    self::merge($a->additionalPropertiesSchema, $identity, $where.'.*', $response),
+                    self::merge($b->additionalPropertiesSchema, $identity, $where.'.*', $response),
                     $identity,
                     $where.'.*',
+                    $response,
                 ),
                 default => $a->additionalPropertiesSchema ?? $b->additionalPropertiesSchema,
             },
@@ -162,17 +167,18 @@ final readonly class AllOfMerger
      *
      * @throws ConflictingInputException
      */
-    private static function underValueSchema(Schema $property, ?Schema $value, string $identity, string $where): Schema
+    private static function underValueSchema(Schema $property, ?Schema $value, string $identity, string $where, bool $response): Schema
     {
         if ($value === null) {
             return $property;
         }
 
         $combined = self::combine(
-            self::merge($property, $identity, $where),
-            self::merge($value, $identity, $where),
+            self::merge($property, $identity, $where, $response),
+            self::merge($value, $identity, $where, $response),
             $identity,
             $where,
+            $response,
         );
 
         return new Schema(...[...get_object_vars($combined), 'name' => $property->name, 'source' => $property->source]);

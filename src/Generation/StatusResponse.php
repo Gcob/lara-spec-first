@@ -18,26 +18,29 @@ final readonly class StatusResponse
     /**
      * @param  string  $status  as the document writes it: `200`, `2XX`, `default`
      * @param  string|null  $dto  the class name, or null when the status has no DTO
-     * @param  bool  $list  whether the body is a list of that DTO
-     * @param  bool  $nullable  whether the schema also allows `null`, which no DTO holds
+     * @param  int  $depth  how many lists the DTO is inside: 0 for the body itself, 1 for a list of it, 2 for a list of
+     *                      lists
+     * @param  bool  $nullable  whether the body itself may be `null`, which no DTO holds
+     * @param  bool  $itemsNullable  whether an item of a list may be `null`
      * @param  string|null  $reason  why there is no DTO, as the end of a sentence ("it declares no body")
      */
     private function __construct(
         public string $status,
         public ?string $dto,
-        public bool $list,
+        public int $depth,
         public bool $nullable,
+        public bool $itemsNullable,
         public ?string $reason,
     ) {}
 
-    public static function of(string $status, string $dto, bool $list, bool $nullable = false): self
+    public static function of(string $status, string $dto, int $depth, bool $nullable = false, bool $itemsNullable = false): self
     {
-        return new self($status, $dto, $list, $nullable, null);
+        return new self($status, $dto, $depth, $nullable, $itemsNullable, null);
     }
 
     public static function without(string $status, string $reason): self
     {
-        return new self($status, null, false, false, $reason);
+        return new self($status, null, 0, false, false, $reason);
     }
 
     /**
@@ -52,10 +55,23 @@ final readonly class StatusResponse
         return sprintf(
             'The `%s` response is %s`%s`, in `Data/%s.php`%s.',
             CommentText::safe($this->status),
-            $this->list ? 'a list of ' : '',
+            str_repeat('a list of ', min($this->depth, 1)).str_repeat('lists of ', max($this->depth - 1, 0)),
             $this->dto,
             $this->dto,
-            $this->nullable ? ', or `null`, which no DTO holds' : '',
+            $this->nullNote(),
         );
+    }
+
+    /**
+     * What the sentence says about `null`: the body, the items of a list, or both, and that no DTO holds it.
+     */
+    private function nullNote(): string
+    {
+        return match (true) {
+            $this->nullable && $this->itemsNullable => ', or `null`, where an item may be `null` too, which no DTO holds',
+            $this->nullable => ', or `null`, which no DTO holds',
+            $this->itemsNullable => ', where an item may be `null`, which no DTO holds',
+            default => '',
+        };
     }
 }

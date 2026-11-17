@@ -47,6 +47,14 @@ abstract class DtoPlanner
     abstract protected function suffix(): string;
 
     /**
+     * Whether this plans the types of a response, which words an `allOf` refusal for a response and not for a rule set.
+     */
+    protected function responds(): bool
+    {
+        return false;
+    }
+
+    /**
      * Whether a schema is a file part, which only a request can carry.
      */
     abstract protected function isFile(Schema $schema): bool;
@@ -101,8 +109,8 @@ abstract class DtoPlanner
     /**
      * What one property of a schema becomes.
      *
-     * @param  string  $base  the parent's name without its `InputDto`, which an inline nested object takes its own name
-     *                        from
+     * @param  string  $base  the parent's name without its `InputDto` or `Dto`, which an inline nested object takes its
+     *                        own name from
      * @param  string  $segment  the property the schema is the value of
      * @param  string  $owner  the DTO the property belongs to, for its findings
      *
@@ -111,7 +119,7 @@ abstract class DtoPlanner
      */
     protected function type(Schema $written, string $base, string $segment, string $pointer, string $owner): InputDtoType
     {
-        $schema = AllOfMerger::merge($written, $this->identity, '`'.$segment.'`');
+        $schema = AllOfMerger::merge($written, $this->identity, '`'.$segment.'`', $this->responds());
 
         if ($schema->recursesTo !== null) {
             return $this->recursion($schema, $segment, $owner);
@@ -392,7 +400,7 @@ abstract class DtoPlanner
 
         $expanded = $beside === null
             ? $ancestor
-            : AllOfMerger::merge(new Schema(allOf: [$ancestor, $beside]), $this->identity, '`'.$segment.'`');
+            : AllOfMerger::merge(new Schema(allOf: [$ancestor, $beside]), $this->identity, '`'.$segment.'`', $this->responds());
 
         if ($expanded->soleType() === null) {
             $this->registry[$owner]['findings'][] = $this->noSingleTypeFinding($segment, $expanded);
@@ -458,9 +466,9 @@ abstract class DtoPlanner
         $others = $written->allOf;
         unset($others[$found[0]]);
         $rest = new Schema(...[...get_object_vars($written), 'allOf' => array_values($others), 'name' => null, 'source' => null, 'ignored' => []]);
-        $beside = AllOfMerger::merge($rest, $this->identity, $label);
+        $beside = AllOfMerger::merge($rest, $this->identity, $label, $this->responds());
 
-        return [AllOfMerger::merge($written->allOf[$found[0]], $this->identity, $label), $beside == new Schema ? null : $beside];
+        return [AllOfMerger::merge($written->allOf[$found[0]], $this->identity, $label, $this->responds()), $beside == new Schema ? null : $beside];
     }
 
     /**

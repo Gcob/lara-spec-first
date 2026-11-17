@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data;
 
-use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
 /**
@@ -23,12 +22,8 @@ use JsonSerializable;
  *   - Class name taken from the schema `Glossary`, written at `#/components/schemas/Glossary`.
  *     Every operation reaching that schema shares this type.
  *   - Read by `get /glossary` (`200`).
- *
- * Navigation
- *
- *   @implements Arrayable<string, mixed>
  */
-final readonly class GlossaryDto implements Arrayable, JsonSerializable
+final readonly class GlossaryDto implements JsonSerializable
 {
     /**
      * @param  array<array-key, string>  $additionalProperties

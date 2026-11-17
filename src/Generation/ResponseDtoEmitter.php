@@ -16,6 +16,10 @@ namespace Gcob\LaraSpecFirst\Generation;
  * themselves, so each one writes a JSON object even when it has nothing to say, and a map is cast to one, so an empty
  * map is `{}` and a map keyed `0` and `1` is not a list.
  *
+ * **`JsonSerializable` and not `Arrayable`.** Laravel calls `toArray()` on an `Arrayable` before it encodes one
+ * (`response($dto, 201)`, a paginator, `Collection::toArray()`), which writes an empty map as `[]` where the contract
+ * says object. Without the interface every path reaches `jsonSerialize()`, as it does for Laravel's own `JsonResource`.
+ *
  * @see docs/guide/code-generation/dto-anatomy.md — "One class, three members"
  */
 final readonly class ResponseDtoEmitter extends DtoEmitter
@@ -36,7 +40,7 @@ final readonly class ResponseDtoEmitter extends DtoEmitter
             {$this->useStatements($properties)}
 
             {$this->docblock($dto)}
-            final readonly class {$dto->shortName} implements Arrayable, JsonSerializable
+            final readonly class {$dto->shortName} implements JsonSerializable
             {
             {$this->constructor($properties)}
 
@@ -83,6 +87,11 @@ final readonly class ResponseDtoEmitter extends DtoEmitter
         return '        return (object) $this->toArray();';
     }
 
+    protected function interfaceImports(): array
+    {
+        return ['JsonSerializable'];
+    }
+
     protected function defaultOf(InputDtoProperty $property): string
     {
         // Without parentheses, as `from()` writes it: the formatter takes them off, and a build and a formatter that
@@ -95,7 +104,7 @@ final readonly class ResponseDtoEmitter extends DtoEmitter
         return GeneratedDocblock::render(
             [CommentText::safe($this->specPath), CommentText::safe($dto->position)],
             $this->findings($dto),
-            ['@implements Arrayable<string, mixed>'],
+            [],
         );
     }
 

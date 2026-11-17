@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data;
 
-use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
 /**
@@ -23,12 +22,8 @@ use JsonSerializable;
  *   - Class name taken from the schema `Label`, written at `#/components/schemas/Label`. Every
  *     operation reaching that schema shares this type.
  *   - No operation answers with this type directly: it is the type of a property of another DTO.
- *
- * Navigation
- *
- *   @implements Arrayable<string, mixed>
  */
-final readonly class LabelDto implements Arrayable, JsonSerializable
+final readonly class LabelDto implements JsonSerializable
 {
     public function __construct(
         public string $text,

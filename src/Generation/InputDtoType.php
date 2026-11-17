@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Generation;
 
 /**
- * The PHP type one schema becomes on an input DTO, and how a value converts to and from it.
+ * The PHP type one schema becomes on a DTO, request or response, and how a value converts to and from it. Named for the
+ * request side, which came first: {@see DtoMode} says which direction a call is for.
  *
  * **The table in `dto-anatomy.md`, as code.** One schema type is one PHP type and the mapping is fixed, so this class
  * answers the four questions an emitter has about a property without ever reading a schema: what is it declared as,

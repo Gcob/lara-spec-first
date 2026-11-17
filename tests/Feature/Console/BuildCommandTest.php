@@ -237,7 +237,7 @@ it('writes and prunes response DTOs in the Data namespace', function (): void {
     $response = (string) file_get_contents(buildTree().'/Data/UserDto.php');
 
     expect($response)->toContain('namespace '.buildNamespace().'\\Data;')
-        ->and($response)->toContain('final readonly class UserDto implements Arrayable, JsonSerializable')
+        ->and($response)->toContain('final readonly class UserDto implements JsonSerializable')
         ->and($response)->toContain('Read by `put /users/{id}` (`200`).')
         ->and(class_exists(buildNamespace().'\\Data\\UserDto'))->toBeTrue();
 

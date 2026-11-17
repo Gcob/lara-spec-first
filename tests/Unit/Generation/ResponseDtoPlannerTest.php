@@ -8,6 +8,7 @@ use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\InputDtoProperty;
 use Gcob\LaraSpecFirst\Generation\InputDtoType;
@@ -45,6 +46,41 @@ it('refuses two schemas that give one response DTO name', function (): void {
         UnusableNameException::class,
         'The schemas written at "#/components/schemas/User" and at "./other.yaml#/components/schemas/user" both generate the response DTO "UserDto"',
     );
+});
+
+// An inline property's class is derived from its parent, which nobody wrote: the message says what it was derived from
+// and that a component name ends the clash, as the request side's does.
+it('explains the derived name when an inline property meets a component of the same name', function (): void {
+    $user = responseComponent('User', [
+        'address' => new Schema(types: [SchemaType::Object], properties: ['street' => responseString()]),
+    ]);
+    $address = responseComponent('UserAddress', ['street' => responseString()]);
+
+    $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([
+        answeringWithSchema($user, 'showUser'),
+        answeringWithSchema($address, 'showAddress'),
+    ]);
+
+    expect($plan)->toThrow(UnusableNameException::class, 'the schema written at "#/components/schemas/UserAddress" gives the base "UserAddress" (the schema\'s name)')
+        ->and($plan)->toThrow(UnusableNameException::class, '(derived from its parent "User" and the property "address")')
+        ->and($plan)->toThrow(UnusableNameException::class, 'give an inline schema a component name of its own');
+});
+
+// A response is not a rule set, so its `allOf` refusal names the response and not `rules()`.
+it('words an allOf conflict in a response for a response', function (): void {
+    $branch = static fn (SchemaType $type): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [$type])]);
+    $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([answeringWithSchema(
+        new Schema(name: 'Thing', source: '#/components/schemas/Thing', allOf: [$branch(SchemaType::Integer), $branch(SchemaType::String)]),
+    )]);
+
+    expect($plan)->toThrow(ConflictingInputException::class, 'under the `200` response.id whose branches disagree')
+        ->and($plan)->toThrow(ConflictingInputException::class, 'A response cannot match both');
+
+    try {
+        $plan();
+    } catch (ConflictingInputException $conflict) {
+        expect($conflict->getMessage())->not->toContain('rule set');
+    }
 });
 
 // Two operations that return one schema are one type, whatever status each answers with.
@@ -139,7 +175,7 @@ it('gives each documented status its own response type', function (): void {
 // A list has no class of its own: the array is the body and each item is the DTO.
 it('types an array response through its item DTO', function (): void {
     expect(array_keys(statusDtos('listUsers')))->toBe(['UserDto'])
-        ->and(statusesOf('listUsers')[0]->list)->toBeTrue()
+        ->and(statusesOf('listUsers')[0]->depth)->toBe(1)
         ->and(statusesOf('listUsers')[0]->dto)->toBe('UserDto');
 
     // Inline items take the response's name plus `Item`, and a `+json` media type is JSON.
@@ -397,7 +433,7 @@ it('types the values of a nested map and of a list of maps through the class of 
     $statuses = statusesOfFixture('response-maps.yaml', 'listCounts');
 
     expect(array_keys(dtosOfFixture('response-maps.yaml', 'listCounts')))->toBe(['CountsDto'])
-        ->and($statuses[0]->list)->toBeTrue();
+        ->and($statuses[0]->depth)->toBe(1);
 });
 
 // Values of the other keys beside declared properties are not carried, and the file says so.
@@ -408,38 +444,73 @@ it('carries only the declared properties beside an additionalProperties schema a
         ->and(implode("\n", $pet->findings))->toContain('`additionalProperties` types the values of the keys that are not declared, but this type carries only the declared properties');
 });
 
-// A schema that is its type or `null` is its type: the DTO cannot be `null`, so the status says the body may be, which
-// is what the controller's finding reads.
-it('plans a nullable response root as its type and says it may be null', function (Schema $schema, bool $list, string $sentence): void {
-    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema)]);
+// A schema that is its type or `null` is its type: the DTO cannot be `null`, so the status says what may be, which is
+// what the controller's finding reads. A list of lists is said as one, and `null` is the body's only when the body is.
+it('plans a nullable response root as its type and says what may be null', function (Closure $schema, int $depth, string $sentence): void {
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema())]);
     $status = $plan->statuses['get /showThing'][0];
 
     expect($status->dto)->toBe('ThingDto')
-        ->and($status->list)->toBe($list)
+        ->and($status->depth)->toBe($depth)
         ->and($status->sentence())->toBe($sentence);
 })->with([
     'an object or null' => [
-        responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])], nullable: true),
-        false,
+        static fn (): Schema => responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])], nullable: true),
+        0,
         'The `200` response is `ThingDto`, in `Data/ThingDto.php`, or `null`, which no DTO holds.',
     ],
+    'a list' => [
+        static fn (): Schema => new Schema(
+            types: [SchemaType::Array],
+            items: responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])]),
+        ),
+        1,
+        'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`.',
+    ],
+    'a list of lists' => [
+        static fn (): Schema => new Schema(
+            types: [SchemaType::Array],
+            items: new Schema(
+                types: [SchemaType::Array],
+                items: responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])]),
+            ),
+        ),
+        2,
+        'The `200` response is a list of lists of `ThingDto`, in `Data/ThingDto.php`.',
+    ],
     'a list of lists, the inner one or null' => [
-        new Schema(
+        static fn (): Schema => new Schema(
             types: [SchemaType::Array],
             items: new Schema(
                 types: [SchemaType::Array, SchemaType::Null],
                 items: responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])]),
             ),
         ),
-        true,
-        'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`, or `null`, which no DTO holds.',
+        2,
+        'The `200` response is a list of lists of `ThingDto`, in `Data/ThingDto.php`, where an item may be `null`, which no DTO holds.',
+    ],
+    'a list of objects or null' => [
+        static fn (): Schema => new Schema(
+            types: [SchemaType::Array],
+            items: responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])], nullable: true),
+        ),
+        1,
+        'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`, where an item may be `null`, which no DTO holds.',
     ],
     'a list or null' => [
-        new Schema(
+        static fn (): Schema => new Schema(
             types: [SchemaType::Array, SchemaType::Null],
             items: responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])]),
         ),
-        true,
+        1,
         'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`, or `null`, which no DTO holds.',
+    ],
+    'a list or null, of objects or null' => [
+        static fn (): Schema => new Schema(
+            types: [SchemaType::Array, SchemaType::Null],
+            items: responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])], nullable: true),
+        ),
+        1,
+        'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`, or `null`, where an item may be `null` too, which no DTO holds.',
     ],
 ]);

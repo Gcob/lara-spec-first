@@ -42,12 +42,14 @@ tags: [versions, conventions, planning]
   `UserDto`) or, for a schema written inline, after its operation and status (`CreateUser201ResponseDto`). An optional
   property is `Optional|T`, a `writeOnly` one has no property, nothing is cast, a `date-time` is written as Laravel's
   `toJSON()` writes it, and `jsonSerialize()` hands nested DTOs and every map to the encoder as JSON objects, so an
-  empty map is `{}`. An object with no `properties` is carried whole under `additionalProperties`. A response property
-  the contract removes is a changed constructor, so the code that reads it fails static analysis. The generated
-  controller's findings now name the DTO of each status, or say why it has none (no body, no JSON media type, two JSON
-  media types with different schemas, a body that is not an object or a list of objects), where they said "The return
-  type is `mixed` because no response schema is read yet". `routeAction` still returns `mixed`, and no factory is
-  generated yet. This is not a breaking change on its own: it only adds files and a sentence. The reasoning is in
+  empty map is `{}`. A response DTO is `JsonSerializable` and not `Arrayable`, so `response($dto, 201)`, a paginator and
+  `Collection::toArray()` write that `{}` too, where Laravel would call `toArray()` on an `Arrayable` and write `[]`. An
+  object with no `properties` is carried whole under `additionalProperties`. A response property the contract removes is
+  a changed constructor, so the code that reads it fails static analysis. The generated controller's findings now name
+  the DTO of each status, or say why it has none (no body, no JSON media type, two JSON media types with different
+  schemas, a body that is not an object or a list of objects), where they said "The return type is `mixed` because no
+  response schema is read yet". `routeAction` still returns `mixed`, and no factory is generated yet. This is not a
+  breaking change on its own: it only adds files and a sentence. The reasoning is in
   [ADR 0011](./docs/project/decisions/0011-mirror-a-response-schema-in-its-dto.md). This ships
   [#39](https://github.com/Gcob/lara-spec-first/issues/39).
 

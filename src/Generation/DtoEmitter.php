@@ -33,15 +33,26 @@ abstract readonly class DtoEmitter
     }
 
     /**
-     * The import block: the two interfaces always, and the rest only when a property uses it. An unused import is
-     * something a consumer's formatter removes, and a formatter with something to remove is a formatter fighting the
-     * next build.
+     * The interfaces every class of this direction implements, as imports. A request DTO is both: its `toArray()` is
+     * what mass assignment reads. A response DTO is `JsonSerializable` only, see `ResponseDtoEmitter`.
+     *
+     * @return list<string>
+     */
+    protected function interfaceImports(): array
+    {
+        return ['Illuminate\\Contracts\\Support\\Arrayable', 'JsonSerializable'];
+    }
+
+    /**
+     * The import block: the interfaces the class implements always, and the rest only when a property uses it. An
+     * unused import is something a consumer's formatter removes, and a formatter with something to remove is a
+     * formatter fighting the next build.
      *
      * @param  list<InputDtoProperty>  $properties
      */
     protected function useStatements(array $properties): string
     {
-        $imports = ['Illuminate\\Contracts\\Support\\Arrayable', 'JsonSerializable'];
+        $imports = $this->interfaceImports();
 
         foreach ($properties as $property) {
             array_push($imports, ...$property->type->imports());

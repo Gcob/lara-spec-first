@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data;
 
 use Gcob\LaraSpecFirst\Data\Optional;
-use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
 /**
@@ -24,12 +23,8 @@ use JsonSerializable;
  *   - Class name taken from the schema `Team`, written at `#/components/schemas/Team`. Every
  *     operation reaching that schema shares this type.
  *   - Read by `get /teams/{id}` (`200`).
- *
- * Navigation
- *
- *   @implements Arrayable<string, mixed>
  */
-final readonly class TeamDto implements Arrayable, JsonSerializable
+final readonly class TeamDto implements JsonSerializable
 {
     /**
      * @param  Optional|array<array-key, string>  $notes

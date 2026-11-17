@@ -105,8 +105,8 @@ is in flight, what is done, and in which order. This section is the shape of the
 [CONTRIBUTING.md](./CONTRIBUTING.md) is how to get involved.
 
 **Where we are:** Phase 1 shipped as `0.1.0`, and Phase 2 is in progress: `0.2.0` shipped its first half, the generated
-request validation and the input DTOs, and the response DTOs are built since (`Unreleased`). The response factories are
-next.
+request validation and the input DTOs, and the response DTOs have been built since (`Unreleased`). The response
+factories are next.
 
 **The next release** is the board filtered on its milestone, the open one named `0.x.y` with the lowest version, and
 `just status` prints it.

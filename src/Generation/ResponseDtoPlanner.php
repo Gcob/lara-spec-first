@@ -77,6 +77,11 @@ final class ResponseDtoPlanner extends DtoPlanner
         return 'Dto';
     }
 
+    protected function responds(): bool
+    {
+        return true;
+    }
+
     protected function isFile(Schema $schema): bool
     {
         return false;
@@ -177,9 +182,10 @@ final class ResponseDtoPlanner extends DtoPlanner
         $base = $stem.self::statusName($status).'Response';
         $inline = DocumentPointer::forOperation($operation).'/responses/'.DocumentPointer::escape($status)
             .'/content/'.DocumentPointer::escape($mediaType).'/schema';
-        $merged = AllOfMerger::merge($written, $this->identity, $label);
-        $list = false;
+        $merged = AllOfMerger::merge($written, $this->identity, $label, $this->responds());
+        $depth = 0;
         $nullable = $merged->isNullable();
+        $itemsNullable = false;
 
         while ($merged->soleType() === SchemaType::Array) {
             if ($merged->items === null) {
@@ -187,17 +193,17 @@ final class ResponseDtoPlanner extends DtoPlanner
             }
 
             $written = $merged->items;
-            $merged = AllOfMerger::merge($written, $this->identity, $label);
-            $nullable = $nullable || $merged->isNullable();
+            $merged = AllOfMerger::merge($written, $this->identity, $label, $this->responds());
+            $itemsNullable = $itemsNullable || $merged->isNullable();
             $inline = self::within($inline, '/items');
             $base .= 'Item';
-            $list = true;
+            $depth++;
         }
 
         if (! RuleSetBuilder::isObjectBody($merged)) {
             return StatusResponse::without(
                 $status,
-                $list ? 'its body is a list of values that are not objects' : 'its body is not an object or a list',
+                $depth > 0 ? 'its body is a list of values that are not objects' : 'its body is not an object or a list',
             );
         }
 
@@ -218,7 +224,7 @@ final class ResponseDtoPlanner extends DtoPlanner
                         .'written inline and has no name of its own.',
                     $stem,
                     $status,
-                    $list ? 'list\'s item' : 'response',
+                    $depth > 0 ? 'list\'s item' : 'response',
                 ),
                 false,
             );
@@ -242,7 +248,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             $this->readers[$shortName][] = $reader;
         }
 
-        return StatusResponse::of($status, $shortName, $list, $nullable);
+        return StatusResponse::of($status, $shortName, $depth, $nullable, $itemsNullable);
     }
 
     /**
@@ -320,7 +326,11 @@ final class ResponseDtoPlanner extends DtoPlanner
                 : ! $named && ! $existing['named'] && $existing['schema']->shapeKey() === $merged->shapeKey();
 
             if (! $same) {
-                throw UnusableNameException::responseDtoClaimedTwice($shortName, $existing['position'], $position);
+                throw UnusableNameException::responseDtoClaimedTwice(
+                    $shortName,
+                    ['position' => $existing['position'], 'base' => $existing['base'], 'origin' => $existing['origin']],
+                    ['position' => $position, 'base' => $base, 'origin' => $origin],
+                );
             }
 
             return $shortName;
@@ -348,7 +358,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             $key = (string) $key;
 
             // Nothing a response sends is `writeOnly`, so the type has no property for it.
-            if (AllOfMerger::merge($property, $this->identity, '`'.$key.'`')->writeOnly) {
+            if (AllOfMerger::merge($property, $this->identity, '`'.$key.'`', $this->responds())->writeOnly) {
                 $this->registry[$shortName]['findings'][] = sprintf(
                     '`%s` is `writeOnly`, so a response never sends it and this type has no property for it.',
                     $key,

@@ -6,7 +6,6 @@ namespace Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data;
 
 use Carbon\CarbonImmutable;
 use Gcob\LaraSpecFirst\Data\Optional;
-use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
 /**
@@ -27,12 +26,8 @@ use JsonSerializable;
  *   - Read by `get /users/{id}` (`200`).
  *   - `user-id` is not a PHP identifier, so it is read into `$user_id`. `from()` and `toArray()`
  *     keep the key as written.
- *
- * Navigation
- *
- *   @implements Arrayable<string, mixed>
  */
-final readonly class UserDto implements Arrayable, JsonSerializable
+final readonly class UserDto implements JsonSerializable
 {
     /**
      * @param  Optional|'active'|'banned'  $status

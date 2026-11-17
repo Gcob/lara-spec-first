@@ -42,7 +42,7 @@ findings, which every generated file carries, is left out):
 
 ```php
 // app/Http/Generated/Data/UserDto.php
-final readonly class UserDto implements Arrayable, JsonSerializable
+final readonly class UserDto implements JsonSerializable
 {
     /**
      * @param 'active'|'banned' $status
@@ -125,7 +125,11 @@ What each member is for:
    nested DTO and every map to the encoder as one**: an object whose optional properties are all absent, and a map with
    no entries, go out as `{}`, never `[]`, and a map keyed `"0"` and `"1"` goes out as `{"0":"a","1":"b"}`, never
    `["a","b"]`, since the contract said object. `toArray()` stays a plain PHP array at every depth, `[]` and
-   `[0 => 'a', 1 => 'b']` included, which is what mass assignment and the rest of PHP expect.
+   `[0 => 'a', 1 => 'b']` included, which is what mass assignment and the rest of PHP expect. **A response DTO is
+   `JsonSerializable` and not `Arrayable`**: Laravel calls `toArray()` on an `Arrayable` before it encodes one, which
+   `response($dto, 201)`, a paginator and `Collection::toArray()` all do, and that would write the empty map as `[]`.
+   Without the interface every one of those paths reaches `jsonSerialize()`. A request DTO is both, since its
+   `toArray()` is what mass assignment reads.
 
 **A DTO is named after the schema it describes, with `Input` on the request side, and never after the `$ref` that
 reached it or the file that holds it.** `#/components/schemas/NewUser` gives `NewUserInputDto` and
@@ -441,23 +445,23 @@ point where it cares.
 **The shape is borrowed, and the engine is not.** `spatie/laravel-data` is what most Laravel projects already reach for
 to write a DTO, and its public surface is the right one. What the design keeps and what it drops, feature by feature:
 
-| In `spatie/laravel-data`                                | Here                                                                                            |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| A promoted constructor as the shape                     | **Kept**, as a `final readonly` class                                                           |
-| `from()`                                                | **Kept**, from an array only, and written in full by the build                                  |
-| `toArray()` and JSON serialization                      | **Kept**, through `Arrayable` and `JsonSerializable`                                            |
-| `Optional`                                              | **Kept**, as [a class of this package](#absent-is-optional)                                     |
-| Nested data objects and typed collections               | **Kept**, as nested DTOs and a `list<T>` docblock on a plain array                              |
-| Casts and transformers                                  | **Kept** as [generated lines](#what-each-schema-type-becomes), never as a registry              |
-| Name mapping (`MapInputName`, `MapOutputName`)          | **Kept** only where a key is not a PHP identifier                                               |
-| Validation rules inferred from the class                | **Left.** [The generated `FormRequest`](./request-validation.md) owns validation                |
-| `Lazy` properties, includes and excludes                | **Left.** The contract fixes which fields a response carries                                    |
-| Wrapping (`wrap('data')`)                               | **Left.** An envelope is a property of the schema, and the DTO already has it                   |
-| `Responsable`, `DataCollection`, paginated output       | **Left.** Status belongs to the operation, and paging to [`pagination.md`](../pagination.md)    |
-| Magic creation methods (`fromModel()`, `fromRequest()`) | **Left.** [A factory](./response-dtos.md#factories-carry-the-behavior) builds from a model      |
-| Computed properties, `additional()`                     | **Left.** A DTO has no behavior, and nothing outside the contract belongs in one                |
-| Attributes, the structure cache                         | **Left.** There is nothing to discover at run time                                              |
-| The TypeScript transformer                              | **Left.** [`openapi-typescript`](./publishing.md#types-come-from-openapi-typescript) owns types |
+| In `spatie/laravel-data`                                | Here                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A promoted constructor as the shape                     | **Kept**, as a `final readonly` class                                                            |
+| `from()`                                                | **Kept**, from an array only, and written in full by the build                                   |
+| `toArray()` and JSON serialization                      | **Kept**, through `Arrayable` and `JsonSerializable` (a response DTO is `JsonSerializable` only) |
+| `Optional`                                              | **Kept**, as [a class of this package](#absent-is-optional)                                      |
+| Nested data objects and typed collections               | **Kept**, as nested DTOs and a `list<T>` docblock on a plain array                               |
+| Casts and transformers                                  | **Kept** as [generated lines](#what-each-schema-type-becomes), never as a registry               |
+| Name mapping (`MapInputName`, `MapOutputName`)          | **Kept** only where a key is not a PHP identifier                                                |
+| Validation rules inferred from the class                | **Left.** [The generated `FormRequest`](./request-validation.md) owns validation                 |
+| `Lazy` properties, includes and excludes                | **Left.** The contract fixes which fields a response carries                                     |
+| Wrapping (`wrap('data')`)                               | **Left.** An envelope is a property of the schema, and the DTO already has it                    |
+| `Responsable`, `DataCollection`, paginated output       | **Left.** Status belongs to the operation, and paging to [`pagination.md`](../pagination.md)     |
+| Magic creation methods (`fromModel()`, `fromRequest()`) | **Left.** [A factory](./response-dtos.md#factories-carry-the-behavior) builds from a model       |
+| Computed properties, `additional()`                     | **Left.** A DTO has no behavior, and nothing outside the contract belongs in one                 |
+| Attributes, the structure cache                         | **Left.** There is nothing to discover at run time                                               |
+| The TypeScript transformer                              | **Left.** [`openapi-typescript`](./publishing.md#types-come-from-openapi-typescript) owns types  |
 
 ## The build knows what Spatie has to discover
 

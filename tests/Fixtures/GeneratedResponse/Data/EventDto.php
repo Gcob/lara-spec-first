@@ -6,7 +6,6 @@ namespace Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data;
 
 use Carbon\CarbonImmutable;
 use Gcob\LaraSpecFirst\Data\Optional;
-use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
 /**
@@ -25,12 +24,8 @@ use JsonSerializable;
  *   - Class name taken from the schema `Event`, written at `#/components/schemas/Event`. Every
  *     operation reaching that schema shares this type.
  *   - Read by `get /events/{id}` (`200`).
- *
- * Navigation
- *
- *   @implements Arrayable<string, mixed>
  */
-final readonly class EventDto implements Arrayable, JsonSerializable
+final readonly class EventDto implements JsonSerializable
 {
     public function __construct(
         public string $name,

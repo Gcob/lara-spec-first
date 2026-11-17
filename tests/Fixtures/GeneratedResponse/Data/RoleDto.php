@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data;
 
-use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
 /**
@@ -23,12 +22,8 @@ use JsonSerializable;
  *   - Class name taken from the schema `Role`, written at `#/components/schemas/Role`. Every
  *     operation reaching that schema shares this type.
  *   - No operation answers with this type directly: it is the type of a property of another DTO.
- *
- * Navigation
- *
- *   @implements Arrayable<string, mixed>
  */
-final readonly class RoleDto implements Arrayable, JsonSerializable
+final readonly class RoleDto implements JsonSerializable
 {
     public function __construct(
         public string $name,

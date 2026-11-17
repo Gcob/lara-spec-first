@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data;
 
 use Gcob\LaraSpecFirst\Data\Optional;
-use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
 /**
@@ -24,12 +23,8 @@ use JsonSerializable;
  *   - Class name taken from the schema `Address`, written at `#/components/schemas/Address`. Every
  *     operation reaching that schema shares this type.
  *   - No operation answers with this type directly: it is the type of a property of another DTO.
- *
- * Navigation
- *
- *   @implements Arrayable<string, mixed>
  */
-final readonly class AddressDto implements Arrayable, JsonSerializable
+final readonly class AddressDto implements JsonSerializable
 {
     public function __construct(
         public string $street,

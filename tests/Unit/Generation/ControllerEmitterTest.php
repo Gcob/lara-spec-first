@@ -254,8 +254,8 @@ describe('the findings', function (): void {
     // The return type is still `mixed`, but no longer because nothing is read: each status says what it is.
     it('names each status response DTO in the controller findings', function (): void {
         $docblock = emittedDocblock(emittedController(operationFor(), responses: [
-            StatusResponse::of('200', 'UserDto', false),
-            StatusResponse::of('201', 'CreateUser201ResponseItemDto', true),
+            StatusResponse::of('200', 'UserDto', 0),
+            StatusResponse::of('201', 'CreateUser201ResponseItemDto', 1),
             StatusResponse::without('204', 'it declares no body'),
             StatusResponse::without('default', 'it declares no JSON media type'),
         ]));

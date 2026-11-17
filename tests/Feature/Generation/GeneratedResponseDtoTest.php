@@ -12,6 +12,8 @@ use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\RoleDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\SettingsDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\TeamDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\UserDto;
+use Illuminate\Http\Response;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 /*
  * A generated response DTO, run.
@@ -104,6 +106,18 @@ it('hands a response DTO to the encoder as a JSON object', function (): void {
     expect(json_encode(UserDto::from(['id' => 1, 'email' => 'a', 'address' => ['street' => 's'], 'roles' => [['name' => 'r']]])))
         ->toBe('{"id":1,"email":"a","address":{"street":"s"},"roles":[{"name":"r"}]}');
 });
+
+// Laravel calls `toArray()` on an `Arrayable` before it encodes, which would write an empty map as `[]`. A response DTO
+// is `JsonSerializable` only, so each of these paths reaches `jsonSerialize()` and writes the object the contract says.
+it('writes a response DTO as a JSON object on every path Laravel sends it down', function (Closure $send): void {
+    expect($send(GlossaryDto::from([]), SettingsDto::from([])))->toBe('{}');
+})->with([
+    'a response with a status' => [static fn (GlossaryDto $glossary): string => (string) (new Response($glossary, 201))->getContent()],
+    'an object with every property absent' => [static fn (GlossaryDto $glossary, SettingsDto $settings): string => (string) (new Response($settings, 201))->getContent()],
+    'a collection as JSON' => [static fn (GlossaryDto $glossary): string => substr(collect([$glossary])->toJson(), 1, -1)],
+    'a collection as an array' => [static fn (GlossaryDto $glossary): string => json_encode(collect([$glossary])->toArray()[0], JSON_THROW_ON_ERROR)],
+    'a paginator' => [static fn (GlossaryDto $glossary): string => json_encode((new LengthAwarePaginator([$glossary], 1, 15))->toArray()['data'][0], JSON_THROW_ON_ERROR)],
+]);
 
 /**
  * A response object or map as the root of a response and as a property of a team: how to build each from a value, the

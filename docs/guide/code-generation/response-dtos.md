@@ -81,7 +81,9 @@ The reasons a status has none are no body, no JSON media type, two JSON media ty
 that is not an object or a list of objects. None of them refuses the build. **A response schema that also allows
 `null`**, `type: [object, 'null']`, still gets the DTO of the object, and the controller's sentence for that status ends
 "or `null`, which no DTO holds". The DTO does not say so itself, since one DTO serves every operation that returns the
-schema and not all of them may answer `null`.
+schema and not all of them may answer `null`. A list of lists is said as one ("a list of lists of `UserDto`"), and a
+list whose items may be `null` says "where an item may be `null`" rather than "or `null`", which is only said of the
+body.
 
 **`routeAction` still returns `mixed`.** The controller's findings say so beside those sentences: the types named there
 are what a response is, and what `routeAction` is typed to return is a later change. Nothing yet makes a controller

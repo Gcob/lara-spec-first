@@ -86,6 +86,12 @@ every map is written as a JSON object: an empty map is `{}` and a map keyed `"0"
 never `[]` or `["a","b"]`. An object whose optional properties are all absent is `{}`. **`toArray()` stays a plain PHP
 array** at every depth, which is what mass assignment and the rest of PHP expect.
 
+**A response DTO is `JsonSerializable` and not `Arrayable`.** Laravel calls `toArray()` on an `Arrayable` before it
+encodes one: `response($dto, 201)`, a paginator and `Collection::toArray()` all do, and `toArray()` writes `[]` for an
+empty map. Without the interface, every path reaches `jsonSerialize()` and writes `{}`, which is how Laravel's own
+`JsonResource` works. The cost is that code typed against `Arrayable` cannot take a response DTO, and no generated code
+does.
+
 **An object with no `properties` is carried whole.** It has no declared key for a property to be, so its DTO has one
 property, `additionalProperties`, typed `array<array-key, T>` and never `Optional`, as
 [ADR 0004](./0004-carry-a-map-body-under-additionalproperties.md) does for a request body. `T` is what the value schema

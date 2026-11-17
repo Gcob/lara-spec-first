@@ -69,12 +69,13 @@ it('emits a final readonly response DTO for a referenced object schema', functio
     // Not `UserInputDto`: the response side carries no `Input`.
     expect($emitted)
         ->toContain('namespace App\\Http\\Generated\\Data;')
-        ->toContain('final readonly class UserDto implements Arrayable, JsonSerializable')
-        ->toContain('use Illuminate\\Contracts\\Support\\Arrayable;')
+        ->toContain('final readonly class UserDto implements JsonSerializable')
         ->toContain('public static function from(array $payload): self')
         ->toContain('public function toArray(): array')
         ->toContain('public function jsonSerialize(): object');
+    // Not `Arrayable`: Laravel calls `toArray()` on one before it encodes, which writes an empty map as `[]`.
     expect($emitted)->not->toContain('InputDto');
+    expect($emitted)->not->toContain('Arrayable');
 
     // One promoted property per property of the schema: the required ones first, then the optional ones, each group in
     // the order the contract writes them (the contract writes `nickname` before `id`).

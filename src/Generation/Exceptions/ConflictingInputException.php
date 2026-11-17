@@ -87,15 +87,20 @@ final class ConflictingInputException extends InvalidArgumentException implement
      * Refused rather than resolved by picking a branch: either choice would enforce half of what the document wrote and
      * drop the other half in silence.
      */
-    public static function contradictoryAllOf(string $identity, string $where, string $what): self
+    public static function contradictoryAllOf(string $identity, string $where, string $what, bool $response = false): self
     {
+        // Why: nothing validates a response, so there is no rule set for its sentence to name.
+        $why = $response
+            ? 'A response cannot match both, so the build will not choose between them.'
+            : 'A payload cannot satisfy both, or one rule set cannot say both, so the build will not choose between them.';
+
         return new self(sprintf(
             'The operation "%s" writes `allOf`, or keywords beside a `$ref`, under %s whose branches disagree: %s. '.
-            'A payload cannot satisfy both, or one rule set cannot say both, so the build will not choose '.
-            'between them. Make the branches agree.',
+            '%s Make the branches agree.',
             $identity,
             $where,
-            $what
+            $what,
+            $why,
         ));
     }
 }
