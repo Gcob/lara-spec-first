@@ -224,7 +224,7 @@ specification says everything beside a `$ref` is ignored, and so does this packa
 Schema 2020-12, which applies those keywords together with the schema the `$ref` names: `{$ref: Code, maxLength: 3}` is
 `Code` and a ceiling of three, the same contract as `allOf: [{$ref: Code}, {maxLength: 3}]`. A request is stricter
 because of it: a value a 3.1 contract refused only in the words of its author, and the generated request let through, is
-now a 422.
+now a 422. [ADR 0008](../project/decisions/0008-honor-keywords-beside-a-ref.md) holds the reasoning.
 
 **The parser keeps none of them.** It keeps `$ref`, `summary` and `description` of a node that writes a `$ref` and drops
 the rest without a word (a [parser caveat](#parser-caveats)). So the extractor reads the keywords from the raw document,

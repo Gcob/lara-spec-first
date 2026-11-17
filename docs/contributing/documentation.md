@@ -959,6 +959,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0005-read-default-content-type-by-latest-patch.md`](../project/decisions/0005-read-default-content-type-by-latest-patch.md)
     - [`0006-hold-rules-to-the-contract.md`](../project/decisions/0006-hold-rules-to-the-contract.md)
     - [`0007-keep-json-scalars-strict.md`](../project/decisions/0007-keep-json-scalars-strict.md)
+    - [`0008-honor-keywords-beside-a-ref.md`](../project/decisions/0008-honor-keywords-beside-a-ref.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:
