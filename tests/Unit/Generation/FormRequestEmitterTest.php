@@ -630,8 +630,8 @@ it('emits bytes Pint has nothing to change in', function (): void {
 
 // A plain `query` name beside the names PHP nests under it is judged only when its value is not an array: Laravel's
 // own `Rule::when()`, with the rules the name would have had anyway, and `array` for the value PHP built for the
-// nested names (which also keeps `validated()` from carrying an undeclared key below it). The class is read by Pint, so
-// a consumer's formatter has nothing to rewrite.
+// nested names that have a rule (the next test covers the ones that have none). The class is read by Pint, so a
+// consumer's formatter has nothing to rewrite.
 it('writes a plain query name behind Rule::when beside the names PHP nests under it', function (): void {
     $emitted = emittedRequest(new Operation(
         index: 0,

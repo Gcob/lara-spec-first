@@ -220,10 +220,13 @@ Laravel's own `Rule::when()` and judge the value only when it is not an array, a
 ```
 
 `?page=abc` and `?page=0` answer 422 on `page`, `?page=2` passes and `validated('page')` is `'2'`, `?page[size]=3`
-passes, and `?page[size]=abc` answers 422 on `page.size`. `page` stays in `QUERY_KEYS`. There is no finding, since the
-name has its rules, and `spec:doctor` reports nothing for it. The one thing the shape check cannot tell is a `page` the
-client left out from the nested names it sent instead: the array stands in for it, so a required `page` is not asked for
-when `page[size]` is sent. The comparison is step by step and never by string, so `filter[a]` is no ancestor of
+passes, and `?page[size]=abc` answers 422 on `page.size`. `page` stays in `QUERY_KEYS`. The third argument, `['array']`,
+is for a plain name with a rule below it: Laravel keeps an array's unchecked content out of `validated()` only then.
+With no rule below (`ids` beside `ids[]`, `page` beside `page[*]`) it is `['exclude']`, so `?ids[]=-5&ids[]=abc` passes
+without an `ids` in `validated()`, instead of an array nobody checked. There is no finding, since the name has its
+rules, and `spec:doctor` reports nothing for it. The one thing the shape check cannot tell is a `page` the client left
+out from the nested names it sent instead: the array stands in for it, so a required `page` is not asked for when
+`page[size]` is sent. The comparison is step by step and never by string, so `filter[a]` is no ancestor of
 `filter[ab][c]`, and it is the one the form body uses. The reasoning is in
 [ADR 0002](../../project/decisions/0002-judge-plain-query-names-by-shape.md).
 

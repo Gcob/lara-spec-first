@@ -32,6 +32,14 @@ final class RuleWalk
     public array $whenNotArray = [];
 
     /**
+     * The keys of {@see self::$whenNotArray} with no rule on any name below them: Laravel keeps an `array` key's
+     * unchecked content in `validated()` unless a rule sits below it, so the array is dropped with `exclude` instead.
+     *
+     * @var list<string>
+     */
+    public array $dropsArray = [];
+
+    /**
      * @var list<string>
      */
     public array $findings = [];

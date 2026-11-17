@@ -1469,14 +1469,19 @@ it('accepts a rewritten query name sent alone beside the plain name it overlaps'
         queryParameters: [
             new QueryParameter('page', new Schema(types: [SchemaType::Integer])),
             new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer])),
-            new QueryParameter('ids', new Schema(types: [SchemaType::Integer])),
+            new QueryParameter('ids', new Schema(types: [SchemaType::Integer], minimum: 1.0)),
             new QueryParameter('ids[]', new Schema(types: [SchemaType::Integer])),
             new QueryParameter('limit', new Schema(types: [SchemaType::Integer])),
         ],
     ));
 
     expect(sendThroughEmitted($class, 'GET', '?page[size]=3'))->toBe([200, ['page' => ['size' => '3']]])
-        ->and(sendThroughEmitted($class, 'GET', '?ids[]=1&ids[]=2')[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'GET', '?page=2'))->toBe([200, ['page' => '2']])
+        // Nothing below `ids` has a rule (`ids[]` has none), so Laravel would keep the array it never checked: it is
+        // dropped from `validated()`, and the plain name's own rules still hold for a scalar.
+        ->and(sendThroughEmitted($class, 'GET', '?ids[]=-5&ids[]=abc'))->toBe([200, []])
+        ->and(sendThroughEmitted($class, 'GET', '?ids=3'))->toBe([200, ['ids' => '3']])
+        ->and(sendThroughEmitted($class, 'GET', '?ids=0')[0])->toBe(422)
         ->and(sendThroughEmitted($class, 'GET', '?page[size]=abc')[0])->toBe(422)
         ->and(sendThroughEmitted($class, 'GET', '?limit=abc')[0])->toBe(422);
 });

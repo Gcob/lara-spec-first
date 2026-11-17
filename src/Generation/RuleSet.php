@@ -70,6 +70,8 @@ final readonly class RuleSet
      *                                                     path PHP delivers it under: the request judges them only when
      *                                                     their value is not an array, which is what the nested names
      *                                                     are
+     * @param  list<string>  $dropsArray  the keys of `$whenNotArray` with no rule on any name below them: the request
+     *                                    drops the array (`exclude`) where it would keep it (`array`) beside a rule
      */
     public function __construct(
         public array $rules = [],
@@ -89,6 +91,7 @@ final readonly class RuleSet
         public array $stricter = [],
         public array $requiredOnceSent = [],
         public array $whenNotArray = [],
+        public array $dropsArray = [],
     ) {}
 
     /**

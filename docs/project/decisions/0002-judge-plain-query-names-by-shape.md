@@ -8,7 +8,7 @@ covers: >
 read_before: >
     Asking why a plain query name is wrapped in `Rule::when()`, why `user_name` beside `user.name` has no rule, or
     changing how a `query` name PHP rewrites is validated.
-tags: [decisions, validation, query-parameters]
+tags: [decisions, code-generation, openapi]
 ---
 
 # ADR 0002: A plain query name is judged by shape beside the names PHP nests under it
@@ -47,7 +47,8 @@ was the model.
 ## Decision
 
 **A plain name beside the names PHP nests under it keeps its rules, behind Laravel's own `Rule::when()`.** The rules
-apply when the value is not an array, an array stands in for the nested names, and the name stays in `QUERY_KEYS`:
+apply when the value is not an array, the array PHP builds stands in for the nested names, and the name stays in
+`QUERY_KEYS`:
 
 ```php
 'page' => Rule::when(
@@ -59,10 +60,14 @@ apply when the value is not an array, an array stands in for the nested names, a
 ```
 
 `?page=abc` and `?page=0` answer `422` on `page`, `?page=2` passes and `validated('page')` carries it, and
-`?page[size]=3` passes. The `array` in the default rules keeps `validated()` from carrying a key below `page` that no
-parameter declares. The same holds for a name that is a prefix of another (`filter[a]` beside `filter[a][b]`), compared
-step by step and never as strings, so `filter[a]` is no ancestor of `filter[ab][c]`. A name PHP appends to counts as the
-path above its appended step. No finding is written for a name that has its rules.
+`?page[size]=3` passes. What the array branch does depends on the names below. Laravel keeps an `array` key's unchecked
+content out of `validated()` only when a rule sits below it, so beside a name that has a rule (`page.size`) the branch
+is `['array']`, which keeps `validated()` from carrying a key below `page` that no parameter declares. Beside names with
+no rule (`ids[]` is appended, `page[*]` has a `*`) it is `['exclude']`, so `?ids[]=-5&ids[]=abc` answers `200` with no
+`ids` in `validated()` rather than an array nobody checked. The same holds for a name that is a prefix of another
+(`filter[a]` beside `filter[a][b]`), compared step by step and never as strings, so `filter[a]` is no ancestor of
+`filter[ab][c]`. A name PHP appends to counts as the path above its appended step. No finding is written for a name that
+has its rules.
 
 **Two names that arrive under the same key get no rule.** `user.name` and `user_name`, `a.b` and `a b`, and a name at an
 index of a list another appends to (`ids[1]` beside `ids[]`). A finding names each pair and the key they share. Each

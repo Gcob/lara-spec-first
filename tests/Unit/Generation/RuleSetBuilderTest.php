@@ -1950,6 +1950,30 @@ it('keeps a plain query name behind a shape check beside the names PHP nests und
     'a chain of three' => [['filter', 'filter[a]', 'filter[a][b]'], ['filter', 'filter.a', 'filter.a.b'], ['filter' => ['filter'], 'filter.a' => ['filter', 'a']], [], ['filter']],
 ]);
 
+// What the array branch of the shape check does with the array PHP built. Laravel keeps an `array` key's unchecked
+// content out of `validated()` only when a rule sits below it, so a name with a rule below keeps `array`, and one with
+// none below (`ids[]` is appended, `page[*]` has a `*`) drops the array with `exclude`.
+it('drops the array beside a plain query name only when no name below it has a rule', function (array $names, array $dropped): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: array_values(array_map(
+            static fn (string $name): QueryParameter => new QueryParameter($name, new Schema(types: [SchemaType::Integer])),
+            $names,
+        )),
+    ));
+
+    expect($set->dropsArray)->toBe($dropped);
+})->with([
+    'a rule below' => [['page', 'page[size]'], []],
+    'a list it is appended to' => [['ids', 'ids[]'], ['ids']],
+    'a wildcard below it' => [['page', 'page[*]'], ['page']],
+    // `ids[x]` sits at an index the list can append at, so it has no rule either.
+    'a list and a name at one of its indexes' => [['ids', 'ids[]', 'ids[x]'], ['ids']],
+    'a rule below and a wildcard' => [['page', 'page[*]', 'page[size]'], []],
+    'a chain whose last name has a rule' => [['filter', 'filter[a]', 'filter[a][b]'], []],
+    'a name PHP delivers under no name beside it' => [['page', '[x]'], []],
+]);
+
 // An array or an object parameter's rules do not judge the shape of the value, so there is nothing to skip.
 it('leaves a query name typed array without a shape check', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(

@@ -345,6 +345,10 @@ final readonly class RuleSetBuilder
 
             if ($plan['shaped'] && $path !== null && isset($walk->rules[$key])) {
                 $walk->whenNotArray[$key] = $path;
+
+                if (! $plan['ruledBelow']) {
+                    $walk->dropsArray[] = $key;
+                }
             }
         }
 
@@ -352,7 +356,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray);
     }
 
     /**
@@ -2759,7 +2763,7 @@ final readonly class RuleSetBuilder
      * step by step, and a name PHP appends to claims the path above its appended step. No finding: it has its rules. A
      * plain name is still refused beside a body key, whether or not it loses its rule.
      *
-     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, findings: list<string>}>
+     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, ruledBelow: bool, findings: list<string>}>
      */
     private static function planQueryNames(Operation $operation, RuleWalk $walk): array
     {
@@ -2852,10 +2856,35 @@ final readonly class RuleSetBuilder
                 'head' => $heads[$index],
                 'plain' => isset($plain[$index]),
                 'shaped' => $keys[$index] !== null && isset($shaped[$index]),
+                'ruledBelow' => self::ruledBelow($index, $claims, $candidates, $keys),
                 'findings' => $findings[$index],
             ],
             array_keys($keys),
         );
+    }
+
+    /**
+     * Whether a name that has a rule sits below a name: Laravel keeps an `array` key's unchecked content in
+     * `validated()` unless a rule sits below it, which decides how the array PHP builds for the nested names is
+     * handled.
+     *
+     * @param  array<int, list<string>>  $claims
+     * @param  list<int>  $candidates
+     * @param  array<int, string|null>  $keys
+     */
+    private static function ruledBelow(int $index, array $claims, array $candidates, array $keys): bool
+    {
+        if (! isset($claims[$index])) {
+            return false;
+        }
+
+        foreach ($candidates as $other) {
+            if ($keys[$other] !== null && isset($claims[$other]) && self::isBelow($claims[$other], $claims[$index])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

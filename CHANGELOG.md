@@ -114,9 +114,12 @@ tags: [versions, conventions, planning]
   `200`), and `?ids[]=1` was judged by the rule of `ids` the same way. `page` beside `page[size]`, `ids` beside `ids[]`,
   `page` beside `page[*]` and `filter[a]` beside `filter[a][b]` now judge the plain name's value only when it is not an
   array, with Laravel's own `Rule::when()`: `?page=abc` and `?page=0` are still `422`, `?page=2` still reaches
-  `validated('page')`, and the nested names keep their rules. Two names that arrive under the same key (`user_name`
-  beside `user.name`) cannot be told apart, so they get no rule and the generated file says so in a finding. A plain
-  name beside a body key is still refused. See [#110](https://github.com/Gcob/lara-spec-first/issues/110).
+  `validated('page')`, and the nested names keep their rules. The array PHP builds is kept out of `validated()` when it
+  is unchecked: only what a rule below it validates stays (`page.size`), and beside `ids[]` or `page[*]`, which have no
+  rule, `?ids[]=-5&ids[]=abc` answers `200` with no `ids` in `validated()`. Two names that arrive under the same key
+  (`user_name` beside `user.name`) cannot be told apart, so they get no rule and the generated file says so in a
+  finding. A plain name beside a body key is still refused. See
+  [#110](https://github.com/Gcob/lara-spec-first/issues/110).
 - **The "a form with a `Content-Type` and no field" finding no longer appears where a required field, or the body's
   required-key check, already refuses an empty form.** A required body read as a form got it even when a required
   property, a required file part or a required name `properties` does not declare was already refusing the empty form,
