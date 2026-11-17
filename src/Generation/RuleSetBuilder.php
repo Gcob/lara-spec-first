@@ -243,6 +243,9 @@ final readonly class RuleSetBuilder
         $body = self::bodySchema($operation, $walk->findings);
         $walk->multipart = $operation->requestBody !== null
             && array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES)) === [self::MULTIPART];
+        if ($operation->requestBody !== null) {
+            $walk->encodingDefaults = $operation->requestBody->encodingDefaults;
+        }
         $closedKeys = null;
 
         $read = $operation->requestBody === null
@@ -2062,8 +2065,8 @@ final readonly class RuleSetBuilder
 
     /**
      * Say that a `contentType` on a part this request does not read as a file is not enforced, unless every type it
-     * lists is one OpenAPI gives that part when it writes none ({@see self::defaultPartTypes()}): a contract that
-     * spells out its default has said nothing new. A list with nothing in it says nothing either.
+     * lists is one the document's own version gives that part when it writes none ({@see self::defaultPartTypes()}): a
+     * contract that spells out its default has said nothing new. A list with nothing in it says nothing either.
      *
      * @throws ConflictingInputException
      */
@@ -2096,24 +2099,36 @@ final readonly class RuleSetBuilder
     /**
      * The `contentType`s OpenAPI gives a part that writes none, so that spelling one out says nothing new.
      *
-     * **The versions disagree, and a contract that spells out a default is not asked which one it meant.** 3.0.x gives
-     * `application/octet-stream` to a binary string, `text/plain` to any other primitive, `application/json` to an
-     * object and the items' type to an array. 3.1.0 gives `application/json` to an object, the items' type to an array
-     * and `application/octet-stream` to all other cases, primitives included. 3.1.1 gives `text/plain` to a string with
-     * no `contentEncoding` and to a number, an integer or a boolean, `application/octet-stream` to a part with no
-     * `type` or a string with a `contentEncoding`, and the same for an object and an array. This takes the union where
-     * they differ (a primitive: both `text/plain` and `application/octet-stream`; a binary part: both too, since 3.1.1
-     * reads a `string` with `contentMediaType` as `text/plain`), which reports less and never more. The rule set knows
-     * no version, and a default is no constraint, so a union costs a missed finding on a type nothing enforces anyway.
+     * **The versions disagree, so four kinds of part read the table the document's own version handed the request
+     * body** (`Contract\EncodingDefaults`): a `type: string` file part, a string with no `format: byte`, a
+     * `format: byte` string, and a number, an integer or a boolean. Each minor is read by its latest patch text (3.0.x
+     * as 3.0.4, 3.1.x as 3.1.1, which 3.1.2 repeats), and this learns no version: a body built by hand carries the
+     * widest table, which reports nothing a version could call a default. What no version disagrees on is here: an
+     * object is `application/json`, an array has its items' default, and a file part with no `type`, or a part with no
+     * `type` at all, is `application/octet-stream`. A file part written with another type reads that type's row, as
+     * 3.0.4 does.
+     *
+     * **A 3.1 string with a `contentEncoding` is `application/octet-stream` in 3.1.1, and reads as a plain string
+     * here,** since the schema does not carry `contentEncoding`. The 3.1 table holds both types for a string, so a
+     * correct `contentEncoding` string written `application/octet-stream` is not reported, and neither is a plain
+     * string written so.
      *
      * @return list<string>
      *
      * @throws ConflictingInputException
+     *
+     * @see docs/guide/uploads.md — "The schema names the file part"
      */
     private static function defaultPartTypes(Schema $schema, RuleWalk $walk, string $label): array
     {
-        if ($schema->isFilePart) {
-            return ['application/octet-stream', 'text/plain'];
+        $table = $walk->encodingDefaults;
+
+        if ($schema->isFilePart && $schema->types === []) {
+            return ['application/octet-stream'];
+        }
+
+        if ($schema->isFilePart && $schema->soleType() === SchemaType::String) {
+            return $table->typedFile;
         }
 
         if (self::isObjectBody($schema)) {
@@ -2121,7 +2136,8 @@ final readonly class RuleSetBuilder
         }
 
         return match ($schema->soleType()) {
-            SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean => ['text/plain', 'application/octet-stream'],
+            SchemaType::String => $schema->format === 'byte' ? $table->byteString : $table->string,
+            SchemaType::Integer, SchemaType::Number, SchemaType::Boolean => $table->scalar,
             SchemaType::Array => $schema->items === null
                 ? ['application/octet-stream']
                 : self::defaultPartTypes(AllOfMerger::merge($schema->items, $walk->identity, $label.'[]'), $walk, $label.'[]'),

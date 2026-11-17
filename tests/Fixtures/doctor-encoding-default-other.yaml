@@ -1,0 +1,23 @@
+# One integer part writing `application/octet-stream`, which is not an integer's default, so the doctor's exit is 2 (it was 0 while every version's default was read).
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /counts:
+    post:
+      operationId: createCount
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                count:
+                  type: integer
+            encoding:
+              count:
+                contentType: application/octet-stream
+      responses:
+        '201':
+          description: Created

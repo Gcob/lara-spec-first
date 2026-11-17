@@ -31,11 +31,17 @@ final readonly class RequestBody
      *                                                         no entry: the parser's invented default is not what the
      *                                                         author said. Splitting the list and normalizing each type
      *                                                         is the reader's job
+     * @param  EncodingDefaults  $encodingDefaults  the `contentType` a part gets when `encoding` writes none, as the
+     *                                              document's own version gives it. A body built by hand names no
+     *                                              version, so it gets the widest table, which reports nothing a
+     *                                              version could call a default (a file part with no `type` is the
+     *                                              exception: every version gives it `application/octet-stream`)
      */
     public function __construct(
         public array $content,
         public bool $required = false,
         public array $encoding = [],
+        public EncodingDefaults $encodingDefaults = new EncodingDefaults,
     ) {}
 
     /**

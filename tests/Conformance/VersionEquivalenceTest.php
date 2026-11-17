@@ -16,6 +16,11 @@ use Gcob\LaraSpecFirst\Parsing\Version\SpecVersion;
 // as 3.1 must come out of the pipeline identical. Nothing downstream is allowed
 // to be able to tell which version was read.
 //
+// The one place the two spellings of a part mean different things is the default `contentType` of a multipart part
+// (3.0.4 gives a binary part `application/octet-stream`, 3.1.1 gives a `type: string` file part `text/plain`). The
+// strategy hands that as a table, not as a version, and it is left out of the comparison: `VersionStrategyTest` pins
+// both tables.
+//
 // It is a conformance test rather than a unit test because what it pins is the
 // behaviour of the whole reading engine, including the parser we do not own.
 // @see AGENTS.md — "Automated tests are required"

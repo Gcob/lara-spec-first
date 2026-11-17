@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Generation;
 
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 
@@ -90,6 +91,13 @@ final class RuleWalk
      * be a file in.
      */
     public bool $multipart = false;
+
+    /**
+     * The `contentType` each kind of part gets when its `encoding` writes none, as the document's own version gives it.
+     * Set from the request body by `build()`, and read only where a body's `encoding` is: an operation with no body has
+     * none to read.
+     */
+    public EncodingDefaults $encodingDefaults;
 
     /**
      * Where the fields being walked come from when every value in it is text (`query string` or `form body`), or null

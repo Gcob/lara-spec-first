@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing\Version;
 
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 
@@ -39,6 +40,28 @@ final class OpenApi31Strategy implements VersionStrategy
         }
 
         throw InvalidDocumentException::missingRootKey($this->version(), self::REQUIRED_ROOT_KEYS);
+    }
+
+    /**
+     * 3.1.1's table, which 3.1.2 repeats and which a 3.1.0 document is read with: a number, an integer or a boolean is
+     * `text/plain`, and so is a `type: string` file part (`contentMediaType` does not move it).
+     *
+     * **A string holds both types, `format: byte` ones too.** 3.1.1 gives a string `text/plain`, and
+     * `application/octet-stream` when it writes a `contentEncoding`, which the schema does not carry yet: until it
+     * does, a correct `{type: string, contentEncoding: base64}` part written `application/octet-stream` must not be
+     * reported, and nothing tells it from a plain string.
+     *
+     * TODO (#146): give a string with a `contentEncoding` its own row (`application/octet-stream`), and narrow these
+     * two rows to `text/plain`.
+     */
+    public function encodingDefaults(): EncodingDefaults
+    {
+        return new EncodingDefaults(
+            typedFile: ['text/plain'],
+            string: ['text/plain', 'application/octet-stream'],
+            byteString: ['text/plain', 'application/octet-stream'],
+            scalar: ['text/plain'],
+        );
     }
 
     /**

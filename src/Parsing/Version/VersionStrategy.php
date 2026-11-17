@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing\Version;
 
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
@@ -83,4 +84,17 @@ interface VersionStrategy
      * @see docs/guide/openapi-support.md — "Schemas"
      */
     public function referenceSiblings(array $node): array;
+
+    /**
+     * The `contentType` a multipart part gets when its `encoding` writes none, for the kinds of part whose default
+     * differs between versions.
+     *
+     * **A minor is read by its latest patch text, and the patch is never read.** The specification says a patch "SHOULD
+     * NOT be considered by tooling" and that patches "address errors in, or provide clarifications to" the text, so
+     * 3.0.x is read as 3.0.4 and 3.1.x as 3.1.1 (3.1.2 repeats its table): a 3.1.0 document gets 3.1.1's defaults. What
+     * is handed down is a table, never the version, so nothing downstream learns which one was loaded.
+     *
+     * @see docs/guide/openapi-support.md — "The differences the strategy must absorb"
+     */
+    public function encodingDefaults(): EncodingDefaults;
 }

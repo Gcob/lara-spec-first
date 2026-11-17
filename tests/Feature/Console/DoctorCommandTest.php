@@ -348,6 +348,59 @@ it('reports encoding on a part that is not a file', function (): void {
         ->and($partial[0]['message'])->not->toContain('"Schemas"');
 });
 
+// The default `contentType` is the one the document's own version gives. One contract, written at 3.0.3 and at 3.1.0
+// (read with 3.1.1's table): `count` writes a default of both, `flag` writes the default of neither, `note` (a plain
+// string) is reported at 3.0 only, and `token` (a `format: byte` string) at neither. A 3.1 string holds both types until
+// its `contentEncoding` is read, so `note` and `token` are never reported there.
+it('reads the default contentType of a part for the document version', function (string $fixture, array $named): void {
+    [$exit, $report] = doctorJson($fixture);
+
+    $findings = array_values(array_filter(
+        doctorSupportFindings($report, 'partial'),
+        static fn (array $finding): bool => str_contains($finding['message'], 'post /parts writes `encoding`'),
+    ));
+
+    expect($exit)->toBe(2)
+        ->and($findings)->toHaveCount(1);
+
+    foreach (['count', 'flag', 'note', 'token'] as $part) {
+        in_array($part, $named, true)
+            ? expect($findings[0]['message'])->toContain('`'.$part.'`')
+            : expect($findings[0]['message'])->not->toContain('`'.$part.'`');
+    }
+})->with([
+    'a 3.0 document' => ['doctor-encoding-defaults-3.0.yaml', ['flag', 'note']],
+    'a 3.1 document' => ['doctor-encoding-defaults-3.1.yaml', ['flag']],
+]);
+
+// 3.1.1 gives a string with a `contentEncoding` `application/octet-stream`. The schema does not carry the keyword, so
+// the part reads as a plain string, and the 3.1 string row holds both types: the correct default is not reported.
+it('does not report application/octet-stream on a 3.1 string with a contentEncoding', function (): void {
+    [, $report] = doctorJson('doctor-encoding-content-encoding.yaml');
+
+    $encoding = array_filter(
+        doctorSupportFindings($report, 'partial'),
+        static fn (array $finding): bool => str_contains($finding['message'], 'writes `encoding`'),
+    );
+
+    expect($encoding)->toBe([]);
+});
+
+// The doctor's exit is the whole contract's, so one integer part carries it: spelling the default out leaves the exit at
+// `0`, and writing the other type moves it to `2`, where the union of every version's defaults kept it at `0`.
+it('moves the exit code from 0 to 2 for the other type written on a primitive part', function (): void {
+    [$spelledExit] = doctorJson('doctor-encoding-default-spelled.yaml');
+    [$otherExit, $report] = doctorJson('doctor-encoding-default-other.yaml');
+
+    $partial = doctorSupportFindings($report, 'partial');
+
+    expect($spelledExit)->toBe(0)
+        ->and($otherExit)->toBe(2)
+        ->and($partial)->toHaveCount(1)
+        ->and($partial[0]['message'])->toContain('post /counts writes `encoding`')
+        ->and($partial[0]['message'])->toContain('`count`');
+});
+
 // A malformed `encoding` is a fault in the document, and the doctor's zero exit promises nothing was dropped without
 // a decision: the request is looser than the contract (a YAML list narrows nothing, an entry for a part the schema
 // does not declare is never read), so the exit is the document's, `1`, with the operation as the position.

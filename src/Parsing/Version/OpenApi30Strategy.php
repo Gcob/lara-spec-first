@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Parsing\Version;
 
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 
@@ -39,6 +40,20 @@ final class OpenApi30Strategy implements VersionStrategy
         }
 
         throw InvalidDocumentException::missingRootKey($this->version(), self::REQUIRED_ROOT_KEYS);
+    }
+
+    /**
+     * 3.0.4's table: a binary string and a `format: byte` string are `application/octet-stream`, every other primitive
+     * is `text/plain`.
+     */
+    public function encodingDefaults(): EncodingDefaults
+    {
+        return new EncodingDefaults(
+            typedFile: ['application/octet-stream'],
+            string: ['text/plain'],
+            byteString: ['application/octet-stream'],
+            scalar: ['text/plain'],
+        );
     }
 
     /**

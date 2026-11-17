@@ -1,0 +1,25 @@
+# A 3.1 string written with a `contentEncoding` is `application/octet-stream` in 3.1.1, and the schema does not carry the
+# keyword yet, so it reads as a plain string. Its `application/octet-stream` is not reported, which is its real default.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /payloads:
+    post:
+      operationId: createPayload
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: string
+                  contentEncoding: base64
+            encoding:
+              payload:
+                contentType: application/octet-stream
+      responses:
+        '201':
+          description: Created

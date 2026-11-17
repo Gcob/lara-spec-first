@@ -123,11 +123,28 @@ a string (a YAML list is the usual slip, since the specification says one comma-
 document too, with the same two answers: the generated file says so and the doctor exits `1`, nothing is read from it,
 and the part keeps what `contentMediaType` says. Both are the document's to fix because the request is looser than the
 contract for them, which a green doctor must never mean. **The one exception is the default:** a `contentType` whose
-every type is one OpenAPI already assumes for that part (`application/json` on an object, `text/plain` or
-`application/octet-stream` on a primitive or a file, and for an array the defaults of its items) says nothing the
-contract had not, so it adds no finding and exits no differently from a contract that wrote nothing. The versions
-disagree on the default of a primitive (3.0 and 3.1.1 say `text/plain`, 3.1.0 says `application/octet-stream`), and the
-rule set knows no version, so it accepts both.
+every type is the one the document's own version gives that part when it writes none says nothing the contract had not,
+so it adds no finding and exits no differently from a contract that wrote nothing. An object's default is
+`application/json`, an array's is its items', and a part with no `type` is `application/octet-stream`. The four other
+kinds of part differ by version:
+
+| Part                               | 3.0.x                      | 3.1.x        |
+| ---------------------------------- | -------------------------- | ------------ |
+| A file part written `type: string` | `application/octet-stream` | `text/plain` |
+| A `format: byte` string, no file   | `application/octet-stream` | both         |
+| Any other string, no file          | `text/plain`               | both         |
+| A number, an integer, a boolean    | `text/plain`               | `text/plain` |
+
+Each minor is read by its latest patch text, since a patch corrects the text of its minor: 3.0.x as 3.0.4, and 3.1.x as
+3.1.1, so a 3.1.0 document gets 3.1.1's defaults (the reasoning is in
+[ADR 0005](../project/decisions/0005-read-default-content-type-by-latest-patch.md)). 3.1.1 reads a `type: string` file
+part as `text/plain` whatever its `contentMediaType` says. In a body that is `multipart/form-data` alone, a file part's
+`contentType` is read as the file types it accepts and not compared with a default, so on a 3.1 `type: string` file part
+`text/plain` is reported there and not in a form-encoded or mixed body, and `application/octet-stream` the other way
+round (there it means any bytes). **A 3.1 string holds both types until
+[#146](https://github.com/Gcob/lara-spec-first/issues/146)** (`both` above): 3.1.1 gives a string with a
+`contentEncoding` `application/octet-stream`, and a plain one `text/plain`, and the schema does not carry
+`contentEncoding` yet, so the two cannot be told apart. Neither type is reported on a 3.1 string, whichever it writes.
 
 **A file is a file only in a body that is `multipart/form-data` alone.** JSON carries no files, so a `format: binary`
 property in a JSON or form-encoded body is a string like any other, and the rule set says it states a keyword nothing

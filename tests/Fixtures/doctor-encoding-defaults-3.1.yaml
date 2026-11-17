@@ -1,0 +1,40 @@
+# The same contract as `doctor-encoding-defaults-3.0.yaml`, at 3.1.0, so a 3.1.0 document is read with the table of 3.1.1.
+# What the pair proves: `count` and `flag` read the same at both (`text/plain` is the default of an integer and
+# `application/octet-stream` on a boolean is not), while `note` is reported at 3.0 only, and `token` at neither. A 3.1
+# string holds both types, since 3.1.1 gives one with a `contentEncoding` `application/octet-stream` and the schema does
+# not carry that keyword yet.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /parts:
+    post:
+      operationId: createParts
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                count:
+                  type: integer
+                flag:
+                  type: boolean
+                note:
+                  type: string
+                token:
+                  type: string
+                  format: byte
+            encoding:
+              count:
+                contentType: text/plain
+              flag:
+                contentType: application/octet-stream
+              note:
+                contentType: application/octet-stream
+              token:
+                contentType: application/octet-stream
+      responses:
+        '201':
+          description: Created
