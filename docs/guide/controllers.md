@@ -467,6 +467,7 @@ request object or the route signature. `routeAction` owns the HTTP seam; the CRU
 **Open ([#95](https://github.com/Gcob/lara-spec-first/issues/95)):** the seam above assumes `dto()` is not nullable. On
 an operation whose JSON body allows `null`, `dto()` is `?CreateUserInputDto`, so a CRUD method that takes the plain DTO
 needs a decision on what a `null` body means there. Which one is not made yet.
+[Why `dto()` can be `null`](../project/decisions/0010-return-null-for-a-null-body.md) is an ADR.
 
 ### `x-model` turns on the model layer
 

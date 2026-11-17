@@ -21,7 +21,8 @@ use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
  * a rule set that is incomplete says so in the file a reader opens. What is never emitted is a looser rule that almost
  * matches: accepting a payload the contract refuses is a wrong answer where a report is a missing one, and only the
  * second is recoverable. Nor is a rule emitted that is stricter than the contract, refusing what it accepts, unless
- * matching it exactly would be far too complex in Laravel, and then a finding says so.
+ * matching it exactly would be far too complex in Laravel, and then a finding says so. Where this class falls short of
+ * the first rule today, the gap is listed with its card or stated limit in ADR 0006, never taken as an exception.
  *
  * **What it translates is the whole table** in request-validation.md: types, nullability and presence, the bounds on
  * strings, numbers and arrays, the `format` values Laravel has a rule of the same meaning for, enumerations, patterns

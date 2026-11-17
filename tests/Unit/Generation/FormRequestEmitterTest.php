@@ -98,20 +98,27 @@ it('declares dto() returning the input DTO, built from validated()', function ()
 });
 
 /**
- * A `/things` operation whose object body is read as `$mediaType`, for `dto()`'s return type.
+ * A `/things` operation whose object body is read as `$mediaType`, or as each of them, for `dto()`'s return type.
+ *
+ * @param  string|list<string>  $mediaType
  */
-function nullableBodyOperation(HttpMethod $method, string $mediaType, bool $nullable, bool $required): Operation
+function nullableBodyOperation(HttpMethod $method, string|array $mediaType, bool $nullable, bool $required): Operation
 {
+    $schema = new Schema(
+        types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+        properties: ['name' => new Schema(types: [SchemaType::String])],
+        required: ['name'],
+    );
+
     return new Operation(
         index: 0,
         method: $method,
         path: PathTemplate::fromString('/things'),
         operationId: 'createThing',
-        requestBody: new RequestBody([$mediaType => new Schema(
-            types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
-            properties: ['name' => new Schema(types: [SchemaType::String])],
-            required: ['name'],
-        )], $required),
+        requestBody: new RequestBody(
+            array_fill_keys((array) $mediaType, $schema),
+            $required,
+        ),
     );
 }
 
@@ -119,12 +126,14 @@ function nullableBodyOperation(HttpMethod $method, string $mediaType, bool $null
 // in the same cases. A form cannot send `null`, so a nullable root read only as a form keeps the plain type.
 it('declares dto() nullable only for a nullable JSON body', function (
     HttpMethod $method,
-    string $mediaType,
+    string|array $mediaType,
     bool $nullable,
     bool $required,
     string $signature,
     bool $returnsNull,
 ): void {
+    assert(is_string($mediaType) || array_is_list($mediaType));
+    /** @var string|list<string> $mediaType */
     $emitted = emittedRequest(nullableBodyOperation($method, $mediaType, $nullable, $required), controllerShortName: 'CreateThingController');
 
     expect($emitted)->toContain($signature)
@@ -135,6 +144,8 @@ it('declares dto() nullable only for a nullable JSON body', function (
     'a PATCH nullable JSON body' => [HttpMethod::Patch, 'application/json', true, true, 'public function dto(): ?CreateThingPartialInputDto', true],
     'an optional nullable JSON body' => [HttpMethod::Post, 'application/json', true, false, 'public function dto(): ?CreateThingPartialInputDto', true],
     'a non-nullable JSON body' => [HttpMethod::Post, 'application/json', false, true, 'public function dto(): CreateThingInputDto', false],
+    'a nullable body read as JSON and as a form' => [HttpMethod::Post, ['application/json', 'multipart/form-data'], true, true, 'public function dto(): ?CreateThingInputDto', true],
+    'a nullable body read as JSON and as urlencoded' => [HttpMethod::Post, ['application/json', 'application/x-www-form-urlencoded'], true, true, 'public function dto(): ?CreateThingInputDto', true],
     'a nullable multipart body' => [HttpMethod::Post, 'multipart/form-data', true, true, 'public function dto(): CreateThingInputDto', false],
 ]);
 
