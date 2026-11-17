@@ -957,6 +957,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0003-validate-each-value-of-a-map.md`](../project/decisions/0003-validate-each-value-of-a-map.md)
     - [`0004-carry-a-map-body-under-additionalproperties.md`](../project/decisions/0004-carry-a-map-body-under-additionalproperties.md)
     - [`0005-read-default-content-type-by-latest-patch.md`](../project/decisions/0005-read-default-content-type-by-latest-patch.md)
+    - [`0006-hold-rules-to-the-contract.md`](../project/decisions/0006-hold-rules-to-the-contract.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:
