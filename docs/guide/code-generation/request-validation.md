@@ -1145,11 +1145,12 @@ would be this package redefining something it does not own. The DTO sits beside 
 and the body is read as JSON (JSON only, or JSON and a form), the request lets a JSON `null` through, and `dto()` is
 typed `?CreateUserInputDto` with `if ($this->isJson() && trim($this->getContent()) === 'null') { return null; }` first.
 The contract says the payload is `null`, and a DTO of `Optional`s would say "an object with nothing in it", which is
-something else. That holds for an optional body, a `PATCH` and a required body that requires nothing, whose DTO used to
-be built from `null` and came out empty, and for a required body that requires a property, which now lets `null` through
-(see [a nullable body, `null` or whole](#a-nullable-body-null-or-whole)). An absent optional body is not `null`: it has
-no content, passes, and keeps the DTO of `Optional`s. A body that cannot be `null`, or a nullable one read only as a
-form (a form cannot send `null`), keeps the plain return type.
+something else. That holds for an optional body, a `PATCH`, a required body that requires nothing, and a required body
+that requires a property, which lets `null` through (see
+[a nullable body, `null` or whole](#a-nullable-body-null-or-whole)). An absent optional body is not `null`: it has no
+content, passes, and keeps the DTO of `Optional`s. A body that cannot be `null`, or a nullable one read only as a form
+(a form cannot send `null`), keeps the plain return type.
+[The reasoning](../../project/decisions/0010-return-null-for-a-null-body.md) is an ADR.
 
 **Its properties are the body schema's, and a query parameter is not one of them.** (A body with none is
 [carried whole](#a-map-or-open-object-body-is-carried-whole).) The rule set merges the two, so `validated()` carries

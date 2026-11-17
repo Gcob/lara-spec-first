@@ -98,6 +98,9 @@ The request is looser, today, for example:
 - **`format: email` against Laravel's `email`**, which follows RFC 5322, accepts a comment such as
   `test(comment)@example.com`, which JSON Schema's `email` (RFC 5321) refuses.
   [#167](https://github.com/Gcob/lara-spec-first/issues/167) tracks it, and this ADR does not decide the fix.
+- **A recursion through a schema with no name, or through a field that is two markers at once,** validates nothing below
+  the field. A finding in the generated file says so, and `x-max-depth` does not lift it, since there is no schema to
+  write it on. [ADR 0009](./0009-cut-recursion-at-a-stated-depth.md) states it.
 - **A required plain query name beside the names PHP nests under it:** `?page[size]=3` satisfies a required `page`,
   since the array stands in for it. [ADR 0002](./0002-judge-plain-query-names-by-shape.md) states it, with no finding
   and no card.
@@ -122,10 +125,11 @@ The request is looser, today, for example:
       `Rule::in(['true', 'false'])` exists, and it was not taken: a query string and a form already send `1` and `0`,
       and Laravel's own `boolean` takes them. `pattern`'s `.`: reporting every pattern that uses it would leave most
       patterns unenforced, to guard against input that rarely carries `\r` or U+2028.
-    - **Stated or tracked.** The blank string, found to be wider than the case first documented
-      ([#157](https://github.com/Gcob/lara-spec-first/issues/157)); `format: email`, where no Laravel rule matches RFC
-      5321's mailbox ([#167](https://github.com/Gcob/lara-spec-first/issues/167)); the required plain query name
-      ([ADR 0002](./0002-judge-plain-query-names-by-shape.md)); and the 3.1 string's `contentType`
+    - **Stated or tracked.** A recursion that validates nothing below its field
+      ([ADR 0009](./0009-cut-recursion-at-a-stated-depth.md)); the blank string, found to be wider than the case first
+      documented ([#157](https://github.com/Gcob/lara-spec-first/issues/157)); `format: email`, where no Laravel rule
+      matches RFC 5321's mailbox ([#167](https://github.com/Gcob/lara-spec-first/issues/167)); the required plain query
+      name ([ADR 0002](./0002-judge-plain-query-names-by-shape.md)); and the 3.1 string's `contentType`
       ([ADR 0005](./0005-read-default-content-type-by-latest-patch.md),
       [#146](https://github.com/Gcob/lara-spec-first/issues/146)). They were not turned down: they are named so that
       nobody reads "never looser" as a claim the code does not keep.
