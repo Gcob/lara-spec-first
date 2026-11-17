@@ -243,7 +243,8 @@ it('drops a dependentRequired entry it cannot read', function (mixed $written, a
 
 // A minor is read by its latest patch text, since a patch corrects the text of its minor: 3.0.x by 3.0.4, which adds
 // `format: byte` to the `application/octet-stream` row, and 3.1.x by 3.1.1, which gives a primitive `text/plain` where
-// 3.1.0 gave it `application/octet-stream`.
+// 3.1.0 gave it `application/octet-stream`. A 3.1 string holds both types, since 3.1.1 gives one with a `contentEncoding`
+// `application/octet-stream` and the schema does not carry that keyword yet.
 it('gives a part the default contentTypes its own version names', function (
     VersionStrategy $strategy,
     array $typedFile,
@@ -268,7 +269,7 @@ it('gives a part the default contentTypes its own version names', function (
         ->and(array_diff($table->scalar, $widest->scalar))->toBe([]);
 })->with([
     '3.0, read as 3.0.4' => [new OpenApi30Strategy, ['application/octet-stream'], ['text/plain'], ['application/octet-stream'], ['text/plain']],
-    '3.1, read as 3.1.1' => [new OpenApi31Strategy, ['text/plain'], ['text/plain'], ['text/plain'], ['text/plain']],
+    '3.1, read as 3.1.1' => [new OpenApi31Strategy, ['text/plain'], ['text/plain', 'application/octet-stream'], ['text/plain', 'application/octet-stream'], ['text/plain']],
 ]);
 
 // A body built by hand names no version, so it holds both: the table that reports nothing a version could call a default.

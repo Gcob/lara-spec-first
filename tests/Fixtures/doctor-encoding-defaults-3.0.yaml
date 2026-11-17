@@ -1,7 +1,7 @@
-# The same contract as `doctor-encoding-defaults-3.1.yaml`, read at 3.0. What the pair proves: `count` writes the default
-# of both versions (`text/plain` on an integer), `note` writes it at neither (`application/octet-stream` on a plain
-# string), and `token` writes the default of 3.0 only (`application/octet-stream` on a `format: byte` string, which
-# 3.1.1 gives `text/plain`).
+# The same contract as `doctor-encoding-defaults-3.1.yaml`, at 3.0.3. What the pair proves: `count` writes the default of
+# both versions (`text/plain` on an integer), `flag` writes the default of neither (`application/octet-stream` on a
+# boolean), `note` is no default at 3.0 (`application/octet-stream` on a plain string), and `token`, a `format: byte`
+# string, writes the default at 3.0.
 openapi: 3.0.3
 info:
   title: Fixture API
@@ -18,6 +18,8 @@ paths:
               properties:
                 count:
                   type: integer
+                flag:
+                  type: boolean
                 note:
                   type: string
                 token:
@@ -26,6 +28,8 @@ paths:
             encoding:
               count:
                 contentType: text/plain
+              flag:
+                contentType: application/octet-stream
               note:
                 contentType: application/octet-stream
               token:

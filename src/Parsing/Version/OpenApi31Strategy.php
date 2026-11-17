@@ -43,17 +43,20 @@ final class OpenApi31Strategy implements VersionStrategy
     }
 
     /**
-     * 3.1.1's table, which 3.1.2 repeats and which a 3.1.0 document is read with: a string and a number, an integer or
-     * a boolean are `text/plain`, a `type: string` file part included (`contentMediaType` does not move it) and a
-     * `format: byte` string too. A string with a `contentEncoding` is `application/octet-stream`, which the schema does
-     * not carry, so it reads as a plain string.
+     * 3.1.1's table, which 3.1.2 repeats and which a 3.1.0 document is read with: a number, an integer or a boolean is
+     * `text/plain`, and so is a `type: string` file part (`contentMediaType` does not move it).
+     *
+     * **A string holds both types, `format: byte` ones too.** 3.1.1 gives a string `text/plain`, and
+     * `application/octet-stream` when it writes a `contentEncoding`, which the schema does not carry yet: until it
+     * does, a correct `{type: string, contentEncoding: base64}` part written `application/octet-stream` must not be
+     * reported, and nothing tells it from a plain string.
      */
     public function encodingDefaults(): EncodingDefaults
     {
         return new EncodingDefaults(
             typedFile: ['text/plain'],
-            string: ['text/plain'],
-            byteString: ['text/plain'],
+            string: ['text/plain', 'application/octet-stream'],
+            byteString: ['text/plain', 'application/octet-stream'],
             scalar: ['text/plain'],
         );
     }

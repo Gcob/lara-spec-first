@@ -93,10 +93,11 @@ final class RuleWalk
     public bool $multipart = false;
 
     /**
-     * The `contentType` each kind of part gets when its `encoding` writes none, as the document's own version gives it,
-     * or null when the operation has no body. Read, never compared with a version: the rule set knows none.
+     * The `contentType` each kind of part gets when its `encoding` writes none, as the document's own version gives it.
+     * Set from the request body by `build()`, and read only where a body's `encoding` is: an operation with no body has
+     * none to read.
      */
-    public ?EncodingDefaults $encodingDefaults = null;
+    public EncodingDefaults $encodingDefaults;
 
     /**
      * Where the fields being walked come from when every value in it is text (`query string` or `form body`), or null

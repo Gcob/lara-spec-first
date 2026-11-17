@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Gcob\LaraSpecFirst\Generation;
 
-use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\QueryParameter;
@@ -244,7 +243,9 @@ final readonly class RuleSetBuilder
         $body = self::bodySchema($operation, $walk->findings);
         $walk->multipart = $operation->requestBody !== null
             && array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES)) === [self::MULTIPART];
-        $walk->encodingDefaults = $operation->requestBody?->encodingDefaults;
+        if ($operation->requestBody !== null) {
+            $walk->encodingDefaults = $operation->requestBody->encodingDefaults;
+        }
         $closedKeys = null;
 
         $read = $operation->requestBody === null
@@ -2099,16 +2100,18 @@ final readonly class RuleSetBuilder
      * The `contentType`s OpenAPI gives a part that writes none, so that spelling one out says nothing new.
      *
      * **The versions disagree, so four kinds of part read the table the document's own version handed the request
-     * body** ({@see EncodingDefaults}): a `type: string` file part, a string with no `format: byte`, a `format: byte`
-     * string, and a number, an integer or a boolean. Each minor is read by its latest patch text (3.0.x as 3.0.4, 3.1.x
-     * as 3.1.1, which 3.1.2 repeats), and this learns no version: a body built by hand carries the widest table, which
-     * reports nothing a version could call a default. What no version disagrees on is here: an object is
-     * `application/json`, an array has its items' default, and a file part with no `type`, or a part with no `type` at
-     * all, is `application/octet-stream`. A file part written with another type reads that type's row, as 3.0.4 does.
+     * body** (`Contract\EncodingDefaults`): a `type: string` file part, a string with no `format: byte`, a
+     * `format: byte` string, and a number, an integer or a boolean. Each minor is read by its latest patch text (3.0.x
+     * as 3.0.4, 3.1.x as 3.1.1, which 3.1.2 repeats), and this learns no version: a body built by hand carries the
+     * widest table, which reports nothing a version could call a default. What no version disagrees on is here: an
+     * object is `application/json`, an array has its items' default, and a file part with no `type`, or a part with no
+     * `type` at all, is `application/octet-stream`. A file part written with another type reads that type's row, as
+     * 3.0.4 does.
      *
      * **A 3.1 string with a `contentEncoding` is `application/octet-stream` in 3.1.1, and reads as a plain string
-     * here:** the schema does not carry `contentEncoding`, so what the document wrote as `application/octet-stream` on
-     * it is reported and a `text/plain` on it is not.
+     * here,** since the schema does not carry `contentEncoding`. The 3.1 table holds both types for a string, so a
+     * correct `contentEncoding` string written `application/octet-stream` is not reported, and neither is a plain
+     * string written so.
      *
      * @return list<string>
      *
@@ -2118,7 +2121,7 @@ final readonly class RuleSetBuilder
      */
     private static function defaultPartTypes(Schema $schema, RuleWalk $walk, string $label): array
     {
-        $table = $walk->encodingDefaults ?? new EncodingDefaults;
+        $table = $walk->encodingDefaults;
 
         if ($schema->isFilePart && $schema->types === []) {
             return ['application/octet-stream'];

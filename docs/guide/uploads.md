@@ -131,8 +131,8 @@ kinds of part differ by version:
 | Part                               | 3.0.x                      | 3.1.x        |
 | ---------------------------------- | -------------------------- | ------------ |
 | A file part written `type: string` | `application/octet-stream` | `text/plain` |
-| A `format: byte` string, no file   | `application/octet-stream` | `text/plain` |
-| Any other string, no file          | `text/plain`               | `text/plain` |
+| A `format: byte` string, no file   | `application/octet-stream` | both         |
+| Any other string, no file          | `text/plain`               | both         |
 | A number, an integer, a boolean    | `text/plain`               | `text/plain` |
 
 Each minor is read by its latest patch text, since a patch corrects the text of its minor: 3.0.x as 3.0.4, and 3.1.x as
@@ -141,9 +141,10 @@ Each minor is read by its latest patch text, since a patch corrects the text of 
 part as `text/plain` whatever its `contentMediaType` says. In a body that is `multipart/form-data` alone, a file part's
 `contentType` is read as the file types it accepts and not compared with a default, so on a 3.1 `type: string` file part
 `text/plain` is reported there and not in a form-encoded or mixed body, and `application/octet-stream` the other way
-round (there it means any bytes). A 3.1 string with a `contentEncoding` is `application/octet-stream` in 3.1.1, and is
-read as a plain string until [#146](https://github.com/Gcob/lara-spec-first/issues/146): its `application/octet-stream`
-is reported and a `text/plain` on it is not.
+round (there it means any bytes). **A 3.1 string holds both types until
+[#146](https://github.com/Gcob/lara-spec-first/issues/146)** (`both` above): 3.1.1 gives a string with a
+`contentEncoding` `application/octet-stream`, and a plain one `text/plain`, and the schema does not carry
+`contentEncoding` yet, so the two cannot be told apart. Neither type is reported on a 3.1 string, whichever it writes.
 
 **A file is a file only in a body that is `multipart/form-data` alone.** JSON carries no files, so a `format: binary`
 property in a JSON or form-encoded body is a string like any other, and the rule set says it states a keyword nothing

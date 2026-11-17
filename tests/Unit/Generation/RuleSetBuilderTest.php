@@ -1906,15 +1906,18 @@ it('reports a contentType that is not a default of the document version', functi
         'a typed file part written text/plain, in a form' => [$typedFile, 'text/plain', $form, true, false],
         'a typed file part written text/plain, in a mixed body' => [$typedFile, 'text/plain', $mixed, true, false],
         'a typed file part written application/octet-stream, in a form' => [$typedFile, 'application/octet-stream', $form, false, true],
-        'a plain string written application/octet-stream' => [$text, 'application/octet-stream', $multipart, true, true],
+        'a plain string written application/octet-stream' => [$text, 'application/octet-stream', $multipart, true, false],
+        // Until a 3.1 string's `contentEncoding` is read, its row holds both types: 3.1.1 gives such a string
+        // `application/octet-stream`, and the part is told from a plain one by nothing the rule set sees.
+        'a plain string written text/plain' => [$text, 'text/plain', $multipart, false, false],
         'an integer written both types' => [$integer, 'text/plain, application/octet-stream', $multipart, true, true],
         'an integer written text/plain' => [$integer, 'text/plain', $multipart, false, false],
-        'a byte string written application/octet-stream' => [$byte, 'application/octet-stream', $multipart, false, true],
+        'a byte string written application/octet-stream' => [$byte, 'application/octet-stream', $multipart, false, false],
         'a byte string written text/plain' => [$byte, 'text/plain', $multipart, true, false],
         'a file part with no type written text/plain' => [new Schema(isFilePart: true), 'text/plain', $form, true, true],
         'a file part with no type written application/octet-stream' => [new Schema(isFilePart: true), 'application/octet-stream', $form, false, false],
         'an array of integers written application/octet-stream' => [new Schema(types: [SchemaType::Array], items: $integer), 'application/octet-stream', $multipart, true, true],
-        'an array of byte strings written application/octet-stream' => [new Schema(types: [SchemaType::Array], items: $byte), 'application/octet-stream', $multipart, false, true],
+        'an array of byte strings written application/octet-stream' => [new Schema(types: [SchemaType::Array], items: $byte), 'application/octet-stream', $multipart, false, false],
         'an object written application/json' => [objectSchema([]), 'application/json', $multipart, false, false],
         'a part with no type, no file, written application/octet-stream' => [new Schema, 'application/octet-stream', $multipart, false, false],
     ];

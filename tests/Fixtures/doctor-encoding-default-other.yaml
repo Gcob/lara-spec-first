@@ -1,0 +1,23 @@
+# One integer part, and nothing else the doctor reports, so its exit code is the whole answer: ``application/octet-stream` is not, so the exit is 2 (it was 0 while the default of every version was read)`.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /counts:
+    post:
+      operationId: createCount
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                count:
+                  type: integer
+            encoding:
+              count:
+                contentType: application/octet-stream
+      responses:
+        '201':
+          description: Created

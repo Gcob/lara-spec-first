@@ -22,7 +22,8 @@ tags: [decisions, openapi, compatibility]
 > - Turned down: the union of a minor's patches, a version on the contract, normalizing a written default away when the
 >   document is parsed, and a field on every `Schema`.
 
-**Status:** Accepted · **Card:** [#131](https://github.com/Gcob/lara-spec-first/issues/131)
+**Status:** Accepted · **Card:** [#131](https://github.com/Gcob/lara-spec-first/issues/131) · **Pull request:**
+[#171](https://github.com/Gcob/lara-spec-first/pull/171)
 
 ## Context
 
@@ -65,9 +66,14 @@ part, a string, a `format: byte` string, and a number, an integer or a boolean. 
 | Part                               | 3.0.x (3.0.4)              | 3.1.x (3.1.1) |
 | ---------------------------------- | -------------------------- | ------------- |
 | A file part written `type: string` | `application/octet-stream` | `text/plain`  |
-| A `format: byte` string, no file   | `application/octet-stream` | `text/plain`  |
-| Any other string, no file          | `text/plain`               | `text/plain`  |
+| A `format: byte` string, no file   | `application/octet-stream` | both          |
+| Any other string, no file          | `text/plain`               | both          |
 | A number, an integer or a boolean  | `text/plain`               | `text/plain`  |
+
+**A 3.1 string holds both types until its `contentEncoding` is read.** 3.1.1 gives a string with a `contentEncoding`
+`application/octet-stream`, and the schema does not carry that keyword, so such a string cannot be told from a plain
+one. Both types are the default of a 3.1 string (`both` above), so a correct `contentEncoding` string written
+`application/octet-stream` is not reported, and neither is a plain string written so.
 
 **A body built by hand keeps the widest table**: each of the four kinds is both `text/plain` and
 `application/octet-stream`. A body that names no version reports nothing a version could call a default. The one
@@ -96,11 +102,12 @@ alone, where it means "any bytes".
 ## Consequences
 
 - **A 3.1.0 contract that spelled out 3.1.0's default for a primitive is now reported.** `application/octet-stream` on a
-  string, a number, an integer or a boolean was silent, and is reported at 3.1.x. `spec:doctor` moves from exit `0` to
-  exit `2` for such a contract, which is a breaking change.
-- **A 3.1 string with a `contentEncoding` reads as a plain string.** 3.1.1 gives it `application/octet-stream`, but
-  `Schema` does not carry `contentEncoding`, so `application/octet-stream` written on it is reported and `text/plain` is
-  not, until the schema carries the keyword.
+  number, an integer or a boolean was silent, and is reported at 3.1.x. At 3.0 the same goes for a plain string.
+  `spec:doctor` moves from exit `0` to exit `2` for such a contract, which is a breaking change.
+- **A 3.1 string reports neither type until its `contentEncoding` is read.** `application/octet-stream` on a plain 3.1
+  string, which 3.1.0 gave it and 3.1.1 corrected, stays unreported, as does a `text/plain` on a string that writes a
+  `contentEncoding`, which 3.1.1 does not give it. The doctor is looser than the contract for that one case, never
+  stricter, until the schema carries the keyword ([#146](https://github.com/Gcob/lara-spec-first/issues/146)).
 - **A 3.1 `contentType` written beside `style`, `explode` or `allowReserved` is still read.** From 3.1.0 the
   specification ignores it there, and the package reads only `contentType`. This decision does not change that.
 - **In a multipart body alone, a file part's `contentType` is still read as the file types it accepts,** so the two

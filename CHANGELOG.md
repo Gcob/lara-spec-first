@@ -178,20 +178,20 @@ tags: [versions, conventions, planning]
   reported unless it is that part's default, and the default was the union of every version's. Each minor is now read by
   its latest patch text (3.0.x as 3.0.4, 3.1.x as 3.1.1, so a 3.1.0 document gets 3.1.1's defaults), since a patch
   corrects the text of its minor and the specification says tooling should not consider it. The doctor now exits `2`
-  where it exited `0` for `application/octet-stream` on a plain string, number, integer or boolean part, or an array of
-  them, at 3.0 and at 3.1 (3.1.0's default for a primitive, which 3.1.1 corrected to `text/plain`); a 3.0 `format: byte`
-  string is not one, since `application/octet-stream` is its default there. A part the doctor already reported (for
-  `format` or `contentMediaType`, so the exit stays `2`) gains an `encoding` finding: `text/plain` on a 3.0
-  `format: binary` part of a form-encoded or mixed body, typed or not, and on a 3.0 `format: byte` string;
-  `application/octet-stream` on a 3.1 `type: string` file part of a form-encoded or mixed body, and on a 3.1
-  `format: byte` string; and `text/plain` on a file part with no `type`, at either version. A `RequestBody` built by
-  hand (`new RequestBody` with no table) keeps the widest defaults, except for a file part with no `type`, which reports
-  `text/plain`. A 3.1 string with a `contentEncoding` reads as a plain string, since the schema does not carry the
-  keyword yet: its `application/octet-stream` is reported and a `text/plain` on it is not
-  ([#146](https://github.com/Gcob/lara-spec-first/issues/146)). Nothing a request answers changes: no rule changes, only
-  a finding and the doctor's exit. This is a breaking change: every move on the exit-code axis is major, in either
-  direction, so a green CI step that expected `0` here can turn red. Write the default of the document's version, or
-  drop the `encoding` entry. The reasoning is in
+  where it exited `0` for `application/octet-stream` on a number, integer or boolean part, or an array of them, at 3.0
+  and at 3.1 (3.1.0's default for a primitive, which 3.1.1 corrected to `text/plain`), and for a plain string at 3.0. A
+  part the doctor already reported (for `format` or `contentMediaType`, so the exit stays `2`) gains an `encoding`
+  finding: `text/plain` on a 3.0 `format: binary` part of a form-encoded or mixed body, typed or not, and on a 3.0
+  `format: byte` string; `application/octet-stream` on a 3.1 `type: string` file part of a form-encoded or mixed body;
+  and `text/plain` on a file part with no `type`, at either version. A `RequestBody` built by hand (`new RequestBody`
+  with no table) keeps the widest defaults, except for a file part with no `type`, which reports `text/plain`. A 3.1
+  string reports neither type until its `contentEncoding` is read
+  ([#146](https://github.com/Gcob/lara-spec-first/issues/146)): 3.1.1 gives a string with a `contentEncoding`
+  `application/octet-stream`, and the schema does not carry the keyword, so such a string cannot be told from a plain
+  one. `application/octet-stream` on a 3.1 string, a `format: byte` one included, stays unreported, as before. Nothing a
+  request answers changes: no rule changes, only a finding and the doctor's exit. This is a breaking change: every move
+  on the exit-code axis is major, in either direction, so a green CI step that expected `0` here can turn red. Write the
+  default of the document's version, or drop the `encoding` entry. The reasoning is in
   [ADR 0005](./docs/project/decisions/0005-read-default-content-type-by-latest-patch.md). This closes the `0.2.0`
   `Known limits` item for [#131](https://github.com/Gcob/lara-spec-first/issues/131).
 
