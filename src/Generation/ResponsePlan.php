@@ -1,0 +1,21 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Gcob\LaraSpecFirst\Generation;
+
+/**
+ * Every response DTO a build will write.
+ *
+ * @internal Not public API.
+ */
+final readonly class ResponsePlan
+{
+    /**
+     * @param  list<PlannedResponseDto>  $dtos  in the order they were first reached
+     * @param  array<string, list<StatusResponse>>  $statuses  what each declared status answers with, by the
+     *                                                         operation's label and in the order the document writes
+     *                                                         them
+     */
+    public function __construct(public array $dtos = [], public array $statuses = []) {}
+}

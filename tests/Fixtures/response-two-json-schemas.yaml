@@ -1,0 +1,40 @@
+# One status written in two JSON media types: with two schemas it has no DTO (a client picks the representation with
+# `Accept`, and a DTO would name only one), and with one schema it is the one DTO.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /versions:
+    get:
+      operationId: showVersions
+      responses:
+        '200':
+          description: Two representations
+          content:
+            application/vnd.acme.v1+json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+            application/vnd.acme.v2+json:
+              schema:
+                type: object
+                properties:
+                  title: { type: string }
+        '422':
+          description: One schema, said twice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }

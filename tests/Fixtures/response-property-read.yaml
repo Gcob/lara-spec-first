@@ -1,0 +1,28 @@
+# A response whose `nickname` is read by application code: the contract the static analysis proof builds, and then
+# rebuilds without `nickname` (the test removes it, so this file stays the "before").
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users/{id}:
+    get:
+      operationId: showUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        nickname: { type: string }

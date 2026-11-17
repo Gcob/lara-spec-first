@@ -2,12 +2,13 @@
 title: Response DTOs
 audience: Users
 covers: >
-    How a response schema becomes a PHP type, why a DTO is `final readonly` and therefore has no abstract layer to
-    extend, why hydration lives in a generated factory instead, how a project overrides one of those factories by
-    extending it from a directory it declares, why exactly one override per factory is allowed, and what a factory's
-    docblock has to carry that no other generated file does.
+    How a response schema becomes a PHP type, which statuses get one and what the generated controller says about the
+    ones that do not, why a DTO is `final readonly` and therefore has no abstract layer to extend, why hydration lives
+    in a generated factory instead, how a project overrides one of those factories by extending it from a directory it
+    declares, why exactly one override per factory is allowed, and what a factory's docblock has to carry that no other
+    generated file does.
 read_before: >
-    Implementing the DTO emitter, the factory emitter, or the scan that finds an override.
+    Reading a response DTO in a controller, implementing the factory emitter, or the scan that finds an override.
 tags: [code-generation, openapi, decisions, scope, laravel]
 ---
 
@@ -15,8 +16,10 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 > **In brief**
 >
-> - **Not built yet.** Nothing emits a DTO or a factory today; this is the design Phase 2 will follow.
-> - **What it reads already exists.** A response's schema reaches the contract
+> - **The DTO is built, the factory is not.** `spec:build` writes one response DTO per documented response shape, in the
+>   `Data` sub-namespace. No factory is generated yet, and the factory half of this page is the design that
+>   [#40](https://github.com/Gcob/lara-spec-first/issues/40) will follow.
+> - **What it reads already existed.** A response's schema reaches the contract
 >   [normalized and version-free](../openapi-support.md#the-normal-form-a-schema-takes), per status code and per media
 >   type, so nothing here has to open a specification or know which OpenAPI version wrote it.
 > - The shape is generated and the behavior is yours. That tension is the whole design.
@@ -28,10 +31,10 @@ A response schema describes a shape, and an application has to build that shape 
 file owns the split that follows: the type the build owns entirely, and the class beside it that a project is meant to
 teach.
 
-> **None of this is behaviour yet.** The build emits no DTO and no factory today, and no configuration key exists to
-> point the override scan anywhere. What is written here is the design
-> [Phase 2](../../../README.md#phase-2-the-generated-pipeline) will follow. Items marked `Open` are undecided, and the
-> number beside one links to the card that settles it.
+> **The DTO is behavior and the factory is design.** The build emits a DTO per documented response shape today, from the
+> response schemas the document writes, and no factory: no configuration key exists to point the override scan anywhere.
+> What is written about factories is the design [Phase 2](../../../README.md#phase-2-the-generated-pipeline) will
+> follow. Items marked `Open` are undecided, and the number beside one links to the card that settles it.
 
 ## The shape is ours, the behavior is yours
 
@@ -51,6 +54,45 @@ there is no abstract DTO to extend, because there is no DTO to extend, full stop
 
 **It extends nothing from `spatie/laravel-data` either.** The class borrows that package's shape and none of its engine,
 and what is inside it, the same on the request side, is [`dto-anatomy.md`](./dto-anatomy.md)'s subject.
+
+## What the build writes for a response
+
+**A status that has a JSON body gets a DTO, and the generated controller names it.** `spec:build` reads each declared
+status (`200`, `201`, `2XX`, `default`, and the `4xx` and `5xx` ones) of every operation. A status whose content has a
+JSON media type, `application/json` or any `+json` type, with an object schema, or a list of them, gets one
+`final readonly` class under the `Data` sub-namespace, beside the input DTOs and pruned with them: remove the response
+from the contract and the next build deletes its file. What is inside the class, and how it is named, is
+[`dto-anatomy.md`](./dto-anatomy.md)'s subject.
+
+**One schema is one class, however many operations return it.** Two operations returning `$ref: User` share `UserDto`,
+and its findings list each reader with the status it answers: `Read by get /users/{id} (200)`. A response and a request
+built from one schema are two classes (`UserDto` and `UserInputDto`), and a response schema that would take an input
+DTO's name is a build error naming both places.
+
+**A status with no DTO says why, in the controller.** The generated controller's findings carry one sentence per status:
+
+```text
+The `200` response is `UserDto`, in `Data/UserDto.php`.
+The `200` response is a list of `UserDto`, in `Data/UserDto.php`.
+The `204` response has no DTO: it declares no body.
+```
+
+The reasons a status has none are no body, no JSON media type, two JSON media types with different schemas, and a body
+that is not an object or a list of objects. None of them refuses the build. **A response schema that also allows
+`null`**, `type: [object, 'null']`, still gets the DTO of the object, and the controller's sentence for that status ends
+"or `null`, which no DTO holds". The DTO does not say so itself, since one DTO serves every operation that returns the
+schema and not all of them may answer `null`. A list of lists is said as one ("a list of lists of `UserDto`"), and a
+list whose items may be `null` says "where an item may be `null`" rather than "or `null`", which is only said of the
+body.
+
+**`routeAction` still returns `mixed`.** The controller's findings say so beside those sentences: the types named there
+are what a response is, and what `routeAction` is typed to return is a later change. Nothing yet makes a controller
+return the DTO.
+
+**What the DTO is for is the contract reaching the code that reads a response.** A response property the contract
+removes is a changed constructor, so code that reads it fails static analysis, and a test runs PHPStan over such a
+reader to prove it. The reasoning for the choices above is in
+[ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
 
 ## Factories carry the behavior
 

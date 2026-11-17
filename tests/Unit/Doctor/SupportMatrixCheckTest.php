@@ -275,6 +275,28 @@ it('counts response declarations rather than operations that declare any', funct
         ->and($findings[0]->message)->toContain('3 response declaration(s)');
 });
 
+// Response DTOs are generated now, so the line cannot say a response is "not
+// built yet". What is still missing is a keyword a response writes, and the
+// line says so and points at the card that names them.
+it('says response DTOs are generated and response keywords are not named yet', function (): void {
+    $document = supportMatrixDocumentWithRawPaths([
+        '/users/{id}' => ['get' => [
+            'responses' => ['200' => ['description' => 'a user']],
+        ]],
+    ]);
+
+    $findings = SupportMatrixCheck::deferred($document);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->level)->toBe(SupportLevel::Deferred)
+        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($findings[0]->message)->toBe(
+            '1 response declaration(s) found. Response DTOs are generated from them, but a keyword a response schema '.
+            'writes is not named yet, see https://github.com/Gcob/lara-spec-first/issues/164. '.
+            'This is a fact about this package\'s roadmap, not a defect in your contract.',
+        );
+});
+
 // OpenAPI lets a path declare parameters shared by every operation under it,
 // and a specification written that way reported zero deferred parameters —
 // rule 2 defeated for a construct this package genuinely does not honor.

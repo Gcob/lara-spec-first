@@ -16,6 +16,7 @@ use Gcob\LaraSpecFirst\Generation\ControllerName;
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
 use Gcob\LaraSpecFirst\Generation\PlannedController;
 use Gcob\LaraSpecFirst\Generation\RequestName;
+use Gcob\LaraSpecFirst\Generation\StatusResponse;
 use Symfony\Component\Process\Process;
 
 /*
@@ -37,16 +38,20 @@ use Symfony\Component\Process\Process;
  *
  * The spec path is passed as the build passes it — already relative to the project root — because that is the only form
  * a generated file may carry.
+ *
+ * @param  list<StatusResponse>  $responses  what each declared status answers with, as the build plans it
  */
 function emittedController(
     Operation $operation,
     string $specPath = 'openapi.yaml',
     bool $customControllerExists = false,
+    array $responses = [],
 ): string {
     $emitter = new ControllerEmitter('App\\Http\\Generated', $specPath);
     $planned = new PlannedController(
         $operation,
         ControllerName::for($operation),
+        $responses,
         $customControllerExists,
     );
 
@@ -244,6 +249,31 @@ describe('the findings', function (): void {
         expect(emittedController(operationFor()))
             ->toContain('answers 501')
             ->toContain('The return type is `mixed`');
+    });
+
+    // The return type is still `mixed`, but no longer because nothing is read: each status says what it is.
+    it('names each status response DTO in the controller findings', function (): void {
+        $docblock = emittedDocblock(emittedController(operationFor(), responses: [
+            StatusResponse::of('200', 'UserDto', 0),
+            StatusResponse::of('201', 'CreateUser201ResponseItemDto', 1),
+            StatusResponse::without('204', 'it declares no body'),
+            StatusResponse::without('default', 'it declares no JSON media type'),
+        ]));
+
+        expect((string) preg_replace('/\s*\n \*\s+/', ' ', $docblock))
+            ->toContain('The `200` response is `UserDto`, in `Data/UserDto.php`.')
+            ->toContain('The `201` response is a list of `CreateUser201ResponseItemDto`')
+            ->toContain('The `204` response has no DTO: it declares no body.')
+            ->toContain('The `default` response has no DTO: it declares no JSON media type.')
+            ->toContain('The return type is `mixed`');
+        expect($docblock)->not->toContain('is read yet');
+    });
+
+    it('says an operation that declares no response has no response type', function (): void {
+        $docblock = (string) preg_replace('/\s*\n \*\s+/', ' ', emittedDocblock(emittedController(operationFor())));
+
+        expect($docblock)->toContain('The contract declares no response for this operation');
+        expect($docblock)->not->toContain('is read yet');
     });
 
     it('reports a deprecation, with the removal date when the contract states one', function (
@@ -506,6 +536,7 @@ function goldenController(): string
     $planned = new PlannedController(
         $operation,
         ControllerName::for($operation),
+        [],
         false,
         RequestName::for($operation),
     );
@@ -547,6 +578,7 @@ it('orders imports the way the formatter orders them', function (): void {
     $planned = new PlannedController(
         $operation,
         ControllerName::for($operation),
+        [],
         false,
         RequestName::for($operation),
     );

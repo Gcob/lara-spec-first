@@ -1,0 +1,34 @@
+# A request schema `User` generates `UserInputDto`, and a response schema `UserInput` generates the same class name.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users/{id}:
+    put:
+      operationId: replaceUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '200':
+          description: What was stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInput'
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        email: { type: string }
+    UserInput:
+      type: object
+      properties:
+        email: { type: string }

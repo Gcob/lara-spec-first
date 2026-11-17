@@ -28,8 +28,8 @@ final readonly class GeneratedDocblock
     /**
      * @param  non-empty-list<string>  $provenance  where this came from, one line each and already escaped
      * @param  non-empty-list<string>  $findings  what the build knew and the reader cannot see, wrapped here
-     * @param  non-empty-list<string>  $navigation  where to go next, already wrapped; an empty string is a blank line
-     *                                              inside the block
+     * @param  list<string>  $navigation  where to go next, already wrapped; an empty string is a blank line inside the
+     *                                    block, and no line at all leaves the section out
      */
     public static function render(array $provenance, array $findings, array $navigation): string
     {
@@ -56,6 +56,12 @@ final readonly class GeneratedDocblock
             foreach (CommentText::wrap(CommentText::safe($finding)) as $position => $line) {
                 $lines[] = $position === 0 ? ' *   - '.$line : ' *     '.$line;
             }
+        }
+
+        if ($navigation === []) {
+            $lines[] = ' */';
+
+            return implode("\n", $lines);
         }
 
         $lines[] = ' *';

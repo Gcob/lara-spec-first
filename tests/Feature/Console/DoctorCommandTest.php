@@ -116,6 +116,18 @@ it('exits 2 on a rejected construct under Support findings, with no document fau
         ->and($text)->toContain('Laravel has no TRACE verb');
 });
 
+// The doctor runs the build planner, so a response schema the build refuses is a package limit here too.
+it('exits 2 on a response schema whose DTO name an input DTO already takes', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('response-name-taken-by-input.yaml'));
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(2)
+        ->and($text)->toContain('#/components/schemas/User')
+        ->and($text)->toContain('#/components/schemas/UserInput')
+        ->and($text)->toContain('UserInputDto');
+});
+
 it('reports every fault the reading pipeline collected, not only the first', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('multiple-faults.yaml'));
 
@@ -423,8 +435,9 @@ it('reports a malformed encoding as a document fault', function (): void {
 });
 
 // Acceptance 2: a keyword a response writes is not named, and the responses are
-// still the one Deferred count, which does not gate.
-it('names no keyword a response schema writes, and keeps responses as one deferred count', function (): void {
+// still the one Deferred count, which does not gate. The line says response DTOs
+// are generated and which card will name the keywords.
+it('still counts responses without gating the exit code', function (): void {
     [$exit, $report] = doctorJson('doctor-ignored-keyword-in-response.yaml');
 
     $support = array_values(array_filter(
@@ -435,7 +448,9 @@ it('names no keyword a response schema writes, and keeps responses as one deferr
     expect($exit)->toBe(0)
         ->and($support)->toHaveCount(1)
         ->and($support[0]['level'])->toBe('deferred')
-        ->and($support[0]['message'])->toContain('1 response declaration(s) found');
+        ->and($support[0]['message'])->toContain('1 response declaration(s) found')
+        ->and($support[0]['message'])->toContain('Response DTOs are generated from them')
+        ->and($support[0]['message'])->toContain('https://github.com/Gcob/lara-spec-first/issues/164');
 });
 
 // The rule set cannot be built for an operation whose body and query name one

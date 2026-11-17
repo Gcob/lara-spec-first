@@ -251,6 +251,25 @@ final readonly class ControllerEmitter
     }
 
     /**
+     * What each declared status answers with: its DTO, or why it has none.
+     *
+     * Said here because the controller is where a reader asks what the operation returns, and the DTOs are other files.
+     *
+     * @return non-empty-list<string>
+     */
+    private function responseFindings(PlannedController $planned): array
+    {
+        if ($planned->responses === []) {
+            return ['The contract declares no response for this operation, so there is no response type to name.'];
+        }
+
+        return array_map(
+            static fn (StatusResponse $response): string => $response->sentence(),
+            $planned->responses,
+        );
+    }
+
+    /**
      * What the build knew and the reader cannot see.
      *
      * Findings are the part that has to stay honest. A summary that says nothing costs a reader the time it takes to
@@ -279,8 +298,9 @@ final readonly class ControllerEmitter
                     .'rewritten on every build.'
                 : 'Nothing implements this operation, so it answers 501. That is the honest answer '
                     .'while the contract describes an endpoint and no code does.',
-            'The return type is `mixed` because no response schema is read yet. It is deliberately '
-                .'not `never`, which would be accurate today and would forbid every future override.',
+            'The return type is `mixed`, whatever the response types below say. It is deliberately not '
+                .'`never`, which would be accurate today and would forbid every future override.',
+            ...$this->responseFindings($planned),
         ];
 
         if ($operation->deprecated) {

@@ -46,7 +46,15 @@ paths:
             parameters:
                 - { name: id, in: path, required: true, schema: { type: string } }
             responses:
-                '200': { description: A user }
+                # A response body is what gives the operation a response DTO: `UserDto`, in the generated
+                # `Data` namespace beside the input DTOs. Its `nickname` is not required, so it is
+                # `Optional|string|null`, and the generated controller names the DTO in its findings.
+                '200':
+                    description: A user
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
                 '404': { description: No such user }
 
         # No `operationId`, on purpose: the generated class name is derived from
@@ -480,6 +488,23 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/Comment'
+
+        # A response schema, read the other way round from `NewPost`: nothing here is validated, so the DTO
+        # casts nothing, and a property the contract does not require is `Optional`.
+        User:
+            type: object
+            required: [id, email]
+            properties:
+                id:
+                    type: integer
+                email:
+                    type: string
+                    format: email
+                nickname:
+                    type: [string, 'null']
+                createdAt:
+                    type: string
+                    format: date-time
 
     securitySchemes:
         bearerAuth:

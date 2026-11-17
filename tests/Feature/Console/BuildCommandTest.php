@@ -219,6 +219,35 @@ it('prunes an input DTO whose operation left the contract', function (): void {
     expect(is_dir(buildTree().'/Data'))->toBeFalse();
 });
 
+// A schema a request reads and a response writes gives two DTOs, `UserInputDto` and `UserDto`, in one namespace. The
+// response one is a file like any other, so a response that loses its body loses it.
+it('writes and prunes response DTOs in the Data namespace', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('response-and-request-dtos.yaml'));
+    build();
+
+    expect(treeContents(buildTree()))->toBe([
+        'Controllers/ReplaceUserController.php',
+        'Data/UserDto.php',
+        'Data/UserInputDto.php',
+        'Data/UserPartialInputDto.php',
+        'Requests/ReplaceUserRequest.php',
+        GeneratedRoutesLocator::FILE,
+    ]);
+
+    $response = (string) file_get_contents(buildTree().'/Data/UserDto.php');
+
+    expect($response)->toContain('namespace '.buildNamespace().'\\Data;')
+        ->and($response)->toContain('final readonly class UserDto implements JsonSerializable')
+        ->and($response)->toContain('Read by `put /users/{id}` (`200`).')
+        ->and(class_exists(buildNamespace().'\\Data\\UserDto'))->toBeTrue();
+
+    config()->set('lara-spec-first.spec.path', specFixturePath('response-body-removed.yaml'));
+    build();
+
+    expect(is_file(buildTree().'/Data/UserDto.php'))->toBeFalse()
+        ->and(is_file(buildTree().'/Data/UserInputDto.php'))->toBeTrue();
+});
+
 // "And the build says so rather than emitting an empty class."
 it('says how many operations state nothing to validate', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('request-generation.yaml'));

@@ -26,7 +26,7 @@ tags: [code-generation, openapi, scope, decisions, laravel]
 >   about where it came from.
 > - Your classes extend the generated ones, so a change to the contract becomes a static analysis error instead of a
 >   surprise in production.
-> - **Not built yet:** response DTOs and the sanitized [public copy](../glossary.md#public-copy).
+> - **Not built yet:** the response DTO factories and the sanitized [public copy](../glossary.md#public-copy).
 
 Spec-First only pays off if the contract reaches the code. This document owns how it gets there: **one build command
 turns the specification into PHP, and the result is safe to regenerate at any time.** It carries what the rest of the
@@ -47,7 +47,8 @@ wherever that question comes up.
 > declares one gets a parent it may extend and a route pointing at the child, and
 > [`spec:make`](./scaffolding.md#scaffolding-is-specmake-not-a-build-step) scaffolds that child.
 > [Request validation](./request-validation.md) is built, and so are the input DTOs it hands a controller through
-> `dto()`. Not built yet: the response DTOs. Rename detection was designed here and
+> `dto()`, and one response DTO is written per documented response shape, with the response factories not built yet.
+> Rename detection was designed here and
 > [decided against](./generated-file-anatomy.md#rename-and-orphan-detection-decided-against).
 
 What the build reads, and what it refuses to read, is a different subject and lives in

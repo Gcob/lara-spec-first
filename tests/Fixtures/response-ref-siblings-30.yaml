@@ -1,0 +1,27 @@
+# A response `$ref` with a keyword beside it at 3.0: the reference replaces what is beside it, so this is `User` alone.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users/{id}:
+    get:
+      operationId: showUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+                required: [email]
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id: { type: integer }
+        email: { type: string }

@@ -1,0 +1,140 @@
+# Every way a response is declared: one DTO per status, inline schemas named after their operation and status, lists
+# through their items, and the statuses that have no DTO.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      responses:
+        '200':
+          description: Every user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      operationId: createUser
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: integer }
+                  address:
+                    type: object
+                    properties:
+                      street: { type: string }
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        label: { type: string }
+                  labels:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        text: { type: string }
+        2XX:
+          description: Some other success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  note: { type: string }
+        default:
+          description: An error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+  /users/{id}:
+    put:
+      operationId: updateUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '422':
+          description: Refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '204':
+          description: Nothing to say
+  /health:
+    get:
+      responses:
+        '200':
+          description: Up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  up: { type: boolean }
+  /events:
+    get:
+      operationId: listEvents
+      responses:
+        '200':
+          description: Events
+          content:
+            application/vnd.acme+json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string }
+  /users/count:
+    get:
+      operationId: countUsers
+      responses:
+        '200':
+          description: How many
+          content:
+            application/json:
+              schema:
+                type: integer
+  /users/export:
+    get:
+      operationId: exportUsers
+      responses:
+        '200':
+          description: A file
+          content:
+            text/csv:
+              schema:
+                type: string
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id: { type: integer }
+    ValidationError:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }

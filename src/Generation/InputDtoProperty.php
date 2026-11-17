@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Generation;
 
 /**
- * One promoted property of a generated input DTO.
+ * One promoted property of a generated DTO, on the request side or the response side.
  *
  * @internal Not public API: what the planner hands the emitter.
  */

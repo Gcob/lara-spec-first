@@ -54,6 +54,7 @@ final readonly class BuildPlanner
         $claimed = [];
         $claimedRequests = [];
         $unreadBodies = [];
+        $paired = [];
 
         foreach ($operations as $operation) {
             $this->assertRoutable($operation);
@@ -112,9 +113,18 @@ final readonly class BuildPlanner
                 );
             }
 
+            $paired[] = [$operation, $name, $request];
+        }
+
+        // Before the controllers are written, so that each one can say what its statuses answer with. A response DTO is
+        // built from the operations alone: nothing about a request reaches it.
+        $responses = (new ResponseDtoPlanner)->plan($operations);
+
+        foreach ($paired as [$operation, $name, $request]) {
             $planned[] = new PlannedController(
                 $operation,
                 $name,
+                $responses->statuses[$operation->label()] ?? [],
                 $name->customController !== null && $this->lookup->exists($name->customController),
                 $request,
             );
@@ -137,6 +147,10 @@ final readonly class BuildPlanner
             $requests,
         );
 
+        // Each planner keeps its own names, so the two directions meet here: a response schema named like a request's
+        // plus `Input` would give one class two meanings.
+        $this->assertNoNameInBothDirections($inputDtos, $responses);
+
         $formRequests = new FormRequestEmitter($this->namespace, $this->specPath);
 
         foreach ($requests as $request) {
@@ -149,9 +163,35 @@ final readonly class BuildPlanner
             $files[] = $dtoEmitter->emit($dto);
         }
 
+        $responseEmitter = new ResponseDtoEmitter($this->namespace, $this->specPath);
+
+        foreach ($responses->dtos as $dto) {
+            $files[] = $responseEmitter->emit($dto);
+        }
+
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
         return new BuildPlan($planned, $files, $requests, $unreadBodies);
+    }
+
+    /**
+     * Refuse a class name that an input DTO and a response DTO would both take.
+     *
+     * @throws UnusableNameException
+     */
+    private function assertNoNameInBothDirections(InputDtoPlan $input, ResponsePlan $response): void
+    {
+        $responses = array_column($response->dtos, null, 'shortName');
+
+        foreach ($input->dtos as $dto) {
+            if (isset($responses[$dto->shortName])) {
+                throw UnusableNameException::responseDtoTakenByInput(
+                    $dto->shortName,
+                    $dto->position,
+                    $responses[$dto->shortName]->position,
+                );
+            }
+        }
     }
 
     /**

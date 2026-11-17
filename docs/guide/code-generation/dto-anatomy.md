@@ -15,10 +15,11 @@ tags: [code-generation, openapi, decisions, dependencies, laravel]
 
 > **In brief**
 >
-> - **The request side is built.** `spec:build` writes one input DTO per request body, in the `Data` sub-namespace. The
->   response side is the shape [#39](https://github.com/Gcob/lara-spec-first/issues/39) will follow.
+> - **Both sides are built.** `spec:build` writes one input DTO per request body and one response DTO per documented
+>   response shape, in the `Data` sub-namespace.
 > - A DTO is a constructor, a `from()` and a `toArray()`, and the build writes all three in full.
-> - A field the client did not send is `Optional`, a class of this package, and `toArray()` leaves it out.
+> - A field the client did not send, or a response left out, is `Optional`, a class of this package, and `toArray()`
+>   leaves it out.
 > - The shape is borrowed from `spatie/laravel-data`. Its engine is not, because the build already knows what that
 >   engine discovers at run time.
 > - The package does not depend on `spatie/laravel-data`, and a generated DTO extends nothing.
@@ -28,20 +29,20 @@ A DTO is the contract's shape as a PHP type.
 one, and [`response-dtos.md`](./response-dtos.md) owns why a response is built from one and who builds it. This file
 owns what is inside the class, which is the same on both sides.
 
-> **Part of this is behavior and part of it is design.** The request side is built, by
-> [#35](https://github.com/Gcob/lara-spec-first/issues/35): every row below marked "request side" is what the build
-> writes today. The response side lands with [#39](https://github.com/Gcob/lara-spec-first/issues/39), and what is said
-> about it is the design that card will follow. Items marked `Open` are undecided, and the number beside one links to
-> the card that settles it.
+> **Both sides are behavior.** The request side was built by [#35](https://github.com/Gcob/lara-spec-first/issues/35)
+> and the response side by [#39](https://github.com/Gcob/lara-spec-first/issues/39): what the rows below say is what the
+> build writes today, and a row names the side it is about wherever the two differ. What is not built is a response
+> DTO's [factory](./response-dtos.md#factories-carry-the-behavior), which is design.
 
 ## One class, three members
 
 **Every generated DTO is a `final readonly` class with a promoted constructor, a static `from()` and a `toArray()`, and
-nothing else.** This is the whole of one, generated from a `User` schema:
+nothing else.** This is the whole of one, generated from a `User` schema a response returns (a DTO's own docblock of
+findings, which every generated file carries, is left out):
 
 ```php
 // app/Http/Generated/Data/UserDto.php
-final readonly class UserDto implements Arrayable, JsonSerializable
+final readonly class UserDto implements JsonSerializable
 {
     /**
      * @param 'active'|'banned' $status
@@ -54,7 +55,7 @@ final readonly class UserDto implements Arrayable, JsonSerializable
         public string $status,
         public CarbonImmutable $created_at,
         public array $roles,
-        public Optional|AddressDto $address,
+        public Optional|AddressDto $address = new Optional,
     ) {}
 
     public static function from(array $payload): self
@@ -65,10 +66,10 @@ final readonly class UserDto implements Arrayable, JsonSerializable
             nickname: $payload['nickname'],
             status: $payload['status'],
             created_at: CarbonImmutable::parse($payload['created_at']),
-            roles: array_map(RoleDto::from(...), $payload['roles']),
+            roles: array_values(array_map(RoleDto::from(...), $payload['roles'])),
             address: array_key_exists('address', $payload)
                 ? AddressDto::from($payload['address'])
-                : new Optional(),
+                : new Optional,
         );
     }
 
@@ -79,8 +80,8 @@ final readonly class UserDto implements Arrayable, JsonSerializable
             'email' => $this->email,
             'nickname' => $this->nickname,
             'status' => $this->status,
-            'created_at' => $this->created_at->toRfc3339String(),
-            'roles' => array_map(fn (RoleDto $role) => $role->toArray(), $this->roles),
+            'created_at' => $this->created_at->toJSON(),
+            'roles' => array_map(static fn (RoleDto $item): array => $item->toArray(), $this->roles),
         ];
 
         if (! $this->address instanceof Optional) {
@@ -90,9 +91,22 @@ final readonly class UserDto implements Arrayable, JsonSerializable
         return $array;
     }
 
-    public function jsonSerialize(): array
+    public function jsonSerialize(): object
     {
-        return $this->toArray();
+        $array = [
+            'id' => $this->id,
+            'email' => $this->email,
+            'nickname' => $this->nickname,
+            'status' => $this->status,
+            'created_at' => $this->created_at->toJSON(),
+            'roles' => $this->roles,
+        ];
+
+        if (! $this->address instanceof Optional) {
+            $array['address'] = $this->address;
+        }
+
+        return (object) $array;
     }
 }
 ```
@@ -106,8 +120,16 @@ What each member is for:
    a [factory](./response-dtos.md#factories-carry-the-behavior) may call it or the constructor, whichever reads better
    for the source it maps from. Building a DTO from a model is the factory's job, never the DTO's.
 3. **`toArray()` writes the contract's keys back out**, recursing into nested DTOs and leaving out every `Optional`.
-   `jsonSerialize()` returns the same array, so a DTO returned from a controller becomes a JSON response through
-   Laravel's own router with nothing registered.
+   `jsonSerialize()` makes a DTO returned from a controller a JSON response through Laravel's own router with nothing
+   registered. On the request side it returns the same array. **On the response side it returns an object, and hands a
+   nested DTO and every map to the encoder as one**: an object whose optional properties are all absent, and a map with
+   no entries, go out as `{}`, never `[]`, and a map keyed `"0"` and `"1"` goes out as `{"0":"a","1":"b"}`, never
+   `["a","b"]`, since the contract said object. `toArray()` stays a plain PHP array at every depth, `[]` and
+   `[0 => 'a', 1 => 'b']` included, which is what mass assignment and the rest of PHP expect. **A response DTO is
+   `JsonSerializable` and not `Arrayable`**: Laravel calls `toArray()` on an `Arrayable` before it encodes one, which
+   `response($dto, 201)`, a paginator and `Collection::toArray()` all do, and that would write the empty map as `[]`.
+   Without the interface every one of those paths reaches `jsonSerialize()`. A request DTO is both, since its
+   `toArray()` is what mass assignment reads.
 
 **A DTO is named after the schema it describes, with `Input` on the request side, and never after the `$ref` that
 reached it or the file that holds it.** `#/components/schemas/NewUser` gives `NewUserInputDto` and
@@ -126,6 +148,22 @@ which type of each it is (full or partial), the base its name came from (the sch
 and a property) and the suffix added to it, so it says what met rather than blaming the names. The naming scheme is not
 changed to avoid it: rename one of the schemas, or give an inline schema a component name of its own. Where a schema is
 written goes in the file's `Provenance`, which is where a DTO that came from another file says so.
+
+**A response DTO is named the same way, without `Input`:** `$ref: User` gives `UserDto`, wherever the schema is written.
+A response schema written inline takes its operation's name and the status, `CreateUser201ResponseDto`,
+`CreateUser2XXResponseDto` and `CreateUserDefaultResponseDto`, and an object nested in it adds its property
+(`CreateUser201ResponseAddressDto`), with `Item` for an element of an array and `Value` for a value of a map. Two
+different schemas that give one response class are the same build error, and so is a response schema whose class an
+input DTO already has: a response schema `UserInput` gives `UserInputDto`, which a request schema `User` gives too. The
+message names both places. Rename one of the schemas.
+
+**A response gets a DTO per declared status** (`200`, `2XX`, `default`) that has a JSON body, `application/json` or any
+`+json` type, whose schema is an object or a list of objects. A list has no class of its own, its items do
+(`list<UserDto>`). A status gets none, and the generated controller says so and why, when it declares no body (`204`),
+no JSON media type (`text/csv`), a list with no `items` or of values that are not objects, or a body that is neither an
+object nor a list. **Two JSON media types under one status with different schemas also get none**: the build is not
+refused, the controller's findings name both media types, and with one schema between them it is one DTO. Which DTO
+reads which status is in the file's findings and the controller's.
 
 **A property is named exactly like the contract's key** when the key is a valid PHP identifier, so `created_at` in the
 specification is `$created_at` in the class and one `grep` finds both. A key that is not an identifier (`user-id`,
@@ -147,13 +185,24 @@ value before `from()` saw it:
   `strict_types`, a value of the wrong type is a `TypeError` naming the property rather than a wrong number in a
   response.
 
+**A list's elements and a map's values are not checked one by one.** PHP's `TypeError` names a property and never an
+element, and `from()` hands a list or a map to its property as the array it is, converting each element only where its
+type needs it (a nested DTO, a date). A `list<int>` that holds a string is built. What `from()` refuses is a property of
+the wrong type, which is the one thing `strict_types` can name.
+
 **Not `Responsable`, deliberately.** A response's status code and headers belong to the operation, not to the shape, and
 one `$ref` schema is routinely returned by operations answering `200` and `201`. A DTO that decided its own status would
 have to pick one of them.
 
+**Not an API Resource either.** A `JsonResource` is built from a model by code that runs when the response is made. A
+generated DTO is the contract's shape and nothing else, and what builds it from a model is the
+[factory](./response-dtos.md#factories-carry-the-behavior)'s, so the shape cannot drift with that code. The reasoning is
+in [ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
+
 ## Absent is `Optional`
 
-**A property the client may leave out is typed `Optional|T`, and `Optional` is a class this package ships**:
+**A property the client may leave out, or a response may leave out, is typed `Optional|T`, and `Optional` is a class
+this package ships**:
 
 ```php
 // vendor/gcob/lara-spec-first/src/Data/Optional.php
@@ -185,14 +234,14 @@ gets `Optional` on the request side, and why a `PATCH` gets its own type for it,
 **It is the one class of this package a generated DTO imports**, and that makes its name and namespace public API
 surface under [rule 4](../openapi-support.md#the-four-rules) from the first release that emits a DTO.
 
-**Open ([#39](https://github.com/Gcob/lara-spec-first/issues/39)):** whether a property a response schema leaves out of
-`required` becomes `Optional|T` or plain `T`. Plain `T` is stricter than the contract and still conforms to it, since a
-server that always sends a field breaks no promise, and it spares a factory from ever writing `new Optional()`. The cost
-is that a server can then never omit a field the contract allows it to omit. The lean is `Optional|T`, for the same
-reading on both sides. It is also what
-[the never-stricter principle](./request-validation.md#every-constraint-maps-or-reports) asks: plain `T` would be the
-stricter reading, allowed only if matching the contract were far too complex, which it is not, and it would then need a
-finding in the generated file.
+**A response property the contract leaves out of `required` is `Optional|T` too**, with the same default,
+`= new Optional`, so a DTO is built with every optional property absent (`new UserDto(id: 1, email: 'ada@example.com')`)
+and `toArray()` leaves it out. Required properties come first and the optional ones after, each group in the order the
+contract writes them, whatever order the schema lists them in. The alternative was a plain `T`, which is stricter than
+the contract: a server that always sends a field breaks no promise, but a plain `T` forbids it ever omitting a field the
+contract allows it to omit, and [the never-stricter principle](./request-validation.md#every-constraint-maps-or-reports)
+asks for the contract's own reading. The reasoning is in
+[ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
 
 ## What each schema type becomes
 
@@ -200,23 +249,23 @@ finding in the generated file.
 [`Contract\Schema`](../openapi-support.md#the-normal-form-a-schema-takes), so nothing below depends on which OpenAPI
 version wrote the document:
 
-| The schema says                                                              | The property is                                                                        | `from()` does                                      | `toArray()` does  |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------- |
-| `string`                                                                     | `string`                                                                               | Reads it                                           | Writes it         |
-| `integer`                                                                    | `int`                                                                                  | `(int)`, request side only                         | Writes it         |
-| `number`                                                                     | `float`                                                                                | `(float)`, request side only                       | Writes it         |
-| `boolean`                                                                    | `bool`                                                                                 | `filter_var()`, request side only                  | Writes it         |
-| `string`, `format: date-time`                                                | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`                         | `format()`, below |
-| `string`, `format: date`                                                     | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`                         | `toDateString()`  |
-| `enum`                                                                       | Its scalar type                                                                        | Reads it, or casts it as its type does             | Writes it         |
-| `object` with `properties`, via `$ref`                                       | The DTO named after the schema                                                         | `::from()`                                         | `->toArray()`     |
-| `object` with `properties`, inline                                           | A DTO named after its parent                                                           | `::from()`                                         | `->toArray()`     |
-| `object` with no `properties`                                                | `array<array-key, T>`, `T` from `additionalProperties`, `mixed` when it states none    | `array_map()` with `T`'s own conversion, keys kept | The same, back    |
-| `array` with `items`                                                         | `list<T>`, in the docblock                                                             | `array_map()` with `T`'s own conversion            | The same, back    |
-| A file part                                                                  | `UploadedFile`                                                                         | Reads it                                           | Writes it as is   |
-| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The class of the schema it points back at, `mixed` where the request did not unroll it | `::from()`, as above                               | `->toArray()`     |
-| `nullable`                                                                   | `?T`                                                                                   | Checks for `null` before any conversion            | Writes the `null` |
-| No single type, or none at all                                               | `mixed`                                                                                | Reads it                                           | Writes it         |
+| The schema says                                                              | The property is                                                                        | `from()` does                                                                                       | `toArray()` does                     |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `string`                                                                     | `string`                                                                               | Reads it                                                                                            | Writes it                            |
+| `integer`                                                                    | `int`                                                                                  | `(int)`, request side only                                                                          | Writes it                            |
+| `number`                                                                     | `float`                                                                                | `(float)`, request side only                                                                        | Writes it                            |
+| `boolean`                                                                    | `bool`                                                                                 | `filter_var()`, request side only                                                                   | Writes it                            |
+| `string`, `format: date-time`                                                | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`                                                                          | `format()`, `toJSON()` on a response |
+| `string`, `format: date`                                                     | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`                                                                          | `toDateString()`                     |
+| `enum`                                                                       | Its scalar type                                                                        | Reads it, or casts it as its type does                                                              | Writes it                            |
+| `object` with `properties`, via `$ref`                                       | The DTO named after the schema                                                         | `::from()`                                                                                          | `->toArray()`                        |
+| `object` with `properties`, inline                                           | A DTO named after its parent                                                           | `::from()`                                                                                          | `->toArray()`                        |
+| `object` with no `properties`                                                | `array<array-key, T>`, `T` from `additionalProperties`, `mixed` when it states none    | `array_map()` with `T`'s own conversion, keys kept (a response reads each value without casting it) | The same, back                       |
+| `array` with `items`                                                         | `list<T>`, in the docblock                                                             | `array_map()` with `T`'s own conversion                                                             | The same, back                       |
+| A file part                                                                  | `UploadedFile`                                                                         | Reads it                                                                                            | Writes it as is                      |
+| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The class of the schema it points back at, `mixed` where the request did not unroll it | `::from()`, as above                                                                                | `->toArray()`                        |
+| `nullable`                                                                   | `?T`                                                                                   | Checks for `null` before any conversion                                                             | Writes the `null`                    |
+| No single type, or none at all                                               | `mixed`                                                                                | Reads it                                                                                            | Writes it                            |
 
 **A map is typed by its values, and keeps its keys.** An object that declares no `properties` and writes a schema under
 `additionalProperties` is `array<array-key, T>`, `T` being what that schema becomes: `array<array-key, int>` for
@@ -227,6 +276,12 @@ the integer `2024` when it reads the JSON, so a map of integers can arrive with 
 schema, or `additionalProperties: {}`, is `array<array-key, mixed>`: the request judges nothing about its values. An
 object that declares `properties` is a DTO of its own and carries only those.
 
+**A response map is typed the same way, and it is written back as a JSON object.** The same schema gives
+`array<array-key, PetDto>` on a response, with `PetDto` where the request has `PetInputDto`, each value built through
+`PetDto::from()` and its keys kept. A response reads each value as it is, where a request casts it. `jsonSerialize()`
+writes the map with `(object)`, so an empty map is `{}` and one keyed `"0"` and `"1"` is `{"0":"a","1":"b"}`, never a
+JSON array, while `toArray()` is the PHP array it was.
+
 **A body that is a map or an open object is carried whole, under one property.** An object body with no `properties` has
 no declared key for a property to be, so its keys are the data. The DTO has one property, `additionalProperties`, typed
 `array<array-key, T>` and never `Optional`: an absent or empty body is `[]`. `T` is what the value schema becomes, as
@@ -236,6 +291,17 @@ payload to the property, converting each value, and `toArray()` returns it, so `
 `$dto->additionalProperties === ['a' => 1, 'b' => 2]`. The partial type is the same, since no key of it can be absent.
 The reasoning is in [ADR 0004](../../project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
 
+**A response object with no `properties` is carried whole in the same way.**
+`{type: object, additionalProperties: {type: integer}}` under a status is a DTO of one property, `additionalProperties`,
+typed `array<array-key, int>` and never `Optional`: `from(['a' => 1, 'b' => 2])` holds `['a' => 1, 'b' => 2]` and
+`from([])` holds `[]`. `toArray()` returns the keys themselves, and `jsonSerialize()` writes the map as a JSON object,
+never as `{"additionalProperties": …}`. An open object (`type: object` alone, or `additionalProperties: {}`) is
+`array<array-key, mixed>`, with no finding about its values. A map behind a component (`$ref: Counts`) is `CountsDto`,
+the same shape, and an inline object value of a root map is named after the property that holds it, as on the request
+side (`CreateUser201ResponseAdditionalPropertiesValueDto`). **Beside declared `properties`, an `additionalProperties`
+schema is not carried**: the DTO has the declared properties only, and the file's findings say the values of the other
+keys are not read. The reasoning is in [ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
+
 **Beside a `query` parameter, the values are `mixed`.** The request judges the values of a root map only where no
 `query` parameter shares the validated data with the body (see
 [a map's values](./request-validation.md#a-maps-values-are-validated-one-by-one)), and the DTO never types what the
@@ -244,7 +310,9 @@ why. The keys of the `query` parameters are never in the DTO: `validated()` hold
 body's keys alone. A body key named like a `query` parameter is read from the query string instead, which the request's
 findings name. A key a form delivers under a rewritten name (`a.b` as `a_b`) is carried under that name, and so is it
 said. A key such as an ID (`"1042"`) is kept, as the `int` key `1042`, and its value is judged: the
-[request writes a rule for each one](./request-validation.md#a-map-or-open-object-body-is-carried-whole).
+[request writes a rule for each one](./request-validation.md#a-map-or-open-object-body-is-carried-whole). **A response
+has no `query` parameter, so the values of a response map are always typed** and that finding never appears in a
+response DTO.
 
 **A node that recurses is the class of the schema it points back at.** `Address` holds an `Address`: `parent` is typed
 `Optional|AddressInputDto`, and `Optional|AddressInputDto|null` when the schema is nullable (`?AddressInputDto` for a
@@ -262,6 +330,12 @@ depth and the cut is in [ADR 0009](../../project/decisions/0009-cut-recursion-at
 whether an operation enters through `Author` or through `Book`. The class of a recursion is the one the schema gets
 where it is written, so nothing depends on where the build came in, and the file's findings say so in one wording for
 the root, the nested object and the recursion alike (`Class name taken from the schema ...`).
+
+**On a response, a named recursion is its own class at every level, with no depth.** `x-max-depth` limits what a request
+validates and a response DTO validates nothing, so `Comment` holding `replies: list<Comment>` is `list<CommentDto>`
+however deep a response goes. A recursion the response cannot name stays `mixed`, and the file's findings say why: one
+through a schema with no name, one through a schema that is not an object with properties, and a property with
+`properties` written beside its reference, which the ancestor's class does not carry.
 
 **A recursion the request did not unroll stays `mixed`, and says so.** The DTO does not build a class from input nothing
 checked. Three shapes are left as they arrived:
@@ -302,8 +376,9 @@ property its literal union and nothing else.
 
 **A property whose schema states no single type is `mixed`, and says so.** A `oneOf`, a union of two types or a schema
 with no `type` never reaches a rule that names one, so the DTO reads the value as it came and the file's findings send
-the reader to the request's, which says what was not enforced. An optional `mixed` is declared `mixed` and written
-`Optional|mixed` in its docblock, since PHP refuses `mixed` inside a union.
+the reader to the request's, which says what was not enforced. On a response there is no request beside the file, so its
+findings give the reason themselves. An optional `mixed` is declared `mixed` and written `Optional|mixed` in its
+docblock, since PHP refuses `mixed` inside a union.
 
 **An enumeration that is cast keeps its scalar type and no literal union.** `(int) $payload['level']` is an `int` to
 Larastan and never `1|2`, so a docblock saying otherwise would be a claim the line beside it contradicts. The cast is
@@ -315,7 +390,20 @@ union is true and stays.
 **A `date-time` is written back with its fraction.** `toRfc3339String()` drops it, and the request rule set accepts a
 fraction of any length (Go sends up to nine digits, .NET seven), so a `toArray()` built on it would lose the sub-second
 part of a value on the way to mass assignment. The request side writes `format('Y-m-d\TH:i:s.uP')`, which keeps what
-Carbon holds, microseconds. The response side is #39's to decide.
+Carbon holds, microseconds. **The response side writes `toJSON()`**, which is what Laravel writes when it serializes a
+model: UTC, a `Z` and microseconds, so `2026-11-14T10:00:00.123456-05:00` goes out as `2026-11-14T15:00:00.123456Z`. A
+`date` is written with `toDateString()` on both sides, and a `null` stays `null`.
+
+**A response DTO has no property for a `writeOnly` one.** OpenAPI says a response never sends it, so the class would
+carry a field nothing fills, and the file's findings name the key that was left out. A `readOnly` property is read like
+any other, since a response is where it is sent.
+
+**A `$ref` with keywords beside it is the same DTO as its `allOf` spelling, on a response too.** In a 3.1 document,
+`{$ref: User, required: [email]}` and `allOf: [{$ref: User}, {required: [email]}]` give the same properties, types and
+`required`. **The order of the properties is the one thing that can differ**: the properties written beside the `$ref`
+come before the referenced schema's, where the `allOf` lists its branches in order, so a `$ref` with sibling
+`properties` and its `allOf` spelling are two files with the same members in another order. The request side reads them
+the same way. In a 3.0 document everything written beside a `$ref` is ignored, and the DTO is the referenced schema's.
 
 **A `null` is checked before anything converts it.** `CarbonImmutable::parse(null)` is the current time and `(int) null`
 is `0`, so a nullable property's conversion is wrapped rather than applied:
@@ -326,7 +414,8 @@ born_on: $payload['born_on'] === null ? null : CarbonImmutable::parse($payload['
 
 **An array's items get the conversion their own type would.** `ids[]=1&ids[]=2` arrives as two strings, so a request
 DTO's `list<int>` is built with `array_map(intval(...), $payload['ids'])`, which keeps the docblock Larastan trusts true
-at run time. On the response side the items go in as they are, like any other scalar.
+at run time. On the response side the items go in as they are, like any other scalar, and a list of DTOs is re-indexed
+with `array_values()` so that it is a list.
 
 **A file part exists on the request side only**, and `toArray()` hands the `UploadedFile` to mass assignment untouched.
 What reaches the column after that is [`uploads.md`](../uploads.md)'s. A schema a generator
@@ -356,23 +445,23 @@ point where it cares.
 **The shape is borrowed, and the engine is not.** `spatie/laravel-data` is what most Laravel projects already reach for
 to write a DTO, and its public surface is the right one. What the design keeps and what it drops, feature by feature:
 
-| In `spatie/laravel-data`                                | Here                                                                                            |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| A promoted constructor as the shape                     | **Kept**, as a `final readonly` class                                                           |
-| `from()`                                                | **Kept**, from an array only, and written in full by the build                                  |
-| `toArray()` and JSON serialization                      | **Kept**, through `Arrayable` and `JsonSerializable`                                            |
-| `Optional`                                              | **Kept**, as [a class of this package](#absent-is-optional)                                     |
-| Nested data objects and typed collections               | **Kept**, as nested DTOs and a `list<T>` docblock on a plain array                              |
-| Casts and transformers                                  | **Kept** as [generated lines](#what-each-schema-type-becomes), never as a registry              |
-| Name mapping (`MapInputName`, `MapOutputName`)          | **Kept** only where a key is not a PHP identifier                                               |
-| Validation rules inferred from the class                | **Left.** [The generated `FormRequest`](./request-validation.md) owns validation                |
-| `Lazy` properties, includes and excludes                | **Left.** The contract fixes which fields a response carries                                    |
-| Wrapping (`wrap('data')`)                               | **Left.** An envelope is a property of the schema, and the DTO already has it                   |
-| `Responsable`, `DataCollection`, paginated output       | **Left.** Status belongs to the operation, and paging to [`pagination.md`](../pagination.md)    |
-| Magic creation methods (`fromModel()`, `fromRequest()`) | **Left.** [A factory](./response-dtos.md#factories-carry-the-behavior) builds from a model      |
-| Computed properties, `additional()`                     | **Left.** A DTO has no behavior, and nothing outside the contract belongs in one                |
-| Attributes, the structure cache                         | **Left.** There is nothing to discover at run time                                              |
-| The TypeScript transformer                              | **Left.** [`openapi-typescript`](./publishing.md#types-come-from-openapi-typescript) owns types |
+| In `spatie/laravel-data`                                | Here                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A promoted constructor as the shape                     | **Kept**, as a `final readonly` class                                                            |
+| `from()`                                                | **Kept**, from an array only, and written in full by the build                                   |
+| `toArray()` and JSON serialization                      | **Kept**, through `Arrayable` and `JsonSerializable` (a response DTO is `JsonSerializable` only) |
+| `Optional`                                              | **Kept**, as [a class of this package](#absent-is-optional)                                      |
+| Nested data objects and typed collections               | **Kept**, as nested DTOs and a `list<T>` docblock on a plain array                               |
+| Casts and transformers                                  | **Kept** as [generated lines](#what-each-schema-type-becomes), never as a registry               |
+| Name mapping (`MapInputName`, `MapOutputName`)          | **Kept** only where a key is not a PHP identifier                                                |
+| Validation rules inferred from the class                | **Left.** [The generated `FormRequest`](./request-validation.md) owns validation                 |
+| `Lazy` properties, includes and excludes                | **Left.** The contract fixes which fields a response carries                                     |
+| Wrapping (`wrap('data')`)                               | **Left.** An envelope is a property of the schema, and the DTO already has it                    |
+| `Responsable`, `DataCollection`, paginated output       | **Left.** Status belongs to the operation, and paging to [`pagination.md`](../pagination.md)     |
+| Magic creation methods (`fromModel()`, `fromRequest()`) | **Left.** [A factory](./response-dtos.md#factories-carry-the-behavior) builds from a model       |
+| Computed properties, `additional()`                     | **Left.** A DTO has no behavior, and nothing outside the contract belongs in one                 |
+| Attributes, the structure cache                         | **Left.** There is nothing to discover at run time                                               |
+| The TypeScript transformer                              | **Left.** [`openapi-typescript`](./publishing.md#types-come-from-openapi-typescript) owns types  |
 
 ## The build knows what Spatie has to discover
 

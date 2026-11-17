@@ -962,6 +962,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0008-honor-keywords-beside-a-ref.md`](../project/decisions/0008-honor-keywords-beside-a-ref.md)
     - [`0009-cut-recursion-at-a-stated-depth.md`](../project/decisions/0009-cut-recursion-at-a-stated-depth.md)
     - [`0010-return-null-for-a-null-body.md`](../project/decisions/0010-return-null-for-a-null-body.md)
+    - [`0011-mirror-a-response-schema-in-its-dto.md`](../project/decisions/0011-mirror-a-response-schema-in-its-dto.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

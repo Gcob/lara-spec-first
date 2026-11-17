@@ -832,6 +832,3 @@ Four things a reader arrives at a controller wanting, and finds owned elsewhere:
   `--force` means overwrite in every Laravel generator, and this command never overwrites.
 - The [interface, trait and method names](#the-crud-semantic-is-an-empty-marker), all of which are public API surface
   under [rule 4](./openapi-support.md#the-four-rules) from the first release on.
-- Whether a generated DTO could be a Laravel API Resource instead. The `routeAction` return type is the only contract
-  either way, so this is a question about what the build emits rather than about this document's design, worth settling
-  against real generated output rather than in the abstract.
