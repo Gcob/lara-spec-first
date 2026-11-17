@@ -11,6 +11,7 @@ use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\NewUserInputDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\NewUserPartialInputDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\UpdateUserRequest;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
@@ -599,3 +600,45 @@ it('refuses an empty value at the depth as it refuses any other', function (mixe
     'an empty string' => [''],
     'an empty list' => [[]],
 ]);
+
+// A map's keys are the data: the DTO holds each value under the key it arrived with, converted by its schema, and
+// `"2024"` is the integer key `2024` since that is what PHP makes of it (the docblock says `array-key` for that).
+// `from()` is what `validated()` hands a multipart body, where an integer arrives as text.
+it('builds each value of a map property, keeping its keys', function (): void {
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\MapBodies';
+    generatedFrom('map-bodies.yaml', $namespace);
+    $thing = generatedClass($namespace, 'Data\\CreateThingInputDto');
+    $pet = generatedClass($namespace, 'Data\\PetInputDto');
+    $label = generatedClass($namespace, 'Data\\CreateThingLabelsValueInputDto');
+
+    $form = $thing::from(['counts' => ['a' => '42', 'b' => '7']]);
+
+    expect(dtoAt($form, 'counts'))->toBe(['a' => 42, 'b' => 7]);
+
+    $json = dtoOfPost(generatedClass($namespace, 'Requests\\CreateThingRequest'), [
+        'counts' => [2024 => 5, 'b' => 6],
+        'pets' => ['rex' => ['name' => 'Rex', 'age' => 3], 'tom' => ['name' => 'Tom']],
+        'seen' => ['first' => '2026-01-02T03:04:05+00:00'],
+        'scores' => ['a' => [1, 2], 'b' => []],
+        'labels' => ['x' => ['text' => 'hello']],
+        'open' => ['anything' => ['nested' => [1]]],
+    ]);
+
+    expect(dtoAt($json, 'counts'))->toBe([2024 => 5, 'b' => 6])
+        ->and(array_keys((array) dtoAt($json, 'counts'))[0])->toBeInt()
+        ->and(get_debug_type(dtoAt($json, 'pets', 'rex')))->toBe($pet)
+        ->and(dtoAt($json, 'pets', 'rex', 'name'))->toBe('Rex')
+        ->and(dtoAt($json, 'pets', 'rex', 'age'))->toBe(3)
+        ->and(dtoAt($json, 'pets', 'tom', 'age'))->toBeInstanceOf(Optional::class)
+        ->and(dtoAt($json, 'seen', 'first'))->toBeInstanceOf(CarbonImmutable::class)
+        ->and(dtoAt($json, 'scores'))->toBe(['a' => [1, 2], 'b' => []])
+        ->and(get_debug_type(dtoAt($json, 'labels', 'x')))->toBe($label)
+        ->and(dtoAt($json, 'open'))->toBe(['anything' => ['nested' => [1]]]);
+
+    $written = $json instanceof Arrayable ? $json->toArray() : [];
+
+    expect($written['pets'])->toBe(['rex' => ['name' => 'Rex', 'age' => 3], 'tom' => ['name' => 'Tom']])
+        ->and($written['seen'])->toBe(['first' => '2026-01-02T03:04:05.000000+00:00'])
+        ->and($written['labels'])->toBe(['x' => ['text' => 'hello']])
+        ->and($written['counts'])->toBe([2024 => 5, 'b' => 6]);
+});

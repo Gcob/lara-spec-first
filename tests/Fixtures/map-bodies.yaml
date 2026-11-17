@@ -1,0 +1,61 @@
+# A body whose properties are maps (`type: object` with `additionalProperties`), one for each kind of value the input DTO
+# converts: an integer that a form delivers as text, an object that is a DTO of its own, a date, and a list. `open` is
+# the map that states no value schema. `GeneratedInputDtoTest` runs it through the generated request and DTO, and
+# `InputDtoEmitterTest` reads the text the emitter writes for it.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                counts:
+                  type: object
+                  additionalProperties:
+                    type: integer
+                pets:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/Pet'
+                seen:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    format: date-time
+                scores:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: integer
+                labels:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    required: [text]
+                    properties:
+                      text:
+                        type: string
+                open:
+                  type: object
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        age:
+          type: integer

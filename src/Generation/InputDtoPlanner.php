@@ -475,7 +475,7 @@ final class InputDtoPlanner
                 return new InputDtoType(InputDtoType::LIST, $nullable, item: $item);
             case SchemaType::Object:
                 return $schema->properties === []
-                    ? new InputDtoType(InputDtoType::MAP, $nullable)
+                    ? $this->map($schema, $base, $segment, $pointer, $nullable, $owner)
                     : $this->nested($written, $schema, $base, $segment, $pointer, $nullable, $owner, $above);
         }
 
@@ -491,6 +491,31 @@ final class InputDtoPlanner
         $this->registry[$owner]['findings'][] = self::noSingleTypeFinding($segment, $schema);
 
         return new InputDtoType(InputDtoType::MIXED);
+    }
+
+    /**
+     * An object with no properties: the keys it arrives with, each value typed by the schema the request judged it by.
+     *
+     * **The value schema the request judges is the one typed**, as a list's element is, through the same reading of the
+     * schema ({@see RuleSetBuilder::mapValueSchema()}). One that states nothing is an open object, as in the rules: the
+     * values stay `mixed`. The value is named after the property with `Value`, where a list's element says `Item`.
+     *
+     * @throws UnusableNameException
+     * @throws ConflictingInputException
+     */
+    private function map(Schema $schema, string $base, string $segment, string $pointer, bool $nullable, string $owner): InputDtoType
+    {
+        $value = RuleSetBuilder::mapValueSchema($schema);
+
+        if ($value === null || RuleSetBuilder::allowsAnyValue($value)) {
+            return new InputDtoType(InputDtoType::MAP, $nullable);
+        }
+
+        return new InputDtoType(
+            InputDtoType::MAP,
+            $nullable,
+            item: $this->type($value, $base, $segment.'Value', self::within($pointer, '/additionalProperties'), $owner),
+        );
     }
 
     /**

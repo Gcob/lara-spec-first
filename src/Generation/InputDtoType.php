@@ -44,7 +44,7 @@ final readonly class InputDtoType
     /** An object with `properties`, as a DTO of its own. */
     public const DTO = 'dto';
 
-    /** An object with no `properties`: whatever keys it arrives with. */
+    /** An object with no `properties`: whatever keys it arrives with, each value an `item` when the schema types it. */
     public const MAP = 'map';
 
     public const LIST = 'list';
@@ -55,7 +55,8 @@ final readonly class InputDtoType
     /**
      * @param  string  $kind  one of the constants above
      * @param  string|null  $class  the short name of the DTO, for `DTO`
-     * @param  self|null  $item  the element type, for `LIST`
+     * @param  self|null  $item  the element type for `LIST`, the value type for `MAP`; null for a `MAP` whose values
+     *                           are open
      * @param  list<string|int|float|bool>  $literals  the values an enumeration allows, written in the docblock as a
      *                                                 literal union
      */
@@ -95,7 +96,7 @@ final readonly class InputDtoType
 
         return match ($this->kind) {
             self::LIST => 'list<'.$this->itemDoc().'>',
-            self::MAP => 'array<string, mixed>',
+            self::MAP => 'array<array-key, '.$this->itemDoc().'>',
             default => null,
         };
     }
@@ -153,7 +154,7 @@ final readonly class InputDtoType
         return match ($this->kind) {
             self::DATE, self::DATE_TIME => ['Carbon\\CarbonImmutable'],
             self::FILE => ['Illuminate\\Http\\UploadedFile'],
-            self::LIST => $this->item?->imports() ?? [],
+            self::LIST, self::MAP => $this->item?->imports() ?? [],
             default => [],
         };
     }
@@ -194,7 +195,7 @@ final readonly class InputDtoType
     {
         return match ($this->kind) {
             self::INT, self::FLOAT, self::BOOL, self::DATE, self::DATE_TIME, self::DTO => true,
-            self::LIST => $this->item?->convertsOnTheWayIn() ?? false,
+            self::LIST, self::MAP => $this->item?->convertsOnTheWayIn() ?? false,
             default => false,
         };
     }
@@ -206,7 +207,7 @@ final readonly class InputDtoType
     {
         return match ($this->kind) {
             self::DATE, self::DATE_TIME, self::DTO => true,
-            self::LIST => $this->item?->convertsOnTheWayOut() ?? false,
+            self::LIST, self::MAP => $this->item?->convertsOnTheWayOut() ?? false,
             default => false,
         };
     }
@@ -229,6 +230,7 @@ final readonly class InputDtoType
             self::DATE, self::DATE_TIME => 'CarbonImmutable::parse('.$value.')',
             self::DTO => $this->class.'::from('.$value.')',
             self::LIST => $this->buildList($value),
+            self::MAP => $this->buildMap($value),
             default => $value,
         };
     }
@@ -242,6 +244,17 @@ final readonly class InputDtoType
         // `list<int>` would be a claim nothing checks. The validated payload is a
         // list already (the rule set says `list`), so this reorders nothing.
         return $callable === null ? $value : 'array_values(array_map('.$callable.', '.$value.'))';
+    }
+
+    /**
+     * A map keeps its keys, which are the data, so no `array_values`: `array_map` over one array keeps them, and an
+     * integer-like key is already an `int` in PHP, which is why the docblock says `array-key`.
+     */
+    private function buildMap(string $value): string
+    {
+        $callable = $this->item?->fromCallable();
+
+        return $callable === null ? $value : 'array_map('.$callable.', '.$value.')';
     }
 
     /**
@@ -269,7 +282,7 @@ final readonly class InputDtoType
 
         return sprintf(
             'static fn (%s $item): %s => %s',
-            $this->kind === self::LIST && ! $this->nullable ? 'array' : 'mixed',
+            in_array($this->kind, [self::LIST, self::MAP], true) && ! $this->nullable ? 'array' : 'mixed',
             ($this->nullable ? '?' : '').$this->native(),
             $this->from('$item'),
         );
@@ -284,11 +297,19 @@ final readonly class InputDtoType
             self::DATE => $value.'->toDateString()',
             self::DTO => $value.'->toArray()',
             self::LIST => $this->writeList($value),
+            self::MAP => $this->writeMap($value),
             default => $value,
         };
     }
 
     private function writeList(string $value): string
+    {
+        $callable = $this->item?->toCallable();
+
+        return $callable === null ? $value : 'array_map('.$callable.', '.$value.')';
+    }
+
+    private function writeMap(string $value): string
     {
         $callable = $this->item?->toCallable();
 

@@ -144,6 +144,16 @@ tags: [versions, conventions, planning]
   a document exits `0`. A map beside declared `properties`, and a root map beside a `query` parameter, are still
   reported as `Partial` and still exit `2`. This is a breaking change: every move on the exit-code axis is major, in
   either direction, so a CI step that expected `2` here will see `0`. Update what it expects.
+- **A map property is now typed by its values on the input DTO.** An object property that declares no `properties` and
+  writes a schema under `additionalProperties` was `array<string, mixed>` with its values as they arrived, and is now
+  `array<array-key, T>`, `T` being what the value schema becomes: a map of `$ref` values holds DTO objects, a map of
+  integers holds `int`s (a form delivers them as text, and they are cast), a map of dates holds `CarbonImmutable`s, and
+  `toArray()` writes each one back. An inline object value is its own class, named after the property with `Value`
+  (`CreateThingLabelsValueInputDto`). The keys are kept, and the key type is `array-key` for every map, the open ones
+  too, since PHP reads the key `"2024"` as the integer `2024`. A map that writes no value schema, or
+  `additionalProperties: {}`, is `array<array-key, mixed>`, as the request judges nothing about its values. This is a
+  breaking change: `$dto->labels['x']['name']` on a map of `$ref` values throws, and becomes `$dto->labels['x']->name`.
+  Read the value as the class it is.
 
 ### Fixed
 

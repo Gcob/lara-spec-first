@@ -460,8 +460,10 @@ final readonly class RuleSetBuilder
      * The schema every value of a map is held to, or null when the object is not a map: it declares a property, or it
      * writes no value schema. Beside a property the wildcard would also judge the declared key, so those values are
      * reported and not read.
+     *
+     * @internal Public so the input DTO types the values the request judged, and no others.
      */
-    private static function mapValueSchema(Schema $schema): ?Schema
+    public static function mapValueSchema(Schema $schema): ?Schema
     {
         return $schema->properties === [] ? $schema->additionalPropertiesSchema : null;
     }
@@ -469,8 +471,10 @@ final readonly class RuleSetBuilder
     /**
      * Whether a value schema states nothing, so any value passes: `additionalProperties: {}`, or one that only writes
      * keywords nothing reads. Read as `additionalProperties: true` is, with no rule and no finding.
+     *
+     * @internal Public for the same reason as {@see self::mapValueSchema()}.
      */
-    private static function allowsAnyValue(Schema $value): bool
+    public static function allowsAnyValue(Schema $value): bool
     {
         return $value->sameShapeAs(new Schema);
     }
