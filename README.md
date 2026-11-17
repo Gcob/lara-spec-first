@@ -105,7 +105,8 @@ is in flight, what is done, and in which order. This section is the shape of the
 [CONTRIBUTING.md](./CONTRIBUTING.md) is how to get involved.
 
 **Where we are:** Phase 1 shipped as `0.1.0`, and Phase 2 is in progress: `0.2.0` shipped its first half, the generated
-request validation and the input DTOs. The response side is next.
+request validation and the input DTOs, and the response DTOs are built since (`Unreleased`). The response factories are
+next.
 
 **The next release** is the board filtered on its milestone, the open one named `0.x.y` with the lowest version, and
 `just status` prints it.
@@ -131,9 +132,9 @@ the sanitized public copy of the specification.
 **`0.2.0` shipped the request side.** `spec:build` reads the schemas of the request body and the `query` parameters and
 writes one `FormRequest` per operation and the input DTOs, with the rules the contract states and a named finding for
 every constraint no Laravel rule can hold. `spec:doctor` reports what a request cannot enforce, and the known gaps are
-listed in the [changelog](./CHANGELOG.md). **What remains of Phase 2:** the response DTOs and their factories, `x-model`
-and the CRUD defaults, `security` as an authorization check, the Faker mocks, pagination and rate limiting, and the
-sanitized public copy.
+listed in the [changelog](./CHANGELOG.md). **What remains of Phase 2:** the response DTO factories, `x-model` and the
+CRUD defaults, `security` as an authorization check, the Faker mocks, pagination and rate limiting, and the sanitized
+public copy.
 
 **Four configuration blocks are inert until this phase lands**, and `config/lara-spec-first.php` says which beside each
 one. Changing one has no effect today.
