@@ -25,8 +25,8 @@ final class RuleWalk
     public array $rules = [];
 
     /**
-     * The rule keys a `query` name judges only when its value is not an array, with the path PHP delivers each under:
-     * the names PHP nests under them carry the array.
+     * The rule keys a `query` name or a form body's name judges only when its value is not an array, with the path PHP
+     * delivers each under: the names PHP nests under them carry the array.
      *
      * @var array<string, list<string>>
      */
@@ -207,11 +207,37 @@ final class RuleWalk
 
     /**
      * The top-level names whose value the request cannot check when a form sends it, by the reason, worded to follow
-     * "the request cannot check it in a form body: ".
+     * "the request cannot check it in a form body: ". A name here has no rule and no presence rule.
      *
      * @var array<string, string>
      */
     public array $unchecked = [];
+
+    /**
+     * For a body read only as a form: the top-level names judged by shape, because a form delivers other names below
+     * them (`page` above `page[size]`). Their rules are written, behind a shape check, once every rule key exists.
+     *
+     * @var array<string, true>
+     */
+    public array $shaped = [];
+
+    /**
+     * The shaped names the contract requires, by the reason the request cannot promise them, worded to follow "the
+     * request cannot check it in a form body: ": the array a form builds for the names below one stands in for it.
+     * Apart from {@see self::$unchecked}, since the name keeps its rule and its presence rule, and merged into the rule
+     * set's `uncheckedNames`, which is what makes the DTO property `Optional`.
+     *
+     * @var array<string, string>
+     */
+    public array $standIn = [];
+
+    /**
+     * The keys of the validated data `dto()` reads only when their value is not an array: see
+     * {@see RuleSet::$scalarNames}.
+     *
+     * @var list<string>
+     */
+    public array $scalarNames = [];
 
     /**
      * The top-level names that have no rule at all, because PHP delivers them under a key another name shares or under

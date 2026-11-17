@@ -2691,16 +2691,225 @@ it('gives no rule to names PHP delivers as one key, and names both', function (a
     'a rewritten and a plain name' => [['user.name', 'user_name']],
 ]);
 
-// A name delivered below a top-level key another name uses: `page[size]` is `page => [size => ...]`.
-it('gives no rule to a bracketed name delivered below a declared top-level name', function (): void {
+// A name delivered below a top-level key another name uses: `page[size]` is `page => [size => ...]`. The upper name keeps
+// its rules behind a shape check, as a `query` name does, and the nested one keeps its own under the key PHP delivers.
+it('keeps a bracketed name delivered below a declared top-level name, and the name above it', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page' => new Schema(types: [SchemaType::String]), 'page[size]' => new Schema(types: [SchemaType::Integer]), 'plain' => new Schema(types: [SchemaType::String])],
+        ['plain'],
     )]));
 
-    expect($set->rules)->toBe(['plain' => ['sometimes', 'string']])
-        ->and(array_keys($set->uncheckedNames))->toBe(['page[size]', 'page'])
-        ->and(implode("\n", $set->findings))->toContain('`page[size]` is delivered by a form as `page.size`, below the key `page` that `page` uses');
+    expect($set->rules)->toBe(['page' => ['sometimes', 'string'], 'page.size' => ['sometimes', 'integer'], 'plain' => ['present', 'string']])
+        ->and($set->whenNotArray)->toBe(['page' => ['page']])
+        ->and($set->uncheckedNames)->toBe([])
+        // Nothing is left unenforced, so `spec:build` has nothing to warn about.
+        ->and($set->leavesUnenforced())->toBeFalse()
+        ->and(implode("\n", $set->findings))->not->toContain('is delivered by a form as');
 });
+
+// What a form body does with a name beside the names PHP nests under it (`page` beside `page[size]`): `page` keeps its
+// rules behind `Rule::when()`, judged only when its value is not an array, and `page[size]` keeps its own, keyed by the
+// path PHP delivers it under and read back by `dto()`. At any depth, and in a chain. `ids[]` is read as `ids.0`, since
+// a form has no append notion, and `page[*]` has a `*`, which keeps its finding and no rule, and claims its path only
+// to shape the name above it. `filter[a]` is no prefix of `filter[ab][c]`, so that pair has no shape check.
+it('keeps a plain form name behind a shape check beside the names a form nests under it', function (string $mediaType, array $names, array $rules, array $shaped, array $formPaths): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(
+        array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer], minimum: 1.0), array_flip($names)),
+    )]));
+
+    expect(array_keys($set->rules))->toBe($rules)
+        ->and($set->whenNotArray)->toBe($shaped)
+        ->and($set->formPaths)->toBe($formPaths)
+        ->and($set->uncheckedNames)->toBe([])
+        ->and(implode("\n", $set->findings))->not->toContain('tell their values')
+        ->and(implode("\n", $set->findings))->not->toContain('is delivered by a form as');
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with([
+    'a plain name and a bracketed one below it' => [['page', 'page[size]'], ['page', 'page.size'], ['page' => ['page']], ['page[size]' => ['page', 'size']]],
+    'a bracketed name below another bracketed name' => [['filter[a]', 'filter[a][b]'], ['filter.a', 'filter.a.b'], ['filter.a' => ['filter', 'a']], ['filter[a]' => ['filter', 'a'], 'filter[a][b]' => ['filter', 'a', 'b']]],
+    'a chain of three' => [
+        ['filter', 'filter[a]', 'filter[a][b]'],
+        ['filter', 'filter.a', 'filter.a.b'],
+        ['filter' => ['filter'], 'filter.a' => ['filter', 'a']],
+        ['filter[a]' => ['filter', 'a'], 'filter[a][b]' => ['filter', 'a', 'b']],
+    ],
+    'a plain name and a list it is appended to' => [['ids', 'ids[]'], ['ids', 'ids.0'], ['ids' => ['ids']], ['ids[]' => ['ids', '0']]],
+    'a plain name and a rewritten one below it' => [['user_name', 'user_name[x]'], ['user_name', 'user_name.x'], ['user_name' => ['user_name']], ['user_name[x]' => ['user_name', 'x']]],
+    'an optional plain name and a wildcard below it' => [['page', 'page[*]'], ['page'], ['page' => ['page']], []],
+    'two names on different paths of one head' => [['filter[a]', 'filter[ab][c]'], ['filter.a', 'filter.ab.c'], [], ['filter[a]' => ['filter', 'a'], 'filter[ab][c]' => ['filter', 'ab', 'c']]],
+]);
+
+// The array branch, as on the query side: `array` when a name below the plain one has a rule, `exclude` when none has
+// (`page[*]` has a `*`, and the pair `a.b[c]` and `a_b[c]` share a key, so `a_b` has no ruled name below it).
+it('drops the array beside a plain form name only when no name below it has a rule', function (array $names, array $dropped): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($names)),
+    )]));
+
+    expect($set->dropsArray)->toBe($dropped);
+})->with([
+    'a rule below' => [['page', 'page[size]'], []],
+    'a wildcard below it' => [['page', 'page[*]'], ['page']],
+    'a wildcard and a rule below it' => [['page', 'page[*]', 'page[size]'], []],
+    'a list it is appended to' => [['ids', 'ids[]'], []],
+    'a chain whose last name has a rule' => [['filter', 'filter[a]', 'filter[a][b]'], []],
+    'a pair below it, which has no rule' => [['a_b', 'a.b[c]', 'a_b[c]'], ['a_b']],
+]);
+
+// A body that is JSON and a form keeps today's rule for a plain name beside a `*` name: a JSON client's `{"page": [1]}`
+// is refused by it, as the contract refuses it. And a `*` name of a form body claims its path only against the names
+// of that body, so a `query` parameter of the same name still builds.
+it('does not let a wildcard name shape a plain name outside a body read only as a form', function (): void {
+    $schema = objectSchema([
+        'page' => new Schema(types: [SchemaType::Integer]),
+        'page[*]' => new Schema(types: [SchemaType::Integer]),
+    ]);
+    $mixed = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => $schema,
+        'multipart/form-data' => $schema,
+    ]));
+    $beside = RuleSetBuilder::for(operationWithInput(
+        content: ['multipart/form-data' => objectSchema(['page[*]' => new Schema(types: [SchemaType::Integer])])],
+        query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect($mixed->rules)->toBe(['page' => ['sometimes', 'integer']])
+        ->and($mixed->whenNotArray)->toBe([])
+        ->and($mixed->formPaths)->toBe([])
+        ->and($beside->rules)->toBe(['page' => ['sometimes', 'integer']])
+        ->and($beside->whenNotArray)->toBe([]);
+});
+
+// A `page` the contract asks for keeps today's rule beside a `*` name: shaping it would let `page[*]=5` alone satisfy it,
+// a 422 turned into a 200. What the rule still refuses, `page=2&page[*]=5` (PHP keeps the later name, so `page` arrives
+// as an array), is stricter than the contract, and the file says so.
+it('keeps the rule of a plain form name whose presence is asked for beside a wildcard name, and says it is stricter', function (Schema $schema, array $rules): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => $schema]));
+
+    expect($set->rules)->toBe($rules)
+        ->and($set->whenNotArray)->toBe([])
+        ->and($set->dropsArray)->toBe([])
+        ->and($set->stricter)->toHaveCount(1)
+        ->and($set->stricter[0])->toContain('`page`')->toContain('`page[*]`')->toContain('page=2&page[*]=5')
+        ->and($set->findings)->toContain($set->stricter[0]);
+})->with([
+    'a required name' => [
+        objectSchema(['page' => new Schema(types: [SchemaType::Integer]), 'page[*]' => new Schema(types: [SchemaType::Integer])], ['page']),
+        ['page' => ['required', 'integer']],
+    ],
+    'a dependent name' => [
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['page' => new Schema(types: [SchemaType::Integer]), 'other' => new Schema(types: [SchemaType::String]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
+            dependentRequired: ['other' => ['page']],
+        ),
+        ['page' => ['present_with:other', 'integer'], 'other' => ['sometimes', 'string']],
+    ],
+]);
+
+it('keeps the rule of a required plain form name beside a wildcard name in a body that may be absent', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['multipart/form-data' => objectSchema(
+            ['page' => new Schema(types: [SchemaType::Integer]), 'other' => new Schema(types: [SchemaType::String]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
+            ['page'],
+        )],
+        bodyRequired: false,
+    ));
+
+    expect($set->rules['page'])->toBe(['present_with:other', 'integer'])
+        ->and($set->whenNotArray)->toBe([])
+        ->and($set->stricter)->toHaveCount(1);
+});
+
+// An upper name typed `array` or `object` may be an array itself, so its value cannot be told from the one a form
+// builds for the name below it, and a `Rule::when()` on its shape would never run its rules. It keeps the collision.
+it('gives no rule to a name typed array or object beside a name below it', function (SchemaType $type): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema([
+        'page' => new Schema(types: [$type]),
+        'page[size]' => new Schema(types: [SchemaType::Integer]),
+    ])]));
+
+    expect($set->rules)->toBe([])
+        ->and($set->whenNotArray)->toBe([])
+        ->and(array_keys($set->uncheckedNames))->toBe(['page[size]', 'page'])
+        ->and(implode("\n", $set->findings))
+        ->toContain('`page[size]` is delivered by a form as `page.size`, below the key `page` that `page` uses')
+        ->toContain('`page` is typed `'.$type->value.'`, so its own value may be an array, and no rule can tell their values apart');
+})->with([SchemaType::Array, SchemaType::Object]);
+
+// Two names under the exact same key keep no rule. A name below them keeps its own, and their key is read by `dto()` only
+// when it is not an array.
+it('keeps the rule of a name below two names that arrive under one key, and gives the two none', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema([
+        'user.name' => new Schema(types: [SchemaType::String]),
+        'user_name' => new Schema(types: [SchemaType::String]),
+        'user_name[x]' => new Schema(types: [SchemaType::Integer]),
+    ])]));
+
+    expect($set->rules)->toBe(['user_name.x' => ['sometimes', 'integer']])
+        ->and($set->whenNotArray)->toBe([])
+        ->and($set->scalarNames)->toBe(['user_name'])
+        ->and(array_keys($set->uncheckedNames))->toBe(['user.name', 'user_name'])
+        ->and(implode("\n", $set->findings))->toContain('`user.name` and `user_name` reach Laravel under one name, `user_name`')
+        ->and(implode("\n", $set->findings))->not->toContain('is delivered by a form as');
+});
+
+// The DTO property of a shaped name is `Optional` only when the contract requires it: the array of the names below it
+// stands in for it, so the payload cannot promise it. The rule keeps `required`, and that is not the way an unchecked
+// name is kept (no rule, no presence).
+it('says a required plain form name is stood in for by the names nested under it', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+        ['page'],
+    )]));
+    $optional = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
+        ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+    )]));
+
+    expect($set->rules['page'])->toBe(['required', 'integer'])
+        ->and(array_keys($set->uncheckedNames))->toBe(['page'])
+        ->and($set->uncheckedNames['page'])->toContain('the array a form builds for the names nested under it')
+        ->and($set->scalarNames)->toBe(['page'])
+        ->and($optional->uncheckedNames)->toBe([])
+        ->and($optional->scalarNames)->toBe(['page']);
+});
+
+// An optional body asks for each required name once any key is sent, through the keys of the others, and a shaped name
+// is a key like another: `page` names `page.size`, and `page.size` names `page`.
+it('names the delivered key of the name below a shaped one in an optional body', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['multipart/form-data' => objectSchema(
+            ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer]), 'other' => new Schema(types: [SchemaType::String])],
+            ['page', 'page[size]'],
+        )],
+        bodyRequired: false,
+    ));
+
+    expect($set->rules['page'])->toBe(['present_with:page.size,other', 'integer'])
+        ->and($set->rules['page.size'])->toBe(['present_with:page,other', 'integer']);
+});
+
+// `dependentRequired: {page: [other]}` gives `other` `present_with:page`, and a form that sends only `page[size]` delivers
+// an array under `page`, which `present_with` counts as `page` sent: `other` is asked for where the contract never sees
+// `page`. Stricter than the contract, and said so; dropping the dependency would let `page=2` pass without `other`.
+it('keeps the dependency a shaped name triggers and says it is stricter than the contract', function (string $trigger, string $key): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            $trigger => new Schema(types: [SchemaType::String]),
+            $trigger.'[b]' => new Schema(types: [SchemaType::String]),
+            'other' => new Schema(types: [SchemaType::String]),
+        ],
+        dependentRequired: [$trigger => ['other']],
+    )]));
+
+    expect($set->rules['other'])->toBe(['present_with:'.$key, 'string'])
+        ->and($set->stricter)->toHaveCount(1)
+        ->and($set->stricter[0])->toContain('`'.$trigger.'`')->toContain('`other`')->toContain('array')
+        ->and($set->findings)->toContain($set->stricter[0]);
+})->with([
+    'a plain name' => ['page', 'page'],
+    'a bracketed name' => ['filter[a]', 'filter.a'],
+]);
 
 // The same collisions in a body that is JSON too: a rule for `page` judges the array a form builds from
 // `page[size]`, so a valid form client would be refused. The names go without a rule, as in a form alone.
@@ -2887,8 +3096,21 @@ it('does not say a closed body accepts a key it declares, when two names collide
         ->and(implode("\n", $set->findings))->toContain($finding);
 })->with([
     'a dotted and a plain name' => [['user.name', 'user_name'], 'reach Laravel under one name'],
-    'a bracketed name below a declared one' => [['page', 'page[size]'], 'below the key `page` that `page` uses'],
 ]);
+
+// A name above the names PHP nests under it keeps its rules, and a closed body still names the level it is delivered at:
+// a value sits there (`page=2`), so `array:` would refuse it, and the key check accepts what the finding names.
+it('leaves open the level a shaped name is delivered at in a closed body, and says so', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+        additionalProperties: false,
+    )]));
+
+    expect($set->rules)->toBe(['page' => ['sometimes', 'integer'], 'page.size' => ['sometimes', 'integer']])
+        ->and($set->closedKeys)->toBe(['page'])
+        ->and(implode("\n", $set->findings))->toContain('so the key check accepts `page`');
+});
 
 it('leaves the head of a bracketed name open when the body is open', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
@@ -2899,31 +3121,25 @@ it('leaves the head of a bracketed name open when the body is open', function ()
 });
 
 // `filter[a]` is `filter => [a => ...]` and `filter[a][b]` is `filter => [a => [b => ...]]`: the second lands below the
-// key the first uses, whatever the depth, so no rule can tell their values apart. One finding per pair, and none for
-// names that only share a level or start alike.
-it('treats a bracketed name below another bracketed name as a collision', function (bool $closed, array $names, array $unchecked, int $collisions, array $kept): void {
+// key the first uses, whatever the depth, so the first keeps its rules behind a shape check and the second keeps its
+// own. No finding for the pair, and none for names that only share a level or start alike.
+it('judges a bracketed name below another bracketed name, whatever the depth', function (bool $closed, array $names, array $kept): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
         properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($names)),
         additionalProperties: $closed ? false : null,
     )]));
 
-    $found = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'is delivered by a form as')));
-
-    expect($found)->toHaveCount($collisions)
-        ->and(array_keys($set->rules))->toBe($kept)
-        ->and(array_keys($set->uncheckedNames))->toEqualCanonicalizing($unchecked);
-
-    if ($collisions === 1) {
-        expect($found[0])->toStartWith('`filter[a][b]` is delivered by a form as `filter.a.b`, below the key `filter.a` that `filter[a]` uses');
-    }
+    expect(array_keys($set->rules))->toBe($kept)
+        ->and($set->uncheckedNames)->toBe([])
+        ->and(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'is delivered by a form as')))->toBe([]);
 })->with([
-    'an open body' => [false, ['filter[a]', 'filter[a][b]'], ['filter[a][b]', 'filter[a]'], 1, []],
-    // The closing rule of `filter` stays, and neither name has a rule of its own.
-    'a closed body' => [true, ['filter[a]', 'filter[a][b]'], ['filter[a][b]', 'filter[a]'], 1, ['filter']],
-    'a chain of three' => [false, ['filter', 'filter[a]', 'filter[a][b]'], ['filter[a]', 'filter[a][b]', 'filter'], 3, []],
-    'siblings at depth' => [false, ['filter[a][b]', 'filter[a][c]'], [], 0, ['filter.a.b', 'filter.a.c']],
-    'a name that only starts like the other' => [false, ['filter[a]', 'filter[ab][c]'], [], 0, ['filter.a', 'filter.ab.c']],
+    'an open body' => [false, ['filter[a]', 'filter[a][b]'], ['filter.a', 'filter.a.b']],
+    // The closing rule of `filter` is written after the rules of the names themselves.
+    'a closed body' => [true, ['filter[a]', 'filter[a][b]'], ['filter.a', 'filter.a.b', 'filter']],
+    'a chain of three' => [false, ['filter', 'filter[a]', 'filter[a][b]'], ['filter', 'filter.a', 'filter.a.b']],
+    'siblings at depth' => [false, ['filter[a][b]', 'filter[a][c]'], ['filter.a.b', 'filter.a.c']],
+    'a name that only starts like the other' => [false, ['filter[a]', 'filter[ab][c]'], ['filter.a', 'filter.ab.c']],
 ]);
 
 // A form and JSON client share one rule set: `filter[a]` stays a literal key for JSON, which Laravel reads `[` in as a
@@ -2970,7 +3186,7 @@ it('closes the levels above a collision and leaves open the level a name is deli
 })->with([
     'a name beside the level it opens' => [
         ['filter[a]', 'filter[a][b]', 'filter[c]'],
-        ['filter' => ['sometimes', 'array:a,c'], 'filter.c' => ['sometimes', 'integer']],
+        ['filter' => ['sometimes', 'array:a,c'], 'filter.a' => ['sometimes', 'integer'], 'filter.a.b' => ['sometimes', 'integer'], 'filter.c' => ['sometimes', 'integer']],
         ['filter'],
         'so the key check accepts `filter.a`',
         true,

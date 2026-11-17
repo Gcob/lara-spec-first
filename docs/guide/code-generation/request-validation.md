@@ -73,7 +73,7 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                             | A `query` name PHP appends to (`ids[]`) or delivers under no name, or under a key the body arrives under                |
 | A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)         | A form client's value for a top-level name PHP rewrites, in a body that is JSON too                                     |
 | [A map's values](#a-maps-values-are-validated-one-by-one), each by its `additionalProperties` schema          | A map's values beside declared `properties`, or at the root beside a `query` parameter                                  |
-|                                                                                                               | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
+| A form name beside the names a form nests under it, [judged by shape](#one-rule-set-body-and-query)           | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
 |                                                                                                               | A bound on a field that states no single type                                                                           |
 | A `query` parameter, with its own `required`, and a name PHP rewrites keyed by what it delivers (`page.size`) | A key of a map body that a `query` parameter shadows, or that a form delivers under a rewritten name                    |
 | A name in `required` that `properties` does not declare: `present`, and the map's value rule where it has one |                                                                                                                         |
@@ -231,7 +231,7 @@ without an `ids` in `validated()`, instead of an array nobody checked. There is 
 rules, and `spec:doctor` reports nothing for it. The one thing the shape check cannot tell is a `page` the client left
 out from the nested names it sent instead: the array stands in for it, so a required `page` is not asked for when
 `page[size]` is sent. The comparison is step by step and never by string, so `filter[a]` is no ancestor of
-`filter[ab][c]`, and it is the one the form body uses. The reasoning is in
+`filter[ab][c]`, and a form body does the same with its own names (below). The reasoning is in
 [ADR 0002](../../project/decisions/0002-judge-plain-query-names-by-shape.md).
 
 **Two query names PHP delivers under one key get no rule, and one finding names them.** `user.name` and `user_name`,
@@ -262,23 +262,62 @@ refused. Only two kinds of level stay open, and the generated file says the key 
 key check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a
 bracketed name in a body that is JSON too, whose head is not closed. A name that collides with another (below) is
 already named by the collision finding, and when the key it arrives under is one the contract declares, the closed body
-says nothing more about it. A collided bracketed name closes the levels above it like any other: `filter[a]`,
+says nothing more about it. A bracketed name below another closes the levels above it like any other: `filter[a]`,
 `filter[a][b]` and `filter[c]` give `'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and
 `filter.a` stays open for the value of `filter[a]`. Two names a form delivers under one bracketed key (`a.b[c]` beside
 `a_b[c]`, both `a_b.c`) close `a_b` to `c`.
 
+**A name a form body declares beside the names a form nests under it is judged by shape, as a query name is.** `page`
+beside `page[size]`, `filter[a]` beside `filter[a][b]`, at any depth, and `ids` beside `ids[]`, which a form reads as
+`ids.0` (it has no append notion). A form delivers `page[size]=3` as `page => [size => 3]`, so a rule for the plain
+`page` would judge that array and refuse a request the contract allows. The name's rules are wrapped in `Rule::when()`
+and judge the value only when it is not an array, and each nested name keeps its own, keyed by the path PHP delivers it
+under:
+
+```php
+'page' => Rule::when(
+    fn (Fluent $input): bool => ! is_array($input->get('page')),
+    ['sometimes', 'integer', 'min:1'],
+    ['array'],
+),
+'page.size' => ['sometimes', 'integer'],
+```
+
+`page=abc` and `page[size]=abc` answer 422, `page=2` and `page[size]=3` pass, and no finding is written: both names have
+their rules. The array branch is `['array']` when a name below has a rule, and `['exclude']` when none has (`page`
+beside `page[*]`, or `a_b` beside `a.b[c]` and `a_b[c]`, which collide), so Laravel does not keep an array nobody
+checked in `validated()`. A comparison is step by step, so `filter[a]` is no ancestor of `filter[ab][c]`. **`dto()`
+reads the name only when it is not an array:** the request lists such names in a `SCALAR_NAMES` constant, and
+`contractNames()` drops the array once it has read each nested name out of it, because `from()` casts what it reads and
+`(int)` of an array is `1`. So `page[size]=3` reaches the DTO as `page[size]` and `page` is `Optional`, which is what a
+required `page` is there: the array stands in for it, and the file says so. The key that two names deliver under one is
+in the list too, when a name below it has a rule. The reasoning is in
+[ADR 0012](../../project/decisions/0012-judge-plain-form-names-by-shape.md).
+
+**The shape check cannot tell a `page` the client left out from the names it sent instead, when the contract asks for
+`page`.** A required `page`, a `page` that a `dependentRequired` makes required, and a required `page` of an optional
+body (its [all or none](#an-optional-body-all-or-none)) are satisfied by the array of `page[size]`: `page[size]=3` alone
+passes. It is the blind spot the query string has, and nothing is refused that the contract allows. Two cases go the
+other way, and the generated file says the request is stricter than the contract: a `dependentRequired` that `page`
+triggers (`page` makes `other` required, and `page[size]=3` alone delivers an array under `page`, which counts as `page`
+sent, so `other` is asked for), and a `page` the contract asks for beside only `page[*]`. A `*` name has no rule, so it
+can shape an upper name only when nothing asks for it: an optional `page` beside `page[*]` passes `page[*]=5`, and
+`page` is left out of `validated()`. A `page` the contract asks for keeps its rule as it was, since shaping it would let
+`page[*]=5` alone satisfy it, and a valid `page=2&page[*]=5` is refused (PHP keeps the later name, so `page` arrives as
+an array).
+
 **Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
-as one key, and so do `page` and `page[size]` (the second is `page => [size => ...]`, below the key the first uses), and
-so do `filter[a]` and `filter[a][b]`, at any depth: a name collides with another when the other's delivered path is a
-strict prefix of its own, step by step, so `filter[a]` beside `filter[ab][c]` is no collision. The data cannot say which
-one was sent. Neither gets a rule, none takes part in `required_with` or `dependentRequired` (a `dependentRequired` it
-triggers says which dependency it loses), and their DTO properties are `Optional`. Two names that differ only by a
-character PHP rewrites also derive one PHP property name, so the DTO refuses them with its own error before this finding
-is reached; it is the bracketed case that gets here in a build. The same holds when the body is JSON as well: a rule for
-`page` would judge the array a form builds from `page[size]=3`, and a valid form client would be refused, so the JSON
-client loses the rule on `page` too, and the finding says neither name has one. That holds for a top-level key only:
-below it (`filter[a]` beside `filter[a][b]`), a body that is JSON as well keeps both names as written, with their own
-type rules, since Laravel reads `[` as a plain character.
+as one key, so the value of one is the value of the other and no rule can tell them apart. Neither gets a rule, none
+takes part in `required_with` or `dependentRequired` (a `dependentRequired` it triggers says which dependency it loses),
+and their DTO properties are `Optional`. A name below them (`user_name[x]`) keeps its own rule. Two names that differ
+only by a character PHP rewrites also derive one PHP property name, so the DTO refuses them with its own error before
+this finding is reached. **A name typed `array` or `object` beside a name below it keeps no rule either:** its own value
+may be an array, so no rule can tell its value from the array a form builds, and `Rule::when()` would never run its
+rules. The same holds when the body is JSON as well: a rule for `page` would judge the array a form builds from
+`page[size]=3`, and a valid form client would be refused, so the JSON client loses the rule on `page` too, and the
+finding says neither name has one. That holds for a top-level key only: below it (`filter[a]` beside `filter[a][b]`), a
+body that is JSON as well keeps both names as written, with their own type rules, since Laravel reads `[` as a plain
+character.
 
 **A body that is JSON and a form at once keeps the rule for the name the contract writes, and a form client's value is
 not checked.** A JSON client sends `user.name` exactly, and a rule keyed by it is right for that client. A form client

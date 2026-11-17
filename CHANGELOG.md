@@ -74,12 +74,33 @@ tags: [versions, conventions, planning]
   spelled in capitals or not, and a request with no `Content-Type` or with JSON was already read as absent. This is a
   breaking change: a client that sent such a request and got a `200` now gets a refusal. Send the body, or make it
   optional in the contract.
-- **The input DTO property of a name a form delivers below another name is now `Optional`, and a value sent under it no
-  longer reaches `dto()`.** In a body read only as a form, `filter[a]` beside `filter[a][b]` (and a name below one that
-  is itself below another) now collide, so neither has a rule and neither is read back into the DTO. A required one's
-  property type gains `Optional` (`string` becomes `Optional|string`). A valid `filter[a]=x` is still accepted, and no
-  longer arrives in `dto()`. This is a breaking change for code that read that property: it holds `Optional` where it
-  held the value. Read the value from the request instead (`$request->input('filter.a')`).
+- **The input DTO property of a required name a form nests another declared name under is now `Optional`, and an array
+  never reaches it.** In a body read only as a form, a required `filter[a]` beside `filter[a][b]` (and a required `page`
+  beside `page[size]`, which was already `Optional`) is judged only when its value is not an array, and the array of the
+  nested names stands in for it, so the payload cannot promise it: the property type gains `Optional` (`string` becomes
+  `Optional|string`). `dto()` hands `from()` the name only when it is not an array, so `filter[a]=x` reaches it and
+  `filter[a][b]=1` reaches `filter[a][b]` and never a `filter[a]` of `1`. This is a breaking change for code that read
+  that property: it holds `Optional` where it held the value. Check for it, or read the value from the request
+  (`$request->input('filter.a')`). The reasoning is in
+  [ADR 0012](./docs/project/decisions/0012-judge-plain-form-names-by-shape.md), and this ships
+  [#168](https://github.com/Gcob/lara-spec-first/issues/168).
+- **A body read only as a form that declares `page` beside `page[size]` now judges both, where neither had a rule.** A
+  form delivers `page[size]=3` as `page => [size => 3]`, so the two names share a key. `page` now keeps its rules behind
+  a shape check (judged only when its value is not an array), as a `query` name does, and `page[size]` keeps its own,
+  under `page.size`. It holds at any depth (`filter[a]` beside `filter[a][b]`), for a list (`ids` beside `ids[]`, which
+  a form reads as `ids.0`) and for a name below two others that arrive under one key. Requests that answered `200` now
+  answer `422` to a client that asks for JSON (see
+  [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)):
+  `page=abc` and `page[size]=abc`, a required `page` with nothing sent, and `page=2` alone where an optional body asks
+  for more once a key is sent (its "all or none") or a `dependentRequired` asks for it. `page` and `page[size]` also
+  trigger a `dependentRequired` now: `page=2` without the `other` it makes required answers `422`, and so does
+  `page[size]=3` alone, which is stricter than the contract and stated in the generated file. `dto()` now carries
+  `page[size]`, and a required one's property drops `Optional` (`Optional|int` becomes `int`). `spec:build` no longer
+  warns about these names. One blind spot, stated: a `page` whose presence the contract asks for (required, a
+  `dependentRequired` dependent, or a required name of an optional body) is satisfied by `page[size]=3` alone, as on the
+  query side. This is a breaking change: send values the contract describes, or loosen the contract. The reasoning is in
+  [ADR 0012](./docs/project/decisions/0012-judge-plain-form-names-by-shape.md), and this ships
+  [#168](https://github.com/Gcob/lara-spec-first/issues/168).
 - **A closed form body that declares two names under one bracketed key now refuses an undeclared key below it, where it
   used to accept it.** `a.b[c]` beside `a_b[c]` are both delivered as `a_b.c`, and the level above is now closed (`a_b`
   takes only `c`), where the key check accepted anything under `a_b`. A request that sent `a_b[evil]=1` to such a body
@@ -251,11 +272,17 @@ tags: [versions, conventions, planning]
 - **A body read only as a form that declared `filter[a]` and `filter[a][b]` refused a valid request, with no finding.**
   PHP delivers `filter[a][b]=1` as `filter => [a => [b => 1]]`, so `filter.a` became an array and the `string` rule of
   `filter[a]` refused it (a closed body refused a valid `filter[a]=x` instead, since the level above `filter.a.b` was
-  closed to `b`). Both names now get the collision finding and no rule, as `page` beside `page[size]` does, at any
-  depth, and the closed body still refuses `filter[evil]=1`, `filter=abc` and `filter[created][lt]=5` while it accepts
-  what the contract declares. `spec:doctor` stays silent on the collided names (prose only,
-  [#119](https://github.com/Gcob/lara-spec-first/issues/119)). A body that is JSON and a form is unchanged. This closes
-  the refusal the `0.2.0` `Known limits` lists for [#113](https://github.com/Gcob/lara-spec-first/issues/113).
+  closed to `b`). Both names now keep their rules, `filter[a]` behind a shape check, so `filter[a][b]=1` passes and
+  `filter[a][b]=x` answers `422`, and the closed body still refuses `filter[evil]=1`, `filter=abc` and
+  `filter[created][lt]=5` while it accepts what the contract declares. A body that is JSON and a form is unchanged. This
+  closes the refusal the `0.2.0` `Known limits` lists for [#113](https://github.com/Gcob/lara-spec-first/issues/113),
+  and ships [#168](https://github.com/Gcob/lara-spec-first/issues/168).
+- **An optional `page` beside `page[*]` in a form body refused `page[*]=5`, with no finding.** `page[*]=5` arrives as
+  `page => ['*' => '5']`, an array the `integer` rule of `page` refused. A `*` name has no rule, so the array is the
+  shape check's to skip: it now passes, with `page` left out of `validated()`. A `page` the contract asks for (required,
+  or a `dependentRequired` dependent) still refuses it, and the generated file now says that a valid `page=2&page[*]=5`
+  is refused as well, since PHP keeps the later name: that refusal is not new, and now has its finding. This ships
+  [#168](https://github.com/Gcob/lara-spec-first/issues/168).
 - **`spec:make` plans the build before it writes anything.** A document the build refuses (a path parameter named
   `request`, `this` or `2fa`, two operations claiming one request name, a body property and a query parameter with one
   name) used to leave a child controller that did not compile, which the command then never overwrote. It is now refused

@@ -39,8 +39,10 @@ final readonly class RuleSet
      * @param  array<string, list<string>>  $formPaths  for a body read only as a form, where `dto()` finds the value of
      *                                                  each name PHP rewrites: the contract's name => the path it is
      *                                                  delivered under
-     * @param  array<string, string>  $uncheckedNames  the top-level names the request cannot check when a form sends
-     *                                                 them, by the reason. The DTO cannot ask for them
+     * @param  array<string, string>  $uncheckedNames  the top-level names the request cannot fully check when a form
+     *                                                 sends them (no rule for them, or a rule the array a form builds
+     *                                                 for the names nested under them stands in for), by the reason.
+     *                                                 The DTO cannot ask for them
      * @param  bool  $jsonRoot  whether the body is an object read as JSON, so the request refuses a JSON root that is
      *                          not one
      * @param  bool  $nullableRoot  whether that root may be `null`, which the schema then allows
@@ -65,16 +67,21 @@ final readonly class RuleSet
      *                                                   the rules ask for only through a sibling: the name as written
      *                                                   => the rule its failure carries (`present` or `required`). A
      *                                                   rule cannot see `{}`, so the request reads the raw content
-     * @param  array<string, list<string>>  $whenNotArray  the rule keys of a `query` name that sits above names PHP
-     *                                                     nests under it (`page` above `page[size]`), each with the
-     *                                                     path PHP delivers it under: the request judges them only when
-     *                                                     their value is not an array, which is what the nested names
-     *                                                     are
+     * @param  array<string, list<string>>  $whenNotArray  the rule keys of a `query` name or a form body's that sits
+     *                                                     above names PHP nests under it (`page` above `page[size]`),
+     *                                                     each with the path PHP delivers it under: the request judges
+     *                                                     them only when their value is not an array, which is what the
+     *                                                     nested names are
      * @param  list<string>  $dropsArray  the keys of `$whenNotArray` with no rule on any name below them: the request
      *                                    drops the array (`exclude`) where it would keep it (`array`) beside a rule
      * @param  list<string>  $information  the findings that lose no constraint (a body key a `query` parameter shadows,
      *                                     a name a form rewrites), which are in `findings` too. Nothing is left
      *                                     unenforced by one, so the build does not count a request for them alone
+     * @param  list<string>  $scalarNames  for a body read only as a form: the keys of the validated data whose value
+     *                                     `dto()` reads only when it is not an array. A name above the names a form
+     *                                     nests under it (`page` above `page[size]`) is the contract's own name for it,
+     *                                     and the key two names deliver under one (`user_name`) is the key itself: the
+     *                                     array a form builds for the names below is theirs, never the property's
      * @param  bool  $mapRoot  whether the body is an object with no declared property, a map or an open object, so its
      *                         keys are all undeclared: `dto()` hands the DTO every body key and no `query` key
      */
@@ -99,6 +106,7 @@ final readonly class RuleSet
         public array $dropsArray = [],
         public bool $mapRoot = false,
         public array $information = [],
+        public array $scalarNames = [],
     ) {}
 
     /**

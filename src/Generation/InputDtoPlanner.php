@@ -273,8 +273,10 @@ final class InputDtoPlanner extends DtoPlanner
      * Registered *before* its properties are built, so a node that recurses back to it finds it instead of building it
      * again.
      *
-     * @param  array<string, string>  $unchecked  the body's top-level names the request cannot check when a form sends
-     *                                            them, by the reason. Only a root has any
+     * @param  array<string, string>  $unchecked  the body's top-level names the request cannot fully check when a form
+     *                                            sends them (it has no rule for the name, or the array a form builds
+     *                                            for the names nested under it stands in for the one it has), by the
+     *                                            reason. Only a root has any
      * @return string the short name
      *
      * @throws UnusableNameException
@@ -397,7 +399,8 @@ final class InputDtoPlanner extends DtoPlanner
             // body without it reaches `from()` all the same.
             //
             // A name a form client sends under another one is the third: when the request has no rule
-            // that checks it there (the body is also JSON, or the name collides with another), the
+            // that checks it there (the body is also JSON, or the name collides with another), or has one
+            // that the array a form builds for the names nested under the name can stand in for, the
             // validated payload cannot be promised to carry it. Only a root is read from a form, and
             // a name PHP delivers is checked and built like any other.
             $readOnly = AllOfMerger::merge($property, $this->identity, '`'.$key.'`')->readOnly;
@@ -499,6 +502,10 @@ final class InputDtoPlanner extends DtoPlanner
         }
     }
 
+    /**
+     * The finding for a required property the request cannot promise: the reason says what is not checked, which is the
+     * name's value for a name with no rule and only its presence for one an array stands in for.
+     */
     private static function uncheckedFinding(string $key, string $reason): string
     {
         return sprintf(

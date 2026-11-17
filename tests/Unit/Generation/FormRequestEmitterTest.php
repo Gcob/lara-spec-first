@@ -464,6 +464,86 @@ it('puts the names a form delivered back before dto() builds the DTO', function 
         ->not->toContain('contractNames');
 });
 
+// A form body's plain name beside the names a form nests under it is written like a `query` name's: Laravel's own
+// `Rule::when()` judges it only when its value is not an array. `dto()` reads the contract's name back, so the class
+// lists the names whose value is theirs only when it is not an array, and drops the array after the names are put back:
+// `(int) $payload['page']` is `1` for any array. The key two names deliver under one is in the list when a ruled name sits
+// below it. Read by Pint, so a consumer's formatter has nothing to rewrite.
+it('writes a form name behind Rule::when and keeps an array out of the DTO', function (): void {
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'page' => new Schema(types: [SchemaType::Integer], minimum: 1.0),
+                'page[size]' => new Schema(types: [SchemaType::Integer]),
+                'filter[a.b]' => new Schema(types: [SchemaType::String]),
+                'filter[a.b][c]' => new Schema(types: [SchemaType::String]),
+                'user_name' => new Schema(types: [SchemaType::String]),
+                'user_name[x]' => new Schema(types: [SchemaType::Integer]),
+            ],
+            // Both names of the pair in `properties` would refuse the build: they derive one property name.
+            required: ['user.name'],
+        )], true),
+    ), controllerShortName: 'CreateThingController');
+
+    expect($emitted)
+        ->toContain("use Illuminate\\Support\\Fluent;\n")
+        ->toContain("use Illuminate\\Validation\\Rule;\n")
+        ->toContain(
+            "            'page' => Rule::when(\n"
+            ."                fn (Fluent \$input): bool => ! is_array(\$input->get('page')),\n"
+            ."                ['sometimes', 'integer', 'min:1'],\n"
+            ."                ['array'],\n"
+            .'            ),'
+        )
+        ->toContain("            'page.size' => ['sometimes', 'integer'],")
+        // A step that holds a dot cannot be written as one dotted key.
+        ->toContain("fn (Fluent \$input): bool => ! is_array(data_get(\$input, ['filter', 'a.b'])),")
+        ->toContain("            'user_name.x' => ['sometimes', 'integer'],")
+        ->toContain("private const SCALAR_NAMES = ['page', 'filter[a.b]', 'user_name'];")
+        ->toContain('CreateThingInputDto::from($this->contractNames($validator->validated()));')
+        ->toContain(
+            "        foreach (self::SCALAR_NAMES as \$name) {\n"
+            ."            if (is_array(\$payload[\$name] ?? null)) {\n"
+            ."                unset(\$payload[\$name]);\n"
+            ."            }\n"
+            .'        }'
+        );
+
+    // The names are put back first, so a value that is an array is read before it is dropped.
+    expect(strpos($emitted, 'foreach (self::FORM_NAMES') < strpos($emitted, 'foreach (self::SCALAR_NAMES'))->toBeTrue();
+
+    $file = tempnam(sys_get_temp_dir(), 'lsf-request-').'.php';
+    file_put_contents($file, $emitted);
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $file], dirname(__DIR__, 3));
+    $pint->run();
+    unlink($file);
+
+    expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
+// A name no form delivers below another keeps `contractNames()` as it was: no list, no loop.
+it('writes no list of scalar names for a form body whose names do not nest', function (): void {
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['page[size]' => new Schema(types: [SchemaType::Integer]), 'page[number]' => new Schema(types: [SchemaType::Integer])],
+        )], true),
+    ), controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain('private const FORM_NAMES')
+        ->and($emitted)->not->toContain('SCALAR_NAMES');
+});
+
 /**
  * A `GET` whose only input is one query parameter.
  */

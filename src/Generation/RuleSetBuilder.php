@@ -381,7 +381,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames);
     }
 
     /**
@@ -667,6 +667,8 @@ final readonly class RuleSetBuilder
             $judged,
         );
 
+        self::recordShapes($walk);
+
         if ($judged) {
             self::mapValues($walk, '', $value);
         }
@@ -769,7 +771,7 @@ final readonly class RuleSetBuilder
         // finding below names what the key check then accepts.
         $deliveredAt = [];
 
-        foreach (array_keys($schema->properties) as $name) {
+        foreach ([...array_keys($schema->properties), ...array_keys($walk->shaped)] as $name) {
             $path = self::deliveredPath((string) $name);
 
             if ($path !== null) {
@@ -1243,6 +1245,19 @@ final readonly class RuleSetBuilder
                 );
 
                 continue;
+            }
+
+            // Why: a form that sends only the names nested under a shaped trigger delivers an array under it, which
+            // `present_with` counts as the trigger sent, though the contract never sees the trigger.
+            if ($prefix === '' && isset($walk->shaped[$trigger])) {
+                $walk->stricter(sprintf(
+                    '`%1$s` would make %2$s required, and a form that sends only the names nested under `%1$s` delivers an '
+                        .'array under it, which `present_with` counts as `%1$s` sent: %2$s asked for although the contract '
+                        .'never sees `%1$s`. The request is stricter than the contract there; leaving the dependency out would '
+                        .'accept `%1$s` without %2$s, which the contract refuses.',
+                    $trigger,
+                    self::list(array_map('strval', $names)),
+                ));
             }
 
             foreach ($names as $name) {
@@ -2706,9 +2721,16 @@ final readonly class RuleSetBuilder
      * contract's name.
      *
      * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name and a declared
-     * one that is equal to what it becomes, or a bracketed name below another declared name, at any depth (`filter[a]`
-     * and `filter[a][b]`). None of them gets a rule, and one finding names them. A body that is JSON as well gets the
-     * same, since a rule for the declared name would judge the array a form builds.
+     * one that is equal to what it becomes (`user.name` and `user_name`). Neither gets a rule, and one finding names
+     * them; a name below them keeps its own.
+     *
+     * **A name above the names a form nests under it is judged by shape** (`page` beside `page[size]`, `filter[a]`
+     * beside `filter[a][b]` at any depth, `ids` beside `ids[]`): its rules judge the value only when it is not an
+     * array, which is what the nested names are ({@see self::recordShapes()}), and each nested name keeps its own. A
+     * `*` name has no rule but claims its path, so it shapes the name above it unless the contract asks for that name,
+     * whose rule then keeps its form and says it is stricter. A name typed `array` or `object` may be an array itself,
+     * so it keeps the collision: no rule for it or the name below it. A body that is JSON as well keeps the collision
+     * for a name below a top-level one, since a rule for the declared name would judge the array a form builds.
      *
      * **A body that is JSON as well keeps the rule keyed by the name the contract writes**, since a JSON client sends
      * exactly that, and the value a form client sends under the other name is not checked: no one rule set holds both
@@ -2734,10 +2756,25 @@ final readonly class RuleSetBuilder
             }
         }
 
+        $declared = array_values(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required, ...$dependedOn]));
         $names = array_values(array_filter(
-            array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required, ...$dependedOn]),
+            $declared,
             static fn (string $name): bool => self::unescapableKey($name) === null,
         ));
+
+        // Why: a `*` name has no rule, but a form still delivers its value below the name above it, so it claims its
+        // path to the name above it. Only in a body read only as a form: a body that is JSON as well keeps today's rule.
+        $claimed = [];
+
+        if (! $walk->mixedBody) {
+            foreach ($declared as $name) {
+                $path = self::unescapableKey($name) === null ? null : self::deliveredPath($name);
+
+                if ($path !== null) {
+                    $claimed[$name] = $path;
+                }
+            }
+        }
 
         $paths = [];
 
@@ -2830,22 +2867,92 @@ final readonly class RuleSetBuilder
             );
         }
 
-        foreach ($overlaps as [$name, $other, $key, $head]) {
-            $walk->findings[] = sprintf(
-                '`%s` is delivered by a form as `%s`, below the key `%s` that `%s` uses, so no rule can tell their values '
-                    .'apart. None is emitted for either, and neither their type nor their presence is enforced, nor do they '
-                    .'take part in `required_with` or `dependentRequired`.',
-                $name,
-                $key,
-                $head,
-                $other,
-            );
+        $shaped = [];
 
-            foreach ([$name, $other] as $member) {
-                $collided[$member] = true;
-                $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
-                $walk->withheld[$member] = true;
+        foreach ($overlaps as [$name, $other, $key, $head]) {
+            if ($walk->mixedBody) {
+                $walk->findings[] = sprintf(
+                    '`%1$s` is delivered by a form as `%2$s`, below the key `%3$s` that `%4$s` uses, and a body that is JSON as '
+                        .'well keeps one rule set for both clients, which holds no shape check for the name above: a rule for '
+                        .'`%4$s` would judge the array a form builds for `%1$s`. None is emitted for either, and neither their '
+                        .'type nor their presence is enforced, nor do they take part in `required_with` or `dependentRequired`.',
+                    $name,
+                    $key,
+                    $head,
+                    $other,
+                );
+
+                foreach ([$name, $other] as $member) {
+                    $collided[$member] = true;
+                    $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
+                    $walk->withheld[$member] = true;
+                }
+
+                continue;
             }
+
+            $type = self::arrayOrObject($schema, $other, $walk);
+
+            if ($type !== null) {
+                $walk->findings[] = sprintf(
+                    '`%1$s` is delivered by a form as `%2$s`, below the key `%3$s` that `%4$s` uses. `%4$s` is typed `%5$s`, so its '
+                        .'own value may be an array, and no rule can tell their values apart. None is emitted for either, and '
+                        .'neither their type nor their presence is enforced, nor do they take part in `required_with` or '
+                        .'`dependentRequired`.',
+                    $name,
+                    $key,
+                    $head,
+                    $other,
+                    $type,
+                );
+
+                foreach ([$name, $other] as $member) {
+                    $collided[$member] = true;
+                    $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
+                    $walk->withheld[$member] = true;
+                }
+
+                continue;
+            }
+
+            $shaped[$other] = true;
+        }
+
+        // A `*` name below a name claims its path, which shapes the name above it unless the contract asks for it: the
+        // array a form builds for `page[*]` would then stand in for a `page` that must be sent.
+        $below = [];
+
+        foreach ($claimed as $claimedName => $claimedPath) {
+            foreach ($names as $upper) {
+                if (isset($paths[$upper]) && self::isBelow($claimedPath, $paths[$upper])) {
+                    $below[$upper][] = $claimedName;
+                }
+            }
+        }
+
+        foreach ($below as $upper => $starred) {
+            $upper = (string) $upper;
+
+            if (isset($collided[$upper]) || isset($shaped[$upper]) || self::arrayOrObject($schema, $upper, $walk) !== null) {
+                continue;
+            }
+
+            if (! in_array($upper, $schema->required, true) && ! in_array($upper, $dependent, true)) {
+                $shaped[$upper] = true;
+
+                continue;
+            }
+
+            $walk->stricter(sprintf(
+                '`%1$s` is a property of a form body that also declares %2$s, which a form delivers below `%1$s` and no rule '
+                    .'judges. The contract asks for `%1$s`, so the array a form builds for %2$s must not stand in for it, and '
+                    .'`%1$s` keeps its rule without a shape check. A form that sends `%1$s` and %2$s together (`%1$s=2&%3$s=5`) '
+                    .'delivers an array under `%1$s`, which that rule refuses although the contract accepts both: the request '
+                    .'is stricter than the contract there.',
+                $upper,
+                self::list($starred),
+                $starred[0],
+            ));
         }
 
         if ($walk->mixedBody) {
@@ -2891,6 +2998,110 @@ final readonly class RuleSetBuilder
             $walk->formPaths[$name] = $paths[$name];
             $walk->deliveredKeys[$name] = self::pathKey($paths[$name]);
         }
+
+        foreach (array_keys($shaped) as $name) {
+            $name = (string) $name;
+
+            // Two names under one key are withheld above, so the name below them keeps its own rule and nothing is
+            // judged by shape above it.
+            if (isset($collided[$name])) {
+                continue;
+            }
+
+            $walk->shaped[$name] = true;
+            $walk->scalarNames[] = $name;
+
+            // Why: the array a form builds for the names below stands in for the name, so a form can send the body
+            // without it, and the payload cannot promise it.
+            if (in_array($name, $schema->required, true) && self::hasRuledName($name, $paths, $walk)) {
+                $walk->standIn[$name] = 'whether it was sent, since the array a form builds for the names nested under it stands '
+                    .'in for it, and a form that sends only those names satisfies the rule on it';
+            }
+        }
+
+        // The key two names deliver under one holds no rule, so only the array a form builds for a name below it can
+        // reach it, and `dto()` would hand that array to a property typed for a scalar.
+        foreach ($groups as $members) {
+            $members = array_values(array_unique($members));
+            $path = $paths[$members[0]] ?? null;
+
+            if (count($members) < 2 || $path === null || count($path) !== 1) {
+                continue;
+            }
+
+            foreach ($walk->formPaths as $other => $otherPath) {
+                if (self::isBelow($otherPath, $path)) {
+                    $walk->scalarNames[] = $path[0];
+
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Whether a name of a form body that has a rule sits below a name's delivered path.
+     *
+     * @param  array<string, list<string>|null>  $paths
+     */
+    private static function hasRuledName(string $name, array $paths, RuleWalk $walk): bool
+    {
+        $path = $paths[$name] ?? null;
+
+        if ($path === null) {
+            return false;
+        }
+
+        foreach ($walk->formPaths as $other => $otherPath) {
+            if (self::isBelow($otherPath, $path)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * `array` or `object` when a property is typed as one of them, or null: such a name may be an array itself, so no
+     * shape check tells its value from the array a form builds for the names below it.
+     */
+    private static function arrayOrObject(Schema $schema, string $name, RuleWalk $walk): ?string
+    {
+        if (! isset($schema->properties[$name])) {
+            return null;
+        }
+
+        $type = AllOfMerger::merge($schema->properties[$name], $walk->identity, '`'.$name.'`')->soleType();
+
+        return $type === SchemaType::Array || $type === SchemaType::Object ? $type->value : null;
+    }
+
+    /**
+     * Record the shape check of each name of a form body judged by shape, once every rule key exists: the rules of the
+     * name are judged only when its value is not an array, and the array a form builds is dropped when no name below it
+     * has a rule ({@see self::bodyRules()}).
+     */
+    private static function recordShapes(RuleWalk $walk): void
+    {
+        foreach (array_keys($walk->shaped) as $name) {
+            $name = (string) $name;
+            $key = self::fieldKey($name, $walk, '');
+            $path = self::deliveredPath($name);
+
+            if ($path === null || ! isset($walk->rules[$key])) {
+                continue;
+            }
+
+            $walk->whenNotArray[$key] = $path;
+
+            foreach ($walk->formPaths as $other => $otherPath) {
+                if (self::isBelow($otherPath, $path) && isset($walk->rules[$walk->deliveredKeys[$other]])) {
+                    continue 2;
+                }
+            }
+
+            $walk->dropsArray[] = $key;
+        }
     }
 
     /**
@@ -2906,7 +3117,8 @@ final readonly class RuleSetBuilder
 
     /**
      * The keys whose presence stands for a name being sent, for a sibling or a `dependentRequired` trigger: both of a
-     * JSON and form body's, one of a form's, none for a name with no rule.
+     * JSON and form body's, one of a form's, none for a name with no rule. A name judged by shape gives its own key,
+     * which the array of the names below it also fills.
      *
      * @return list<string>
      */
