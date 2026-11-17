@@ -522,13 +522,6 @@ final readonly class FormRequestEmitter
     }
 
     /**
-     * The rule set as the body of the returned array, one field per line.
-     *
-     * Indented to sit inside a `return [` two levels deep, and emitted with `var_export` for the same reason every
-     * other literal in this namespace is: a field name may legally carry an apostrophe, and a hand-quoted literal would
-     * stop parsing.
-     */
-    /**
      * `rules()`, and the helper that names the integer-like keys of a map or open-object body.
      *
      * **A key such as `"1042"` needs a rule of its own.** Laravel expands `*` over data it has put through
@@ -583,6 +576,13 @@ final readonly class FormRequestEmitter
             .'    }';
     }
 
+    /**
+     * The rule set as the body of the returned array, one field per line.
+     *
+     * Indented to sit inside a `return [` two levels deep, and emitted with `var_export` for the same reason every
+     * other literal in this namespace is: a field name may legally carry an apostrophe, and a hand-quoted literal would
+     * stop parsing.
+     */
     private function rules(RuleSet $set): string
     {
         $lines = [];
