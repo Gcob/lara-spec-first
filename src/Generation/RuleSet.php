@@ -72,6 +72,11 @@ final readonly class RuleSet
      *                                                     are
      * @param  list<string>  $dropsArray  the keys of `$whenNotArray` with no rule on any name below them: the request
      *                                    drops the array (`exclude`) where it would keep it (`array`) beside a rule
+     * @param  list<string>  $information  the findings that lose no constraint (a body key a `query` parameter shadows,
+     *                                     a name a form rewrites), which are in `findings` too. Nothing is left
+     *                                     unenforced by one, so the build does not count a request for them alone
+     * @param  bool  $mapRoot  whether the body is an object with no declared property, a map or an open object, so its
+     *                         keys are all undeclared: `dto()` hands the DTO every body key and no `query` key
      */
     public function __construct(
         public array $rules = [],
@@ -92,15 +97,17 @@ final readonly class RuleSet
         public array $requiredOnceSent = [],
         public array $whenNotArray = [],
         public array $dropsArray = [],
+        public bool $mapRoot = false,
+        public array $information = [],
     ) {}
 
     /**
      * Whether the build read something and enforced nothing for it: a finding that is not one of the request being
-     * stricter than the contract.
+     * stricter than the contract, and not one that only informs.
      */
     public function leavesUnenforced(): bool
     {
-        return array_diff($this->findings, $this->stricter) !== [];
+        return array_diff($this->findings, $this->stricter, $this->information) !== [];
     }
 
     /**

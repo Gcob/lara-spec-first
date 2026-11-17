@@ -168,8 +168,6 @@ final readonly class OperationExtractor
      *
      * The list is closed, and it is the matrix's rows: a keyword absent from here and from {@see self::SCHEMA_KEYWORDS}
      * is `Out of scope`, `Rejected`, or one the matrix has not placed, and none of those is this report's to name.
-     * `additionalProperties` is on it for the one spelling that is a schema, `false` being a rule; see
-     * {@see self::ignoredKeywords()}.
      *
      * @see docs/guide/openapi-support.md — "Schemas"
      */
@@ -178,7 +176,6 @@ final readonly class OperationExtractor
         'deprecated',
         '$defs',
         '$anchor',
-        'additionalProperties',
         'minProperties',
         'maxProperties',
         'patternProperties',
@@ -979,6 +976,19 @@ final readonly class OperationExtractor
             $keywords['items'] = $this->schemaAt($keywords['items'], $strategy, $walk, $position, 'items', $open);
         }
 
+        // The value schema of a map (`Schema::$additionalPropertiesSchema`) is a child like `items`: a `$ref` in it resolves,
+        // and a recursion closing through it ends in a marker.
+        if (($keywords['additionalProperties'] ?? null) instanceof ParsedSchema || ($keywords['additionalProperties'] ?? null) instanceof Reference) {
+            $keywords['additionalProperties'] = $this->schemaAt(
+                $keywords['additionalProperties'],
+                $strategy,
+                $walk,
+                $position,
+                'additionalProperties',
+                $open,
+            );
+        }
+
         $this->assertNoReferenceLeft($keywords);
 
         return $strategy->normalizeSchema(
@@ -992,9 +1002,10 @@ final readonly class OperationExtractor
     /**
      * A reference the walk was meant to follow and did not.
      *
-     * `normalizeSchema()` filters what is not a schema out of `properties`, `items` and `allOf` without a word, so a
-     * `Reference` left in one would be a field that validates against nothing. {@see self::schemaAt()} follows every
-     * one of them, and no document reaches this: it is the line between a bug here and a silent hole in a contract.
+     * `normalizeSchema()` filters what is not a schema out of `properties`, `items`, `allOf` and `additionalProperties`
+     * without a word, so a `Reference` left in one would be a field that validates against nothing.
+     * {@see self::schemaAt()} follows every one of them, and no document reaches this: it is the line between a bug
+     * here and a silent hole in a contract.
      *
      * @param  array<string, mixed>  $keywords
      *
@@ -1010,8 +1021,10 @@ final readonly class OperationExtractor
             }
         }
 
-        if (($keywords['items'] ?? null) instanceof Reference) {
-            throw new LogicException('A reference under `items` was not followed.');
+        foreach (['items', 'additionalProperties'] as $keyword) {
+            if (($keywords[$keyword] ?? null) instanceof Reference) {
+                throw new LogicException("A reference under `{$keyword}` was not followed.");
+            }
         }
     }
 
@@ -1026,8 +1039,6 @@ final readonly class OperationExtractor
      * `default` holding `{$ref: ...}` is data: following it would report the keyword at a place the author never wrote
      * it.
      *
-     * `additionalProperties` counts only as a schema. `false` is a rule and `true` is the default said aloud.
-     *
      * **Beside a `$ref`, `x-max-depth` is one of them.** It is honored on the schema a marker points back at, and a
      * depth written beside the `$ref` is read by nothing, which is a thing to say rather than to drop (D2).
      *
@@ -1041,10 +1052,6 @@ final readonly class OperationExtractor
 
         foreach (self::IGNORED_SCHEMA_KEYWORDS as $keyword) {
             if (! array_key_exists($keyword, $raw)) {
-                continue;
-            }
-
-            if ($keyword === 'additionalProperties' && ! is_array($raw[$keyword])) {
                 continue;
             }
 

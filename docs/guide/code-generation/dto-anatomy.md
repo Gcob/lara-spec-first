@@ -114,16 +114,18 @@ reached it or the file that holds it.** `#/components/schemas/NewUser` gives `Ne
 `NewUserPartialInputDto`, and `./other.yaml#/components/schemas/NewUser` gives the same two names, because splitting a
 specification across files does not change the contract and must not rename a class a controller imports. A body written
 inline takes its operation's name, `CreateUserInputDto`, and an object nested inline takes its parent's name and its
-property's, `CreateUserAddressInputDto`, with `Item` added for an element of an array. **Two different schemas that give
-one class are a build error**, and so is a component name that is not a class name once it is turned into one. The
-refusal is not always about two schemas sharing a name, because the generator adds a suffix to it: a component `User`
-also generates `UserPartialInputDto`, so a component called `UserPartial` collides with it, and an inline `address` in
-`createUser` collides with the inline body of `createUserAddress`, both `CreateUserAddressInputDto`. The message names
-the class, where each schema is written, which type of each it is (full or partial), the base its name came from (the
-schema's name, its request, or its parent and a property) and the suffix added to it, so it says what met rather than
-blaming the names. The naming scheme is not changed to avoid it: rename one of the schemas, or give an inline schema a
-component name of its own. Where a schema is written goes in the file's `Provenance`, which is where a DTO that came
-from another file says so.
+property's, `CreateUserAddressInputDto`, with `Item` added for an element of an array and `Value` for a value of a map
+(`CreateUserLabelsValueInputDto`). A body that is itself a map names its value after the property that holds the body,
+`additionalProperties`, so an inline object value of the body of `receiveHook` is
+`ReceiveHookAdditionalPropertiesValueInputDto`. **Two different schemas that give one class are a build error**, and so
+is a component name that is not a class name once it is turned into one. The refusal is not always about two schemas
+sharing a name, because the generator adds a suffix to it: a component `User` also generates `UserPartialInputDto`, so a
+component called `UserPartial` collides with it, and an inline `address` in `createUser` collides with the inline body
+of `createUserAddress`, both `CreateUserAddressInputDto`. The message names the class, where each schema is written,
+which type of each it is (full or partial), the base its name came from (the schema's name, its request, or its parent
+and a property) and the suffix added to it, so it says what met rather than blaming the names. The naming scheme is not
+changed to avoid it: rename one of the schemas, or give an inline schema a component name of its own. Where a schema is
+written goes in the file's `Provenance`, which is where a DTO that came from another file says so.
 
 **A property is named exactly like the contract's key** when the key is a valid PHP identifier, so `created_at` in the
 specification is `$created_at` in the class and one `grep` finds both. A key that is not an identifier (`user-id`,
@@ -198,30 +200,51 @@ finding in the generated file.
 [`Contract\Schema`](../openapi-support.md#the-normal-form-a-schema-takes), so nothing below depends on which OpenAPI
 version wrote the document:
 
-| The schema says                                                              | The property is                                                                        | `from()` does                           | `toArray()` does  |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------- | ----------------- |
-| `string`                                                                     | `string`                                                                               | Reads it                                | Writes it         |
-| `integer`                                                                    | `int`                                                                                  | `(int)`, request side only              | Writes it         |
-| `number`                                                                     | `float`                                                                                | `(float)`, request side only            | Writes it         |
-| `boolean`                                                                    | `bool`                                                                                 | `filter_var()`, request side only       | Writes it         |
-| `string`, `format: date-time`                                                | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`              | `format()`, below |
-| `string`, `format: date`                                                     | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`              | `toDateString()`  |
-| `enum`                                                                       | Its scalar type                                                                        | Reads it, or casts it as its type does  | Writes it         |
-| `object` with `properties`, via `$ref`                                       | The DTO named after the schema                                                         | `::from()`                              | `->toArray()`     |
-| `object` with `properties`, inline                                           | A DTO named after its parent                                                           | `::from()`                              | `->toArray()`     |
-| `object` with no `properties`                                                | `array<string, mixed>`                                                                 | Reads it                                | Writes it         |
-| `array` with `items`                                                         | `list<T>`, in the docblock                                                             | `array_map()` with `T`'s own conversion | The same, back    |
-| A file part                                                                  | `UploadedFile`                                                                         | Reads it                                | Writes it as is   |
-| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The class of the schema it points back at, `mixed` where the request did not unroll it | `::from()`, as above                    | `->toArray()`     |
-| `nullable`                                                                   | `?T`                                                                                   | Checks for `null` before any conversion | Writes the `null` |
-| No single type, or none at all                                               | `mixed`                                                                                | Reads it                                | Writes it         |
+| The schema says                                                              | The property is                                                                        | `from()` does                                      | `toArray()` does  |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------- |
+| `string`                                                                     | `string`                                                                               | Reads it                                           | Writes it         |
+| `integer`                                                                    | `int`                                                                                  | `(int)`, request side only                         | Writes it         |
+| `number`                                                                     | `float`                                                                                | `(float)`, request side only                       | Writes it         |
+| `boolean`                                                                    | `bool`                                                                                 | `filter_var()`, request side only                  | Writes it         |
+| `string`, `format: date-time`                                                | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`                         | `format()`, below |
+| `string`, `format: date`                                                     | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`                         | `toDateString()`  |
+| `enum`                                                                       | Its scalar type                                                                        | Reads it, or casts it as its type does             | Writes it         |
+| `object` with `properties`, via `$ref`                                       | The DTO named after the schema                                                         | `::from()`                                         | `->toArray()`     |
+| `object` with `properties`, inline                                           | A DTO named after its parent                                                           | `::from()`                                         | `->toArray()`     |
+| `object` with no `properties`                                                | `array<array-key, T>`, `T` from `additionalProperties`, `mixed` when it states none    | `array_map()` with `T`'s own conversion, keys kept | The same, back    |
+| `array` with `items`                                                         | `list<T>`, in the docblock                                                             | `array_map()` with `T`'s own conversion            | The same, back    |
+| A file part                                                                  | `UploadedFile`                                                                         | Reads it                                           | Writes it as is   |
+| A node that [recurses](../openapi-support.md#the-normal-form-a-schema-takes) | The class of the schema it points back at, `mixed` where the request did not unroll it | `::from()`, as above                               | `->toArray()`     |
+| `nullable`                                                                   | `?T`                                                                                   | Checks for `null` before any conversion            | Writes the `null` |
+| No single type, or none at all                                               | `mixed`                                                                                | Reads it                                           | Writes it         |
 
-**An object body with no `properties` gets a DTO with no properties, and the file says it carries nothing.** The row
-above is the case of a property whose value is a free-form object. A body has no parent to hold it as one, and a DTO's
-properties are the contract's declared keys, so the type is empty: `from()` reads no key and `toArray()` returns `[]`.
-It still exists, with both of its types, so a property added to the contract later does not create a class that was not
-there. The payload is not in it: the generated file's findings say to read the body from the request itself, with
-`$request->json()->all()` for a JSON body.
+**A map is typed by its values, and keeps its keys.** An object that declares no `properties` and writes a schema under
+`additionalProperties` is `array<array-key, T>`, `T` being what that schema becomes: `array<array-key, int>` for
+`{type: integer}`, `array<array-key, PetInputDto>` for a `$ref` to `Pet`, `array<array-key, int|null>` for a nullable
+value. `from()` and `toArray()` convert each value the way they convert an element of a list, with `array_map()` and no
+`array_values()`, since the keys are the data. The key type is `array-key` because PHP turns a key such as `"2024"` into
+the integer `2024` when it reads the JSON, so a map of integers can arrive with an `int` key. A map that writes no value
+schema, or `additionalProperties: {}`, is `array<array-key, mixed>`: the request judges nothing about its values. An
+object that declares `properties` is a DTO of its own and carries only those.
+
+**A body that is a map or an open object is carried whole, under one property.** An object body with no `properties` has
+no declared key for a property to be, so its keys are the data. The DTO has one property, `additionalProperties`, typed
+`array<array-key, T>` and never `Optional`: an absent or empty body is `[]`. `T` is what the value schema becomes, as
+for a [map property](#what-each-schema-type-becomes) (`array<array-key, int>` for `{type: integer}`), and
+`array<array-key, mixed>` for an open object, whose values the request judges nothing about. `from()` hands the whole
+payload to the property, converting each value, and `toArray()` returns it, so `{"a": 1, "b": 2}` is
+`$dto->additionalProperties === ['a' => 1, 'b' => 2]`. The partial type is the same, since no key of it can be absent.
+The reasoning is in [ADR 0004](../../project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
+
+**Beside a `query` parameter, the values are `mixed`.** The request judges the values of a root map only where no
+`query` parameter shares the validated data with the body (see
+[a map's values](./request-validation.md#a-maps-values-are-validated-one-by-one)), and the DTO never types what the
+request did not check. A map of integers beside `?dryRun=` is `array<array-key, mixed>`, and the file's findings say
+why. The keys of the `query` parameters are never in the DTO: `validated()` holds both, and `dto()` hands the DTO the
+body's keys alone. A body key named like a `query` parameter is read from the query string instead, which the request's
+findings name. A key a form delivers under a rewritten name (`a.b` as `a_b`) is carried under that name, and so is it
+said. A key such as an ID (`"1042"`) is kept, as the `int` key `1042`, and its value is judged: the
+[request writes a rule for each one](./request-validation.md#a-map-or-open-object-body-is-carried-whole).
 
 **A node that recurses is the class of the schema it points back at.** `Address` holds an `Address`: `parent` is typed
 `Optional|AddressInputDto`, and `Optional|AddressInputDto|null` when the schema is nullable (`?AddressInputDto` for a

@@ -29,6 +29,7 @@ final readonly class InputDtoEmitter
     public function emit(PlannedInputDto $dto): GeneratedFile
     {
         $properties = $dto->properties;
+        $keys = self::carriesWholePayload($properties) ? 'array-key' : 'string';
 
         return new GeneratedFile(
             $dto->relativePath(),
@@ -47,7 +48,7 @@ final readonly class InputDtoEmitter
             {$this->constructor($properties)}
 
                 /**
-                 * @param  array<string, mixed>  \$payload
+                 * @param  array<{$keys}, mixed>  \$payload
                  */
                 public static function from(array \$payload): self
                 {
@@ -55,7 +56,7 @@ final readonly class InputDtoEmitter
                 }
 
                 /**
-                 * @return array<string, mixed>
+                 * @return array<{$keys}, mixed>
                  */
                 public function toArray(): array
                 {
@@ -63,7 +64,7 @@ final readonly class InputDtoEmitter
                 }
 
                 /**
-                 * @return array<string, mixed>
+                 * @return array<{$keys}, mixed>
                  */
                 public function jsonSerialize(): array
                 {
@@ -193,7 +194,7 @@ final readonly class InputDtoEmitter
         }
 
         $lines = array_map(function (InputDtoProperty $property): string {
-            $value = '$payload['.var_export($property->key, true).']';
+            $value = $property->wholePayload ? '$payload' : '$payload['.var_export($property->key, true).']';
             $built = $property->type->from($value);
 
             if ($property->optional) {
@@ -217,6 +218,11 @@ final readonly class InputDtoEmitter
      */
     private function toArrayBody(array $properties): string
     {
+        // The keys of a map or open-object body are the data: the property is the array itself.
+        if (self::carriesWholePayload($properties)) {
+            return '        return '.$properties[0]->type->to('$this->'.$properties[0]->name).';';
+        }
+
         $always = array_filter($properties, static fn (InputDtoProperty $property): bool => ! $property->optional);
         $lines = [];
 
@@ -257,6 +263,17 @@ final readonly class InputDtoEmitter
         return implode("\n", $lines);
     }
 
+    /**
+     * Whether the type is the body's keys themselves (a map or an open object), which PHP types as `array-key` since it
+     * turns a numeric key into an `int`.
+     *
+     * @param  list<InputDtoProperty>  $properties
+     */
+    private static function carriesWholePayload(array $properties): bool
+    {
+        return $properties !== [] && $properties[0]->wholePayload;
+    }
+
     private function docblock(PlannedInputDto $dto): string
     {
         return GeneratedDocblock::render(
@@ -277,7 +294,7 @@ final readonly class InputDtoEmitter
      */
     private function navigation(PlannedInputDto $dto): array
     {
-        $lines = ['@implements Arrayable<string, mixed>'];
+        $lines = ['@implements Arrayable<'.(self::carriesWholePayload($dto->properties) ? 'array-key' : 'string').', mixed>'];
 
         // Between two different annotations, which `phpdoc_separation` would
         // otherwise insert for us in a consumer's formatter.

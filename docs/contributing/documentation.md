@@ -954,6 +954,8 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
 - [`decisions/index.md`](../project/decisions/index.md)
     - [`0001-record-lasting-decisions.md`](../project/decisions/0001-record-lasting-decisions.md)
     - [`0002-judge-plain-query-names-by-shape.md`](../project/decisions/0002-judge-plain-query-names-by-shape.md)
+    - [`0003-validate-each-value-of-a-map.md`](../project/decisions/0003-validate-each-value-of-a-map.md)
+    - [`0004-carry-a-map-body-under-additionalproperties.md`](../project/decisions/0004-carry-a-map-body-under-additionalproperties.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

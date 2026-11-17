@@ -33,6 +33,7 @@ final readonly class DtoShape
             || $schema->required !== []
             || $schema->dependentRequired !== []
             || $schema->additionalProperties !== null
+            || $schema->additionalPropertiesSchema !== null
             || $schema->types !== []
             || $schema->items !== null
             || $schema->enum !== null;

@@ -172,6 +172,21 @@ function statusForBuiltRules(Schema $body, array $payload, bool $bodyRequired = 
  */
 function responseForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true, array $mediaTypes = ['application/json']): array
 {
+    [$status, $decoded] = answerForBuiltRules($body, $payload, $bodyRequired, $mediaTypes);
+
+    return [$status, array_map('strval', array_keys((array) ($decoded['errors'] ?? [])))];
+}
+
+/**
+ * The same request as {@see responseForBuiltRules()}, with what the route answered: the validated data for a 200, and
+ * the framework's error bag for a 422.
+ *
+ * @param  array<string, mixed>  $payload
+ * @param  list<string>  $mediaTypes
+ * @return array{0: int, 1: array<array-key, mixed>}
+ */
+function answerForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true, array $mediaTypes = ['application/json']): array
+{
     $built = RuleSetBuilder::for(new Operation(
         index: 0,
         method: HttpMethod::Post,
@@ -195,10 +210,10 @@ function responseForBuiltRules(Schema $body, array $payload, bool $bodyRequired 
         (string) json_encode($payload, JSON_PRESERVE_ZERO_FRACTION),
     ));
 
-    /** @var array<string, mixed> $decoded */
+    /** @var array<array-key, mixed> $decoded */
     $decoded = json_decode((string) $response->getContent(), true) ?? [];
 
-    return [$response->getStatusCode(), array_map('strval', array_keys((array) ($decoded['errors'] ?? [])))];
+    return [$response->getStatusCode(), $decoded];
 }
 
 /**
@@ -495,6 +510,145 @@ it('lets an empty recursive list through at the cut and refuses an element there
 
     expect(statusForBuiltRules($node, ['children' => [['children' => []]]]))->toBe(200)
         ->and(statusForBuiltRules($node, ['children' => [['children' => [[]]]]]))->toBe(422);
+});
+
+/**
+ * An object with no property whose every value is judged by `$value`: what `additionalProperties: <schema>` says.
+ *
+ * @param  list<string>  $required
+ */
+function mapOf(Schema $value, array $required = [], bool $nullable = false): Schema
+{
+    return new Schema(
+        types: [SchemaType::Object, ...($nullable ? [SchemaType::Null] : [])],
+        required: $required,
+        additionalPropertiesSchema: $value,
+    );
+}
+
+// Each value of a map answers to the value schema's own rules, under a wildcard key. A key the contract never declared
+// is judged like any other, and one with a dot in it is the key as sent, never a path.
+it('validates each value of a map against its additionalProperties schema', function (Schema $body, array $payload, array $errors): void {
+    [$status, $answer] = answerForBuiltRules($body, $payload);
+
+    if ($errors === []) {
+        expect($status)->toBe(200)->and($answer)->toBe($payload);
+
+        return;
+    }
+
+    expect($status)->toBe(422)->and(array_keys((array) $answer['errors']))->toBe($errors);
+})->with(function (): Generator {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $labelled = new Schema(types: [SchemaType::Object], properties: ['n' => new Schema(types: [SchemaType::String])], required: ['n']);
+    $scores = new Schema(types: [SchemaType::Array], items: $integer);
+
+    yield 'integers, one sent' => [mapOf($integer), ['a' => 1], []];
+    yield 'integers, none sent' => [mapOf($integer), [], []];
+    yield 'integers, a string for one' => [mapOf($integer), ['a' => '1'], ['a']];
+    yield 'integers, the bad one among good ones' => [mapOf($integer), ['a' => 1, 'b' => 'x', 'c' => 3], ['b']];
+    yield 'objects, a required member missing' => [mapOf($labelled), ['x' => []], ['x']];
+    yield 'objects, a member of the wrong type' => [mapOf($labelled), ['x' => ['n' => 4]], ['x.n']];
+    yield 'objects, whole' => [mapOf($labelled), ['x' => ['n' => 'ok']], []];
+    yield 'lists, the second element is a string' => [mapOf($scores), ['x' => [1, '2']], ['x.1']];
+    yield 'a nested map, a string for one value' => [
+        new Schema(types: [SchemaType::Object], properties: ['meta' => mapOf($integer)]),
+        ['meta' => ['k' => 'v']],
+        ['meta.k'],
+    ];
+    yield 'a nested map, whole' => [
+        new Schema(types: [SchemaType::Object], properties: ['meta' => mapOf($integer)]),
+        ['meta' => ['k' => 4]],
+        [],
+    ];
+    yield 'a nullable value, null' => [mapOf(new Schema(types: [SchemaType::Integer, SchemaType::Null])), ['a' => null], []];
+    yield 'a value that is not nullable, null' => [mapOf($integer), ['a' => null], ['a']];
+    yield 'a key with a dot' => [mapOf($integer), ['a.b' => 'x'], ['a.b']];
+});
+
+// The key the map requires without declaring it is one of the keys the wildcard reaches, so its value is judged too,
+// and the request asks for it as well. Written after the explicit key, the wildcard's rules join it rather than
+// replace it.
+it('applies the value rule to a key the map requires without declaring it', function (array $payload, int $status, array $errors): void {
+    $body = mapOf(new Schema(types: [SchemaType::Integer]), required: ['a']);
+    [$answered, $answer] = answerForBuiltRules($body, $payload);
+
+    expect($answered)->toBe($status)
+        ->and($status === 200 ? $answer : array_keys((array) $answer['errors']))->toBe($status === 200 ? $payload : $errors)
+        ->and(implode("\n", RuleSetBuilder::for(new Operation(
+            index: 0,
+            method: HttpMethod::Post,
+            path: PathTemplate::fromString('/_generated/built'),
+            operationId: 'built',
+            requestBody: new RequestBody(['application/json' => $body], true),
+        ))->findings))->not->toContain('without declaring');
+})->with([
+    'the key absent' => [[], 422, ['a']],
+    'the key of the wrong type' => [['a' => 'x'], 422, ['a']],
+    'the key whole' => [['a' => 1], 200, []],
+    'the key whole beside another' => [['a' => 1, 'b' => 2], 200, []],
+    'another key of the wrong type' => [['a' => 1, 'b' => 'x'], 422, ['b']],
+]);
+
+// A nullable required body has no rule key for a name it requires without declaring: the request asks for the key itself
+// and the wildcard judges the value alone, so a `null` body still passes and a body that sends the key is judged.
+it('applies the value rule to a key the map requires without declaring it, on a nullable required body', function (string $content, int $status, array $errors): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/labels'),
+        operationId: 'replaceLabels',
+        requestBody: new RequestBody(['application/json' => mapOf(new Schema(types: [SchemaType::Integer]), required: ['a'], nullable: true)], true),
+    ));
+
+    [$answered, $keys] = errorsForRawJson($class, $content);
+
+    expect($answered)->toBe($status)
+        ->and(array_keys($keys))->toBe($errors);
+})->with([
+    'null' => ['null', 200, []],
+    'the key of the wrong type' => ['{"a":"x"}', 422, ['a']],
+    'the key whole' => ['{"a":1}', 200, []],
+    'an empty object' => ['{}', 422, ['a']],
+]);
+
+// A recursion through a map is cut on its values, as one through a list is cut on its elements: down to the stated
+// depth the values are judged, and the map at the cut is empty or it is a 422.
+it('validates a map whose values recurse down to the stated depth', function (Schema $body, array $payload, int $status, array $errors): void {
+    [$answered, $answer] = answerForBuiltRules($body, $payload);
+
+    expect($answered)->toBe($status)
+        ->and($status === 200 ? true : array_keys((array) $answer['errors']))->toBe($status === 200 ? true : $errors);
+})->with(function (): Generator {
+    $position = '#/components/schemas/Node';
+    $selfMap = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        maxDepth: 1,
+        source: $position,
+        additionalPropertiesSchema: Schema::recursion($position, 'Node'),
+    );
+    $tree = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        properties: [
+            'name' => new Schema(types: [SchemaType::String]),
+            'children' => new Schema(
+                types: [SchemaType::Object],
+                additionalPropertiesSchema: Schema::recursion($position, 'Node'),
+            ),
+        ],
+        maxDepth: 1,
+        source: $position,
+    );
+
+    yield 'the self-map, empty' => [$selfMap, [], 200, []];
+    yield 'the self-map, an empty map at the cut' => [$selfMap, ['x' => []], 200, []];
+    yield 'the self-map, one key at the cut' => [$selfMap, ['x' => ['y' => []]], 422, ['x.y']];
+    yield 'the self-map, a wrong value above the cut' => [$selfMap, ['x' => 'oops'], 422, ['x']];
+    yield 'the tree, a child judged' => [$tree, ['children' => ['a' => ['name' => 'x', 'children' => []]]], 200, []];
+    yield 'the tree, a child of the wrong type' => [$tree, ['children' => ['a' => ['name' => 1]]], 422, ['children.a.name']];
+    yield 'the tree, one key at the cut' => [$tree, ['children' => ['a' => ['children' => ['b' => []]]]], 422, ['children.a.children.b']];
 });
 
 // A required field the schema cannot be null on is a way back the contract insists on. A payload that reaches the cut
@@ -1154,7 +1308,8 @@ function emittedRequestClass(Operation $operation): string
  * to their class name.
  *
  * @param  class-string<FormRequest>  $class
- * @param  array<string, mixed>  $parameters  form fields, for a request that is not JSON
+ * @param  array<array-key, mixed>  $parameters  form fields, for a request that is not JSON (PHP keys an ID as an
+ *                                               `int`)
  * @param  array<string, mixed>  $files
  * @param  array<array-key, mixed>|null  $json  the body, for a JSON request
  * @return array{0: int, 1: array<string, mixed>}
@@ -1189,14 +1344,15 @@ function sendThroughEmitted(string $class, string $method, string $query = '', ?
  * @param  class-string<FormRequest>  $class
  * @param  array<array-key, mixed>  $json  the body, for a JSON request
  * @param  array<string, mixed>  $parameters  form fields, for a request that is not JSON
+ * @param  string  $query  the query string, `?page=2`
  * @return array{0: int, 1: array<string, mixed>}
  */
-function dtoThroughEmitted(string $class, string $method, array $json = [], array $parameters = []): array
+function dtoThroughEmitted(string $class, string $method, array $json = [], array $parameters = [], string $query = ''): array
 {
     Route::match([$method], '/_generated/emitted-dto', fn () => response()->json(app($class)->dto()->toArray()));
 
     $response = app(HttpKernel::class)->handle(Request::create(
-        '/_generated/emitted-dto',
+        '/_generated/emitted-dto'.$query,
         $method,
         $parameters,
         [],
@@ -2846,4 +3002,142 @@ it('refuses an empty string for a required scalar of a nullable body, without Co
         '{"publishAt":"2026-12-01T09:00:00Z","retries":"","notify":""}',
         ['notify', 'retries'],
     ],
+]);
+
+/**
+ * A `POST` whose JSON body is a map or an open object, with the `query` parameters beside it.
+ *
+ * @param  list<QueryParameter>  $query
+ * @param  list<string>  $mediaTypes
+ */
+function postWithMapBody(Schema $body, array $query = [], array $mediaTypes = ['application/json']): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/hooks'),
+        operationId: 'receiveHook',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), true),
+        queryParameters: $query,
+    );
+}
+
+/**
+ * An answer as `[status, body]` with the body's keys in order: Laravel puts the keys a wildcard reached before the ones
+ * a rule names, and no caller reads that order.
+ *
+ * @param  array{0: int, 1: array<array-key, mixed>|null}  $answer
+ * @return array{0: int, 1: array<array-key, mixed>|null}
+ */
+function withKeysSorted(array $answer): array
+{
+    if ($answer[1] !== null) {
+        ksort($answer[1]);
+    }
+
+    return $answer;
+}
+
+// The keys of a map are the data: the DTO holds them all under `additionalProperties`, as sent, and `validated()` holds
+// them all too (no rule names a key, so a wildcard keeps them). A `null` body is the payload `null`.
+it('hands a map body to its DTO, every key as sent', function (string $content, int $status, ?array $dto): void {
+    $class = emittedRequestClass(postWithMapBody(mapOf(new Schema(types: [SchemaType::Integer]), nullable: true)));
+
+    expect(withKeysSorted(dtoForRawJson($class, 'POST', $content)))->toBe([$status, $dto]);
+})->with([
+    'two keys' => ['{"a":1,"b":2}', 200, ['a' => 1, 'b' => 2]],
+    'an empty object' => ['{}', 200, []],
+    'a value the map refuses' => ['{"a":"x"}', 422, null],
+    'null' => ['null', 200, null],
+]);
+
+it('keeps every key of a map or open-object body in validated()', function (Schema $body, array $json): void {
+    $class = emittedRequestClass(postWithMapBody($body));
+
+    expect(withKeysSorted(sendThroughEmitted($class, 'POST', json: $json)))->toBe([200, $json]);
+})->with([
+    'a map of integers' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['a' => 1, 'b' => 2]],
+    'an open object' => [fn () => new Schema(types: [SchemaType::Object]), ['a' => 1, 'b' => 'x', 'c' => [1, 2]]],
+    'an empty value schema' => [fn () => mapOf(new Schema), ['a' => [1]]],
+]);
+
+it('carries an open-object body whole', function (): void {
+    $class = emittedRequestClass(postWithMapBody(new Schema(types: [SchemaType::Object])));
+    $body = ['a' => ['b' => [1]], 'c' => null, 'd' => 'x'];
+
+    expect(withKeysSorted(dtoThroughEmitted($class, 'POST', $body)))->toBe([200, $body]);
+});
+
+// Laravel expands `*` over data it has put through `array_merge()`, which renumbers an integer-like top-level key, so the
+// wildcard alone never reaches a key such as an ID: it would be missing from `validated()` and its value never judged.
+// Every rule under `*` is written again under each such key the request carries, so a map of IDs keeps its keys, judges
+// their values and answers on the key itself (`1042`).
+it('keeps and judges the integer-like keys of a root map', function (Schema $body, array $json, int $status, array $answer): void {
+    $class = emittedRequestClass(postWithMapBody($body));
+    [$got, $validated] = sendThroughEmitted($class, 'POST', json: $json);
+
+    expect($got)->toBe($status);
+
+    if ($status === 200) {
+        expect(withKeysSorted([200, $validated]))->toBe([200, $answer])
+            ->and(withKeysSorted(dtoThroughEmitted($class, 'POST', $json)))->toBe([200, $answer]);
+
+        return;
+    }
+
+    expect(array_map(strval(...), array_keys((array) $validated['errors'])))->toBe($answer);
+})->with([
+    'a map of integers keyed by IDs' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['1042' => 3, '877' => 1], 200, [877 => 1, 1042 => 3]],
+    'a map of integers keyed by IDs and names' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['1042' => 3, 'sku-1' => 2, 'a.b' => 1], 200, [1042 => 3, 'a.b' => 1, 'sku-1' => 2]],
+    'a refused value under an ID' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['1042' => 'abc'], 422, ['1042']],
+    'a refused value under an ID, beside a good one' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['1042' => 3, '877' => 'x'], 422, ['877']],
+    'a map of objects' => [fn () => mapOf(new Schema(types: [SchemaType::Object], properties: ['n' => new Schema(types: [SchemaType::String])])), ['1042' => ['n' => 'x']], 200, [1042 => ['n' => 'x']]],
+    'a refused property of an object under an ID' => [fn () => mapOf(new Schema(types: [SchemaType::Object], properties: ['n' => new Schema(types: [SchemaType::String])])), ['1042' => ['n' => 5]], 422, ['1042.n']],
+    'a map of lists' => [fn () => mapOf(new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]))), ['1042' => [1, 2]], 200, [1042 => [1, 2]]],
+    'a refused element of a list under an ID' => [fn () => mapOf(new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]))), ['1042' => [1, 'x']], 422, ['1042.1']],
+    'an open object' => [fn () => new Schema(types: [SchemaType::Object]), ['2024' => 'x', 'b' => [1]], 200, [2024 => 'x', 'b' => [1]]],
+]);
+
+// A form delivers the same integer keys, and a key that is also a `query` parameter is the parameter's: the rules the
+// request writes again for an integer-like body key leave it alone.
+it('keeps and judges the integer-like keys of a form map, and leaves the query parameters their own rules', function (): void {
+    $form = emittedRequestClass(postWithMapBody(mapOf(new Schema(types: [SchemaType::Integer])), mediaTypes: ['application/x-www-form-urlencoded']));
+    $beside = emittedRequestClass(postWithMapBody(
+        mapOf(new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter('limit', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect(withKeysSorted(sendThroughEmitted($form, 'POST', parameters: ['1042' => '3', 'b' => '2'])))->toBe([200, [1042 => '3', 'b' => '2']])
+        ->and(sendThroughEmitted($form, 'POST', parameters: ['1042' => 'abc'])[0])->toBe(422)
+        ->and(withKeysSorted(sendThroughEmitted($beside, 'POST', '?limit=5', ['1042' => 3])))->toBe([200, [1042 => 3, 'limit' => '5']])
+        ->and(sendThroughEmitted($beside, 'POST', '?limit=x', ['1042' => 3])[0])->toBe(422);
+});
+
+// The generated file keeps its claim that nothing was left unenforced for a body that is `{type: object}`.
+it('keeps the unenforced sentence in the file of an open-object body', function (): void {
+    $planned = plannedRequests([postWithMapBody(new Schema(types: [SchemaType::Object]))])['requests'][0];
+    $file = (new FormRequestEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($planned)->contents;
+
+    // The docblock wraps its lines, so the sentence is compared with the whitespace folded.
+    $flat = (string) preg_replace('/\s*\n\s*\*\s*/', ' ', $file);
+
+    expect($flat)->toContain('Nothing was read and left unenforced.');
+});
+
+// A `query` parameter's key is read from the query string, so it is in `validated()` and not in the body's keys: the DTO
+// holds the body and none of the query string, and a body key of the same name is in neither. The same for a name PHP
+// nests (`page[size]`), whose key is `page`.
+it('keeps the query parameters out of the DTO of a map body', function (string $parameter, string $query, array $json, array $validated, array $dto): void {
+    $class = emittedRequestClass(postWithMapBody(
+        mapOf(new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter($parameter, new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect(withKeysSorted(sendThroughEmitted($class, 'POST', $query, $json)))->toBe([200, $validated])
+        ->and(withKeysSorted(dtoThroughEmitted($class, 'POST', $json, query: $query)))->toBe([200, $dto]);
+})->with([
+    'a query parameter, sent' => ['page', '?page=2', ['a' => 1], ['a' => 1, 'page' => '2'], ['a' => 1]],
+    'a body key of that name' => ['page', '', ['a' => 1, 'page' => 9], ['a' => 1], ['a' => 1]],
+    'a bracketed query name, sent' => ['page[size]', '?page[size]=3', ['a' => 1], ['a' => 1, 'page' => ['size' => '3']], ['a' => 1]],
+    'a body key named like the head of a bracketed name' => ['page[size]', '', ['a' => 1, 'page' => 9], ['a' => 1], ['a' => 1]],
 ]);

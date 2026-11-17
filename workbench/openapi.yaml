@@ -291,6 +291,30 @@ paths:
             responses:
                 '202': { description: Scheduled }
 
+    /posts/{postId}/labels:
+        # A body that is a map: no property is declared, and every value is held to the
+        # schema under `additionalProperties`. Read the generated request's `'*'` key and
+        # `ReplacePostLabelsInputDto`, whose `additionalProperties` holds every key, then send
+        # `{"draft": 5}` for a `422` on `draft` (a number is not a string) and
+        # `{"draft": "ok"}` for the generated parent's `501`.
+        put:
+            operationId: replacePostLabels
+            summary: Replace the labels of a post
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            additionalProperties:
+                                type: string
+                                maxLength: 30
+            responses:
+                '202': { description: Replaced }
+
     /posts/{postId}/legacy-comments:
         # Deprecated with a sunset date. Both reach the generated file's findings,
         # and both are what the doctor will enforce once it exists: a deprecation

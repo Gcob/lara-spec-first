@@ -7,12 +7,12 @@ covers: >
     required list emptied and why nothing fills an absent field from a schema `default`, which JSON Schema constraint
     becomes which Laravel rule and what happens to the ones that map to nothing, why nothing rewrites the rule set at
     request time, why the generated request is `final` and where the three things a developer would extend it for
-    already live, why the validated payload reaches the controller as a DTO and what an absent field is in it, where
-    each field is read from (the body for a body field, the query string for a declared `query` parameter), what a
-    client gets when its request is refused and how an application makes every refusal a JSON `422`, how deep a
-    recursive schema is validated and what a deeper payload gets, which media types are read and why one operation
-    declares one of them, what an operation with nothing to validate gets, and how the request reaches `routeAction`
-    without changing what a custom child may override.
+    already live, why the validated payload reaches the controller as a DTO, what an absent field is in it and how a map
+    or open-object body is carried whole, where each field is read from (the body for a body field, the query string for
+    a declared `query` parameter), what a client gets when its request is refused and how an application makes every
+    refusal a JSON `422`, how deep a recursive schema is validated and what a deeper payload gets, which media types are
+    read and why one operation declares one of them, what an operation with nothing to validate gets, and how the
+    request reaches `routeAction` without changing what a custom child may override.
 read_before: >
     Implementing the `FormRequest` emitter, or changing what `routeAction` declares.
 tags: [code-generation, openapi, decisions, scope, laravel]
@@ -70,11 +70,13 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children    | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for                                   |
 | `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                             | A `query` name PHP appends to (`ids[]`) or delivers under no name, or under a key the body arrives under                |
 | A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)         | A form client's value for a top-level name PHP rewrites, in a body that is JSON too                                     |
+| [A map's values](#a-maps-values-are-validated-one-by-one), each by its `additionalProperties` schema          | A map's values beside declared `properties`, or at the root beside a `query` parameter                                  |
 |                                                                                                               | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
 |                                                                                                               | A bound on a field that states no single type                                                                           |
-| A `query` parameter, with its own `required`, and a name PHP rewrites keyed by what it delivers (`page.size`) |                                                                                                                         |
-| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed       |                                                                                                                         |
+| A `query` parameter, with its own `required`, and a name PHP rewrites keyed by what it delivers (`page.size`) | A key of a map body that a `query` parameter shadows, or that a form delivers under a rewritten name                    |
+| A name in `required` that `properties` does not declare: `present`, and the map's value rule where it has one |                                                                                                                         |
 | [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size  |                                                                                                                         |
+| [A map or open-object body](#a-map-or-open-object-body-is-carried-whole), every key in `validated()`          |                                                                                                                         |
 
 **A body declared only in media types this package does not read gets no class**, the same as an operation stating
 nothing, and `spec:build` warns about it on a line of its own: unlike that operation, this one states something nobody
@@ -657,24 +659,24 @@ one becomes is this table's.
 
 **What a type, a nullability and an annotation each become:**
 
-| Schema                                                  | Laravel rule                                                                                                                                                                                       |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type: string`                                          | `string`                                                                                                                                                                                           |
-| `type: integer`                                         | `integer:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                     |
-| `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                     |
-| `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                    |
-| `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                         |
-| `type: object`                                          | `array`, with each property keyed `field.child`. A JSON object arrives as a PHP array, and Laravel has no `object` rule                                                                            |
-| `nullable`, `type: [..., "null"]`                       | `nullable`                                                                                                                                                                                         |
-| `enum`                                                  | `Rule::in()` with the declared values                                                                                                                                                              |
-| `const`                                                 | `Rule::in()` with the one value                                                                                                                                                                    |
-| `format: date`                                          | `date_format:Y-m-d`                                                                                                                                                                                |
-| `format: date-time`                                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                                                                                                |
-| `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`                                                                                                                                                                    |
-| `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                                                                         |
-| `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                                                                      |
-| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer:strict` is `is_int()` on the decoded JSON, and `integer` is PHP's `FILTER_VALIDATE_INT`: both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number |
-| `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                                                                                  |
+| Schema                                                  | Laravel rule                                                                                                                                                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type: string`                                          | `string`                                                                                                                                                                                                                                          |
+| `type: integer`                                         | `integer:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                                    |
+| `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                                                                    |
+| `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                                                                   |
+| `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                                                                        |
+| `type: object`                                          | `array`, with each property keyed `field.child`, or each value keyed `field.*` when it declares none and writes [a value schema](#a-maps-values-are-validated-one-by-one). A JSON object arrives as a PHP array, and Laravel has no `object` rule |
+| `nullable`, `type: [..., "null"]`                       | `nullable`                                                                                                                                                                                                                                        |
+| `enum`                                                  | `Rule::in()` with the declared values                                                                                                                                                                                                             |
+| `const`                                                 | `Rule::in()` with the one value                                                                                                                                                                                                                   |
+| `format: date`                                          | `date_format:Y-m-d`                                                                                                                                                                                                                               |
+| `format: date-time`                                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                                                                                                                                               |
+| `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`                                                                                                                                                                                                                   |
+| `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                                                                                                                        |
+| `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                                                                                                                     |
+| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer:strict` is `is_int()` on the decoded JSON, and `integer` is PHP's `FILTER_VALIDATE_INT`: both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number                                                |
+| `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                                                                                                                                 |
 
 **Laravel's `boolean` refuses the string `"true"`, so a boolean that arrives as text does not get it.** It accepts `1`,
 `0`, `"1"`, `"0"`, `true` and `false`, and OpenAPI's default `form` style writes a boolean in a query string as the text
@@ -758,16 +760,17 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 
 **Arrays and objects, where a rule is keyed rather than named:**
 
-| Schema                        | Laravel rule                                                                                                                                                                                                                                                                                         |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `items`                       | The element rules, under `field.*`                                                                                                                                                                                                                                                                   |
-| `minItems`, `maxItems`        | `min`, `max` on the array itself                                                                                                                                                                                                                                                                     |
-| `uniqueItems: true`           | `distinct:strict` on `field.*` when the elements are a typed scalar that may not be null, in an array that is not itself an element. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through |
-| `properties`                  | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                     |
-| `additionalProperties: false` | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                        |
-| `required` on a nested object | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                |
-| `dependentRequired`           | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                |
-| `allOf`                       | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                |
+| Schema                           | Laravel rule                                                                                                                                                                                                                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                          | The element rules, under `field.*`                                                                                                                                                                                                                                                                   |
+| `minItems`, `maxItems`           | `min`, `max` on the array itself                                                                                                                                                                                                                                                                     |
+| `uniqueItems: true`              | `distinct:strict` on `field.*` when the elements are a typed scalar that may not be null, in an array that is not itself an element. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through |
+| `properties`                     | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                     |
+| `additionalProperties: false`    | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                        |
+| `additionalProperties: <schema>` | Each value, under `*` at the root or `field.*` nested, when the object declares no `properties`: [a map's values](#a-maps-values-are-validated-one-by-one)                                                                                                                                           |
+| `required` on a nested object    | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                |
+| `dependentRequired`              | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                |
+| `allOf`                          | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                |
 
 **A nested object is validated as an array, keyed with dots.** One rule key per property, however deep the schema goes,
 which is Laravel's own notation for nested input and what `validated()` hands back:
@@ -864,6 +867,9 @@ refuses. A field of a body that is JSON and nothing else gets the `:strict` form
   was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly
   every JSON request. The four are this one, `mimetypes` refusing a file named like PHP, a recursive schema refused
   below its depth, and a body with `properties` and no `type` refusing a JSON root that is not an object.
+- **A finding that loses no constraint is not a gap either,** and is left out of the warning the same way. Two kinds
+  exist: a body key of a map that is also the name of a `query` parameter (read from the query string, so the body's is
+  left out), and a key a form delivers under a rewritten name (`a.b` as `a_b`) in a map body.
 - **A query parameter and a form or multipart field keep the loose rules**, since every value they carry is text.
 - **A form client of an operation that declares only JSON gets the JSON rules.** `age=30` from an HTML form is a 422
   there, where it was a 200: the contract declares no form, so that client is off-contract, and `rules()` is one array.
@@ -875,6 +881,43 @@ refuses. A field of a body that is JSON and nothing else gets the `:strict` form
 - **`integer:strict` needs Laravel 12.22.** Before it the parameter is silently ignored, and an integer would accept
   `"42"`. `numeric:strict` and `boolean:strict` exist from 12.21, so `integer:strict` is the rule that sets the floor,
   and the reason the package requires `^12.22 || ^13.0`.
+
+### A map's values are validated one by one
+
+**An object that declares no `properties` and writes a schema under `additionalProperties` is a map, and each of its
+values is judged by that schema's own rules.** The rules sit under one wildcard key, written after the object's own
+keys: `*` for a body that is a map, `labels.*` for a property. A value is present by being in the object, so the rule
+carries no presence, as an element of a list carries none. The reasoning is in
+[ADR 0003](../../project/decisions/0003-validate-each-value-of-a-map.md).
+
+```yaml
+# workbench/openapi.yaml, the body of `PUT /posts/{postId}/labels`
+type: object
+additionalProperties: { type: string, maxLength: 30 }
+```
+
+```php
+// app/Http/Generated/Requests/ReplacePostLabelsRequest.php
+'*' => ['string', 'max:30'],
+```
+
+Written as a property named `labels`, the same schema gives `'labels' => ['sometimes', 'array']` and
+`'labels.*' => ['string', 'max:30']`.
+
+**A key the map requires without declaring it is judged by the wildcard too.** `required: [a]` with no `properties`
+keeps `present` for `a`, the wildcard adds the value's rules to it, and the finding that says the request "says nothing
+about the value" is not written there. **An empty value schema (`additionalProperties: {}`) is an open object**, as
+`true` is: no rule and no finding. A key with a dot in it is the key as sent, never a path.
+
+**Where a wildcard would judge more than the values, they are reported and not validated.** The wildcard reaches every
+key at its level, so beside a declared property (`id` and a value schema) it would hold `id` to the value schema, and a
+root map beside a `query` parameter would hold the parameter's key to it. In both, one finding names
+`additionalProperties`, `spec:doctor` reports it as `Partial`, and the declared property keeps exactly its own rules. A
+map nested in an operation that has a `query` parameter is validated.
+
+**Two branches of an `allOf` that each write a value schema are merged exactly:** the values must satisfy both, and a
+value schema written by one branch also holds for the properties the other branch declares. A contradiction is refused,
+as every `allOf` contradiction is, and `additionalProperties: false` in one branch closes the merged object.
 
 ### A recursive schema is validated to a stated depth
 
@@ -930,7 +973,8 @@ recursive schema allows:
 
 **The table is for a field that holds the recursive schema. A list of it is cut on its elements**, so an empty list
 passes in both rows: it carries no data, and the depth exists to limit how much data a payload carries. A list with one
-element below the depth answers 422 on that element.
+element below the depth answers 422 on that element. **A [map](#a-maps-values-are-validated-one-by-one) of it is cut on
+its values the same way:** an empty map passes at the cut, and one value below it answers 422 on that key.
 
 **Not `prohibited`, which is "missing or empty"**: it lets `null`, `""` and `[]` through, and a typed DTO would then be
 built from an empty array. `missing` is the key being absent. **What the contract asks of the key stays beside it when
@@ -1102,18 +1146,64 @@ be built from `null` and came out empty, and for a required body that requires a
 no content, passes, and keeps the DTO of `Optional`s. A body that cannot be `null`, or a nullable one read only as a
 form (a form cannot send `null`), keeps the plain return type.
 
-**Its properties are the body schema's, and a query parameter is not one of them.** The rule set merges the two, so
-`validated()` carries both; the DTO mirrors the body and nothing else, because the body is where its name comes from.
-Without that line the naming rule below would not hold: two operations sharing one body `$ref` while declaring different
-query parameters would be feeding two different key sets into one shared type. A query parameter stays on the request,
-where `validated('page')` reads it and where [pagination](../pagination.md#parameters-must-be-declared) already looks
-for it.
+**Its properties are the body schema's, and a query parameter is not one of them.** (A body with none is
+[carried whole](#a-map-or-open-object-body-is-carried-whole).) The rule set merges the two, so `validated()` carries
+both; the DTO mirrors the body and nothing else, because the body is where its name comes from. Without that line the
+naming rule below would not hold: two operations sharing one body `$ref` while declaring different query parameters
+would be feeding two different key sets into one shared type. A query parameter stays on the request, where
+`validated('page')` reads it and where [pagination](../pagination.md#parameters-must-be-declared) already looks for it.
 
 **No factory on this side, and the asymmetry is the point.** A
 [response DTO factory](./response-dtos.md#factories-carry-the-behavior) exists because a response is built from a model,
 and mapping a model onto a response shape is where applications differ. An input DTO is built from the validated
 payload, whose keys are the contract's own property names, so there is nothing to teach and nothing to override:
 `from()` is a constructor call the build writes in full.
+
+### A map or open-object body is carried whole
+
+**A body that is an object with no `properties` has one property on its DTO, `additionalProperties`, and `validated()`
+holds every body key.** The keys of such a body are the data, so `validated()` would hold none of them if no rule named
+one: the root gets `'*' => ['sometimes']` where no value rule is emitted (an open object, an empty value schema, a map
+beside a `query` parameter), after every explicit key, so the wildcard keeps each key without asking anything of it. A
+map whose values are validated has its value rules under the same `*`. A controller that passed `validated()` to
+`create()` now passes the body, where it passed `[]`.
+
+```php
+// app/Http/Generated/Data/ReplacePostLabelsInputDto.php
+/**
+ * @param  array<array-key, string>  $additionalProperties
+ */
+public function __construct(
+    public array $additionalProperties,
+) {}
+```
+
+**A value is typed only where the request judged it.** Beside a `query` parameter the values of a root map are
+[reported and not validated](#a-maps-values-are-validated-one-by-one), so the DTO says `array<array-key, mixed>` rather
+than the schema's type. One class serves every operation that reaches a named schema, so the type is decided before any
+class is written: if any operation leaves the values unvalidated, the class is `mixed` for all of them, and no value
+class (`PetInputDto` for a map of `Pet`) is written for a map that ends up `mixed`. The classes are the same in every
+document order. The reasoning is in
+[ADR 0004](../../project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
+
+**`dto()` takes the `query` parameters' keys out of the data before the DTO reads it**, since `validated()` holds the
+body's keys and the `query` string's, and the DTO is the body's. Findings are written for such a body (the two below,
+and the key Laravel drops, after them):
+
+- **A map key named like a `query` parameter** is read from the query string, never from the body, so a body key of that
+  name is left out of `validated()` and of the DTO. The finding names the key the value arrives under (`page` for a
+  parameter written `page[size]`).
+- **A key a form delivers under another name** (`a.b` and `a b` as `a_b`) is validated and carried under the rewritten
+  name, since the body declares no key to say which one the client meant. A JSON body keeps every key as sent.
+
+**A map keyed by IDs keeps its keys and has their values judged.** `{"1042": 3, "877": 1}` is a valid body for a map of
+integers, and `1042` is an integer key in PHP. Laravel expands `*` over data it has put through `array_merge()`, which
+renumbers such a key, so the wildcard alone never reaches it: the key would be missing from `validated()` and its value
+never judged. The generated `rules()` therefore writes every rule under `*` again under each integer-like key the
+request carries (`1042`, `1042.n` for a map of objects, `1042.*` for a map of lists), which is why that method is built
+from the body at request time for a root map. A key that is not an integer (`sku-1`, `a.b`) is the wildcard's, since
+Laravel keeps it as it is, and an error answers on the key itself (`1042`, never a name the build made up). The `query`
+parameters' keys keep their own rules.
 
 ### An absent field is a third state
 
@@ -1178,16 +1268,18 @@ two shapes, which is a type describing neither.
 
 **The name comes from the schema when the schema has one, and the request side always carries `Input`.** A body written
 as `$ref: '#/components/schemas/NewUser'` becomes `NewUserInputDto` and `NewUserPartialInputDto`, so every operation
-sending that shape shares one pair. An inline body takes the operation's name, `CreateUserInputDto`. The marker is there
-whether or not a `$ref` was involved, because the same `$ref: User` used in a request and in a response would otherwise
-give the two directions one name. **The name is the schema's and never the `$ref`'s or the file's**:
-`./other.yaml#/components/schemas/NewUser` is the same `NewUserInputDto`, so reorganizing a specification into files
-renames nothing, and two different schemas that give one class are a build error naming the class and where each is
-written ([what it says](./dto-anatomy.md#one-class-three-members)). **A 3.1 `$ref` with keywords beside it keeps the
-class of the schema it names when they add no shape a DTO holds**: `Alias: {$ref: Node, maxLength: 3}` is
-`NodeInputDto`. One that writes `required`, `properties`, a type, `items`, `enum` or `additionalProperties` is a schema
-of its own, and gets a class after the alias when the alias has a name, and after the operation or the field when it has
-not. The exact spellings are public API surface under [rule 4](../openapi-support.md#the-four-rules) and belong to
+sending that shape shares one pair. An inline body takes the operation's name, `CreateUserInputDto`, and an inline
+object that is a value of a map takes its property's name with `Value` added (`CreateUserLabelsValueInputDto`), as an
+element of a list takes `Item`. The marker is there whether or not a `$ref` was involved, because the same `$ref: User`
+used in a request and in a response would otherwise give the two directions one name. **The name is the schema's and
+never the `$ref`'s or the file's**: `./other.yaml#/components/schemas/NewUser` is the same `NewUserInputDto`, so
+reorganizing a specification into files renames nothing, and two different schemas that give one class are a build error
+naming the class and where each is written ([what it says](./dto-anatomy.md#one-class-three-members)). **A 3.1 `$ref`
+with keywords beside it keeps the class of the schema it names when they add no shape a DTO holds**:
+`Alias: {$ref: Node, maxLength: 3}` is `NodeInputDto`. One that writes `required`, `properties`, a type, `items`, `enum`
+or `additionalProperties` (`false`, `true` or a schema) is a schema of its own, and gets a class after the alias when
+the alias has a name, and after the operation or the field when it has not. The exact spellings are public API surface
+under [rule 4](../openapi-support.md#the-four-rules) and belong to
 [the name freeze](../../../README.md#before-10-freeze-what-a-major-would-cost).
 
 ## Nothing to validate, no class

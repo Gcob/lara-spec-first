@@ -13,6 +13,7 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\InputDtoPlan;
 use Gcob\LaraSpecFirst\Generation\InputDtoPlanner;
+use Gcob\LaraSpecFirst\Generation\InputDtoProperty;
 use Gcob\LaraSpecFirst\Generation\InputDtoType;
 use Gcob\LaraSpecFirst\Generation\PlannedInputDto;
 use Gcob\LaraSpecFirst\Generation\PlannedRequest;
@@ -33,6 +34,7 @@ use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
  * One operation carrying a body, in memory.
  *
  * @param  array<string, Schema>  $content
+ * @param  list<QueryParameter>  $queryParameters
  */
 function dtoOperation(
     string $operationId,
@@ -40,6 +42,7 @@ function dtoOperation(
     string $method = 'post',
     bool $required = true,
     string $path = '/things',
+    array $queryParameters = [],
 ): Operation {
     return new Operation(
         index: 0,
@@ -47,6 +50,7 @@ function dtoOperation(
         path: PathTemplate::fromString($path),
         operationId: $operationId,
         requestBody: new RequestBody($content, $required),
+        queryParameters: $queryParameters,
     );
 }
 
@@ -346,21 +350,104 @@ it('still refuses two inline copies whose enums are loosely equal and not the sa
     ]))->toThrow(UnusableNameException::class, 'both generate the input DTO "CreateUserAddressInputDto"');
 });
 
-// An object body with no `properties` is an open object whose keys are all undeclared. Its
-// type exists, so adding a property later creates no class that was not there, and it has
-// nothing to hold: the file says so, and where the body is read from instead.
-it('says what an object body with no properties carries, which is nothing', function (): void {
-    $plan = planDtos([dtoOperation('receiveHook', ['application/json' => dtoSchema([])])]);
+// A body with no `properties` is a map or an open object: its keys are the data, so the type has one property,
+// `additionalProperties`, which holds them all and is never `Optional` (an absent or empty body is `[]`). The values are
+// typed by their schema only where the request judged them: a `query` parameter shares the validated data with the body,
+// so beside one the request judges no value and the type says `mixed` rather than a claim nothing checked.
+it('carries a map body whole under additionalProperties', function (Schema $body, array $queryParameters, string $doc): void {
+    assert(array_is_list($queryParameters));
+    $plan = planDtos([dtoOperation('receiveHook', ['application/json' => $body], queryParameters: $queryParameters)]);
 
-    $dto = dtoNamed($plan, 'ReceiveHookInputDto');
+    foreach (['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'] as $class) {
+        $dto = dtoNamed($plan, $class);
 
-    expect($dto->properties)->toBe([])
-        ->and(implode("\n", $dto->findings))
-        ->toContain('The body declares no properties, so this type has none and carries nothing')
-        ->toContain('`$request->json()->all()`')
-        // `post()` is the form bag alone: the uploads of a multipart body are `allFiles()`.
-        ->toContain('the form bag and `$request->allFiles()` for a form')
-        ->and(implode("\n", $dto->findings))->not->toContain('`$request->post()`');
+        expect(array_map(static fn (InputDtoProperty $property): string => $property->key, $dto->properties))->toBe(['additionalProperties'])
+            ->and($dto->properties[0]->optional)->toBeFalse()
+            ->and($dto->properties[0]->type->kind)->toBe(InputDtoType::MAP)
+            ->and($dto->properties[0]->type->doc())->toBe($doc)
+            ->and(implode("\n", $dto->findings))->not->toContain('carries nothing');
+    }
+})->with([
+    'a map of integers' => [mapSchema(new Schema(types: [SchemaType::Integer])), [], 'array<array-key, int>'],
+    'a map of nullable integers' => [mapSchema(new Schema(types: [SchemaType::Integer, SchemaType::Null])), [], 'array<array-key, int|null>'],
+    'an open object' => [dtoSchema([]), [], 'array<array-key, mixed>'],
+    'an empty value schema' => [mapSchema(new Schema), [], 'array<array-key, mixed>'],
+    // The values are not validated beside a `query` parameter, so the DTO does not type them (the request's own rule,
+    // asked of the same predicate).
+    'a map of integers beside a query parameter' => [
+        mapSchema(new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]))],
+        'array<array-key, mixed>',
+    ],
+]);
+
+it('says why a map body is mixed beside a query parameter, and only then', function (): void {
+    $map = mapSchema(new Schema(types: [SchemaType::Integer]));
+    $dryRun = [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]))];
+
+    $beside = dtoNamed(planDtos([dtoOperation('receiveHook', ['application/json' => $map], queryParameters: $dryRun)]), 'ReceiveHookInputDto');
+    $alone = dtoNamed(planDtos([dtoOperation('receiveHook', ['application/json' => $map])]), 'ReceiveHookInputDto');
+
+    expect(implode("\n", $beside->findings))->toContain('The request does not validate the values')
+        ->and(implode("\n", $alone->findings))->not->toContain('The request does not validate the values');
+});
+
+// The value of a root map is named after the property with `Value`, as a nested map's is.
+it('names the class of an inline object value of a map body after additionalProperties', function (): void {
+    $plan = planDtos([dtoOperation('receiveHook', ['application/json' => mapSchema(dtoSchema(['text' => dtoString()]))])]);
+
+    expect(dtoProperty(dtoNamed($plan, 'ReceiveHookInputDto'), 'additionalProperties')->type->doc())
+        ->toBe('array<array-key, ReceiveHookAdditionalPropertiesValueInputDto>')
+        ->and(dtoNames($plan->dtos))->toContain('ReceiveHookAdditionalPropertiesValueInputDto');
+});
+
+// One class serves every operation that reaches a named schema, so whether its values are typed cannot depend on which
+// operation the build meets first: `/a` validates them and `/b`, beside a `query` parameter, does not. Compared as the
+// files the build would write, byte for byte, with a `$ref` value, which is what an order-dependent build would emit as
+// an orphan class.
+it('plans the same classes for a map body whatever the order of the operations that read it', function (): void {
+    $pet = dtoSchema(['name' => dtoString()], name: 'Pet', source: '#/components/schemas/Pet');
+    $labels = new Schema(
+        name: 'Labels',
+        source: '#/components/schemas/Labels',
+        types: [SchemaType::Object],
+        additionalPropertiesSchema: $pet,
+    );
+    $plain = dtoOperation('replaceLabels', ['application/json' => $labels], method: 'put', path: '/a');
+    $beside = dtoOperation(
+        'patchLabels',
+        ['application/json' => $labels],
+        method: 'patch',
+        path: '/b',
+        queryParameters: [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]))],
+    );
+
+    $plainFirst = emittedDtos([$plain, $beside]);
+
+    expect(emittedDtos([$beside, $plain]))->toBe($plainFirst)
+        ->and(array_keys($plainFirst))->toBe(['LabelsInputDto', 'LabelsPartialInputDto'])
+        ->and($plainFirst['LabelsInputDto'])->toContain('@param  array<array-key, mixed>  $additionalProperties')
+        ->and($plainFirst['LabelsPartialInputDto'])->toContain('@param  array<array-key, mixed>  $additionalProperties');
+});
+
+// An inline body is a class per operation, named after its request, so the class that goes `mixed` is the one beside the
+// `query` parameter and not the other: the position that decides it is the operation's own, and a shape key would turn
+// both.
+it('types only the inline map body beside a query parameter as mixed', function (): void {
+    $map = mapSchema(new Schema(types: [SchemaType::Integer]));
+    $plan = planDtos([
+        dtoOperation('replaceLabels', ['application/json' => $map], method: 'put', path: '/a'),
+        dtoOperation(
+            'patchLabels',
+            ['application/json' => $map],
+            method: 'patch',
+            path: '/b',
+            queryParameters: [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]))],
+        ),
+    ]);
+
+    expect(dtoProperty(dtoNamed($plan, 'ReplaceLabelsInputDto'), 'additionalProperties')->type->doc())->toBe('array<array-key, int>')
+        ->and(dtoProperty(dtoNamed($plan, 'PatchLabelsInputDto'), 'additionalProperties')->type->doc())->toBe('array<array-key, mixed>');
 });
 
 it('says nothing of the kind about a body that declares a property', function (): void {
@@ -596,6 +683,21 @@ it('takes the name of the one schema an allOf wraps', function (): void {
 
     expect(dtoNames($plan->dtos))->toBe(['PetInputDto', 'PetPartialInputDto']);
 });
+
+// A value schema written beside the `$ref` is shape a DTO holds, as `required` is: the wrapper is a schema of its own,
+// named after the request, and `PetInputDto` stays the class of `Pet` alone. The map itself is not carried beside the
+// properties yet, so both carry the same ones.
+it('gives its own class to an allOf wrapper that writes an additionalProperties schema', function (bool $writesMap, string $class): void {
+    $pet = dtoSchema(['name' => dtoString()], name: 'Pet', source: '#/components/schemas/Pet');
+    $wrapper = new Schema(allOf: [$pet], additionalPropertiesSchema: $writesMap ? dtoString() : null);
+    $plan = planDtos([dtoOperation('createPet', ['application/json' => $wrapper])]);
+
+    expect(dtoNames($plan->dtos))->toBe([$class, str_replace('InputDto', 'PartialInputDto', $class)])
+        ->and(array_map(static fn ($property): string => $property->key, dtoNamed($plan, $class)->properties))->toBe(['name']);
+})->with([
+    'with a value schema' => [true, 'CreatePetInputDto'],
+    'without one' => [false, 'PetInputDto'],
+]);
 
 it('does not name a composition after one of its branches', function (): void {
     $composition = new Schema(allOf: [
@@ -964,4 +1066,85 @@ it('gives a $ref whose siblings add a required key a class of its own', function
     expect(dtoNames($plan->dtos))->toContain('StrictInputDto')
         ->and(dtoNames($plan->dtos))->toContain('NodeInputDto')
         ->and(array_map(static fn ($property): bool => $property->optional, $strict->properties))->toBe([false, true]);
+});
+
+/**
+ * A `type: object` property that writes no `properties`, and the schema every value of it is held to.
+ */
+function mapSchema(?Schema $value): Schema
+{
+    return new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value);
+}
+
+/**
+ * The property of a planned DTO under this key.
+ */
+function dtoProperty(PlannedInputDto $dto, string $key): InputDtoProperty
+{
+    foreach ($dto->properties as $property) {
+        if ($property->key === $key) {
+            return $property;
+        }
+    }
+
+    throw new RuntimeException('No property '.$key);
+}
+
+// The request judges each value of a map by its schema, so the property is typed by it: `array<array-key, T>`, and a
+// value that is an object is a DTO of its own, named after the property with `Value` where a list's element says `Item`.
+// The key type is `array-key` because PHP turns the key `"2024"` into the integer `2024`.
+it('types the values of a map property from its additionalProperties schema', function (Schema $map, string $doc, array $classes): void {
+    $plan = planDtos([dtoOperation('createThing', ['application/json' => dtoSchema(['labels' => $map])])]);
+    $labels = dtoProperty(dtoNamed($plan, 'CreateThingInputDto'), 'labels');
+
+    expect($labels->type->kind)->toBe(InputDtoType::MAP)
+        ->and($labels->type->doc())->toBe($doc)
+        ->and(array_values(array_diff(dtoNames($plan->dtos), ['CreateThingInputDto', 'CreateThingPartialInputDto'])))->toBe($classes);
+})->with([
+    'an integer' => [mapSchema(new Schema(types: [SchemaType::Integer])), 'array<array-key, int>', []],
+    'a nullable integer' => [mapSchema(new Schema(types: [SchemaType::Integer, SchemaType::Null])), 'array<array-key, int|null>', []],
+    'a list of integers' => [
+        mapSchema(new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]))),
+        'array<array-key, list<int>>',
+        [],
+    ],
+    'a date-time' => [mapSchema(new Schema(types: [SchemaType::String], format: 'date-time')), 'array<array-key, CarbonImmutable>', []],
+    'a $ref to a schema with properties' => [
+        mapSchema(dtoSchema(['name' => dtoString()], name: 'Pet', source: '#/components/schemas/Pet')),
+        'array<array-key, PetInputDto>',
+        ['PetInputDto'],
+    ],
+    'an inline object' => [
+        mapSchema(dtoSchema(['text' => dtoString()])),
+        'array<array-key, CreateThingLabelsValueInputDto>',
+        ['CreateThingLabelsValueInputDto'],
+    ],
+    'no value schema' => [mapSchema(null), 'array<array-key, mixed>', []],
+    // An empty value schema is an open object, as `true` is: the request judges nothing about a value.
+    'an empty value schema' => [mapSchema(new Schema), 'array<array-key, mixed>', []],
+]);
+
+// A map whose value points back at the map's own schema, and the same map held by a tree. The self-map has no
+// properties, so its marker is not a class (the existing finding says so) and the value is `mixed`. The tree's
+// `children` is a map of `Node`, which has properties: the value is the class the marker points back at.
+it('types the values of a map property from its additionalProperties schema when the value recurses', function (): void {
+    $node = '#/components/schemas/Node';
+    $self = new Schema(
+        name: 'Node',
+        source: $node,
+        types: [SchemaType::Object],
+        additionalPropertiesSchema: Schema::recursion($node, 'Node'),
+    );
+    $selfPlan = planDtos([dtoOperation('createThing', ['application/json' => dtoSchema(['nodes' => $self])])]);
+    $tree = dtoSchema(
+        ['name' => dtoString(), 'children' => mapSchema(Schema::recursion($node, 'Node'))],
+        name: 'Node',
+        source: $node,
+    );
+    $treePlan = planDtos([dtoOperation('createNode', ['application/json' => $tree])]);
+
+    expect(dtoProperty(dtoNamed($selfPlan, 'CreateThingInputDto'), 'nodes')->type->doc())->toBe('array<array-key, mixed>')
+        ->and(implode("\n", dtoNamed($selfPlan, 'CreateThingInputDto')->findings))->toContain('which is not an object with properties')
+        ->and(dtoProperty(dtoNamed($treePlan, 'NodeInputDto'), 'children')->type->doc())->toBe('array<array-key, NodeInputDto>')
+        ->and(dtoNames($treePlan->dtos))->toBe(['NodeInputDto', 'NodePartialInputDto']);
 });

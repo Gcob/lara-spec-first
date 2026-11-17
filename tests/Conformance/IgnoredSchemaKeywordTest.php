@@ -82,7 +82,6 @@ it('collects each keyword the matrix ignores, at the position it is written', fu
     'deprecated' => ['deprecated', true],
     '$defs' => ['$defs', ['Pet' => ['type' => 'string']]],
     '$anchor' => ['$anchor', 'thing'],
-    'additionalProperties as a schema' => ['additionalProperties', ['type' => 'string']],
     'minProperties' => ['minProperties', 1],
     'maxProperties' => ['maxProperties', 3],
     'patternProperties' => ['patternProperties', ['^x-' => ['type' => 'string']]],
@@ -105,8 +104,8 @@ it('collects each keyword the matrix ignores, at the position it is written', fu
 ]);
 
 // Class two: a keyword a generator reads, or one nobody owes a report about, is
-// not on the list. `additionalProperties` is the one keyword that is a boolean
-// in one spelling and a schema in the other, and only the schema is ignored.
+// not on the list. `additionalProperties` is read in all three of its spellings
+// (`false`, `true` and a schema, which the contract carries), so none is ignored.
 it('collects nothing from a keyword a rule is built from', function (string $keyword, mixed $value): void {
     $body = ignoredBody(extractIgnoredKeywordDocument(['type' => 'object', $keyword => $value])[0]);
 
@@ -114,6 +113,7 @@ it('collects nothing from a keyword a rule is built from', function (string $key
 })->with([
     'additionalProperties: false' => ['additionalProperties', false],
     'additionalProperties: true' => ['additionalProperties', true],
+    'additionalProperties as a schema' => ['additionalProperties', ['type' => 'string']],
     'required' => ['required', ['a']],
     'description' => ['description', 'what it is'],
     '$comment' => ['$comment', 'for a reader'],
@@ -147,6 +147,23 @@ it('names the component a keyword is written in when the schema is reached by re
     )[0]);
 
     expect($body->ignored)->toBe(['oneOf' => '#/components/schemas/Thing/oneOf']);
+});
+
+// A schema written under `additionalProperties` is walked like any child, so a keyword nothing reads that it writes is
+// reported where it is written: inside the value schema, and behind a `$ref` at the component's own position.
+it('names the position of a keyword written inside an additionalProperties schema', function (): void {
+    $inline = ignoredBody(extractIgnoredKeywordDocument([
+        'type' => 'object',
+        'additionalProperties' => ['type' => 'string', 'default' => 'x'],
+    ])[0]);
+    $behindRef = ignoredBody(extractIgnoredKeywordDocument(
+        ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Tag']],
+        ['Tag' => ['type' => 'string', 'deprecated' => true]],
+    )[0]);
+
+    expect($inline->ignored)->toBe([])
+        ->and($inline->additionalPropertiesSchema?->ignored)->toBe(['default' => IGNORED_BODY_AT.'/additionalProperties/default'])
+        ->and($behindRef->additionalPropertiesSchema?->ignored)->toBe(['deprecated' => '#/components/schemas/Tag/deprecated']);
 });
 
 // Class four: a value that is data is data. A `$ref` written in a `default` is a

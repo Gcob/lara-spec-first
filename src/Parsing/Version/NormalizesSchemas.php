@@ -64,6 +64,9 @@ trait NormalizesSchemas
             maxDepth: is_int($keywords['x-max-depth'] ?? null) ? $keywords['x-max-depth'] : null,
             source: $source,
             ignored: $ignored,
+            additionalPropertiesSchema: ($keywords['additionalProperties'] ?? null) instanceof Schema
+                ? $keywords['additionalProperties']
+                : null,
         );
     }
 

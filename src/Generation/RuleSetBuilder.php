@@ -136,6 +136,7 @@ final readonly class RuleSetBuilder
         'dependentRequired',
         'allOf',
         'additionalProperties',
+        'additionalPropertiesSchema',
         'isFilePart',
         'contentMediaType',
         'recursesTo',
@@ -317,6 +318,10 @@ final readonly class RuleSetBuilder
             // never appears, so even presence would refuse a valid request.
             // It is `sometimes` whatever its `required` flag, and said so.
             if ($merged->soleType() === SchemaType::Array) {
+                if (self::holdsValueSchema($merged)) {
+                    $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
+                }
+
                 $walk->rules[$key] = [$presence];
                 $walk->findings[] = sprintf(
                     '`%s` is a `query` parameter typed `array`. Its `style` and `explode` serialization is '
@@ -328,6 +333,10 @@ final readonly class RuleSetBuilder
             }
 
             if ($merged->soleType() === SchemaType::Object) {
+                if (self::holdsValueSchema($merged)) {
+                    $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
+                }
+
                 $walk->rules[$key] = ['sometimes'];
                 $walk->findings[] = sprintf(
                     '`%s` is a `query` parameter typed `object`. Its default serialization sends one key per '
@@ -352,11 +361,23 @@ final readonly class RuleSetBuilder
             }
         }
 
+        // Why: `validationData()` takes a `query` parameter's key from the query string and drops it from the body, so a
+        // body key of that name is not a key of the body. A map has no declared name to refuse it for.
+        if ($walk->openMapRoot) {
+            foreach ($queryKeys as $queryKey) {
+                $walk->information(sprintf(
+                    'A body key named `%1$s` is not a key of this map: `%1$s` is also a `query` parameter, so it is read from '
+                        .'the query string, and a `%1$s` in the body is left out of the validated data and of the DTO.',
+                    $queryKey,
+                ));
+            }
+        }
+
         $walk->exceeded = $walk->exceeded || $walk->unrolledKeys() > self::MAX_UNROLLED_KEYS;
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information);
     }
 
     /**
@@ -423,13 +444,110 @@ final readonly class RuleSetBuilder
             return true;
         }
 
-        foreach ([...array_values($schema->properties), ...$schema->allOf, ...($schema->items === null ? [] : [$schema->items])] as $child) {
+        foreach (self::children($schema) as $child) {
             if (self::hasFilePart($child)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether the values of a map body are judged by the request: when no `query` parameter shares the validated data.
+     *
+     * The wildcard that judges them reaches every key at its level, and `validationData()` puts the query string beside
+     * the body, so a `query` parameter's key would be judged by the map's value schema too. The body's rules are built
+     * before the query names are planned, so a declared parameter is all there is to ask. A root map beside one leaves
+     * its values reported instead.
+     *
+     * @internal Public so the input DTO asks the question the rules did.
+     */
+    public static function validatesRootMapValues(Operation $operation): bool
+    {
+        return $operation->queryParameters === [];
+    }
+
+    /**
+     * The schema every value of a map is held to, or null when the object is not a map: it declares a property, or it
+     * writes no value schema. Beside a property the wildcard would also judge the declared key, so those values are
+     * reported and not read.
+     *
+     * @internal Public so the input DTO types the values the request judged, and no others.
+     */
+    public static function mapValueSchema(Schema $schema): ?Schema
+    {
+        return $schema->properties === [] ? $schema->additionalPropertiesSchema : null;
+    }
+
+    /**
+     * Whether a value schema states nothing, so any value passes: `additionalProperties: {}`, or one that only writes
+     * keywords nothing reads, or a `$ref` to a component that is one of those. Read as `additionalProperties: true` is,
+     * with no rule and no finding. The name and the position are where the schema was written, not what it states, so a
+     * `$ref` to `AnyValue: {}` reads as the same `{}` written inline.
+     *
+     * @internal Public for the same reason as {@see self::mapValueSchema()}.
+     */
+    public static function allowsAnyValue(Schema $value): bool
+    {
+        return (new Schema(...[...get_object_vars($value), 'name' => null, 'source' => null]))->sameShapeAs(new Schema);
+    }
+
+    /**
+     * The value rules of a map: one wildcard key below the object, `*` at the root and `<key>.*` nested.
+     *
+     * A value is present by being in the object, as an element is in a list, so it is asked for with no presence. The
+     * label reads like the rule key. **Written after every explicit key of the object**, because Laravel merges the
+     * wildcard's rules into a key that came before it and replaces what the wildcard merged into one that came after.
+     *
+     * @param  string  $prefix  the rule key of the object followed by a dot, or the empty string for the root
+     *
+     * @throws ConflictingInputException
+     */
+    private static function mapValues(RuleWalk $walk, string $prefix, Schema $value): void
+    {
+        $key = $prefix.'*';
+        $walk->mapKeys[$key] = true;
+
+        self::field($walk, $key, '`'.$key.'`', $value, '');
+    }
+
+    /**
+     * Whether a schema holds a value schema (one written under `additionalProperties`) anywhere in it. A recursion
+     * marker has nothing under it, so it ends the walk.
+     *
+     * Asked where a whole schema is dropped with no sweep over it, so what it says about its values still reaches the
+     * report.
+     */
+    private static function holdsValueSchema(Schema $schema): bool
+    {
+        if ($schema->additionalPropertiesSchema !== null) {
+            return true;
+        }
+
+        foreach (self::children($schema) as $child) {
+            if (self::holdsValueSchema($child)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Every schema written directly under this one: its properties, its `allOf` branches, its items and its value
+     * schema, in that order.
+     *
+     * @return list<Schema>
+     */
+    private static function children(Schema $schema): array
+    {
+        return [
+            ...array_values($schema->properties),
+            ...$schema->allOf,
+            ...($schema->items === null ? [] : [$schema->items]),
+            ...($schema->additionalPropertiesSchema === null ? [] : [$schema->additionalPropertiesSchema]),
+        ];
     }
 
     /**
@@ -486,6 +604,10 @@ final readonly class RuleSetBuilder
         }
 
         if (! self::isObjectBody($schema)) {
+            if (self::holdsValueSchema($schema)) {
+                $walk->leaveUnenforced('additionalProperties', 'The body');
+            }
+
             return null;
         }
 
@@ -506,6 +628,12 @@ final readonly class RuleSetBuilder
             }
         }
 
+        // Why: beside a `query` parameter the wildcard would judge the parameter's key too, so the values are left
+        // reported, unless the value schema allows anything and there is nothing to report.
+        $value = self::mapValueSchema($schema);
+        $open = $value !== null && self::allowsAnyValue($value);
+        $judged = $value !== null && ! $open && self::validatesRootMapValues($operation);
+
         // The root goes through the same sweep a field does, minus what the
         // object walk below acts on. Without it a keyword written on the
         // body's own schema — an `enum` is the one a real contract writes there
@@ -515,7 +643,10 @@ final readonly class RuleSetBuilder
             $walk,
             'The body itself',
             $schema,
-            ['type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf'],
+            [
+                'type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf',
+                ...($judged || $open ? ['additionalPropertiesSchema'] : []),
+            ],
         );
 
         self::planFormNames($schema, $walk);
@@ -529,7 +660,33 @@ final readonly class RuleSetBuilder
             $schema,
             self::rootPresence($operation, $schema, $body, $walk),
             self::encodedParts($body, $schema, $walk),
+            $judged,
         );
+
+        if ($judged) {
+            self::mapValues($walk, '', $value);
+        }
+
+        // Why: the keys of a map or an open object are the data, and `validated()` keeps only a key a rule names. A
+        // wildcard that asks nothing of the value keeps them all where no value rule does, after every explicit key so it
+        // merges into the ones before it.
+        if ($schema->properties === []) {
+            $walk->mapRoot = true;
+            // A closed body refuses every key, so what a client may send as a key is no question for it.
+            $walk->openMapRoot = $schema->additionalProperties !== false;
+
+            if ($walk->openMapRoot && ! $judged) {
+                $walk->rules['*'] = ['sometimes'];
+            }
+
+            if ($walk->openMapRoot && $walk->formBody) {
+                $walk->information(
+                    'A form delivers a key PHP rewrites (`a.b` and `a b` as `a_b`) under the rewritten name, and this '
+                    .'body declares no key to say which one the client meant, so the request validates and the DTO carries '
+                    .'such a key under the name PHP gave it.',
+                );
+            }
+        }
 
         self::leave($walk, $outside);
 
@@ -904,6 +1061,9 @@ final readonly class RuleSetBuilder
      *                                                      `dependentRequired`
      * @param  array<string, string>  $contentTypes  the `encoding` of the body's top-level parts, by name: only the
      *                                               root passes one, so a nested property is never narrowed by it
+     * @param  bool  $valuesJudged  whether a wildcard below the object judges every key it has: a name it requires
+     *                              without declaring then has its value checked, and the finding that says nothing
+     *                              about the value is not written
      *
      * @throws ConflictingInputException
      */
@@ -913,6 +1073,7 @@ final readonly class RuleSetBuilder
         Schema $schema,
         callable $presence,
         array $contentTypes = [],
+        bool $valuesJudged = false,
     ): void {
         $dependents = self::dependents($schema, $walk, $prefix);
 
@@ -1035,7 +1196,7 @@ final readonly class RuleSetBuilder
             $undeclared[] = $name;
         }
 
-        if ($undeclared !== []) {
+        if ($undeclared !== [] && ! $valuesJudged) {
             $walk->findings[] = sprintf(
                 '%s requires %s without declaring %s under `properties`, so the request asks for the '
                     .'key and says nothing about the value.',
@@ -1140,6 +1301,8 @@ final readonly class RuleSetBuilder
         }
 
         $children = null;
+        $value = null;
+        $judged = false;
 
         $type = $schema->soleType();
 
@@ -1277,6 +1440,14 @@ final readonly class RuleSetBuilder
                         $rules[] = 'required_array_keys:'.implode(',', $requiredKeys);
                     }
                     array_push($handled, 'properties', 'required', 'dependentRequired', 'additionalProperties');
+
+                    $value = self::mapValueSchema($schema);
+                    $judged = $value !== null && ! self::allowsAnyValue($value);
+
+                    if ($value !== null) {
+                        $handled[] = 'additionalPropertiesSchema';
+                    }
+
                     $children = 'properties';
                     break;
                 default:
@@ -1336,7 +1507,13 @@ final readonly class RuleSetBuilder
                 $key.'.',
                 $schema,
                 static fn (string $name, Schema $property): string => 'sometimes',
+                valuesJudged: $judged,
             );
+
+            if ($judged) {
+                assert($value instanceof Schema);
+                self::mapValues($walk, $key.'.', $value);
+            }
         }
 
         self::leave($walk, $outside);
@@ -1552,8 +1729,9 @@ final readonly class RuleSetBuilder
     private static function reportCuts(RuleWalk $walk): void
     {
         foreach ($walk->cuts as $cut) {
-            $lists = array_filter($cut['keys'], static fn (string $key): bool => str_ends_with($key, '.*')) !== [];
-            $fields = count(array_filter($cut['keys'], static fn (string $key): bool => ! str_ends_with($key, '.*'))) > 0;
+            $maps = array_filter($cut['keys'], static fn (string $key): bool => isset($walk->mapKeys[$key])) !== [];
+            $lists = array_filter($cut['keys'], static fn (string $key): bool => str_ends_with($key, '.*') && ! isset($walk->mapKeys[$key])) !== [];
+            $fields = count(array_filter($cut['keys'], static fn (string $key): bool => ! str_ends_with($key, '.*') && ! isset($walk->mapKeys[$key]))) > 0;
 
             $walk->stricter(sprintf(
                 '`%1$s` recurses, and %2$s. %3$s %6$s %4$s below that: a payload deeper than that answers 422, though '
@@ -1571,6 +1749,7 @@ final readonly class RuleSetBuilder
                             $fields ? ', so `null`, `""` and `[]` answer 422 there too' : '',
                         ),
                     $lists ? sprintf('An empty list of `%s` passes: it carries no data, and it is its elements that are cut.', $cut['name']) : null,
+                    $maps ? sprintf('An empty map of `%s` passes: it carries no data, and it is its values that are cut.', $cut['name']) : null,
                 ])),
                 count($cut['keys']) === 1 ? 'is' : 'are',
             ));
@@ -2277,10 +2456,13 @@ final readonly class RuleSetBuilder
 
         // Why: `isFilePart` is the normal form's one flag for two spellings, and no contract has the word. A finding
         // naming it sends the reader looking for a keyword that is not in their file, so it says what they wrote.
+        // The value schema is the same: the contract's keyword is `additionalProperties`, whatever it holds.
         $named = array_map(
-            static fn (string $keyword): string => $keyword === 'isFilePart'
-                ? ($schema->contentMediaType === null ? 'format' : 'contentMediaType')
-                : $keyword,
+            static fn (string $keyword): string => match ($keyword) {
+                'isFilePart' => $schema->contentMediaType === null ? 'format' : 'contentMediaType',
+                'additionalPropertiesSchema' => 'additionalProperties',
+                default => $keyword,
+            },
             $stated,
         );
 

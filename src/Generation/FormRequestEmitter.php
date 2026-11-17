@@ -88,15 +88,7 @@ final readonly class FormRequestEmitter
                     return true;
                 }
 
-                /**
-                 * @return array<string, list<mixed>>
-                 */
-                public function rules(): array
-                {
-                    return [
-            {$this->rules($planned->rules)}
-                    ];
-                }
+            {$this->rulesMethod($planned->rules)}
             {$this->validationData($planned->rules)}{$this->dto($planned)}{$this->after($planned->rules)}}
 
             PHP,
@@ -290,6 +282,9 @@ final readonly class FormRequestEmitter
      * DTO. The `assert` is for the static analysis of the class a consumer reads: `getValidatorInstance()` is typed as
      * the contract, and the flag is on the validator Laravel builds.
      *
+     * **A map or open-object body's DTO holds every key it is handed**, so `dto()` takes the `query` parameters' keys
+     * out of the validated data first: they are in `validated()` and are not the body's.
+     *
      * **It returns `null` for a `null` body, and is typed `?X` then**: when the root is nullable and read as JSON, the
      * request lets a JSON `null` through and the payload is `null`, not an object with nothing in it.
      *
@@ -304,6 +299,12 @@ final readonly class FormRequestEmitter
         $payload = $planned->rules->formPaths === []
             ? '$validator->validated()'
             : '$this->contractNames($validator->validated())';
+
+        // Why: the keys of a map or open-object body are the data, so the DTO reads every key it is handed, and
+        // `validated()` holds the `query` parameters' keys beside them.
+        if ($planned->rules->mapRoot && $planned->rules->queryKeys !== []) {
+            $payload = 'array_diff_key('.$payload.', array_flip(self::QUERY_KEYS))';
+        }
 
         $nullable = self::dtoIsNullable($planned->rules);
 
@@ -518,6 +519,61 @@ final readonly class FormRequestEmitter
             '        ];',
             '    }',
         ])."\n";
+    }
+
+    /**
+     * `rules()`, and the helper that names the integer-like keys of a map or open-object body.
+     *
+     * **A key such as `"1042"` needs a rule of its own.** Laravel expands `*` over data it has put through
+     * `array_merge()`, which renumbers an integer-like top-level key, so the wildcard never reaches it: the key would
+     * be missing from `validated()` and its value never judged. Every rule under the root `*` is written again under
+     * each integer-like key the body carries, which is what a request for a map of IDs needs. A key that is not an
+     * integer (`sku-1`, `a.b`) is the wildcard's, since Laravel keeps it as it is.
+     */
+    private function rulesMethod(RuleSet $set): string
+    {
+        $rules = $this->rules($set);
+
+        if (! $set->mapRoot || ! array_key_exists('*', $set->rules)) {
+            return "    /**\n     * @return array<string, list<mixed>>\n     */\n    public function rules(): array\n    {\n        return [\n"
+                .$rules."\n        ];\n    }";
+        }
+
+        $skip = $set->queryKeys === [] ? '' : ' (the `query` parameters have their own rules)';
+
+        return "    /**\n     * @return array<array-key, list<mixed>>\n     */\n    public function rules(): array\n    {\n        return \$this->withIntegerKeys([\n"
+            .$rules."\n        ]);\n    }\n\n"
+            ."    /**\n"
+            ."     * Why: Laravel renumbers an integer-like top-level key when it expands `*`, so the wildcard never reaches it.\n"
+            ."     * Each rule under `*` is written again under every integer-like key the body carries{$skip}.\n"
+            ."     *\n"
+            ."     * @param  array<string, list<mixed>>  \$rules\n"
+            ."     * @return array<array-key, list<mixed>>\n"
+            ."     */\n"
+            ."    private function withIntegerKeys(array \$rules): array\n"
+            ."    {\n"
+            .($set->queryKeys === []
+                ? "        \$body = \$this->bodyInput();\n"
+                : "        \$body = array_diff_key(\$this->bodyInput(), array_flip(self::QUERY_KEYS));\n")
+            ."\n"
+            ."        \$wildcard = \$rules;\n"
+            ."\n"
+            ."        foreach (array_keys(\$body) as \$key) {\n"
+            ."            if (! is_int(\$key)) {\n"
+            ."                continue;\n"
+            ."            }\n"
+            ."\n"
+            ."            foreach (\$wildcard as \$name => \$set) {\n"
+            ."                \$name = (string) \$name;\n"
+            ."\n"
+            ."                if (\$name === '*' || str_starts_with(\$name, '*.')) {\n"
+            ."                    \$rules[\$key.substr(\$name, 1)] = \$set;\n"
+            ."                }\n"
+            ."            }\n"
+            ."        }\n"
+            ."\n"
+            ."        return \$rules;\n"
+            .'    }';
     }
 
     /**

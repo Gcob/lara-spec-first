@@ -108,7 +108,7 @@ it('writes a list as list<T> in the docblock', function (): void {
         ->toContain('@param  Optional|list<NewUserRolesItemInputDto>  $roles')
         ->toContain('@param  Optional|list<list<int>|null>  $matrix')
         ->toContain('@param  Optional|list<CarbonImmutable>  $visits')
-        ->toContain('@param  Optional|array<string, mixed>  $meta');
+        ->toContain('@param  Optional|array<array-key, mixed>  $meta');
 });
 
 it('casts the scalars the request side delivers as strings', function (): void {
@@ -325,3 +325,72 @@ it('converts a list of booleans element by element with the text-aware cast', fu
         ->and($expression)->not->toContain('boolval')
         ->and(eval('return '.$expression.';'))->toBe([false, true, false, true]);
 });
+
+/**
+ * The input DTO the emitter writes for the body of `map-bodies.yaml`, whose properties are maps.
+ */
+function emittedMapBody(): string
+{
+    $dtos = array_column(plannedRequests(extractFixture('map-bodies.yaml'))['plan']->dtos, null, 'shortName');
+
+    return (new InputDtoEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($dtos['CreateThingInputDto'])->contents;
+}
+
+// A map keeps its keys, since they are the data, so no `array_values()` where a list has one. Each value converts as
+// an element of a list does, and a value with nothing to convert goes in and out as it is.
+it('writes the conversion of each value of a map property both ways', function (): void {
+    expect(emittedMapBody())
+        ->toContain('@param  Optional|array<array-key, int>  $counts')
+        ->toContain("counts: array_key_exists('counts', \$payload) ? array_map(intval(...), \$payload['counts']) : new Optional,")
+        ->toContain('@param  Optional|array<array-key, PetInputDto>  $pets')
+        ->toContain("array_map(PetInputDto::from(...), \$payload['pets'])")
+        ->toContain('array_map(static fn (PetInputDto $item): array => $item->toArray(), $this->pets)')
+        ->toContain('@param  Optional|array<array-key, CarbonImmutable>  $seen')
+        ->toContain("array_map(CarbonImmutable::parse(...), \$payload['seen'])")
+        ->toContain("array_map(static fn (CarbonImmutable \$item): string => \$item->format('Y-m-d\\TH:i:s.uP'), \$this->seen)")
+        ->toContain('use Carbon\\CarbonImmutable;')
+        ->toContain('@param  Optional|array<array-key, list<int>>  $scores')
+        ->toContain("array_map(static fn (array \$item): array => array_values(array_map(intval(...), \$item)), \$payload['scores'])")
+        ->toContain('@param  Optional|array<array-key, CreateThingLabelsValueInputDto>  $labels')
+        ->toContain("array_map(CreateThingLabelsValueInputDto::from(...), \$payload['labels'])")
+        // Nothing to convert: the value goes in as it is, and so does an open map.
+        ->toContain("\$array['counts'] = \$this->counts;")
+        ->toContain('@param  Optional|array<array-key, mixed>  $open')
+        ->toContain("open: array_key_exists('open', \$payload) ? \$payload['open'] : new Optional,");
+    expect(emittedMapBody())->not->toContain("array_values(array_map(intval(...), \$payload['counts']))");
+    expect(emittedMapBody())->not->toContain('array_values(array_map(PetInputDto');
+});
+
+// The keys of a map body are the data: the property is the payload, not one key of it, so `from()` hands the whole
+// payload over, `toArray()` returns the property, and the key type is `array-key` all the way through (PHP turns a
+// numeric key into an `int`).
+it('writes a map body whole, as the payload and back', function (): void {
+    $dto = emittedMapOfDtos();
+
+    expect($dto)
+        ->toContain('@param  array<array-key, mixed>  $payload')
+        ->toContain('@param  array<array-key, PetInputDto>  $additionalProperties')
+        ->toContain('additionalProperties: array_map(PetInputDto::from(...), $payload),')
+        ->toContain('return array_map(static fn (PetInputDto $item): array => $item->toArray(), $this->additionalProperties);')
+        ->toContain('@implements Arrayable<array-key, mixed>');
+    expect($dto)->not->toContain('Optional')
+        ->and($dto)->not->toContain("\$payload['additionalProperties']");
+});
+
+/**
+ * The input DTO the emitter writes for a body that is a map of `Pet`.
+ */
+function emittedMapOfDtos(): string
+{
+    $pet = new Schema(name: 'Pet', source: '#/components/schemas/Pet', types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])]);
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Put,
+        path: PathTemplate::fromString('/labels'),
+        operationId: 'replaceLabels',
+        requestBody: new RequestBody(['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $pet)], true),
+    );
+    $dtos = array_column(plannedRequests([$operation])['plan']->dtos, null, 'shortName');
+
+    return (new InputDtoEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($dtos['ReplaceLabelsInputDto'])->contents;
+}

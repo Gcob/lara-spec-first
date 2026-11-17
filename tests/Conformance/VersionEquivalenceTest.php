@@ -71,6 +71,7 @@ function describeSchema(?Schema $schema): ?array
         'readOnly' => $schema->readOnly,
         'writeOnly' => $schema->writeOnly,
         'additionalProperties' => $schema->additionalProperties,
+        'additionalPropertiesSchema' => describeSchema($schema->additionalPropertiesSchema),
         'isFilePart' => $schema->isFilePart,
         'contentMediaType' => $schema->contentMediaType,
         'recursesTo' => $schema->recursesTo,

@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Doctor\Checks\SupportMatrixCheck;
+use Gcob\LaraSpecFirst\Doctor\Finding;
+use Gcob\LaraSpecFirst\Doctor\SupportLevel;
 use Gcob\LaraSpecFirst\Generation\AllOfMerger;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\InputDtoPlanner;
@@ -499,6 +502,133 @@ it('reports an x-max-depth written beside a $ref at every hop', function (): voi
         ['x-max-depth' => SIBLING_FIELD_AT.'/x-max-depth'],
         ['x-max-depth' => '#/components/schemas/Tree/x-max-depth'],
     ])->and(siblingMerged($field)->maxDepth)->toBe(2);
+});
+
+// A schema under `additionalProperties` beside a `$ref` is read as it is anywhere else (it is no longer reported
+// `Ignored`), and a `$ref` inside it is followed, at any depth: the parser dropped it with the rest of the keywords
+// beside the first `$ref`, so nothing else would have kept the `Pet` it names.
+it('carries an additionalProperties schema written beside a $ref, its $ref followed', function (array $siblings, int $levels, int $reported): void {
+    $operations = readSiblingField(
+        ['$ref' => '#/components/schemas/Base', ...$siblings],
+        ['Base' => ['type' => 'object'], 'Pet' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]],
+    );
+    $field = siblingFieldOf($operations);
+    $value = $field->additionalPropertiesSchema;
+
+    for ($level = 1; $level < $levels; $level++) {
+        $value = $value?->additionalPropertiesSchema;
+    }
+
+    $ignored = array_filter(
+        SupportMatrixCheck::requestSchemas($operations),
+        static fn (Finding $finding): bool => $finding->level === SupportLevel::Ignored,
+    );
+
+    $unenforced = array_filter(
+        SupportMatrixCheck::requestSchemas($operations),
+        static fn (Finding $finding): bool => $finding->level === SupportLevel::Partial
+            && str_contains($finding->message, 'writes `additionalProperties` where the generated request enforces nothing'),
+    );
+
+    expect($field->ignored)->toBe([])
+        ->and($unenforced)->toHaveCount($reported)
+        ->and($field->allOf[0]->name)->toBe('Base')
+        ->and($value?->name)->toBe('Pet')
+        ->and($value?->source)->toBe('#/components/schemas/Pet')
+        ->and(array_keys($value->properties ?? []))->toBe(['name'])
+        ->and($ignored)->toBe([]);
+})->with([
+    // The map's values are validated, so nothing is reported. The second level is a value with no type of its own: no
+    // rule reads the map it writes, and the doctor says so.
+    'one level' => [['additionalProperties' => ['$ref' => '#/components/schemas/Pet']], 1, 0],
+    'two levels' => [['additionalProperties' => ['additionalProperties' => ['$ref' => '#/components/schemas/Pet']]], 2, 1],
+]);
+
+// An alias that writes a value schema beside its `$ref` is a schema of its own, as one that writes `required` is: a
+// class named after the target could not tell the map from the target.
+it('takes the name of the alias when an additionalProperties schema is written beside the $ref', function (): void {
+    $operations = readSiblingField(
+        ['$ref' => '#/components/schemas/Alias'],
+        [
+            'Alias' => ['$ref' => '#/components/schemas/Pet', 'additionalProperties' => ['type' => 'string']],
+            'Pet' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+        ],
+    );
+    $field = siblingFieldOf($operations);
+
+    expect($field->name)->toBe('Alias')
+        ->and($field->source)->toBe('#/components/schemas/Alias')
+        ->and($field->allOf[0]->name)->toBe('Pet')
+        ->and($field->additionalPropertiesSchema?->types)->toBe([SchemaType::String])
+        ->and(siblingDtoClasses($operations)['CreateThingInputDto']['field'])->toBe('AliasInputDto');
+});
+
+/**
+ * Two `allOf` branches folded into one schema, the way a rule set reads them.
+ */
+function mergedBranches(Schema $first, Schema $second): Schema
+{
+    return AllOfMerger::merge(new Schema(allOf: [$first, $second]), 'createThing', 'the body');
+}
+
+// Both branches write a value schema: a value outside both branches' properties must satisfy both, so the merged one is
+// the two combined, as every other keyword of two branches is.
+it('merges the additionalProperties schemas of two allOf branches', function (): void {
+    $merged = mergedBranches(
+        new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer], maximum: 10.0)),
+        new Schema(additionalPropertiesSchema: new Schema(minimum: 1.0)),
+    );
+
+    expect($merged->additionalPropertiesSchema?->types)->toBe([SchemaType::Integer])
+        ->and($merged->additionalPropertiesSchema?->maximum)->toBe(10.0)
+        ->and($merged->additionalPropertiesSchema?->minimum)->toBe(1.0)
+        ->and($merged->additionalProperties)->toBeNull();
+});
+
+it('keeps the additionalProperties schema of the one branch that writes one', function (): void {
+    $map = new Schema(types: [SchemaType::String], maxLength: 4);
+
+    expect(mergedBranches(new Schema(types: [SchemaType::Object]), new Schema(additionalPropertiesSchema: $map))->additionalPropertiesSchema)->toEqual($map)
+        ->and(mergedBranches(new Schema(additionalPropertiesSchema: $map), new Schema(types: [SchemaType::Object]))->additionalPropertiesSchema)->toEqual($map);
+});
+
+// JSON Schema evaluates each branch on its own, and a branch that declares no `name` says nothing about it, so its
+// value schema reaches it. A property both branches declare is each branch's own business and is left as written.
+it('applies the additionalProperties schema of one branch to the properties another branch declares', function (): void {
+    $merged = mergedBranches(
+        new Schema(additionalPropertiesSchema: new Schema(types: [SchemaType::String])),
+        new Schema(properties: ['name' => new Schema(maxLength: 5)]),
+    );
+    $declaredByBoth = mergedBranches(
+        new Schema(properties: ['both' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String])),
+        new Schema(properties: ['both' => new Schema(minimum: 1.0)]),
+    );
+
+    expect($merged->properties['name']->types)->toBe([SchemaType::String])
+        ->and($merged->properties['name']->maxLength)->toBe(5)
+        ->and($declaredByBoth->properties['both']->types)->toBe([SchemaType::Integer])
+        ->and($declaredByBoth->properties['both']->minimum)->toBe(1.0);
+});
+
+it('refuses an allOf whose additionalProperties schema contradicts a property of another branch', function (): void {
+    $merge = fn (): Schema => mergedBranches(
+        new Schema(additionalPropertiesSchema: new Schema(types: [SchemaType::Integer])),
+        new Schema(properties: ['name' => new Schema(types: [SchemaType::String])]),
+    );
+
+    expect($merge)->toThrow(ConflictingInputException::class, 'createThing');
+});
+
+// `false` forbids every key the other branches declare and not this one, and no key is left for a value schema to
+// judge, so the merged object is closed and carries no value schema.
+it('keeps an object closed when another allOf branch writes an additionalProperties schema', function (): void {
+    $merged = mergedBranches(
+        new Schema(types: [SchemaType::Object], properties: ['a' => new Schema], additionalProperties: false),
+        new Schema(additionalPropertiesSchema: new Schema(types: [SchemaType::String])),
+    );
+
+    expect($merged->additionalProperties)->toBeFalse()
+        ->and($merged->additionalPropertiesSchema)->toBeNull();
 });
 
 // D42 b: a `$ref` written inside the keywords beside a `$ref` is followed like any other, wherever it is written.

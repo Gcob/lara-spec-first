@@ -52,7 +52,7 @@ final readonly class NewUserPartialInputDto implements Arrayable, JsonSerializab
      * @param  Optional|list<NewUserRolesItemInputDto>  $roles
      * @param  Optional|list<list<int>|null>  $matrix
      * @param  Optional|list<CarbonImmutable>  $visits
-     * @param  Optional|array<string, mixed>  $meta
+     * @param  Optional|array<array-key, mixed>  $meta
      * @param  Optional|mixed  $anything
      */
     public function __construct(

@@ -276,8 +276,9 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * A schema's own ignored keywords, then its children's: properties, an array's items and `allOf` branches, which is
-     * every place the reading walks into. A recursion marker has nothing under it, and a position is listed once.
+     * A schema's own ignored keywords, then its children's: properties, an array's items, `allOf` branches and a map's
+     * value schema, which is every place the reading walks into. A recursion marker has nothing under it, and a
+     * position is listed once.
      *
      * @param  array<string, list<string>>  $found
      */
@@ -289,7 +290,12 @@ final readonly class SupportMatrixCheck
             }
         }
 
-        foreach ([...array_values($schema->properties), ...($schema->items === null ? [] : [$schema->items]), ...$schema->allOf] as $child) {
+        foreach ([
+            ...array_values($schema->properties),
+            ...($schema->items === null ? [] : [$schema->items]),
+            ...$schema->allOf,
+            ...($schema->additionalPropertiesSchema === null ? [] : [$schema->additionalPropertiesSchema]),
+        ] as $child) {
             self::collectIgnored($child, $found);
         }
     }

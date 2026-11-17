@@ -107,6 +107,73 @@ tags: [versions, conventions, planning]
   red. Rename one of the two, or accept what the report says. A plain name beside the names PHP nests under it (`page`
   beside `page[size]`) keeps its rules, so the doctor reports nothing for it.
 
+- **A schema written under `additionalProperties` is now read into the contract.**
+  `additionalProperties: {type: integer}` on a body or a property, and the same beside a `$ref` at 3.1
+  (`{$ref: Base, additionalProperties: {$ref: Pet}}`, with the `$ref` followed), is carried as the schema every value
+  must satisfy, and a keyword written inside it is reported at its own position. Beside a `$ref` it was reported
+  `Ignored` and no longer is. What the generated request and `spec:doctor` do with it is in the two entries below. This
+  is not a breaking change on its own: it only reads what was ignored.
+- **An `allOf` whose branches write an `additionalProperties` schema is now merged, and refused when the schema
+  contradicts a property another branch declares.** Two branches writing one are combined, and one branch's schema
+  applies to the properties the other declares, as JSON Schema reads it, so
+  `allOf: [{properties: {name: {type: string}}}, {additionalProperties: {type: integer}}]` fails the build with the
+  operation named, and `spec:doctor` reports it as a package limit, where the build accepted it because the schema was
+  ignored. A branch that writes `additionalProperties: false` still closes the merged object. This is a breaking change:
+  a document that builds today and writes such branches stops building. Make the branches agree.
+- **A wrapper that writes an `additionalProperties` schema now has an input DTO class of its own.** A 3.0 body written
+  `allOf: [{$ref: Pet}], additionalProperties: {type: string}` was `PetInputDto` and is now `CreatePetInputDto`, with
+  the same properties, and a 3.1 `Alias: {$ref: Pet, additionalProperties: {type: string}}` was `PetInputDto` and is now
+  `AliasInputDto`. The wrapper is a schema of its own, as one that writes `required` is, and a class named after `Pet`
+  could not tell the two apart. This is a breaking change: code that imports or type-hints the old class name no longer
+  finds it. Use the new name.
+- **The values of a map are now validated, where they reached `validated()` unchecked.** An object that declares no
+  `properties` and writes a schema under `additionalProperties`
+  (`{type: object, additionalProperties: {type: string, maxLength: 30}}`) has each value judged by that schema's own
+  rules, under `*` at the root and `field.*` nested, as an element of a list is. A key the object requires without
+  declaring it is judged too, and a recursion through a map is cut on its values at `x-max-depth`, where an empty map
+  passes. Two `allOf` branches that each write a value schema are merged, and `additionalProperties: {}` is read as
+  `true`. What stays reported and not validated, with a finding and a `Partial` from `spec:doctor`: the values beside
+  declared `properties`, and a root map beside a `query` parameter, since the wildcard would judge the declared key or
+  the parameter too. This is a breaking change: a request that answered `200` with a value the schema refuses
+  (`{"draft": 5}` for a string of at most 30 characters) now answers `422` to a client that asks for JSON. Send values
+  the contract describes, or loosen the schema. A root map keyed by IDs (`{"1042": "abc"}` for a map of integers) is
+  judged as any other, on the key itself. The reasoning is in
+  [ADR 0003](./docs/project/decisions/0003-validate-each-value-of-a-map.md).
+- **`spec:doctor` no longer reports a map the request validates, so its exit code can drop from `2` to `0`.** A body or
+  a property written `additionalProperties: <schema>` was reported `Ignored`, and a document whose only gap was one
+  exited `2`. The values are validated now (see the entry above), and `additionalProperties: {}` states nothing, so such
+  a document exits `0`. A map beside declared `properties`, and a root map beside a `query` parameter, are still
+  reported as `Partial` and still exit `2`. This is a breaking change: every move on the exit-code axis is major, in
+  either direction, so a CI step that expected `2` here will see `0`. Update what it expects.
+- **A map property is now typed by its values on the input DTO.** An object property that declares no `properties` and
+  writes a schema under `additionalProperties` was `array<string, mixed>` with its values as they arrived, and is now
+  `array<array-key, T>`, `T` being what the value schema becomes: a map of `$ref` values holds DTO objects, a map of
+  integers holds `int`s (a form delivers them as text, and they are cast), a map of dates holds `CarbonImmutable`s, and
+  `toArray()` writes each one back. An inline object value is its own class, named after the property with `Value`
+  (`CreateThingLabelsValueInputDto`). The keys are kept, and the key type is `array-key` for every map, the open ones
+  too, since PHP reads the key `"2024"` as the integer `2024`. A map that writes no value schema, or
+  `additionalProperties: {}`, is `array<array-key, mixed>`, as the request judges nothing about its values. This is a
+  breaking change: `$dto->labels['x']['name']` on a map of `$ref` values throws, and becomes `$dto->labels['x']->name`.
+  Read the value as the class it is.
+- **The input DTO of a map or open-object body now carries its keys under `additionalProperties`, and `validated()` now
+  returns every body key for such a root.** A body that declares no `properties` (a map, `{type: object}` or
+  `additionalProperties: {}`) had an input DTO with no property and a `validated()` that returned `[]`. Its DTO now has
+  one property, `additionalProperties`, typed `array<array-key, T>` and never `Optional` (`array<array-key, int>` for a
+  map of integers, `array<array-key, mixed>` for an open object, an absent or empty body is `[]`), the same in the
+  partial class, and `toArray()` returns it. Beside a `query` parameter the request validates no value, so the property
+  is `array<array-key, mixed>` there. `dto()` leaves the keys of the `query` parameters out of it, a body key named like
+  a `query` parameter is read from the query string and the generated file says so, and so does it for a key a form
+  delivers under a rewritten name (`a.b` as `a_b`). A root map keyed by IDs (`{"1042": 3, "877": 1}`) keeps its keys in
+  `validated()` and on the DTO, and has their values judged: Laravel's wildcard alone would drop an integer-like key, so
+  the generated `rules()` writes the rules again under each one. This is a breaking change: the class gains a property,
+  so a call to its constructor or a check that it has none fails, and a controller that passed `validated()` to
+  `create()` now passes the body where it passed `[]`. Read the keys from `$request->dto()->additionalProperties`, and
+  pass only what `create()` accepts. The reasoning is in
+  [ADR 0004](./docs/project/decisions/0004-carry-a-map-body-under-additionalproperties.md). This closes the gap the
+  `0.2.0` `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109), except the values of a
+  map beside declared `properties` or beside `query` parameters, which are reported and not validated (and typed `mixed`
+  on the DTO of a map body), until [#169](https://github.com/Gcob/lara-spec-first/issues/169).
+
 ### Fixed
 
 - **A plain `query` name beside the names PHP nests under it refused a valid request, with no finding.** `?page[size]=3`
