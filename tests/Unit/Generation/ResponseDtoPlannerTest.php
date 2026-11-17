@@ -9,6 +9,8 @@ use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
+use Gcob\LaraSpecFirst\Generation\InputDtoProperty;
+use Gcob\LaraSpecFirst\Generation\InputDtoType;
 use Gcob\LaraSpecFirst\Generation\PlannedResponseDto;
 use Gcob\LaraSpecFirst\Generation\ResponseDtoPlanner;
 use Gcob\LaraSpecFirst\Generation\StatusResponse;
@@ -151,3 +153,293 @@ it('types an array response through its item DTO', function (): void {
     expect(statusDtos('exportUsers'))->toBe([])
         ->and(statusesOf('exportUsers')[0]->reason)->toBe('it declares no JSON media type');
 });
+
+/**
+ * The plan of one operation of a fixture contract.
+ *
+ * @return array<string, PlannedResponseDto>
+ */
+function dtosOfFixture(string $fixture, string $operationId): array
+{
+    $operation = array_values(array_filter(
+        extractFixture($fixture),
+        static fn (Operation $operation): bool => $operation->operationId === $operationId,
+    ))[0];
+
+    return array_column((new ResponseDtoPlanner)->plan([$operation])->dtos, null, 'shortName');
+}
+
+/**
+ * What each status of one operation of a fixture contract answers with.
+ *
+ * @return list<StatusResponse>
+ */
+function statusesOfFixture(string $fixture, string $operationId): array
+{
+    $operation = array_values(array_filter(
+        extractFixture($fixture),
+        static fn (Operation $operation): bool => $operation->operationId === $operationId,
+    ))[0];
+
+    return (new ResponseDtoPlanner)->plan([$operation])->statuses[$operation->label()];
+}
+
+/**
+ * One operation answering `200` with this schema, in memory.
+ */
+function answeringWithSchema(Schema $schema, string $operationId = 'showThing'): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/'.$operationId),
+        operationId: $operationId,
+        responses: [new Response('200', ['application/json' => $schema])],
+    );
+}
+
+/**
+ * A named object schema, written as a component.
+ *
+ * @param  array<string, Schema>  $properties
+ * @param  list<string>  $required
+ */
+function responseComponent(string $name, array $properties, array $required = [], bool $nullable = false): Schema
+{
+    return new Schema(
+        name: $name,
+        source: '#/components/schemas/'.$name,
+        types: $nullable ? [SchemaType::Object, SchemaType::Null] : [SchemaType::Object],
+        properties: $properties,
+        required: $required,
+    );
+}
+
+function responseString(): Schema
+{
+    return new Schema(types: [SchemaType::String]);
+}
+
+// No depth: `x-max-depth` limits what a request validates, and a response DTO validates nothing, so the class is the
+// class it points back at at every level.
+it('types a recursive response schema as its own class', function (Schema $comment, bool $list, bool $nullable, bool $optional): void {
+    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($comment)])->dtos;
+    $dto = $dtos[0];
+    $property = array_values(array_filter($dto->properties, static fn (InputDtoProperty $property): bool => $property->key === 'link'))[0];
+
+    expect($property->optional)->toBe($optional)
+        ->and($property->type->kind)->toBe($list ? InputDtoType::LIST : InputDtoType::DTO);
+
+    $target = $list ? $property->type->item : $property->type;
+
+    expect($target?->kind)->toBe(InputDtoType::DTO)
+        ->and($target?->class)->toBe($comment->name.'Dto')
+        ->and($target?->nullable)->toBe($nullable)
+        ->and(implode("\n", $dto->findings))->not->toContain('points back')
+        // Nothing generated twice.
+        ->and(array_map(static fn (PlannedResponseDto $dto): string => $dto->shortName, $dtos))->toBe([$comment->name.'Dto']);
+})->with([
+    'itself' => [
+        responseComponent('Address', ['street' => responseString(), 'link' => Schema::recursion('#/components/schemas/Address', 'Address')], ['street']),
+        false, false, true,
+    ],
+    'a list of itself' => [
+        responseComponent('Comment', [
+            'text' => responseString(),
+            'link' => new Schema(types: [SchemaType::Array], items: Schema::recursion('#/components/schemas/Comment', 'Comment')),
+        ], ['text']),
+        true, false, true,
+    ],
+    'itself, nullable' => [
+        responseComponent('Node', ['label' => responseString(), 'link' => Schema::recursion('#/components/schemas/Node', 'Node')], ['label'], nullable: true),
+        false, true, true,
+    ],
+    'itself, required and stating a depth of one' => [
+        new Schema(
+            name: 'Chain',
+            source: '#/components/schemas/Chain',
+            types: [SchemaType::Object],
+            properties: ['label' => responseString(), 'link' => Schema::recursion('#/components/schemas/Chain', 'Chain')],
+            required: ['label', 'link'],
+            maxDepth: 1,
+        ),
+        false, false, false,
+    ],
+]);
+
+// A marker with no named schema to point at has no class to be built into, and the file says so in its own words: a
+// response is not something a request validated.
+it('reads a recursion with no class to point at as mixed and does not blame the request', function (Schema $schema, string $says): void {
+    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema)])->dtos;
+    $owners = array_values(array_filter($dtos, static fn (PlannedResponseDto $dto): bool => str_contains(implode("\n", $dto->findings), $says)));
+
+    expect($owners)->toHaveCount(1);
+
+    $link = array_values(array_filter($owners[0]->properties, static fn (InputDtoProperty $property): bool => $property->key === 'link'))[0];
+
+    expect($link->type->kind)->toBe(InputDtoType::MIXED)
+        ->and(implode("\n", $owners[0]->findings))->not->toContain('request');
+})->with([
+    'an inline schema has no name to be found by' => [
+        new Schema(types: [SchemaType::Object], properties: [
+            'link' => Schema::recursion('#/paths/~1showThing/get/responses/200/content/application~1json/schema'),
+        ]),
+        '`link` points back at `#/paths/~1showThing/get/responses/200/content/application~1json/schema`, which is not a single named schema',
+    ],
+    'properties written beside the marker' => [
+        responseComponent('Node', [
+            'label' => responseString(),
+            'link' => new Schema(
+                name: 'Node',
+                types: [SchemaType::Object],
+                properties: ['extra' => responseString()],
+                recursesTo: '#/components/schemas/Node',
+            ),
+        ]),
+        '`link` writes properties beside the reference, which the class of `Node` does not carry',
+    ],
+    'a target that is not an object with properties' => [
+        responseComponent('Shelf', ['link' => new Schema(
+            name: 'Forest',
+            source: '#/components/schemas/Forest',
+            types: [SchemaType::Array],
+            items: new Schema(types: [SchemaType::Object], properties: [
+                'link' => Schema::recursion('#/components/schemas/Forest', 'Forest'),
+            ]),
+        )]),
+        '`link` points back at `#/components/schemas/Forest`, which is not an object with properties',
+    ],
+]);
+
+// A property only a request sends is not in what comes back.
+it('leaves a writeOnly property out of the response DTO', function (): void {
+    $dto = (new ResponseDtoPlanner)->plan([answeringWithSchema(responseComponent('Account', [
+        'email' => responseString(),
+        'password' => new Schema(types: [SchemaType::String], writeOnly: true),
+        'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+    ], ['email', 'password', 'id']))])->dtos[0];
+
+    expect(array_map(static fn (InputDtoProperty $property): string => $property->key, $dto->properties))->toBe(['email', 'id'])
+        ->and(implode("\n", $dto->findings))->toContain('`password` is `writeOnly`, so a response never sends it and this type has no property for it')
+        ->and(implode("\n", $dto->findings))->not->toContain('`id`');
+});
+
+// The two reasons a status has no DTO for want of a body: nothing to read it from, and nothing JSON to read.
+it('gives no DTO to a response with no JSON body', function (string $operationId, array $dtos, string $reason): void {
+    $none = array_values(array_filter(statusesOf($operationId), static fn (StatusResponse $status): bool => $status->dto === null));
+
+    // The other statuses of the operation keep their DTOs: only the status with no body goes without.
+    expect(array_keys(statusDtos($operationId)))->toBe($dtos)
+        ->and($none)->toHaveCount(1)
+        ->and($none[0]->reason)->toBe($reason)
+        ->and($none[0]->sentence())->toBe('The `'.$none[0]->status.'` response has no DTO: '.$reason.'.');
+})->with([
+    'a 204' => ['updateUser', ['UserDto', 'ValidationErrorDto'], 'it declares no body'],
+    'only text/csv' => ['exportUsers', [], 'it declares no JSON media type'],
+]);
+
+// A client picks the representation with `Accept`, and a DTO names one shape: a status with two JSON schemas is not
+// given one of them, and the build goes on.
+it('gives no DTO to a status with two JSON schemas and says why', function (): void {
+    $statuses = statusesOfFixture('response-two-json-schemas.yaml', 'showVersions');
+    $dtos = dtosOfFixture('response-two-json-schemas.yaml', 'showVersions');
+
+    expect($statuses[0]->dto)->toBeNull()
+        ->and($statuses[0]->sentence())->toBe(
+            'The `200` response has no DTO: it declares two JSON media types with different schemas '
+            .'(`application/vnd.acme.v1+json` and `application/vnd.acme.v2+json`).',
+        )
+        // The same schema under two media types is the one DTO (and a hostile media type cannot close the comment).
+        ->and($statuses[1]->dto)->toBe('ProblemDto')
+        ->and(array_keys($dtos))->toBe(['ProblemDto'])
+        ->and($dtos['ProblemDto']->readers)->toBe([['label' => 'get /versions', 'status' => '422']]);
+});
+
+// The keys of a property-less object are the data, so the DTO carries them whole under the one property it has, as a
+// request body does (and a response has no `query` parameter, so the values are always typed).
+it('carries a property-less response object whole under additionalProperties', function (string $operationId, string $class, string $doc, ?string $value): void {
+    $dtos = dtosOfFixture('response-maps.yaml', $operationId);
+    $dto = $dtos[$class];
+    $property = $dto->properties[0];
+
+    expect($dto->properties)->toHaveCount(1)
+        ->and($property->key)->toBe('additionalProperties')
+        ->and($property->name)->toBe('additionalProperties')
+        ->and($property->wholePayload)->toBeTrue()
+        ->and($property->optional)->toBeFalse()
+        ->and($property->type->kind)->toBe(InputDtoType::MAP)
+        ->and($property->type->doc())->toBe($doc)
+        // Never a finding about the values: nothing a response shares the payload with could have left them unchecked.
+        ->and(implode("\n", $dto->findings))->not->toContain('`mixed`')
+        ->and(array_keys($dtos))->toBe($value === null ? [$class] : [$class, $value]);
+})->with([
+    'an inline root map' => ['createUser', 'CreateUser201ResponseDto', 'array<array-key, int>', null],
+    'a root map behind a component' => ['showCounts', 'CountsDto', 'array<array-key, int>', null],
+    'an open object' => ['showOpen', 'ShowOpen200ResponseDto', 'array<array-key, mixed>', null],
+    'additionalProperties of anything' => ['showAny', 'ShowAny200ResponseDto', 'array<array-key, mixed>', null],
+    'a root map of inline objects' => [
+        'showGroups',
+        'ShowGroups200ResponseDto',
+        'array<array-key, ShowGroups200ResponseAdditionalPropertiesValueDto>',
+        'ShowGroups200ResponseAdditionalPropertiesValueDto',
+    ],
+]);
+
+it('types the values of a nested map and of a list of maps through the class of each value', function (): void {
+    $team = dtosOfFixture('response-maps.yaml', 'showTeam');
+    $labels = array_values(array_filter($team['ShowTeam200ResponseDto']->properties, static fn (InputDtoProperty $property): bool => $property->key === 'labels'))[0];
+
+    expect($labels->type->doc())->toBe('array<array-key, LabelDto>')
+        ->and($labels->wholePayload)->toBeFalse()
+        ->and($labels->optional)->toBeTrue()
+        ->and(array_keys($team))->toBe(['ShowTeam200ResponseDto', 'LabelDto']);
+
+    $statuses = statusesOfFixture('response-maps.yaml', 'listCounts');
+
+    expect(array_keys(dtosOfFixture('response-maps.yaml', 'listCounts')))->toBe(['CountsDto'])
+        ->and($statuses[0]->list)->toBeTrue();
+});
+
+// Values of the other keys beside declared properties are not carried, and the file says so.
+it('carries only the declared properties beside an additionalProperties schema and says the rest are not', function (): void {
+    $pet = dtosOfFixture('response-maps.yaml', 'showPet')['PetDto'];
+
+    expect(array_map(static fn (InputDtoProperty $property): string => $property->key, $pet->properties))->toBe(['name'])
+        ->and(implode("\n", $pet->findings))->toContain('`additionalProperties` types the values of the keys that are not declared, but this type carries only the declared properties');
+});
+
+// A schema that is its type or `null` is its type: the DTO cannot be `null`, so the status says the body may be, which
+// is what the controller's finding reads.
+it('plans a nullable response root as its type and says it may be null', function (Schema $schema, bool $list, string $sentence): void {
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema)]);
+    $status = $plan->statuses['get /showThing'][0];
+
+    expect($status->dto)->toBe('ThingDto')
+        ->and($status->list)->toBe($list)
+        ->and($status->sentence())->toBe($sentence);
+})->with([
+    'an object or null' => [
+        responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])], nullable: true),
+        false,
+        'The `200` response is `ThingDto`, in `Data/ThingDto.php`, or `null`, which no DTO holds.',
+    ],
+    'a list of lists, the inner one or null' => [
+        new Schema(
+            types: [SchemaType::Array],
+            items: new Schema(
+                types: [SchemaType::Array, SchemaType::Null],
+                items: responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])]),
+            ),
+        ),
+        true,
+        'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`, or `null`, which no DTO holds.',
+    ],
+    'a list or null' => [
+        new Schema(
+            types: [SchemaType::Array, SchemaType::Null],
+            items: responseComponent('Thing', ['id' => new Schema(types: [SchemaType::Integer])]),
+        ),
+        true,
+        'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`, or `null`, which no DTO holds.',
+    ],
+]);

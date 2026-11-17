@@ -6,7 +6,11 @@ use Carbon\CarbonImmutable;
 use Gcob\LaraSpecFirst\Data\Optional;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\AddressDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\EventDto;
+use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\GlossaryDto;
+use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\LabelDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\RoleDto;
+use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\SettingsDto;
+use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\TeamDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\UserDto;
 
 /*
@@ -99,4 +103,64 @@ it('writes the date-times of a list back the same way', function (): void {
 it('hands a response DTO to the encoder as a JSON object', function (): void {
     expect(json_encode(UserDto::from(['id' => 1, 'email' => 'a', 'address' => ['street' => 's'], 'roles' => [['name' => 'r']]])))
         ->toBe('{"id":1,"email":"a","address":{"street":"s"},"roles":[{"name":"r"}]}');
+});
+
+/**
+ * A response object or map as the root of a response and as a property of a team: how to build each from a value, the
+ * property of the team that holds it, and the JSON the value is written as.
+ *
+ * A value is what an application holds, so `[0 => 'a', 1 => 'b']` is its `['a', 'b']`, and a key written `"0"` is an
+ * `int` before the DTO sees it.
+ *
+ * @return array<string, array{0: (Closure(array<array-key, mixed>): JsonSerializable)|null, 1: string, 2: array<array-key, mixed>, 3: string}>
+ */
+function responseShapes(): array
+{
+    return [
+        'an object whose optional properties are all absent' => [static fn (array $value): SettingsDto => SettingsDto::from($value), 'settings', [], '{}'],
+        'an empty map' => [static fn (array $value): GlossaryDto => GlossaryDto::from($value), 'notes', [], '{}'],
+        'a map keyed 0 and 1' => [static fn (array $value): GlossaryDto => GlossaryDto::from($value), 'notes', [0 => 'a', 1 => 'b'], '{"0":"a","1":"b"}'],
+        'an empty map of objects' => [null, 'labels', [], '{}'],
+    ];
+}
+
+// `[]` is a JSON array, and an object with nothing to say or a map keyed `0` and `1` is a JSON object: the encoder is
+// told which by `(object)`, at the root of a response and one level down.
+it('writes every response object and map as a JSON object', function (?Closure $root, string $key, array $value, string $json): void {
+    if ($root !== null) {
+        expect(json_encode($root($value)))->toBe($json);
+    }
+
+    expect(json_encode(TeamDto::from(['name' => 'Core', $key => $value])))->toBe('{"name":"Core","'.$key.'":'.$json.'}');
+})->with(responseShapes());
+
+it('writes a map of response objects as a JSON object keyed as it was', function (): void {
+    $team = TeamDto::from(['name' => 'Core', 'labels' => ['0' => ['text' => 'x'], 'urgent' => ['text' => 'y']]]);
+
+    expect($team->labels)->toEqual([0 => new LabelDto('x'), 'urgent' => new LabelDto('y')])
+        ->and(json_encode($team))->toBe('{"name":"Core","labels":{"0":{"text":"x"},"urgent":{"text":"y"}}}');
+});
+
+// The root map is the map itself: its JSON is not `{"additionalProperties": ...}`.
+it('writes the keys of a root map and nothing around them', function (): void {
+    expect(json_encode(GlossaryDto::from(['dto' => 'a typed bag of data'])))->toBe('{"dto":"a typed bag of data"}')
+        ->and(GlossaryDto::from(['dto' => 'a typed bag of data'])->additionalProperties)->toBe(['dto' => 'a typed bag of data']);
+});
+
+// `toArray()` is for PHP, so a map stays a PHP array at every depth, and an empty one is `[]`.
+it('keeps toArray a PHP array for a response object or map', function (?Closure $root, string $key, array $value): void {
+    if ($root !== null) {
+        expect($root($value)->toArray())->toBe($value);
+    }
+
+    expect(TeamDto::from(['name' => 'Core', $key => $value])->toArray())->toBe(['name' => 'Core', $key => $value]);
+})->with(array_map(
+    static fn (array $row): array => [$row[0], $row[1], $row[2]],
+    responseShapes(),
+));
+
+// A map is its keys: from() keeps them, whatever they are.
+it('holds the keys of a response map whole', function (): void {
+    expect(GlossaryDto::from(['a' => 'x', 'b' => 'y'])->additionalProperties)->toBe(['a' => 'x', 'b' => 'y'])
+        ->and(GlossaryDto::from([])->additionalProperties)->toBe([]);
 });

@@ -84,6 +84,36 @@ final class InputDtoPlanner extends DtoPlanner
         return ' The request\'s findings say the same about its rules.';
     }
 
+    protected function unbuiltRecursionFinding(string $segment, string $position): string
+    {
+        return sprintf(
+            '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
+                .'`mixed` rather than built into a DTO from input nothing checked.',
+            $segment,
+            $position,
+        );
+    }
+
+    protected function propertiesBesideFinding(string $segment, string $ancestor): string
+    {
+        return sprintf(
+            '`%s` is validated by the request, which unrolls it, but it is `mixed` here: it writes properties '
+                .'beside the reference, and the class of `%s` does not carry them.',
+            $segment,
+            $ancestor,
+        );
+    }
+
+    protected function ancestorNotAnObjectFinding(string $segment, string $position): string
+    {
+        return sprintf(
+            '`%s` points back at `%s`, which is not an object with properties, so it is `mixed` rather than a '
+                .'class the request did not check the shape of.',
+            $segment,
+            $position,
+        );
+    }
+
     protected function registerNested(
         string $shortName,
         Schema $written,

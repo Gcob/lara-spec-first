@@ -121,3 +121,54 @@ it('matches the response DTO golden files', function (): void {
             ->toBe(file_get_contents($directory.'/'.$name.'.php'));
     }
 });
+
+// A response property with no single type is what the schema says and no more: `mixed`, and the file says why. Its
+// findings do not send the reader to a request's, since a response has none.
+it('reads a response property with no single type as mixed and says so', function (Schema $schema, string $reason, bool $optional): void {
+    $emitted = emittedUserResponse(['value' => $schema], $optional ? [] : ['value']);
+
+    expect($emitted)
+        ->toContain('public mixed $value'.($optional ? ' = new Optional' : '').',')
+        ->toContain('`value` states '.$reason.', so it is `mixed`.');
+    expect($emitted)->not->toContain('request');
+
+    // An optional `mixed` cannot be in a union, so the docblock says `Optional|mixed` for it.
+    if ($optional) {
+        expect($emitted)->toContain('@param  Optional|mixed  $value');
+    }
+})->with([
+    'a union' => [new Schema(types: [SchemaType::String, SchemaType::Integer]), 'more than one type', false],
+    'no type, as oneOf leaves it' => [new Schema, 'no type', false],
+    'an optional union' => [new Schema(types: [SchemaType::String, SchemaType::Integer]), 'more than one type', true],
+]);
+
+/**
+ * Every response DTO file a contract produces, by class name.
+ *
+ * @return array<string, string>
+ */
+function responseFilesOf(string $fixture): array
+{
+    $plan = (new ResponseDtoPlanner)->plan(extractFixture($fixture));
+    $emitter = new ResponseDtoEmitter('App\\Http\\Generated', 'openapi.yaml');
+
+    return array_combine(
+        array_map(static fn (PlannedResponseDto $dto): string => $dto->shortName, $plan->dtos),
+        array_map(static fn (PlannedResponseDto $dto): string => $emitter->emit($dto)->contents, $plan->dtos),
+    );
+}
+
+// The oracle: a `$ref` with keywords beside it at 3.1 means what the `allOf` spelling of it means, so the two give the
+// same DTO files byte for byte. At 3.0 the reference replaces what is beside it, and the schema is `User` alone.
+it('types a response ref with siblings as its allOf spelling', function (): void {
+    $beside = responseFilesOf('response-ref-siblings.yaml');
+
+    expect($beside)->toBe(responseFilesOf('response-ref-allof.yaml'))
+        ->and(array_keys($beside))->toBe(['ShowUser200ResponseDto'])
+        ->and($beside['ShowUser200ResponseDto'])->toContain("public int \$id,\n        public string \$email,\n");
+
+    $ignored = responseFilesOf('response-ref-siblings-30.yaml');
+
+    expect(array_keys($ignored))->toBe(['UserDto'])
+        ->and($ignored['UserDto'])->toContain('public Optional|string $email = new Optional,');
+});

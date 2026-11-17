@@ -320,3 +320,19 @@ it('writes each controller with the response types of its statuses', function ()
         ->toContain('The `422` response is `ValidationErrorDto`')
         ->toContain('The `204` response has no DTO: it declares no body.');
 });
+
+// Two JSON schemas under one status are not a contract the build refuses: the status has no DTO and the controller says
+// so, while the status that writes one schema twice has its DTO.
+it('builds a contract with two JSON schemas under one status and says so in the controller', function (): void {
+    $plan = planner()->plan(extractFixture('response-two-json-schemas.yaml'));
+    $paths = array_map(static fn (GeneratedFile $file): string => $file->relativePath, $plan->files);
+    $controller = collect($plan->files)
+        ->first(static fn (GeneratedFile $file): bool => $file->relativePath === 'Controllers/ShowVersionsController.php');
+
+    assert($controller instanceof GeneratedFile);
+
+    expect($paths)->toContain('Data/ProblemDto.php')
+        ->and(preg_replace('/\s*\n \*\s+/', ' ', $controller->contents))
+        ->toContain('The `200` response has no DTO: it declares two JSON media types with different schemas')
+        ->toContain('The `422` response is `ProblemDto`');
+});

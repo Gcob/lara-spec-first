@@ -64,6 +64,22 @@ abstract class DtoPlanner
     abstract protected function mixedNote(): string;
 
     /**
+     * The finding for a recursion marker that is not built into a class: it has no ancestor to be a class of, or it is
+     * two markers at once.
+     */
+    abstract protected function unbuiltRecursionFinding(string $segment, string $position): string;
+
+    /**
+     * The finding for a recursion marker with properties written beside it, which its ancestor's class does not carry.
+     */
+    abstract protected function propertiesBesideFinding(string $segment, string $ancestor): string;
+
+    /**
+     * The finding for a recursion marker whose ancestor is not an object with properties.
+     */
+    abstract protected function ancestorNotAnObjectFinding(string $segment, string $position): string;
+
+    /**
      * Put a nested or recursive object's DTO in the registry, or recognize it as one already there.
      *
      * @return string the short name
@@ -340,12 +356,7 @@ abstract class DtoPlanner
         }
 
         if ($ancestor === null || ! $this->unrolls($site, $ancestor)) {
-            $this->registry[$owner]['findings'][] = sprintf(
-                '`%s` points back at `%s`, and the request validates nothing below that point, so it is '
-                    .'`mixed` rather than built into a DTO from input nothing checked.',
-                $segment,
-                $position,
-            );
+            $this->registry[$owner]['findings'][] = $this->unbuiltRecursionFinding($segment, $position);
 
             return new InputDtoType(InputDtoType::MIXED);
         }
@@ -374,12 +385,7 @@ abstract class DtoPlanner
         $position = (string) $ancestor->source;
 
         if ($beside !== null && $beside->properties !== []) {
-            $this->registry[$owner]['findings'][] = sprintf(
-                '`%s` is validated by the request, which unrolls it, but it is `mixed` here: it writes properties '
-                    .'beside the reference, and the class of `%s` does not carry them.',
-                $segment,
-                $ancestor->name,
-            );
+            $this->registry[$owner]['findings'][] = $this->propertiesBesideFinding($segment, (string) $ancestor->name);
 
             return new InputDtoType(InputDtoType::MIXED);
         }
@@ -395,12 +401,7 @@ abstract class DtoPlanner
         }
 
         if ($expanded->soleType() !== SchemaType::Object || $expanded->properties === []) {
-            $this->registry[$owner]['findings'][] = sprintf(
-                '`%s` points back at `%s`, which is not an object with properties, so it is `mixed` rather than a '
-                    .'class the request did not check the shape of.',
-                $segment,
-                $position,
-            );
+            $this->registry[$owner]['findings'][] = $this->ancestorNotAnObjectFinding($segment, $position);
 
             return new InputDtoType(InputDtoType::MIXED);
         }

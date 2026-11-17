@@ -210,7 +210,10 @@ final readonly class InputDtoType
         return match ($this->kind) {
             self::DATE, self::DATE_TIME => true,
             self::DTO => $mode !== DtoMode::Json,
-            self::LIST, self::MAP => $this->item?->convertsOnTheWayOut($mode) ?? false,
+            self::LIST => $this->item?->convertsOnTheWayOut($mode) ?? false,
+            // An encoder is told a map is an object by what it is given: a PHP array with no keys, or keyed 0 and 1, is
+            // a JSON list, and only a cast says otherwise.
+            self::MAP => $mode === DtoMode::Json || ($this->item?->convertsOnTheWayOut($mode) ?? false),
             default => false,
         };
     }
@@ -320,8 +323,9 @@ final readonly class InputDtoType
     private function writeMap(string $value, DtoMode $mode): string
     {
         $callable = $this->item?->toCallable($mode);
+        $written = $callable === null ? $value : 'array_map('.$callable.', '.$value.')';
 
-        return $callable === null ? $value : 'array_map('.$callable.', '.$value.')';
+        return $mode === DtoMode::Json ? '(object) '.$written : $written;
     }
 
     private function toCallable(DtoMode $mode): ?string
@@ -337,6 +341,7 @@ final readonly class InputDtoType
             $this->nullable ? '?' : '',
             match ($this->kind) {
                 self::DATE, self::DATE_TIME => 'string',
+                self::MAP => $mode === DtoMode::Json ? 'object' : 'array',
                 default => 'array',
             },
             $this->to('$item', $mode),

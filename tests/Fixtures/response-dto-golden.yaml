@@ -34,6 +34,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Event'
+  /glossary:
+    get:
+      operationId: showGlossary
+      responses:
+        '200':
+          description: Every term and what it means
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Glossary'
+  /teams/{id}:
+    get:
+      operationId: showTeam
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
 components:
   schemas:
     Address:
@@ -79,3 +101,31 @@ components:
         ends_at: { type: [string, 'null'], format: date-time }
         day: { type: string, format: date }
         ended_on: { type: [string, 'null'], format: date }
+    # An object with no `properties` is a map, and a response carries it whole: its one property is the keys themselves.
+    Glossary:
+      type: object
+      additionalProperties: { type: string }
+    # Every way a response object goes out as JSON: a map of strings and a map of objects as properties, and an object
+    # whose properties are all optional.
+    Team:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        notes:
+          type: object
+          additionalProperties: { type: string }
+        labels:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/Label' }
+        settings: { $ref: '#/components/schemas/Settings' }
+    Label:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+    Settings:
+      type: object
+      properties:
+        theme: { type: string }
+        locale: { type: string }

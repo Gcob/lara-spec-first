@@ -12,7 +12,8 @@ namespace Gcob\LaraSpecFirst\Generation;
  * nothing validated, so a wrong type is a `TypeError` naming the property rather than a silent `0`.
  *
  * **A response is written twice**: `toArray()` is a PHP array at every depth, and `jsonSerialize()` hands the encoder
- * nested DTOs as they are, so each one decides for itself whether it is an object.
+ * nested DTOs as they are, so each one decides for itself whether it is an object, and every map as an object, because
+ * an empty PHP array or one keyed `0` and `1` is a JSON list to an encoder that is not told otherwise.
  *
  * @internal Not public API: the arithmetic of one emitter.
  */
@@ -24,7 +25,7 @@ enum DtoMode
     /** A response DTO's `from()` and `toArray()`: nothing cast, a date written as Laravel's `toJSON()` does. */
     case Response;
 
-    /** A response DTO's `jsonSerialize()`: nested DTOs are left for the encoder. */
+    /** A response DTO's `jsonSerialize()`: nested DTOs are left for the encoder, and a map is an object. */
     case Json;
 
     /**

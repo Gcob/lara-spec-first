@@ -92,6 +92,35 @@ final class ResponseDtoPlanner extends DtoPlanner
         return '';
     }
 
+    protected function unbuiltRecursionFinding(string $segment, string $position): string
+    {
+        return sprintf(
+            '`%s` points back at `%s`, which is not a single named schema, so there is no class to build it into '
+                .'and it is `mixed`.',
+            $segment,
+            $position,
+        );
+    }
+
+    protected function propertiesBesideFinding(string $segment, string $ancestor): string
+    {
+        return sprintf(
+            '`%s` writes properties beside the reference, which the class of `%s` does not carry, so it is `mixed`.',
+            $segment,
+            $ancestor,
+        );
+    }
+
+    protected function ancestorNotAnObjectFinding(string $segment, string $position): string
+    {
+        return sprintf(
+            '`%s` points back at `%s`, which is not an object with properties, so it is `mixed`: there is no class '
+                .'to read it into.',
+            $segment,
+            $position,
+        );
+    }
+
     protected function registerNested(
         string $shortName,
         Schema $written,
@@ -122,13 +151,25 @@ final class ResponseDtoPlanner extends DtoPlanner
             return StatusResponse::without($status, 'it declares no body');
         }
 
-        $json = self::jsonSchema($response);
+        $json = self::jsonSchemas($response);
 
-        if ($json === null) {
+        if ($json === []) {
             return StatusResponse::without($status, 'it declares no JSON media type');
         }
 
-        [$mediaType, $written] = $json;
+        [$mediaType, $written] = $json[0];
+
+        foreach ($json as [, $other]) {
+            if (! $other->sameShapeAs($written)) {
+                return StatusResponse::without($status, sprintf(
+                    'it declares two JSON media types with different schemas (%s)',
+                    implode(' and ', array_map(
+                        static fn (array $entry): string => '`'.CommentText::safe($entry[0]).'`',
+                        array_slice($json, 0, 2),
+                    )),
+                ));
+            }
+        }
 
         $this->identity = $operation->label();
         $label = 'the `'.$status.'` response';
@@ -138,6 +179,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             .'/content/'.DocumentPointer::escape($mediaType).'/schema';
         $merged = AllOfMerger::merge($written, $this->identity, $label);
         $list = false;
+        $nullable = $merged->isNullable();
 
         while ($merged->soleType() === SchemaType::Array) {
             if ($merged->items === null) {
@@ -146,6 +188,7 @@ final class ResponseDtoPlanner extends DtoPlanner
 
             $written = $merged->items;
             $merged = AllOfMerger::merge($written, $this->identity, $label);
+            $nullable = $nullable || $merged->isNullable();
             $inline = self::within($inline, '/items');
             $base .= 'Item';
             $list = true;
@@ -155,13 +198,6 @@ final class ResponseDtoPlanner extends DtoPlanner
             return StatusResponse::without(
                 $status,
                 $list ? 'its body is a list of values that are not objects' : 'its body is not an object or a list',
-            );
-        }
-
-        if ($merged->properties === []) {
-            return StatusResponse::without(
-                $status,
-                $list ? 'its body is a list of objects with no `properties`' : 'its body is an object with no `properties`',
             );
         }
 
@@ -206,7 +242,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             $this->readers[$shortName][] = $reader;
         }
 
-        return StatusResponse::of($status, $shortName, $list);
+        return StatusResponse::of($status, $shortName, $list, $nullable);
     }
 
     /**
@@ -233,22 +269,24 @@ final class ResponseDtoPlanner extends DtoPlanner
     }
 
     /**
-     * The media type and schema of a response's JSON body, or null when it has none: no body, or only media types that
-     * are not JSON.
+     * The media type and schema of each JSON body a response writes, in document order: none when it has no body, or
+     * only media types that are not JSON.
      *
-     * @return array{0: string, 1: Schema}|null
+     * @return list<array{0: string, 1: Schema}>
      */
-    private static function jsonSchema(Response $response): ?array
+    private static function jsonSchemas(Response $response): array
     {
+        $found = [];
+
         foreach ($response->content as $mediaType => $schema) {
             $lower = strtolower((string) $mediaType);
 
             if ($lower === 'application/json' || str_ends_with($lower, '+json')) {
-                return [(string) $mediaType, $schema];
+                $found[] = [(string) $mediaType, $schema];
             }
         }
 
-        return null;
+        return $found;
     }
 
     /**
@@ -307,6 +345,17 @@ final class ResponseDtoPlanner extends DtoPlanner
 
         foreach ($merged->properties as $key => $property) {
             $key = (string) $key;
+
+            // Nothing a response sends is `writeOnly`, so the type has no property for it.
+            if (AllOfMerger::merge($property, $this->identity, '`'.$key.'`')->writeOnly) {
+                $this->registry[$shortName]['findings'][] = sprintf(
+                    '`%s` is `writeOnly`, so a response never sends it and this type has no property for it.',
+                    $key,
+                );
+
+                continue;
+            }
+
             $name = self::propertyName($key);
 
             if (isset($claimed[$name])) {
@@ -336,6 +385,25 @@ final class ResponseDtoPlanner extends DtoPlanner
             } else {
                 $optional[] = new InputDtoProperty($key, $name, $type, true);
             }
+        }
+
+        // An object with no properties is a map: its keys are the data, so the one property holds them all. Typed by
+        // its value schema, always, since a response shares its payload with no `query` parameter.
+        if ($merged->properties === []) {
+            $required[] = new InputDtoProperty(
+                'additionalProperties',
+                'additionalProperties',
+                $this->map($merged, $base, 'additionalProperties', $position, false, $shortName),
+                false,
+                wholePayload: true,
+            );
+        }
+
+        $values = $merged->properties === [] ? null : $merged->additionalPropertiesSchema;
+
+        if ($values !== null && ! RuleSetBuilder::allowsAnyValue($values)) {
+            $this->registry[$shortName]['findings'][] = '`additionalProperties` types the values of the keys that are not '
+                .'declared, but this type carries only the declared properties, so those values are not read.';
         }
 
         $this->registry[$shortName]['properties'] = [...$required, ...$optional];

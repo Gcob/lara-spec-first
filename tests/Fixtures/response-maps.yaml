@@ -1,0 +1,123 @@
+# A response object with no `properties` is a map, and its DTO carries the keys whole under one property,
+# `additionalProperties`. Every way one is written: inline at the root, behind a component, open, of inline objects,
+# of a component, in a list, as a property, and beside declared properties (which are the only ones carried).
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users:
+    post:
+      operationId: createUser
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: integer }
+  /counts:
+    get:
+      operationId: showCounts
+      responses:
+        '200':
+          description: Counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Counts'
+  /count-lists:
+    get:
+      operationId: listCounts
+      responses:
+        '200':
+          description: Several counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Counts'
+  /open:
+    get:
+      operationId: showOpen
+      responses:
+        '200':
+          description: Anything
+          content:
+            application/json:
+              schema:
+                type: object
+  /any:
+    get:
+      operationId: showAny
+      responses:
+        '200':
+          description: Anything, said twice
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+  /groups:
+    get:
+      operationId: showGroups
+      responses:
+        '200':
+          description: Groups by name
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+                  required: [size]
+                  properties:
+                    size: { type: integer }
+  /teams/{id}:
+    get:
+      operationId: showTeam
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A team
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name: { type: string }
+                  labels:
+                    type: object
+                    additionalProperties: { $ref: '#/components/schemas/Label' }
+  /pets/{id}:
+    get:
+      operationId: showPet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A pet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+components:
+  schemas:
+    Counts:
+      type: object
+      additionalProperties: { type: integer }
+    Label:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+    Pet:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+      additionalProperties: { type: string }

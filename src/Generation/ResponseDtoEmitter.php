@@ -13,7 +13,8 @@ namespace Gcob\LaraSpecFirst\Generation;
  * so a response that leaves it out builds without saying so.
  *
  * **`toArray()` is a PHP array and `jsonSerialize()` is what the encoder is given**: nested DTOs reach it as
- * themselves, so each one writes a JSON object even when it has nothing to say.
+ * themselves, so each one writes a JSON object even when it has nothing to say, and a map is cast to one, so an empty
+ * map is `{}` and a map keyed `0` and `1` is not a list.
  *
  * @see docs/guide/code-generation/dto-anatomy.md — "One class, three members"
  */
@@ -67,7 +68,7 @@ final readonly class ResponseDtoEmitter extends DtoEmitter
 
     /**
      * The body of `jsonSerialize()`: the same array as `toArray()` as an object, which is all it is when no property
-     * holds a DTO, and the lines of its own when one does.
+     * holds a DTO or a map, and the lines of its own when one does.
      *
      * @param  list<InputDtoProperty>  $properties
      */
