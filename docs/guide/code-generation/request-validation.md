@@ -934,7 +934,8 @@ payload deeper than that is refused.** No rule set reaches an infinite depth, so
 many levels as the schema asks for. The depth is `x-max-depth` on the recursive component, a whole number of zero or
 more, and `3` when the schema says nothing. It is the package's first schema-level extension, read the same way at 3.0
 and 3.1, and a value that is not a whole number is refused where the document is read, as the lifecycle extensions are.
-There is no config key: the contract owns the shape of a payload.
+There is no config key: the contract owns the shape of a payload. The reasoning is in
+[ADR 0009](../../project/decisions/0009-cut-recursion-at-a-stated-depth.md).
 
 ```yaml
 # workbench/openapi.yaml
@@ -969,10 +970,7 @@ at `Author`, the pair reads `Author`'s depth, and entered at `Book`, it reads `B
 schema its own body starts at, so the same pair can be validated to two depths by two operations and neither is wrong.
 
 **Below the depth the field must be absent, or `null` when the schema allows it, which makes a deeper payload a 422.**
-The alternatives were to stop validating there, which brings back what a typed
-[input DTO](#the-payload-arrives-as-a-dto) turns into a 500 (a `parent: "oops"` below the last rule), or to refuse a
-contract that states no depth at build time, which turns away a contract that is valid. The rule is chosen by what the
-recursive schema allows:
+The rule is chosen by what the recursive schema allows:
 
 | The recursive schema | Rules below the depth                             | What passes               | What answers 422                    |
 | -------------------- | ------------------------------------------------- | ------------------------- | ----------------------------------- |
@@ -984,12 +982,11 @@ passes in both rows: it carries no data, and the depth exists to limit how much 
 element below the depth answers 422 on that element. **A [map](#a-maps-values-are-validated-one-by-one) of it is cut on
 its values the same way:** an empty map passes at the cut, and one value below it answers 422 on that key.
 
-**Not `prohibited`, which is "missing or empty"**: it lets `null`, `""` and `[]` through, and a typed DTO would then be
-built from an empty array. `missing` is the key being absent. **What the contract asks of the key stays beside it when
-the schema is not nullable**: a required field at the cut is `present` and `missing` at once, which no payload
-satisfies, and that is the contract's own tree, which a required non-nullable recursion never ends. Below the root the
-presence is the parent object's `required_array_keys`, which the level above already carries, and a child's own presence
-is `sometimes`, so a tree that stops earlier is untouched. **A nullable schema needs a rule of the package's own**,
+**`missing` is the key being absent.** **What the contract asks of the key stays beside it when the schema is not
+nullable**: a required field at the cut is `present` and `missing` at once, which no payload satisfies, and that is the
+contract's own tree, which a required non-nullable recursion never ends. Below the root the presence is the parent
+object's `required_array_keys`, which the level above already carries, and a child's own presence is `sometimes`, so a
+tree that stops earlier is untouched. **A nullable schema needs a rule of the package's own**,
 `Gcob\LaraSpecFirst\Validation\NullOrAbsent`, imported by the generated request the way a generated DTO imports
 `Optional`: `missing` refuses the `null` the contract allows, `prohibited` lets `""` and `[]` through, and `nullable`
 does not skip an implicit rule, so no rule Laravel ships says "null or absent". The class is implicit, so Laravel calls

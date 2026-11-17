@@ -107,5 +107,6 @@ parameter (`reads siblings beside a $ref in a response schema`).
   writes the keyword, and the rest of the document still reads.
 - **A 3.0 author who writes a constraint beside a `$ref` gets no rule and no finding.** That is how the 3.0
   specification reads it, so the package says nothing, and an author who wants the constraint writes the `allOf`.
-- **An `x-max-depth` belongs on the recursive schema.** One written beside a `$ref` is reported and does nothing.
+- **An `x-max-depth` belongs on the recursive schema.** One written beside a `$ref` is reported and does nothing
+  ([ADR 0009](./0009-cut-recursion-at-a-stated-depth.md)).
 - **A response reader added later needs no rule of its own for these keywords:** the schema it receives is already read.

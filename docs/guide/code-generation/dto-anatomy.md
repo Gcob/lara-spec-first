@@ -254,7 +254,8 @@ and refuses what is below, so every level the DTO builds was checked, and the sa
 shows in the type, not in a new class: the deepest level a payload may reach has no `parent` (the key is absent, or
 `null` when the schema is nullable), and the property says so with `Optional`, or `null`. A list of the schema is
 `list<T>` of the same class, and an empty one at the cut passes. A `required` recursion that is not nullable never ends,
-so a payload that reaches the cut is the request's 422, and the DTO never sees a missing key.
+so a payload that reaches the cut is the request's 422, and the DTO never sees a missing key. The reasoning for the
+depth and the cut is in [ADR 0009](../../project/decisions/0009-cut-recursion-at-a-stated-depth.md).
 
 **A schema in a recursive pair is one class too, whichever operation reaches it first.** `Author` holds `Book`s and
 `Book` holds an `Author`: `AuthorInputDto` and `BookInputDto` each name the other, and the two files are the same bytes
