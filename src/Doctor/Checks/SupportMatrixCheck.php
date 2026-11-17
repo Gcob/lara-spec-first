@@ -68,6 +68,15 @@ final readonly class SupportMatrixCheck
     ];
 
     /**
+     * What a Deferred construct still lacks, said after its count. A response is read for its DTO, so the line cannot
+     * call it unbuilt: only a keyword a response schema writes is left, and the doctor card that names those is linked.
+     */
+    private const DEFERRED_NOTES = [
+        'responses' => 'Response DTOs are generated from them, but a keyword a response schema writes is not named yet, '.
+            'see https://github.com/Gcob/lara-spec-first/issues/164.',
+    ];
+
+    /**
      * Constructs the package reads and will not act on, ever.
      *
      * `header` and `cookie` parameters are the whole list. They were counted beside `query` under one `Deferred` label
@@ -159,9 +168,10 @@ final readonly class SupportMatrixCheck
      * read for. Taking each keyword's level from the matrix would need the matrix in code, and nothing but this report
      * would read it, so the message says it instead.
      *
-     * **Request schemas only, the body and the `query` parameters.** A response is read by nothing yet, and a keyword
-     * is unhonored only against a generator that reads it, which is why a response stays one `Deferred` count. Only the
-     * media types a rule set is built from count, for the same reason.
+     * **Request schemas only, the body and the `query` parameters.** A response is read for its DTO and for nothing
+     * else, and a keyword is unhonored only against a generator that reads it, which is why a response stays one
+     * `Deferred` count until the doctor names the keywords a response writes. Only the media types a rule set is built
+     * from count, for the same reason.
      *
      * **A package limit, always.** The contract is correct and this package does not enforce it, so these exit `2` and
      * never `1`. That is a gate a first run on a published contract will trip, and docs/guide/openapi-support.md says
@@ -366,10 +376,10 @@ final readonly class SupportMatrixCheck
                 SupportLevel::Deferred,
                 '',
                 sprintf(
-                    '%d %s found. Recognized, support planned, not built yet. See https://github.com/Gcob/lara-spec-first#roadmap. '.
-                    'This is a fact about this package\'s roadmap, not a defect in your contract.',
+                    '%d %s found. %s This is a fact about this package\'s roadmap, not a defect in your contract.',
                     $count,
                     self::DEFERRED_LABELS[$construct],
+                    self::DEFERRED_NOTES[$construct],
                 ),
             );
         }
