@@ -658,8 +658,8 @@ are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
   string refuse `""`, which is the framework's and not a rule here, so
   [it is stated above](#patch-empties-the-required-list) rather than reported per field.
 - **A stricter rule the package keeps for another reason:**
-  [a JSON integer written as a float](#a-json-body-keeps-its-types) (`1.0`) is refused by `integer:strict`, and a
-  finding says so. Laravel's `integer` beside `numeric:strict` would accept it.
+  [a JSON integer written as a float](../../project/decisions/0007-keep-json-scalars-strict.md) (`1.0`) is refused by
+  `integer:strict`, and a finding says so. Laravel's `integer` beside `numeric:strict` would accept it.
 
 Which keywords are honored at all is [the support matrix](../openapi-support.md#schemas)'s to state; what each honored
 one becomes is this table's.
@@ -690,7 +690,9 @@ one becomes is this table's.
 `true` (`?notify=true`), as a form-encoded or multipart body writes one. Every generated client would answer 422 to a
 contract it follows, which is a rule refusing what the contract accepts. So for **a `query` parameter and a field of a
 form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body gets
-[`boolean:strict`](#a-json-body-keeps-its-types), where `true` arrives already typed. Four things come with it:
+[`boolean:strict`](#a-json-body-keeps-its-types), where `true` arrives already typed
+([ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md) holds the reasoning for the split). Four things
+come with it:
 
 - **`false` is not in the list as a PHP value.** `Rule::in` compares `(string) false`, which is the empty string, and a
   list holding it would accept the `null` an empty value becomes, which a non-nullable boolean refuses.
@@ -855,8 +857,8 @@ them, and the reading collects them with their position instead. See
 **A JSON body keeps its types: `integer:strict`, `numeric:strict` and `boolean:strict`.** JSON writes `42`, `1.5` and
 `true` already typed, and `"42"` is a string. Laravel's loose `integer`, `numeric` and `boolean` read what a form or a
 query string writes, so on a JSON body they would accept `"42"`, `"1.5"` and `1` for a boolean, which the contract
-refuses. A field of a body that is JSON and nothing else gets the `:strict` form of its rule, at every level (`a.b`,
-`items.*`):
+refuses. The reasoning is in [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md). A field of a body
+that is JSON and nothing else gets the `:strict` form of its rule, at every level (`a.b`, `items.*`):
 
 - **`integer:strict` is `is_int()` on the decoded value.** `"42"`, `true` and `1.0` are refused. `min`, `max`, `gt`,
   `lt` and `multiple_of` beside it still compare as numbers, since Laravel finds an integer or a number by the rule's
@@ -864,9 +866,10 @@ refuses. A field of a body that is JSON and nothing else gets the `:strict` form
 - **`numeric:strict` refuses a string**, `"1.5"` and `"2"` alike. An integer is a number, so `2` passes.
 - **`boolean:strict` accepts `true` and `false` and nothing else**: not `1`, `0`, `"1"` or `"true"`.
 - **A whole number written as a float is refused for an integer (`1.0`, `1e2`), and that is stricter than JSON Schema
-  2020-12**, where `1.0` is an integer. PHP decodes it as a float, and `is_int()` cannot tell it from `1.5`. It is the
-  exception [the principle](#every-constraint-maps-or-reports) allows, so the generated file says it in one finding per
-  request that has an integer field, and a request with none says nothing.
+  2020-12**, where `1.0` is an integer. `integer:strict` is `is_int()` on the decoded value, which refuses a float. The
+  package keeps that one rule today, although Laravel's `integer` beside `numeric:strict` would accept it, and the
+  generated file says so in one finding per request that has an integer field, and a request with none says nothing. See
+  [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md).
 - **A finding that says the request is stricter is not a gap.** It is in the Findings block like any other, but
   `spec:build` does not count it in its "read a constraint they do not enforce" warning, and the file keeps its "Nothing
   was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly

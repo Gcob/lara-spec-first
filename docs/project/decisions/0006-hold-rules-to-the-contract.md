@@ -73,7 +73,7 @@ The request is stricter, with a finding:
 - **A JSON integer written with a fraction or an exponent** (`1.0`, `1e2`) is refused by `integer:strict`, though JSON
   Schema 2020-12 reads it as an integer. It is refused, with a finding. Laravel's `integer` beside `numeric:strict`
   would accept it, and the package keeps the single rule. The reasoning behind the strict rule is in
-  [the topic file](../../guide/code-generation/request-validation.md#a-json-body-keeps-its-types).
+  [ADR 0007](./0007-keep-json-scalars-strict.md).
 - **In a body that is JSON and a form at once, a boolean keeps `boolean`**, so a form client's `"true"` is refused. The
   finding on the field names that and what a JSON client gets through. One rule set cannot read both, and this finding
   counts as a gap in the build's warning.
