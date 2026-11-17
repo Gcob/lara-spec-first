@@ -225,12 +225,24 @@ the integer `2024` when it reads the JSON, so a map of integers can arrive with 
 schema, or `additionalProperties: {}`, is `array<array-key, mixed>`: the request judges nothing about its values. An
 object that declares `properties` is a DTO of its own and carries only those.
 
-**An object body with no `properties` gets a DTO with no properties, and the file says it carries nothing.** The row
-above is the case of a property whose value is a free-form object. A body has no parent to hold it as one, and a DTO's
-properties are the contract's declared keys, so the type is empty: `from()` reads no key and `toArray()` returns `[]`.
-It still exists, with both of its types, so a property added to the contract later does not create a class that was not
-there. The payload is not in it: the generated file's findings say to read the body from the request itself, with
-`$request->json()->all()` for a JSON body.
+**A body that is a map or an open object is carried whole, under one property.** An object body with no `properties` has
+no declared key for a property to be, so its keys are the data. The DTO has one property, `additionalProperties`, typed
+`array<array-key, T>` and never `Optional`: an absent or empty body is `[]`. `T` is what the value schema becomes, as
+for a [map property](#what-each-schema-type-becomes) (`array<array-key, int>` for `{type: integer}`), and
+`array<array-key, mixed>` for an open object, whose values the request judges nothing about. `from()` hands the whole
+payload to the property, converting each value, and `toArray()` returns it, so `{"a": 1, "b": 2}` is
+`$dto->additionalProperties === ['a' => 1, 'b' => 2]`. The partial type is the same, since no key of it can be absent.
+The reasoning is in [ADR 0004](../../project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
+
+**Beside a `query` parameter, the values are `mixed`.** The request judges the values of a root map only where no
+`query` parameter shares the validated data with the body (see
+[a map's values](./request-validation.md#a-maps-values-are-validated-one-by-one)), and the DTO never types what the
+request did not check. A map of integers beside `?dryRun=` is `array<array-key, mixed>`, and the file's findings say
+why. The keys of the `query` parameters are never in the DTO: `validated()` holds both, and `dto()` hands the DTO the
+body's keys alone. A body key named like a `query` parameter is read from the query string instead, which the request's
+findings name. A key a form delivers under a rewritten name (`a.b` as `a_b`) is carried under that name, and so is it
+said. An integer-like top-level key (`"2024"`) is left out by Laravel itself, which renumbers it when it expands the
+wildcard rule, so neither `validated()` nor the DTO holds it; the same key under a property is kept.
 
 **A node that recurses is the class of the schema it points back at.** `Address` holds an `Address`: `parent` is typed
 `Optional|AddressInputDto`, and `Optional|AddressInputDto|null` when the schema is nullable (`?AddressInputDto` for a

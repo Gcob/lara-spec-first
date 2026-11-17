@@ -108,6 +108,12 @@ final class RuleWalk
     public bool $nullableRoot = false;
 
     /**
+     * Whether the body is an object with no declared property, a map or an open object, whose keys are all undeclared:
+     * the DTO carries them whole, and a `query` parameter's key would shadow one of them.
+     */
+    public bool $mapRoot = false;
+
+    /**
      * Whether the contract requires the body, which a request with no content at all breaks. No rule says so when every
      * property is optional, so the request checks it itself.
      */

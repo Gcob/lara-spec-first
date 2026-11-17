@@ -7,12 +7,12 @@ covers: >
     required list emptied and why nothing fills an absent field from a schema `default`, which JSON Schema constraint
     becomes which Laravel rule and what happens to the ones that map to nothing, why nothing rewrites the rule set at
     request time, why the generated request is `final` and where the three things a developer would extend it for
-    already live, why the validated payload reaches the controller as a DTO and what an absent field is in it, where
-    each field is read from (the body for a body field, the query string for a declared `query` parameter), what a
-    client gets when its request is refused and how an application makes every refusal a JSON `422`, how deep a
-    recursive schema is validated and what a deeper payload gets, which media types are read and why one operation
-    declares one of them, what an operation with nothing to validate gets, and how the request reaches `routeAction`
-    without changing what a custom child may override.
+    already live, why the validated payload reaches the controller as a DTO, what an absent field is in it and how a map
+    or open-object body is carried whole, where each field is read from (the body for a body field, the query string for
+    a declared `query` parameter), what a client gets when its request is refused and how an application makes every
+    refusal a JSON `422`, how deep a recursive schema is validated and what a deeper payload gets, which media types are
+    read and why one operation declares one of them, what an operation with nothing to validate gets, and how the
+    request reaches `routeAction` without changing what a custom child may override.
 read_before: >
     Implementing the `FormRequest` emitter, or changing what `routeAction` declares.
 tags: [code-generation, openapi, decisions, scope, laravel]
@@ -73,9 +73,10 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | [A map's values](#a-maps-values-are-validated-one-by-one), each by its `additionalProperties` schema          | A map's values beside declared `properties`, or at the root beside a `query` parameter                                  |
 |                                                                                                               | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
 |                                                                                                               | A bound on a field that states no single type                                                                           |
-| A `query` parameter, with its own `required`, and a name PHP rewrites keyed by what it delivers (`page.size`) |                                                                                                                         |
+| A `query` parameter, with its own `required`, and a name PHP rewrites keyed by what it delivers (`page.size`) | A key of a map body that a `query` parameter shadows, or that a form delivers under a rewritten name                    |
 | A name in `required` that `properties` does not declare: `present`, and the map's value rule where it has one |                                                                                                                         |
 | [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size  |                                                                                                                         |
+| [A map or open-object body](#a-map-or-open-object-body-is-carried-whole), every key in `validated()`          |                                                                                                                         |
 
 **A body declared only in media types this package does not read gets no class**, the same as an operation stating
 nothing, and `spec:build` warns about it on a line of its own: unlike that operation, this one states something nobody
@@ -1142,18 +1143,59 @@ be built from `null` and came out empty, and for a required body that requires a
 no content, passes, and keeps the DTO of `Optional`s. A body that cannot be `null`, or a nullable one read only as a
 form (a form cannot send `null`), keeps the plain return type.
 
-**Its properties are the body schema's, and a query parameter is not one of them.** The rule set merges the two, so
-`validated()` carries both; the DTO mirrors the body and nothing else, because the body is where its name comes from.
-Without that line the naming rule below would not hold: two operations sharing one body `$ref` while declaring different
-query parameters would be feeding two different key sets into one shared type. A query parameter stays on the request,
-where `validated('page')` reads it and where [pagination](../pagination.md#parameters-must-be-declared) already looks
-for it.
+**Its properties are the body schema's, and a query parameter is not one of them.** (A body with none is
+[carried whole](#a-map-or-open-object-body-is-carried-whole).) The rule set merges the two, so `validated()` carries
+both; the DTO mirrors the body and nothing else, because the body is where its name comes from. Without that line the
+naming rule below would not hold: two operations sharing one body `$ref` while declaring different query parameters
+would be feeding two different key sets into one shared type. A query parameter stays on the request, where
+`validated('page')` reads it and where [pagination](../pagination.md#parameters-must-be-declared) already looks for it.
 
 **No factory on this side, and the asymmetry is the point.** A
 [response DTO factory](./response-dtos.md#factories-carry-the-behavior) exists because a response is built from a model,
 and mapping a model onto a response shape is where applications differ. An input DTO is built from the validated
 payload, whose keys are the contract's own property names, so there is nothing to teach and nothing to override:
 `from()` is a constructor call the build writes in full.
+
+### A map or open-object body is carried whole
+
+**A body that is an object with no `properties` has one property on its DTO, `additionalProperties`, and `validated()`
+holds every body key.** The keys of such a body are the data, so `validated()` would hold none of them if no rule named
+one: the root gets `'*' => ['sometimes']` where no value rule is emitted (an open object, an empty value schema, a map
+beside a `query` parameter), after every explicit key, so the wildcard keeps each key without asking anything of it. A
+map whose values are validated has its value rules under the same `*`. A controller that passed `validated()` to
+`create()` now passes the body, where it passed `[]`.
+
+```php
+// app/Http/Generated/Data/ReplacePostLabelsInputDto.php
+/**
+ * @param  array<array-key, string>  $additionalProperties
+ */
+public function __construct(
+    public array $additionalProperties,
+) {}
+```
+
+**A value is typed only where the request judged it.** Beside a `query` parameter the values of a root map are
+[reported and not validated](#a-maps-values-are-validated-one-by-one), so the DTO says `array<array-key, mixed>` rather
+than the schema's type. One class serves every operation that reaches a named schema, so the type is decided before any
+class is written: if any operation leaves the values unvalidated, the class is `mixed` for all of them, and no value
+class (`PetInputDto` for a map of `Pet`) is written for a map that ends up `mixed`. The classes are the same in every
+document order. The reasoning is in
+[ADR 0004](../../project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
+
+**`dto()` takes the `query` parameters' keys out of the data before the DTO reads it**, since `validated()` holds the
+body's keys and the `query` string's, and the DTO is the body's. Two findings are written for such a body:
+
+- **A map key named like a `query` parameter** is read from the query string, never from the body, so a body key of that
+  name is left out of `validated()` and of the DTO. The finding names the key the value arrives under (`page` for a
+  parameter written `page[size]`).
+- **A key a form delivers under another name** (`a.b` and `a b` as `a_b`) is validated and carried under the rewritten
+  name, since the body declares no key to say which one the client meant. A JSON body keeps every key as sent.
+
+**An integer-like top-level key (`"2024"`) is not carried, and nothing in the rule set can change that.** Laravel
+expands a wildcard over data it has put through `array_merge()`, which renumbers such a key, so `validated()` has no
+`2024` whatever its value, and neither has the DTO. Under a name (`labels` holding `"2024"`) the key is kept, as an
+`int` key.
 
 ### An absent field is a third state
 

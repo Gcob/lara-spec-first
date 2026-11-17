@@ -360,3 +360,37 @@ it('writes the conversion of each value of a map property both ways', function (
     expect(emittedMapBody())->not->toContain("array_values(array_map(intval(...), \$payload['counts']))");
     expect(emittedMapBody())->not->toContain('array_values(array_map(PetInputDto');
 });
+
+// The keys of a map body are the data: the property is the payload, not one key of it, so `from()` hands the whole
+// payload over, `toArray()` returns the property, and the key type is `array-key` all the way through (PHP turns a
+// numeric key into an `int`).
+it('writes a map body whole, as the payload and back', function (): void {
+    $dto = emittedMapOfDtos();
+
+    expect($dto)
+        ->toContain('@param  array<array-key, mixed>  $payload')
+        ->toContain('@param  array<array-key, PetInputDto>  $additionalProperties')
+        ->toContain('additionalProperties: array_map(PetInputDto::from(...), $payload),')
+        ->toContain('return array_map(static fn (PetInputDto $item): array => $item->toArray(), $this->additionalProperties);')
+        ->toContain('@implements Arrayable<array-key, mixed>');
+    expect($dto)->not->toContain('Optional')
+        ->and($dto)->not->toContain("\$payload['additionalProperties']");
+});
+
+/**
+ * The input DTO the emitter writes for a body that is a map of `Pet`.
+ */
+function emittedMapOfDtos(): string
+{
+    $pet = new Schema(name: 'Pet', source: '#/components/schemas/Pet', types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])]);
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Put,
+        path: PathTemplate::fromString('/labels'),
+        operationId: 'replaceLabels',
+        requestBody: new RequestBody(['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $pet)], true),
+    );
+    $dtos = array_column(plannedRequests([$operation])['plan']->dtos, null, 'shortName');
+
+    return (new InputDtoEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($dtos['ReplaceLabelsInputDto'])->contents;
+}

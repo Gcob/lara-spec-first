@@ -1343,14 +1343,15 @@ function sendThroughEmitted(string $class, string $method, string $query = '', ?
  * @param  class-string<FormRequest>  $class
  * @param  array<array-key, mixed>  $json  the body, for a JSON request
  * @param  array<string, mixed>  $parameters  form fields, for a request that is not JSON
+ * @param  string  $query  the query string, `?page=2`
  * @return array{0: int, 1: array<string, mixed>}
  */
-function dtoThroughEmitted(string $class, string $method, array $json = [], array $parameters = []): array
+function dtoThroughEmitted(string $class, string $method, array $json = [], array $parameters = [], string $query = ''): array
 {
     Route::match([$method], '/_generated/emitted-dto', fn () => response()->json(app($class)->dto()->toArray()));
 
     $response = app(HttpKernel::class)->handle(Request::create(
-        '/_generated/emitted-dto',
+        '/_generated/emitted-dto'.$query,
         $method,
         $parameters,
         [],
@@ -3000,4 +3001,98 @@ it('refuses an empty string for a required scalar of a nullable body, without Co
         '{"publishAt":"2026-12-01T09:00:00Z","retries":"","notify":""}',
         ['notify', 'retries'],
     ],
+]);
+
+/**
+ * A `POST` whose JSON body is a map or an open object, with the `query` parameters beside it.
+ *
+ * @param  list<QueryParameter>  $query
+ */
+function postWithMapBody(Schema $body, array $query = []): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/hooks'),
+        operationId: 'receiveHook',
+        requestBody: new RequestBody(['application/json' => $body], true),
+        queryParameters: $query,
+    );
+}
+
+/**
+ * An answer as `[status, body]` with the body's keys in order: Laravel puts the keys a wildcard reached before the ones
+ * a rule names, and no caller reads that order.
+ *
+ * @param  array{0: int, 1: array<array-key, mixed>|null}  $answer
+ * @return array{0: int, 1: array<array-key, mixed>|null}
+ */
+function withKeysSorted(array $answer): array
+{
+    if ($answer[1] !== null) {
+        ksort($answer[1]);
+    }
+
+    return $answer;
+}
+
+// The keys of a map are the data: the DTO holds them all under `additionalProperties`, as sent, and `validated()` holds
+// them all too (no rule names a key, so a wildcard keeps them). A `null` body is the payload `null`.
+it('hands a map body to its DTO, every key as sent', function (string $content, int $status, ?array $dto): void {
+    $class = emittedRequestClass(postWithMapBody(mapOf(new Schema(types: [SchemaType::Integer]), nullable: true)));
+
+    expect(withKeysSorted(dtoForRawJson($class, 'POST', $content)))->toBe([$status, $dto]);
+})->with([
+    'two keys' => ['{"a":1,"b":2}', 200, ['a' => 1, 'b' => 2]],
+    'an empty object' => ['{}', 200, []],
+    'a value the map refuses' => ['{"a":"x"}', 422, null],
+    'null' => ['null', 200, null],
+]);
+
+it('keeps every key of a map or open-object body in validated()', function (Schema $body, array $json): void {
+    $class = emittedRequestClass(postWithMapBody($body));
+
+    expect(withKeysSorted(sendThroughEmitted($class, 'POST', json: $json)))->toBe([200, $json]);
+})->with([
+    'a map of integers' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['a' => 1, 'b' => 2]],
+    'an open object' => [fn () => new Schema(types: [SchemaType::Object]), ['a' => 1, 'b' => 'x', 'c' => [1, 2]]],
+    'an empty value schema' => [fn () => mapOf(new Schema), ['a' => [1]]],
+]);
+
+it('carries an open-object body whole', function (): void {
+    $class = emittedRequestClass(postWithMapBody(new Schema(types: [SchemaType::Object])));
+    $body = ['a' => ['b' => [1]], 'c' => null, 'd' => 'x'];
+
+    expect(withKeysSorted(dtoThroughEmitted($class, 'POST', $body)))->toBe([200, $body]);
+});
+
+// Laravel expands a wildcard over data it has put through `array_merge()`, which renumbers an integer-like top-level key,
+// so `validated()` has no `2024` and neither has the DTO, whatever the value. Nested, under a name, the key is kept. The
+// docs say so; pinned here so a Laravel that stops renumbering fails this test and the docs get corrected.
+it('leaves out an integer-like top-level key of a map body, which Laravel renumbers', function (Schema $body): void {
+    $class = emittedRequestClass(postWithMapBody($body));
+
+    expect(withKeysSorted(sendThroughEmitted($class, 'POST', json: ['2024' => 1, 'b' => 2])))->toBe([200, ['b' => 2]])
+        ->and(withKeysSorted(dtoThroughEmitted($class, 'POST', ['2024' => 1, 'b' => 2])))->toBe([200, ['b' => 2]]);
+})->with([
+    'a map of integers' => [fn () => mapOf(new Schema(types: [SchemaType::Integer]))],
+    'an open object' => [fn () => new Schema(types: [SchemaType::Object])],
+]);
+
+// A `query` parameter's key is read from the query string, so it is in `validated()` and not in the body's keys: the DTO
+// holds the body and none of the query string, and a body key of the same name is in neither. The same for a name PHP
+// nests (`page[size]`), whose key is `page`.
+it('keeps the query parameters out of the DTO of a map body', function (string $parameter, string $query, array $json, array $validated, array $dto): void {
+    $class = emittedRequestClass(postWithMapBody(
+        mapOf(new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter($parameter, new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect(withKeysSorted(sendThroughEmitted($class, 'POST', $query, $json)))->toBe([200, $validated])
+        ->and(withKeysSorted(dtoThroughEmitted($class, 'POST', $json, query: $query)))->toBe([200, $dto]);
+})->with([
+    'a query parameter, sent' => ['page', '?page=2', ['a' => 1], ['a' => 1, 'page' => '2'], ['a' => 1]],
+    'a body key of that name' => ['page', '', ['a' => 1, 'page' => 9], ['a' => 1], ['a' => 1]],
+    'a bracketed query name, sent' => ['page[size]', '?page[size]=3', ['a' => 1], ['a' => 1, 'page' => ['size' => '3']], ['a' => 1]],
+    'a body key named like the head of a bracketed name' => ['page[size]', '', ['a' => 1, 'page' => 9], ['a' => 1], ['a' => 1]],
 ]);

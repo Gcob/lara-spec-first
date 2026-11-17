@@ -1278,13 +1278,14 @@ it('leaves an additionalProperties schema unenforced where no sweep reads the sc
     ];
 });
 
-// `additionalProperties: {}` allows any value, as `true` does: no wildcard rule and no finding. A keyword nothing reads is
-// an annotation here (its position is kept apart), so a value schema that only writes one is as open.
+// `additionalProperties: {}` allows any value, as `true` does: no value rule and no finding. A keyword nothing reads is
+// an annotation here (its position is kept apart), so a value schema that only writes one is as open. At the root the
+// wildcard that keeps every key in `validated()` asks nothing of the value.
 it('reads an empty additionalProperties schema as an open object', function (Schema $value, bool $nested): void {
     $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value);
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
 
-    expect($set->rules)->toBe($nested ? ['meta' => ['sometimes', 'array']] : [])
+    expect($set->rules)->toBe($nested ? ['meta' => ['sometimes', 'array']] : ['*' => ['sometimes']])
         ->and($set->findings)->toBe([])
         ->and($set->unenforced)->toBe([]);
 })->with(function (): Generator {
@@ -1329,12 +1330,56 @@ it('leaves the values of a map body unvalidated beside query parameters', functi
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
     ));
 
-    expect($set->rules)->toBe(['page' => ['sometimes', 'integer']])
+    // The wildcard that keeps every body key in `validated()` judges none of them, and the parameter's own key keeps its
+    // rules.
+    expect($set->rules)->toBe(['*' => ['sometimes'], 'page' => ['sometimes', 'integer']])
         ->and($set->unenforced)->toBe(['additionalProperties' => ['The body itself']])
         ->and(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'additionalProperties'))))
         ->toBe(['The body itself states `additionalProperties`, which nothing in this rule set enforces.'])
         ->and($nested->rules['meta.*'])->toBe(['integer:strict'])
         ->and($nested->unenforced)->toBe([]);
+});
+
+// A form delivers a key PHP rewrites (`a.b` as `a_b`, `a b` as `a_b`) under the rewritten name, and a map's keys are all
+// undeclared, so the request cannot say which key the client meant. A JSON body keeps every key as sent.
+it('says a form delivers a map key PHP rewrites under its rewritten name', function (array $mediaTypes, int $findings): void {
+    assert(array_is_list($mediaTypes));
+    $content = array_fill_keys($mediaTypes, new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer])));
+    $set = RuleSetBuilder::for(operationWithInput(content: $content));
+
+    expect(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'PHP rewrites'))))->toHaveCount($findings);
+})->with([
+    'form-encoded' => [['application/x-www-form-urlencoded'], 1],
+    'multipart' => [['multipart/form-data'], 1],
+    'JSON and a form' => [['application/json', 'application/x-www-form-urlencoded'], 1],
+    'JSON only' => [['application/json'], 0],
+]);
+
+// `validationData()` reads a `query` parameter's key from the query string and drops it from the body, so a body key of
+// that name is never read from the body: the finding names the key the value arrives under, never the parameter's
+// written name (`page`, not `page[size]`).
+it('says a map key named like a query parameter is read from the query string', function (string $parameter, string $key): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]))],
+        query: [new QueryParameter($parameter, new Schema(types: [SchemaType::Integer]))],
+    ));
+    $named = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'read from the query string')));
+
+    expect($named)->toHaveCount(1)
+        ->and($named[0])->toContain('`'.$key.'`')
+        ->and($named[0])->not->toContain('page[size]');
+})->with([
+    'a plain name' => ['page', 'page'],
+    'a bracketed name' => ['page[size]', 'page'],
+]);
+
+it('says nothing about a query key for an object body that declares its properties', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['name' => new Schema(types: [SchemaType::String])])],
+        query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect(implode("\n", $set->findings))->not->toContain('read from the query string');
 });
 
 // The one place a caller asks whether the values of a root map are judged, so a rule set and a DTO never disagree.

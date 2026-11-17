@@ -293,8 +293,9 @@ paths:
 
     /posts/{postId}/labels:
         # A body that is a map: no property is declared, and every value is held to the
-        # schema under `additionalProperties`. Read the generated request's `'*'` key,
-        # then send `{"draft": 5}` for a `422` on `draft` (a number is not a string) and
+        # schema under `additionalProperties`. Read the generated request's `'*'` key and
+        # `ReplacePostLabelsInputDto`, whose `additionalProperties` holds every key, then send
+        # `{"draft": 5}` for a `422` on `draft` (a number is not a string) and
         # `{"draft": "ok"}` for the generated parent's `501`.
         put:
             operationId: replacePostLabels

@@ -69,6 +69,15 @@ final class InputDtoPlanner
      */
     private array $ancestors = [];
 
+    /**
+     * The positions of the map bodies whose values the request leaves unvalidated, found before any class is
+     * registered. One class serves every operation that reaches a named schema, so whether its values are typed is
+     * decided here for all of them, and the tree is the same in every document order.
+     *
+     * @var array<string, true>
+     */
+    private array $unvalidatedBodies = [];
+
     private string $identity = '';
 
     private bool $multipart = false;
@@ -82,6 +91,18 @@ final class InputDtoPlanner
      */
     public function plan(array $requests): InputDtoPlan
     {
+        $this->unvalidatedBodies = [];
+
+        foreach ($requests as $request) {
+            if (! RuleSetBuilder::validatesRootMapValues($request->operation)) {
+                $root = $this->locate($request);
+
+                if ($root !== null) {
+                    $this->unvalidatedBodies[$root['position']] = true;
+                }
+            }
+        }
+
         foreach ($requests as $request) {
             $this->root($request);
         }
@@ -105,17 +126,22 @@ final class InputDtoPlanner
     }
 
     /**
-     * The two types of one operation's body, and the one its `dto()` reads.
+     * Where an operation's body is written, and what it merges to, or null when it has no body the rule set reads as an
+     * object.
      *
-     * @throws UnusableNameException
+     * One computation for the walk and for the pre-pass of {@see self::plan()}, so the position a map body is recorded
+     * at is the position its class is registered under.
+     *
+     * @return array{written: Schema, merged: Schema, name: string|null, position: string}|null
+     *
      * @throws ConflictingInputException
      */
-    private function root(PlannedRequest $request): void
+    private function locate(PlannedRequest $request): ?array
     {
         $written = $request->rules->body;
 
         if ($written === null) {
-            return;
+            return null;
         }
 
         $operation = $request->operation;
@@ -123,7 +149,6 @@ final class InputDtoPlanner
         assert($body !== null);
 
         $this->identity = $operation->label();
-        $this->multipart = $request->rules->multipart;
 
         $merged = AllOfMerger::merge($written, $this->identity, 'the body');
 
@@ -131,10 +156,8 @@ final class InputDtoPlanner
         // reason: a property is a field name, and a bare value has none. The
         // rule set's own test, so a body it reads as an object gets a DTO too.
         if (! RuleSetBuilder::isObjectBody($merged)) {
-            return;
+            return null;
         }
-
-        $this->ancestors = RuleSetBuilder::definitions($written, $merged, $this->identity, 'the body');
 
         $mediaTypes = array_values(array_intersect($body->mediaTypes(), RuleSetBuilder::READ_MEDIA_TYPES));
         $inline = DocumentPointer::forOperation($operation).'/requestBody/content/'
@@ -144,7 +167,32 @@ final class InputDtoPlanner
         // inline object nested in it reports a position inside the component and
         // not inside whichever operation happened to reach it first.
         [$name, $source] = $this->nameOf($written, $merged);
-        $position = $source ?? $inline;
+
+        return ['written' => $written, 'merged' => $merged, 'name' => $name, 'position' => $source ?? $inline];
+    }
+
+    /**
+     * The two types of one operation's body, and the one its `dto()` reads.
+     *
+     * @throws UnusableNameException
+     * @throws ConflictingInputException
+     */
+    private function root(PlannedRequest $request): void
+    {
+        $root = $this->locate($request);
+
+        if ($root === null) {
+            return;
+        }
+
+        ['written' => $written, 'merged' => $merged, 'name' => $name, 'position' => $position] = $root;
+
+        $operation = $request->operation;
+        $body = $operation->requestBody;
+        assert($body !== null);
+
+        $this->multipart = $request->rules->multipart;
+        $this->ancestors = RuleSetBuilder::definitions($written, $merged, $this->identity, 'the body');
 
         if ($name === null) {
             $base = $request->name->stem();
@@ -339,20 +387,45 @@ final class InputDtoPlanner
             $properties[] = new InputDtoProperty($key, $name, $type, $optional);
         }
 
-        // Only a body's root gets here without properties: a nested object with none is
-        // a `map` property of its parent. An open object has no declared key for a
-        // property to be, so the type is empty and keeps its name, which a property
-        // added to the contract later would otherwise have to create.
+        // Only a body's root gets here without properties: a nested object with none is a `map` property of its
+        // parent. Its keys are the data, so the root has one property that holds them all.
         if ($merged->properties === []) {
-            $this->registry[$shortName]['findings'][] = 'The body declares no properties, so this type has none and carries '
-                .'nothing: `from()` reads no key and `toArray()` returns `[]`. It exists so that adding a '
-                .'property later creates no class that was not there. Read the body from the request '
-                .'itself: `$request->json()->all()` for a JSON body, the form bag and `$request->allFiles()` for a form.';
+            $properties[] = $this->payloadProperty($shortName, $merged, $position, $base);
         }
 
         $this->registry[$shortName]['properties'] = $properties;
 
         return $shortName;
+    }
+
+    /**
+     * The one property of a map or open-object body: `additionalProperties`, holding every key as sent.
+     *
+     * **Typed by the value schema only where the request judged the values.** A `query` parameter shares the validated
+     * data with the body, so beside one the request judges no value, and the DTO says `mixed` rather than a type
+     * nothing checked. That is asked of {@see RuleSetBuilder::validatesRootMapValues()}, before any class is registered
+     * ({@see self::plan()}), so a class several operations read is the same whichever came first, and the value schema
+     * of a map that ends up `mixed` is never walked: no class is registered for a value nothing reads.
+     *
+     * Never `Optional`: an absent or empty body is `[]`.
+     */
+    private function payloadProperty(string $shortName, Schema $merged, string $position, string $base): InputDtoProperty
+    {
+        $value = RuleSetBuilder::mapValueSchema($merged);
+
+        if (isset($this->unvalidatedBodies[$position])) {
+            if ($value !== null && ! RuleSetBuilder::allowsAnyValue($value)) {
+                $this->registry[$shortName]['findings'][] = 'The request does not validate the values of this body, because a `query` '
+                    .'parameter shares the validated data with it, so `additionalProperties` holds `mixed` values '
+                    .'rather than the type the schema states for them.';
+            }
+
+            $type = new InputDtoType(InputDtoType::MAP);
+        } else {
+            $type = $this->map($merged, $base, 'additionalProperties', $position, false, $shortName);
+        }
+
+        return new InputDtoProperty('additionalProperties', 'additionalProperties', $type, false, wholePayload: true);
     }
 
     /**

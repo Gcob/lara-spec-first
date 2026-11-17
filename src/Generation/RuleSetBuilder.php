@@ -361,11 +361,23 @@ final readonly class RuleSetBuilder
             }
         }
 
+        // Why: `validationData()` takes a `query` parameter's key from the query string and drops it from the body, so a
+        // body key of that name is not a key of the body. A map has no declared name to refuse it for.
+        if ($walk->mapRoot) {
+            foreach ($queryKeys as $queryKey) {
+                $walk->findings[] = sprintf(
+                    'A body key named `%1$s` is not a key of this map: `%1$s` is also a `query` parameter, so it is read from '
+                        .'the query string, and a `%1$s` in the body is left out of the validated data and of the DTO.',
+                    $queryKey,
+                );
+            }
+        }
+
         $walk->exceeded = $walk->exceeded || $walk->unrolledKeys() > self::MAX_UNROLLED_KEYS;
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot);
     }
 
     /**
@@ -651,6 +663,23 @@ final readonly class RuleSetBuilder
 
         if ($judged) {
             self::mapValues($walk, '', $value);
+        }
+
+        // Why: the keys of a map or an open object are the data, and `validated()` keeps only a key a rule names. A
+        // wildcard that asks nothing of the value keeps them all where no value rule does, after every explicit key so it
+        // merges into the ones before it.
+        if ($schema->properties === []) {
+            $walk->mapRoot = true;
+
+            if (! $judged) {
+                $walk->rules['*'] = ['sometimes'];
+            }
+
+            if ($walk->formBody) {
+                $walk->findings[] = 'A form delivers a key PHP rewrites (`a.b` and `a b` as `a_b`) under the rewritten name, and this '
+                    .'body declares no key to say which one the client meant, so the request validates and the DTO carries '
+                    .'such a key under the name PHP gave it.';
+            }
         }
 
         self::leave($walk, $outside);

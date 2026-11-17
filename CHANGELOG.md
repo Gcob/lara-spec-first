@@ -154,6 +154,23 @@ tags: [versions, conventions, planning]
   `additionalProperties: {}`, is `array<array-key, mixed>`, as the request judges nothing about its values. This is a
   breaking change: `$dto->labels['x']['name']` on a map of `$ref` values throws, and becomes `$dto->labels['x']->name`.
   Read the value as the class it is.
+- **The input DTO of a map or open-object body now carries its keys under `additionalProperties`, and `validated()` now
+  returns every body key for such a root.** A body that declares no `properties` (a map, `{type: object}` or
+  `additionalProperties: {}`) had an input DTO with no property and a `validated()` that returned `[]`. Its DTO now has
+  one property, `additionalProperties`, typed `array<array-key, T>` and never `Optional` (`array<array-key, int>` for a
+  map of integers, `array<array-key, mixed>` for an open object, an absent or empty body is `[]`), the same in the
+  partial class, and `toArray()` returns it. Beside a `query` parameter the request validates no value, so the property
+  is `array<array-key, mixed>` there. `dto()` leaves the keys of the `query` parameters out of it, a body key named like
+  a `query` parameter is read from the query string and the generated file says so, and so does it for a key a form
+  delivers under a rewritten name (`a.b` as `a_b`). An integer-like top-level key (`"2024"`) is left out by Laravel
+  itself, in `validated()` and in the DTO. This is a breaking change: the class gains a property, so a call to its
+  constructor or a check that it has none fails, and a controller that passed `validated()` to `create()` now passes the
+  body where it passed `[]`. Read the keys from `$request->dto()->additionalProperties`, and pass only what `create()`
+  accepts. The reasoning is in [ADR 0004](./docs/project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
+  This closes the gap the `0.2.0` `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109),
+  except the values of a map beside declared `properties` or beside `query` parameters, which are reported and not
+  validated (and typed `mixed` on the DTO of a map body), until
+  [#169](https://github.com/Gcob/lara-spec-first/issues/169).
 
 ### Fixed
 

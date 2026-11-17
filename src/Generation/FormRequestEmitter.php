@@ -290,6 +290,9 @@ final readonly class FormRequestEmitter
      * DTO. The `assert` is for the static analysis of the class a consumer reads: `getValidatorInstance()` is typed as
      * the contract, and the flag is on the validator Laravel builds.
      *
+     * **A map or open-object body's DTO holds every key it is handed**, so `dto()` takes the `query` parameters' keys
+     * out of the validated data first: they are in `validated()` and are not the body's.
+     *
      * **It returns `null` for a `null` body, and is typed `?X` then**: when the root is nullable and read as JSON, the
      * request lets a JSON `null` through and the payload is `null`, not an object with nothing in it.
      *
@@ -304,6 +307,12 @@ final readonly class FormRequestEmitter
         $payload = $planned->rules->formPaths === []
             ? '$validator->validated()'
             : '$this->contractNames($validator->validated())';
+
+        // Why: the keys of a map or open-object body are the data, so the DTO reads every key it is handed, and
+        // `validated()` holds the `query` parameters' keys beside them.
+        if ($planned->rules->mapRoot && $planned->rules->queryKeys !== []) {
+            $payload = 'array_diff_key('.$payload.', array_flip(self::QUERY_KEYS))';
+        }
 
         $nullable = self::dtoIsNullable($planned->rules);
 

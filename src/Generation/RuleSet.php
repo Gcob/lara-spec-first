@@ -72,6 +72,8 @@ final readonly class RuleSet
      *                                                     are
      * @param  list<string>  $dropsArray  the keys of `$whenNotArray` with no rule on any name below them: the request
      *                                    drops the array (`exclude`) where it would keep it (`array`) beside a rule
+     * @param  bool  $mapRoot  whether the body is an object with no declared property, a map or an open object, so its
+     *                         keys are all undeclared: `dto()` hands the DTO every body key and no `query` key
      */
     public function __construct(
         public array $rules = [],
@@ -92,6 +94,7 @@ final readonly class RuleSet
         public array $requiredOnceSent = [],
         public array $whenNotArray = [],
         public array $dropsArray = [],
+        public bool $mapRoot = false,
     ) {}
 
     /**
