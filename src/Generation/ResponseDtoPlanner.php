@@ -326,6 +326,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             return $shortName;
         }
 
+        // Why: the registry's shape is shared with the input side, which reads `partial` and `multipart`.
         $this->registry[$shortName] = [
             'partial' => false,
             'named' => $named,

@@ -28,8 +28,8 @@ tags: [decisions, code-generation, openapi]
 > - Turned down: plain `T` for an optional property, `toRfc3339String()`, an empty DTO for a map, a build error for two
 >   JSON schemas under one status, a DTO that is `Responsable` or an API Resource, and casting in `from()`.
 
-**Status:** Accepted · **Card:** [#39](https://github.com/Gcob/lara-spec-first/issues/39) · **Pull request:** its pull
-request
+**Status:** Accepted · **Card:** [#39](https://github.com/Gcob/lara-spec-first/issues/39) · **Pull request:**
+[#176](https://github.com/Gcob/lara-spec-first/pull/176)
 
 ## Context
 

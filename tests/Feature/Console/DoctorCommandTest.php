@@ -116,6 +116,18 @@ it('exits 2 on a rejected construct under Support findings, with no document fau
         ->and($text)->toContain('Laravel has no TRACE verb');
 });
 
+// The doctor runs the build planner, so a response schema the build refuses is a package limit here too.
+it('exits 2 on a response schema whose DTO name an input DTO already takes', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('response-name-taken-by-input.yaml'));
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(2)
+        ->and($text)->toContain('#/components/schemas/User')
+        ->and($text)->toContain('#/components/schemas/UserInput')
+        ->and($text)->toContain('UserInputDto');
+});
+
 it('reports every fault the reading pipeline collected, not only the first', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('multiple-faults.yaml'));
 

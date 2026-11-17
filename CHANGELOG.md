@@ -214,10 +214,12 @@ tags: [versions, conventions, planning]
   schema `UserInput` gives `UserInputDto`, which a request schema `User` gives too), and two different response schemas
   that derive one class name; a response schema name that leaves no class name once it is turned into one; two keys of
   one response schema that derive one property name; and `allOf` branches in a response schema that disagree (two types,
-  two enumerations that share no value, two formats, a branch writing `additionalProperties: false` beside one declaring
-  properties it does not, or a value schema under `additionalProperties` that contradicts a property another branch
-  declares). This is a breaking change: a document that builds today and writes such a response stops building. Rename
-  the schema or the key, or make the branches agree.
+  two enumerations that share no value, two `format`, `pattern`, `multipleOf` or `contentMediaType` values, a branch
+  writing `additionalProperties: false` beside one declaring properties it does not, or a value schema under
+  `additionalProperties` that contradicts a property another branch declares). `spec:doctor` runs the same build
+  planner, so it now exits `2` for a response schema that meets one of these refusals, and `spec:make` refuses it. This
+  is a breaking change: a document that builds today and writes such a response stops building, and a green CI step that
+  runs the doctor can turn red. Rename the schema or the key, or make the branches agree.
 - **`spec:doctor` words its response line differently, and still exits the same.** The `Deferred` line for responses
   read "Recognized, support planned, not built yet. See https://github.com/Gcob/lara-spec-first#roadmap." and now reads
   "Response DTOs are generated from them, but a keyword a response schema writes is not named yet, see
