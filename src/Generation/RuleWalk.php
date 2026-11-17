@@ -231,6 +231,14 @@ final class RuleWalk
     public array $cuts = [];
 
     /**
+     * The rule keys that are the wildcard of a map (`*`, `meta.*`), which judges the values of an object with no
+     * declared property. A cut on one is a map that is empty, where a cut on any other key ending in `.*` is a list.
+     *
+     * @var array<string, true>
+     */
+    public array $mapKeys = [];
+
+    /**
      * The depth no recursive schema is validated below in this walk, or null for the depths the contract states. The
      * ceiling lowers it for the whole operation, so a tree is cut at one level on every branch, and a schema whose own
      * depth is under it keeps its own.

@@ -70,10 +70,11 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children    | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for                                   |
 | `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                             | A `query` name PHP appends to (`ids[]`) or delivers under no name, or under a key the body arrives under                |
 | A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)         | A form client's value for a top-level name PHP rewrites, in a body that is JSON too                                     |
+| [A map's values](#a-maps-values-are-validated-one-by-one), each by its `additionalProperties` schema          | A map's values beside declared `properties`, or at the root beside a `query` parameter                                  |
 |                                                                                                               | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
 |                                                                                                               | A bound on a field that states no single type                                                                           |
 | A `query` parameter, with its own `required`, and a name PHP rewrites keyed by what it delivers (`page.size`) |                                                                                                                         |
-| A name in `required` that `properties` does not declare, as `present` alone, since any value is allowed       |                                                                                                                         |
+| A name in `required` that `properties` does not declare: `present`, and the map's value rule where it has one |                                                                                                                         |
 | [A file part](../uploads.md#the-schema-names-the-file-part) of a multipart body: `file`, `mimetypes`, a size  |                                                                                                                         |
 
 **A body declared only in media types this package does not read gets no class**, the same as an operation stating
@@ -657,24 +658,24 @@ one becomes is this table's.
 
 **What a type, a nullability and an annotation each become:**
 
-| Schema                                                  | Laravel rule                                                                                                                                                                                       |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type: string`                                          | `string`                                                                                                                                                                                           |
-| `type: integer`                                         | `integer:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                     |
-| `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                     |
-| `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                    |
-| `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                         |
-| `type: object`                                          | `array`, with each property keyed `field.child`. A JSON object arrives as a PHP array, and Laravel has no `object` rule                                                                            |
-| `nullable`, `type: [..., "null"]`                       | `nullable`                                                                                                                                                                                         |
-| `enum`                                                  | `Rule::in()` with the declared values                                                                                                                                                              |
-| `const`                                                 | `Rule::in()` with the one value                                                                                                                                                                    |
-| `format: date`                                          | `date_format:Y-m-d`                                                                                                                                                                                |
-| `format: date-time`                                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                                                                                                |
-| `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`                                                                                                                                                                    |
-| `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                                                                         |
-| `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                                                                      |
-| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer:strict` is `is_int()` on the decoded JSON, and `integer` is PHP's `FILTER_VALIDATE_INT`: both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number |
-| `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                                                                                  |
+| Schema                                                  | Laravel rule                                                                                                                                                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type: string`                                          | `string`                                                                                                                                                                                                                                          |
+| `type: integer`                                         | `integer:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                                    |
+| `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                                                                    |
+| `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                                                                   |
+| `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                                                                        |
+| `type: object`                                          | `array`, with each property keyed `field.child`, or each value keyed `field.*` when it declares none and writes [a value schema](#a-maps-values-are-validated-one-by-one). A JSON object arrives as a PHP array, and Laravel has no `object` rule |
+| `nullable`, `type: [..., "null"]`                       | `nullable`                                                                                                                                                                                                                                        |
+| `enum`                                                  | `Rule::in()` with the declared values                                                                                                                                                                                                             |
+| `const`                                                 | `Rule::in()` with the one value                                                                                                                                                                                                                   |
+| `format: date`                                          | `date_format:Y-m-d`                                                                                                                                                                                                                               |
+| `format: date-time`                                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                                                                                                                                               |
+| `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`                                                                                                                                                                                                                   |
+| `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                                                                                                                        |
+| `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                                                                                                                     |
+| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer:strict` is `is_int()` on the decoded JSON, and `integer` is PHP's `FILTER_VALIDATE_INT`: both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number                                                |
+| `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                                                                                                                                 |
 
 **Laravel's `boolean` refuses the string `"true"`, so a boolean that arrives as text does not get it.** It accepts `1`,
 `0`, `"1"`, `"0"`, `true` and `false`, and OpenAPI's default `form` style writes a boolean in a query string as the text
@@ -758,16 +759,17 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 
 **Arrays and objects, where a rule is keyed rather than named:**
 
-| Schema                        | Laravel rule                                                                                                                                                                                                                                                                                         |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `items`                       | The element rules, under `field.*`                                                                                                                                                                                                                                                                   |
-| `minItems`, `maxItems`        | `min`, `max` on the array itself                                                                                                                                                                                                                                                                     |
-| `uniqueItems: true`           | `distinct:strict` on `field.*` when the elements are a typed scalar that may not be null, in an array that is not itself an element. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through |
-| `properties`                  | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                     |
-| `additionalProperties: false` | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                        |
-| `required` on a nested object | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                |
-| `dependentRequired`           | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                |
-| `allOf`                       | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                |
+| Schema                           | Laravel rule                                                                                                                                                                                                                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                          | The element rules, under `field.*`                                                                                                                                                                                                                                                                   |
+| `minItems`, `maxItems`           | `min`, `max` on the array itself                                                                                                                                                                                                                                                                     |
+| `uniqueItems: true`              | `distinct:strict` on `field.*` when the elements are a typed scalar that may not be null, in an array that is not itself an element. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through |
+| `properties`                     | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                     |
+| `additionalProperties: false`    | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                        |
+| `additionalProperties: <schema>` | Each value, under `*` at the root or `field.*` nested, when the object declares no `properties`: [a map's values](#a-maps-values-are-validated-one-by-one)                                                                                                                                           |
+| `required` on a nested object    | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                |
+| `dependentRequired`              | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                |
+| `allOf`                          | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                |
 
 **A nested object is validated as an array, keyed with dots.** One rule key per property, however deep the schema goes,
 which is Laravel's own notation for nested input and what `validated()` hands back:
@@ -876,6 +878,43 @@ refuses. A field of a body that is JSON and nothing else gets the `:strict` form
   `"42"`. `numeric:strict` and `boolean:strict` exist from 12.21, so `integer:strict` is the rule that sets the floor,
   and the reason the package requires `^12.22 || ^13.0`.
 
+### A map's values are validated one by one
+
+**An object that declares no `properties` and writes a schema under `additionalProperties` is a map, and each of its
+values is judged by that schema's own rules.** The rules sit under one wildcard key, written after the object's own
+keys: `*` for a body that is a map, `labels.*` for a property. A value is present by being in the object, so the rule
+carries no presence, as an element of a list carries none. The reasoning is in
+[ADR 0003](../../project/decisions/0003-validate-each-value-of-a-map.md).
+
+```yaml
+# workbench/openapi.yaml, the body of `PUT /posts/{postId}/labels`
+type: object
+additionalProperties: { type: string, maxLength: 30 }
+```
+
+```php
+// app/Http/Generated/Requests/ReplacePostLabelsRequest.php
+'*' => ['string', 'max:30'],
+```
+
+Written as a property named `labels`, the same schema gives `'labels' => ['sometimes', 'array']` and
+`'labels.*' => ['string', 'max:30']`.
+
+**A key the map requires without declaring it is judged by the wildcard too.** `required: [a]` with no `properties`
+keeps `present` for `a`, the wildcard adds the value's rules to it, and the finding that says the request "says nothing
+about the value" is not written there. **An empty value schema (`additionalProperties: {}`) is an open object**, as
+`true` is: no rule and no finding. A key with a dot in it is the key as sent, never a path.
+
+**Where a wildcard would judge more than the values, they are reported and not validated.** The wildcard reaches every
+key at its level, so beside a declared property (`id` and a value schema) it would hold `id` to the value schema, and a
+root map beside a `query` parameter would hold the parameter's key to it. In both, one finding names
+`additionalProperties`, `spec:doctor` reports it as `Partial`, and the declared property keeps exactly its own rules. A
+map nested in an operation that has a `query` parameter is validated.
+
+**Two branches of an `allOf` that each write a value schema are merged exactly:** the values must satisfy both, and a
+value schema written by one branch also holds for the properties the other branch declares. A contradiction is refused,
+as every `allOf` contradiction is, and `additionalProperties: false` in one branch closes the merged object.
+
 ### A recursive schema is validated to a stated depth
 
 **A schema that refers to itself, directly or through another one, is validated down to the depth it states, and a
@@ -930,7 +969,8 @@ recursive schema allows:
 
 **The table is for a field that holds the recursive schema. A list of it is cut on its elements**, so an empty list
 passes in both rows: it carries no data, and the depth exists to limit how much data a payload carries. A list with one
-element below the depth answers 422 on that element.
+element below the depth answers 422 on that element. **A [map](#a-maps-values-are-validated-one-by-one) of it is cut on
+its values the same way:** an empty map passes at the cut, and one value below it answers 422 on that key.
 
 **Not `prohibited`, which is "missing or empty"**: it lets `null`, `""` and `[]` through, and a typed DTO would then be
 built from an empty array. `missing` is the key being absent. **What the contract asks of the key stays beside it when

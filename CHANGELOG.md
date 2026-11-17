@@ -107,13 +107,12 @@ tags: [versions, conventions, planning]
   red. Rename one of the two, or accept what the report says. A plain name beside the names PHP nests under it (`page`
   beside `page[size]`) keeps its rules, so the doctor reports nothing for it.
 
-- **A schema written under `additionalProperties` is now read into the contract, and `spec:doctor` reports it `Partial`
-  where it reported `Ignored`.** `additionalProperties: {type: integer}` on a body, a property or a `query` parameter,
-  and the same beside a `$ref` at 3.1 (`{$ref: Base, additionalProperties: {$ref: Pet}}`, with the `$ref` followed), is
-  carried as the schema every value must satisfy. The generated request still derives no rule from it, so the generated
-  file and the doctor name it as unenforced, and the exit code is `2` either way. A keyword written inside the value
-  schema is reported at its own position. This is not a breaking change: the request enforces the same as before and the
-  doctor exits with the same code.
+- **A schema written under `additionalProperties` is now read into the contract.**
+  `additionalProperties: {type: integer}` on a body, a property or a `query` parameter, and the same beside a `$ref` at
+  3.1 (`{$ref: Base, additionalProperties: {$ref: Pet}}`, with the `$ref` followed), is carried as the schema every
+  value must satisfy, and a keyword written inside it is reported at its own position. Beside a `$ref` it was reported
+  `Ignored` and no longer is. What the generated request and `spec:doctor` do with it is in the two entries below. This
+  is not a breaking change on its own: it only reads what was ignored.
 - **An `allOf` whose branches write an `additionalProperties` schema is now merged, and refused when the schema
   contradicts a property another branch declares.** Two branches writing one are combined, and one branch's schema
   applies to the properties the other declares, as JSON Schema reads it, so
@@ -127,6 +126,24 @@ tags: [versions, conventions, planning]
   `AliasInputDto`. The wrapper is a schema of its own, as one that writes `required` is, and a class named after `Pet`
   could not tell the two apart. This is a breaking change: code that imports or type-hints the old class name no longer
   finds it. Use the new name.
+- **The values of a map are now validated, where they reached `validated()` unchecked.** An object that declares no
+  `properties` and writes a schema under `additionalProperties`
+  (`{type: object, additionalProperties: {type: string, maxLength: 30}}`) has each value judged by that schema's own
+  rules, under `*` at the root and `field.*` nested, as an element of a list is. A key the object requires without
+  declaring it is judged too, and a recursion through a map is cut on its values at `x-max-depth`, where an empty map
+  passes. Two `allOf` branches that each write a value schema are merged, and `additionalProperties: {}` is read as
+  `true`. What stays reported and not validated, with a finding and a `Partial` from `spec:doctor`: the values beside
+  declared `properties`, and a root map beside a `query` parameter, since the wildcard would judge the declared key or
+  the parameter too. This is a breaking change: a request that answered `200` with a value the schema refuses
+  (`{"draft": 5}` for a string of at most 30 characters) now answers `422` to a client that asks for JSON. Send values
+  the contract describes, or loosen the schema. The reasoning is in
+  [ADR 0003](./docs/project/decisions/0003-validate-each-value-of-a-map.md).
+- **`spec:doctor` no longer reports a map the request validates, so its exit code can drop from `2` to `0`.** A body or
+  a property written `additionalProperties: <schema>` was reported `Ignored`, and a document whose only gap was one
+  exited `2`. The values are validated now (see the entry above), and `additionalProperties: {}` states nothing, so such
+  a document exits `0`. A map beside declared `properties`, and a root map beside a `query` parameter, are still
+  reported as `Partial` and still exit `2`. This is a breaking change: every move on the exit-code axis is major, in
+  either direction, so a CI step that expected `2` here will see `0`. Update what it expects.
 
 ### Fixed
 

@@ -507,7 +507,7 @@ it('reports an x-max-depth written beside a $ref at every hop', function (): voi
 // A schema under `additionalProperties` beside a `$ref` is read as it is anywhere else (it is no longer reported
 // `Ignored`), and a `$ref` inside it is followed, at any depth: the parser dropped it with the rest of the keywords
 // beside the first `$ref`, so nothing else would have kept the `Pet` it names.
-it('carries an additionalProperties schema written beside a $ref, its $ref followed', function (array $siblings, int $levels): void {
+it('carries an additionalProperties schema written beside a $ref, its $ref followed', function (array $siblings, int $levels, int $reported): void {
     $operations = readSiblingField(
         ['$ref' => '#/components/schemas/Base', ...$siblings],
         ['Base' => ['type' => 'object'], 'Pet' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]],
@@ -531,15 +531,17 @@ it('carries an additionalProperties schema written beside a $ref, its $ref follo
     );
 
     expect($field->ignored)->toBe([])
-        ->and($unenforced)->toHaveCount(1)
+        ->and($unenforced)->toHaveCount($reported)
         ->and($field->allOf[0]->name)->toBe('Base')
         ->and($value?->name)->toBe('Pet')
         ->and($value?->source)->toBe('#/components/schemas/Pet')
         ->and(array_keys($value->properties ?? []))->toBe(['name'])
         ->and($ignored)->toBe([]);
 })->with([
-    'one level' => [['additionalProperties' => ['$ref' => '#/components/schemas/Pet']], 1],
-    'two levels' => [['additionalProperties' => ['additionalProperties' => ['$ref' => '#/components/schemas/Pet']]], 2],
+    // The map's values are validated, so nothing is reported. The second level is a value with no type of its own: no
+    // rule reads the map it writes, and the doctor says so.
+    'one level' => [['additionalProperties' => ['$ref' => '#/components/schemas/Pet']], 1, 0],
+    'two levels' => [['additionalProperties' => ['additionalProperties' => ['$ref' => '#/components/schemas/Pet']]], 2, 1],
 ]);
 
 // An alias that writes a value schema beside its `$ref` is a schema of its own, as one that writes `required` is: a

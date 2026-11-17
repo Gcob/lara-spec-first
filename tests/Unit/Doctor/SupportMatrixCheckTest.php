@@ -652,6 +652,45 @@ it('reports a keyword written inside an additionalProperties schema', function (
     ]);
 });
 
+// The doctor reported every map body as `Ignored`, so a contract whose only gap was a map exited `2`. Once the request
+// validates the values nothing is left unenforced, so the same contract exits `0`: the move the CHANGELOG announces.
+it('gives a map the request validates no additionalProperties finding, and a clean exit', function (Schema $body): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => $body])]);
+
+    expect($findings)->toBe([])
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(0);
+})->with(function (): Generator {
+    $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
+
+    yield 'a map body' => [$map];
+    yield 'a map body with an empty value schema' => [new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema)];
+    yield 'a nested map' => [supportMatrixObject(['labels' => $map])];
+});
+
+// The values of a map the build cannot validate are still a finding and still exit `2`: beside declared properties, and
+// at the root beside a `query` parameter.
+it('keeps reporting the values of a map the request leaves unvalidated', function (array $content, array $query): void {
+    assert(array_is_list($query));
+
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest($content, $query)]);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->level)->toBe(SupportLevel::Partial)
+        ->and($findings[0]->message)->toContain('`additionalProperties`')
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
+})->with(function (): Generator {
+    $value = new Schema(types: [SchemaType::String]);
+
+    yield 'beside declared properties' => [
+        ['application/json' => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: $value)],
+        [],
+    ];
+    yield 'a root map beside a query parameter' => [
+        ['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value)],
+        [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ];
+});
+
 // --- Keywords written beside a $ref, at 3.1 ---
 
 it('names an Ignored keyword written beside a $ref in a 3.1 request', function (): void {

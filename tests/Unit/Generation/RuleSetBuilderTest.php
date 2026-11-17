@@ -1278,6 +1278,111 @@ it('leaves an additionalProperties schema unenforced where no sweep reads the sc
     ];
 });
 
+// `additionalProperties: {}` allows any value, as `true` does: no wildcard rule and no finding. A keyword nothing reads is
+// an annotation here (its position is kept apart), so a value schema that only writes one is as open.
+it('reads an empty additionalProperties schema as an open object', function (Schema $value, bool $nested): void {
+    $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value);
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
+
+    expect($set->rules)->toBe($nested ? ['meta' => ['sometimes', 'array']] : [])
+        ->and($set->findings)->toBe([])
+        ->and($set->unenforced)->toBe([]);
+})->with(function (): Generator {
+    $annotation = new Schema(ignored: ['description' => '#/components/schemas/Anything/additionalProperties/description']);
+
+    foreach (['at the root' => false, 'nested' => true] as $where => $nested) {
+        yield 'an empty schema, '.$where => [new Schema, $nested];
+        yield 'an annotation alone, '.$where => [$annotation, $nested];
+    }
+});
+
+// The wildcard reaches every key at its level, declared or not (measured on Laravel's validator), so beside declared
+// properties it would judge them by the value schema too. That is a different answer from the contract's, so the values
+// are reported instead and the declared property keeps exactly its own rules.
+it('leaves the values of a map unvalidated beside declared properties', function (bool $nested): void {
+    $map = new Schema(
+        types: [SchemaType::Object],
+        properties: ['id' => new Schema(types: [SchemaType::Integer])],
+        additionalPropertiesSchema: new Schema(types: [SchemaType::String]),
+    );
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
+    $label = $nested ? '`meta`' : 'The body itself';
+
+    expect(array_keys($set->rules))->toBe($nested ? ['meta', 'meta.id'] : ['id'])
+        ->and($set->rules[$nested ? 'meta.id' : 'id'])->toBe(['sometimes', 'integer:strict'])
+        ->and(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'additionalProperties'))))
+        ->toBe([$label.' states `additionalProperties`, which nothing in this rule set enforces.'])
+        ->and($set->unenforced)->toBe(['additionalProperties' => [$label]]);
+})->with(['at the root' => [false], 'nested' => [true]]);
+
+// A query parameter shares the validated data with the body, so a wildcard at the body's root would judge the query's
+// keys by the map's value schema too. The root map's values are reported there; a nested map is not at risk, since its
+// keys sit under a name of its own.
+it('leaves the values of a map body unvalidated beside query parameters', function (): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer)],
+        query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ));
+    $nested = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['meta' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer)])],
+        query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect($set->rules)->toBe(['page' => ['sometimes', 'integer']])
+        ->and($set->unenforced)->toBe(['additionalProperties' => ['The body itself']])
+        ->and(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'additionalProperties'))))
+        ->toBe(['The body itself states `additionalProperties`, which nothing in this rule set enforces.'])
+        ->and($nested->rules['meta.*'])->toBe(['integer:strict'])
+        ->and($nested->unenforced)->toBe([]);
+});
+
+// The one place a caller asks whether the values of a root map are judged, so a rule set and a DTO never disagree.
+it('judges the values of a root map only where no query parameter shares the data', function (array $query, bool $judged): void {
+    assert(array_is_list($query));
+
+    expect(RuleSetBuilder::validatesRootMapValues(operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]))],
+        query: $query,
+    )))->toBe($judged);
+})->with([
+    'no query parameter' => [[], true],
+    'one query parameter' => [[new QueryParameter('page', new Schema(types: [SchemaType::Integer]))], false],
+]);
+
+// A cut of a recursion through a map's values is a map that is empty, not a list that is: the finding names which, and a
+// list's cut keeps its own sentence.
+it('says an empty map passes at the cut of a recursion', function (): void {
+    $position = '#/components/schemas/Node';
+    $selfMap = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        maxDepth: 1,
+        source: $position,
+        additionalPropertiesSchema: Schema::recursion($position, 'Node'),
+    );
+
+    $finding = implode("\n", RuleSetBuilder::for(operationWithInput(content: ['application/json' => $selfMap]))->findings);
+
+    expect($finding)->toContain('An empty map of `Node` passes')
+        ->and($finding)->not->toContain('An empty list');
+});
+
+// A form carries text, so a map of integers keeps the loose `integer` there as any integer field does, and a JSON-only
+// body keeps its type.
+it('keeps the loose scalar rules for the values of a form map', function (string $mediaType, string $rule): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => new Schema(
+        types: [SchemaType::Object],
+        additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
+    )]));
+
+    expect($set->rules)->toBe(['*' => [$rule]]);
+})->with([
+    'form-encoded' => ['application/x-www-form-urlencoded', 'integer'],
+    'multipart' => ['multipart/form-data', 'integer'],
+    'JSON only' => ['application/json', 'integer:strict'],
+]);
+
 it('says why a field got no type rule at all', function (Schema $schema, string $reason): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['field' => $schema])],

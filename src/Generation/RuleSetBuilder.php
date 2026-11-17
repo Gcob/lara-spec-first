@@ -442,6 +442,59 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * Whether the values of a map body are judged by the request: when no `query` parameter shares the validated data.
+     *
+     * The wildcard that judges them reaches every key at its level, and `validationData()` puts the query string beside
+     * the body, so a `query` parameter's key would be judged by the map's value schema too. The body's rules are built
+     * before the query names are planned, so a declared parameter is all there is to ask. A root map beside one leaves
+     * its values reported instead.
+     *
+     * @internal Public so the input DTO asks the question the rules did.
+     */
+    public static function validatesRootMapValues(Operation $operation): bool
+    {
+        return $operation->queryParameters === [];
+    }
+
+    /**
+     * The schema every value of a map is held to, or null when the object is not a map: it declares a property, or it
+     * writes no value schema. Beside a property the wildcard would also judge the declared key, so those values are
+     * reported and not read.
+     */
+    private static function mapValueSchema(Schema $schema): ?Schema
+    {
+        return $schema->properties === [] ? $schema->additionalPropertiesSchema : null;
+    }
+
+    /**
+     * Whether a value schema states nothing, so any value passes: `additionalProperties: {}`, or one that only writes
+     * keywords nothing reads. Read as `additionalProperties: true` is, with no rule and no finding.
+     */
+    private static function allowsAnyValue(Schema $value): bool
+    {
+        return $value->sameShapeAs(new Schema);
+    }
+
+    /**
+     * The value rules of a map: one wildcard key below the object, `*` at the root and `<key>.*` nested.
+     *
+     * A value is present by being in the object, as an element is in a list, so it is asked for with no presence. The
+     * label reads like the rule key. **Written after every explicit key of the object**, because Laravel merges the
+     * wildcard's rules into a key that came before it and replaces what the wildcard merged into one that came after.
+     *
+     * @param  string  $prefix  the rule key of the object followed by a dot, or the empty string for the root
+     *
+     * @throws ConflictingInputException
+     */
+    private static function mapValues(RuleWalk $walk, string $prefix, Schema $value): void
+    {
+        $key = $prefix.'*';
+        $walk->mapKeys[$key] = true;
+
+        self::field($walk, $key, '`'.$key.'`', $value, '');
+    }
+
+    /**
      * Whether a schema holds a value schema (one written under `additionalProperties`) anywhere in it. A recursion
      * marker has nothing under it, so it ends the walk.
      *
@@ -557,6 +610,12 @@ final readonly class RuleSetBuilder
             }
         }
 
+        // Why: beside a `query` parameter the wildcard would judge the parameter's key too, so the values are left
+        // reported, unless the value schema allows anything and there is nothing to report.
+        $value = self::mapValueSchema($schema);
+        $open = $value !== null && self::allowsAnyValue($value);
+        $judged = $value !== null && ! $open && self::validatesRootMapValues($operation);
+
         // The root goes through the same sweep a field does, minus what the
         // object walk below acts on. Without it a keyword written on the
         // body's own schema — an `enum` is the one a real contract writes there
@@ -566,7 +625,10 @@ final readonly class RuleSetBuilder
             $walk,
             'The body itself',
             $schema,
-            ['type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf'],
+            [
+                'type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf',
+                ...($judged || $open ? ['additionalPropertiesSchema'] : []),
+            ],
         );
 
         self::planFormNames($schema, $walk);
@@ -580,7 +642,12 @@ final readonly class RuleSetBuilder
             $schema,
             self::rootPresence($operation, $schema, $body, $walk),
             self::encodedParts($body, $schema, $walk),
+            $judged,
         );
+
+        if ($judged) {
+            self::mapValues($walk, '', $value);
+        }
 
         self::leave($walk, $outside);
 
@@ -955,6 +1022,9 @@ final readonly class RuleSetBuilder
      *                                                      `dependentRequired`
      * @param  array<string, string>  $contentTypes  the `encoding` of the body's top-level parts, by name: only the
      *                                               root passes one, so a nested property is never narrowed by it
+     * @param  bool  $valuesJudged  whether a wildcard below the object judges every key it has: a name it requires
+     *                              without declaring then has its value checked, and the finding that says nothing
+     *                              about the value is not written
      *
      * @throws ConflictingInputException
      */
@@ -964,6 +1034,7 @@ final readonly class RuleSetBuilder
         Schema $schema,
         callable $presence,
         array $contentTypes = [],
+        bool $valuesJudged = false,
     ): void {
         $dependents = self::dependents($schema, $walk, $prefix);
 
@@ -1086,7 +1157,7 @@ final readonly class RuleSetBuilder
             $undeclared[] = $name;
         }
 
-        if ($undeclared !== []) {
+        if ($undeclared !== [] && ! $valuesJudged) {
             $walk->findings[] = sprintf(
                 '%s requires %s without declaring %s under `properties`, so the request asks for the '
                     .'key and says nothing about the value.',
@@ -1191,6 +1262,8 @@ final readonly class RuleSetBuilder
         }
 
         $children = null;
+        $value = null;
+        $judged = false;
 
         $type = $schema->soleType();
 
@@ -1328,6 +1401,14 @@ final readonly class RuleSetBuilder
                         $rules[] = 'required_array_keys:'.implode(',', $requiredKeys);
                     }
                     array_push($handled, 'properties', 'required', 'dependentRequired', 'additionalProperties');
+
+                    $value = self::mapValueSchema($schema);
+                    $judged = $value !== null && ! self::allowsAnyValue($value);
+
+                    if ($value !== null) {
+                        $handled[] = 'additionalPropertiesSchema';
+                    }
+
                     $children = 'properties';
                     break;
                 default:
@@ -1387,7 +1468,13 @@ final readonly class RuleSetBuilder
                 $key.'.',
                 $schema,
                 static fn (string $name, Schema $property): string => 'sometimes',
+                valuesJudged: $judged,
             );
+
+            if ($judged) {
+                assert($value instanceof Schema);
+                self::mapValues($walk, $key.'.', $value);
+            }
         }
 
         self::leave($walk, $outside);
@@ -1603,8 +1690,9 @@ final readonly class RuleSetBuilder
     private static function reportCuts(RuleWalk $walk): void
     {
         foreach ($walk->cuts as $cut) {
-            $lists = array_filter($cut['keys'], static fn (string $key): bool => str_ends_with($key, '.*')) !== [];
-            $fields = count(array_filter($cut['keys'], static fn (string $key): bool => ! str_ends_with($key, '.*'))) > 0;
+            $maps = array_filter($cut['keys'], static fn (string $key): bool => isset($walk->mapKeys[$key])) !== [];
+            $lists = array_filter($cut['keys'], static fn (string $key): bool => str_ends_with($key, '.*') && ! isset($walk->mapKeys[$key])) !== [];
+            $fields = count(array_filter($cut['keys'], static fn (string $key): bool => ! str_ends_with($key, '.*') && ! isset($walk->mapKeys[$key]))) > 0;
 
             $walk->stricter(sprintf(
                 '`%1$s` recurses, and %2$s. %3$s %6$s %4$s below that: a payload deeper than that answers 422, though '
@@ -1622,6 +1710,7 @@ final readonly class RuleSetBuilder
                             $fields ? ', so `null`, `""` and `[]` answer 422 there too' : '',
                         ),
                     $lists ? sprintf('An empty list of `%s` passes: it carries no data, and it is its elements that are cut.', $cut['name']) : null,
+                    $maps ? sprintf('An empty map of `%s` passes: it carries no data, and it is its values that are cut.', $cut['name']) : null,
                 ])),
                 count($cut['keys']) === 1 ? 'is' : 'are',
             ));
