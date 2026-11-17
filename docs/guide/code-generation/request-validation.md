@@ -1184,7 +1184,8 @@ document order. The reasoning is in
 [ADR 0004](../../project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
 
 **`dto()` takes the `query` parameters' keys out of the data before the DTO reads it**, since `validated()` holds the
-body's keys and the `query` string's, and the DTO is the body's. Two findings are written for such a body:
+body's keys and the `query` string's, and the DTO is the body's. Findings are written for such a body (the two below,
+and the key Laravel drops, after them):
 
 - **A map key named like a `query` parameter** is read from the query string, never from the body, so a body key of that
   name is left out of `validated()` and of the DTO. The finding names the key the value arrives under (`page` for a
@@ -1192,10 +1193,10 @@ body's keys and the `query` string's, and the DTO is the body's. Two findings ar
 - **A key a form delivers under another name** (`a.b` and `a b` as `a_b`) is validated and carried under the rewritten
   name, since the body declares no key to say which one the client meant. A JSON body keeps every key as sent.
 
-**An integer-like top-level key (`"2024"`) is not carried, and nothing in the rule set can change that.** Laravel
-expands a wildcard over data it has put through `array_merge()`, which renumbers such a key, so `validated()` has no
-`2024` whatever its value, and neither has the DTO. Under a name (`labels` holding `"2024"`) the key is kept, as an
-`int` key.
+**An integer-like top-level key (`"2024"`) is not carried, and nothing in the rule set can change that, so the generated
+file says it.** Laravel expands a wildcard over data it has put through `array_merge()`, which renumbers such a key, so
+`validated()` has no `2024` whatever its value, and neither has the DTO. Under a name (`labels` holding `"2024"`) the
+key is kept, as an `int` key.
 
 ### An absent field is a third state
 

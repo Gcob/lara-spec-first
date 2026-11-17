@@ -1286,7 +1286,9 @@ it('reads an empty additionalProperties schema as an open object', function (Sch
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
 
     expect($set->rules)->toBe($nested ? ['meta' => ['sometimes', 'array']] : ['*' => ['sometimes']])
-        ->and($set->findings)->toBe([])
+        // The only finding is the root's own (a numeric top-level key), never one about `additionalProperties`.
+        ->and(array_values(array_filter($set->findings, static fn (string $finding): bool => ! str_contains($finding, 'integer-like'))))->toBe([])
+        ->and(count($set->findings))->toBe($nested ? 0 : 1)
         ->and($set->unenforced)->toBe([]);
 })->with(function (): Generator {
     $annotation = new Schema(ignored: ['description' => '#/components/schemas/Anything/additionalProperties/description']);
@@ -1353,6 +1355,21 @@ it('says a form delivers a map key PHP rewrites under its rewritten name', funct
     'multipart' => [['multipart/form-data'], 1],
     'JSON and a form' => [['application/json', 'application/x-www-form-urlencoded'], 1],
     'JSON only' => [['application/json'], 0],
+]);
+
+// Laravel renumbers an integer-like top-level key when it expands a wildcard rule, so a map or open-object body's
+// `validated()` and DTO leave such a key out. A body that declares properties has no wildcard at its root, and a map
+// under a property name keeps the key, so neither says it.
+it('says Laravel leaves out an integer-like top-level key of a map body', function (Schema $body, int $findings): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body]));
+
+    expect(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'integer-like'))))->toHaveCount($findings);
+})->with([
+    'a map' => [new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer])), 1],
+    'an open object' => [new Schema(types: [SchemaType::Object]), 1],
+    'an empty value schema' => [new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema), 1],
+    'declared properties' => [objectSchema(['name' => new Schema(types: [SchemaType::String])]), 0],
+    'a map under a property name' => [objectSchema(['meta' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]))]), 0],
 ]);
 
 // `validationData()` reads a `query` parameter's key from the query string and drops it from the body, so a body key of

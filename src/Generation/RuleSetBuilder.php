@@ -675,6 +675,11 @@ final readonly class RuleSetBuilder
                 $walk->rules['*'] = ['sometimes'];
             }
 
+            // Why: Laravel expands the wildcard over data it put through `array_merge()`, which renumbers an integer-like
+            // top-level key, so `validated()` never holds it and the DTO never sees it. Under a name the key is kept.
+            $walk->findings[] = 'Laravel drops an integer-like top-level key (`"2024"`) of this body from `validated()` when it '
+                .'expands the wildcard rule, so the DTO never receives such a key, whatever its value.';
+
             if ($walk->formBody) {
                 $walk->findings[] = 'A form delivers a key PHP rewrites (`a.b` and `a b` as `a_b`) under the rewritten name, and this '
                     .'body declares no key to say which one the client meant, so the request validates and the DTO carries '

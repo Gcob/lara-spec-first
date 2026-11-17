@@ -242,7 +242,8 @@ why. The keys of the `query` parameters are never in the DTO: `validated()` hold
 body's keys alone. A body key named like a `query` parameter is read from the query string instead, which the request's
 findings name. A key a form delivers under a rewritten name (`a.b` as `a_b`) is carried under that name, and so is it
 said. An integer-like top-level key (`"2024"`) is left out by Laravel itself, which renumbers it when it expands the
-wildcard rule, so neither `validated()` nor the DTO holds it; the same key under a property is kept.
+wildcard rule, so neither `validated()` nor the DTO holds it, and the request's findings say so; the same key under a
+property is kept.
 
 **A node that recurses is the class of the schema it points back at.** `Address` holds an `Address`: `parent` is typed
 `Optional|AddressInputDto`, and `Optional|AddressInputDto|null` when the schema is nullable (`?AddressInputDto` for a

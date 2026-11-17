@@ -163,14 +163,14 @@ tags: [versions, conventions, planning]
   is `array<array-key, mixed>` there. `dto()` leaves the keys of the `query` parameters out of it, a body key named like
   a `query` parameter is read from the query string and the generated file says so, and so does it for a key a form
   delivers under a rewritten name (`a.b` as `a_b`). An integer-like top-level key (`"2024"`) is left out by Laravel
-  itself, in `validated()` and in the DTO. This is a breaking change: the class gains a property, so a call to its
-  constructor or a check that it has none fails, and a controller that passed `validated()` to `create()` now passes the
-  body where it passed `[]`. Read the keys from `$request->dto()->additionalProperties`, and pass only what `create()`
-  accepts. The reasoning is in [ADR 0004](./docs/project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
-  This closes the gap the `0.2.0` `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109),
-  except the values of a map beside declared `properties` or beside `query` parameters, which are reported and not
-  validated (and typed `mixed` on the DTO of a map body), until
-  [#169](https://github.com/Gcob/lara-spec-first/issues/169).
+  itself, in `validated()` and in the DTO, and the generated file reports it. This is a breaking change: the class gains
+  a property, so a call to its constructor or a check that it has none fails, and a controller that passed `validated()`
+  to `create()` now passes the body where it passed `[]`. Read the keys from `$request->dto()->additionalProperties`,
+  and pass only what `create()` accepts. The reasoning is in
+  [ADR 0004](./docs/project/decisions/0004-carry-a-map-body-under-additionalproperties.md). This closes the gap the
+  `0.2.0` `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109), except the values of a
+  map beside declared `properties` or beside `query` parameters, which are reported and not validated (and typed `mixed`
+  on the DTO of a map body), until [#169](https://github.com/Gcob/lara-spec-first/issues/169).
 
 ### Fixed
 
