@@ -235,9 +235,9 @@ worth reviewing for style.
    highest-severity category of finding in this repository.
 2. **Direction of truth.** Does the change keep the OpenAPI spec authoritative over the code? Anything that makes PHP
    the source of truth is a design defect, however well written. A generated rule is never looser than the contract
-   (accepting what it refuses), except a named departure that is stated where the keyword is mapped or tracked by a
-   card, and never stricter (refusing what it accepts), unless matching it exactly would be far too complex in Laravel,
-   and then the generated file says so in a finding. A stricter rule with no finding is a defect. The reasoning is in
+   (accepting what it refuses) and never stricter (refusing what it accepts), unless matching it exactly would be far
+   too complex in Laravel, and then the generated file says so in a finding. A looser rule is a defect, whether or not a
+   card is open for it, and so is a stricter rule with no finding. The reasoning is in
    [ADR 0006](./docs/project/decisions/0006-hold-rules-to-the-contract.md).
 3. **Correctness.** Logic, edge cases, failure paths, `$ref` resolution, behavior across OpenAPI 3.0 and 3.1.
 4. **Stack compliance.** No syntax newer than PHP 8.3 in `src/`. No dependency or version constraint that contradicts

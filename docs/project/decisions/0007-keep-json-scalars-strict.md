@@ -89,13 +89,14 @@ matrix starts at 12.22 for that reason.
   says that narrowing it is breaking.
 - **A boolean read as text accepts `"1"` and `"0"`**, which the contract does not write. It is kept because query and
   form clients send them, and the finding on the field says it accepts the two more
-  ([ADR 0006](./0006-hold-rules-to-the-contract.md) lists it beside the other departures).
+  ([ADR 0006](./0006-hold-rules-to-the-contract.md) lists it among the gaps).
 - **A whole number written as a float is refused today, with a finding.** `1.0` and `1e2` are integers for JSON Schema
   2020-12, and `integer:strict` refuses them. Laravel's `integer` beside `numeric:strict` would accept them, and the
-  package keeps the single rule. One finding per request with an integer field says the request is stricter than the
-  contract.
+  package refuses them today. One finding per request with an integer field says the request is stricter than the
+  contract. [#173](https://github.com/Gcob/lara-spec-first/issues/173) tracks the choice.
 - **A JSON client of a body that is JSON and a form** can send `"42"` for an integer, and each field's finding says so.
   A runtime branch would close it ([#133](https://github.com/Gcob/lara-spec-first/issues/133)).
 - **A controller that reads a query parameter with `validated()`** gets the text, and casts it itself. For a boolean,
   the finding on the field gives the read, since `(bool) 'false'` is `true`.
-- **What the decision leaves open** is [#133](https://github.com/Gcob/lara-spec-first/issues/133).
+- **What the decision leaves open** is [#133](https://github.com/Gcob/lara-spec-first/issues/133) and
+  [#173](https://github.com/Gcob/lara-spec-first/issues/173).

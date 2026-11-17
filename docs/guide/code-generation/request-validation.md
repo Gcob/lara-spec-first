@@ -44,10 +44,11 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 >   payload deeper than that is refused, with a finding in the generated file that names the extension. Unrolling is
 >   capped at 1,000 rule keys per operation: a deeper branching schema is cut at one lower level on every branch, with a
 >   finding, so it never costs a build.
-> - A constraint Laravel has no rule for is reported by name, never dropped. A rule is never looser than the contract,
->   except a named departure that is stated where the keyword is mapped or tracked by a card, and never stricter, unless
->   matching it exactly would be far too complex in Laravel, and then the generated file says so in a finding.
->   [The reasoning](../../project/decisions/0006-hold-rules-to-the-contract.md) is an ADR.
+> - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one. A
+>   rule is never stricter than the contract either, unless matching it exactly would be far too complex in Laravel, and
+>   then the generated file says so in a finding.
+>   [The reasoning, and the places the code falls short](../../project/decisions/0006-hold-rules-to-the-contract.md), is
+>   an ADR.
 > - `routeAction` receives the generated request as its first parameter, which is what makes Laravel run it at all, and
 >   hands the controller the typed DTO it built.
 
@@ -84,9 +85,10 @@ nothing, and `spec:build` warns about it on a line of its own: unlike that opera
 validates.
 
 **Everything in the right-hand column is named, per field, in the generated file's own `Findings` block**, which is the
-half that makes an incomplete rule set honest rather than misleading. A looser rule is a named departure, a stricter one
-is a named exception, and nothing is dropped in silence: that is [the principle](#every-constraint-maps-or-reports) the
-rest of this page is about, and it is what makes each pass safe to ship on its own.
+half that makes an incomplete rule set honest rather than misleading. A stricter rule is a named exception, a looser one
+is a gap listed in [the ADR](../../project/decisions/0006-hold-rules-to-the-contract.md), and nothing is dropped in
+silence: that is [the principle](#every-constraint-maps-or-reports) the rest of this page is about, and it is what makes
+each pass safe to ship on its own.
 
 **The input DTO is built.** `spec:build` writes [the DTO](#the-payload-arrives-as-a-dto) of every body that is an
 object, in the `Data` sub-namespace, and the request returns it from `dto()`. A request whose operation has no body, or
@@ -541,9 +543,11 @@ keeps `present`, as before. Optional bodies do not get it: [their caveat](#patch
 **`rules()` is what the contract produced, and no trait, parent class or hook is allowed to change it.** It is the same
 array for every request, except a root map's, which adds the integer-like keys the request carries
 ([below](#a-map-or-open-object-body-is-carried-whole)). The only other thing that moves it is the contract moving and
-the build running again.
+the build running again. A root map's added keys are no exception to what follows: the file writes its rules once, under
+`*`, and a generated helper repeats them under each integer-like key the request carries, so the file still shows every
+rule.
 
-Three properties rest on that, and each one goes the moment a rule set becomes request-dependent:
+Three properties rest on that, and each one goes the moment a rule set carries a rule the file does not show:
 
 1. **The file is the answer.** Open the generated class and you have read what the operation accepts. A trait emptying
    `rules()` when the payload looks empty, or a `withValidator()` hook adding a rule for one case, moves part of the
@@ -641,11 +645,11 @@ looser than the contract, and never stricter either, in these words from the mai
 contract when it is not way too complicated to integrate in Laravel_. The reasoning, and the alternatives turned down,
 are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
 
-- **Never looser: accepting a payload the contract refuses, except a named departure.** A departure is stated where the
-  keyword is mapped, or tracked by a card. Today, for example: a JSON client's `"42"` in a body that is JSON and a form
-  ([#133](https://github.com/Gcob/lara-spec-first/issues/133)), a text boolean's `"1"` and `"0"`, a blank string once
-  `ConvertEmptyStringsToNull` is removed ([#157](https://github.com/Gcob/lara-spec-first/issues/157)), `pattern`'s `.`,
-  and `format: email` ([#167](https://github.com/Gcob/lara-spec-first/issues/167)).
+- **Never looser: accepting a payload the contract refuses.** The rule has no exception. Where the code falls short of
+  it today, the gap has its card or its stated limit, for example a JSON client's `"42"` in a body that is JSON and a
+  form ([#133](https://github.com/Gcob/lara-spec-first/issues/133)), a text boolean's `"1"` and `"0"`, a blank string
+  once `ConvertEmptyStringsToNull` is removed ([#157](https://github.com/Gcob/lara-spec-first/issues/157)), `pattern`'s
+  `.`, and `format: email` ([#167](https://github.com/Gcob/lara-spec-first/issues/167)).
 - **Never stricter: refusing a payload the contract accepts.** Every generated client then gets a 422 for something it
   was allowed to send, and nobody reading the contract can see why.
 - **The one exception: when matching the contract exactly would be far too complex to integrate in Laravel, a stricter
@@ -657,9 +661,10 @@ are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
   `properties` and no `type` refuses a JSON root that is not an object. `ConvertEmptyStringsToNull` makes a non-nullable
   string refuse `""`, which is the framework's and not a rule here, so
   [it is stated above](#patch-empties-the-required-list) rather than reported per field.
-- **A stricter rule the package keeps for another reason:**
+- **A stricter rule without that reason:**
   [a JSON integer written as a float](../../project/decisions/0007-keep-json-scalars-strict.md) (`1.0`) is refused by
-  `integer:strict`, and a finding says so. Laravel's `integer` beside `numeric:strict` would accept it.
+  `integer:strict` today, and a finding says so. Laravel's `integer` beside `numeric:strict` would accept it, and
+  [#173](https://github.com/Gcob/lara-spec-first/issues/173) tracks the choice.
 
 Which keywords are honored at all is [the support matrix](../openapi-support.md#schemas)'s to state; what each honored
 one becomes is this table's.
@@ -866,10 +871,11 @@ that is JSON and nothing else gets the `:strict` form of its rule, at every leve
 - **`numeric:strict` refuses a string**, `"1.5"` and `"2"` alike. An integer is a number, so `2` passes.
 - **`boolean:strict` accepts `true` and `false` and nothing else**: not `1`, `0`, `"1"` or `"true"`.
 - **A whole number written as a float is refused for an integer (`1.0`, `1e2`), and that is stricter than JSON Schema
-  2020-12**, where `1.0` is an integer. `integer:strict` is `is_int()` on the decoded value, which refuses a float. The
-  package keeps that one rule today, although Laravel's `integer` beside `numeric:strict` would accept it, and the
-  generated file says so in one finding per request that has an integer field, and a request with none says nothing. See
-  [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md).
+  2020-12**, where `1.0` is an integer. `integer:strict` is `is_int()` on the decoded value, which refuses a float.
+  Laravel's `integer` beside `numeric:strict` would accept it, and the package refuses it today: the generated file says
+  so in one finding per request that has an integer field, and a request with none says nothing.
+  [#173](https://github.com/Gcob/lara-spec-first/issues/173) tracks the choice, and
+  [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md) holds the rule.
 - **A finding that says the request is stricter is not a gap.** It is in the Findings block like any other, but
   `spec:build` does not count it in its "read a constraint they do not enforce" warning, and the file keeps its "Nothing
   was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly
