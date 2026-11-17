@@ -14,7 +14,8 @@ namespace Gcob\LaraSpecFirst\Generation;
  * **The request side casts, and the reason is that validation has already run.** A multipart body delivers `"42"` where
  * the schema said `integer`, and Laravel's `integer` rule accepts it, so `(int)` is what lets the typed property accept
  * it too. It cannot turn a bad value into a wrong one, because a bad value never got past the rule set. That is also
- * why this is request-side only: a response DTO has no such guarantee and casts nothing.
+ * why only the request casts: a response DTO has no such guarantee, so {@see DtoMode} tells every method here which way
+ * the value is travelling, and a response converts a date and nothing else.
  *
  * **Every expression takes the value as a PHP expression.** A nullable value is checked for `null` before anything
  * converts it, because `CarbonImmutable::parse(null)` is the current time and `(int) null` is `0`.
@@ -162,9 +163,9 @@ final readonly class InputDtoType
     /**
      * The expression that builds this type from a payload value.
      */
-    public function from(string $value): string
+    public function from(string $value, DtoMode $mode = DtoMode::Request): string
     {
-        $built = $this->build($value);
+        $built = $this->build($value, $mode);
 
         return $this->nullable && $built !== $value
             ? sprintf('%s === null ? null : %s', $value, $built)
@@ -174,9 +175,9 @@ final readonly class InputDtoType
     /**
      * The expression that writes this type back as the contract spells it.
      */
-    public function to(string $value): string
+    public function to(string $value, DtoMode $mode = DtoMode::Request): string
     {
-        $written = $this->write($value);
+        $written = $this->write($value, $mode);
 
         if (! $this->nullable || $written === $value) {
             return $written;
@@ -191,11 +192,12 @@ final readonly class InputDtoType
     /**
      * Whether `from()` does anything to a value of this type.
      */
-    public function convertsOnTheWayIn(): bool
+    public function convertsOnTheWayIn(DtoMode $mode = DtoMode::Request): bool
     {
         return match ($this->kind) {
-            self::INT, self::FLOAT, self::BOOL, self::DATE, self::DATE_TIME, self::DTO => true,
-            self::LIST, self::MAP => $this->item?->convertsOnTheWayIn() ?? false,
+            self::INT, self::FLOAT, self::BOOL => $mode->casts(),
+            self::DATE, self::DATE_TIME, self::DTO => true,
+            self::LIST, self::MAP => $this->item?->convertsOnTheWayIn($mode) ?? false,
             default => false,
         };
     }
@@ -203,11 +205,12 @@ final readonly class InputDtoType
     /**
      * Whether `toArray()` does anything to a value of this type.
      */
-    public function convertsOnTheWayOut(): bool
+    public function convertsOnTheWayOut(DtoMode $mode = DtoMode::Request): bool
     {
         return match ($this->kind) {
-            self::DATE, self::DATE_TIME, self::DTO => true,
-            self::LIST, self::MAP => $this->item?->convertsOnTheWayOut() ?? false,
+            self::DATE, self::DATE_TIME => true,
+            self::DTO => $mode !== DtoMode::Json,
+            self::LIST, self::MAP => $this->item?->convertsOnTheWayOut($mode) ?? false,
             default => false,
         };
     }
@@ -219,8 +222,12 @@ final readonly class InputDtoType
         return ($item->doc() ?? $item->native()).($item->nullable && $item->kind !== self::MIXED ? '|null' : '');
     }
 
-    private function build(string $value): string
+    private function build(string $value, DtoMode $mode): string
     {
+        if (! $mode->casts() && in_array($this->kind, [self::INT, self::FLOAT, self::BOOL], true)) {
+            return $value;
+        }
+
         return match ($this->kind) {
             self::INT => '(int) '.$value,
             self::FLOAT => '(float) '.$value,
@@ -229,15 +236,15 @@ final readonly class InputDtoType
             self::BOOL => 'filter_var('.$value.', FILTER_VALIDATE_BOOL)',
             self::DATE, self::DATE_TIME => 'CarbonImmutable::parse('.$value.')',
             self::DTO => $this->class.'::from('.$value.')',
-            self::LIST => $this->buildList($value),
-            self::MAP => $this->buildMap($value),
+            self::LIST => $this->buildList($value, $mode),
+            self::MAP => $this->buildMap($value, $mode),
             default => $value,
         };
     }
 
-    private function buildList(string $value): string
+    private function buildList(string $value, DtoMode $mode): string
     {
-        $callable = $this->item?->fromCallable();
+        $callable = $this->item?->fromCallable($mode);
 
         // `array_values`, because PHPStan cannot see that the payload's array is
         // a list, so `array_map` over it is an `array<int>` and the constructor's
@@ -250,9 +257,9 @@ final readonly class InputDtoType
      * A map keeps its keys, which are the data, so no `array_values`: `array_map` over one array keeps them, and an
      * integer-like key is already an `int` in PHP, which is why the docblock says `array-key`.
      */
-    private function buildMap(string $value): string
+    private function buildMap(string $value, DtoMode $mode): string
     {
-        $callable = $this->item?->fromCallable();
+        $callable = $this->item?->fromCallable($mode);
 
         return $callable === null ? $value : 'array_map('.$callable.', '.$value.')';
     }
@@ -260,9 +267,9 @@ final readonly class InputDtoType
     /**
      * A callable turning one element into this type, or null when an element goes in as it is.
      */
-    private function fromCallable(): ?string
+    private function fromCallable(DtoMode $mode): ?string
     {
-        if (! $this->convertsOnTheWayIn()) {
+        if (! $this->convertsOnTheWayIn($mode)) {
             return null;
         }
 
@@ -284,41 +291,42 @@ final readonly class InputDtoType
             'static fn (%s $item): %s => %s',
             in_array($this->kind, [self::LIST, self::MAP], true) && ! $this->nullable ? 'array' : 'mixed',
             ($this->nullable ? '?' : '').$this->native(),
-            $this->from('$item'),
+            $this->from('$item', $mode),
         );
     }
 
-    private function write(string $value): string
+    private function write(string $value, DtoMode $mode): string
     {
         return match ($this->kind) {
             // Microseconds, which is the most Carbon holds: `toRfc3339String()` drops
             // the fraction, and a request may carry one on any date-time it sends.
-            self::DATE_TIME => $value.'->format(\'Y-m-d\\TH:i:s.uP\')',
+            // A response writes it as Laravel's own JSON encoding of a date does: UTC, with a `Z`.
+            self::DATE_TIME => $mode === DtoMode::Request ? $value.'->format(\'Y-m-d\\TH:i:s.uP\')' : $value.'->toJSON()',
             self::DATE => $value.'->toDateString()',
-            self::DTO => $value.'->toArray()',
-            self::LIST => $this->writeList($value),
-            self::MAP => $this->writeMap($value),
+            self::DTO => $mode === DtoMode::Json ? $value : $value.'->toArray()',
+            self::LIST => $this->writeList($value, $mode),
+            self::MAP => $this->writeMap($value, $mode),
             default => $value,
         };
     }
 
-    private function writeList(string $value): string
+    private function writeList(string $value, DtoMode $mode): string
     {
-        $callable = $this->item?->toCallable();
+        $callable = $this->item?->toCallable($mode);
 
         return $callable === null ? $value : 'array_map('.$callable.', '.$value.')';
     }
 
-    private function writeMap(string $value): string
+    private function writeMap(string $value, DtoMode $mode): string
     {
-        $callable = $this->item?->toCallable();
+        $callable = $this->item?->toCallable($mode);
 
         return $callable === null ? $value : 'array_map('.$callable.', '.$value.')';
     }
 
-    private function toCallable(): ?string
+    private function toCallable(DtoMode $mode): ?string
     {
-        if (! $this->convertsOnTheWayOut()) {
+        if (! $this->convertsOnTheWayOut($mode)) {
             return null;
         }
 
@@ -331,7 +339,7 @@ final readonly class InputDtoType
                 self::DATE, self::DATE_TIME => 'string',
                 default => 'array',
             },
-            $this->to('$item'),
+            $this->to('$item', $mode),
         );
     }
 

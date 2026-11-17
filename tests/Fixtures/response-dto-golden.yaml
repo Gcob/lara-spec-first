@@ -1,0 +1,81 @@
+# The response DTO's whole table in one contract, written for the emitter rather
+# than for the reader: what it exercises is every row of "What each schema type
+# becomes" in dto-anatomy.md as a response reads it, and the golden files under
+# tests/Fixtures/GeneratedResponse/Data are what this contract produces.
+#
+# `User` lists an optional property before a required one on purpose: the DTO puts
+# the required ones first.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users/{id}:
+    get:
+      operationId: showUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /events/{id}:
+    get:
+      operationId: showEvent
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: An event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+components:
+  schemas:
+    Address:
+      type: object
+      required: [street]
+      properties:
+        street: { type: string }
+        city: { type: [string, 'null'] }
+    Role:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        nickname: { type: [string, 'null'] }
+        id: { type: integer }
+        email: { type: string, format: email }
+        score: { type: number }
+        active: { type: boolean }
+        status: { type: string, enum: [active, banned] }
+        level: { type: integer, enum: [1, 2] }
+        address: { $ref: '#/components/schemas/Address' }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+        tags:
+          type: array
+          items: { type: string }
+        visits:
+          type: array
+          items: { type: string, format: date-time }
+        user-id: { type: string }
+    Event:
+      type: object
+      required: [name, starts_at, closes_at, day]
+      properties:
+        name: { type: string }
+        starts_at: { type: string, format: date-time }
+        closes_at: { type: [string, 'null'], format: date-time }
+        ends_at: { type: [string, 'null'], format: date-time }
+        day: { type: string, format: date }
+        ended_on: { type: [string, 'null'], format: date }

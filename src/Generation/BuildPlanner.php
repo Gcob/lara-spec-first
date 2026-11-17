@@ -149,6 +149,13 @@ final readonly class BuildPlanner
             $files[] = $dtoEmitter->emit($dto);
         }
 
+        // A response DTO is built from the operations alone: nothing about a request reaches it.
+        $responseEmitter = new ResponseDtoEmitter($this->namespace, $this->specPath);
+
+        foreach ((new ResponseDtoPlanner)->plan($operations)->dtos as $dto) {
+            $files[] = $responseEmitter->emit($dto);
+        }
+
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
         return new BuildPlan($planned, $files, $requests, $unreadBodies);

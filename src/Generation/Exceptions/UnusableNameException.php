@@ -195,6 +195,25 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     }
 
     /**
+     * Two different schemas that would generate one response DTO class.
+     *
+     * Named by position, since a response DTO is named after its schema alone: two schemas under one name, from two
+     * files or from two spellings that derive one class name, meet here.
+     */
+    public static function responseDtoClaimedTwice(string $shortName, string $first, string $second): self
+    {
+        return new self(sprintf(
+            'The schemas written at "%s" and at "%s" both generate the response DTO "%s", and the two '.
+            'are not the same schema. A response DTO takes its name from the schema it describes, with '.
+            'every character that is not a letter, a digit or an underscore dropped and "Dto" added, so '.
+            'two schemas can derive one class name. Rename one of the schemas.',
+            $first,
+            $second,
+            $shortName,
+        ));
+    }
+
+    /**
      * A schema name that leaves no class name behind.
      */
     public static function schemaNameUnusable(string $name, string $position): self
@@ -215,7 +234,7 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     public static function propertyClaimedTwice(string $dto, string $property, string $first, string $second): self
     {
         return new self(sprintf(
-            'The keys "%s" and "%s" of the schema behind the input DTO "%s" both derive the property '.
+            'The keys "%s" and "%s" of the schema behind the DTO "%s" both derive the property '.
             'name "$%s". A key that is not a PHP identifier gets a derived name, and two keys '.
             'cannot share one, so rename one of them in the specification.',
             $first,
