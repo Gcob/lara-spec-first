@@ -53,6 +53,21 @@ final class RuleWalk
     public array $stricter = [];
 
     /**
+     * The findings that lose no constraint: the same sentences as in {@see self::$findings}, which stays whole. They
+     * say what a reader of the file would otherwise not see (a key Laravel drops, a name a form rewrites), and nothing
+     * is unenforced by them, so the build does not count them.
+     *
+     * @var list<string>
+     */
+    public array $information = [];
+
+    /**
+     * Whether the body is a map or an open object that allows other keys (`additionalProperties` is not `false`): the
+     * findings about the keys a client may send are about it alone, since a closed body refuses them all.
+     */
+    public bool $openMapRoot = false;
+
+    /**
      * Each keyword the walk read and enforced nothing for, by the fields it was left unenforced on: a keyword mapped to
      * the labels of those fields, in the order they were met. The data behind the findings that are about a keyword,
      * and none of the ones that are only worth saying.
@@ -344,6 +359,16 @@ final class RuleWalk
     {
         $this->findings[] = $message;
         $this->stricter[] = $message;
+    }
+
+    /**
+     * Record a finding that loses no constraint: in the generated file like any other, and apart so the build does not
+     * count it as a constraint left unenforced.
+     */
+    public function information(string $message): void
+    {
+        $this->findings[] = $message;
+        $this->information[] = $message;
     }
 
     /**

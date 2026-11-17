@@ -3068,7 +3068,8 @@ it('carries an open-object body whole', function (): void {
 
 // Laravel expands a wildcard over data it has put through `array_merge()`, which renumbers an integer-like top-level key,
 // so `validated()` has no `2024` and neither has the DTO, whatever the value. Nested, under a name, the key is kept. The
-// docs say so; pinned here so a Laravel that stops renumbering fails this test and the docs get corrected.
+// docs say so; pinned here so a Laravel that stops renumbering fails this test and the docs get corrected. Under a name
+// the key is kept, which the next test pins.
 it('leaves out an integer-like top-level key of a map body, which Laravel renumbers', function (Schema $body): void {
     $class = emittedRequestClass(postWithMapBody($body));
 
@@ -3078,6 +3079,33 @@ it('leaves out an integer-like top-level key of a map body, which Laravel renumb
     'a map of integers' => [fn () => mapOf(new Schema(types: [SchemaType::Integer]))],
     'an open object' => [fn () => new Schema(types: [SchemaType::Object])],
 ]);
+
+// The wildcard never reaches the integer-like top-level key, so the value rule never judges its value either: a map of
+// integers accepts `{"2024": "x"}` and carries nothing for it. Under a name the key is kept and its value judged.
+it('does not judge the value under an integer-like top-level key of a map body, and judges it under a name', function (): void {
+    $root = emittedRequestClass(postWithMapBody(mapOf(new Schema(types: [SchemaType::Integer]))));
+    $named = emittedRequestClass(postWithMapBody(new Schema(
+        types: [SchemaType::Object],
+        properties: ['meta' => mapOf(new Schema(types: [SchemaType::Integer]))],
+    )));
+
+    expect(sendThroughEmitted($root, 'POST', json: ['2024' => 'x']))->toBe([200, []])
+        ->and(sendThroughEmitted($named, 'POST', json: ['meta' => ['2024' => 1]]))->toBe([200, ['meta' => [2024 => 1]]])
+        ->and(sendThroughEmitted($named, 'POST', json: ['meta' => ['2024' => 'x']])[0])->toBe(422);
+});
+
+// The generated file keeps its claim that nothing was left unenforced for a body that is `{type: object}`, and its
+// findings still say what a reader needs.
+it('keeps the unenforced sentence in the file of an open-object body', function (): void {
+    $planned = plannedRequests([postWithMapBody(new Schema(types: [SchemaType::Object]))])['requests'][0];
+    $file = (new FormRequestEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($planned)->contents;
+
+    // The docblock wraps its lines, so the sentence is compared with the whitespace folded.
+    $flat = (string) preg_replace('/\s*\n\s*\*\s*/', ' ', $file);
+
+    expect($flat)->toContain('Nothing was read and left unenforced.')
+        ->and($flat)->toContain('integer-like top-level key');
+});
 
 // A `query` parameter's key is read from the query string, so it is in `validated()` and not in the body's keys: the DTO
 // holds the body and none of the query string, and a body key of the same name is in neither. The same for a name PHP

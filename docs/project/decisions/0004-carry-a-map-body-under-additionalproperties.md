@@ -23,7 +23,8 @@ tags: [decisions, code-generation, openapi]
 > - Turned down: an empty DTO that carries nothing, a property per key, and patching a class when a later operation
 >   arrives.
 
-**Status:** Accepted · **Card:** [#109](https://github.com/Gcob/lara-spec-first/issues/109)
+**Status:** Accepted · **Card:** [#109](https://github.com/Gcob/lara-spec-first/issues/109) · **Pull request:**
+[#170](https://github.com/Gcob/lara-spec-first/pull/170)
 
 ## Context
 
@@ -98,7 +99,8 @@ and the query string's, and the DTO is the body's. Two findings are written for 
   changes.
 - **Beside a `query` parameter, the values are `mixed`,** until a card validates them there.
 - **An integer-like top-level key (`"2024"`) is not carried.** Laravel renumbers it when it expands the wildcard rule,
-  so `validated()` has no such key and the DTO does not either, and a finding in the generated request says so. Under a
-  property the key is kept.
+  so `validated()` has no such key and the DTO does not either, and a finding in the generated request says so. The
+  value rule never judges the value under it either, where the map's values are validated. Under a property the key is
+  kept.
 - **A body key named like a `query` parameter is the parameter's,** and the findings say so.
 - **This does not settle values beside declared `properties`,** which stay reported as ADR 0003 says.

@@ -1349,7 +1349,11 @@ it('says a form delivers a map key PHP rewrites under its rewritten name', funct
     $content = array_fill_keys($mediaTypes, new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer])));
     $set = RuleSetBuilder::for(operationWithInput(content: $content));
 
-    expect(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'PHP rewrites'))))->toHaveCount($findings);
+    $named = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'PHP rewrites')));
+
+    // Information, not a constraint left unenforced.
+    expect($named)->toHaveCount($findings)
+        ->and(array_values(array_intersect($named, $set->information)))->toBe($named);
 })->with([
     'form-encoded' => [['application/x-www-form-urlencoded'], 1],
     'multipart' => [['multipart/form-data'], 1],
@@ -1370,6 +1374,58 @@ it('says Laravel leaves out an integer-like top-level key of a map body', functi
     'an empty value schema' => [new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema), 1],
     'declared properties' => [objectSchema(['name' => new Schema(types: [SchemaType::String])]), 0],
     'a map under a property name' => [objectSchema(['meta' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]))]), 0],
+]);
+
+// A finding that loses no constraint (a key Laravel drops, a name a form rewrites, a body key that echoes a `query`
+// parameter) is in the file and out of the build's "read a constraint they do not enforce" warning, which counts only what
+// the request leaves unenforced: a body that is `{type: object}` states nothing the rule set fails to carry.
+it('keeps the findings that lose no constraint out of the unenforced warning', function (array $content, array $query, bool $informs, bool $unenforced): void {
+    assert(array_is_list($query));
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query));
+
+    expect($set->leavesUnenforced())->toBe($unenforced)
+        ->and($set->findings !== [])->toBe($informs || $unenforced);
+})->with(function (): array {
+    $integers = new Schema(types: [SchemaType::Integer]);
+    $page = [new QueryParameter('page', $integers)];
+
+    return [
+        'an open object' => [['application/json' => new Schema(types: [SchemaType::Object])], [], true, false],
+        'additionalProperties: true' => [['application/json' => new Schema(types: [SchemaType::Object], additionalProperties: true)], [], true, false],
+        'a map of integers' => [['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integers)], [], true, false],
+        'an open object beside a query parameter' => [['application/json' => new Schema(types: [SchemaType::Object])], $page, true, false],
+        // Beside a query parameter the values are not validated, which is a constraint left unenforced.
+        'a map beside a query parameter' => [['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integers)], $page, true, true],
+        'a map beside properties' => [['application/json' => new Schema(types: [SchemaType::Object], properties: ['id' => $integers], additionalPropertiesSchema: $integers)], [], false, true],
+    ];
+});
+
+// A body closed to every key has none for a client to send, so there is nothing to say about the keys it may send and no
+// wildcard to keep them.
+it('says nothing about the keys of a body that is closed and declares no property', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object], additionalProperties: false)],
+        query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect($set->rules)->toBe(['page' => ['sometimes', 'integer']])
+        ->and($set->findings)->toBe(
+            array_values(array_filter($set->findings, static fn (string $finding): bool => ! str_contains($finding, 'integer-like') && ! str_contains($finding, 'read from the query string') && ! str_contains($finding, 'PHP rewrites'))),
+        )
+        ->and($set->leavesUnenforced())->toBeFalse();
+});
+
+// The wildcard never reaches an integer-like top-level key, so the value rule never judges its value either: the finding
+// says so for a map whose values are validated, and says only that the key is dropped where no value rule exists.
+it('says a map body does not judge the value under an integer-like top-level key', function (Schema $body, bool $says): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body]));
+    $finding = implode("\n", array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'integer-like')));
+
+    expect(str_contains($finding, 'never judges its value'))->toBe($says)
+        ->and($finding)->not->toBe('');
+})->with([
+    'a map of integers' => [new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer])), true],
+    'an open object' => [new Schema(types: [SchemaType::Object]), false],
 ]);
 
 // `validationData()` reads a `query` parameter's key from the query string and drops it from the body, so a body key of

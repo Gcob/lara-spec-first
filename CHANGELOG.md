@@ -108,9 +108,9 @@ tags: [versions, conventions, planning]
   beside `page[size]`) keeps its rules, so the doctor reports nothing for it.
 
 - **A schema written under `additionalProperties` is now read into the contract.**
-  `additionalProperties: {type: integer}` on a body, a property or a `query` parameter, and the same beside a `$ref` at
-  3.1 (`{$ref: Base, additionalProperties: {$ref: Pet}}`, with the `$ref` followed), is carried as the schema every
-  value must satisfy, and a keyword written inside it is reported at its own position. Beside a `$ref` it was reported
+  `additionalProperties: {type: integer}` on a body or a property, and the same beside a `$ref` at 3.1
+  (`{$ref: Base, additionalProperties: {$ref: Pet}}`, with the `$ref` followed), is carried as the schema every value
+  must satisfy, and a keyword written inside it is reported at its own position. Beside a `$ref` it was reported
   `Ignored` and no longer is. What the generated request and `spec:doctor` do with it is in the two entries below. This
   is not a breaking change on its own: it only reads what was ignored.
 - **An `allOf` whose branches write an `additionalProperties` schema is now merged, and refused when the schema
@@ -136,7 +136,9 @@ tags: [versions, conventions, planning]
   declared `properties`, and a root map beside a `query` parameter, since the wildcard would judge the declared key or
   the parameter too. This is a breaking change: a request that answered `200` with a value the schema refuses
   (`{"draft": 5}` for a string of at most 30 characters) now answers `422` to a client that asks for JSON. Send values
-  the contract describes, or loosen the schema. The reasoning is in
+  the contract describes, or loosen the schema. The one exception is a root map's integer-like top-level key (`"2024"`):
+  Laravel's wildcard never reaches it, so its value is not judged (`{"2024": "x"}` for a map of integers answers `200`),
+  and the generated file says so. The reasoning is in
   [ADR 0003](./docs/project/decisions/0003-validate-each-value-of-a-map.md).
 - **`spec:doctor` no longer reports a map the request validates, so its exit code can drop from `2` to `0`.** A body or
   a property written `additionalProperties: <schema>` was reported `Ignored`, and a document whose only gap was one
@@ -163,14 +165,14 @@ tags: [versions, conventions, planning]
   is `array<array-key, mixed>` there. `dto()` leaves the keys of the `query` parameters out of it, a body key named like
   a `query` parameter is read from the query string and the generated file says so, and so does it for a key a form
   delivers under a rewritten name (`a.b` as `a_b`). An integer-like top-level key (`"2024"`) is left out by Laravel
-  itself, in `validated()` and in the DTO, and the generated file reports it. This is a breaking change: the class gains
-  a property, so a call to its constructor or a check that it has none fails, and a controller that passed `validated()`
-  to `create()` now passes the body where it passed `[]`. Read the keys from `$request->dto()->additionalProperties`,
-  and pass only what `create()` accepts. The reasoning is in
-  [ADR 0004](./docs/project/decisions/0004-carry-a-map-body-under-additionalproperties.md). This closes the gap the
-  `0.2.0` `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109), except the values of a
-  map beside declared `properties` or beside `query` parameters, which are reported and not validated (and typed `mixed`
-  on the DTO of a map body), until [#169](https://github.com/Gcob/lara-spec-first/issues/169).
+  itself, in `validated()` and in the DTO, the value under it is not judged by the map's value rule either, and the
+  generated file reports it. This is a breaking change: the class gains a property, so a call to its constructor or a
+  check that it has none fails, and a controller that passed `validated()` to `create()` now passes the body where it
+  passed `[]`. Read the keys from `$request->dto()->additionalProperties`, and pass only what `create()` accepts. The
+  reasoning is in [ADR 0004](./docs/project/decisions/0004-carry-a-map-body-under-additionalproperties.md). This closes
+  the gap the `0.2.0` `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109), except the
+  values of a map beside declared `properties` or beside `query` parameters, which are reported and not validated (and
+  typed `mixed` on the DTO of a map body), until [#169](https://github.com/Gcob/lara-spec-first/issues/169).
 
 ### Fixed
 

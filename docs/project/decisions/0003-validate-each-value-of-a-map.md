@@ -22,7 +22,8 @@ tags: [decisions, code-generation, openapi]
 > - Turned down: dropping the schema in silence, and ordering the rules so the wildcard spares a declared key, which
 >   rests on how Laravel happens to merge them.
 
-**Status:** Accepted · **Card:** [#109](https://github.com/Gcob/lara-spec-first/issues/109)
+**Status:** Accepted · **Card:** [#109](https://github.com/Gcob/lara-spec-first/issues/109) · **Pull request:**
+[#170](https://github.com/Gcob/lara-spec-first/pull/170)
 
 ## Context
 
@@ -109,6 +110,10 @@ list is, and the map at the cut must be empty, as an empty list passes there.
 - **A request that answered `200` may answer `422`:** a map's values were never checked, and now are.
 - **`spec:doctor` exits `0` where it exited `2`** for a document whose only gap was a map the request now validates, and
   exits `2`, as `Partial`, for the two reported cases. A CI step that expected the old code changes.
+- **An integer-like top-level key of a root map is not judged.** Laravel puts the data through `array_merge()` when it
+  expands `*`, which renumbers such a key (`"2024"`), so the wildcard never reaches its value: `{"2024": "x"}` on a map
+  of integers answers `200`. A nested map (`labels.*`) judges it. The generated file says so, as information that loses
+  no rule, so the doctor stays at `0` for the map.
 - **An `allOf` that gave two branches contradictory value schemas is refused** where it built before.
 - **A wrapper that writes `additionalProperties: <schema>` is a schema of its own,** as one that writes `true` or
   `false` already was, so its class name changes where it wrapped a single `$ref`.

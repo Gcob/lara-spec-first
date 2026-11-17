@@ -1195,8 +1195,9 @@ and the key Laravel drops, after them):
 
 **An integer-like top-level key (`"2024"`) is not carried, and nothing in the rule set can change that, so the generated
 file says it.** Laravel expands a wildcard over data it has put through `array_merge()`, which renumbers such a key, so
-`validated()` has no `2024` whatever its value, and neither has the DTO. Under a name (`labels` holding `"2024"`) the
-key is kept, as an `int` key.
+`validated()` has no `2024` whatever its value, and neither has the DTO. **The value rule never judges that value
+either**: a map of integers accepts `{"2024": "x"}`, and the generated file says so where the map's values are
+validated. Under a name (`labels` holding `"2024"`) the key is kept, as an `int` key, and its value is judged.
 
 ### An absent field is a third state
 

@@ -363,13 +363,13 @@ final readonly class RuleSetBuilder
 
         // Why: `validationData()` takes a `query` parameter's key from the query string and drops it from the body, so a
         // body key of that name is not a key of the body. A map has no declared name to refuse it for.
-        if ($walk->mapRoot) {
+        if ($walk->openMapRoot) {
             foreach ($queryKeys as $queryKey) {
-                $walk->findings[] = sprintf(
+                $walk->information(sprintf(
                     'A body key named `%1$s` is not a key of this map: `%1$s` is also a `query` parameter, so it is read from '
                         .'the query string, and a `%1$s` in the body is left out of the validated data and of the DTO.',
                     $queryKey,
-                );
+                ));
             }
         }
 
@@ -377,7 +377,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, $walk->unchecked, $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information);
     }
 
     /**
@@ -670,20 +670,30 @@ final readonly class RuleSetBuilder
         // merges into the ones before it.
         if ($schema->properties === []) {
             $walk->mapRoot = true;
+            // A closed body refuses every key, so what a client may send as a key is no question for it.
+            $walk->openMapRoot = $schema->additionalProperties !== false;
 
-            if (! $judged) {
+            if ($walk->openMapRoot && ! $judged) {
                 $walk->rules['*'] = ['sometimes'];
             }
 
             // Why: Laravel expands the wildcard over data it put through `array_merge()`, which renumbers an integer-like
-            // top-level key, so `validated()` never holds it and the DTO never sees it. Under a name the key is kept.
-            $walk->findings[] = 'Laravel drops an integer-like top-level key (`"2024"`) of this body from `validated()` when it '
-                .'expands the wildcard rule, so the DTO never receives such a key, whatever its value.';
+            // top-level key, so `validated()` never holds it, the DTO never sees it, and the wildcard never judges its
+            // value. Under a name the key is kept and judged.
+            if ($walk->openMapRoot) {
+                $walk->information(
+                    'Laravel drops an integer-like top-level key (`"2024"`) of this body from `validated()` when it expands '
+                    .'the wildcard rule, so the DTO never receives such a key'
+                    .($judged ? ', and the value rule never judges its value: `{"2024": "x"}` is accepted for a map of integers.' : '.'),
+                );
+            }
 
-            if ($walk->formBody) {
-                $walk->findings[] = 'A form delivers a key PHP rewrites (`a.b` and `a b` as `a_b`) under the rewritten name, and this '
+            if ($walk->openMapRoot && $walk->formBody) {
+                $walk->information(
+                    'A form delivers a key PHP rewrites (`a.b` and `a b` as `a_b`) under the rewritten name, and this '
                     .'body declares no key to say which one the client meant, so the request validates and the DTO carries '
-                    .'such a key under the name PHP gave it.';
+                    .'such a key under the name PHP gave it.',
+                );
             }
         }
 
