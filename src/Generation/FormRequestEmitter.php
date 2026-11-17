@@ -88,15 +88,7 @@ final readonly class FormRequestEmitter
                     return true;
                 }
 
-                /**
-                 * @return array<string, list<mixed>>
-                 */
-                public function rules(): array
-                {
-                    return [
-            {$this->rules($planned->rules)}
-                    ];
-                }
+            {$this->rulesMethod($planned->rules)}
             {$this->validationData($planned->rules)}{$this->dto($planned)}{$this->after($planned->rules)}}
 
             PHP,
@@ -536,6 +528,61 @@ final readonly class FormRequestEmitter
      * other literal in this namespace is: a field name may legally carry an apostrophe, and a hand-quoted literal would
      * stop parsing.
      */
+    /**
+     * `rules()`, and the helper that names the integer-like keys of a map or open-object body.
+     *
+     * **A key such as `"1042"` needs a rule of its own.** Laravel expands `*` over data it has put through
+     * `array_merge()`, which renumbers an integer-like top-level key, so the wildcard never reaches it: the key would
+     * be missing from `validated()` and its value never judged. Every rule under the root `*` is written again under
+     * each integer-like key the body carries, which is what a request for a map of IDs needs. A key that is not an
+     * integer (`sku-1`, `a.b`) is the wildcard's, since Laravel keeps it as it is.
+     */
+    private function rulesMethod(RuleSet $set): string
+    {
+        $rules = $this->rules($set);
+
+        if (! $set->mapRoot || ! array_key_exists('*', $set->rules)) {
+            return "    /**\n     * @return array<string, list<mixed>>\n     */\n    public function rules(): array\n    {\n        return [\n"
+                .$rules."\n        ];\n    }";
+        }
+
+        $skip = $set->queryKeys === [] ? '' : ' (the `query` parameters have their own rules)';
+
+        return "    /**\n     * @return array<array-key, list<mixed>>\n     */\n    public function rules(): array\n    {\n        return \$this->withIntegerKeys([\n"
+            .$rules."\n        ]);\n    }\n\n"
+            ."    /**\n"
+            ."     * Why: Laravel renumbers an integer-like top-level key when it expands `*`, so the wildcard never reaches it.\n"
+            ."     * Each rule under `*` is written again under every integer-like key the body carries{$skip}.\n"
+            ."     *\n"
+            ."     * @param  array<string, list<mixed>>  \$rules\n"
+            ."     * @return array<array-key, list<mixed>>\n"
+            ."     */\n"
+            ."    private function withIntegerKeys(array \$rules): array\n"
+            ."    {\n"
+            .($set->queryKeys === []
+                ? "        \$body = \$this->bodyInput();\n"
+                : "        \$body = array_diff_key(\$this->bodyInput(), array_flip(self::QUERY_KEYS));\n")
+            ."\n"
+            ."        \$wildcard = \$rules;\n"
+            ."\n"
+            ."        foreach (array_keys(\$body) as \$key) {\n"
+            ."            if (! is_int(\$key)) {\n"
+            ."                continue;\n"
+            ."            }\n"
+            ."\n"
+            ."            foreach (\$wildcard as \$name => \$set) {\n"
+            ."                \$name = (string) \$name;\n"
+            ."\n"
+            ."                if (\$name === '*' || str_starts_with(\$name, '*.')) {\n"
+            ."                    \$rules[\$key.substr(\$name, 1)] = \$set;\n"
+            ."                }\n"
+            ."            }\n"
+            ."        }\n"
+            ."\n"
+            ."        return \$rules;\n"
+            .'    }';
+    }
+
     private function rules(RuleSet $set): string
     {
         $lines = [];

@@ -1308,7 +1308,8 @@ function emittedRequestClass(Operation $operation): string
  * to their class name.
  *
  * @param  class-string<FormRequest>  $class
- * @param  array<string, mixed>  $parameters  form fields, for a request that is not JSON
+ * @param  array<array-key, mixed>  $parameters  form fields, for a request that is not JSON (PHP keys an ID as an
+ *                                               `int`)
  * @param  array<string, mixed>  $files
  * @param  array<array-key, mixed>|null  $json  the body, for a JSON request
  * @return array{0: int, 1: array<string, mixed>}
@@ -3007,15 +3008,16 @@ it('refuses an empty string for a required scalar of a nullable body, without Co
  * A `POST` whose JSON body is a map or an open object, with the `query` parameters beside it.
  *
  * @param  list<QueryParameter>  $query
+ * @param  list<string>  $mediaTypes
  */
-function postWithMapBody(Schema $body, array $query = []): Operation
+function postWithMapBody(Schema $body, array $query = [], array $mediaTypes = ['application/json']): Operation
 {
     return new Operation(
         index: 0,
         method: HttpMethod::Post,
         path: PathTemplate::fromString('/hooks'),
         operationId: 'receiveHook',
-        requestBody: new RequestBody(['application/json' => $body], true),
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), true),
         queryParameters: $query,
     );
 }
@@ -3066,36 +3068,52 @@ it('carries an open-object body whole', function (): void {
     expect(withKeysSorted(dtoThroughEmitted($class, 'POST', $body)))->toBe([200, $body]);
 });
 
-// Laravel expands a wildcard over data it has put through `array_merge()`, which renumbers an integer-like top-level key,
-// so `validated()` has no `2024` and neither has the DTO, whatever the value. Nested, under a name, the key is kept. The
-// docs say so; pinned here so a Laravel that stops renumbering fails this test and the docs get corrected. Under a name
-// the key is kept, which the next test pins.
-it('leaves out an integer-like top-level key of a map body, which Laravel renumbers', function (Schema $body): void {
+// Laravel expands `*` over data it has put through `array_merge()`, which renumbers an integer-like top-level key, so the
+// wildcard alone never reaches a key such as an ID: it would be missing from `validated()` and its value never judged.
+// Every rule under `*` is written again under each such key the request carries, so a map of IDs keeps its keys, judges
+// their values and answers on the key itself (`1042`).
+it('keeps and judges the integer-like keys of a root map', function (Schema $body, array $json, int $status, array $answer): void {
     $class = emittedRequestClass(postWithMapBody($body));
+    [$got, $validated] = sendThroughEmitted($class, 'POST', json: $json);
 
-    expect(withKeysSorted(sendThroughEmitted($class, 'POST', json: ['2024' => 1, 'b' => 2])))->toBe([200, ['b' => 2]])
-        ->and(withKeysSorted(dtoThroughEmitted($class, 'POST', ['2024' => 1, 'b' => 2])))->toBe([200, ['b' => 2]]);
+    expect($got)->toBe($status);
+
+    if ($status === 200) {
+        expect(withKeysSorted([200, $validated]))->toBe([200, $answer])
+            ->and(withKeysSorted(dtoThroughEmitted($class, 'POST', $json)))->toBe([200, $answer]);
+
+        return;
+    }
+
+    expect(array_map(strval(...), array_keys((array) $validated['errors'])))->toBe($answer);
 })->with([
-    'a map of integers' => [fn () => mapOf(new Schema(types: [SchemaType::Integer]))],
-    'an open object' => [fn () => new Schema(types: [SchemaType::Object])],
+    'a map of integers keyed by IDs' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['1042' => 3, '877' => 1], 200, [877 => 1, 1042 => 3]],
+    'a map of integers keyed by IDs and names' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['1042' => 3, 'sku-1' => 2, 'a.b' => 1], 200, [1042 => 3, 'a.b' => 1, 'sku-1' => 2]],
+    'a refused value under an ID' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['1042' => 'abc'], 422, ['1042']],
+    'a refused value under an ID, beside a good one' => [fn () => mapOf(new Schema(types: [SchemaType::Integer])), ['1042' => 3, '877' => 'x'], 422, ['877']],
+    'a map of objects' => [fn () => mapOf(new Schema(types: [SchemaType::Object], properties: ['n' => new Schema(types: [SchemaType::String])])), ['1042' => ['n' => 'x']], 200, [1042 => ['n' => 'x']]],
+    'a refused property of an object under an ID' => [fn () => mapOf(new Schema(types: [SchemaType::Object], properties: ['n' => new Schema(types: [SchemaType::String])])), ['1042' => ['n' => 5]], 422, ['1042.n']],
+    'a map of lists' => [fn () => mapOf(new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]))), ['1042' => [1, 2]], 200, [1042 => [1, 2]]],
+    'a refused element of a list under an ID' => [fn () => mapOf(new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]))), ['1042' => [1, 'x']], 422, ['1042.1']],
+    'an open object' => [fn () => new Schema(types: [SchemaType::Object]), ['2024' => 'x', 'b' => [1]], 200, [2024 => 'x', 'b' => [1]]],
 ]);
 
-// The wildcard never reaches the integer-like top-level key, so the value rule never judges its value either: a map of
-// integers accepts `{"2024": "x"}` and carries nothing for it. Under a name the key is kept and its value judged.
-it('does not judge the value under an integer-like top-level key of a map body, and judges it under a name', function (): void {
-    $root = emittedRequestClass(postWithMapBody(mapOf(new Schema(types: [SchemaType::Integer]))));
-    $named = emittedRequestClass(postWithMapBody(new Schema(
-        types: [SchemaType::Object],
-        properties: ['meta' => mapOf(new Schema(types: [SchemaType::Integer]))],
-    )));
+// A form delivers the same integer keys, and a key that is also a `query` parameter is the parameter's: the rules the
+// request writes again for an integer-like body key leave it alone.
+it('keeps and judges the integer-like keys of a form map, and leaves the query parameters their own rules', function (): void {
+    $form = emittedRequestClass(postWithMapBody(mapOf(new Schema(types: [SchemaType::Integer])), mediaTypes: ['application/x-www-form-urlencoded']));
+    $beside = emittedRequestClass(postWithMapBody(
+        mapOf(new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter('limit', new Schema(types: [SchemaType::Integer]))],
+    ));
 
-    expect(sendThroughEmitted($root, 'POST', json: ['2024' => 'x']))->toBe([200, []])
-        ->and(sendThroughEmitted($named, 'POST', json: ['meta' => ['2024' => 1]]))->toBe([200, ['meta' => [2024 => 1]]])
-        ->and(sendThroughEmitted($named, 'POST', json: ['meta' => ['2024' => 'x']])[0])->toBe(422);
+    expect(withKeysSorted(sendThroughEmitted($form, 'POST', parameters: ['1042' => '3', 'b' => '2'])))->toBe([200, [1042 => '3', 'b' => '2']])
+        ->and(sendThroughEmitted($form, 'POST', parameters: ['1042' => 'abc'])[0])->toBe(422)
+        ->and(withKeysSorted(sendThroughEmitted($beside, 'POST', '?limit=5', ['1042' => 3])))->toBe([200, [1042 => 3, 'limit' => '5']])
+        ->and(sendThroughEmitted($beside, 'POST', '?limit=x', ['1042' => 3])[0])->toBe(422);
 });
 
-// The generated file keeps its claim that nothing was left unenforced for a body that is `{type: object}`, and its
-// findings still say what a reader needs.
+// The generated file keeps its claim that nothing was left unenforced for a body that is `{type: object}`.
 it('keeps the unenforced sentence in the file of an open-object body', function (): void {
     $planned = plannedRequests([postWithMapBody(new Schema(types: [SchemaType::Object]))])['requests'][0];
     $file = (new FormRequestEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($planned)->contents;
@@ -3103,8 +3121,7 @@ it('keeps the unenforced sentence in the file of an open-object body', function 
     // The docblock wraps its lines, so the sentence is compared with the whitespace folded.
     $flat = (string) preg_replace('/\s*\n\s*\*\s*/', ' ', $file);
 
-    expect($flat)->toContain('Nothing was read and left unenforced.')
-        ->and($flat)->toContain('integer-like top-level key');
+    expect($flat)->toContain('Nothing was read and left unenforced.');
 });
 
 // A `query` parameter's key is read from the query string, so it is in `validated()` and not in the body's keys: the DTO

@@ -110,10 +110,9 @@ list is, and the map at the cut must be empty, as an empty list passes there.
 - **A request that answered `200` may answer `422`:** a map's values were never checked, and now are.
 - **`spec:doctor` exits `0` where it exited `2`** for a document whose only gap was a map the request now validates, and
   exits `2`, as `Partial`, for the two reported cases. A CI step that expected the old code changes.
-- **An integer-like top-level key of a root map is not judged.** Laravel puts the data through `array_merge()` when it
-  expands `*`, which renumbers such a key (`"2024"`), so the wildcard never reaches its value: `{"2024": "x"}` on a map
-  of integers answers `200`. A nested map (`labels.*`) judges it. The generated file says so, as information that loses
-  no rule, so the doctor stays at `0` for the map.
+- **A root map keyed by IDs is judged like any other.** Laravel puts the data through `array_merge()` when it expands
+  `*`, which renumbers an integer-like key (`"1042"`), so the wildcard alone never reaches it. The generated `rules()`
+  writes the rules again under each such key the request carries, and an error answers on the key itself.
 - **An `allOf` that gave two branches contradictory value schemas is refused** where it built before.
 - **A wrapper that writes `additionalProperties: <schema>` is a schema of its own,** as one that writes `true` or
   `false` already was, so its class name changes where it wrapped a single `$ref`.

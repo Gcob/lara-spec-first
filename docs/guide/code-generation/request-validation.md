@@ -867,6 +867,9 @@ refuses. A field of a body that is JSON and nothing else gets the `:strict` form
   was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly
   every JSON request. The four are this one, `mimetypes` refusing a file named like PHP, a recursive schema refused
   below its depth, and a body with `properties` and no `type` refusing a JSON root that is not an object.
+- **A finding that loses no constraint is not a gap either,** and is left out of the warning the same way. Two kinds
+  exist: a body key of a map that is also the name of a `query` parameter (read from the query string, so the body's is
+  left out), and a key a form delivers under a rewritten name (`a.b` as `a_b`) in a map body.
 - **A query parameter and a form or multipart field keep the loose rules**, since every value they carry is text.
 - **A form client of an operation that declares only JSON gets the JSON rules.** `age=30` from an HTML form is a 422
   there, where it was a 200: the contract declares no form, so that client is off-contract, and `rules()` is one array.
@@ -1193,11 +1196,14 @@ and the key Laravel drops, after them):
 - **A key a form delivers under another name** (`a.b` and `a b` as `a_b`) is validated and carried under the rewritten
   name, since the body declares no key to say which one the client meant. A JSON body keeps every key as sent.
 
-**An integer-like top-level key (`"2024"`) is not carried, and nothing in the rule set can change that, so the generated
-file says it.** Laravel expands a wildcard over data it has put through `array_merge()`, which renumbers such a key, so
-`validated()` has no `2024` whatever its value, and neither has the DTO. **The value rule never judges that value
-either**: a map of integers accepts `{"2024": "x"}`, and the generated file says so where the map's values are
-validated. Under a name (`labels` holding `"2024"`) the key is kept, as an `int` key, and its value is judged.
+**A map keyed by IDs keeps its keys and has their values judged.** `{"1042": 3, "877": 1}` is a valid body for a map of
+integers, and `1042` is an integer key in PHP. Laravel expands `*` over data it has put through `array_merge()`, which
+renumbers such a key, so the wildcard alone never reaches it: the key would be missing from `validated()` and its value
+never judged. The generated `rules()` therefore writes every rule under `*` again under each integer-like key the
+request carries (`1042`, `1042.n` for a map of objects, `1042.*` for a map of lists), which is why that method is built
+from the body at request time for a root map. A key that is not an integer (`sku-1`, `a.b`) is the wildcard's, since
+Laravel keeps it as it is, and an error answers on the key itself (`1042`, never a name the build made up). The `query`
+parameters' keys keep their own rules.
 
 ### An absent field is a third state
 

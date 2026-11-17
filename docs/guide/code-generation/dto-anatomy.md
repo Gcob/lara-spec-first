@@ -115,9 +115,11 @@ reached it or the file that holds it.** `#/components/schemas/NewUser` gives `Ne
 specification across files does not change the contract and must not rename a class a controller imports. A body written
 inline takes its operation's name, `CreateUserInputDto`, and an object nested inline takes its parent's name and its
 property's, `CreateUserAddressInputDto`, with `Item` added for an element of an array and `Value` for a value of a map
-(`CreateUserLabelsValueInputDto`). **Two different schemas that give one class are a build error**, and so is a
-component name that is not a class name once it is turned into one. The refusal is not always about two schemas sharing
-a name, because the generator adds a suffix to it: a component `User` also generates `UserPartialInputDto`, so a
+(`CreateUserLabelsValueInputDto`). A body that is itself a map names its value after the property that holds the body,
+`additionalProperties`, so an inline object value of the body of `receiveHook` is
+`ReceiveHookAdditionalPropertiesValueInputDto`. **Two different schemas that give one class are a build error**, and so
+is a component name that is not a class name once it is turned into one. The refusal is not always about two schemas
+sharing a name, because the generator adds a suffix to it: a component `User` also generates `UserPartialInputDto`, so a
 component called `UserPartial` collides with it, and an inline `address` in `createUser` collides with the inline body
 of `createUserAddress`, both `CreateUserAddressInputDto`. The message names the class, where each schema is written,
 which type of each it is (full or partial), the base its name came from (the schema's name, its request, or its parent
@@ -241,9 +243,8 @@ request did not check. A map of integers beside `?dryRun=` is `array<array-key, 
 why. The keys of the `query` parameters are never in the DTO: `validated()` holds both, and `dto()` hands the DTO the
 body's keys alone. A body key named like a `query` parameter is read from the query string instead, which the request's
 findings name. A key a form delivers under a rewritten name (`a.b` as `a_b`) is carried under that name, and so is it
-said. An integer-like top-level key (`"2024"`) is left out by Laravel itself, which renumbers it when it expands the
-wildcard rule, so neither `validated()` nor the DTO holds it, and the request's findings say so (the value under it is
-not judged either); the same key under a property is kept.
+said. A key such as an ID (`"1042"`) is kept, as the `int` key `1042`, and its value is judged: the
+[request writes a rule for each one](./request-validation.md#a-map-or-open-object-body-is-carried-whole).
 
 **A node that recurses is the class of the schema it points back at.** `Address` holds an `Address`: `parent` is typed
 `Optional|AddressInputDto`, and `Optional|AddressInputDto|null` when the schema is nullable (`?AddressInputDto` for a

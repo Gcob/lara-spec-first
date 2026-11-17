@@ -72,9 +72,9 @@ final readonly class RuleSet
      *                                                     are
      * @param  list<string>  $dropsArray  the keys of `$whenNotArray` with no rule on any name below them: the request
      *                                    drops the array (`exclude`) where it would keep it (`array`) beside a rule
-     * @param  list<string>  $information  the findings that lose no constraint (a key Laravel drops, a name a form
-     *                                     rewrites), which are in `findings` too. Nothing is left unenforced by one, so
-     *                                     the build does not count a request for them alone
+     * @param  list<string>  $information  the findings that lose no constraint (a body key a `query` parameter shadows,
+     *                                     a name a form rewrites), which are in `findings` too. Nothing is left
+     *                                     unenforced by one, so the build does not count a request for them alone
      * @param  bool  $mapRoot  whether the body is an object with no declared property, a map or an open object, so its
      *                         keys are all undeclared: `dto()` hands the DTO every body key and no `query` key
      */

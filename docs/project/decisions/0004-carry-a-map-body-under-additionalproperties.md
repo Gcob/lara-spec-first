@@ -98,9 +98,8 @@ and the query string's, and the DTO is the body's. Two findings are written for 
   the body where it was `[]`. A caller that relied on the empty DTO, or on `validated()` being empty for such a body,
   changes.
 - **Beside a `query` parameter, the values are `mixed`,** until a card validates them there.
-- **An integer-like top-level key (`"2024"`) is not carried.** Laravel renumbers it when it expands the wildcard rule,
-  so `validated()` has no such key and the DTO does not either, and a finding in the generated request says so. The
-  value rule never judges the value under it either, where the map's values are validated. Under a property the key is
-  kept.
+- **A map keyed by IDs keeps its keys.** Laravel renumbers an integer-like top-level key when it expands the wildcard
+  rule, so the generated `rules()` writes each rule under `*` again under every integer-like key the request carries.
+  The cost is a `rules()` that reads the body at request time for a root map.
 - **A body key named like a `query` parameter is the parameter's,** and the findings say so.
 - **This does not settle values beside declared `properties`,** which stay reported as ADR 0003 says.

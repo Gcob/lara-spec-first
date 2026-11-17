@@ -482,13 +482,15 @@ final readonly class RuleSetBuilder
 
     /**
      * Whether a value schema states nothing, so any value passes: `additionalProperties: {}`, or one that only writes
-     * keywords nothing reads. Read as `additionalProperties: true` is, with no rule and no finding.
+     * keywords nothing reads, or a `$ref` to a component that is one of those. Read as `additionalProperties: true` is,
+     * with no rule and no finding. The name and the position are where the schema was written, not what it states, so a
+     * `$ref` to `AnyValue: {}` reads as the same `{}` written inline.
      *
      * @internal Public for the same reason as {@see self::mapValueSchema()}.
      */
     public static function allowsAnyValue(Schema $value): bool
     {
-        return $value->sameShapeAs(new Schema);
+        return (new Schema(...[...get_object_vars($value), 'name' => null, 'source' => null]))->sameShapeAs(new Schema);
     }
 
     /**
@@ -675,17 +677,6 @@ final readonly class RuleSetBuilder
 
             if ($walk->openMapRoot && ! $judged) {
                 $walk->rules['*'] = ['sometimes'];
-            }
-
-            // Why: Laravel expands the wildcard over data it put through `array_merge()`, which renumbers an integer-like
-            // top-level key, so `validated()` never holds it, the DTO never sees it, and the wildcard never judges its
-            // value. Under a name the key is kept and judged.
-            if ($walk->openMapRoot) {
-                $walk->information(
-                    'Laravel drops an integer-like top-level key (`"2024"`) of this body from `validated()` when it expands '
-                    .'the wildcard rule, so the DTO never receives such a key'
-                    .($judged ? ', and the value rule never judges its value: `{"2024": "x"}` is accepted for a map of integers.' : '.'),
-                );
             }
 
             if ($walk->openMapRoot && $walk->formBody) {
