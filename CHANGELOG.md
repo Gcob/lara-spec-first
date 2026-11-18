@@ -55,9 +55,10 @@ tags: [versions, conventions, planning]
   another schema claims, such as an inline `address` beside a component `UserAddress`, two components `new-user` and
   `NewUser`, or a response schema `UserInput` beside a request schema `User`: an input DTO outranks a response schema, a
   component outranks a schema written inline, and two schemas of one rank that derive one class name both give way, so
-  reading the document in the other order writes the same files. `spec:build`, `spec:doctor` and `spec:make` go on for
-  every one of these as they did on `0.2.0`, which read no response. `routeAction` still returns `mixed`, and no factory
-  is generated yet. This is not a breaking change on its own: it only adds files and a sentence. The reasoning is in
+  reading the document in the other order writes the same classes and types (a class shared by several operations lists
+  them in the document's order in its `Read by` line). `spec:build`, `spec:doctor` and `spec:make` go on for every one
+  of these as they did on `0.2.0`, which read no response. `routeAction` still returns `mixed`, and no factory is
+  generated yet. This is not a breaking change on its own: it only adds files and a sentence. The reasoning is in
   [ADR 0013](./docs/project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md). This ships
   [#39](https://github.com/Gcob/lara-spec-first/issues/39) and
   [#178](https://github.com/Gcob/lara-spec-first/issues/178).

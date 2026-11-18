@@ -78,9 +78,15 @@ the class. **Two schemas at the top rank both give way**, as with two components
 objects of different shapes that derive one name: picking one would pick by the order the document writes them. Two
 inline objects that say the same thing share one class. The document's order changes nothing, because the build reads
 every response schema once to see who claims each name before it builds, so reading the contract backwards writes the
-same files. A component whose keys collide or whose `allOf` branches disagree still claims its name, since a class that
-carried it would describe something else, and the schema that gives way is told that component gets no DTO either. The
-build is not refused.
+same classes with the same types. What still follows the document is the `Read by` line of a class that several
+operations return, which lists them in the order the document writes them, and, for a class that two inline objects
+share by shape, which of the two the file's provenance names. A component whose keys collide or whose `allOf` branches
+disagree still claims its name, since a class that carried it would describe something else, and the schema that gives
+way is told that component gets no DTO either. The build is not refused.
+
+**A known limit:** a schema reached only through a schema that gave way still claims its class name. If an inline schema
+derives that name, it gets no DTO and its finding names a class that is not written, in either order of the document
+([#191](https://github.com/Gcob/lara-spec-first/issues/191)).
 
 **A status with no DTO says why, in the controller.** The generated controller's findings carry one sentence per status:
 

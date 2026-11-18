@@ -34,12 +34,14 @@ tags: [decisions, code-generation, openapi]
 >   a schema written inline. Equals at the top rank both give way. It is decided from every schema the response reaches
 >   before anything is typed, so the order of the document changes nothing.
 > - Turned down: refusing the build for such a schema, picking a branch of an `allOf`, a half-built DTO, the first
->   schema met keeping a contested name, an inline schema borrowing a component's class, plain `T` for an optional
->   property, `toRfc3339String()`, an empty DTO for a map, a DTO that is `Responsable` or an API Resource, and casting
->   in `from()`.
+>   schema met keeping a contested name, an inline schema borrowing a component's class, a build error for two JSON
+>   schemas under one status, a DTO that is `Responsable` or an API Resource, and casting in `from()`. Also plain `T`
+>   for an optional property (stricter than the contract, which lets a server omit the key), `toRfc3339String()` (it
+>   drops the fraction that Laravel's `toJSON()` keeps), and an empty DTO for a map (it would send `{}` whatever the map
+>   held). The reasons are under "Alternatives turned down".
 
-**Status:** Accepted · **Card:** [#178](https://github.com/Gcob/lara-spec-first/issues/178) · **Pull request:** its pull
-request
+**Status:** Accepted · **Card:** [#178](https://github.com/Gcob/lara-spec-first/issues/178) · **Pull request:**
+[#189](https://github.com/Gcob/lara-spec-first/pull/189)
 
 ## Context
 
@@ -190,6 +192,17 @@ controller's finding for that status ends "or `null`, which no DTO holds".
 - **An inline schema borrowing the class of a component of the same shape.** The two are equal today and the class would
   serve both, but a contract that later changes one of them would change what the other is, and the request side never
   shares a class across a name either. The inline schema gives way and says which component keeps the name.
+- **Picking a branch of an `allOf` that disagrees.** Either choice describes half of what the document wrote and drops
+  the other half in silence, and the DTO would then be a promise the contract did not make.
+- **A DTO with the properties that are not at fault.** `allOf` merges the whole object at once and has no partial
+  result, and a DTO that dropped one of two colliding keys would say a property is absent that the contract has.
+- **Plain `T` for an optional property.** It is stricter than the contract, since a server may omit a key the contract
+  allows it to omit, and it would need a finding in every file. It spares a factory from writing `new Optional`, which
+  is a small gain against a type that says less than the contract does.
+- **`toRfc3339String()` for a `date-time`.** It drops the fraction. `toJSON()` keeps what Carbon holds, and it is what
+  Laravel writes when it serializes a model, so a response built from a model and one built from a DTO read the same.
+- **An empty DTO for a map.** It carries nothing, so a controller returning it sends `{}` whatever the map held. A map
+  response is data, and its keys are the data.
 - **A build error for two JSON schemas under one status.** It would refuse a contract that builds today, for a response
   the generated code does not need a type for. A status with no DTO and a finding costs the reader a type, not the
   build.
@@ -207,9 +220,10 @@ controller's finding for that status ends "or `null`, which no DTO holds".
   name another schema keeps.** The generated controller and DTO say where, and the fix is in the contract. `spec:build`,
   `spec:doctor` and `spec:make` go on as they did on `0.2.0`, which read no response.
 - **Which schema keeps a class name is the contract's decision, never the order's.** A path moved within the document,
-  or a document read backwards, writes the same files, with two exceptions that are not about who keeps a name: the
-  readers a shared class lists follow the document on purpose, and a class that two inline objects share by shape names
-  its provenance after whichever the build reaches first, as the request side does.
+  or a document read backwards, writes the same classes with the same types, with two exceptions that are not about who
+  keeps a name: the `Read by` line of a class that several operations return lists them in the document's order on
+  purpose, and a class that two inline objects share by shape names its provenance after whichever the build reaches
+  first, as the request side does.
 - **A `mixed` property can be a fault and not a keyword.** The file's finding says which, and the plan records the
   faults under their own causes.
 - **A controller sees the `null` of a nullable response only in its own finding.** The DTO does not say a status may

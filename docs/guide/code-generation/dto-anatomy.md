@@ -159,8 +159,9 @@ the others keeps the name, in this order: an input DTO, a component, a schema wr
 `address` in `User` gives `UserAddressDto`, which a component `UserAddress` keeps. Whatever does not keep the name has
 no DTO, and the file that would have used it says which schema keeps the class. Two schemas of the same rank, two
 components `new-user` and `NewUser` or two inline objects of different shapes, both give way, and two inline objects
-that say the same thing share one class. Reading the document in either order gives the same files. Rename one of the
-schemas to type it, or give an inline schema a component name of its own.
+that say the same thing share one class. Reading the document in either order gives the same classes and types, and only
+the `Read by` lines of a shared class follow the document's order. Rename one of the schemas to type it, or give an
+inline schema a component name of its own.
 
 **A response gets a DTO per declared status** (`200`, `2XX`, `default`) that has a JSON body, `application/json` or any
 `+json` type, whose schema is an object or a list of objects. A list has no class of its own, its items do
