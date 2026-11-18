@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
+use Gcob\LaraSpecFirst\Validation\WholeNumber;
 
 /**
  * What one walk over an operation's input has produced so far.
@@ -20,7 +21,7 @@ use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 final class RuleWalk
 {
     /**
-     * @var array<string, list<string|InRule|NullOrAbsent>>
+     * @var array<string, list<string|InRule|NullOrAbsent|WholeNumber>>
      */
     public array $rules = [];
 
@@ -139,12 +140,6 @@ final class RuleWalk
      * Whether `application/json` is among the media types the body is read from.
      */
     public bool $jsonBody = false;
-
-    /**
-     * Whether the finding that a JSON integer written as a float is refused has been written, since one request says it
-     * once however many integers it has.
-     */
-    public bool $integralFloatNamed = false;
 
     /**
      * Whether the generated request has to refuse a JSON body whose root is not an object, and whether a `null` root is

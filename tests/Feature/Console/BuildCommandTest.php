@@ -300,13 +300,13 @@ it('keeps a stricter-than-the-contract finding out of the build warning', functi
 
     $output = new BufferedOutput;
     app(Kernel::class)->call('spec:build', [], $output);
-    $request = (string) file_get_contents(buildTree().'/Requests/CreateCounterRequest.php');
+    $request = (string) file_get_contents(buildTree().'/Requests/CreateAvatarRequest.php');
     // The emitter wraps a finding over lines of the docblock, so a phrase is read with the wrapping undone.
     $prose = (string) preg_replace('/\s*\n\s*\*\s*/', ' ', $request);
 
     expect($output->fetch())->not->toContain('read a constraint they do not enforce')
-        ->and($request)->toContain("'count' => ['sometimes', 'integer:strict'],")
-        ->and($prose)->toContain('so the request is stricter than the contract for them')
+        ->and($request)->toContain("'avatar' => ['sometimes', 'file'")
+        ->and($prose)->toContain('A `mimetypes` rule in this request is stricter than the contract in one case')
         ->and($prose)->toContain('Nothing was read and left unenforced.');
 });
 

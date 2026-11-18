@@ -305,6 +305,31 @@ tags: [versions, conventions, planning]
   the response was left out. This is a breaking change: a contract that exited `0` can exit `2`, so a green CI step may
   turn red. Remove the keyword from the response schema, or let the CI step that runs `spec:doctor` accept exit `2`
   until the acknowledgement config is built. This ships [#164](https://github.com/Gcob/lara-spec-first/issues/164).
+- **A list with `uniqueItems` now compares numbers by value, so two equal numbers are refused where they passed.**
+  `[1, 1.0]`, `[10, 1e1]` or `[0, -0.0]` in a JSON list of numbers, `1` and `+1` or `0` and `-0` in a form list of
+  integers, and `1` and `1.0` or `10` and `1e1` in a form list of numbers each got a `200` and now get a `422` with the
+  message on both keys, since JSON Schema reads each pair as one number. The rule is Laravel's `distinct` for an integer
+  or a number and `distinct:strict` for a string or a boolean, which keep their strict comparison (`"1"` and `"01"` are
+  two elements). Two numbers PHP cannot tell apart past float precision also count as one (`9007199254740993` and
+  `9007199254740992.0`): the guide states that limit and the generated file carries no finding for it. An array query
+  parameter has no element rule, so it does not change. This is a breaking change: a list a client could send twice the
+  same number in now gets a `422`. The reasoning is in
+  [ADR 0016](./docs/project/decisions/0016-keep-json-scalars-typed.md), and this ships
+  [#173](https://github.com/Gcob/lara-spec-first/issues/173).
+- **A JSON integer now accepts a whole number written as a float (`1.0`, `1e2`, `1e14`), where `0.2.0` answered `422`.**
+  A generated request judges it with `Gcob\LaraSpecFirst\Validation\WholeNumber`, a rule of the package's, beside
+  Laravel's `numeric`: it passes an integer and a float whose value is exactly whole, and refuses a fraction, a float a
+  hair off a whole number (`2.9999999999999996`, which Laravel's own `integer` reads as `3`), a numeric string (`"42"`),
+  a boolean, and a float outside the range of a 64-bit integer. `"42"` and `1.5` still read "must be an integer", and a
+  value that is no number at all (`true`, `false`, `"abc"`, `[]`) now gets "must be a number" as well. `validated()`
+  holds the float as sent (`31.0`) and `dto()` casts it to an `int`. The finding that said the request refused `1.0` is
+  gone from the generated file, since a JSON integer is now judged by its exact value. The Laravel constraint is
+  unchanged, and the stated reason for it now says what CI tests. This is a breaking change: code that reads an integer
+  from `validated()` can get a float, a project's `validation.custom.<field>.integer` message no longer applies to a
+  JSON integer (`WholeNumber` answers with `validation.integer`), and a generated request imports a new class, so run
+  `spec:build` again (a request generated before still refuses `1.0`). The reasoning is in
+  [ADR 0016](./docs/project/decisions/0016-keep-json-scalars-typed.md), which supersedes ADR 0007, and this also ships
+  [#173](https://github.com/Gcob/lara-spec-first/issues/173).
 
 ### Fixed
 

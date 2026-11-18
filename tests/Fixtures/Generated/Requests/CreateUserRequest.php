@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests;
 
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\CreateUserInputDto;
+use Gcob\LaraSpecFirst\Validation\WholeNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -33,10 +34,6 @@ use Illuminate\Validation\Validator;
  *   - `dto()` returns the body as `CreateUserInputDto`, built from `validated()`, which keeps
  *     returning Laravel's array. A `query` parameter is not a property of it: read one with
  *     `validated('name')`.
- *   - An `integer` in this JSON body is `integer:strict`, which refuses a whole number written
- *     with a fraction or an exponent (`1.0`, `1e2`). JSON Schema 2020-12 reads those as integers,
- *     so the request is stricter than the contract for them. The same rule is what refuses `"42"`
- *     and `true`.
  *   - `website` declares `format: uri`, which no Laravel rule means the same as, so it is not
  *     enforced.
  *   - `notify` is a boolean read from a query string, where `?name=true` is how OpenAPI writes
@@ -78,7 +75,7 @@ final class CreateUserRequest extends FormRequest
     {
         return [
             'email' => ['present', 'string', 'max:255', 'email'],
-            'age' => ['sometimes', 'integer:strict', 'min:18'],
+            'age' => ['sometimes', new WholeNumber, 'numeric', 'min:18'],
             'nickname' => ['sometimes', 'nullable', 'string'],
             'role' => ['sometimes', 'string', Rule::in(['admin', 'member'])],
             'tags' => ['sometimes', 'array', 'list'],

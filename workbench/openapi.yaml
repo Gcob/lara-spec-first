@@ -474,8 +474,9 @@ components:
                     type: string
                 published:
                     type: boolean
-                # A JSON body keeps its types: `integer:strict`, so `"5"` and `5.0` are
-                # a 422 where a form or a query string would have carried them as text.
+                # A JSON body keeps its types: `WholeNumber`, so `"5"` is a 422 where a form
+                # or a query string would have carried it as text, and `5.0` passes as the
+                # whole number it is.
                 readingMinutes:
                     type: integer
                     minimum: 1

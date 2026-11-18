@@ -12,6 +12,7 @@ use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
+use Gcob\LaraSpecFirst\Validation\WholeNumber;
 
 /**
  * One operation's request body and `query` parameters, as one Laravel rule set.
@@ -1609,23 +1610,20 @@ final readonly class RuleSetBuilder
                     self::stringRules($schema, $label, $rules, $handled, $walk);
                     break;
                 case SchemaType::Integer:
-                    // Why: Laravel's `min` and `max` find `Integer` and `Numeric` by the rule's name whatever its
-                    // parameters, so a strict rule still compares as a number.
-                    $rules[] = $walk->strictJson() ? 'integer:strict' : 'integer';
-                    self::numberRules($schema, $rules, $handled);
-
-                    if ($walk->strictJson() && ! $walk->integralFloatNamed) {
-                        $walk->integralFloatNamed = true;
-                        $walk->stricter(
-                            'An `integer` in this JSON body is `integer:strict`, which refuses a whole number written '
-                                .'with a fraction or an exponent (`1.0`, `1e2`). JSON Schema 2020-12 reads those as '
-                                .'integers, so the request is stricter than the contract for them. The same rule is '
-                                .'what refuses `"42"` and `true`.',
-                        );
+                    // Why: Laravel's `integer:strict` refuses `1.0`, which JSON Schema 2020-12 reads as an integer, and
+                    // its loose `integer` reads a float as text with 14 significant digits, so `2.9999999999999996` passes.
+                    // `WholeNumber` compares the float itself. `numeric` goes beside it because Laravel finds the number
+                    // `min`, `max`, `gt`, `lt` and `multiple_of` compare by the name of a rule, and an object has none.
+                    if ($walk->strictJson()) {
+                        array_push($rules, new WholeNumber, 'numeric');
+                    } else {
+                        $rules[] = 'integer';
                     }
 
+                    self::numberRules($schema, $rules, $handled);
+
                     if ($walk->mixedBody) {
-                        $walk->findings[] = self::mixedBodyFinding($label, 'an integer', 'integer', '`"42"` and `true` get through, though the contract refuses them.');
+                        $walk->findings[] = self::mixedBodyFinding($label, 'an integer', 'integer', '`"42"` and `true` get through, though the contract refuses them. So does a float within 14 digits of a whole number (`2.9999999999999996` passes as `3`, and `dto()` casts it to `2`), while a whole float of 1e14 or more is refused, though the contract accepts it.');
                     }
                     break;
                 case SchemaType::Number:
@@ -2242,7 +2240,7 @@ final readonly class RuleSetBuilder
      * **`maxLength` is bytes and `max` is kilobytes, and the ceiling is exact.** Laravel's `max` takes a decimal, so
      * 2500 bytes is `max:2.44140625`.
      *
-     * @param  list<string|InRule|NullOrAbsent>  $rules
+     * @param  list<string|InRule|NullOrAbsent|WholeNumber>  $rules
      * @param  list<string>  $handled
      * @param  string|null  $contentType  the `encoding` the document wrote for this part, as written
      *
@@ -2456,7 +2454,7 @@ final readonly class RuleSetBuilder
     /**
      * What a string's own keywords become.
      *
-     * @param  list<string|InRule|NullOrAbsent>  $rules
+     * @param  list<string|InRule|NullOrAbsent|WholeNumber>  $rules
      * @param  list<string>  $handled
      */
     private static function stringRules(Schema $schema, string $label, array &$rules, array &$handled, RuleWalk $walk): void
@@ -2508,7 +2506,7 @@ final readonly class RuleSetBuilder
      * Beside `integer` or `numeric`, `min` and `max` compare the value, and `gt` and `lt` take a number as readily as a
      * field name.
      *
-     * @param  list<string|InRule|NullOrAbsent>  $rules
+     * @param  list<string|InRule|NullOrAbsent|WholeNumber>  $rules
      * @param  list<string>  $handled
      */
     private static function numberRules(Schema $schema, array &$rules, array &$handled): void
@@ -2543,7 +2541,7 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * @param  list<string|InRule|NullOrAbsent>  $rules
+     * @param  list<string|InRule|NullOrAbsent|WholeNumber>  $rules
      */
     private static function bound(int|float|null $value, string $rule, array &$rules): void
     {
@@ -2565,7 +2563,18 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * `distinct:strict`, or null where it would not mean `uniqueItems`.
+     * `distinct` for a number and `distinct:strict` for a string or a boolean, or null where it would not mean
+     * `uniqueItems`.
+     *
+     * JSON Schema compares two numbers by value, so `1` and `1.0` are one element and so are `1` and `+1` in a form:
+     * the loose `distinct` says the same, and `distinct:strict` would call them two. A string or a boolean has no
+     * second spelling in JSON, and `"1"` and `"01"` are two strings, so those keep the strict comparison. A form's
+     * boolean has two (`"true"` and `"1"`), which `distinct:strict` calls two elements: a gap the guide states.
+     *
+     * The loose comparison is not exact at float precision, and the guide says so: PHP compares an integer with a
+     * float, or two decimal strings, as two floats, so two numbers it rounds the same way count as one
+     * (`9007199254740993` and `9007199254740992.0` in JSON, `0.1` and `0.10000000000000000001` in a form). The
+     * generated file carries no finding for it.
      *
      * Two shapes break it, both measured on Laravel's validator. Under a wildcard, `distinct` turns every `*` into a
      * pattern and compares across every element of the outer list, so `[{tags: [a]}, {tags: [a]}]` is refused although
@@ -2586,9 +2595,13 @@ final readonly class RuleSetBuilder
         // Only a typed scalar that may not be null. An untyped element may be
         // an object `distinct` cannot compare, and `distinct` lets two nulls
         // through, so both are reported rather than half-enforced.
-        $scalar = in_array($items->soleType(), [SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean], true);
+        $type = $items->soleType();
 
-        return $scalar && ! $items->isNullable() ? 'distinct:strict' : null;
+        if (! in_array($type, [SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean], true) || $items->isNullable()) {
+            return null;
+        }
+
+        return in_array($type, [SchemaType::Integer, SchemaType::Number], true) ? 'distinct' : 'distinct:strict';
     }
 
     /**

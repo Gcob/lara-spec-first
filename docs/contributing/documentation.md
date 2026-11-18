@@ -967,6 +967,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0013-mirror-a-response-schema-or-leave-it-untyped.md`](../project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md)
     - [`0014-judge-undeclared-keys-by-name.md`](../project/decisions/0014-judge-undeclared-keys-by-name.md)
     - [`0015-type-the-values-of-a-map-body.md`](../project/decisions/0015-type-the-values-of-a-map-body.md)
+    - [`0016-keep-json-scalars-typed.md`](../project/decisions/0016-keep-json-scalars-typed.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

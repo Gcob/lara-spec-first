@@ -45,9 +45,9 @@ jobs:
                 # the PHP 8.3 floor buys. Testbench tracks Laravel minus two, so its
                 # major is a property of the Laravel cell rather than a third axis.
                 include:
-                    # `constraint` is the Laravel this cell installs. Laravel 12's starts at 12.22: the package's
-                    # floor, since `integer:strict` is silently ignored before it (`numeric:strict` and
-                    # `boolean:strict` exist from 12.21).
+                    # `constraint` is the Laravel this cell installs. Laravel 12's starts at 12.22, the constraint
+                    # `0.2.0` shipped: no generated rule needs 12.22 since #173, and this cell installs from 12.55,
+                    # the lowest testbench 10.11 allows. #188 settles the floor.
                     - laravel: "12"
                       constraint: "^12.22"
                       testbench: "^10.11"

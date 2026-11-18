@@ -9,6 +9,7 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Gcob\LaraSpecFirst\Validation\UndeclaredKeys;
+use Gcob\LaraSpecFirst\Validation\WholeNumber;
 use Illuminate\Support\Fluent;
 
 /**
@@ -120,6 +121,10 @@ final readonly class FormRequestEmitter
 
         if ($set->usesUndeclaredKeys()) {
             $imports[] = $this->import(UndeclaredKeys::class);
+        }
+
+        if ($set->usesWholeNumber()) {
+            $imports[] = $this->import(WholeNumber::class);
         }
 
         if ($set->closedKeys !== null || $set->jsonRoot || $planned->dto !== null) {
@@ -758,7 +763,7 @@ final readonly class FormRequestEmitter
      * One rule as PHP: a string literal, or `Rule::in()` over the values an enumeration allows — never `in:a,b`, which
      * splits on a comma inside a value.
      */
-    private function rule(string|InRule|NullOrAbsent $rule): string
+    private function rule(string|InRule|NullOrAbsent|WholeNumber $rule): string
     {
         if (is_string($rule)) {
             return $this->literal($rule);
@@ -766,6 +771,10 @@ final readonly class FormRequestEmitter
 
         if ($rule instanceof NullOrAbsent) {
             return 'new NullOrAbsent';
+        }
+
+        if ($rule instanceof WholeNumber) {
+            return 'new WholeNumber';
         }
 
         return 'Rule::in(['.implode(', ', array_map(

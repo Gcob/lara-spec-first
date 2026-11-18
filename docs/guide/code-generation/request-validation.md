@@ -152,7 +152,7 @@ public function rules(): array
 {
     return [
         'email' => ['present', 'string', 'email', 'max:255'],
-        'age' => ['sometimes', 'integer:strict', 'min:18'],   // a JSON body keeps its types
+        'age' => ['sometimes', new WholeNumber, 'numeric', 'min:18'],   // a JSON body keeps its types
         'notify' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],   // ?notify=true, a query parameter
     ];
 }
@@ -603,7 +603,7 @@ integer, number or boolean reports `filled`'s ("must have a value") where it rep
 finding about a form with no field when the body's required-key check refuses it.
 
 **A required integer, number or boolean also gets `filled`.** `required` is implicit, so it refused `""` for them even
-where nothing turns `""` into `null`; `present_with` and `sometimes` are not, and Laravel skips `integer:strict`,
+where nothing turns `""` into `null`; `present_with` and `sometimes` are not, and Laravel skips `WholeNumber`,
 `numeric:strict` and `boolean:strict` on a blank string. So `filled` takes `required`'s place beside the rule that asks
 through the siblings, and a project without `ConvertEmptyStringsToNull` still refuses `""` there. A nullable property
 keeps `present`, as before. Optional bodies do not get it: [their caveat](#patch-empties-the-required-list) stays.
@@ -731,10 +731,6 @@ are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
   `properties` and no `type` refuses a JSON root that is not an object. `ConvertEmptyStringsToNull` makes a non-nullable
   string refuse `""`, which is the framework's and not a rule here, so
   [it is stated above](#patch-empties-the-required-list) rather than reported per field.
-- **A stricter rule without that reason:**
-  [a JSON integer written as a float](../../project/decisions/0007-keep-json-scalars-strict.md) (`1.0`) is refused by
-  `integer:strict` today, and a finding says so. Laravel's `integer` beside `numeric:strict` would accept it, and
-  [#173](https://github.com/Gcob/lara-spec-first/issues/173) tracks the choice.
 
 Which keywords are honored at all is [the support matrix](../openapi-support.md#schemas)'s to state; what each honored
 one becomes is this table's.
@@ -744,20 +740,20 @@ one becomes is this table's.
 | Schema                                                  | Laravel rule                                                                                                                                                                                                                                      |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `type: string`                                          | `string`                                                                                                                                                                                                                                          |
-| `type: integer`                                         | `integer:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                                    |
+| `type: integer`                                         | `WholeNumber` beside `numeric` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                      |
 | `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                                                                    |
 | `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                                                                   |
 | `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                                                                        |
 | `type: object`                                          | `array`, with each property keyed `field.child`, or each value keyed `field.*` when it declares none and writes [a value schema](#a-maps-values-are-validated-one-by-one). A JSON object arrives as a PHP array, and Laravel has no `object` rule |
 | `nullable`, `type: [..., "null"]`                       | `nullable`                                                                                                                                                                                                                                        |
-| `enum`                                                  | `Rule::in()` with the declared values                                                                                                                                                                                                             |
+| `enum`                                                  | `Rule::in()` with the declared values An integer value of 1e14 or more sent as a float (`1e14`) is refused, since `Rule::in` compares text and PHP writes that float as `1.0E+14`.                                                                |
 | `const`                                                 | `Rule::in()` with the one value                                                                                                                                                                                                                   |
 | `format: date`                                          | `date_format:Y-m-d`                                                                                                                                                                                                                               |
 | `format: date-time`                                     | `regex:` carrying the RFC 3339 grammar, then `date`                                                                                                                                                                                               |
 | `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`. Laravel's `email` accepts an RFC 5322 comment (`test(comment)@example.com`) that JSON Schema's refuses, which [#167](https://github.com/Gcob/lara-spec-first/issues/167) tracks                                  |
 | `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                                                                                                                        |
 | `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                                                                                                                     |
-| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer:strict` is `is_int()` on the decoded JSON, and `integer` is PHP's `FILTER_VALIDATE_INT`: both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number                                                |
+| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `WholeNumber` and `integer` both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number                                                                                                                      |
 | `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                                                                                                                                 |
 
 **Laravel's `boolean` refuses the string `"true"`, so a boolean that arrives as text does not get it.** It accepts `1`,
@@ -766,7 +762,7 @@ one becomes is this table's.
 contract it follows, which is a rule refusing what the contract accepts. So for **a `query` parameter and a field of a
 form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body gets
 [`boolean:strict`](#a-json-body-keeps-its-types), where `true` arrives already typed
-([ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md) holds the reasoning for the split). Four things
+([ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md) holds the reasoning for the split). Four things
 come with it:
 
 - **`false` is not in the list as a PHP value.** `Rule::in` compares `(string) false`, which is the empty string, and a
@@ -832,27 +828,27 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 
 **Strings and numbers, where the same two rule names do four jobs:**
 
-| Schema                                 | Laravel rule                                                                                                           |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `minLength`, `maxLength`               | `min`, `max` beside `string`, which counts characters                                                                  |
-| `pattern`                              | `regex:`, [inside the boundary the matrix names](../openapi-support.md#strings-and-numbers)                            |
-| `minimum`, `maximum`                   | `min`, `max` beside `integer` or `numeric`                                                                             |
-| `exclusiveMinimum`, `exclusiveMaximum` | `gt:`, `lt:`, read from [the one spelling the normal form takes](../openapi-support.md#the-normal-form-a-schema-takes) |
-| `multipleOf`                           | `multiple_of:`                                                                                                         |
+| Schema                                 | Laravel rule                                                                                                                                                                 |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `minLength`, `maxLength`               | `min`, `max` beside `string`, which counts characters                                                                                                                        |
+| `pattern`                              | `regex:`, [inside the boundary the matrix names](../openapi-support.md#strings-and-numbers)                                                                                  |
+| `minimum`, `maximum`                   | `min`, `max` beside `integer` or `numeric`                                                                                                                                   |
+| `exclusiveMinimum`, `exclusiveMaximum` | `gt:`, `lt:`, read from [the one spelling the normal form takes](../openapi-support.md#the-normal-form-a-schema-takes)                                                       |
+| `multipleOf`                           | `multiple_of:` A value written `1e400` is read as `INF`, and `multiple_of` then answers `500` instead of `422` ([#198](https://github.com/Gcob/lara-spec-first/issues/198)). |
 
 **Arrays and objects, where a rule is keyed rather than named:**
 
-| Schema                           | Laravel rule                                                                                                                                                                                                                                                                                         |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `items`                          | The element rules, under `field.*`                                                                                                                                                                                                                                                                   |
-| `minItems`, `maxItems`           | `min`, `max` on the array itself                                                                                                                                                                                                                                                                     |
-| `uniqueItems: true`              | `distinct:strict` on `field.*` when the elements are a typed scalar that may not be null, in an array that is not itself an element. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through |
-| `properties`                     | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                     |
-| `additionalProperties: false`    | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                        |
-| `additionalProperties: <schema>` | Each value of an undeclared key, under `*` at the root or `field.*` nested: [a map's values](#a-maps-values-are-validated-one-by-one)                                                                                                                                                                |
-| `required` on a nested object    | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                |
-| `dependentRequired`              | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                |
-| `allOf`                          | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                |
+| Schema                           | Laravel rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `items`                          | The element rules, under `field.*`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `minItems`, `maxItems`           | `min`, `max` on the array itself                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `uniqueItems: true`              | `distinct` on `field.*` for integer or number elements, since JSON Schema compares numbers by value (`1` and `1.0` are one element, and so are `1` and `+1` in a form), and `distinct:strict` for string or boolean ones, when the elements are a typed scalar that may not be null, in an array that is not itself an element. Two numbers PHP compares as the same float count as one, past float precision (2^53 for an integer): `9007199254740993` and `9007199254740992.0`, or `0.1` and `0.10000000000000000001` in a form. The generated file does not report that limit. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through A form list of booleans keeps `distinct:strict`, which calls `"true"` and `"1"` two elements ([#197](https://github.com/Gcob/lara-spec-first/issues/197)). |
+| `properties`                     | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `additionalProperties: false`    | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `additionalProperties: <schema>` | Each value of an undeclared key, under `*` at the root or `field.*` nested: [a map's values](#a-maps-values-are-validated-one-by-one)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `required` on a nested object    | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `dependentRequired`              | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `allOf`                          | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 **A nested object is validated as an array, keyed with dots.** One rule key per property, however deep the schema goes,
 which is Laravel's own notation for nested input and what `validated()` hands back:
@@ -929,27 +925,30 @@ them, and the reading collects them with their position instead. See
 
 ### A JSON body keeps its types
 
-**A JSON body keeps its types: `integer:strict`, `numeric:strict` and `boolean:strict`.** JSON writes `42`, `1.5` and
-`true` already typed, and `"42"` is a string. Laravel's loose `integer`, `numeric` and `boolean` read what a form or a
-query string writes, so on a JSON body they would accept `"42"`, `"1.5"` and `1` for a boolean, which the contract
-refuses. The reasoning is in [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md). A field of a body
-that is JSON and nothing else gets the `:strict` form of its rule, at every level (`a.b`, `items.*`):
+**A JSON body keeps its types: `numeric:strict` and `boolean:strict`, and an integer is the package's `WholeNumber`.**
+JSON writes `42`, `1.5` and `true` already typed, and `"42"` is a string. Laravel's loose `integer`, `numeric` and
+`boolean` read what a form or a query string writes, so on a JSON body they would accept `"42"`, `"1.5"` and `1` for a
+boolean, which the contract refuses. The reasoning is in
+[ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md). A field of a body that is JSON and nothing else
+gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every level (`a.b`, `items.*`):
 
-- **`integer:strict` is `is_int()` on the decoded value.** `"42"`, `true` and `1.0` are refused. `min`, `max`, `gt`,
-  `lt` and `multiple_of` beside it still compare as numbers, since Laravel finds an integer or a number by the rule's
-  name, whatever follows the colon.
+- **An integer is `WholeNumber` beside `numeric`.** `WholeNumber` passes an `int`, and a `float` whose value is exactly
+  whole (`1.0`, `1e2`, `1e14`), which JSON Schema 2020-12 reads as an integer. It refuses everything else: a fraction
+  (`1.5`), a float a hair off a whole number (`2.9999999999999996`, which JavaScript gives for `0.3 / 0.1`), a numeric
+  string (`"42"`), a boolean, and a float outside the range of a 64-bit integer, which `dto()` could not cast. It
+  compares the float itself: Laravel's `integer:strict` refuses `1.0`, and its loose `integer` reads a float as text
+  with 14 significant digits, so `2.9999999999999996` passes it and `dto()` makes it `2`. `numeric` goes beside it
+  because Laravel finds the number `min`, `max`, `gt`, `lt` and `multiple_of` compare by the name of a rule, and an
+  object has none. The first message is `WholeNumber`'s, "must be an integer", and a value that is no number at all
+  (`true`, `false`, `"abc"`, `[]`) also gets `numeric`'s, "must be a number". `validated()` keeps the float as sent
+  (`31.0`), as it keeps a query parameter's text, and `dto()` casts it to an `int`. A generated request imports
+  `Gcob\LaraSpecFirst\Validation\WholeNumber`.
 - **`numeric:strict` refuses a string**, `"1.5"` and `"2"` alike. An integer is a number, so `2` passes.
 - **`boolean:strict` accepts `true` and `false` and nothing else**: not `1`, `0`, `"1"` or `"true"`.
-- **A whole number written as a float is refused for an integer (`1.0`, `1e2`), and that is stricter than JSON Schema
-  2020-12**, where `1.0` is an integer. `integer:strict` is `is_int()` on the decoded value, which refuses a float.
-  Laravel's `integer` beside `numeric:strict` would accept it, and the package refuses it today: the generated file says
-  so in one finding per request that has an integer field, and a request with none says nothing.
-  [#173](https://github.com/Gcob/lara-spec-first/issues/173) tracks the choice, and
-  [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md) holds the rule.
 - **A finding that says the request is stricter is not a gap.** It is in the Findings block like any other, but
   `spec:build` does not count it in its "read a constraint they do not enforce" warning, and the file keeps its "Nothing
-  was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly
-  every JSON request. The four are this one, `mimetypes` refusing a file named like PHP, a recursive schema refused
+  was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on a request
+  that enforces everything it read. The three are `mimetypes` refusing a file named like PHP, a recursive schema refused
   below its depth, and a body with `properties` and no `type` refusing a JSON root that is not an object.
 - **A finding that loses no constraint is not a gap either,** and is left out of the warning the same way. Two kinds
   exist: a body key of a map that is also the name of a `query` parameter (read from the query string, so the body's is
@@ -960,12 +959,16 @@ that is JSON and nothing else gets the `:strict` form of its rule, at every leve
   there, where it was a 200: the contract declares no form, so that client is off-contract, and `rules()` is one array.
 - **A body that is JSON and a form at once keeps the loose rules, and a JSON client gets through what they accept.** One
   rule set cannot read the text a form carries and still refuse a string in JSON, so an integer there accepts `"42"` and
-  `true`, a number accepts `"1.5"`, and a boolean accepts `"1"` and `1`, all of which the contract refuses. The
-  generated file says so in one finding per field, and `spec:doctor` stays silent on it, like the other prose-only
-  cases. [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them.
-- **`integer:strict` needs Laravel 12.22.** Before it the parameter is silently ignored, and an integer would accept
-  `"42"`. `numeric:strict` and `boolean:strict` exist from 12.21, so `integer:strict` is the rule that sets the floor,
-  and the reason the package requires `^12.22 || ^13.0`.
+  `true`, a number accepts `"1.5"`, and a boolean accepts `"1"` and `1`, all of which the contract refuses. An integer
+  there also reads a float as text with 14 significant digits: a JSON client's `2.9999999999999996` passes as `3` and
+  `dto()` casts it to `2`, and a whole float of 1e14 or more is refused, though the contract accepts it. The generated
+  file says so in one finding per field, and `spec:doctor` stays silent on it, like the other prose-only cases.
+  [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them, and
+  [#196](https://github.com/Gcob/lara-spec-first/issues/196) tracks the integer's two gaps.
+- **The package requires `^12.22 || ^13.0`, the constraint `0.2.0` shipped.** No generated rule needs 12.22 any more:
+  the `strict` parameter exists from 12.21 on `numeric` and `boolean`, and from 12.22 on `integer`, which no generated
+  rule uses now. CI tests Laravel 12 from 12.55, the lowest its testbench allows, so nothing below it is tested, and
+  [#188](https://github.com/Gcob/lara-spec-first/issues/188) settles the floor.
 
 ### A map's values are validated one by one
 
@@ -1011,16 +1014,16 @@ additionalProperties: { type: integer }
 private const SPARED_KEYS = ['locale'];
 
 'locale' => ['sometimes', 'string', 'max:5'],
-'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),
+'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], [new WholeNumber, 'numeric']),
 ```
 
 `Gcob\LaraSpecFirst\Validation\UndeclaredKeys` is public API, imported by the generated request, so its name is frozen
 with the rest of what a generated file names, and so are its constructor and `below()`, which the file calls.
-`{"locale": "toolong"}` answers on `locale` alone, with `max:5`'s message and never `integer`'s, and `{"views": "x"}`
-answers on `views`. The declared key keeps exactly its own rules whatever the order of the array. Every rule key under
-the wildcard is guarded the same way (`meta.*`, and `meta.*.n` for an object value), so a value's own children never
-reach a declared key either, and a value that is a map itself adds its own names to the guard of the keys below it. A
-map with no declared property keeps the plain wildcard above.
+`{"locale": "toolong"}` answers on `locale` alone, with `max:5`'s message and never `WholeNumber`'s, and
+`{"views": "x"}` answers on `views`. The declared key keeps exactly its own rules whatever the order of the array. Every
+rule key under the wildcard is guarded the same way (`meta.*`, and `meta.*.n` for an object value), so a value's own
+children never reach a declared key either, and a value that is a map itself adds its own names to the guard of the keys
+below it. A map with no declared property keeps the plain wildcard above.
 
 **The guard reads the key's names and never the data.** Laravel's `Rule::forEach` does the same job and takes 22 seconds
 for a map of 10,000 values, since it hands every key the whole data to undot. `UndeclaredKeys` takes 0.3 seconds for the
@@ -1079,7 +1082,7 @@ requestBody:
 private const QUERY_KEYS = ['dryRun'];
 private const SPARED_KEYS = [...self::QUERY_KEYS];
 
-'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),
+'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], [new WholeNumber, 'numeric']),
 'dryRun' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],
 ```
 

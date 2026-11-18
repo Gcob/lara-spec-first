@@ -85,6 +85,14 @@ it('builds a nested list of lists with its own casts', function (): void {
     expect($dto->matrix)->toBe([[1, 2], [3]]);
 });
 
+// A JSON body hands `validated()` a whole number written as a float as it was sent, and the cast makes it the integer it
+// is: `intval()` of a list element, and `(int)` of a field.
+it('casts the whole floats a JSON body delivers for a list of lists to integers', function (): void {
+    $dto = NewUserInputDto::from(multipartPayload(['matrix' => [[1.0, 2e0], [3.0]]]));
+
+    expect($dto->matrix)->toBe([[1, 2], [3]]);
+});
+
 // A `null` element of a list of nullable lists passes the rules, so the closure that
 // converts each element must accept it: `array $item` made it a 500.
 it('lets a nullable element of a list of lists be null', function (): void {
