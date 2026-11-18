@@ -69,13 +69,44 @@ Two alternatives were considered and dropped:
 **`routeAction` declares one parameter per path parameter, `string`, named the way the specification names it.**
 `GET /users/{id}` generates `routeAction(string $id): UserDto` when its `200` is a `User`.
 
-**The return type is what the operation's success statuses carry.** A DTO for each success status that has one, `array`
-for a list (a `@return list<UserDto>` says of what), `null` where the body may be `null`, and the union of them when
-several statuses have a DTO. Several success statuses add `JsonResponse`, which is how a controller sends the one it
-picked. A contract that declares an answer that is not a JSON body (a `204`, a `text/csv` body, a redirect) adds
-Symfony's `Response`, which `response()->json()`, `noContent()` and `redirect()` all build. An operation with no DTO on
-any success status stays `mixed`. **An error status is never part of the type:** throw it (`abort()` or an exception),
-and the DTOs of error responses are for the exception handler.
+**The return type is what the operation's success statuses carry.** A success status is any `2xx` or `2XX` one, and
+`default` only when no `2xx` is declared. Each status with a DTO adds a member, in contract order and each once: the DTO
+itself, `array` for a list (a `@return list<UserDto>` says of what), and `null` last where the body may be `null`
+(`?UserDto` when it is the only other member). Two response classes can join the type, and each has one reason:
+
+- **`JsonResponse` joins when the operation declares several success statuses.** `200: User` with `202: Job` is
+  `UserDto|JobDto|JsonResponse`, and `200: User` with `201: User` is `UserDto|JsonResponse`: which status a request gets
+  is the controller's choice, and a response object carrying its own status is how it sends the one it picked. A second
+  status counts even when it has no DTO of its own, a JSON body the build could not type for one.
+- **Symfony's `Response` joins when the contract declares an answer that is not a JSON body**: a success status with no
+  content (`204`), with only another media type (`text/csv`) or with one beside the JSON one, or a `3xx` or `3XX` beside
+  a DTO status. `Response` is what `noContent()` and `redirect()` build, and it admits a `JsonResponse` too, so the two
+  never appear together: `200: User` with a `204` is `UserDto|Response`.
+- **`mixed` stays when no success status has a DTO**: a lone `204`, a `text/csv` body, two JSON schemas under one
+  status, a schema the build could not type. The generated file says which, beside the sentence about each status.
+
+**An error status is never part of the type, and it leaves a controller as an exception.** `abort(404)`, a thrown
+exception or a `ValidationException` is how Laravel sends one, and the handler turns it into the response. The DTO of a
+`4xx` or `5xx` response is for that handler, not for `routeAction`.
+[ADR 0017](../project/decisions/0017-return-the-response-dto-from-routeaction.md) holds the reasoning.
+
+**The generated parent sends the status, so the child never has to.** `routeAction` returns a DTO, and the status number
+is the contract's: `callAction()` is what Laravel's dispatcher calls when a controller has it, and the generated parent
+defines one for every operation that declares a success status. It hands what `routeAction` returned, and one row per
+success status, to the package's `SuccessStatus`. A child that overrides `routeAction` and never calls `parent::` gets
+the status all the same, and `201` needs no `response()->json($dto, 201)`.
+
+- **A status applies to a DTO of this operation, an array, a scalar and `null`.** With one success status, that is the
+  status of every such value. With several, a DTO answers the first status whose body is that class, in contract order;
+  an array answers the first list status whose items are the class of the first item (an empty array takes the first
+  list status); `null` answers the first status whose body may be `null`, and is sent as JSON `null`, never `{}`. Where
+  none matches, Laravel's own answer stands.
+- **Everything else goes to Laravel untouched.** A `Response` of any kind (`response()->json($x, 202)`, `noContent()`, a
+  redirect), a `Responsable`, a PSR-7 response, a `Model` and a DTO of another operation keep their own status. That is
+  how a child sends the status it picked, and why a recently created `Model` still answers `201`.
+- **A `2XX` range or a lone `default` sends `200`,** the one number the parent can choose for them.
+- **`SuccessStatus` is not public API, and its name is frozen,** because a generated file names it. A child that defines
+  its own `callAction()` replaces all of this.
 
 **PHP is what makes this a decision rather than a detail.** An override may not add a required parameter, so a parent
 declaring none would forbid every custom controller from ever seeing `{id}`, and a developer could only reach it through

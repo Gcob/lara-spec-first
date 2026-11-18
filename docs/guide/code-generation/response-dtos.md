@@ -138,7 +138,8 @@ by the keyword and not twice. Both exit `2`.
 **`routeAction` returns the DTO.** The controller declares the DTO of its success statuses as the return type, and its
 findings say which ones and why, beside the sentences about each status. An operation with no DTO on a success status
 stays `mixed`. [The signature is the contract](../controllers.md#the-signature-is-the-contract) says how the type is
-built, and that an error status is thrown, never returned.
+built, that an error status is thrown, never returned, and that the generated parent sends the status the contract
+declares. [ADR 0017](../../project/decisions/0017-return-the-response-dto-from-routeaction.md) holds the reasoning.
 
 **What the DTO is for is the contract reaching the code that reads a response.** A response property the contract
 removes is a changed constructor, so code that reads it fails static analysis, and a test runs PHPStan over such a
