@@ -16,9 +16,10 @@ declare(strict_types=1);
  *     they are. A lot card is never listed: nobody works on one directly;
  *   - Next: the open `Todo` cards, by `Order` and then by number, those with no
  *     `Order` last;
- *   - Release: the open release milestone (`0.x.y`) with the lowest version, how many
- *     of its issues are closed, and its open cards by status. `1.0` is the V1 bar, not
- *     a release, so it never shows here;
+ *   - Release: the open release milestone with the lowest version (`1.0` included: it
+ *     is the release of 1.0 itself), how many of its issues are closed, and its open
+ *     cards by status. The `v1` label marks what ships by 1.0, whatever release a card
+ *     gets on the way; no rule reads it;
  *   - Maintainer's turn: the open cards that carry the waiting label, with the question
  *     posted on each;
  *   - Drift: every place where the board, the issues, the pull requests, git and CI
@@ -231,7 +232,7 @@ function build_report(string $root): array
     $release = read_latest_release($root, $upstream);
 
     $questions = open_questions($comments);
-    $findings = find_drift($cards, $questions, $pullRequests, $merged, $milestones, $main, $branches, $release);
+    $findings = find_drift($cards, $questions, $pullRequests, $merged, $main, $branches, $release);
     $sections = [
         sprintf('%s · main %s · CI %s · drift %d', substr(REPOSITORY, (int) strpos(REPOSITORY, '/') + 1), $main['sha'], $main['ci'], count($findings)),
         section_now($cards, $pullRequests, $branches),
@@ -610,7 +611,7 @@ function read_pull_requests(string $root): array
 /**
  * Every merged pull request, read in full, with the cards each served.
  *
- * @return list<array{number: int, serves: list<int>}>
+ * @return list<array{number: int, serves: list<int>, at: int|false}>
  */
 function read_merged_pull_requests(string $root): array
 {
@@ -624,6 +625,7 @@ function read_merged_pull_requests(string $root): array
         $merged[] = [
             'number' => $pr['number'],
             'serves' => served_cards($pr['headRefName'], nested_nodes($pr['closingIssuesReferences'] ?? null, 'closing references', 'pull request #'.$pr['number'])),
+            'at' => is_string($pr['mergedAt'] ?? null) ? strtotime($pr['mergedAt']) : false,
         ];
     }
 
@@ -863,18 +865,17 @@ function describe_checks(array $checks): string
  * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  array<int, string>  $questions
  * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
- * @param  list<array{number: int, serves: list<int>}>  $merged
- * @param  list<array{title: string, open: bool}>  $milestones
+ * @param  list<array{number: int, serves: list<int>, at: int|false}>  $merged
  * @param  array{sha: string, ci: string, failed: list<string>}  $main
  * @param  array<string, int>  $branches
  * @param  array{name: string, at: int}|null  $release
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
  */
-function find_drift(array $cards, array $questions, array $pullRequests, array $merged, array $milestones, array $main, array $branches, ?array $release): array
+function find_drift(array $cards, array $questions, array $pullRequests, array $merged, array $main, array $branches, ?array $release): array
 {
     $findings = [
         ...drift_main($main),
-        ...drift_board($cards, $milestones, $release),
+        ...drift_board($cards, $merged, $release),
         ...drift_pull_requests($cards, $pullRequests, $merged),
         ...drift_branches($cards, $pullRequests, $branches),
         ...drift_queue($cards),
@@ -917,9 +918,12 @@ function drift_main(array $main): array
     return [finding('C1', null, null, 'CI on main failed: '.implode(', ', $main['failed']).'. Repair main before anything else.')];
 }
 
+/**
+ * A release milestone is titled `<major>.<minor>` or `<major>.<minor>.<patch>`, such as `0.3.0` or `1.0`.
+ */
 function is_release_milestone(string $title): bool
 {
-    return preg_match('/^0\.\d+\.\d+$/', $title) === 1;
+    return preg_match('/^\d+\.\d+(\.\d+)?$/', $title) === 1;
 }
 
 /**
@@ -943,29 +947,50 @@ function home_of_closed(array $card): array
 }
 
 /**
- * B1 to B6: the board against the issues.
+ * Whether a card was done before the latest release was tagged, so that release holds it. The card is done when the
+ * pull request that closed it merged: the last merged pull request that serves it and merged no later than the card
+ * closed. With no such pull request (closed by hand), it is done when it closed. B5 and B6 read the same date, which
+ * keeps them from sending one card back and forth. A release is dated by its tagged commit, so a pull request merged at
+ * that very second is the tagged commit itself and is in the release, while a card closed at that second is not.
  *
- * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
- * @param  list<array{title: string, open: bool}>  $milestones
- * @param  array{name: string, at: int}|null  $release  the latest release, which a card closed before it shipped in
- * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ * @param  array{number: int, closedAt: string|null}  $card
+ * @param  list<array{number: int, serves: list<int>, at: int|false}>  $merged
+ * @param  array{name: string, at: int}|null  $release
  */
-function drift_board(array $cards, array $milestones, ?array $release): array
+function done_before_release(array $card, array $merged, ?array $release): bool
 {
-    $releaseIsOpen = [];
+    if ($release === null || $card['closedAt'] === null) {
+        return false;
+    }
 
-    foreach ($milestones as $milestone) {
-        if (is_release_milestone($milestone['title'])) {
-            $releaseIsOpen[$milestone['title']] = $milestone['open'];
+    $closed = strtotime($card['closedAt']);
+    $merges = [];
+
+    foreach ($merged as $pr) {
+        if ($pr['at'] !== false && $pr['at'] <= $closed && in_array($card['number'], $pr['serves'], true)) {
+            $merges[] = $pr['at'];
         }
     }
 
+    return $merges === [] ? $closed < $release['at'] : max($merges) <= $release['at'];
+}
+
+/**
+ * B1 to B6: the board against the issues. B5 and B6 read the same date: a card done before the latest release was
+ * tagged shipped in it, and a card done at or after that date has not shipped yet.
+ *
+ * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
+ * @param  list<array{number: int, serves: list<int>, at: int|false}>  $merged
+ * @param  array{name: string, at: int}|null  $release  the latest release, which a card done before it shipped in
+ * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
+ */
+function drift_board(array $cards, array $merged, ?array $release): array
+{
     $findings = [];
 
     foreach ($cards as $card) {
         $number = $card['number'];
         $status = $card['status'] ?? 'No status';
-        $opening = $card['milestone'] !== null ? ($releaseIsOpen[$card['milestone']] ?? null) : null;
 
         if (! $card['onBoard']) {
             // A closed issue that never reached the board is old history, not drift.
@@ -990,11 +1015,11 @@ function drift_board(array $cards, array $milestones, ?array $release): array
             $findings[] = finding('B3', $number, null, 'Closed, but '.$status.'. Move it to '.$home['status'].'.');
         } elseif ($home['status'] === STATUS_DONE && $status === STATUS_READY_TO_PUBLISH) {
             $findings[] = finding('B4', $number, null, 'Ready to publish, but '.$home['why'].'. Move it to Done.');
-        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && $release !== null && $card['closedAt'] !== null && strtotime($card['closedAt']) < $release['at']) {
-            // Whatever its milestone: a card on `1.0` waits for the next release like any other, and shipped in it.
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && done_before_release($card, $merged, $release)) {
+            // Whatever its milestone, `1.0` included: a card waits for the next release like any other, and shipped in it.
             $findings[] = finding('B5', $number, null, 'Ready to publish, but it was released in '.$release['name'].'. Move it to Done.');
-        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && $opening === true) {
-            $findings[] = finding('B6', $number, null, 'Done, but its release '.$card['milestone'].' has not shipped. Move it back to Ready to publish.');
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && ! done_before_release($card, $merged, $release)) {
+            $findings[] = finding('B6', $number, null, 'Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.');
         }
     }
 
@@ -1220,8 +1245,8 @@ function drift_milestones(array $cards): array
     foreach ($cards as $card) {
         $number = $card['number'];
 
-        // No milestone means not planned: `1.0` counts as one, and a lot card in `Todo` is an opened lot.
-        if ($card['onBoard'] && $card['milestone'] === null && in_array($card['status'], [STATUS_TODO, STATUS_IN_PROGRESS, STATUS_IN_REVIEW, STATUS_READY_TO_PUBLISH], true)) {
+        // No milestone means not planned: any milestone counts, a label does not, and a lot card ships nothing.
+        if ($card['onBoard'] && $card['kind'] !== 'Lot' && $card['milestone'] === null && in_array($card['status'], [STATUS_TODO, STATUS_IN_PROGRESS, STATUS_IN_REVIEW, STATUS_READY_TO_PUBLISH], true)) {
             $findings[] = finding('M1', $number, null, $card['status'].' with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.');
         }
 
