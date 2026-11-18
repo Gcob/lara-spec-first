@@ -1436,6 +1436,20 @@ it('spares the name a form delivers a declared name as, and says an undeclared k
         ->and($set->leavesUnenforced())->toBeTrue();
 });
 
+// A name a form never delivers (`[x]`) is sent by a JSON client only, and as written: spared as it is in a body that is
+// JSON as well, and needing no sparing in a body that is only a form.
+it('spares a declared name no form delivers by the name a JSON client sends it under', function (array $media, array $spared): void {
+    assert(array_is_list($media));
+    $map = new Schema(types: [SchemaType::Object], properties: ['[x]' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $map)));
+
+    expect(array_values($set->undeclaredKeys)[0] ?? [])->toBe($spared === [] ? [] : [0 => $spared])
+        ->and($set->unenforced)->toBe([]);
+})->with([
+    'JSON and a form' => [['application/json', 'application/x-www-form-urlencoded'], ['[x]']],
+    'JSON only' => [['application/json'], ['[x]']],
+]);
+
 // An undeclared key PHP rewrites reaches the value schema under its new name: no constraint is lost, so it is
 // information. A name that arrives under none needs no sparing and no fallback.
 it('says an undeclared key a form rewrites is judged under its new name beside declared properties', function (array $media, int $informs): void {

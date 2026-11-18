@@ -564,22 +564,23 @@ final readonly class RuleSetBuilder
 
             $path = self::deliveredPath($name);
 
-            if ($path === null) {
+            // A form never delivers it, so only a JSON client sends the name, and as written.
+            if ($walk->mixedBody && ($path === null || $path === [$name])) {
+                $spared[] = $name;
+
                 continue;
             }
 
             if ($walk->mixedBody) {
-                if ($path !== [$name]) {
-                    return self::cannotSpare($walk, $label, sprintf(
-                        '`%1$s` arrives as `%1$s` from a JSON client and as `%2$s` from a form client, and one rule set '
-                            .'can\'t spare both, so the values of this body\'s other keys are not validated.',
-                        $name,
-                        self::pathKey($path),
-                    ));
-                }
+                return self::cannotSpare($walk, $label, sprintf(
+                    '`%1$s` arrives as `%1$s` from a JSON client and as `%2$s` from a form client, and one rule set '
+                        .'can\'t spare both, so the values of this body\'s other keys are not validated.',
+                    $name,
+                    self::pathKey($path),
+                ));
+            }
 
-                $spared[] = $name;
-
+            if ($path === null) {
                 continue;
             }
 
