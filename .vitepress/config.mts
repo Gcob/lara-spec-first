@@ -154,8 +154,9 @@ export default defineConfig({
     srcDir: '.',
 
     // Everything the site must not treat as a page. Dependencies and build output,
-    // the Workbench application, and the local-only directories that never leave a
-    // machine.
+    // the Workbench application, the local-only directories that never leave a
+    // machine, and the demo, whose READMEs are frozen with their minor release and
+    // so sit outside the documentation set.
     srcExclude: [
         'vendor/**',
         'node_modules/**',
@@ -165,6 +166,7 @@ export default defineConfig({
         'planning/**',
         'worktrees/**',
         'tests/**',
+        'demo/**',
         '.claude/**',
         '.github/**',
         'CLAUDE.local.md',

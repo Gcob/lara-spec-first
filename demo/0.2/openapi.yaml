@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: Events and RSVPs
+  version: 0.2.0
+  description: >-
+    A small events API: organizers create events, members RSVP. This is the
+    contract the demo for the 0.2 release runs against.
+paths:
+  /events:
+    post:
+      operationId: createEvent
+      x-controller: App\Http\Controllers\CreateEventController
+      tags: [Events]
+      summary: Create an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, city, starts_at, capacity]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                city:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                starts_at:
+                  type: string
+                  format: date-time
+                capacity:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: The event was created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '422':
+          description: The body does not match the contract.
+  /events/{event}:
+    get:
+      operationId: getEvent
+      x-controller: App\Http\Controllers\GetEventController
+      tags: [Events]
+      summary: Read one event
+      parameters:
+        - name: event
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The event.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: No such event.
+components:
+  schemas:
+    Event:
+      type: object
+      required: [id, title, city, starts_at, capacity]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        city:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+        capacity:
+          type: integer

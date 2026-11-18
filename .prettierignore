@@ -1,0 +1,5 @@
+# Prettier skips what it lists, even when a file is named on the command line.
+#
+# Each minor's demo is frozen once the minor is released, so a Prettier upgrade
+# must not edit it. `demo/README.md` is not frozen and stays formatted.
+demo/*/

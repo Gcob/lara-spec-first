@@ -69,7 +69,7 @@ const TYPED_TAGS = ['param', 'return', 'throws', 'var'];
 const MIN_DESCRIPTION_KEY = 'docblock_min_description_width';
 
 /** Directories that are never read, relative to the root. */
-const SKIPPED_DIRECTORIES = ['vendor', 'node_modules', 'build', 'worktrees', 'tests/Fixtures', 'workbench/app/Http/Generated'];
+const SKIPPED_DIRECTORIES = ['vendor', 'node_modules', 'build', 'worktrees', 'tests/Fixtures', 'workbench/app/Http/Generated', 'demo'];
 
 /**
  * @param  list<string>  $argv
