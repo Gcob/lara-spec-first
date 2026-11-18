@@ -22,6 +22,7 @@ use Gcob\LaraSpecFirst\Doctor\ReportFormatter;
 use Gcob\LaraSpecFirst\Doctor\RouteOutcome;
 use Gcob\LaraSpecFirst\Doctor\SectionNote;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
+use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
@@ -92,18 +93,21 @@ final class DoctorCommand extends Command
         // waiting for a date to arrive.
         $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 
+        // Before the findings that read the responses, so they take the plan the build would make rather than plan the
+        // responses a second time. Their findings still sit where the request's did, so the order of the report holds.
+        $routing = $this->routingOutcome($config, $outcome, $specPath);
+
         $findings = [
             ...DocumentValidityCheck::check($outcome),
             ...ReferencesCheck::check($outcome),
             ...SupportMatrixCheck::rejected($outcome),
             ...SupportMatrixCheck::missingOperationId($outcome->operations),
-            ...SupportMatrixCheck::requestSchemas($outcome->operations),
+            ...SupportMatrixCheck::schemas($outcome->operations, $routing['plan']?->responses),
             ...SupportMatrixCheck::deferred($outcome->document),
             ...SecurityCheck::check($outcome->operations),
             ...LifecycleCheck::check($outcome->operations, $now),
         ];
 
-        $routing = $this->routingOutcome($config, $outcome, $specPath);
         $findings = [...$findings, ...$routing['findings']];
 
         $findings = [...$findings, ...$this->installation($config)];
@@ -208,7 +212,12 @@ final class DoctorCommand extends Command
      * Said rather than silently dropped, per {@see DiagnosticReport::$notes}: a section that prints `clean` because it
      * never ran is the same defect in the other direction.
      *
-     * @return array{routes: list<RouteOutcome>, findings: list<Finding>, notes: array<string, SectionNote>}
+     * **The plan is handed back for the response keywords.** It is null when the planner threw (a request refusal,
+     * which Routing outcome reports) and when `generated.namespace` or the routes path was refused: the response half
+     * of `Support findings` is then left out, as the `Partial` half of a request is when its rule set cannot be built,
+     * rather than guessed.
+     *
+     * @return array{routes: list<RouteOutcome>, findings: list<Finding>, notes: array<string, SectionNote>, plan: ?BuildPlan}
      */
     private function routingOutcome(Repository $config, ReadOutcome $read, string $specPath): array
     {
@@ -218,6 +227,7 @@ final class DoctorCommand extends Command
             $locator = GeneratedRoutesLocator::fromConfiguration($this->laravel->basePath(), $configuredPath);
         } catch (SpecException $refusal) {
             return [
+                'plan' => null,
                 'routes' => [],
                 'findings' => [new Finding(FindingClass::PackageLimit, 'Routing outcome', null, '', $refusal->getMessage())],
                 'notes' => [
@@ -233,6 +243,7 @@ final class DoctorCommand extends Command
 
         if (! $read->isClean()) {
             return [
+                'plan' => $outcome->plan,
                 'routes' => $outcome->routes,
                 'findings' => $outcome->findings,
                 'notes' => [
@@ -252,6 +263,7 @@ final class DoctorCommand extends Command
         $driftFindings = DriftCheck::check($outcome->plan, dirname($locator->path()));
 
         return [
+            'plan' => $outcome->plan,
             'routes' => $outcome->routes,
             'findings' => [...$outcome->findings, ...$driftFindings],
             'notes' => [],

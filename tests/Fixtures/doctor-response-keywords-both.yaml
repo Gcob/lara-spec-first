@@ -1,0 +1,31 @@
+# `oneOf` in the request body and in the `200`: one keyword, written in both directions of one operation.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payment:
+                  oneOf:
+                    - { type: object }
+                    - { type: string }
+      responses:
+        '200':
+          description: The order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    oneOf:
+                      - { type: object }
+                      - { type: string }

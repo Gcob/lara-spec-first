@@ -123,8 +123,9 @@ class name `NewUserDto`, so neither has it. Rename one of them."
 A property whose schema has the fault is `mixed` (`Optional|mixed` when optional) in the DTO that holds it, and that
 DTO's findings carry the same reason after "`address` is `mixed`:". Its other properties keep their types. **The value
 that cannot be typed is the one that is `mixed`**, so a list whose items disagree is `list<mixed>`, and a map whose
-values disagree is a map of `mixed`. `spec:build`, `spec:doctor` and `spec:make` go on as `0.2.0` did, which read no
-response: the fix is in the contract, and the generated file says where.
+values disagree is a map of `mixed`. `spec:build`, `spec:doctor` and `spec:make` go on for such a schema as `0.2.0` did,
+and the doctor says nothing about it: the fix is in the contract, and the generated file says where. What the doctor
+does name is a keyword a response DTO cannot type, such as a `oneOf`, once per operation, and it exits `2` on one.
 
 **`routeAction` still returns `mixed`.** The controller's findings say so beside those sentences: the types named there
 are what a response is, and what `routeAction` is typed to return is a later change. Nothing yet makes a controller

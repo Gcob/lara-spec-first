@@ -133,6 +133,7 @@ it('exits as 0.2.0 did on a response that cannot be typed', function (string $fi
     'an inline schema whose class name a component claims' => ['response-inline-meets-component.yaml'],
     'two components that claim one class name' => ['response-two-components-one-name.yaml'],
     'a class name an input DTO takes' => ['response-name-taken-by-input.yaml'],
+    'every fault in one document' => ['response-untypeable.yaml'],
 ]);
 
 it('reports every fault the reading pipeline collected, not only the first', function (): void {
@@ -441,10 +442,10 @@ it('reports a malformed encoding as a document fault', function (): void {
         ->and($faults[1]['message'])->toContain('`meta.doc`, which the body does not declare');
 });
 
-// Acceptance 2: a keyword a response writes is not named, and the responses are
-// still the one Deferred count, which does not gate. The line says response DTOs
-// are generated and which card will name the keywords.
-it('still counts responses without gating the exit code', function (): void {
+// A keyword a response writes that its DTO cannot type is named like one in a request, and gates the exit code the same
+// way. What sits beside it on `status` (`default`, `deprecated`) changes nothing a DTO holds, so the one finding is
+// `oneOf`, at the position of the keyword. A response is no longer a Deferred count.
+it('names a keyword written only in a response and exits 2', function (): void {
     [$exit, $report] = doctorJson('doctor-ignored-keyword-in-response.yaml');
 
     $support = array_values(array_filter(
@@ -452,12 +453,33 @@ it('still counts responses without gating the exit code', function (): void {
         static fn (array $finding): bool => $finding['section'] === 'Support findings',
     ));
 
-    expect($exit)->toBe(0)
+    expect($exit)->toBe(2)
         ->and($support)->toHaveCount(1)
-        ->and($support[0]['level'])->toBe('deferred')
-        ->and($support[0]['message'])->toContain('1 response declaration(s) found')
-        ->and($support[0]['message'])->toContain('Response DTOs are generated from them')
-        ->and($support[0]['message'])->toContain('https://github.com/Gcob/lara-spec-first/issues/164');
+        ->and($support[0]['level'])->toBe('ignored')
+        ->and($support[0]['class'])->toBe('package_limit')
+        ->and($support[0]['pointer'])->toBe('#/paths/~1orders~1{id}/get/responses/200/content/application~1json/schema/properties/payment/oneOf')
+        ->and($support[0]['message'])->toContain('get /orders/{id} writes `oneOf`')
+        ->and($support[0]['message'])->not->toContain('`default`')
+        ->and(array_column($report['findings'], 'level'))->not->toContain('deferred');
+});
+
+it('names a 3.1 keyword written only in a response, through the command', function (): void {
+    [$exit, $report] = doctorJson('doctor-response-keywords-3.1.yaml');
+
+    expect($exit)->toBe(2)
+        ->and(array_column(doctorSupportFindings($report, 'ignored'), 'pointer'))->toBe([
+            '#/paths/~1things/get/responses/200/content/application~1json/schema/properties/pair/prefixItems',
+            '#/paths/~1things/get/responses/200/content/application~1json/schema/properties/rest/unevaluatedItems',
+            '#/paths/~1things/get/responses/200/content/application~1json/schema/properties/card/dependentSchemas',
+        ]);
+});
+
+// The response DTOs of this contract hold every type it writes, so there is nothing to name.
+it('still exits zero on a contract whose responses the DTOs type in full', function (): void {
+    [$exit, $report] = doctorJson('response-dto-golden.yaml');
+
+    expect($exit)->toBe(0)
+        ->and(array_filter($report['findings'], static fn (array $finding): bool => $finding['section'] === 'Support findings'))->toBe([]);
 });
 
 // The rule set cannot be built for an operation whose body and query name one
@@ -472,6 +494,31 @@ it('still names an ignored keyword on an operation the build plan refuses', func
         ->and($ignored[0]['pointer'])->toBe(DOCTOR_BODY_AT.'/properties/page/default')
         ->and(implode("\n", array_column($report['findings'], 'message')))->toContain('page');
 });
+
+// The response keywords come from the build plan, which does not exist when the planner refuses the document or when the
+// generated tree's settings are refused: they are left out, the request's are still named, and Routing outcome says why.
+it('leaves out the response keywords when there is no build plan', function (Closure $arrange, string $routing): void {
+    $arrange();
+
+    [$exit, $report] = doctorJson('doctor-response-keywords-with-conflicting-input.yaml');
+
+    $keywords = array_column(doctorSupportFindings($report, 'ignored'), 'pointer');
+    $routingFindings = array_values(array_filter(
+        $report['findings'],
+        static fn (array $finding): bool => $finding['section'] === 'Routing outcome',
+    ));
+
+    expect($exit)->toBe(2)
+        ->and($keywords)->toBe([DOCTOR_BODY_AT.'/properties/page/default'])
+        ->and($routingFindings)->toHaveCount(1)
+        ->and($routingFindings[0]['message'])->toContain($routing);
+})->with([
+    'a planner that refuses the document' => [static fn () => null, 'page'],
+    'a generated namespace that is refused' => [
+        static fn () => config()->set('lara-spec-first.generated.namespace', ''),
+        'generated.namespace',
+    ],
+]);
 
 // --- A document the pipeline could not read is not drift ---
 

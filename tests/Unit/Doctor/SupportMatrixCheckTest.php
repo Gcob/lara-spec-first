@@ -16,6 +16,7 @@ use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
 use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
+use Gcob\LaraSpecFirst\Generation\ResponseDtoPlanner;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
@@ -165,7 +166,9 @@ it('makes an unread parameter gate the exit code', function (): void {
 
 // `requestBody` left the Deferred lot when a rule set was first built from one.
 // What a particular body states and this package does not enforce is named in
-// the generated request's own findings, per field, rather than counted here.
+// the generated request's own findings, per field, rather than counted here. A
+// response left the lot after it: the header and cookie parameters are the one
+// count there is.
 it('no longer counts a request body as deferred', function (): void {
     $document = supportMatrixDocumentWithRawPaths([
         '/users' => [
@@ -176,12 +179,7 @@ it('no longer counts a request body as deferred', function (): void {
         ],
     ]);
 
-    $findings = SupportMatrixCheck::deferred($document);
-    $messages = implode('', array_map(static fn ($finding): string => $finding->message, $findings));
-
-    expect($findings)->toHaveCount(1)
-        ->and($messages)->not->toContain('request body')
-        ->and($messages)->toContain('1 response declaration(s)');
+    expect(SupportMatrixCheck::deferred($document))->toBe([]);
 });
 
 it('does not count a path parameter as an unread one', function (): void {
@@ -227,11 +225,7 @@ it('survives a parameters node that is not a list', function (): void {
         ]],
     ]);
 
-    $findings = SupportMatrixCheck::deferred($document);
-
-    expect(array_filter($findings, static fn ($f): bool => str_contains($f->message, 'header or cookie parameter')))->toBe([])
-        ->and($findings)->toHaveCount(1)
-        ->and($findings[0]->message)->toContain('1 response declaration(s)');
+    expect(SupportMatrixCheck::deferred($document))->toBe([]);
 });
 
 it('survives a node of the wrong type anywhere this section reads one', function (mixed $raw): void {
@@ -247,13 +241,13 @@ it('survives a node of the wrong type anywhere this section reads one', function
     'no paths at all' => [['openapi' => '3.0.3']],
 ]);
 
-// --- What each Deferred count actually counts ---
+// --- What each count actually counts ---
 
-// The whole content of one of these findings is a number, so a label counting
-// something else is the whole finding being wrong. This counted operations
-// carrying a non-empty `responses` object, and printed "8 response
-// declaration(s)" for a document declaring considerably more than eight.
-it('counts response declarations rather than operations that declare any', function (): void {
+// A response is not counted at all now: the doctor names the keywords a response
+// DTO does not type, per operation, and no line says a response is deferred. It
+// used to count declarations rather than operations, and three of them are still
+// nothing to count.
+it('no longer counts response declarations as deferred', function (): void {
     $document = supportMatrixDocumentWithRawPaths([
         '/users/{id}' => ['get' => [
             'responses' => [
@@ -266,19 +260,13 @@ it('counts response declarations rather than operations that declare any', funct
         ]],
     ]);
 
-    $findings = array_values(array_filter(
-        SupportMatrixCheck::deferred($document),
-        static fn ($finding): bool => str_contains($finding->message, 'response declaration'),
-    ));
-
-    expect($findings)->toHaveCount(1)
-        ->and($findings[0]->message)->toContain('3 response declaration(s)');
+    expect(SupportMatrixCheck::deferred($document))->toBe([]);
 });
 
-// Response DTOs are generated now, so the line cannot say a response is "not
-// built yet". What is still missing is a keyword a response writes, and the
-// line says so and points at the card that names them.
-it('says response DTOs are generated and response keywords are not named yet', function (): void {
+// Response DTOs are generated, and the keywords a response schema writes are named
+// per operation under their own finding, so a response leaves no line at the
+// Deferred level and nothing points at the card that used to promise one.
+it('leaves no Deferred line for responses', function (): void {
     $document = supportMatrixDocumentWithRawPaths([
         '/users/{id}' => ['get' => [
             'responses' => ['200' => ['description' => 'a user']],
@@ -286,15 +274,10 @@ it('says response DTOs are generated and response keywords are not named yet', f
     ]);
 
     $findings = SupportMatrixCheck::deferred($document);
+    $messages = implode("\n", array_map(static fn ($finding): string => $finding->message, $findings));
 
-    expect($findings)->toHaveCount(1)
-        ->and($findings[0]->level)->toBe(SupportLevel::Deferred)
-        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
-        ->and($findings[0]->message)->toBe(
-            '1 response declaration(s) found. Response DTOs are generated from them, but a keyword a response schema '.
-            'writes is not named yet, see https://github.com/Gcob/lara-spec-first/issues/164. '.
-            'This is a fact about this package\'s roadmap, not a defect in your contract.',
-        );
+    expect(array_filter($findings, static fn ($finding): bool => $finding->level === SupportLevel::Deferred))->toBe([])
+        ->and($messages)->not->toContain('issues/164');
 });
 
 // OpenAPI lets a path declare parameters shared by every operation under it,
@@ -738,4 +721,116 @@ it('names nothing for a keyword beside a $ref in a 3.0 request', function (): vo
 
     expect($outcome->faults)->toBe([])
         ->and(SupportMatrixCheck::requestSchemas($outcome->operations))->toBe([]);
+});
+
+// --- Response schemas: a keyword a response DTO does not type ---
+
+/**
+ * What the doctor reports for a fixture's schemas when the build plan exists: the operations of the contract and the
+ * response plan the build would make from them.
+ *
+ * @return list<Finding>
+ */
+function supportMatrixSchemaFindings(string $fixture): array
+{
+    $operations = extractFixture($fixture);
+
+    return SupportMatrixCheck::schemas($operations, (new ResponseDtoPlanner)->plan($operations, []));
+}
+
+/**
+ * The keywords a schema writes that the reading marks as ignored, wherever in the schema they are.
+ *
+ * @return list<string>
+ */
+function supportMatrixIgnoredIn(Schema $schema): array
+{
+    $found = array_keys($schema->ignored);
+
+    foreach ([...array_values($schema->properties), ...$schema->allOf, ...array_filter([$schema->items, $schema->additionalPropertiesSchema])] as $child) {
+        $found = [...$found, ...supportMatrixIgnoredIn($child)];
+    }
+
+    return $found;
+}
+
+// One finding per keyword and per operation holds for a response as it does for a request: `oneOf` written in three
+// places of the responses of one operation is one line that lists them, the first as its pointer.
+it('names a keyword a response DTO does not type once per operation', function (): void {
+    $findings = supportMatrixSchemaFindings('doctor-response-keywords.yaml');
+    $schema = '#/paths/~1orders~1{id}/get/responses/%s/content/application~1json/schema';
+    $oneOf = [
+        sprintf($schema, '200').'/properties/payment/oneOf',
+        sprintf($schema, '200').'/properties/shipping/oneOf',
+        sprintf($schema, '201').'/properties/receipt/oneOf',
+    ];
+
+    expect($findings)->toHaveCount(2)
+        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($findings[0]->section)->toBe('Support findings')
+        ->and($findings[0]->level)->toBe(SupportLevel::Ignored)
+        ->and($findings[0]->pointer)->toBe($oneOf[0])
+        ->and($findings[0]->message)->toContain('get /orders/{id} writes `oneOf` at '.implode(', ', $oneOf))
+        ->and($findings[1]->pointer)->toBe(sprintf($schema, '200').'/properties/customer/properties/contact/anyOf')
+        ->and($findings[1]->message)->toContain('`anyOf`')
+        ->and((new DiagnosticReport('spec.yaml', true, [], 'openapi-external-refs', SpecVersion::V3_0, [], $findings))->exitCode())->toBe(2);
+});
+
+// A keyword written in both directions of one operation is one fact about it, so it is one finding that says what each
+// direction does with it, the request's position first.
+it('lists request and response positions in one finding per keyword', function (): void {
+    $findings = supportMatrixSchemaFindings('doctor-response-keywords-both.yaml');
+    $request = '#/paths/~1orders/post/requestBody/content/application~1json/schema/properties/payment/oneOf';
+    $response = '#/paths/~1orders/post/responses/200/content/application~1json/schema/properties/payment/oneOf';
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->pointer)->toBe($request)
+        ->and($findings[0]->message)->toContain('`oneOf` at '.$request.', '.$response)
+        ->and($findings[0]->message)->toContain('the generated request enforces nothing for it')
+        ->and($findings[0]->message)->toContain('the response DTO reads past it');
+});
+
+it('names a response keyword under every operation that reaches it', function (): void {
+    $findings = supportMatrixSchemaFindings('doctor-response-keywords-shared.yaml');
+
+    expect($findings)->toHaveCount(2)
+        ->and($findings[0]->message)->toContain('get /users/{id} writes `anyOf` at #/components/schemas/User/properties/contact/anyOf')
+        ->and($findings[1]->message)->toContain('get /teams/{id} writes `anyOf` at #/components/schemas/User/properties/contact/anyOf')
+        ->and($findings[1]->pointer)->toBe('#/components/schemas/User/properties/contact/anyOf');
+});
+
+// What an annotation or a value constraint says is not part of the type a DTO holds, and #122 is where values are
+// checked: naming it here would be a line the author cannot act on.
+it('does not name a value constraint or an annotation written only in a response', function (): void {
+    $operations = extractFixture('doctor-response-silent-keywords.yaml');
+    $written = supportMatrixIgnoredIn($operations[0]->responses[0]->content['application/json']);
+    $plan = (new ResponseDtoPlanner)->plan($operations, []);
+
+    expect($written)->toContain('default', 'deprecated', 'minProperties', 'contains')
+        ->and($plan->statuses['get /things'][0]->dto)->not->toBeNull()
+        ->and(SupportMatrixCheck::schemas($operations, $plan))->toBe([]);
+});
+
+// A keyword in a response with no DTO reaches nothing: the status has no type to say it about.
+it('does not name a keyword in a response that has no DTO', function (): void {
+    $operations = extractFixture('doctor-response-no-dto.yaml');
+    $plan = (new ResponseDtoPlanner)->plan($operations, []);
+
+    expect(array_map(static fn (array $statuses): ?string => $statuses[0]->dto, $plan->statuses))->toBe([
+        'get /text' => null,
+        'get /two-shapes' => null,
+        'get /strings' => null,
+    ])
+        ->and(SupportMatrixCheck::schemas($operations, $plan))->toBe([]);
+});
+
+it('names a 3.1 keyword written only in a response', function (): void {
+    $findings = supportMatrixSchemaFindings('doctor-response-keywords-3.1.yaml');
+    $schema = '#/paths/~1things/get/responses/200/content/application~1json/schema/properties';
+
+    expect(array_map(static fn (Finding $finding): string => $finding->pointer, $findings))->toBe([
+        $schema.'/pair/prefixItems',
+        $schema.'/rest/unevaluatedItems',
+        $schema.'/card/dependentSchemas',
+    ]);
 });

@@ -1,0 +1,47 @@
+# A component `User` whose `contact` writes `anyOf`, answered by `showUser` directly and by `showTeam` through
+# `Team.lead`: the keyword is written once, at the component, and reaches both operations.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users/{id}:
+    get:
+      operationId: showUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /teams/{id}:
+    get:
+      operationId: showTeam
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        contact:
+          anyOf:
+            - { type: object }
+            - { type: string }
+    Team:
+      type: object
+      properties:
+        name: { type: string }
+        lead:
+          $ref: '#/components/schemas/User'

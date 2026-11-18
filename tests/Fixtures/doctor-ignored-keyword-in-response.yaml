@@ -1,6 +1,6 @@
-# The same keywords, written in a response schema only. A response is read by
-# nothing yet, so no finding names a keyword in it: responses stay one Deferred
-# count, which does not gate the exit code.
+# Keywords written in a response schema only. `oneOf` changes the type of `payment` and the response DTO cannot say
+# it, so the doctor names it. `default` and `deprecated` annotate `status` and change nothing a DTO holds, so it does
+# not.
 openapi: 3.0.3
 info:
   title: Fixture API

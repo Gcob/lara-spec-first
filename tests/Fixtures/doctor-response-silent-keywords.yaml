@@ -1,0 +1,33 @@
+# Keywords a response writes that the doctor does not name: annotations and value constraints a response DTO has no
+# type to carry (`default`, `deprecated`, `minProperties`, `contains`), and `minLength`, which the support matrix honors
+# and the reading never marks as ignored.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      operationId: listThings
+      responses:
+        '200':
+          description: A thing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    default: new
+                    deprecated: true
+                    minLength: 2
+                  meta:
+                    type: object
+                    minProperties: 1
+                    properties:
+                      key: { type: string }
+                  tags:
+                    type: array
+                    items: { type: string }
+                    contains: { const: x }

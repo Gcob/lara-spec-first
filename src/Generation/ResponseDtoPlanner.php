@@ -576,9 +576,11 @@ final class ResponseDtoPlanner extends DtoPlanner
      * The media type and schema of each JSON body a response writes, in document order: none when it has no body, or
      * only media types that are not JSON.
      *
+     * Public for the doctor, which reads the same schemas to name the keywords a response DTO does not type.
+     *
      * @return list<array{0: string, 1: Schema}>
      */
-    private static function jsonSchemas(Response $response): array
+    public static function jsonSchemas(Response $response): array
     {
         $found = [];
 
