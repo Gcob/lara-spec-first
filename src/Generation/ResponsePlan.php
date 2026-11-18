@@ -16,6 +16,8 @@ final readonly class ResponsePlan
      * @param  array<string, list<StatusResponse>>  $statuses  what each declared status answers with, by the
      *                                                         operation's label and in the order the document writes
      *                                                         them
+     * @param  list<ResponseFallback>  $fallbacks  every status that has no DTO and every value that is `mixed` because
+     *                                             a schema was at fault, in the order the build met them
      */
-    public function __construct(public array $dtos = [], public array $statuses = []) {}
+    public function __construct(public array $dtos = [], public array $statuses = [], public array $fallbacks = []) {}
 }

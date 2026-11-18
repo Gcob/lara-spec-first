@@ -116,9 +116,21 @@ final readonly class BuildPlanner
             $paired[] = [$operation, $name, $request];
         }
 
-        // Before the controllers are written, so that each one can say what its statuses answer with. A response DTO is
-        // built from the operations alone: nothing about a request reaches it.
-        $responses = (new ResponseDtoPlanner)->plan($operations);
+        // The DTOs are planned from the requests, and each request then learns
+        // which one its `dto()` returns: the two refer to each other, so one
+        // of them has to be built first and given the other afterwards.
+        $inputDtos = (new InputDtoPlanner)->plan($requests);
+        $requests = array_map(
+            static fn (PlannedRequest $request): PlannedRequest => $request->withDto(
+                $inputDtos->readBy[$request->operation->label()] ?? null,
+            ),
+            $requests,
+        );
+
+        // Before the controllers are written, so that each one can say what its statuses answer with. A response schema
+        // is read from the operations alone, and the input DTOs come first because their class names are claims it has to
+        // lose or win against: one class name cannot mean a request and a response.
+        $responses = (new ResponseDtoPlanner)->plan($operations, array_column($inputDtos->dtos, 'position', 'shortName'));
 
         foreach ($paired as [$operation, $name, $request]) {
             $planned[] = new PlannedController(
@@ -135,21 +147,6 @@ final readonly class BuildPlanner
             static fn (PlannedController $controller): GeneratedFile => $controllers->emit($controller),
             $planned,
         );
-
-        // The DTOs are planned from the requests, and each request then learns
-        // which one its `dto()` returns: the two refer to each other, so one
-        // of them has to be built first and given the other afterwards.
-        $inputDtos = (new InputDtoPlanner)->plan($requests);
-        $requests = array_map(
-            static fn (PlannedRequest $request): PlannedRequest => $request->withDto(
-                $inputDtos->readBy[$request->operation->label()] ?? null,
-            ),
-            $requests,
-        );
-
-        // Each planner keeps its own names, so the two directions meet here: a response schema named like a request's
-        // plus `Input` would give one class two meanings.
-        $this->assertNoNameInBothDirections($inputDtos, $responses);
 
         $formRequests = new FormRequestEmitter($this->namespace, $this->specPath);
 
@@ -171,27 +168,7 @@ final readonly class BuildPlanner
 
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
-        return new BuildPlan($planned, $files, $requests, $unreadBodies);
-    }
-
-    /**
-     * Refuse a class name that an input DTO and a response DTO would both take.
-     *
-     * @throws UnusableNameException
-     */
-    private function assertNoNameInBothDirections(InputDtoPlan $input, ResponsePlan $response): void
-    {
-        $responses = array_column($response->dtos, null, 'shortName');
-
-        foreach ($input->dtos as $dto) {
-            if (isset($responses[$dto->shortName])) {
-                throw UnusableNameException::responseDtoTakenByInput(
-                    $dto->shortName,
-                    $dto->position,
-                    $responses[$dto->shortName]->position,
-                );
-            }
-        }
+        return new BuildPlan($planned, $files, $requests, $unreadBodies, $responses);
     }
 
     /**

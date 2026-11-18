@@ -1,0 +1,43 @@
+# A component `User` whose `address` is written inline, and a component `UserAddress` of the same shape: both derive the
+# class name `UserAddressDto`. The component's author chose that name, so the component keeps it and the inline object
+# gives way, whichever operation the document writes first.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /addresses:
+    get:
+      operationId: listAddresses
+      responses:
+        '200':
+          description: Addresses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAddress'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id: { type: integer }
+        address:
+          type: object
+          properties:
+            street: { type: string }
+    UserAddress:
+      type: object
+      properties:
+        street: { type: string }

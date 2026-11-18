@@ -1,0 +1,446 @@
+# Every case a response can give way for, each in operations of its own, so one document can be read in both orders and
+# must give the same files: keys that clash (and the same two with one `writeOnly`), `allOf` branches that disagree, a
+# name that leaves no class name, an inline schema meeting a component, two components of one class name (returned, and
+# reached as properties), a class name an input DTO takes, two inline schemas of different shapes, and the cases a name
+# is claimed or not claimed for: a component whose `allOf` disagrees, an inline one that does, a component with no class
+# name holding a clash, a component whose keys collide, a string enumeration and a scalar with an unusable name.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /keys:
+    get:
+      operationId: listKeys
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { type: object, properties: { user-id: { type: string }, user_id: { type: integer } } }
+  /write-only:
+    get:
+      operationId: listWriteOnly
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { type: object, properties: { user-id: { type: string }, user_id: { type: integer, writeOnly: true } } }
+  /disagree:
+    get:
+      operationId: showDisagree
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Base'
+                  - type: object
+                    properties:
+                      id: { type: string }
+  /siblings:
+    get:
+      operationId: showSibling
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Base'
+                properties:
+                  id: { type: string }
+  /codes:
+    get:
+      operationId: showCode
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/123' }
+  /others:
+    get:
+      operationId: showOther
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/456' }
+  /members:
+    get:
+      operationId: showMember
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+  /member-addresses:
+    get:
+      operationId: showMemberAddress
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberAddress' }
+  /hyphenated:
+    get:
+      operationId: showHyphenated
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/new-user' }
+  /studly:
+    get:
+      operationId: showStudly
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NewUser' }
+  /signups:
+    get:
+      operationId: showSignup
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { type: object, properties: { first: { $ref: '#/components/schemas/new-user' }, second: { $ref: '#/components/schemas/NewUser' }, tags: { type: array, items: { $ref: '#/components/schemas/NewUser' } } } }
+  /accounts:
+    post:
+      operationId: createAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Account' }
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountInput' }
+  /teams:
+    get:
+      operationId: showTeam
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+  /team-leads:
+    get:
+      operationId: showTeamLead
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamLead' }
+  /owners:
+    get:
+      operationId: showOwner
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Owner' }
+  /owner-homes:
+    get:
+      operationId: showOwnerHome
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OwnerHome' }
+  /pets:
+    get:
+      operationId: showPet
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NewPet' }
+  /clients:
+    get:
+      operationId: showClient
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
+  /client-contacts:
+    get:
+      operationId: showClientContact
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClientContact' }
+  /vendors:
+    get:
+      operationId: showVendor
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vendor' }
+  /vendor-contacts:
+    get:
+      operationId: showVendorContact
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VendorContact' }
+  /gadgets:
+    get:
+      operationId: showGadget
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/999' }
+  /widgets:
+    get:
+      operationId: showWidget
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NewWidget' }
+  /shops:
+    get:
+      operationId: showShop
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shop' }
+  /shop-owners:
+    get:
+      operationId: showShopOwner
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShopOwner' }
+  /orders:
+    get:
+      operationId: showOrder
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+  /deliveries:
+    get:
+      operationId: showDelivery
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Delivery' }
+  /order-statuses:
+    get:
+      operationId: listOrderStatuses
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderStatusList' }
+  /sessions:
+    get:
+      operationId: showSession
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { type: object, properties: { code: { $ref: '#/components/schemas/2faCode' } } }
+  /two-factor-codes:
+    get:
+      operationId: showTwoFactorCode
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/2faCode' }
+components:
+  schemas:
+    Base:
+      type: object
+      properties:
+        id: { type: integer }
+    '123':
+      type: object
+      properties:
+        value: { type: string }
+    '456':
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer }
+        - type: object
+          properties:
+            id: { type: string }
+    Member:
+      type: object
+      properties:
+        address:
+          type: object
+          properties:
+            street: { type: string }
+    MemberAddress:
+      type: object
+      properties:
+        street: { type: string }
+    new-user:
+      type: object
+      properties:
+        email: { type: string }
+    NewUser:
+      type: object
+      properties:
+        name: { type: string }
+    Account:
+      type: object
+      properties:
+        email: { type: string }
+    AccountInput:
+      type: object
+      properties:
+        email: { type: string }
+    Team:
+      type: object
+      properties:
+        leadUser:
+          type: object
+          properties:
+            name: { type: string }
+    TeamLead:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            email: { type: string }
+    Owner:
+      type: object
+      properties:
+        home:
+          type: object
+          properties:
+            street: { type: string }
+            pet: { $ref: '#/components/schemas/new-pet' }
+    OwnerHome:
+      type: object
+      properties:
+        street: { type: string }
+    new-pet:
+      type: object
+      properties:
+        a: { type: string }
+    NewPet:
+      type: object
+      properties:
+        b: { type: string }
+    Client:
+      type: object
+      properties:
+        contact:
+          type: object
+          properties:
+            phone: { type: string }
+    ClientContact:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer }
+        - type: object
+          properties:
+            id: { type: string }
+    Vendor:
+      type: object
+      properties:
+        contact:
+          allOf:
+            - type: object
+              properties:
+                id: { type: integer }
+            - type: object
+              properties:
+                id: { type: string }
+    VendorContact:
+      type: object
+      properties:
+        phone: { type: string }
+    '999':
+      type: object
+      properties:
+        widget: { $ref: '#/components/schemas/new-widget' }
+    new-widget:
+      type: object
+      properties:
+        a: { type: string }
+    NewWidget:
+      type: object
+      properties:
+        b: { type: string }
+    Shop:
+      type: object
+      properties:
+        owner:
+          type: object
+          properties:
+            name: { type: string }
+    ShopOwner:
+      type: object
+      properties:
+        user-id: { type: string }
+        user_id: { type: integer }
+    Order:
+      type: object
+      properties:
+        status:
+          type: object
+          properties:
+            code: { type: string }
+    OrderStatus:
+      type: string
+      enum: [open, closed]
+    Delivery:
+      type: object
+      properties:
+        state: { $ref: '#/components/schemas/OrderStatus' }
+    OrderStatusList:
+      type: array
+      items: { $ref: '#/components/schemas/OrderStatus' }
+    '2faCode':
+      type: string

@@ -195,60 +195,6 @@ final class UnusableNameException extends InvalidArgumentException implements Sp
     }
 
     /**
-     * Two different schemas that would generate one response DTO class.
-     *
-     * **Named by position, and by where each base came from.** A named schema's class is its name with every character
-     * that is not a letter, a digit or an underscore dropped, so two spellings can meet. An inline schema's is derived
-     * from its operation, its status or its parent and property, which is not the name anyone wrote, so the message
-     * says what the name was derived from and that a component name ends the clash, as the input side's does.
-     *
-     * @param  array{position: string, base: string, origin: string}  $first
-     * @param  array{position: string, base: string, origin: string}  $second
-     */
-    public static function responseDtoClaimedTwice(string $shortName, array $first, array $second): self
-    {
-        $claim = static fn (array $side): string => sprintf(
-            'the schema written at "%s" gives the base "%s" (%s)',
-            $side['position'],
-            $side['base'],
-            $side['origin'],
-        );
-
-        return new self(sprintf(
-            'The schemas written at "%s" and at "%s" both generate the response DTO "%s", and the two '.
-            'are not the same schema: %s, and %s. A class name is a base plus "Dto". The base of a '.
-            'named schema is its name with every character that is not a letter, a digit or an '.
-            'underscore dropped, and the base of an inline schema is derived from the operation, the '.
-            'status or the parent property it is written under, so two schemas can share a base. Rename '.
-            'one of the schemas, or give an inline schema a component name of its own.',
-            $first['position'],
-            $second['position'],
-            $shortName,
-            $claim($first),
-            $claim($second),
-        ));
-    }
-
-    /**
-     * A response schema and a request schema that would generate one DTO class.
-     *
-     * Only a response schema named like a request's plus `Input` can meet it: a response DTO ends in `Dto`, and an
-     * input DTO in `InputDto`.
-     */
-    public static function responseDtoTakenByInput(string $shortName, string $inputPosition, string $responsePosition): self
-    {
-        return new self(sprintf(
-            'The schema written at "%s" generates the input DTO "%s" for a request, and the schema written at "%s" '.
-            'generates a response DTO of the same name. A response DTO takes its name from the schema it describes '.
-            'and "Dto", and an input DTO adds "InputDto", so a response schema named "UserInput" meets a request '.
-            'schema named "User". Rename one of the schemas.',
-            $inputPosition,
-            $shortName,
-            $responsePosition,
-        ));
-    }
-
-    /**
      * A schema name that leaves no class name behind.
      */
     public static function schemaNameUnusable(string $name, string $position): self

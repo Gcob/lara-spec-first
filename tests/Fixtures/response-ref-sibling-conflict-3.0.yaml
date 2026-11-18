@@ -1,0 +1,25 @@
+# The `$ref` with a sibling `properties` of response-allof-disagrees.yaml, written in 3.0: a sibling of a `$ref` is
+# ignored there, so the conflict with `Base.id` never exists and the response is `BaseDto`.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /siblings:
+    get:
+      operationId: showSibling
+      responses:
+        '200':
+          description: A sibling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Base'
+                properties:
+                  id: { type: string }
+components:
+  schemas:
+    Base:
+      type: object
+      properties:
+        id: { type: integer }

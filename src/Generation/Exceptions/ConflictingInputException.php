@@ -19,6 +19,16 @@ use InvalidArgumentException;
 final class ConflictingInputException extends InvalidArgumentException implements SpecException
 {
     /**
+     * @param  string|null  $where  for an `allOf` that disagrees: the field it sits on, as the merge was asked to name
+     *                              it
+     * @param  string|null  $what  for the same: what the branches disagree about
+     */
+    public function __construct(string $message, public readonly ?string $where = null, public readonly ?string $what = null)
+    {
+        parent::__construct($message);
+    }
+
+    /**
      * One name declared by both the body and a query parameter.
      *
      * The reason is in the framework rather than in the contract. `Request::all()` is the input source unioned with the
@@ -87,20 +97,15 @@ final class ConflictingInputException extends InvalidArgumentException implement
      * Refused rather than resolved by picking a branch: either choice would enforce half of what the document wrote and
      * drop the other half in silence.
      */
-    public static function contradictoryAllOf(string $identity, string $where, string $what, bool $response = false): self
+    public static function contradictoryAllOf(string $identity, string $where, string $what): self
     {
-        // Why: nothing validates a response, so there is no rule set for its sentence to name.
-        $why = $response
-            ? 'A response cannot match both, so the build will not choose between them.'
-            : 'A payload cannot satisfy both, or one rule set cannot say both, so the build will not choose between them.';
-
         return new self(sprintf(
             'The operation "%s" writes `allOf`, or keywords beside a `$ref`, under %s whose branches disagree: %s. '.
-            '%s Make the branches agree.',
+            'A payload cannot satisfy both, or one rule set cannot say both, so the build will not choose between them. '.
+            'Make the branches agree.',
             $identity,
             $where,
             $what,
-            $why,
-        ));
+        ), $where, $what);
     }
 }

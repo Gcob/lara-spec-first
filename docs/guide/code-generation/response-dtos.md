@@ -67,7 +67,27 @@ from the contract and the next build deletes its file. What is inside the class,
 **One schema is one class, however many operations return it.** Two operations returning `$ref: User` share `UserDto`,
 and its findings list each reader with the status it answers: `Read by get /users/{id} (200)`. A response and a request
 built from one schema are two classes (`UserDto` and `UserInputDto`), and a response schema that would take an input
-DTO's name is a build error naming both places.
+DTO's name has no DTO, and says which schema keeps the class.
+
+**A class name two schemas derive goes to the schema that outranks the others.** A response schema can derive a class
+name that another schema derives too: an inline `address` in `User` and a component `UserAddress` are both
+`UserAddressDto`, and a response schema `UserInput` and a request schema `User` are both `UserInputDto`. An input DTO
+outranks every response schema, and a component outranks a schema written inline. The schema at the top rank keeps the
+name, and every other gives way: its status has no DTO, or its property is `mixed`, and the file says which schema keeps
+the class. **Two schemas at the top rank both give way**, as with two components `new-user` and `NewUser`, or two inline
+objects of different shapes that derive one name: picking one would pick by the order the document writes them. Two
+inline objects that say the same thing share one class. The document's order changes nothing, because the build reads
+every response schema once to see who claims each name before it builds, so reading the contract backwards writes the
+same classes with the same types. What still follows the document is the `Read by` line of a class that several
+operations return, which lists them in the order the document writes them, and, for a class that two inline objects
+share by shape, which of the two the file's provenance names. A component whose keys collide or whose `allOf` branches
+disagree still claims its name, since a class that carried it would describe something else, and the schema that gives
+way is told that component gets no DTO either. The build is not refused.
+
+**A known limit:** a schema reached only through a schema that gave way still claims its class name. If an inline schema
+derives that name, it gets no DTO and its finding names a class that is not written, in either order of the document. A
+component is caught the same way: a healthy `NewPet` that ties with a `new-pet`, reachable only through a schema that
+gave way and never written, loses its DTO too ([#191](https://github.com/Gcob/lara-spec-first/issues/191)).
 
 **A status with no DTO says why, in the controller.** The generated controller's findings carry one sentence per status:
 
@@ -77,13 +97,34 @@ The `200` response is a list of `UserDto`, in `Data/UserDto.php`.
 The `204` response has no DTO: it declares no body.
 ```
 
-The reasons a status has none are no body, no JSON media type, two JSON media types with different schemas, and a body
-that is not an object or a list of objects. None of them refuses the build. **A response schema that also allows
-`null`**, `type: [object, 'null']`, still gets the DTO of the object, and the controller's sentence for that status ends
-"or `null`, which no DTO holds". The DTO does not say so itself, since one DTO serves every operation that returns the
-schema and not all of them may answer `null`. A list of lists is said as one ("a list of lists of `UserDto`"), and a
-list whose items may be `null` says "where an item may be `null`" rather than "or `null`", which is only said of the
-body.
+The reasons a status has none are no body, no JSON media type, two JSON media types with different schemas, a body that
+is not an object or a list of objects, a class name another schema keeps (above), and a schema with a fault of its own
+(below). None of them refuses the build. **A response schema that also allows `null`**, `type: [object, 'null']`, still
+gets the DTO of the object, and the controller's sentence for that status ends "or `null`, which no DTO holds". The DTO
+does not say so itself, since one DTO serves every operation that returns the schema and not all of them may answer
+`null`. A list of lists is said as one ("a list of lists of `UserDto`"), and a list whose items may be `null` says
+"where an item may be `null`" rather than "or `null`", which is only said of the body.
+
+**A schema with a fault of its own has no DTO, and says what to change.** Three faults are refused in a request and cost
+a response its type only: a schema name that leaves no class name, two keys that derive one property name, and `allOf`
+branches that disagree. The status says which, and how to fix it:
+
+```text
+The `200` response has no DTO: its keys `user-id` and `user_id` both derive the property `$user_id`. Rename one of them.
+The `200` response has no DTO: its `allOf` branches disagree at `id`: one branch is `integer` and another is `string`. Make them agree.
+The `200` response has no DTO: the schema name `123` leaves no class name. Rename it to start with a letter or an underscore.
+The `200` response has no DTO: its schema `UserInput` (`#/components/schemas/UserInput`) derives the class name `UserInputDto`, which is the input DTO of the request schema written at `#/components/schemas/User`. Rename one of the schemas.
+```
+
+When two schemas of one rank derive a name, both say so, in one order whichever the document writes first: "the schema
+`NewUser` (`#/components/schemas/NewUser`) and the schema `new-user` (`#/components/schemas/new-user`) both derive the
+class name `NewUserDto`, so neither has it. Rename one of them."
+
+A property whose schema has the fault is `mixed` (`Optional|mixed` when optional) in the DTO that holds it, and that
+DTO's findings carry the same reason after "`address` is `mixed`:". Its other properties keep their types. **The value
+that cannot be typed is the one that is `mixed`**, so a list whose items disagree is `list<mixed>`, and a map whose
+values disagree is a map of `mixed`. `spec:build`, `spec:doctor` and `spec:make` go on as `0.2.0` did, which read no
+response: the fix is in the contract, and the generated file says where.
 
 **`routeAction` still returns `mixed`.** The controller's findings say so beside those sentences: the types named there
 are what a response is, and what `routeAction` is typed to return is a later change. Nothing yet makes a controller
@@ -92,7 +133,7 @@ return the DTO.
 **What the DTO is for is the contract reaching the code that reads a response.** A response property the contract
 removes is a changed constructor, so code that reads it fails static analysis, and a test runs PHPStan over such a
 reader to prove it. The reasoning for the choices above is in
-[ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
+[ADR 0013](../../project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md).
 
 ## Factories carry the behavior
 

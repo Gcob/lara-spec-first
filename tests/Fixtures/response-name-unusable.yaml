@@ -1,0 +1,41 @@
+# Response components whose name leaves no class name: `123` starts with a digit. `456` also has `allOf` branches that
+# disagree, and its name is what the response says first.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /codes:
+    get:
+      operationId: showCode
+      responses:
+        '200':
+          description: A code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/123'
+  /others:
+    get:
+      operationId: showOther
+      responses:
+        '200':
+          description: Another
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/456'
+components:
+  schemas:
+    '123':
+      type: object
+      properties:
+        value: { type: string }
+    '456':
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer }
+        - type: object
+          properties:
+            id: { type: string }

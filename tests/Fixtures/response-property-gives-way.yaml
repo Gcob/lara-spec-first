@@ -1,0 +1,30 @@
+# A component `Team` whose `owner` property is an inline object with two keys that derive one property name: `owner` is
+# `mixed`, and `name` and `id` keep their types.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /teams:
+    get:
+      operationId: listTeams
+      responses:
+        '200':
+          description: A team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+components:
+  schemas:
+    Team:
+      type: object
+      required: [name, id]
+      properties:
+        name: { type: string }
+        id: { type: integer }
+        owner:
+          type: object
+          properties:
+            user-id: { type: string }
+            user_id: { type: integer }

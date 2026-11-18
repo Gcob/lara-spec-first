@@ -116,17 +116,24 @@ it('exits 2 on a rejected construct under Support findings, with no document fau
         ->and($text)->toContain('Laravel has no TRACE verb');
 });
 
-// The doctor runs the build planner, so a response schema the build refuses is a package limit here too.
-it('exits 2 on a response schema whose DTO name an input DTO already takes', function (): void {
-    config()->set('lara-spec-first.spec.path', specFixturePath('response-name-taken-by-input.yaml'));
+// `0.2.0` read no response, so a document with a response schema at fault exited `0` there. It still does: the build
+// gives the schema no DTO and says so in the generated file, which is not something the doctor has to report.
+it('exits as 0.2.0 did on a response that cannot be typed', function (string $fixture): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath($fixture));
 
     [$exit, $text] = doctor();
 
-    expect($exit)->toBe(2)
-        ->and($text)->toContain('#/components/schemas/User')
-        ->and($text)->toContain('#/components/schemas/UserInput')
-        ->and($text)->toContain('UserInputDto');
-});
+    expect($exit)->toBe(0)
+        ->and($text)->not->toContain('package limit');
+})->with([
+    'two keys deriving one property' => ['response-keys-collide.yaml'],
+    'allOf branches that disagree' => ['response-allof-disagrees.yaml'],
+    'a name that leaves no class name' => ['response-name-unusable.yaml'],
+    'a property that cannot be typed' => ['response-property-gives-way.yaml'],
+    'an inline schema whose class name a component claims' => ['response-inline-meets-component.yaml'],
+    'two components that claim one class name' => ['response-two-components-one-name.yaml'],
+    'a class name an input DTO takes' => ['response-name-taken-by-input.yaml'],
+]);
 
 it('reports every fault the reading pipeline collected, not only the first', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('multiple-faults.yaml'));

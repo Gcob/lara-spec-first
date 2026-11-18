@@ -153,9 +153,15 @@ written goes in the file's `Provenance`, which is where a DTO that came from ano
 A response schema written inline takes its operation's name and the status, `CreateUser201ResponseDto`,
 `CreateUser2XXResponseDto` and `CreateUserDefaultResponseDto`, and an object nested in it adds its property
 (`CreateUser201ResponseAddressDto`), with `Item` for an element of an array and `Value` for a value of a map. Two
-different schemas that give one response class are the same build error, and so is a response schema whose class an
-input DTO already has: a response schema `UserInput` gives `UserInputDto`, which a request schema `User` gives too. The
-message names both places. Rename one of the schemas.
+different schemas that give one response class do not stop the build, as they do in a request. The schema that outranks
+the others keeps the name, in this order: an input DTO, a component, a schema written inline. A response schema
+`UserInput` gives `UserInputDto`, which a request schema `User` gives too, and the input DTO keeps it. An inline
+`address` in `User` gives `UserAddressDto`, which a component `UserAddress` keeps. Whatever does not keep the name has
+no DTO, and the file that would have used it says which schema keeps the class. Two schemas of the same rank, two
+components `new-user` and `NewUser` or two inline objects of different shapes, both give way, and two inline objects
+that say the same thing share one class. Reading the document in either order gives the same classes and types, and only
+the `Read by` lines of a shared class follow the document's order. Rename one of the schemas to type it, or give an
+inline schema a component name of its own.
 
 **A response gets a DTO per declared status** (`200`, `2XX`, `default`) that has a JSON body, `application/json` or any
 `+json` type, whose schema is an object or a list of objects. A list has no class of its own, its items do
@@ -165,10 +171,20 @@ object nor a list. **Two JSON media types under one status with different schema
 refused, the controller's findings name both media types, and with one schema between them it is one DTO. Which DTO
 reads which status is in the file's findings and the controller's.
 
+**A response schema with a fault of its own gets no DTO, and the build goes on.** A schema name that leaves no class
+name, two keys that derive one property name, and `allOf` branches that disagree are refused in a request, because a
+rule set built from half of a contract enforces half of it. A response enforces nothing, so the status that would have
+used the schema has no DTO and the controller says why and how to fix it, and a property that would have held it is
+`mixed` (a list of such items is `list<mixed>`, a map of such values a map of `mixed`), with a finding in the DTO that
+holds the property. Everything else in that DTO is typed as the contract writes it. A schema with such a fault is never
+half built: it has no class at all, so no other type points at a class that is not there. A component whose branches
+disagree or whose keys collide still claims its class name, so a schema written inline cannot take that name from it.
+
 **A property is named exactly like the contract's key** when the key is a valid PHP identifier, so `created_at` in the
 specification is `$created_at` in the class and one `grep` finds both. A key that is not an identifier (`user-id`,
 `2fa`) gets a derived name, and `from()` and `toArray()` keep the key as written. Two keys deriving the same name are a
-hard error at build time naming both, never a silent pick. The derivation itself is public API surface under
+hard error at build time naming both in a request, never a silent pick. In a response the schema they sit in gets no
+DTO, and the file that would have held it says which keys met. The derivation itself is public API surface under
 [rule 4](../openapi-support.md#the-four-rules) and belongs to
 [the name freeze](../../../README.md#before-10-freeze-what-a-major-would-cost).
 
@@ -197,7 +213,7 @@ have to pick one of them.
 **Not an API Resource either.** A `JsonResource` is built from a model by code that runs when the response is made. A
 generated DTO is the contract's shape and nothing else, and what builds it from a model is the
 [factory](./response-dtos.md#factories-carry-the-behavior)'s, so the shape cannot drift with that code. The reasoning is
-in [ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
+in [ADR 0013](../../project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md).
 
 ## Absent is `Optional`
 
@@ -241,7 +257,7 @@ contract writes them, whatever order the schema lists them in. The alternative w
 the contract: a server that always sends a field breaks no promise, but a plain `T` forbids it ever omitting a field the
 contract allows it to omit, and [the never-stricter principle](./request-validation.md#every-constraint-maps-or-reports)
 asks for the contract's own reading. The reasoning is in
-[ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
+[ADR 0013](../../project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md).
 
 ## What each schema type becomes
 
@@ -300,7 +316,8 @@ never as `{"additionalProperties": …}`. An open object (`type: object` alone, 
 the same shape, and an inline object value of a root map is named after the property that holds it, as on the request
 side (`CreateUser201ResponseAdditionalPropertiesValueDto`). **Beside declared `properties`, an `additionalProperties`
 schema is not carried**: the DTO has the declared properties only, and the file's findings say the values of the other
-keys are not read. The reasoning is in [ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
+keys are not read. The reasoning is in
+[ADR 0013](../../project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md).
 
 **Beside a `query` parameter, the values are `mixed`.** The request judges the values of a root map only where no
 `query` parameter shares the validated data with the body (see
