@@ -381,7 +381,7 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames, $walk->arrayKeys);
     }
 
     /**
@@ -767,28 +767,47 @@ final readonly class RuleSetBuilder
         }
 
         // A form-only body closes each level to the keys the contract declares below it. A key `array:` cannot
-        // name (a comma in it) leaves that level open, and so does the key a declared name is delivered at. The
-        // finding below names what the key check then accepts.
+        // name (a comma in it) leaves that level open, and so does the key a declared name is delivered at, unless
+        // the name is judged by shape: its array branch holds the keys below it instead. The finding below names
+        // what the key check then accepts.
         $deliveredAt = [];
 
         foreach ([...array_keys($schema->properties), ...array_keys($walk->shaped)] as $name) {
             $path = self::deliveredPath((string) $name);
 
-            if ($path !== null) {
-                $deliveredAt[self::pathKey($path)] = true;
+            if ($path === null) {
+                continue;
             }
+
+            $level = self::pathKey($path);
+
+            if (isset($walk->shaped[(string) $name]) && isset($walk->whenNotArray[$level]) && ! in_array($level, $walk->dropsArray, true)) {
+                continue;
+            }
+
+            $deliveredAt[$level] = true;
         }
 
         foreach ($steps as $level => $below) {
             $level = (string) $level;
             $keys = array_values(array_unique(array_values($below)));
 
+            $commas = array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) !== [];
+
             // Why: a value can sit at the key a declared name is delivered at (`filter[a]=x`), and `array:` would
             // refuse it, so that level stays open and the finding below names what the key check accepts.
-            if (isset($deliveredAt[$level]) || array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) !== []) {
+            if (isset($deliveredAt[$level]) || $commas) {
                 foreach (array_keys($below) as $name) {
                     $accepted[(string) $name] = $level;
                 }
+
+                continue;
+            }
+
+            // The name judged by shape at this level has its own rule, which judges a value that is not an array. The
+            // array a form builds for the names below holds the keys declared there, so they go in its array branch.
+            if (isset($walk->whenNotArray[$level])) {
+                $walk->arrayKeys[$level] = $keys;
 
                 continue;
             }

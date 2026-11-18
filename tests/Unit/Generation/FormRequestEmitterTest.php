@@ -527,6 +527,52 @@ it('writes a form name behind Rule::when and keeps an array out of the DTO', fun
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
 });
 
+// A closed body writes the keys the contract declares below a shaped name in its array branch (`array:size`), so the
+// array a form builds for the names below is refused when it holds another key. An open body keeps `['array']`. Read by
+// Pint, so a consumer's formatter has nothing to rewrite.
+it('writes the declared keys below a shaped form name in its array branch when the body is closed', function (): void {
+    $emit = static fn (bool $closed): string => emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'page' => new Schema(types: [SchemaType::Integer]),
+                'page[size]' => new Schema(types: [SchemaType::Integer]),
+                'filter[a]' => new Schema(types: [SchemaType::String]),
+                'filter[a][b]' => new Schema(types: [SchemaType::String]),
+                'filter[c]' => new Schema(types: [SchemaType::String]),
+            ],
+            additionalProperties: $closed ? false : null,
+        )], true),
+    ), controllerShortName: 'CreateThingController');
+    $closed = $emit(true);
+
+    expect($closed)
+        ->toContain(
+            "            'page' => Rule::when(\n"
+            ."                fn (Fluent \$input): bool => ! is_array(\$input->get('page')),\n"
+            ."                ['sometimes', 'integer'],\n"
+            ."                ['array:size'],\n"
+            .'            ),'
+        )
+        ->toContain("                ['array:b'],\n")
+        ->toContain("            'filter' => ['sometimes', 'array:a,c'],")
+        ->and($emit(false))->toContain("                ['array'],\n")
+        ->and($emit(false))->not->toContain('array:');
+
+    $file = tempnam(sys_get_temp_dir(), 'lsf-request-').'.php';
+    file_put_contents($file, $closed);
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $file], dirname(__DIR__, 3));
+    $pint->run();
+    unlink($file);
+
+    expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
 // A name no form delivers below another keeps `contractNames()` as it was: no list, no loop.
 it('writes no list of scalar names for a form body whose names do not nest', function (): void {
     $emitted = emittedRequest(new Operation(

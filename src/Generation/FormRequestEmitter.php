@@ -626,7 +626,7 @@ final readonly class FormRequestEmitter
                     $this->literal($key),
                     $this->valueAt($set->whenNotArray[$key]),
                     $list,
-                    in_array($key, $set->dropsArray, true) ? 'exclude' : 'array',
+                    in_array($key, $set->dropsArray, true) ? 'exclude' : 'array'.(isset($set->arrayKeys[$key]) ? ':'.implode(',', $set->arrayKeys[$key]) : ''),
                 );
 
                 continue;

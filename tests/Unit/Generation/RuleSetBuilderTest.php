@@ -2720,6 +2720,7 @@ it('keeps a plain form name behind a shape check beside the names a form nests u
     expect(array_keys($set->rules))->toBe($rules)
         ->and($set->whenNotArray)->toBe($shaped)
         ->and($set->formPaths)->toBe($formPaths)
+        ->and($set->arrayKeys)->toBe([])
         ->and($set->uncheckedNames)->toBe([])
         ->and(implode("\n", $set->findings))->not->toContain('tell their values')
         ->and(implode("\n", $set->findings))->not->toContain('is delivered by a form as');
@@ -2818,6 +2819,24 @@ it('keeps the rule of a required plain form name beside a wildcard name in a bod
     expect($set->rules['page'])->toBe(['present_with:other', 'integer'])
         ->and($set->whenNotArray)->toBe([])
         ->and($set->stricter)->toHaveCount(1);
+});
+
+// A `PATCH` asks for nothing, so its `required` list is read as empty, but the choice of shaping is made on what the
+// schema says: a `page` the schema requires keeps today's rule beside `page[*]` and the finding, as in a body that may be
+// absent. `other` is the sibling the "all or none" of the other cases names.
+it('keeps the rule of a plain form name the schema requires beside a wildcard name in a PATCH, and says it is stricter', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: ['multipart/form-data' => objectSchema(
+            ['page' => new Schema(types: [SchemaType::Integer]), 'other' => new Schema(types: [SchemaType::String]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
+            ['page'],
+        )],
+    ));
+
+    expect($set->rules)->toBe(['page' => ['sometimes', 'integer'], 'other' => ['sometimes', 'string']])
+        ->and($set->whenNotArray)->toBe([])
+        ->and($set->stricter)->toHaveCount(1)
+        ->and($set->stricter[0])->toContain('`page`')->toContain('page=2&page[*]=5');
 });
 
 // An upper name typed `array` or `object` may be an array itself, so its value cannot be told from the one a form
@@ -3098,9 +3117,10 @@ it('does not say a closed body accepts a key it declares, when two names collide
     'a dotted and a plain name' => [['user.name', 'user_name'], 'reach Laravel under one name'],
 ]);
 
-// A name above the names PHP nests under it keeps its rules, and a closed body still names the level it is delivered at:
-// a value sits there (`page=2`), so `array:` would refuse it, and the key check accepts what the finding names.
-it('leaves open the level a shaped name is delivered at in a closed body, and says so', function (): void {
+// A name above the names PHP nests under it keeps its rules, and a closed body closes the level it is delivered at through
+// the array branch of its shape check: a value sits there (`page=2`), so a rule of its own would refuse it, but the array
+// a form builds for the names below holds only the keys the contract declares. Nothing is left for the key check to accept.
+it('closes the level a shaped name is delivered at through its array branch in a closed body', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
         properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
@@ -3108,7 +3128,24 @@ it('leaves open the level a shaped name is delivered at in a closed body, and sa
     )]));
 
     expect($set->rules)->toBe(['page' => ['sometimes', 'integer'], 'page.size' => ['sometimes', 'integer']])
+        ->and($set->whenNotArray)->toBe(['page' => ['page']])
+        ->and($set->arrayKeys)->toBe(['page' => ['size']])
+        ->and($set->dropsArray)->toBe([])
         ->and($set->closedKeys)->toBe(['page'])
+        ->and(implode("\n", $set->findings))->not->toContain('closed to its declared names');
+});
+
+// A key `array:` cannot name (a comma in it) leaves the array branch as `array` and the level open, as it does for a name
+// that is no shaped one, and the finding says what the key check accepts there.
+it('leaves the array branch of a shaped name open when a key below it holds a comma, and says so', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[a,b]' => new Schema(types: [SchemaType::Integer])],
+        additionalProperties: false,
+    )]));
+
+    expect($set->whenNotArray)->toBe(['page' => ['page']])
+        ->and($set->arrayKeys)->toBe([])
         ->and(implode("\n", $set->findings))->toContain('so the key check accepts `page`');
 });
 
@@ -3169,36 +3206,47 @@ it('keeps the literal rule keys of names below one another in a body that is JSO
         ->and(implode("\n", $set->findings))->not->toContain('is delivered by a form as');
 })->with(['an open body' => [false], 'a closed body' => [true]]);
 
-// The levels above a collision close like those above any bracketed name, except the level a name is delivered at: a
-// value sits there (`filter[a]=x`), so `array:` would refuse it.
-it('closes the levels above a collision and leaves open the level a name is delivered at', function (array $properties, array $rules, array $closedKeys, string $finding, bool $says): void {
+// The levels above a name judged by shape close like those above any bracketed name, and the level a shaped name is
+// delivered at closes through its array branch, with the keys declared below it: `filter.a` is `array:b`, and `filter`
+// is `array:a,c`. A collision that leaves no rule to carry the keys keeps its finding.
+it('closes every level above a shaped name, the level it is delivered at through its array branch', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
-        properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($properties)),
+        properties: array_map(
+            static fn (): Schema => new Schema(types: [SchemaType::Integer]),
+            array_flip(['filter[a]', 'filter[a][b]', 'filter[c]']),
+        ),
         additionalProperties: false,
     )]));
 
     // `toEqual`: the closing rule is written after the rules of the names themselves.
-    expect($set->rules)->toEqual($rules)
-        ->and($set->closedKeys)->toBe($closedKeys)
-        ->and(implode("\n", $set->findings))->toContain($finding)
-        ->and(str_contains(implode("\n", $set->findings), 'closed to its declared names'))->toBe($says);
-})->with([
-    'a name beside the level it opens' => [
-        ['filter[a]', 'filter[a][b]', 'filter[c]'],
-        ['filter' => ['sometimes', 'array:a,c'], 'filter.a' => ['sometimes', 'integer'], 'filter.a.b' => ['sometimes', 'integer'], 'filter.c' => ['sometimes', 'integer']],
-        ['filter'],
-        'so the key check accepts `filter.a`',
-        true,
-    ],
-    'two names delivered under one bracketed key' => [
-        ['a.b[c]', 'a_b[c]'],
-        ['a_b' => ['sometimes', 'array:c']],
-        ['a_b'],
-        '`a.b[c]` and `a_b[c]` reach Laravel under one name, `a_b.c`',
-        false,
-    ],
-]);
+    expect($set->rules)->toEqual([
+        'filter' => ['sometimes', 'array:a,c'],
+        'filter.a' => ['sometimes', 'integer'],
+        'filter.a.b' => ['sometimes', 'integer'],
+        'filter.c' => ['sometimes', 'integer'],
+    ])
+        ->and($set->whenNotArray)->toBe(['filter.a' => ['filter', 'a']])
+        ->and($set->arrayKeys)->toBe(['filter.a' => ['b']])
+        ->and($set->closedKeys)->toBe(['filter'])
+        ->and(implode("\n", $set->findings))->not->toContain('closed to its declared names');
+});
+
+it('closes the levels above two names delivered under one bracketed key', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: array_map(
+            static fn (): Schema => new Schema(types: [SchemaType::Integer]),
+            array_flip(['a.b[c]', 'a_b[c]']),
+        ),
+        additionalProperties: false,
+    )]));
+
+    expect($set->rules)->toEqual(['a_b' => ['sometimes', 'array:c']])
+        ->and($set->closedKeys)->toBe(['a_b'])
+        ->and(implode("\n", $set->findings))->toContain('`a.b[c]` and `a_b[c]` reach Laravel under one name, `a_b.c`')
+        ->and(implode("\n", $set->findings))->not->toContain('closed to its declared names');
+});
 
 // `user.name` and `user_name` are one key once PHP has delivered them, so the closed root takes the
 // second for the first, and the file says so.

@@ -2038,7 +2038,8 @@ function postWithBracketedNames(string $mediaType, array $names, bool $closed, a
 
 // `filter[a]` and `filter[a][b]` are one key to a rule, so `filter[a]` judges its value only when it is not an array and
 // the other keeps its own: either side passes, and each is judged. The closed body still refuses what lands beside them,
-// and the level the first one is delivered at stays open for its own value. Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
+// at the level `filter[a]` is delivered at too: the array branch of its `Rule::when()` holds the keys below it.
+// Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
 it('accepts either side of a name below a bracketed name, judges it, and refuses an undeclared key beside it', function (string $mediaType): void {
     $class = emittedRequestClass(postWithBracketedNames($mediaType, ['filter[a]', 'filter[a][b]', 'filter[c]'], closed: true, strings: ['filter[a]']));
 
@@ -2046,7 +2047,23 @@ it('accepts either side of a name below a bracketed name, judges it, and refuses
         ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['b' => '1']]])[0])->toBe(200)
         ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['b' => 'x']]])[0])->toBe(422)
         ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['evil' => '1']])[0])->toBe(422)
-        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['c' => 'x']])[0])->toBe(422);
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['c' => 'x']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['evil' => '1']]])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['b' => '1', 'evil' => '1']]])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// A plain `page` above `page[size]`: with `['array']` as the array branch, `page[size]=3&page[evil]=1` passed and only
+// `size` stayed in `validated()`. The branch holds the declared key (`array:size`), so the contract's refusal of the
+// undeclared one is the request's too, and `page=2` and `page[size]=3` still pass.
+it('refuses an undeclared key beside the names below a plain name in a closed form body', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithBracketedNames($mediaType, ['page', 'page[size]'], closed: true));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['page' => '2']))->toBe([200, ['page' => '2']])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3']]))->toBe([200, ['page' => ['size' => '3']]])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => 'abc'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => 'x']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['evil' => '1']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3', 'evil' => '1']])[0])->toBe(422);
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
 // Both names keep a rule, and `formPaths` hands each one's value to `dto()`: `filter[a]=x` reaches it again (0.2.0 did

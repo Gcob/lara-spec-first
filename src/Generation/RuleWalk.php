@@ -41,6 +41,14 @@ final class RuleWalk
     public array $dropsArray = [];
 
     /**
+     * The keys of {@see self::$whenNotArray} whose array branch holds the keys the contract declares below the name, in
+     * a closed body: `array:size` instead of `array`. See {@see RuleSet::$arrayKeys}.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $arrayKeys = [];
+
+    /**
      * @var list<string>
      */
     public array $findings = [];

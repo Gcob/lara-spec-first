@@ -93,9 +93,13 @@ the value of the other. A name below them keeps its own rule, and they keep thei
 keeps the collision, since one rule set serves both clients and `rules()` does not branch on the media type. A `*` name
 has no rule at all, as before: it claims its path in a body read only as a form, to shape the name above it.
 
-**A closed body keeps the level a shaped name is delivered at open.** `filter` is closed to `a` and `c`, and `filter.a`
-holds the value of `filter[a]`, so the key check accepts what a client can also send under it, and the generated file
-says so.
+**A closed body closes the level a shaped name is delivered at through the array branch.** `filter` is closed to `a` and
+`c`, and `filter.a` is the key of `filter[a]`, whose rules judge a value that is not an array. A rule of its own on
+`filter.a` would refuse that value, so the keys declared below it go in the array branch of the shape check instead:
+`['array:b']`, written `'filter.a' => Rule::when(..., ['sometimes', 'string'], ['array:b'])`. `filter[a][evil]=1` and
+`page[evil]=1` are refused, as the contract refuses them, where `['array']` accepted them and kept only the declared key
+in `validated()`. A key `array:` cannot name (a comma in it) keeps `['array']` and the level open, with a finding, and a
+name that keeps no shape check (typed `array` or `object`, or in a collision) keeps its level open as before.
 
 ## Alternatives turned down
 
@@ -119,6 +123,8 @@ says so.
 - **The shape check has one blind spot,** the one the query side has: `page[size]=3` satisfies a presence the contract
   asks of `page`. The [guide](../../guide/code-generation/request-validation.md#one-rule-set-body-and-query) and the
   CHANGELOG state it.
+- **A closed body refuses an undeclared key below a shaped name** (`page[evil]=1` beside `page` and `page[size]`), which
+  it accepted. The CHANGELOG lists it as a breaking change.
 - **`dto()` carries the nested names again:** `page[size]` reaches it, and a required one is no longer `Optional`.
 - **`spec:build` stops warning** for these names, since they have rules, and `spec:doctor` stays silent on them.
 - **This does not settle** a form body's appended name (`ids[]` read as `ids.0`: a second value goes to `ids.1`,

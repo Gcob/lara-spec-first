@@ -107,6 +107,18 @@ tags: [versions, conventions, planning]
   and got a `200` now gets a `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   This is a breaking change: drop the key, or declare it.
+- **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it
+  used to accept it.** The body is closed to its declared names, but the level `page` is delivered at was left open for
+  the value of `page` itself, so `page[evil]=1` and `page[size]=3&page[evil]=1` were accepted (the second kept only
+  `size` in `validated()`). The array branch of `page`'s shape check now holds the keys the contract declares below it
+  (`['array:size']`), and `page=2` and `page[size]=3` still pass. It holds at any depth: `filter[a]` beside
+  `filter[a][b]` gives `filter[a][evil]=1` the same refusal. Requests that answered `200` now answer `422` to a client
+  that asks for JSON (see
+  [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
+  A level whose key `array:` cannot name (a comma in it) stays open, and the generated file says so. This is a breaking
+  change: drop the key, or declare it. The reasoning is in
+  [ADR 0012](./docs/project/decisions/0012-judge-plain-form-names-by-shape.md), and this ships
+  [#168](https://github.com/Gcob/lara-spec-first/issues/168).
 - **`ext-tokenizer` is now a declared requirement.** `spec:build` reads a custom controller with PHP's tokenizer to
   compare its `routeAction` with the generated parent. This is not a breaking change: every Laravel application already
   has the extension, since the framework requires it, and `composer` only now says so in this package's own

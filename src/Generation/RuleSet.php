@@ -74,6 +74,11 @@ final readonly class RuleSet
      *                                                     nested names are
      * @param  list<string>  $dropsArray  the keys of `$whenNotArray` with no rule on any name below them: the request
      *                                    drops the array (`exclude`) where it would keep it (`array`) beside a rule
+     * @param  array<string, list<string>>  $arrayKeys  the keys of `$whenNotArray` whose array branch holds the keys
+     *                                                  the contract declares below the name, for a closed body: the
+     *                                                  branch is `array:size`, so an undeclared key beside the nested
+     *                                                  names is refused. A key not here, and not in `$dropsArray`, has
+     *                                                  `array`
      * @param  list<string>  $information  the findings that lose no constraint (a body key a `query` parameter shadows,
      *                                     a name a form rewrites), which are in `findings` too. Nothing is left
      *                                     unenforced by one, so the build does not count a request for them alone
@@ -107,6 +112,7 @@ final readonly class RuleSet
         public bool $mapRoot = false,
         public array $information = [],
         public array $scalarNames = [],
+        public array $arrayKeys = [],
     ) {}
 
     /**
