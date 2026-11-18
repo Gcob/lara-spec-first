@@ -85,8 +85,9 @@ disagree still claims its name, since a class that carried it would describe som
 way is told that component gets no DTO either. The build is not refused.
 
 **A known limit:** a schema reached only through a schema that gave way still claims its class name. If an inline schema
-derives that name, it gets no DTO and its finding names a class that is not written, in either order of the document
-([#191](https://github.com/Gcob/lara-spec-first/issues/191)).
+derives that name, it gets no DTO and its finding names a class that is not written, in either order of the document. A
+component is caught the same way: a healthy `NewPet` that ties with a `new-pet`, reachable only through a schema that
+gave way and never written, loses its DTO too ([#191](https://github.com/Gcob/lara-spec-first/issues/191)).
 
 **A status with no DTO says why, in the controller.** The generated controller's findings carry one sentence per status:
 

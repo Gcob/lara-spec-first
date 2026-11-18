@@ -310,6 +310,17 @@ it('gives no DTO to a response schema whose allOf branches disagree, and says wh
         );
 });
 
+// In 3.0 a keyword written beside a `$ref` is ignored, so what 3.1 reads as branches that disagree is no conflict here:
+// the status has the referenced class, and `id` keeps the type the component gives it.
+it('gives a status the referenced class when a 3.0 response writes a sibling beside its reference', function (): void {
+    $plan = (new ResponseDtoPlanner)->plan(extractFixture('response-ref-sibling-conflict-3.0.yaml'), []);
+
+    expect(array_column($plan->dtos, 'shortName'))->toBe(['BaseDto'])
+        ->and($plan->dtos[0]->properties[0]->type->kind)->toBe(InputDtoType::INT)
+        ->and($plan->statuses['get /siblings'][0]->sentence())->toContain('is `BaseDto`')
+        ->and($plan->fallbacks)->toBe([]);
+});
+
 // Two operations that return one schema are one type, whatever status each answers with.
 it('shares one response DTO between operations returning one schema', function (): void {
     $dtos = (new ResponseDtoPlanner)->plan([

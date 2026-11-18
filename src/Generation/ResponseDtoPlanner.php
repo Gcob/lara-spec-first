@@ -214,6 +214,8 @@ final class ResponseDtoPlanner extends DtoPlanner
         $identity = $named ? 'named:'.$position : 'inline:'.$merged->shapeKey();
 
         if ($this->surveying) {
+            // TODO (#191): this claims a name for a schema the build may never reach, because it sits below a schema that
+            // gave way; claim only what the building walk reaches.
             $this->contest->claim($shortName, $identity, $named ? ResponseNameContest::COMPONENT : ResponseNameContest::INLINE, $position, $named ? $schemaName : null);
 
             try {
