@@ -52,6 +52,10 @@ case "$relative" in
     # walks a directory: a file named on the command line is formatted anyway. The
     # build owns this tree, so skip it here rather than fight the build.
     workbench/app/Http/Generated/*) ;;
+    # A minor's demo is frozen once released, so a formatter upgrade must not edit
+    # it (pint.json, .prettierignore and the docblock formatter skip it too).
+    # `demo/README.md` has no second slash, so it still gets formatted below.
+    demo/*/*) ;;
     *.php)
         if [ -x vendor/bin/pint ]; then
             if ! output=$(vendor/bin/pint "$relative" 2>&1); then

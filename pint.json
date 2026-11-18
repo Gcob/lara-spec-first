@@ -1,6 +1,7 @@
 {
     "preset": "laravel",
     "exclude": [
-        "workbench/app/Http/Generated"
+        "workbench/app/Http/Generated",
+        "demo"
     ]
 }
