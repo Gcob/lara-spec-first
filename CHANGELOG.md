@@ -229,7 +229,8 @@ tags: [versions, conventions, planning]
   other, on the key itself, and so is a root that declares properties beside a value schema, except under a declared
   name. A map beside declared keys costs about 7 seconds of validation per megabyte of map near 1 MB (0.3 seconds for
   10,000 keys), so cap the request body at the web server. The reasoning is in
-  [ADR 0014](./docs/project/decisions/0014-judge-undeclared-keys-by-name.md).
+  [ADR 0014](./docs/project/decisions/0014-judge-undeclared-keys-by-name.md). This ships
+  [#169](https://github.com/Gcob/lara-spec-first/issues/169).
 - **`spec:doctor` no longer reports a map the request validates, so its exit code can drop from `2` to `0`.** A body or
   a property written `additionalProperties: <schema>` was reported `Ignored`, and a document whose only gap was one
   exited `2`. The values are validated now (see the entry above), and `additionalProperties: {}` states nothing, so such
@@ -237,7 +238,7 @@ tags: [versions, conventions, planning]
   guard cannot spare is still reported as `Partial` and still exits `2`, and so does a schema used in a request and in a
   response, for the response's own finding that its DTO carries the declared properties only. This is a breaking change:
   every move on the exit-code axis is major, in either direction, so a CI step that expected `2` here will see `0`.
-  Update what it expects.
+  Update what it expects. This ships [#169](https://github.com/Gcob/lara-spec-first/issues/169).
 - **A map property is now typed by its values on the input DTO.** An object property that declares no `properties` and
   writes a schema under `additionalProperties` was `array<string, mixed>` with its values as they arrived, and is now
   `array<array-key, T>`, `T` being what the value schema becomes: a map of `$ref` values holds DTO objects, a map of
@@ -263,7 +264,8 @@ tags: [versions, conventions, planning]
   fails, and a controller that passed `validated()` to `create()` now passes the body where it passed `[]`. Read the
   keys from `$request->dto()->additionalProperties`, and pass only what `create()` accepts. The reasoning is in
   [ADR 0015](./docs/project/decisions/0015-type-the-values-of-a-map-body.md). This closes the gap the `0.2.0`
-  `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109).
+  `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109). This ships
+  [#169](https://github.com/Gcob/lara-spec-first/issues/169).
 - **`spec:doctor` compares a part's `encoding` with the default of the document's own OpenAPI version, so its exit code
   can rise from `0` to `2`.** A `contentType` written under `encoding` on a part the request does not read as a file is
   reported unless it is that part's default, and the default was the union of every version's. Each minor is now read by

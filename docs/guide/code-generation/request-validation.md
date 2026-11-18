@@ -1008,16 +1008,19 @@ additionalProperties: { type: integer }
 
 ```php
 // app/Http/Generated/Requests/ReplacePostMetadataRequest.php
+private const SPARED_KEYS = ['locale'];
+
 'locale' => ['sometimes', 'string', 'max:5'],
 '*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),
 ```
 
 `Gcob\LaraSpecFirst\Validation\UndeclaredKeys` is public API, imported by the generated request, so its name is frozen
-with the rest of what a generated file names. `{"locale": "toolong"}` answers on `locale` alone, with `max:5`'s message
-and never `integer`'s, and `{"views": "x"}` answers on `views`. The declared key keeps exactly its own rules whatever
-the order of the array. Every rule key under the wildcard is guarded the same way (`meta.*`, and `meta.*.n` for an
-object value), so a value's own children never reach a declared key either, and a value that is a map itself adds its
-own names to the guard of the keys below it. A map with no declared property keeps the plain wildcard above.
+with the rest of what a generated file names, and so are its constructor and `below()`, which the file calls.
+`{"locale": "toolong"}` answers on `locale` alone, with `max:5`'s message and never `integer`'s, and `{"views": "x"}`
+answers on `views`. The declared key keeps exactly its own rules whatever the order of the array. Every rule key under
+the wildcard is guarded the same way (`meta.*`, and `meta.*.n` for an object value), so a value's own children never
+reach a declared key either, and a value that is a map itself adds its own names to the guard of the keys below it. A
+map with no declared property keeps the plain wildcard above.
 
 **The guard reads the key's names and never the data.** Laravel's `Rule::forEach` does the same job and takes 22 seconds
 for a map of 10,000 values, since it hands every key the whole data to undot. `UndeclaredKeys` takes 0.3 seconds for the

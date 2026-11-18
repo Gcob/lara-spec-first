@@ -25,7 +25,7 @@ use Illuminate\Validation\Rule;
  * and anywhere else it reads the object as a rule name and throws.
  *
  * **It is public API surface**, because a generated request imports it: the name and namespace are frozen with the rest
- * of what a generated file names.
+ * of what a generated file names, and so are the constructor and {@see self::below()}, which a generated file calls.
  *
  * @see docs/guide/code-generation/request-validation.md — "A map's values are validated one by one"
  */

@@ -31,7 +31,8 @@ tags: [decisions, code-generation, openapi]
 >   and `Rule::forEach`, which takes 22 seconds for a map of 10,000 values.
 > - This supersedes [ADR 0003](./0003-validate-each-value-of-a-map.md), and restates what of it still holds.
 
-**Status:** Accepted · **Card:** [#169](https://github.com/Gcob/lara-spec-first/issues/169)
+**Status:** Accepted · **Card:** [#169](https://github.com/Gcob/lara-spec-first/issues/169) · **Pull request:**
+[#194](https://github.com/Gcob/lara-spec-first/pull/194)
 
 ## Context
 
@@ -140,7 +141,7 @@ written again under each integer-like key.
   `query` parameter, and still exits `2` for the cases the guard cannot spare. A schema used in a request and in a
   response still exits `2` for the response's own finding.
 - **A generated request imports `Gcob\LaraSpecFirst\Validation\UndeclaredKeys`:** a class name a generated file depends
-  on, frozen with the rest at 1.0.
+  on, frozen with the rest at 1.0, and so are its constructor and `below()`, which the generated file calls.
 - **A large map costs validation time past about 1 MB,** quadratic in Laravel's own expansion: about 7 seconds per
   megabyte near 1 MB, and 0.3 seconds for 10,000 keys. Cap the request body at the web server (nginx's default
   `client_max_body_size` is 1 MB; PHP's `post_max_size` does not bound a JSON body in time).

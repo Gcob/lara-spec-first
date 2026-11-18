@@ -490,10 +490,10 @@ final readonly class RuleSetBuilder
 
     /**
      * The schema every value of a map is held to, or null when the object is not a map: it declares a property, or it
-     * writes no value schema. Beside a property the wildcard would also judge the declared key, so those values are
-     * reported and not read.
+     * writes no value schema. The request judges the values beside a property too, but a DTO of an object that declares
+     * properties carries those properties only, so it has no place for them.
      *
-     * @internal Public so the input DTO types the values the request judged, and no others.
+     * @internal Public so the DTOs type the values of the one object they carry whole, a map with no property.
      */
     public static function mapValueSchema(Schema $schema): ?Schema
     {
@@ -568,11 +568,21 @@ final readonly class RuleSetBuilder
 
             $path = self::deliveredPath($name);
 
-            // A form never delivers it, so only a JSON client sends the name, and as written.
-            if ($walk->mixedBody && ($path === null || $path === [$name])) {
+            // A form never delivers a pathless name, so only a JSON client sends it, and as written: spared, unless it holds a
+            // `.`, which Laravel replaces in the key the client sends, as it does for any JSON name.
+            if ($walk->mixedBody && ($path === [$name] || ($path === null && ! str_contains($name, '.')))) {
                 $spared[] = $name;
 
                 continue;
+            }
+
+            if ($walk->mixedBody && $path === null) {
+                return self::cannotSpare($walk, $label, sprintf(
+                    '%s declares `%s`, which Laravel cannot tell apart from an undeclared key, so the values of its other '
+                        .'keys are not validated.',
+                    $subject,
+                    $name,
+                ));
             }
 
             if ($walk->mixedBody) {

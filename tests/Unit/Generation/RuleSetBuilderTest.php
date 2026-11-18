@@ -1437,18 +1437,28 @@ it('spares the name a form delivers a declared name as, and says an undeclared k
 });
 
 // A name a form never delivers (`[x]`) is sent by a JSON client only, and as written: spared as it is in a body that is
-// JSON as well, and needing no sparing in a body that is only a form.
-it('spares a declared name no form delivers by the name a JSON client sends it under', function (array $media, array $spared): void {
+// JSON as well, and needing no sparing in a body that is only a form. One that holds a `.` (`[x.y]`) is the JSON dot's
+// case: Laravel replaces the dot of the key the client sends with a placeholder, so the name cannot be spared.
+it('spares a declared name no form delivers by the name a JSON client sends it under', function (string $name, array $media, array $spared): void {
     assert(array_is_list($media));
-    $map = new Schema(types: [SchemaType::Object], properties: ['[x]' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
+    $map = new Schema(types: [SchemaType::Object], properties: [$name => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
     $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $map)));
 
     expect(array_values($set->undeclaredKeys)[0] ?? [])->toBe($spared === [] ? [] : [0 => $spared])
-        ->and($set->unenforced)->toBe([]);
+        ->and($set->unenforced)->toBe($spared === [] ? ['additionalProperties' => ['The body itself']] : []);
 })->with([
-    'JSON and a form' => [['application/json', 'application/x-www-form-urlencoded'], ['[x]']],
-    'JSON only' => [['application/json'], ['[x]']],
+    'JSON and a form' => ['[x]', ['application/json', 'application/x-www-form-urlencoded'], ['[x]']],
+    'JSON only' => ['[x]', ['application/json'], ['[x]']],
+    'a dotted one, JSON and a form' => ['[x.y]', ['application/json', 'application/x-www-form-urlencoded'], []],
+    'a dotted one, JSON only' => ['[x.y]', ['application/json'], []],
 ]);
+
+it('says why a declared name no form delivers cannot be spared when it holds a dot', function (): void {
+    $map = new Schema(types: [SchemaType::Object], properties: ['[x.y]' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys(['application/json', 'application/x-www-form-urlencoded'], $map)));
+
+    expect($set->findings)->toContain('The body declares `[x.y]`, which Laravel cannot tell apart from an undeclared key, so the values of its other keys are not validated.');
+});
 
 // An undeclared key PHP rewrites reaches the value schema under its new name: no constraint is lost, so it is
 // information. A name that arrives under none needs no sparing and no fallback.

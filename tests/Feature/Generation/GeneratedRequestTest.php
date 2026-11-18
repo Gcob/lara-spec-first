@@ -3876,3 +3876,39 @@ it('says a body key named like a query parameter is left out, beside declared pr
     expect((string) preg_replace('/\s*\n\s*\*\s*/', ' ', $file))
         ->toContain('A body key named `page` is not an undeclared key of this body: `page` is also a `query` parameter');
 });
+
+// A declared name no form delivers is sent by a JSON client as written. Without a dot it is spared by that name; with one
+// Laravel replaces the dot of the key with a placeholder, so the name cannot be spared and the values keep the report: the
+// declared key stays judged by its own rule alone, with no value rule written for anything.
+it('answers a JSON client for a declared name no form delivers, in a body that is JSON and a form', function (string $name, array $json, int $status): void {
+    $class = emittedRequestClass(postWithMapBody(
+        mapBeside([$name => new Schema(types: [SchemaType::String])], new Schema(types: [SchemaType::Integer])),
+        mediaTypes: ['application/json', 'application/x-www-form-urlencoded'],
+    ));
+
+    expect(sendThroughEmitted($class, 'POST', json: $json)[0])->toBe($status);
+})->with([
+    'a name with no dot, an undeclared value that is fine' => ['[x]', ['[x]' => 'ok', 'a' => 1], 200],
+    'a name with no dot, an undeclared value the schema refuses' => ['[x]', ['[x]' => 'ok', 'a' => 'bad'], 422],
+    // Reported and not validated: the contract's valid body must not be refused for the sake of a rule that cannot be spared.
+    'a name with a dot' => ['[x.y]', ['[x.y]' => 'ok', 'a' => 1], 200],
+]);
+
+// The copy under an integer-like key is written for a form body too: PHP gives `1042` an integer key as it does in JSON.
+it('keeps and judges the integer-like keys of a form root that declares properties', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithMapBody(
+        mapBeside(['locale' => new Schema(types: [SchemaType::String])], new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+        [$mediaType],
+    ));
+
+    $refused = sendThroughEmitted($class, 'POST', '?page=2', parameters: ['locale' => 'fr', '1042' => 'x']);
+    $accepted = refusedOrValidated(sendThroughEmitted($class, 'POST', '?page=2', parameters: ['locale' => 'fr', '1042' => '5']));
+
+    expect($refused[0])->toBe(422)
+        ->and(array_map(strval(...), array_keys((array) ($refused[1]['errors'] ?? []))))->toBe(['1042'])
+        ->and($accepted)->toBe([200, [1042 => '5', 'locale' => 'fr', 'page' => '2']]);
+})->with([
+    'form-encoded' => ['application/x-www-form-urlencoded'],
+    'multipart' => ['multipart/form-data'],
+]);

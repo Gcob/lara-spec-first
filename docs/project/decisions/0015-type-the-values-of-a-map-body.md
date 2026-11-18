@@ -27,7 +27,8 @@ tags: [decisions, code-generation, openapi]
 > - This supersedes [ADR 0004](./0004-carry-a-map-body-under-additionalproperties.md), and restates what of it still
 >   holds.
 
-**Status:** Accepted · **Card:** [#169](https://github.com/Gcob/lara-spec-first/issues/169)
+**Status:** Accepted · **Card:** [#169](https://github.com/Gcob/lara-spec-first/issues/169) · **Pull request:**
+[#194](https://github.com/Gcob/lara-spec-first/pull/194)
 
 ## Context
 
