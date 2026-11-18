@@ -870,11 +870,13 @@ operation, under every operation whose response reaches the DTO that holds them:
 or only `null`, a recursion with no class to point at, properties written beside a reference a recursion points back at,
 a target that is not an object with properties, and the values of `additionalProperties` beside declared `properties`. A
 value that writes a keyword named above is named by that keyword and not twice. A schema with a fault of its own is not
-named: it gets no DTO, and the generated file says why. The `Ignored` rows carry the position of the keyword itself. A
-`Partial` row carries the fields it was left unenforced on and points at the operation, since no rule set keeps a
-position finer than the field. Both are a package limit, so they exit `2` and never `1`. A keyword written beside a
-`$ref` in a 3.1 document is read and named like any other, at the position it is written: `deprecated`, `default` and
-`x-max-depth` beside a `$ref` are `Ignored` and exit `2` (see
+named: it gets no DTO, and the generated file says why. **A known limit:** a keyword written inside a property that got
+no type for such a fault is still named, since the schema is read whole and the DTO types nothing for the keyword; the
+same fault at the root of a status gives that status no DTO, so nothing written in it is named. The `Ignored` rows carry
+the position of the keyword itself. A `Partial` row carries the fields it was left unenforced on and points at the
+operation, since no rule set keeps a position finer than the field. Both are a package limit, so they exit `2` and never
+`1`. A keyword written beside a `$ref` in a 3.1 document is read and named like any other, at the position it is
+written: `deprecated`, `default` and `x-max-depth` beside a `$ref` are `Ignored` and exit `2` (see
 [keywords written beside a `$ref`](#keywords-written-beside-a-ref)).
 
 **That a first run on a published contract comes back red was weighed rather than missed.** `default` and `deprecated`
