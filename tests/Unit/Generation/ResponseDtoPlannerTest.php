@@ -16,6 +16,8 @@ use Gcob\LaraSpecFirst\Generation\ResponseFallback;
 use Gcob\LaraSpecFirst\Generation\ResponseFallbackCause;
 use Gcob\LaraSpecFirst\Generation\ResponsePlan;
 use Gcob\LaraSpecFirst\Generation\StatusResponse;
+use Gcob\LaraSpecFirst\Generation\UntypedResponseCause;
+use Gcob\LaraSpecFirst\Generation\UntypedResponseValue;
 
 /**
  * An operation answering with a named object schema, under `200` unless it says otherwise.
@@ -946,3 +948,173 @@ it('leaves a response fallback unrecorded for a property with no type, a union a
     'a union of types' => [new Schema(types: [SchemaType::String, SchemaType::Integer])],
     'a recursion with no class' => [Schema::recursion('#/components/schemas/Nowhere')],
 ]);
+
+/**
+ * Each value of a plan a DTO types `mixed` for what the contract says, as the DTO that holds it, the cause and where
+ * the value is written.
+ *
+ * @return list<array{0: string, 1: UntypedResponseCause, 2: string}>
+ */
+function untypedOf(ResponsePlan $plan): array
+{
+    return array_map(
+        static fn (UntypedResponseValue $value): array => [$value->owner, $value->cause, $value->position],
+        $plan->untyped,
+    );
+}
+
+/**
+ * One operation answering with a component `Team` that holds this value under `x`.
+ */
+function teamHolding(Schema $value): Operation
+{
+    return answeringWithSchema(responseComponent('Team', ['x' => $value]));
+}
+
+// A program reads this beside the sentence a person reads: which value the DTO types `mixed` because of what the
+// contract says, and why, so the doctor can tell it from a value that is `mixed` because a schema was at fault.
+it('records why a response DTO types a value mixed', function (Closure $operations, string $owner, UntypedResponseCause $cause, string $position, string $says): void {
+    $plan = (new ResponseDtoPlanner)->plan($operations(), []);
+    $dto = array_column($plan->dtos, null, 'shortName')[$owner];
+
+    expect(untypedOf($plan))->toBe([[$owner, $cause, $position]])
+        ->and(implode("\n", $dto->findings))->toContain($says)
+        ->and($plan->fallbacks)->toBe([]);
+})->with([
+    'a type union' => [
+        static fn (): array => [teamHolding(new Schema(types: [SchemaType::String, SchemaType::Integer]))],
+        'TeamDto',
+        UntypedResponseCause::NoSingleType,
+        '#/components/schemas/Team/properties/x',
+        '`x` states more than one type, so it is `mixed`.',
+    ],
+    'no type' => [
+        static fn (): array => [teamHolding(new Schema)],
+        'TeamDto',
+        UntypedResponseCause::NoSingleType,
+        '#/components/schemas/Team/properties/x',
+        '`x` states no type, so it is `mixed`.',
+    ],
+    'only null' => [
+        static fn (): array => [teamHolding(new Schema(types: [SchemaType::Null]))],
+        'TeamDto',
+        UntypedResponseCause::NoSingleType,
+        '#/components/schemas/Team/properties/x',
+        '`x` states only `null`, so it is `mixed`.',
+    ],
+    'a list whose items state no type' => [
+        static fn (): array => [teamHolding(new Schema(types: [SchemaType::Array], items: new Schema))],
+        'TeamDto',
+        UntypedResponseCause::NoSingleType,
+        '#/components/schemas/Team/properties/x/items',
+        '`xItem` states no type, so it is `mixed`.',
+    ],
+    'a recursion with no class to point at' => [
+        static fn (): array => [answeringWithSchema(new Schema(types: [SchemaType::Object], properties: [
+            'link' => Schema::recursion('#/paths/~1showThing/get/responses/200/content/application~1json/schema'),
+        ]))],
+        'ShowThing200ResponseDto',
+        UntypedResponseCause::UnbuiltRecursion,
+        '#/paths/~1showThing/get/responses/200/content/application~1json/schema/properties/link',
+        '`link` points back at `#/paths/~1showThing/get/responses/200/content/application~1json/schema`, which is not a single named schema',
+    ],
+    'properties written beside the reference' => [
+        static fn (): array => [answeringWithSchema(responseComponent('Node', [
+            'label' => responseString(),
+            'link' => new Schema(
+                name: 'Node',
+                types: [SchemaType::Object],
+                properties: ['extra' => responseString()],
+                recursesTo: '#/components/schemas/Node',
+            ),
+        ]))],
+        'NodeDto',
+        UntypedResponseCause::PropertiesBesideReference,
+        '#/components/schemas/Node/properties/link',
+        '`link` writes properties beside the reference, which the class of `Node` does not carry',
+    ],
+    'a target that is not an object with properties' => [
+        static fn (): array => [answeringWithSchema(responseComponent('Shelf', ['link' => new Schema(
+            name: 'Forest',
+            source: '#/components/schemas/Forest',
+            types: [SchemaType::Array],
+            items: new Schema(types: [SchemaType::Object], properties: [
+                'link' => Schema::recursion('#/components/schemas/Forest', 'Forest'),
+            ]),
+        )]))],
+        'ShelfLinkItemDto',
+        UntypedResponseCause::AncestorNotAnObject,
+        '#/components/schemas/Shelf/properties/link/items/properties/link',
+        '`link` points back at `#/components/schemas/Forest`, which is not an object with properties',
+    ],
+    'an expanded ancestor that states no single type' => [
+        static fn (): array => [answeringWithSchema(new Schema(
+            name: 'Node',
+            source: '#/components/schemas/Node',
+            properties: ['link' => Schema::recursion('#/components/schemas/Node', 'Node')],
+        ))],
+        'NodeDto',
+        UntypedResponseCause::NoSingleType,
+        '#/components/schemas/Node/properties/link',
+        '`link` states no type, so it is `mixed`.',
+    ],
+    'values beside declared properties' => [
+        static fn (): array => extractFixture('response-maps.yaml'),
+        'PetDto',
+        UntypedResponseCause::ValuesBesideProperties,
+        '#/components/schemas/Pet/additionalProperties',
+        '`additionalProperties` types the values of the keys that are not declared, but this type carries only the declared properties',
+    ],
+]);
+
+it('records no cause for a value a response DTO types or leaves out on purpose', function (Closure $operations): void {
+    expect((new ResponseDtoPlanner)->plan($operations(), [])->untyped)->toBe([]);
+})->with([
+    'a writeOnly property' => [static fn (): array => [teamHolding(new Schema(types: [SchemaType::String], writeOnly: true))]],
+    'a key that is renamed' => [static fn (): array => [answeringWithSchema(responseComponent('Team', ['user-id' => responseString()]))]],
+    'a map with no properties' => [static fn (): array => extractFixture('response-dto-golden.yaml')],
+    'additionalProperties: true beside properties' => [static fn (): array => [answeringWithSchema(new Schema(
+        name: 'Team',
+        source: '#/components/schemas/Team',
+        types: [SchemaType::Object],
+        properties: ['name' => responseString()],
+        additionalProperties: true,
+    ))]],
+    'a list with no items' => [static fn (): array => [teamHolding(new Schema(types: [SchemaType::Array]))]],
+    'a property a schema at fault turned mixed' => [static fn (): array => extractFixture('response-property-gives-way.yaml')],
+]);
+
+// What a value writes itself is what the doctor already names when it reads the keyword, so the record says which
+// keywords those are, where they are written, and nothing of the schemas below.
+it('records the keywords a mixed response value writes itself', function (): void {
+    $plan = (new ResponseDtoPlanner)->plan(extractFixture('response-untyped-keywords.yaml'), []);
+    $byOwner = [];
+
+    foreach ($plan->untyped as $value) {
+        $byOwner[$value->owner][$value->position] = $value->keywords;
+    }
+
+    expect($byOwner['OrderDto'])->toBe([
+        '#/components/schemas/Order/properties/payment' => ['oneOf' => '#/components/schemas/Order/properties/payment/oneOf'],
+        '#/components/schemas/Order/properties/refund' => ['oneOf' => '#/components/schemas/Refund/oneOf'],
+        '#/components/schemas/Order/properties/note' => ['anyOf' => '#/components/schemas/Note/anyOf'],
+    ])
+        ->and($byOwner['OrderCustomerDto'])->toBe([
+            '#/components/schemas/Order/properties/customer/properties/contact' => [
+                'anyOf' => '#/components/schemas/Order/properties/customer/properties/contact/anyOf',
+            ],
+        ]);
+});
+
+// The survey walk meets every schema, including one that then gives way and is never built, under a key of its own
+// that no class carries: what it meets there is not what the build writes.
+it('records nothing untyped from the survey walk', function (): void {
+    $plan = (new ResponseDtoPlanner)->plan(extractFixture('response-inline-gives-way-with-union.yaml'), []);
+
+    expect(untypedOf($plan))->toBe([[
+        'UserAddressDto',
+        UntypedResponseCause::NoSingleType,
+        '#/components/schemas/UserAddress/properties/note',
+    ]])
+        ->and(array_column($plan->dtos, 'shortName'))->toBe(['UserDto', 'UserAddressDto']);
+});

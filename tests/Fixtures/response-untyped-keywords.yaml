@@ -1,0 +1,50 @@
+# One response object whose properties the DTO types `mixed` because they write a keyword it does not read: inline,
+# through a component that writes it, and through the 3.0 spelling of a reference with a sibling. A nested object writes
+# one of its own, which belongs to the nested object and not to its parent.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders/{id}:
+    get:
+      operationId: showOrder
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: An order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+components:
+  schemas:
+    Order:
+      type: object
+      properties:
+        payment:
+          oneOf:
+            - { type: object }
+            - { type: string }
+        refund:
+          $ref: '#/components/schemas/Refund'
+        note:
+          description: A note
+          allOf:
+            - $ref: '#/components/schemas/Note'
+        customer:
+          type: object
+          properties:
+            contact:
+              anyOf:
+                - { type: object }
+                - { type: string }
+    Refund:
+      oneOf:
+        - { type: object }
+        - { type: string }
+    Note:
+      anyOf:
+        - { type: object }
+        - { type: string }

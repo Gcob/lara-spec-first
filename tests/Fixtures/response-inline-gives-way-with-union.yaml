@@ -1,0 +1,44 @@
+# `response-inline-meets-component.yaml` with a type union in each address: the inline address gives way to the component
+# `UserAddress`, so only the component's union is a value the build types `mixed`.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /addresses:
+    get:
+      operationId: listAddresses
+      responses:
+        '200':
+          description: Addresses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAddress'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id: { type: integer }
+        address:
+          type: object
+          properties:
+            street: { type: string }
+            unit: { type: [string, integer] }
+    UserAddress:
+      type: object
+      properties:
+        street: { type: string }
+        note: { type: [string, integer] }
