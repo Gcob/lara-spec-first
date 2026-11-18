@@ -157,9 +157,10 @@ final class DoctorCommand extends Command
      * document the pipeline could only partly read they checked less than their names promise. Both are said out loud,
      * and `--json`'s `notes` carries the same answer — the property {@see DiagnosticReport::$notes} exists for.
      *
-     * **Scoped to these two on purpose.** References, Support findings and Installation have the same shape and predate
-     * the change that built Security and Lifecycle; widening the rule to them is its own change, with its own reasoning
-     * about what each of them can honestly say.
+     * **Scoped to these two on purpose.** References and Installation have the same shape and predate the change that
+     * built Security and Lifecycle; widening the rule to them is its own change, with its own reasoning about what each
+     * of them can honestly say. Support findings carries a note of its own, for the response findings left out when
+     * there is no build plan: see {@see self::supportFindingsNotes()}.
      *
      * @return array<string, SectionNote>
      */
