@@ -22,6 +22,7 @@ use Gcob\LaraSpecFirst\Doctor\ReportFormatter;
 use Gcob\LaraSpecFirst\Doctor\RouteOutcome;
 use Gcob\LaraSpecFirst\Doctor\SectionNote;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
+use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
@@ -92,23 +93,26 @@ final class DoctorCommand extends Command
         // waiting for a date to arrive.
         $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 
+        // Before the findings that read the responses, so they take the plan the build would make rather than plan the
+        // responses a second time. Their findings still sit where the request's did, so the order of the report holds.
+        $routing = $this->routingOutcome($config, $outcome, $specPath);
+
         $findings = [
             ...DocumentValidityCheck::check($outcome),
             ...ReferencesCheck::check($outcome),
             ...SupportMatrixCheck::rejected($outcome),
             ...SupportMatrixCheck::missingOperationId($outcome->operations),
-            ...SupportMatrixCheck::requestSchemas($outcome->operations),
-            ...SupportMatrixCheck::deferred($outcome->document),
+            ...SupportMatrixCheck::schemas($outcome->operations, $routing['plan']?->responses),
+            ...SupportMatrixCheck::unreadParameters($outcome->document),
             ...SecurityCheck::check($outcome->operations),
             ...LifecycleCheck::check($outcome->operations, $now),
         ];
 
-        $routing = $this->routingOutcome($config, $outcome, $specPath);
         $findings = [...$findings, ...$routing['findings']];
 
         $findings = [...$findings, ...$this->installation($config)];
 
-        $notes = [...$routing['notes'], ...self::operationSectionNotes($outcome)];
+        $notes = [...$routing['notes'], ...self::operationSectionNotes($outcome), ...self::supportFindingsNotes($routing['plan'])];
 
         return new DiagnosticReport(
             $specPath,
@@ -153,9 +157,10 @@ final class DoctorCommand extends Command
      * document the pipeline could only partly read they checked less than their names promise. Both are said out loud,
      * and `--json`'s `notes` carries the same answer — the property {@see DiagnosticReport::$notes} exists for.
      *
-     * **Scoped to these two on purpose.** References, Support findings and Installation have the same shape and predate
-     * the change that built Security and Lifecycle; widening the rule to them is its own change, with its own reasoning
-     * about what each of them can honestly say.
+     * **Scoped to these two on purpose.** References and Installation have the same shape and predate the change that
+     * built Security and Lifecycle; widening the rule to them is its own change, with its own reasoning about what each
+     * of them can honestly say. Support findings carries a note of its own, for the response findings left out when
+     * there is no build plan: see {@see self::supportFindingsNotes()}.
      *
      * @return array<string, SectionNote>
      */
@@ -192,6 +197,30 @@ final class DoctorCommand extends Command
     }
 
     /**
+     * What `Support findings` owes a reader when the build plan it reads the responses from does not exist.
+     *
+     * **Without a plan the response half of the section is left out, and `clean` would be a claim about it.** The plan
+     * is missing when the planner refused the document or when `generated.namespace` or the routes path was refused,
+     * and either way `Routing outcome` says which. The request half still ran, so this is the narrowed kind of note:
+     * the findings stand, and what they cover is less than the section's name says.
+     *
+     * @return array<string, SectionNote>
+     */
+    private static function supportFindingsNotes(?BuildPlan $plan): array
+    {
+        if ($plan !== null) {
+            return [];
+        }
+
+        return [
+            'Support findings' => SectionNote::narrowed(
+                'the response findings were left out: they are read from the build plan, which could not be made, so '.
+                'a keyword or a property a response DTO cannot type is not listed here. See Routing outcome.'
+            ),
+        ];
+    }
+
+    /**
      * Routing outcome and Drift both need the same `BuildPlan` — one call to `BuildPlanner::plan()` shared between the
      * two rather than one each — and both are skipped together the moment `generated.namespace` or the generated tree's
      * own location cannot be resolved at all: there is nothing left for either section to compare against.
@@ -208,7 +237,12 @@ final class DoctorCommand extends Command
      * Said rather than silently dropped, per {@see DiagnosticReport::$notes}: a section that prints `clean` because it
      * never ran is the same defect in the other direction.
      *
-     * @return array{routes: list<RouteOutcome>, findings: list<Finding>, notes: array<string, SectionNote>}
+     * **The plan is handed back for the response keywords.** It is null when the planner threw (a request refusal,
+     * which Routing outcome reports) and when `generated.namespace` or the routes path was refused: the response half
+     * of `Support findings` is then left out, as the `Partial` half of a request is when its rule set cannot be built,
+     * rather than guessed.
+     *
+     * @return array{routes: list<RouteOutcome>, findings: list<Finding>, notes: array<string, SectionNote>, plan: ?BuildPlan}
      */
     private function routingOutcome(Repository $config, ReadOutcome $read, string $specPath): array
     {
@@ -218,6 +252,7 @@ final class DoctorCommand extends Command
             $locator = GeneratedRoutesLocator::fromConfiguration($this->laravel->basePath(), $configuredPath);
         } catch (SpecException $refusal) {
             return [
+                'plan' => null,
                 'routes' => [],
                 'findings' => [new Finding(FindingClass::PackageLimit, 'Routing outcome', null, '', $refusal->getMessage())],
                 'notes' => [
@@ -233,6 +268,7 @@ final class DoctorCommand extends Command
 
         if (! $read->isClean()) {
             return [
+                'plan' => $outcome->plan,
                 'routes' => $outcome->routes,
                 'findings' => $outcome->findings,
                 'notes' => [
@@ -252,6 +288,7 @@ final class DoctorCommand extends Command
         $driftFindings = DriftCheck::check($outcome->plan, dirname($locator->path()));
 
         return [
+            'plan' => $outcome->plan,
             'routes' => $outcome->routes,
             'findings' => [...$outcome->findings, ...$driftFindings],
             'notes' => [],

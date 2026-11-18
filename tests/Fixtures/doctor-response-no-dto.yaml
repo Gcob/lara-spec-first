@@ -1,0 +1,53 @@
+# `oneOf` in three responses that get no DTO, so the doctor names none of it: a body that is not JSON, two JSON media
+# types with different shapes, and a list whose items are strings.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /text:
+    get:
+      operationId: showText
+      responses:
+        '200':
+          description: Text
+          content:
+            text/plain:
+              schema:
+                oneOf:
+                  - { type: string }
+                  - { type: integer }
+  /two-shapes:
+    get:
+      operationId: showTwoShapes
+      responses:
+        '200':
+          description: Two shapes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  a:
+                    oneOf:
+                      - { type: string }
+                      - { type: integer }
+            application/problem+json:
+              schema:
+                type: object
+                properties:
+                  b: { type: string }
+  /strings:
+    get:
+      operationId: listStrings
+      responses:
+        '200':
+          description: Strings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                    - { type: string }
+                    - { type: integer }

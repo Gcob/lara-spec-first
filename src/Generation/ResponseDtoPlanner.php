@@ -27,7 +27,9 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
  * that derive one property, `allOf` branches that disagree: the request side refuses them, because a rule set built
  * from half of a contract enforces half of it. A response enforces nothing, so a status with such a schema has no DTO
  * and says why, and a property with one is `mixed` and says why, while everything else is typed as written. Each is
- * also recorded ({@see ResponseFallback}), for whoever must tell it from a keyword a DTO cannot type.
+ * also recorded ({@see ResponseFallback}), for whoever must tell it from a keyword a DTO cannot type. **What the
+ * contract itself leaves `mixed`** (a union, no type, a recursion with no class) is recorded in a list of its own
+ * ({@see UntypedResponseValue}), never as a fallback: it is not a fault of the schema.
  *
  * **A class name two schemas derive is decided before anything is typed.** The plan walks the response schemas twice.
  * The first walk, the survey, gives every schema the class name it derives and records who claims each one; the second
@@ -55,6 +57,11 @@ final class ResponseDtoPlanner extends DtoPlanner
      * @var list<ResponseFallback>
      */
     private array $fallbacks = [];
+
+    /**
+     * @var list<UntypedResponseValue>
+     */
+    private array $untyped = [];
 
     private ResponseNameContest $contest;
 
@@ -95,7 +102,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             );
         }
 
-        return new ResponsePlan($dtos, $statuses, $this->fallbacks);
+        return new ResponsePlan($dtos, $statuses, $this->fallbacks, $this->untyped);
     }
 
     /**
@@ -109,6 +116,7 @@ final class ResponseDtoPlanner extends DtoPlanner
         $this->registry = [];
         $this->readers = [];
         $this->fallbacks = [];
+        $this->untyped = [];
         $this->ancestors = [];
         $this->identity = '';
 
@@ -172,6 +180,11 @@ final class ResponseDtoPlanner extends DtoPlanner
             $segment,
             $position,
         );
+    }
+
+    protected function recordUntyped(UntypedResponseCause $cause, string $owner, string $position, array $keywords): void
+    {
+        $this->untyped[] = new UntypedResponseValue($owner, $position, $cause, $keywords);
     }
 
     protected function registerNested(
@@ -563,9 +576,11 @@ final class ResponseDtoPlanner extends DtoPlanner
      * The media type and schema of each JSON body a response writes, in document order: none when it has no body, or
      * only media types that are not JSON.
      *
+     * Public for the doctor, which reads the same schemas to name the keywords a response DTO does not type.
+     *
      * @return list<array{0: string, 1: Schema}>
      */
-    private static function jsonSchemas(Response $response): array
+    public static function jsonSchemas(Response $response): array
     {
         $found = [];
 
@@ -680,6 +695,12 @@ final class ResponseDtoPlanner extends DtoPlanner
         if ($values !== null && ! RuleSetBuilder::allowsAnyValue($values)) {
             $this->registry[$shortName]['findings'][] = '`additionalProperties` types the values of the keys that are not '
                 .'declared, but this type carries only the declared properties, so those values are not read.';
+            $this->recordUntyped(
+                UntypedResponseCause::ValuesBesideProperties,
+                $shortName,
+                self::within($position, '/additionalProperties'),
+                self::writtenKeywords($values),
+            );
         }
 
         $this->registry[$shortName]['properties'] = [...$required, ...$optional];

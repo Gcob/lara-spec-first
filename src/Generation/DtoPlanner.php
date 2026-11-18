@@ -81,6 +81,17 @@ abstract class DtoPlanner
     abstract protected function ancestorNotAnObjectFinding(string $segment, string $position): string;
 
     /**
+     * Note that a value is `mixed` for what the contract says, for a planner that tells a program as well as a reader.
+     * Nothing by default: the request side says it in the file and nowhere else.
+     *
+     * @param  string  $owner  the DTO that holds the value
+     * @param  string  $position  where the value is written
+     * @param  array<string, string>  $keywords  what the value's own schema writes that the support matrix marks
+     *                                           `Ignored`, with where
+     */
+    protected function recordUntyped(UntypedResponseCause $cause, string $owner, string $position, array $keywords): void {}
+
+    /**
      * Put a nested or recursive object's DTO in the registry, or recognize it as one already there.
      *
      * @return string the short name
@@ -117,7 +128,7 @@ abstract class DtoPlanner
         $schema = AllOfMerger::merge($written, $this->identity, '`'.$segment.'`');
 
         if ($schema->recursesTo !== null) {
-            return $this->recursion($schema, $segment, $owner);
+            return $this->recursion($schema, $segment, $pointer, $owner);
         }
 
         $before = count($this->ancestors);
@@ -199,6 +210,7 @@ abstract class DtoPlanner
         }
 
         $this->registry[$owner]['findings'][] = $this->noSingleTypeFinding($segment, $schema);
+        $this->recordUntyped(UntypedResponseCause::NoSingleType, $owner, $pointer, self::writtenKeywords($written));
 
         return new InputDtoType(InputDtoType::MIXED);
     }
@@ -259,7 +271,7 @@ abstract class DtoPlanner
         $recursive = $this->recursiveBranch($written, $segment, $above);
 
         if ($recursive !== null) {
-            $type = $this->ancestorType($recursive[0], $recursive[1], $segment, $owner);
+            $type = $this->ancestorType($recursive[0], $recursive[1], $segment, $pointer, $owner);
 
             return $type->kind === InputDtoType::DTO ? new InputDtoType(InputDtoType::DTO, $nullable || $type->nullable, class: $type->class) : $type;
         }
@@ -345,7 +357,7 @@ abstract class DtoPlanner
      * @throws UnusableNameException
      * @throws ConflictingInputException
      */
-    protected function recursion(Schema $site, string $segment, string $owner): InputDtoType
+    protected function recursion(Schema $site, string $segment, string $pointer, string $owner): InputDtoType
     {
         $position = (string) $site->recursesTo;
         $ancestor = null;
@@ -360,11 +372,12 @@ abstract class DtoPlanner
 
         if ($ancestor === null || ! $this->unrolls($site, $ancestor)) {
             $this->registry[$owner]['findings'][] = $this->unbuiltRecursionFinding($segment, $position);
+            $this->recordUntyped(UntypedResponseCause::UnbuiltRecursion, $owner, $pointer, self::writtenKeywords(...array_filter([$ancestor])));
 
             return new InputDtoType(InputDtoType::MIXED);
         }
 
-        return $this->ancestorType($ancestor, AllOfMerger::besideMarker($site), $segment, $owner);
+        return $this->ancestorType($ancestor, AllOfMerger::besideMarker($site), $segment, $pointer, $owner);
     }
 
     /**
@@ -379,16 +392,19 @@ abstract class DtoPlanner
      *
      * @param  Schema  $ancestor  the definition of the schema the site points back at
      * @param  Schema|null  $beside  what the site writes beside the reference
+     * @param  string  $pointer  where the site is written
      *
      * @throws UnusableNameException
      * @throws ConflictingInputException
      */
-    protected function ancestorType(Schema $ancestor, ?Schema $beside, string $segment, string $owner): InputDtoType
+    protected function ancestorType(Schema $ancestor, ?Schema $beside, string $segment, string $pointer, string $owner): InputDtoType
     {
         $position = (string) $ancestor->source;
+        $keywords = self::writtenKeywords(...array_filter([$ancestor, $beside]));
 
         if ($beside !== null && $beside->properties !== []) {
             $this->registry[$owner]['findings'][] = $this->propertiesBesideFinding($segment, (string) $ancestor->name);
+            $this->recordUntyped(UntypedResponseCause::PropertiesBesideReference, $owner, $pointer, $keywords);
 
             return new InputDtoType(InputDtoType::MIXED);
         }
@@ -399,12 +415,14 @@ abstract class DtoPlanner
 
         if ($expanded->soleType() === null) {
             $this->registry[$owner]['findings'][] = $this->noSingleTypeFinding($segment, $expanded);
+            $this->recordUntyped(UntypedResponseCause::NoSingleType, $owner, $pointer, $keywords);
 
             return new InputDtoType(InputDtoType::MIXED);
         }
 
         if ($expanded->soleType() !== SchemaType::Object || $expanded->properties === []) {
             $this->registry[$owner]['findings'][] = $this->ancestorNotAnObjectFinding($segment, $position);
+            $this->recordUntyped(UntypedResponseCause::AncestorNotAnObject, $owner, $pointer, $keywords);
 
             return new InputDtoType(InputDtoType::MIXED);
         }
@@ -425,6 +443,24 @@ abstract class DtoPlanner
         $nullable = self::allowsNull($ancestor) || self::allowsNull($expanded);
 
         return new InputDtoType(InputDtoType::DTO, $nullable, class: $class);
+    }
+
+    /**
+     * Each keyword the schemas write themselves that the support matrix marks `Ignored`, with where it is written:
+     * their own, and those of the branches of their `allOf` at any depth. Never a property's, an item's or a value's,
+     * which a DTO of its own, or a value of its own, reads.
+     *
+     * @return array<string, string>
+     */
+    protected static function writtenKeywords(Schema ...$schemas): array
+    {
+        $found = [];
+
+        foreach ($schemas as $schema) {
+            $found += $schema->ignored + self::writtenKeywords(...$schema->allOf);
+        }
+
+        return $found;
     }
 
     protected static function allowsNull(Schema $schema): bool

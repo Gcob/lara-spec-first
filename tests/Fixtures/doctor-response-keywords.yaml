@@ -1,0 +1,46 @@
+# `oneOf` written three times in the responses of one operation (two properties of the `200` and the whole `201`), and
+# `anyOf` once, in a property of an object nested in the `200`. Both statuses have a DTO.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders/{id}:
+    get:
+      operationId: showOrder
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: An order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    oneOf:
+                      - { type: object }
+                      - { type: string }
+                  shipping:
+                    oneOf:
+                      - { type: object }
+                      - { type: string }
+                  customer:
+                    type: object
+                    properties:
+                      contact:
+                        anyOf:
+                          - { type: object }
+                          - { type: string }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  receipt:
+                    oneOf:
+                      - { type: object }
+                      - { type: string }

@@ -1,0 +1,36 @@
+# A body field and a `query` parameter named `page`: no rule set can hold both, so the build plan refuses the operation and
+# Routing outcome says so. Nothing in the request is a keyword the doctor names, and the `oneOf` in the `201` is one it
+# would name from a plan that does not exist: `Support findings` has to say the response is not covered, not `clean`.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                page:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    oneOf:
+                      - { type: object }
+                      - { type: string }

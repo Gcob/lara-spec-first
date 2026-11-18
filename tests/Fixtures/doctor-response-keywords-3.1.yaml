@@ -1,0 +1,33 @@
+# Keywords only OpenAPI 3.1 writes, in a `200`: one in a tuple, one beside an array, one in an object.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      operationId: showThing
+      responses:
+        '200':
+          description: A thing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pair:
+                    type: array
+                    prefixItems:
+                      - { type: string }
+                      - { type: integer }
+                  rest:
+                    type: array
+                    items: { type: string }
+                    unevaluatedItems: false
+                  card:
+                    type: object
+                    properties:
+                      kind: { type: string }
+                    dependentSchemas:
+                      kind:
+                        required: [name]
