@@ -69,7 +69,9 @@ final readonly class UndeclaredKeys implements CompilableRules
 
         foreach ($this->spared as $step => $names) {
             if (in_array($steps[$step] ?? null, $names, true)) {
-                return Rule::compile($attribute, [], []);
+                // Why: no rule at all, never an empty list. `validated()` keeps every data key that has a rule entry, so an
+                // empty one would carry a child of a declared object that nothing judges.
+                return (object) ['rules' => [], 'implicitAttributes' => []];
             }
         }
 

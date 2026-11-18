@@ -3660,21 +3660,41 @@ it('validates a map\'s values beside declared properties', function (bool $neste
 
 // The declared object of a map of objects is never judged by the value schema, and the children of a value are guarded
 // too: `n` of an undeclared `b` is judged, and the `n` an object the contract declares may carry is not.
-it('judges the objects of a map beside a declared object with a different shape', function (array $meta, int $status, array $errors): void {
+it('judges the objects of a map beside a declared object with a different shape', function (array $meta, int $status, array $errors, array $validated): void {
     $declared = new Schema(types: [SchemaType::Object], properties: ['m' => new Schema(types: [SchemaType::String])]);
     $value = new Schema(types: [SchemaType::Object], properties: ['n' => new Schema(types: [SchemaType::Integer])], required: ['n']);
     $class = emittedRequestClass(postWithMapBody(bodyHolding(mapBeside(['a' => $declared], $value))));
 
     [$got, $answer] = sendThroughEmitted($class, 'POST', json: ['meta' => $meta]);
 
+    // `validated()` is what a controller hands to `create()`: the declared object keeps the members it declares and
+    // nothing the value schema happens to name, since nothing judged them there.
     expect($got)->toBe($status)
-        ->and($status === 422 ? array_keys((array) ($answer['errors'] ?? [])) : [])->toBe($errors);
+        ->and($status === 422 ? array_keys((array) ($answer['errors'] ?? [])) : [])->toBe($errors)
+        ->and($status === 200 ? keysSortedDeep($answer) : [])->toBe($validated);
 })->with([
-    'the declared object lacks the value schema\'s required member' => [['a' => ['m' => 'ok'], 'b' => ['n' => 1]], 200, []],
-    'the declared object carries a member the value schema would refuse' => [['a' => ['m' => 'ok', 'n' => 'str']], 200, []],
-    'an undeclared object missing its required member' => [['a' => ['m' => 'ok'], 'c' => []], 422, ['meta.c']],
-    'an undeclared object with a wrong member' => [['a' => ['m' => 'ok'], 'b' => ['n' => 'str']], 422, ['meta.b.n']],
+    'the declared object lacks the value schema\'s required member' => [['a' => ['m' => 'ok'], 'b' => ['n' => 1]], 200, [], ['meta' => ['a' => ['m' => 'ok'], 'b' => ['n' => 1]]]],
+    'the declared object carries a member the value schema would refuse' => [['a' => ['m' => 'ok', 'n' => 'str', 'z' => 'z']], 200, [], ['meta' => ['a' => ['m' => 'ok']]]],
+    'an undeclared object missing its required member' => [['a' => ['m' => 'ok'], 'c' => []], 422, ['meta.c'], []],
+    'an undeclared object with a wrong member' => [['a' => ['m' => 'ok'], 'b' => ['n' => 'str']], 422, ['meta.b.n'], []],
 ]);
+
+// The same at the root, beside an open declared object: a member of `owner` named like a property of the value schema
+// (`tag`) is no declared member of `owner` and no value of the map, so no rule reaches it and `validated()` leaves it out,
+// where an undeclared key the map judges (`p`) is kept whole.
+it('keeps a member of a declared open object that only the value schema names out of validated()', function (): void {
+    $string = new Schema(types: [SchemaType::String]);
+    $pet = new Schema(types: [SchemaType::Object], properties: ['name' => $string, 'tag' => $string]);
+    $owner = new Schema(types: [SchemaType::Object], properties: ['name' => $string]);
+    $class = emittedRequestClass(postWithMapBody(mapBeside(['owner' => $owner], $pet)));
+
+    $answer = refusedOrValidated(sendThroughEmitted($class, 'POST', json: [
+        'owner' => ['name' => 'a', 'tag' => ['evil' => 1]],
+        'p' => ['name' => 'b', 'tag' => 't'],
+    ]));
+
+    expect($answer)->toBe([200, ['owner' => ['name' => 'a'], 'p' => ['name' => 'b', 'tag' => 't']]]);
+});
 
 // Laravel renumbers an integer-like top-level key when it expands `*`, so a root that declares properties beside a value
 // schema repeats the value rules under each such key, and leaves the declared ones alone: copying over a declared

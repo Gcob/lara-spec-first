@@ -155,3 +155,20 @@ it('is the key\'s value, never an element of a list of rules', function (): void
         ['meta' => ['array'], 'meta.*' => [new UndeclaredKeys([1 => ['id']], ['integer:strict'])]],
     )->passes())->toThrow(BadMethodCallException::class);
 });
+
+// A spared key compiles to no rule at all: `validated()` keeps every data key that has a rule entry, so an empty entry
+// would let a child of a declared object through that nothing judged (here `n`, which only the value schema names).
+it('keeps a child of a declared key out of validated() when only the guarded rules name it', function (): void {
+    $answer = judgedByUndeclaredKeys(
+        ['meta' => ['a' => ['m' => 'ok', 'n' => ['evil' => 1], 'z' => 'z'], 'b' => ['n' => 1]]],
+        [
+            'meta' => ['array'],
+            'meta.a' => ['array'],
+            'meta.a.m' => ['string'],
+            'meta.*' => new UndeclaredKeys([1 => ['a']], ['array']),
+            'meta.*.n' => new UndeclaredKeys([1 => ['a']], ['integer:strict']),
+        ],
+    );
+
+    expect($answer['validated'])->toBe(['meta' => ['a' => ['m' => 'ok'], 'b' => ['n' => 1]]]);
+});

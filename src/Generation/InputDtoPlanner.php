@@ -420,7 +420,7 @@ final class InputDtoPlanner extends DtoPlanner
         }
 
         // Why: the request judges the keys the object does not declare, and this type carries only the declared ones. The
-        // response side writes the same finding for the same shape, in the planner both sides share.
+        // response planner writes the same finding for the same shape.
         if (
             $merged->properties !== []
             && $merged->additionalPropertiesSchema !== null
