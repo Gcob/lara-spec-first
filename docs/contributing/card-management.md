@@ -692,7 +692,8 @@ card in `Done` on `1.0` or with no milestone is never drift for it, since the re
 - A closed card in neither of those two, or in the one it does not belong in by the paragraph above.
 - A card in `Ready to publish` that closed before the latest release was tagged (`v<major>.<minor>.<patch>`, the newest
   by date, a prerelease excepted), which means it shipped in that release, whatever its milestone. And a card in `Done`
-  whose release milestone (`0.x.y`) is still open, which means it did not ship.
+  whose release milestone (`0.x.y`) is still open and that closed after the latest release (or with none tagged yet),
+  which means it did not ship.
 
 **Drift between the board, the pull requests and git:**
 

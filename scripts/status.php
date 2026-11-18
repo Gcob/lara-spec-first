@@ -943,7 +943,20 @@ function home_of_closed(array $card): array
 }
 
 /**
- * B1 to B6: the board against the issues.
+ * Whether a card closed before the latest release was tagged, so that release holds it. B5 and B6 read the same date,
+ * which keeps them from sending one card back and forth.
+ *
+ * @param  array{closedAt: string|null}  $card
+ * @param  array{name: string, at: int}|null  $release
+ */
+function closed_before_release(array $card, ?array $release): bool
+{
+    return $release !== null && $card['closedAt'] !== null && strtotime($card['closedAt']) < $release['at'];
+}
+
+/**
+ * B1 to B6: the board against the issues. B5 and B6 read the same date: a card closed before the latest release was
+ * tagged shipped in it, and a card closed at or after that date has not shipped yet.
  *
  * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  list<array{title: string, open: bool}>  $milestones
@@ -990,10 +1003,10 @@ function drift_board(array $cards, array $milestones, ?array $release): array
             $findings[] = finding('B3', $number, null, 'Closed, but '.$status.'. Move it to '.$home['status'].'.');
         } elseif ($home['status'] === STATUS_DONE && $status === STATUS_READY_TO_PUBLISH) {
             $findings[] = finding('B4', $number, null, 'Ready to publish, but '.$home['why'].'. Move it to Done.');
-        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && $release !== null && $card['closedAt'] !== null && strtotime($card['closedAt']) < $release['at']) {
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && closed_before_release($card, $release)) {
             // Whatever its milestone: a card on `1.0` waits for the next release like any other, and shipped in it.
             $findings[] = finding('B5', $number, null, 'Ready to publish, but it was released in '.$release['name'].'. Move it to Done.');
-        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && $opening === true) {
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && $opening === true && ! closed_before_release($card, $release)) {
             $findings[] = finding('B6', $number, null, 'Done, but its release '.$card['milestone'].' has not shipped. Move it back to Ready to publish.');
         }
     }

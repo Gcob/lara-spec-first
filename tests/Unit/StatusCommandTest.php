@@ -1067,8 +1067,13 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             statusCard(['number' => 45, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 48, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 50, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.2.0', 'closedAt' => '2026-11-13T09:00:00Z']),
-            // B6: Done while its release is still open. The others are history, or need no release.
-            statusCard(['number' => 41, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
+            // B6: Done while its release is still open, and nothing was tagged since it closed. The others are history, or need no release.
+            statusCard(['number' => 41, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-13T09:00:00Z']),
+            // Closed before v0.2.0 was tagged: it shipped in it, though its own milestone is still open.
+            statusCard(['number' => 51, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
+            // Closed at the very second of the tag: the release holds only what closed before it, so this one did not ship.
+            statusCard(['number' => 52, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-12T00:00:00Z']),
+            statusCard(['number' => 53, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-12T00:00:00Z']),
             statusCard(['number' => 42, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => null]),
             statusCard(['number' => 43, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0']),
             statusCard(['number' => 44, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
@@ -1083,6 +1088,24 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             '  #40  Ready to publish, but it was released in v0.2.0. Move it to Done.',
             '  #41  Done, but its release 0.3.0 has not shipped. Move it back to Ready to publish.',
             '  #47  Ready to publish, but it was released in v0.2.0. Move it to Done.',
+            '  #52  Done, but its release 0.3.0 has not shipped. Move it back to Ready to publish.',
+        ]);
+});
+
+it('flags a Done card on an open release milestone when no release was ever tagged', function (): void {
+    $project = statusProject([
+        'milestones' => [statusMilestone(['title' => '0.3.0'])],
+        'cards' => [
+            statusCard(['number' => 40, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
+            statusCard(['number' => 41, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => null]),
+        ],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(1, $run['err'])
+        ->and(statusDrift($run['out'])['lines'])->toBe([
+            '  #40  Done, but its release 0.3.0 has not shipped. Move it back to Ready to publish.',
         ]);
 });
 
