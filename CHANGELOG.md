@@ -115,8 +115,11 @@ tags: [versions, conventions, planning]
   `filter[a][b]` gives `filter[a][evil]=1` the same refusal. Requests that answered `200` now answer `422` to a client
   that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
-  A level whose key `array:` cannot name (a comma in it) stays open, and the generated file says so. This is a breaking
-  change: drop the key, or declare it. The reasoning is in
+  A level whose key `array:` cannot name stays open, and the generated file says so: a comma in a key, and a `*` name
+  (`page[*]` beside `page[size]`), whose key Laravel hides behind a placeholder, so `page[*]=5` passes and so does
+  `page[evil]=1`, as before. A `page` beside only `page[*]` keeps its plain rule in a closed body (shaping it would
+  leave its level open), so `page[evil]=1` stays refused, and so does the contract's `page[*]=5`, which the file says.
+  This is a breaking change: drop the key, or declare it. The reasoning is in
   [ADR 0012](./docs/project/decisions/0012-judge-plain-form-names-by-shape.md), and this ships
   [#168](https://github.com/Gcob/lara-spec-first/issues/168).
 - **A body that is JSON and a form and declares `page` beside `page[size]` now judges `page`, where neither name had a
@@ -305,13 +308,14 @@ tags: [versions, conventions, planning]
   `filter[created][lt]=5` while it accepts what the contract declares. A body that is JSON and a form is unchanged. This
   closes the refusal the `0.2.0` `Known limits` lists for [#113](https://github.com/Gcob/lara-spec-first/issues/113),
   and ships [#168](https://github.com/Gcob/lara-spec-first/issues/168).
-- **An optional `page` beside `page[*]` in a form body refused `page[*]=5`, with no finding.** `page[*]=5` arrives as
-  `page => ['*' => '5']`, an array the `integer` rule of `page` refused. A `*` name has no rule, so the array is the
-  shape check's to skip: it now passes, with `page` left out of `validated()`. A `page` the contract asks for (required,
-  or a `dependentRequired` dependent) still refuses it, and the generated file now says that a valid `page=2&page[*]=5`
-  is refused as well, since PHP keeps the later name: that refusal is not new, and now has its finding. A `PATCH` asks
-  for no presence through `required`, so a required `page` there is shaped like an optional one and passes both. This
-  ships [#168](https://github.com/Gcob/lara-spec-first/issues/168).
+- **An optional `page` beside `page[*]` in an open form body refused `page[*]=5`, with no finding.** `page[*]=5` arrives
+  as `page => ['*' => '5']`, an array the `integer` rule of `page` refused. A `*` name has no rule, so the array is the
+  shape check's to skip: it now passes, with `page` left out of `validated()`. A closed body keeps the plain rule, which
+  still refuses it, since the key check of a shaped `page` could not name the `*` key and would accept `page[evil]=5`. A
+  `page` the contract asks for (required, or a `dependentRequired` dependent) still refuses it, and the generated file
+  now says that a valid `page=2&page[*]=5` is refused as well, since PHP keeps the later name: that refusal is not new,
+  and now has its finding. A `PATCH` asks for no presence through `required`, so in an open body a required `page` there
+  is shaped like an optional one and passes both. This ships [#168](https://github.com/Gcob/lara-spec-first/issues/168).
 - **`spec:make` plans the build before it writes anything.** A document the build refuses (a path parameter named
   `request`, `this` or `2fa`, two operations claiming one request name, a body property and a query parameter with one
   name) used to leave a child controller that did not compile, which the command then never overwrote. It is now refused

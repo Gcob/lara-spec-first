@@ -42,7 +42,8 @@ final class RuleWalk
 
     /**
      * The keys of {@see self::$whenNotArray} whose array branch holds the keys the contract declares below the name, in
-     * a closed body: `array:size` instead of `array`. See {@see RuleSet::$arrayKeys}.
+     * a closed body: `array:size` instead of `array`, in front of `exclude` when the array is dropped. See
+     * {@see RuleSet::$arrayKeys}.
      *
      * @var array<string, list<string>>
      */

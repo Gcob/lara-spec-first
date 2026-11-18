@@ -3295,6 +3295,62 @@ it('leaves the array branch of a shaped name open when a key below it holds a co
         ->and(implode("\n", $set->findings))->toContain('so the key check accepts `page`');
 });
 
+// A `*` name delivered below a shaped name: the key check of its level cannot name a `*` key (Laravel hides it behind a
+// placeholder), so the level keeps the plain `array` branch and the finding says what the key check accepts there.
+it('leaves the level a star name is delivered below a shaped name open, and says so', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'page' => new Schema(types: [SchemaType::Integer]),
+            'page[size]' => new Schema(types: [SchemaType::Integer]),
+            'page[*]' => new Schema(types: [SchemaType::Integer]),
+        ],
+        additionalProperties: false,
+    )]));
+
+    expect($set->whenNotArray)->toBe(['page' => ['page']])
+        ->and($set->arrayKeys)->toBe([])
+        ->and($set->dropsArray)->toBe([])
+        ->and(implode("\n", $set->findings))->toContain('`page[*]` as `page`, so the key check accepts `page`');
+});
+
+// A name beside only a star name, in a closed body: shaping it would leave its level open (the `*` key cannot be named in
+// `array:`), and the contract refuses `page[evil]`, so it keeps its plain rule and the file says that is stricter.
+it('keeps the plain rule of a name beside only a star name in a closed body, with a stricter finding', function (): void {
+    $properties = ['page' => new Schema(types: [SchemaType::Integer]), 'page[*]' => new Schema(types: [SchemaType::Integer])];
+    $closed = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: $properties,
+        additionalProperties: false,
+    )]));
+    $open = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(types: [SchemaType::Object], properties: $properties)]));
+
+    expect($closed->rules)->toBe(['page' => ['sometimes', 'integer']])
+        ->and($closed->whenNotArray)->toBe([])
+        ->and($closed->scalarNames)->toBe([])
+        ->and(implode("\n", $closed->findings))->toContain('Judging `page` by shape would leave the level below it open')
+        ->and($open->whenNotArray)->toBe(['page' => ['page']])
+        ->and($open->dropsArray)->toBe(['page'])
+        ->and(implode("\n", $open->findings))->not->toContain('Judging `page` by shape');
+});
+
+// A required name is stood in for by the array a form builds for the names nested under it, whether or not any of them
+// has a rule: `page[x]` is an object, so `page[x]` and `page[x][y]` are withheld, and `dto()` still has no `page`.
+it('says the array of withheld names stands in for a required shaped name', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'page' => new Schema(types: [SchemaType::Integer]),
+            'page[x]' => new Schema(types: [SchemaType::Object]),
+            'page[x][y]' => new Schema(types: [SchemaType::Integer]),
+        ],
+        required: ['page'],
+    )]));
+
+    expect($set->uncheckedNames['page'])->toContain('stands in for it')
+        ->and($set->dropsArray)->toBe(['page']);
+});
+
 it('leaves the head of a bracketed name open when the body is open', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page[size]' => new Schema(types: [SchemaType::Integer])],

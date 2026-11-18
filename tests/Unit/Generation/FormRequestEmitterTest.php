@@ -527,6 +527,28 @@ it('writes a form name behind Rule::when and keeps an array out of the DTO', fun
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
 });
 
+// The key check goes before `exclude`: the array branch of a shaped name no rule sits below drops the array, and a
+// closed body's declared keys are judged first, since `exclude` ends the rules of the field.
+it('writes the declared keys before exclude in the array branch of a shaped form name', function (): void {
+    $file = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'filter[a]' => new Schema(types: [SchemaType::Integer]),
+                'filter[a][b]' => new Schema(types: [SchemaType::Object]),
+                'filter[a][b][c]' => new Schema(types: [SchemaType::Integer]),
+            ],
+            additionalProperties: false,
+        )], true),
+    ), controllerShortName: 'CreateThingController');
+
+    expect($file)->toContain("                ['array:b', 'exclude'],\n");
+});
+
 // A closed body writes the keys the contract declares below a shaped name in its array branch (`array:size`), so the
 // array a form builds for the names below is refused when it holds another key. An open body keeps `['array']`. Read by
 // Pint, so a consumer's formatter has nothing to rewrite.

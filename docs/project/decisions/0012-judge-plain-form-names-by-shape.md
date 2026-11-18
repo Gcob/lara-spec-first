@@ -75,7 +75,8 @@ array after it has read each nested name out of it, so `page[size]=3` reaches th
 key two names deliver under one is in the list too, when a name below it has a rule.
 
 **A required shaped name is `Optional` on the DTO, with a finding.** The array stands in for it, so the payload cannot
-promise it. A shaped name that is not required is already `Optional`.
+promise it, whether or not a name below it has a rule: `page` beside an object `page[x]` and `page[x][y]` has none, and
+`page[x][y]=1` alone still passes without a `page`. A shaped name that is not required is already `Optional`.
 
 **What the shape check cannot tell, stated.** A name whose presence the contract asks for (`required`, a dependent of a
 `dependentRequired`, or a required name of an optional body, through its "all or none") is satisfied by the array of the
@@ -91,6 +92,10 @@ nothing asks for has no such blind spot, and neither has a rule that judges the 
 - **A name the contract asks for, beside only `*` names.** `page` beside `page[*]` is shaped only when nothing asks for
   `page` (a `required` name of a `PATCH` is not asked for). When something does, it keeps its rule as it was, and a
   valid `page=2&page[*]=5` is refused (PHP keeps the later name, so `page` arrives as an array).
+- **Any name beside only `*` names, in a closed body.** Shaping `page` would leave the level it holds open: the key
+  check of that level cannot name the `*` key (Laravel hides a `*` in a data key behind a placeholder, so `array:*`
+  refuses `page[*]=5`), and the contract refuses `page[evil]=5`. `page` keeps its rule as it was, which refuses every
+  array under it, so `page[*]=5` is refused where the contract accepts it.
 
 **What keeps no rule, as before.** Two names under the exact same key (`user.name` and `user_name`): the value of one is
 the value of the other. A name below them keeps its own rule, and they keep their finding. A name typed `array` or
@@ -105,8 +110,10 @@ a body read only as a form, to shape the name above it.
 `filter.a` would refuse that value, so the keys declared below it go in the array branch of the shape check instead:
 `['array:b']`, written `'filter.a' => Rule::when(..., ['sometimes', 'string'], ['array:b'])`. `filter[a][evil]=1` and
 `page[evil]=1` are refused, as the contract refuses them, where `['array']` accepted them and kept only the declared key
-in `validated()`. A key `array:` cannot name (a comma in it) keeps `['array']` and the level open, with a finding, and a
-name that keeps no shape check (typed `array` or `object`, or in a collision) keeps its level open as before. So does
+in `validated()`. A branch that drops the array holds the keys in front of the `exclude` (`['array:b', 'exclude']`). A
+key `array:` cannot name keeps `['array']` and the level open, with a finding: a comma in it, and the key of a `*` name
+(`page[*]` beside `page[size]`), which the level accepts along with `page[evil]`, where the contract refuses the second.
+A name that keeps no shape check (typed `array` or `object`, or in a collision) keeps its level open as before. So does
 the level of a name that a name below it appends to (`ids` beside `ids[]`, read as `ids.0`): `['array:0']` would refuse
 a second `ids[]` value that the body accepted before, so the array branch stays `['array']` and a finding says what the
 key check accepts. The append is a separate matter, tracked below.

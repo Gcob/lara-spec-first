@@ -621,12 +621,25 @@ final readonly class FormRequestEmitter
             $list = '['.implode(', ', array_map($this->rule(...), $rules)).']';
 
             if (isset($set->whenNotArray[$key])) {
+                // Why: the key check goes before `exclude`, which drops the array only once the rules before it have judged it.
+                $branch = [];
+
+                if (isset($set->arrayKeys[$key])) {
+                    $branch[] = 'array:'.implode(',', $set->arrayKeys[$key]);
+                }
+
+                if (in_array($key, $set->dropsArray, true)) {
+                    $branch[] = 'exclude';
+                } elseif ($branch === []) {
+                    $branch[] = 'array';
+                }
+
                 $lines[] = sprintf(
                     "            %s => Rule::when(\n                fn (Fluent \$input): bool => ! is_array(%s),\n                %s,\n                [%s],\n            ),",
                     $this->literal($key),
                     $this->valueAt($set->whenNotArray[$key]),
                     $list,
-                    $this->literal(in_array($key, $set->dropsArray, true) ? 'exclude' : 'array'.(isset($set->arrayKeys[$key]) ? ':'.implode(',', $set->arrayKeys[$key]) : '')),
+                    implode(', ', array_map($this->literal(...), $branch)),
                 );
 
                 continue;

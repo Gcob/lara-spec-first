@@ -2075,6 +2075,106 @@ it('loads the class of a closed form body that declares a key with an apostrophe
         ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['evil' => '1']])[0])->toBe(422);
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
+// A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a
+// rule there, but the array a form builds for them still stands in for `page`. The contract wants a `page` the form
+// never sent (a stated gap, as for every required name a form nests other names under), so `validated()` has no `page`
+// and `dto()` must not read one: it answers 200 where it threw an `ErrorException` (a 500) before. `main` answered 200
+// everywhere, since `page` had no rule at all.
+it('lets dto read a required name whose nested names are all withheld, when a form sends only those', function (string $mediaType, bool $closed): void {
+    $class = emittedRequestClass(postWithFormSchema($mediaType, new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'page' => new Schema(types: [SchemaType::Integer]),
+            'page[x]' => new Schema(types: [SchemaType::Object]),
+            'page[x][y]' => new Schema(types: [SchemaType::Integer]),
+        ],
+        required: ['page'],
+        additionalProperties: $closed ? false : null,
+    )));
+
+    expect(dtoThroughEmitted($class, 'POST', parameters: ['page' => ['x' => ['y' => '1']]]))->toBe([200, []])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['x' => ['y' => '1']]]))->toBe([200, []])
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['page' => ['x' => 'z']]))->toBe([200, []])
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['page' => '2']))->toBe([200, ['page' => 2]])
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['page' => 'abc'])[0])->toBe(422)
+        ->and(dtoThroughEmitted($class, 'POST', parameters: ['other' => '1'])[0])->toBe(422);
+})->with([
+    'form' => 'application/x-www-form-urlencoded',
+    'multipart' => 'multipart/form-data',
+])->with([
+    'open' => false,
+    'closed' => true,
+]);
+
+// A `*` name below a shaped name: a form delivers `page[*]=5` as `page => ['*' => '5']`, a key the contract declares as
+// the property `page[*]`. The key check of the level cannot name it (Laravel hides a `*` in a data key behind a private
+// placeholder, so `array:size,*` refuses it), so the level stays open and the file says the key check accepts it: the
+// contract's `page[evil]` refusal is not the request's there, as on `main`. Before, the branch refused the contract's
+// `page[*]=5` and `page[size]=1&page[*]=5` (a 422 where `main` answered 200).
+it('keeps the level a star name delivers below a shaped name open in a closed form body', function (string $mediaType): void {
+    $operation = postWithFormSchema($mediaType, new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'page' => new Schema(types: [SchemaType::Integer]),
+            'page[size]' => new Schema(types: [SchemaType::Integer]),
+            'page[*]' => new Schema(types: [SchemaType::Integer]),
+        ],
+        additionalProperties: false,
+    ));
+    $class = emittedRequestClass($operation);
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['page' => ['*' => '5']])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3', '*' => '5']])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3']]))->toBe([200, ['page' => ['size' => '3']]])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => '2']))->toBe([200, ['page' => '2']])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => 'x']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => 'abc'])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['evil' => '5']])[0])->toBe(200);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// `page` beside only `page[*]` in a closed body: judging `page` by shape would leave its level open (the key check cannot
+// name a `*` key), and the contract refuses `page[evil]`, so `page` keeps its plain rule, which refuses every array under
+// it, as on `main`. That refuses the contract's `page[*]=5`, which the file says (stricter than the contract). An open
+// body shapes it, since it accepts `page[evil]` too.
+it('keeps the plain rule of a name beside only a star name in a closed form body, and shapes it in an open one', function (string $mediaType): void {
+    $properties = [
+        'page' => new Schema(types: [SchemaType::Integer]),
+        'page[*]' => new Schema(types: [SchemaType::Integer]),
+    ];
+    $closed = emittedRequestClass(postWithFormSchema($mediaType, new Schema(types: [SchemaType::Object], properties: $properties, additionalProperties: false)));
+    $open = emittedRequestClass(postWithFormSchema($mediaType, new Schema(types: [SchemaType::Object], properties: $properties)));
+
+    expect(sendThroughEmitted($closed, 'POST', parameters: ['page' => ['evil' => '5']])[0])->toBe(422)
+        ->and(sendThroughEmitted($closed, 'POST', parameters: ['page' => ['*' => '5']])[0])->toBe(422)
+        ->and(sendThroughEmitted($closed, 'POST', parameters: ['page' => '2']))->toBe([200, ['page' => '2']])
+        ->and(sendThroughEmitted($closed, 'POST', parameters: ['page' => 'abc'])[0])->toBe(422)
+        ->and(sendThroughEmitted($open, 'POST', parameters: ['page' => ['evil' => '5']])[0])->toBe(200)
+        ->and(sendThroughEmitted($open, 'POST', parameters: ['page' => ['*' => '5']])[0])->toBe(200)
+        ->and(sendThroughEmitted($open, 'POST', parameters: ['page' => 'abc'])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// A shaped name whose nested names are all withheld drops the array too (`exclude`), and its level closes the same way
+// in front of the `exclude`: `filter[a]` has no rule below it (`filter[a][b]` is an object, so it and `filter[a][b][c]`
+// are withheld), and the keys the contract declares below `filter[a]` are the one (`b`). `filter[a][evil]=1` was a 200
+// on this branch before, and on `main`, where nothing in the level had a rule.
+it('refuses an undeclared key beside the withheld names below a shaped name in a closed form body', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithFormSchema($mediaType, new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'filter[a]' => new Schema(types: [SchemaType::Integer]),
+            'filter[a][b]' => new Schema(types: [SchemaType::Object]),
+            'filter[a][b][c]' => new Schema(types: [SchemaType::Integer]),
+        ],
+        additionalProperties: false,
+    )));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => '1']]))->toBe([200, ['filter' => ['a' => '1']]])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['b' => ['c' => '1']]]])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => 'x']])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['a' => ['evil' => '1']]])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['filter' => ['evil' => '1']])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
 // Both names keep a rule, and `formPaths` hands each one's value to `dto()`: `filter[a]=x` reaches it again (0.2.0 did
 // too), and `filter[a][b]=1` reaches it as `filter[a][b]`, without the array under `filter[a]`.
 it('hands both names below a bracketed name to dto', function (): void {

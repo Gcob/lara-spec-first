@@ -76,9 +76,10 @@ final readonly class RuleSet
      *                                    drops the array (`exclude`) where it would keep it (`array`) beside a rule
      * @param  array<string, list<string>>  $arrayKeys  the keys of `$whenNotArray` whose array branch holds the keys
      *                                                  the contract declares below the name, for a closed body: the
-     *                                                  branch is `array:size`, so an undeclared key beside the nested
-     *                                                  names is refused. A key not here, and not in `$dropsArray`, has
-     *                                                  `array`
+     *                                                  branch is `array:size` (`array:b`, then `exclude`, when the
+     *                                                  array is dropped), so an undeclared key beside the nested names
+     *                                                  is refused. A key not here keeps `array` (or `exclude`): a level
+     *                                                  with a key `array:` cannot name, such as a `*` name's
      * @param  list<string>  $information  the findings that lose no constraint (a body key a `query` parameter shadows,
      *                                     a name a form rewrites), which are in `findings` too. Nothing is left
      *                                     unenforced by one, so the build does not count a request for them alone

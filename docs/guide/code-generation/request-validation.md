@@ -288,18 +288,21 @@ under:
 
 `page=abc` and `page[size]=abc` answer 422, `page=2` and `page[size]=3` pass, and no finding is written: both names have
 their rules. The array branch is `['array']` when a name below has a rule, and `['exclude']` when none has (`page`
-beside `page[*]`, or `a_b` beside `a.b[c]` and `a_b[c]`, which collide), so Laravel does not keep an array nobody
-checked in `validated()`. **In a closed body the array branch holds the keys the contract declares below the name:**
-`page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and `page[size]=3&page[evil]=1` answer 422, as the
-contract refuses them, while `page=2` and `page[size]=3` still pass. A key `array:` cannot name (a comma in it) keeps
-`['array']`, and the generated file says the key check accepts it. A comparison is step by step, so `filter[a]` is no
-ancestor of `filter[ab][c]`. **`dto()` reads the name only when it is not an array:** the request lists such names (not
-those whose array branch is `exclude`, which `validated()` never holds) in a `SCALAR_NAMES` constant, and
-`contractNames()` drops the array once it has read each nested name out of it, because `from()` casts what it reads and
-`(int)` of an array is `1`. So `page[size]=3` reaches the DTO as `page[size]` and `page` is `Optional`, which is what a
-required `page` is there: the array stands in for it, and the file says so. The key that two names deliver under one is
-in the list too, when a name below it has a rule. The reasoning is in
-[ADR 0012](../../project/decisions/0012-judge-plain-form-names-by-shape.md).
+beside `page[*]` in an open body, or `a_b` beside `a.b[c]` and `a_b[c]`, which collide), so Laravel does not keep an
+array nobody checked in `validated()`. **In a closed body the array branch holds the keys the contract declares below
+the name:** `page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and `page[size]=3&page[evil]=1` answer
+422, as the contract refuses them, while `page=2` and `page[size]=3` still pass. A branch that drops the array holds the
+keys too, in front of the `exclude` (`['array:b', 'exclude']` for `filter[a]` beside an object `filter[a][b]` that has a
+name below it, so both are withheld). A key `array:` cannot name keeps `['array']`, and the generated file says the key
+check accepts it: a comma in a key, and the key of a `*` name (`page[*]` beside `page[size]`), which Laravel hides
+behind a placeholder, so `array:size,*` would refuse the `page[*]=5` the contract declares. That level accepts
+`page[evil]=1` too. A comparison is step by step, so `filter[a]` is no ancestor of `filter[ab][c]`. **`dto()` reads the
+name only when it is not an array:** the request lists such names (not those whose array branch is `exclude`, which
+`validated()` never holds) in a `SCALAR_NAMES` constant, and `contractNames()` drops the array once it has read each
+nested name out of it, because `from()` casts what it reads and `(int)` of an array is `1`. So `page[size]=3` reaches
+the DTO as `page[size]` and `page` is `Optional`, which is what a required `page` is there: the array stands in for it,
+and the file says so. The key that two names deliver under one is in the list too, when a name below it has a rule. The
+reasoning is in [ADR 0012](../../project/decisions/0012-judge-plain-form-names-by-shape.md).
 
 **The shape check cannot tell a `page` the client left out from the names it sent instead, when the contract asks for
 `page`.** A required `page`, a `page` that a `dependentRequired` makes required, and a required `page` of an optional
@@ -307,9 +310,12 @@ body (its [all or none](#an-optional-body-all-or-none)) are satisfied by the arr
 passes. It is the blind spot the query string has, and nothing is refused that the contract allows. Two cases go the
 other way, and the generated file says the request is stricter than the contract: a `dependentRequired` that `page`
 triggers (`page` makes `other` required, and `page[size]=3` alone delivers an array under `page`, which counts as `page`
-sent, so `other` is asked for), and a `page` the contract asks for beside only `page[*]`. A `*` name has no rule, so it
-can shape an upper name only when nothing asks for it: an optional `page` beside `page[*]` passes `page[*]=5`, and
-`page` is left out of `validated()`. A `page` the contract asks for keeps its rule as it was, since shaping it would let
+sent, so `other` is asked for), and a `page` the contract asks for beside only `page[*]`, or any `page` beside only
+`page[*]` in a closed body. A `*` name has no rule, so it can shape an upper name only when nothing asks for it and the
+body is open: an optional `page` beside `page[*]` passes `page[*]=5`, and `page` is left out of `validated()`. A closed
+body would then have a level it cannot close, since its key check cannot name the `*` key, so `page[evil]=5` would pass
+where the contract refuses it: `page` keeps its rule as it was, which refuses every array under it, `page[*]=5`
+included, and the file says so. A `page` the contract asks for keeps its rule as it was, since shaping it would let
 `page[*]=5` alone satisfy it, and a valid `page=2&page[*]=5` is refused (PHP keeps the later name, so `page` arrives as
 an array). **A `PATCH` asks for no presence through `required`,** so a required `page` there binds none and is shaped
 like an optional one: `page[*]=5` and `page=2&page[*]=5` pass, with `page` left out of `validated()`. A
