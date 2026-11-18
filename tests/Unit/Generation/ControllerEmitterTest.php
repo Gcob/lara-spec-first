@@ -602,6 +602,83 @@ describe('the return type routeAction declares', function (): void {
     ]);
 });
 
+/**
+ * The `SuccessStatus` rows `callAction()` hands the runtime, one per line as written.
+ *
+ * @return list<string>
+ */
+function declaredStatusRows(string $contents): array
+{
+    preg_match_all('/^ {12}(new SuccessStatus\(.*\)),$/m', $contents, $found);
+
+    return $found[1];
+}
+
+describe('the status callAction sends', function (): void {
+    // Said in the file the reader opens to learn what an operation answers with, and shaped so a child that overrides
+    // `routeAction` gets the status without a line of its own.
+    it('writes callAction with the status each success response declares', function (): void {
+        $contents = controllerAnswering([
+            ['status' => '200', 'dto' => 'UserDto'],
+            ['status' => '202', 'dto' => 'TeamDto'],
+            ['status' => '204'],
+        ]);
+
+        expect($contents)
+            ->toContain('use Gcob\\LaraSpecFirst\\Http\\SuccessStatus;')
+            ->toContain('public function callAction(string $method, array $parameters): mixed')
+            ->toContain('return SuccessStatus::answer(')
+            ->toContain('$this->{$method}(...array_values($parameters)),')
+            ->and(declaredStatusRows($contents))->toBe([
+                'new SuccessStatus(200, UserDto::class)',
+                'new SuccessStatus(202, TeamDto::class)',
+                'new SuccessStatus(204, json: false)',
+            ]);
+    });
+
+    it('sends 200 for a range or a lone default, the one number it can choose', function (string $status): void {
+        expect(declaredStatusRows(controllerAnswering([['status' => $status, 'dto' => 'UserDto']])))
+            ->toBe(['new SuccessStatus(200, UserDto::class)']);
+    })->with([
+        'a 2XX range' => ['2XX'],
+        'a lowercase range' => ['2xx'],
+        'a lone default' => ['default'],
+    ]);
+
+    it('carries what a returned value is matched on', function (array $rows, string $expected): void {
+        expect(declaredStatusRows(controllerAnswering($rows)))->toBe([$expected]);
+    })->with([
+        'a list' => [[['status' => '201', 'dto' => 'UserDto', 'depth' => 1]], 'new SuccessStatus(201, UserDto::class, depth: 1)'],
+        'a list of lists' => [[['status' => '201', 'dto' => 'UserDto', 'depth' => 2]], 'new SuccessStatus(201, UserDto::class, depth: 2)'],
+        'a nullable body' => [[['status' => '200', 'dto' => 'UserDto', 'nullable' => true]], 'new SuccessStatus(200, UserDto::class, nullable: true)'],
+        'a JSON body with no DTO' => [[['status' => '200', 'media' => ['application/json']]], 'new SuccessStatus(200)'],
+        'a body that is not JSON' => [[['status' => '200', 'media' => ['text/csv']]], 'new SuccessStatus(200, json: false)'],
+        'no body' => [[['status' => '204']], 'new SuccessStatus(204, json: false)'],
+    ]);
+
+    it('leaves an error status out of the table', function (): void {
+        $contents = controllerAnswering([
+            ['status' => '200', 'dto' => 'UserDto'],
+            ['status' => '400', 'dto' => 'ProblemDto'],
+            ['status' => 'default', 'dto' => 'ProblemDto'],
+        ]);
+
+        expect(declaredStatusRows($contents))->toBe(['new SuccessStatus(200, UserDto::class)']);
+    });
+
+    // The existing behavior is the right one for an operation that declares no success: Laravel's own answer.
+    it('writes no callAction for an operation that declares no success status', function (array $rows): void {
+        $contents = controllerAnswering($rows);
+
+        expect($contents)->not->toContain('callAction');
+        expect($contents)->not->toContain('SuccessStatus');
+    })->with([
+        'no response at all' => [[]],
+        'an error only' => [[['status' => '400', 'dto' => 'ProblemDto']]],
+        'a redirect only' => [[['status' => '302']]],
+    ]);
+});
+
 describe('what the metadata deliberately does not carry', function (): void {
     // A clock in the file means different bytes on every run: every file
     // rewritten every time, and — for a project that tracks its generated tree —

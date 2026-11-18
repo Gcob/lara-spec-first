@@ -8,6 +8,7 @@ use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\OperationNotImplementedException;
 use Gcob\LaraSpecFirst\Http\Controllers\SpecController;
+use Gcob\LaraSpecFirst\Http\SuccessStatus;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -24,6 +25,8 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
  * codebase, cannot infer a convention from ten sibling examples, and has no way to know that the interesting behavior
  * lives three directories away unless the file says so. Every guess it has to make is a chance to write something
  * plausible and wrong into an application.
+ *
+ * @phpstan-import-type SentStatus from RouteActionReturn
  *
  * @see docs/guide/code-generation/generated-file-anatomy.md — "Every generated file explains itself"
  * @see docs/guide/controllers.md — "One controller, one routeAction"
@@ -56,7 +59,7 @@ final readonly class ControllerEmitter
             {$this->routeAction($planned)}
                 {
                     throw OperationNotImplementedException::operation({$this->literal($operation->label())}, {$this->name($operation)});
-                }
+                }{$this->callAction($planned)}
             }
 
             PHP,
@@ -77,6 +80,73 @@ final readonly class ControllerEmitter
         }
 
         return "    /**\n     * @return {$return->tag}\n     */\n".$declaration;
+    }
+
+    /**
+     * The method that sends the status the contract declares, or nothing for an operation that declares no success.
+     *
+     * Written beside `routeAction` rather than in {@see SpecController}, which holds nothing per operation, and found
+     * by Laravel's dispatcher on its own: it calls `callAction()` when a controller has one, so a child that overrides
+     * `routeAction` and never calls `parent::` still gets the status. {@see SuccessStatus} says what is sent for what.
+     */
+    private function callAction(PlannedController $planned): string
+    {
+        $statuses = $this->returnOf($planned)->statuses;
+
+        if ($statuses === []) {
+            return '';
+        }
+
+        $rows = array_map(
+            fn (array $status): string => '            '.$this->statusRow($status).',',
+            $statuses,
+        );
+
+        return implode("\n", [
+            '',
+            '',
+            '    /**',
+            '     * Sends the status the contract declares for what `routeAction` returned, so a child that overrides it gets the',
+            '     * status without calling `parent::`. A response object it returns is sent as it is.',
+            '     *',
+            '     * @param  array<string, mixed>  $parameters',
+            '     */',
+            '    public function callAction(string $method, array $parameters): mixed',
+            '    {',
+            '        return SuccessStatus::answer(',
+            '            $this->{$method}(...array_values($parameters)),',
+            ...$rows,
+            '        );',
+            '    }',
+        ]);
+    }
+
+    /**
+     * One `new SuccessStatus(...)`, with only what differs from its defaults.
+     *
+     * @param  SentStatus  $status
+     */
+    private function statusRow(array $status): string
+    {
+        $arguments = [(string) $status['code']];
+
+        if ($status['dto'] !== null) {
+            $arguments[] = $status['dto'].'::class';
+        }
+
+        if ($status['depth'] > 0) {
+            $arguments[] = 'depth: '.$status['depth'];
+        }
+
+        if ($status['nullable']) {
+            $arguments[] = 'nullable: true';
+        }
+
+        if (! $status['json']) {
+            $arguments[] = 'json: false';
+        }
+
+        return 'new SuccessStatus('.implode(', ', $arguments).')';
     }
 
     private function returnOf(PlannedController $planned): RouteActionReturn
@@ -116,6 +186,10 @@ final readonly class ControllerEmitter
 
         foreach ($this->returnOf($planned)->imports as $class) {
             $imports[] = $this->import($class);
+        }
+
+        if ($this->returnOf($planned)->statuses !== []) {
+            $imports[] = $this->import(SuccessStatus::class);
         }
 
         return ImportOrder::sorted($imports);

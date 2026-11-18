@@ -625,8 +625,10 @@ it('names its source from the project root rather than absolutely', function ():
 
 // The two-class seam, asserted on the classes rather than on the text that
 // produced them: `final` for as long as nothing may extend a generated
-// controller, one shipped base for every operation, and one declared method so
-// the routes file can name it as a plain string.
+// controller, one shipped base for every operation, and one `routeAction` so the
+// routes file can name it as a plain string. `callAction` is the other method an
+// operation that declares a success status carries, which is every operation of
+// the fixture below, and it is the one Laravel's dispatcher finds on its own.
 //
 // DECISION: the emitter's own tests assert these three properties on the emitted
 // text, and this test asserts them again on what PHP loaded. The overlap is
@@ -680,7 +682,7 @@ it('generates a final controller over the shipped base, carrying one routeAction
 
         expect($reflection->isFinal())->toBeTrue($class.' is not final')
             ->and($parent === false ? null : $parent->getName())->toBe(SpecController::class)
-            ->and(array_values($declared))->toBe(['routeAction']);
+            ->and(array_values($declared))->toBe(['routeAction', 'callAction']);
     }
 });
 

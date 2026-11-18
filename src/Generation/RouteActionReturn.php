@@ -26,6 +26,8 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
  * and `redirect()` build. `Response` admits a `JsonResponse` too, so the two never appear together. Nothing typed at
  * all keeps `mixed`, which is what the build wrote before a response had a DTO.
  *
+ * @phpstan-type SentStatus array{code: int, dto: string|null, depth: int, nullable: bool, json: bool}
+ *
  * @internal Not public API: what {@see RouteActionSignature} hands the controller and the scaffold.
  *
  * @see docs/guide/controllers.md — "The signature is the contract"
@@ -42,6 +44,7 @@ final readonly class RouteActionReturn
      * @param  list<string>  $answered  the statuses that make the admitted class a `Response`, as the document writes
      *                                  them: the success ones that are not a JSON body, and any `3xx`
      * @param  list<string>  $dtoStatuses  the success statuses that have a DTO, in contract order
+     * @param  list<SentStatus>  $statuses  every success status as `callAction()` sends it, in contract order
      */
     private function __construct(
         public string $type,
@@ -50,6 +53,7 @@ final readonly class RouteActionReturn
         public ?string $admitted,
         public array $answered,
         public array $dtoStatuses,
+        public array $statuses = [],
     ) {}
 
     /**
@@ -71,9 +75,10 @@ final readonly class RouteActionReturn
             $success,
             static fn (StatusResponse $status): bool => $status->dto !== null,
         ));
+        $statuses = self::sent($operation, $success);
 
         if ($typed === []) {
-            return self::untyped();
+            return new self('mixed', null, [], null, [], [], $statuses);
         }
 
         $native = [];
@@ -123,6 +128,7 @@ final readonly class RouteActionReturn
             $admitted,
             $answered,
             array_map(static fn (StatusResponse $status): string => $status->status, $typed),
+            $statuses,
         );
     }
 
@@ -181,6 +187,37 @@ final readonly class RouteActionReturn
         }
 
         return $found;
+    }
+
+    /**
+     * The success statuses as `callAction()` sends them.
+     *
+     * A `2XX` range and a lone `default` name no number, so they send `200`. Whether a status without a DTO has a JSON
+     * body is read from the contract, as {@see self::answered()} does: a `201` whose JSON schema is at fault is still
+     * JSON, a `204` is not. A status the contract does not list counts as JSON, since nothing says otherwise.
+     *
+     * @param  list<StatusResponse>  $success
+     * @return list<SentStatus>
+     */
+    private static function sent(Operation $operation, array $success): array
+    {
+        $declared = [];
+
+        foreach ($operation->responses as $response) {
+            $declared[$response->status] = $response;
+        }
+
+        return array_map(static function (StatusResponse $status) use ($declared): array {
+            $response = $declared[$status->status] ?? null;
+
+            return [
+                'code' => ctype_digit($status->status) ? (int) $status->status : 200,
+                'dto' => $status->dto,
+                'depth' => $status->depth,
+                'nullable' => $status->nullable,
+                'json' => $status->dto !== null || $response === null || ResponseDtoPlanner::jsonSchemas($response) !== [],
+            ];
+        }, $success);
     }
 
     /**

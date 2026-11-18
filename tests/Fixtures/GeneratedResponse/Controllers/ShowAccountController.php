@@ -6,6 +6,7 @@ namespace Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Controllers;
 
 use Gcob\LaraSpecFirst\Exceptions\OperationNotImplementedException;
 use Gcob\LaraSpecFirst\Http\Controllers\SpecController;
+use Gcob\LaraSpecFirst\Http\SuccessStatus;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\TeamDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\GeneratedResponse\Data\UserDto;
 use Symfony\Component\HttpFoundation\Response;
@@ -48,5 +49,21 @@ final class ShowAccountController extends SpecController
     public function routeAction(string $id): UserDto|TeamDto|Response
     {
         throw OperationNotImplementedException::operation('get /accounts/{id}', 'showAccount');
+    }
+
+    /**
+     * Sends the status the contract declares for what `routeAction` returned, so a child that overrides it gets the
+     * status without calling `parent::`. A response object it returns is sent as it is.
+     *
+     * @param  array<string, mixed>  $parameters
+     */
+    public function callAction(string $method, array $parameters): mixed
+    {
+        return SuccessStatus::answer(
+            $this->{$method}(...array_values($parameters)),
+            new SuccessStatus(200, UserDto::class),
+            new SuccessStatus(202, TeamDto::class),
+            new SuccessStatus(204, json: false),
+        );
     }
 }
