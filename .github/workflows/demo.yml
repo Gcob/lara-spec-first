@@ -7,9 +7,14 @@ name: Demo
 # Not part of `All checks passed`, on purpose. This workflow carries a `paths`
 # filter, and a required check that is filtered out never reports, which blocks
 # the pull request forever rather than passing it (the reason tests.yml has none).
-# It runs when `demo/` or this file changes, which is also the only time its
-# result can differ: a frozen folder runs against its own release, so a pull
-# request that touches `src/` cannot change it.
+#
+# It runs when something it exercises changes: `demo/`, this file, and what the
+# package installs (`src/`, `config/`, `composer.json`). The last three matter
+# because a folder with no release tag yet runs against this checkout, so a change
+# to the package can break it. A folder with a tag runs against its release, which a
+# pull request does not change, but its inputs still move without any commit here
+# (the Laravel skeleton it is pinned to, Packagist's newest patch of its minor), so a
+# weekly run repeats every folder against today's versions.
 #
 # A folder whose minor has a `v<minor>.*` tag runs against that release from
 # Packagist (`demo/run.sh 0.2`). A folder with no tag yet, the one a pull request
@@ -23,11 +28,20 @@ on:
         branches: [main]
         paths:
             - "demo/**"
+            - "src/**"
+            - "config/**"
+            - "composer.json"
             - ".github/workflows/demo.yml"
     pull_request:
         paths:
             - "demo/**"
+            - "src/**"
+            - "config/**"
+            - "composer.json"
             - ".github/workflows/demo.yml"
+    # Mondays at 09:00 UTC, on the default branch.
+    schedule:
+        - cron: "0 9 * * 1"
     workflow_dispatch:
 
 permissions:

@@ -17,7 +17,8 @@ passes, `1` when a check failed, and `2` when it could not get as far as checkin
 
 It needs `php`, `composer`, `curl`, `git` and [Hurl](https://hurl.dev/docs/installation.html) (`brew install hurl` on
 macOS) on the `PATH`, with PHP's `pdo_sqlite` extension, and the network for Packagist. The workflow in
-`.github/workflows/demo.yml` installs Hurl in CI.
+`.github/workflows/demo.yml` installs Hurl in CI, and runs every folder when `demo/`, `src/`, `config/` or
+`composer.json` changes, and every Monday.
 
 A branch comes from a Composer `vcs` repository on this checkout, so only committed work is tested.
 
