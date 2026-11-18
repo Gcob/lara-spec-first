@@ -442,16 +442,30 @@ it('refuses before writing a child when the build would refuse the document', fu
     ],
 ]);
 
+/**
+ * What `routeAction` declares in a file, from its parameter list to its return type.
+ */
+function declaredRouteAction(string $path): string
+{
+    preg_match('/public function routeAction\(.*\): .+/', (string) file_get_contents($path), $found);
+
+    return $found[0] ?? '';
+}
+
 // `0.2.0` read no response, and the build now gives a response schema with a fault of its own no DTO instead of refusing
 // the document, so the command that scaffolds from it goes on.
-it('scaffolds a document whose response cannot be typed', function (string $paths, string $schemas): void {
+it('scaffolds a document whose response cannot be typed', function (string $paths, string $schemas, string $type = 'mixed'): void {
     specificationOf($paths, $schemas);
 
     $output = make(['operation' => 'showThing'], 0);
 
     expect($output)->toContain('Created')
         ->and(scaffoldedFiles())->toBe(['ThingController.php'])
-        ->and(is_file(scaffoldGeneratedTree().'/Controllers/ThingController.php'))->toBeTrue();
+        ->and(is_file(scaffoldGeneratedTree().'/Controllers/ThingController.php'))->toBeTrue()
+        ->and(declaredRouteAction(scaffoldRoot().'/Http/Controllers/ThingController.php'))
+        ->toBe('public function routeAction(): '.$type)
+        ->and(declaredRouteAction(scaffoldGeneratedTree().'/Controllers/ThingController.php'))
+        ->toBe('public function routeAction(): '.$type);
 })->with([
     'two keys deriving one property' => [
         <<<'YAML'
@@ -548,6 +562,7 @@ it('scaffolds a document whose response cannot be typed', function (string $path
                         properties:
                             name: { type: string }
             YAML,
+        'ThingDto',
     ],
     'two components that claim one class name' => [
         <<<'YAML'
@@ -585,6 +600,131 @@ it('scaffolds a document whose response cannot be typed', function (string $path
             YAML,
     ],
 ]);
+
+// The child cannot widen the parent's return type, so it is written from the plan the build made and never worked out
+// again. The parent is the build's own file: comparing against it is what "the same type" means.
+it('scaffolds a child with the return type the build plan names', function (
+    string $paths,
+    string $schemas,
+    string $operation,
+    string $declaration,
+    string $import,
+): void {
+    specificationOf($paths, $schemas);
+
+    make(['operation' => $operation], 0);
+
+    $child = scaffoldRoot().'/Http/Controllers/ThingController.php';
+
+    expect(declaredRouteAction($child))->toBe($declaration)
+        ->and(declaredRouteAction(scaffoldGeneratedTree().'/Controllers/ThingController.php'))->toBe($declaration)
+        ->and(file_get_contents($child))->toContain($import);
+})->with([
+    'an inline 201' => [
+        <<<'YAML'
+                /things:
+                    post:
+                        operationId: createThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '201':
+                                description: Created
+                                content:
+                                    application/json:
+                                        schema:
+                                            type: object
+                                            properties:
+                                                id: { type: integer }
+            YAML,
+        '',
+        'createThing',
+        'public function routeAction(): CreateThing201ResponseDto',
+        'use LsfMake\\Generated\\Data\\CreateThing201ResponseDto;',
+    ],
+    'two success DTOs' => [
+        <<<'YAML'
+                /things:
+                    get:
+                        operationId: showThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '200':
+                                description: A thing
+                                content:
+                                    application/json:
+                                        schema: { $ref: '#/components/schemas/Thing' }
+                            '202':
+                                description: Accepted
+                                content:
+                                    application/json:
+                                        schema: { $ref: '#/components/schemas/Job' }
+            YAML,
+        <<<'YAML'
+                    Thing:
+                        type: object
+                        properties:
+                            name: { type: string }
+                    Job:
+                        type: object
+                        properties:
+                            id: { type: integer }
+            YAML,
+        'showThing',
+        'public function routeAction(): ThingDto|JobDto|JsonResponse',
+        'use Illuminate\\Http\\JsonResponse;',
+    ],
+    'a list' => [
+        <<<'YAML'
+                /things:
+                    get:
+                        operationId: listThings
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '200':
+                                description: Things
+                                content:
+                                    application/json:
+                                        schema:
+                                            type: array
+                                            items: { $ref: '#/components/schemas/Thing' }
+            YAML,
+        <<<'YAML'
+                    Thing:
+                        type: object
+                        properties:
+                            name: { type: string }
+            YAML,
+        'listThings',
+        'public function routeAction(): array',
+        'use LsfMake\\Generated\\Data\\ThingDto;',
+    ],
+]);
+
+// The singular form may add the `x-controller` first, and the type is the one of the plan made on the document as it
+// then is: nothing the offer wrote changes it, and nothing asks the build a second time.
+it('scaffolds a child with the return type of the document as the offer left it', function (): void {
+    specificationOf(<<<'YAML'
+            /things:
+                get:
+                    operationId: showThing
+                    responses:
+                        '200':
+                            description: A thing
+                            content:
+                                application/json:
+                                    schema: { $ref: '#/components/schemas/Thing' }
+        YAML, <<<'YAML'
+                Thing:
+                    type: object
+                    properties:
+                        name: { type: string }
+        YAML);
+
+    make(['operation' => 'showThing', '--yes' => true, '--no-interaction' => true], 0);
+
+    expect(declaredRouteAction(scaffoldRoot().'/Http/Controllers/ShowThingController.php'))
+        ->toBe('public function routeAction(): ThingDto');
+});
 
 it('refuses a singular form when another operation would stop the build', function (): void {
     specificationOf(acceptedOperation().refusedOperation());

@@ -58,8 +58,8 @@ tags: [versions, conventions, planning]
   reading the document in the other order writes the same classes and types (a class shared by several operations lists
   them in the document's order in its `Read by` line). `spec:build` and `spec:make` go on for every one of these as they
   did on `0.2.0`, and `spec:doctor` stays clean on them: a schema at fault is not a keyword the doctor names, the build
-  says it in the generated file. `routeAction` still returns `mixed`, and no factory is generated yet. This is not a
-  breaking change on its own: it only adds files and a sentence. The reasoning is in
+  says it in the generated file. No factory is generated yet. This is not a breaking change on its own: it only adds
+  files and a sentence. The reasoning is in
   [ADR 0013](./docs/project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md). This ships
   [#39](https://github.com/Gcob/lara-spec-first/issues/39) and
   [#178](https://github.com/Gcob/lara-spec-first/issues/178).

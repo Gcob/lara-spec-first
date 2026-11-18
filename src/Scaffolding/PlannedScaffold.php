@@ -6,6 +6,7 @@ namespace Gcob\LaraSpecFirst\Scaffolding;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
+use Gcob\LaraSpecFirst\Generation\RouteActionReturn;
 
 /**
  * One file `spec:make` intends to create, held in memory before anything is written.
@@ -18,6 +19,8 @@ use Gcob\LaraSpecFirst\Generation\BuildPlanner;
  */
 final readonly class PlannedScaffold
 {
+    public RouteActionReturn $return;
+
     /**
      * @param  string  $class  the fully-qualified name `x-controller` gave the operation
      * @param  string  $path  where PSR-4 says that class belongs
@@ -27,6 +30,9 @@ final readonly class PlannedScaffold
      * @param  string|null  $request  the fully-qualified generated request the parent's `routeAction` declares, or null
      *                                when the operation validates nothing. The child has to declare the same parameter
      *                                or PHP refuses the override, so the scaffold cannot work it out for itself
+     * @param  RouteActionReturn|null  $return  what the parent's `routeAction` returns, as the build plan worked it
+     *                                          out. The child cannot widen it, so for the same reason as the request it
+     *                                          is handed down and never derived again; `mixed` when there is none
      */
     public function __construct(
         public Operation $operation,
@@ -35,5 +41,8 @@ final readonly class PlannedScaffold
         public string $parent,
         public bool $exists,
         public ?string $request = null,
-    ) {}
+        ?RouteActionReturn $return = null,
+    ) {
+        $this->return = $return ?? RouteActionReturn::untyped();
+    }
 }

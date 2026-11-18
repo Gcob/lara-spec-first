@@ -37,10 +37,10 @@ applied and whatever no Laravel rule means the same as named in the generated fi
 It also emits one input DTO pair per request body, `NewUserInputDto` and `NewUserPartialInputDto`, and the request
 returns the one its method reads from `dto()`. It also emits one response DTO per documented response shape (`UserDto`,
 never `UserInputDto`), and the generated controller's findings name the DTO of each status. No factory is generated yet,
-and `routeAction` still returns `mixed`. The [project board](https://github.com/users/Gcob/projects/1) is the
-authoritative list of what exists and what is in flight, and `gh issue list --repo Gcob/lara-spec-first` reads it from a
-session. An open card is work that is not done, which a checked box in a file could only claim as accurately as somebody
-remembered to edit it.
+and `routeAction` returns the DTO of the success statuses (`mixed` where none has one). The
+[project board](https://github.com/users/Gcob/projects/1) is the authoritative list of what exists and what is in
+flight, and `gh issue list --repo Gcob/lara-spec-first` reads it from a session. An open card is work that is not done,
+which a checked box in a file could only claim as accurately as somebody remembered to edit it.
 
 Verify your work with `just check` (or `composer check`): Pint, Larastan, then Pest.
 

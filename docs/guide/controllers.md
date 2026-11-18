@@ -67,7 +67,15 @@ Two alternatives were considered and dropped:
 ### The signature is the contract
 
 **`routeAction` declares one parameter per path parameter, `string`, named the way the specification names it.**
-`GET /users/{id}` generates `routeAction(string $id): mixed`.
+`GET /users/{id}` generates `routeAction(string $id): UserDto` when its `200` is a `User`.
+
+**The return type is what the operation's success statuses carry.** A DTO for each success status that has one, `array`
+for a list (a `@return list<UserDto>` says of what), `null` where the body may be `null`, and the union of them when
+several statuses have a DTO. Several success statuses add `JsonResponse`, which is how a controller sends the one it
+picked. A contract that declares an answer that is not a JSON body (a `204`, a `text/csv` body, a redirect) adds
+Symfony's `Response`, which `response()->json()`, `noContent()` and `redirect()` all build. An operation with no DTO on
+any success status stays `mixed`. **An error status is never part of the type:** throw it (`abort()` or an exception),
+and the DTOs of error responses are for the exception handler.
 
 **PHP is what makes this a decision rather than a detail.** An override may not add a required parameter, so a parent
 declaring none would forbid every custom controller from ever seeing `{id}`, and a developer could only reach it through
@@ -81,8 +89,9 @@ signature, and a child overriding it has to follow. Identity is
 is asked for rename detection rather than for signatures, and the two must not be conflated.
 
 **`string` until something says otherwise.** A route parameter is text on the wire; `x-model` is what will turn one into
-a bound model, and the parent will declare that type when it does. A child may narrow the return type, `array` where the
-parent says `mixed`, but not the parameters, which is ordinary PHP variance rather than a rule of this package.
+a bound model, and the parent will declare that type when it does. A child may narrow the return type where PHP allows
+it, `UserDto` where the parent says `UserDto|JsonResponse`, and `mixed` only where the parent is `mixed`; it may not
+change the parameters. That is ordinary PHP variance rather than a rule of this package.
 
 **A child whose signature fell behind is named by the build, and the build still succeeds.** When the contract gains or
 loses a request or a path parameter, a custom child that still declares the old list is a class PHP will refuse to load,
@@ -254,7 +263,8 @@ the nominal path is short, and everything else is a reason to stop and hand the 
 
 **It writes `routeAction` with the signature the parent declares, and one line in it.** Writing the method is what a
 `make` is for: the signature is the fiddly part, PHP will not let a child widen it, and copying it out of a comment is
-work a generator should have done.
+work a generator should have done. The return type is the parent's, read from the plan the command already made of the
+build, and the classes it names are imported.
 
 **That one line is a call to the parent, and it is not decoration.** A method with an empty body returns `null`, which
 Laravel renders as an **empty `200`**, so an empty scaffold would quietly turn the operation's honest `501` into a lie,
@@ -262,11 +272,13 @@ in the one command whose whole job is to help. The parent call keeps the `501` u
 replacing it is exactly what implementing the operation means:
 
 ```php
+use App\Http\Generated\Data\UserDto;
+
 // The parent below is generated. If PHP cannot find it, run `php artisan spec:build`.
 // If it still fails, the specification no longer has an `x-controller` pointing here.
 class UserController extends \App\Http\Generated\Controllers\UserController
 {
-    public function routeAction(string $id): mixed
+    public function routeAction(string $id): UserDto
     {
         // Replace this line with your answer to `get /users/{id}`.
         return parent::routeAction($id);

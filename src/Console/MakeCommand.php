@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Console;
 use Gcob\LaraSpecFirst\Console\Concerns\ReadsTheContract;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
+use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
 use Gcob\LaraSpecFirst\Generation\OperationSelector;
@@ -124,11 +125,12 @@ final class MakeCommand extends Command
             ['selected' => $selected, 'document' => $document] = $read;
         }
 
-        // Before anything is listed, asked or written, on the document as it now is.
-        $this->assertBuildable($namespace, $specPath, $lookup, $document);
+        // Before anything is listed, asked or written, on the document as it now is. The plan is kept: it is
+        // where each child learns what its parent's `routeAction` returns.
+        $build = $this->assertBuildable($namespace, $specPath, $lookup, $document);
 
         $planner = new ScaffoldPlanner($namespace, $lookup);
-        $planned = $planner->plan($selected);
+        $planned = $planner->plan($selected, $build);
         $undeclarable = $planner->undeclarable($selected);
         $unplaceable = $planner->unplaceable($selected);
 
@@ -182,8 +184,12 @@ final class MakeCommand extends Command
      *
      * **The whole document, not the selection.** The build refuses for any operation's fault, so a class written for
      * one operation of a document the build will not accept has no generated parent until the document is fixed, and
-     * the command never overwrites a file a developer owns. The plan is discarded: only its refusals are wanted, and
-     * they are the build's own, so the message and the exit status are exactly what `spec:build` prints.
+     * the command never overwrites a file a developer owns. The refusals are the build's own, so the message and the
+     * exit status are exactly what `spec:build` prints.
+     *
+     * **The plan is returned, and the one that matters is the second.** A caller that only wants the refusals ignores
+     * it; the call on the document as it now is keeps it, so what a child declares comes from the plan that checked
+     * this document rather than from a second planning.
      *
      * @param  list<Operation>  $document  every operation, in the order the document writes them
      *
@@ -194,8 +200,8 @@ final class MakeCommand extends Command
         string $specPath,
         CustomControllerLookup $lookup,
         array $document,
-    ): void {
-        (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), $lookup))->plan($document);
+    ): BuildPlan {
+        return (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), $lookup))->plan($document);
     }
 
     /**

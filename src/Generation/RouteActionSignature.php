@@ -76,6 +76,21 @@ final readonly class RouteActionSignature
     }
 
     /**
+     * What `routeAction` returns, from the one place the generated parent and a scaffolded child both read it.
+     *
+     * **The child's return type has to be the parent's, or narrower**: PHP refuses an override that widens it, and a
+     * scaffold that worked the type out its own way would write a fatal error the moment the two disagreed. So the
+     * scaffold is handed this value, built from the build plan, and never derives it again.
+     *
+     * @param  list<StatusResponse>  $responses  what each declared status answers with, in contract order
+     * @param  string  $namespace  the configured generated root namespace
+     */
+    public static function returns(Operation $operation, array $responses, string $namespace): RouteActionReturn
+    {
+        return RouteActionReturn::for($operation, $responses, $namespace);
+    }
+
+    /**
      * The same parameters as arguments, for a child calling `parent::`.
      */
     public static function arguments(Operation $operation, bool $hasRequest): string
