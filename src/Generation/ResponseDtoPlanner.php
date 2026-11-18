@@ -29,6 +29,12 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
  * and says why, and a property with one is `mixed` and says why, while everything else is typed as written. Each is
  * also recorded ({@see ResponseFallback}), for whoever must tell it from a keyword a DTO cannot type.
  *
+ * **A class name two schemas derive is decided before anything is typed.** The plan walks the response schemas twice.
+ * The first walk, the survey, gives every schema the class name it derives and records who claims each one; the second
+ * is the walk that builds, and a schema that does not keep its name gives way like any other fault
+ * ({@see ResponseNameContest}). So the answer is the contract's, and reading the document backwards gives the same
+ * files.
+ *
  * **Built before it is written**, for the reason the input planner gives: nothing is written until the whole plan
  * stands.
  *
@@ -50,25 +56,32 @@ final class ResponseDtoPlanner extends DtoPlanner
      */
     private array $fallbacks = [];
 
+    private ResponseNameContest $contest;
+
+    /**
+     * Whether the walk in progress is the survey, which only records who claims each class name.
+     */
+    private bool $surveying = false;
+
     /**
      * @param  list<Operation>  $operations  in document order
      * @param  array<string, string>  $inputDtoNames  the class name of each input DTO the build writes, with where its
      *                                                request schema is written
-     *
-     * @throws UnusableNameException two schemas under one name
      */
     public function plan(array $operations, array $inputDtoNames): ResponsePlan
     {
-        $statuses = [];
+        $this->contest = new ResponseNameContest;
 
-        foreach ($operations as $operation) {
-            $statuses[$operation->label()] = [];
-
-            foreach ($operation->responses as $response) {
-                $statuses[$operation->label()][] = $this->status($operation, $response);
-            }
+        // An input DTO outranks every response schema, so it is a claim like the others.
+        foreach ($inputDtoNames as $class => $position) {
+            $this->contest->claim((string) $class, 'input:'.$position, ResponseNameContest::INPUT_DTO, $position);
         }
 
+        $this->surveying = true;
+        $this->walk($operations);
+        $this->surveying = false;
+
+        $statuses = $this->walk($operations);
         $dtos = [];
 
         foreach ($this->registry as $shortName => $entry) {
@@ -83,6 +96,33 @@ final class ResponseDtoPlanner extends DtoPlanner
         }
 
         return new ResponsePlan($dtos, $statuses, $this->fallbacks);
+    }
+
+    /**
+     * Every declared status of every operation, from nothing: what a walk builds is its own.
+     *
+     * @param  list<Operation>  $operations
+     * @return array<string, list<StatusResponse>>
+     */
+    private function walk(array $operations): array
+    {
+        $this->registry = [];
+        $this->readers = [];
+        $this->fallbacks = [];
+        $this->ancestors = [];
+        $this->identity = '';
+
+        $statuses = [];
+
+        foreach ($operations as $operation) {
+            $statuses[$operation->label()] = [];
+
+            foreach ($operation->responses as $response) {
+                $statuses[$operation->label()][] = $this->status($operation, $response);
+            }
+        }
+
+        return $statuses;
     }
 
     protected function suffix(): string
@@ -144,7 +184,65 @@ final class ResponseDtoPlanner extends DtoPlanner
         string $naming,
         bool $named,
     ): string {
+        return $this->enter($shortName, $written, $merged, $position, $base, $origin, $naming, $named, 'its schema');
+    }
+
+    /**
+     * Take a class name for a schema that would be a DTO, or give way to whoever claims it.
+     *
+     * **The survey grants every name** and records the claim, under a key of its own for each claimant, so a schema
+     * whose name another holds still has its properties walked and what it claims is counted. **The walk that builds**
+     * asks the contest, and a claimant that does not keep the name gives way before its keys are read, as a fault of
+     * its own does.
+     *
+     * @param  string  $lead  how the schema is named in the reason, "its schema" or "the schema of its items"
+     *
+     * @throws UntypeableResponseException another schema keeps the class name, or the keys derive one property name
+     */
+    private function enter(
+        string $shortName,
+        Schema $written,
+        Schema $merged,
+        string $position,
+        string $base,
+        string $origin,
+        string $naming,
+        bool $named,
+        string $lead,
+    ): string {
+        [$schemaName] = $this->nameOf($written, $merged);
+        $identity = $named ? 'named:'.$position : 'inline:'.$merged->shapeKey();
+
+        if ($this->surveying) {
+            $this->contest->claim($shortName, $identity, $named ? ResponseNameContest::COMPONENT : ResponseNameContest::INLINE, $position, $named ? $schemaName : null);
+
+            try {
+                return $this->register($shortName."\0".$identity, $written, $merged, $position, $base, $origin, $naming, $named);
+            } catch (UntypeableResponseException $thrown) {
+                $this->contest->gaveWay($shortName, $identity);
+
+                throw $thrown;
+            }
+        }
+
+        $reason = $this->contest->explain($shortName, $identity, $this->subject($lead, $named ? $schemaName : null, $position));
+
+        if ($reason !== null) {
+            throw new UntypeableResponseException(ResponseFallbackCause::NameTaken, $position, $reason);
+        }
+
         return $this->register($shortName, $written, $merged, $position, $base, $origin, $naming, $named);
+    }
+
+    /**
+     * A schema as the reason that it gave way names it: by its name and position when it has a name, and by where it is
+     * written when it has not.
+     */
+    private function subject(string $lead, ?string $name, string $position): string
+    {
+        return $name === null
+            ? sprintf('%s (written inline at `%s`)', $lead, CommentText::safe($position))
+            : sprintf('%s `%s` (`%s`)', $lead, CommentText::safe($name), CommentText::safe($position));
     }
 
     /**
@@ -189,15 +287,19 @@ final class ResponseDtoPlanner extends DtoPlanner
     /**
      * What is wrong with a schema that gave way, as the reason its reader gets.
      *
-     * **A schema that would be a DTO and has no usable name is said to have no usable name**, whatever its branches
-     * say: the class name is the first thing a DTO needs, and the rename that gives it one comes before the branches
-     * that need to agree.
+     * **A schema that would be a DTO is judged in this order:** the name it derives is usable, then no other schema
+     * keeps that name, then its branches agree, then its keys. The class name is the first thing a DTO needs, and the
+     * rename that gives it one comes before the branches that need to agree. **A named schema whose branches disagree
+     * still claims its name** (the survey records it here), because a class that carried that name would describe
+     * something else. A schema written inline whose branches disagree claims nothing: there is no merged schema to
+     * name.
      *
      * @param  string  $pointer  where the schema is written, for a schema with no position of its own
      * @param  string  $root  the label the merge was asked to name the schema by, which the position of a disagreement
      *                        starts from
+     * @param  string  $lead  how the schema is named in a reason, "its schema" or "the schema of its items"
      */
-    private function faultOf(UntypeableResponseException|ConflictingInputException $thrown, Schema $written, string $pointer, string $root): UntypeableResponseException
+    private function faultOf(UntypeableResponseException|ConflictingInputException $thrown, Schema $written, string $pointer, string $root, string $lead = 'its schema'): UntypeableResponseException
     {
         if ($thrown instanceof UntypeableResponseException) {
             return $thrown;
@@ -207,9 +309,22 @@ final class ResponseDtoPlanner extends DtoPlanner
 
         if ($written->name !== null && self::declaresProperties($written)) {
             try {
-                $this->className($written->name, $position);
+                $shortName = $this->className($written->name, $position).$this->suffix();
             } catch (UntypeableResponseException $nameless) {
                 return $nameless;
+            }
+
+            $identity = 'named:'.$position;
+
+            if ($this->surveying) {
+                $this->contest->claim($shortName, $identity, ResponseNameContest::COMPONENT, $position, $written->name);
+                $this->contest->gaveWay($shortName, $identity);
+            } else {
+                $reason = $this->contest->explain($shortName, $identity, $this->subject($lead, $written->name, $position));
+
+                if ($reason !== null) {
+                    return new UntypeableResponseException(ResponseFallbackCause::NameTaken, $position, $reason);
+                }
             }
         }
 
@@ -301,8 +416,6 @@ final class ResponseDtoPlanner extends DtoPlanner
      *
      * **A list has no class of its own** ({@see StatusResponse}): the body is an array and its items are the DTO, one
      * level at a time for a list of lists.
-     *
-     * @throws UnusableNameException two schemas under one name
      */
     private function status(Operation $operation, Response $response): StatusResponse
     {
@@ -340,6 +453,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             .'/content/'.DocumentPointer::escape($mediaType).'/schema';
 
         $inline = $root;
+        $lead = 'its schema';
 
         try {
             $merged = AllOfMerger::merge($written, $this->identity, $label);
@@ -353,6 +467,7 @@ final class ResponseDtoPlanner extends DtoPlanner
                 }
 
                 $written = $merged->items;
+                $lead = 'the schema of its items';
                 $merged = AllOfMerger::merge($written, $this->identity, $label);
                 $itemsNullable = $itemsNullable || $merged->isNullable();
                 $inline = self::within($inline, '/items');
@@ -372,7 +487,7 @@ final class ResponseDtoPlanner extends DtoPlanner
             $this->ancestors = RuleSetBuilder::definitions($written, $merged, $this->identity, $label);
 
             if ($name === null || $source === null) {
-                $shortName = $this->register(
+                $shortName = $this->enter(
                     $base.$this->suffix(),
                     $written,
                     $merged,
@@ -387,10 +502,11 @@ final class ResponseDtoPlanner extends DtoPlanner
                         $depth > 0 ? 'list\'s item' : 'response',
                     ),
                     false,
+                    $lead,
                 );
             } else {
                 $named = $this->className($name, $source);
-                $shortName = $this->register(
+                $shortName = $this->enter(
                     $named.$this->suffix(),
                     $written,
                     $merged,
@@ -399,10 +515,11 @@ final class ResponseDtoPlanner extends DtoPlanner
                     'the schema\'s name',
                     self::namedAfter($name, $source),
                     true,
+                    $lead,
                 );
             }
         } catch (UntypeableResponseException|ConflictingInputException $thrown) {
-            $fault = $this->faultOf($thrown, $written, $inline, $label);
+            $fault = $this->faultOf($thrown, $written, $inline, $label, $lead);
             $this->fallbacks[] = new ResponseFallback($root, $fault->position, $fault->cause);
 
             return StatusResponse::without($status, $fault->reason);
@@ -472,7 +589,6 @@ final class ResponseDtoPlanner extends DtoPlanner
      * @return string the short name
      *
      * @throws UntypeableResponseException the keys of the schema derive one property name
-     * @throws UnusableNameException two schemas under one name
      */
     private function register(
         string $shortName,
@@ -484,23 +600,8 @@ final class ResponseDtoPlanner extends DtoPlanner
         string $naming,
         bool $named,
     ): string {
+        // Whatever claims this name here is the claimant the contest let keep it, so it is the one already registered.
         if (isset($this->registry[$shortName])) {
-            $existing = $this->registry[$shortName];
-
-            // A named schema is identified by where it is written, and an inline one by what it says, for the reason
-            // the input planner gives.
-            $same = $named && $existing['named']
-                ? $existing['position'] === $position
-                : ! $named && ! $existing['named'] && $existing['schema']->shapeKey() === $merged->shapeKey();
-
-            if (! $same) {
-                throw UnusableNameException::responseDtoClaimedTwice(
-                    $shortName,
-                    ['position' => $existing['position'], 'base' => $existing['base'], 'origin' => $existing['origin']],
-                    ['position' => $position, 'base' => $base, 'origin' => $origin],
-                );
-            }
-
             return $shortName;
         }
 

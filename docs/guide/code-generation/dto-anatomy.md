@@ -153,9 +153,14 @@ written goes in the file's `Provenance`, which is where a DTO that came from ano
 A response schema written inline takes its operation's name and the status, `CreateUser201ResponseDto`,
 `CreateUser2XXResponseDto` and `CreateUserDefaultResponseDto`, and an object nested in it adds its property
 (`CreateUser201ResponseAddressDto`), with `Item` for an element of an array and `Value` for a value of a map. Two
-different schemas that give one response class are the same build error, and so is a response schema whose class an
-input DTO already has: a response schema `UserInput` gives `UserInputDto`, which a request schema `User` gives too. The
-message names both places. Rename one of the schemas.
+different schemas that give one response class do not stop the build, as they do in a request. The schema that outranks
+the others keeps the name, in this order: an input DTO, a component, a schema written inline. A response schema
+`UserInput` gives `UserInputDto`, which a request schema `User` gives too, and the input DTO keeps it. An inline
+`address` in `User` gives `UserAddressDto`, which a component `UserAddress` keeps. Whatever does not keep the name has
+no DTO, and the file that would have used it says which schema keeps the class. Two schemas of the same rank, two
+components `new-user` and `NewUser` or two inline objects of different shapes, both give way, and two inline objects
+that say the same thing share one class. Reading the document in either order gives the same files. Rename one of the
+schemas to type it, or give an inline schema a component name of its own.
 
 **A response gets a DTO per declared status** (`200`, `2XX`, `default`) that has a JSON body, `application/json` or any
 `+json` type, whose schema is an object or a list of objects. A list has no class of its own, its items do
@@ -171,7 +176,8 @@ rule set built from half of a contract enforces half of it. A response enforces 
 used the schema has no DTO and the controller says why and how to fix it, and a property that would have held it is
 `mixed` (a list of such items is `list<mixed>`, a map of such values a map of `mixed`), with a finding in the DTO that
 holds the property. Everything else in that DTO is typed as the contract writes it. A schema with such a fault is never
-half built: it has no class at all, so no other type points at a class that is not there.
+half built: it has no class at all, so no other type points at a class that is not there. A component whose branches
+disagree or whose keys collide still claims its class name, so a schema written inline cannot take that name from it.
 
 **A property is named exactly like the contract's key** when the key is a valid PHP identifier, so `created_at` in the
 specification is `$created_at` in the class and one `grep` finds both. A key that is not an identifier (`user-id`,

@@ -8,7 +8,6 @@ use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
-use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\InputDtoProperty;
 use Gcob\LaraSpecFirst\Generation\InputDtoType;
 use Gcob\LaraSpecFirst\Generation\PlannedResponseDto;
@@ -37,36 +36,264 @@ function answeringWith(string $operationId, string $schemaName, string $source, 
     );
 }
 
-// A response DTO is named after its schema alone, so two schemas can derive one class name.
-it('refuses two schemas that give one response DTO name', function (): void {
-    $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([
-        answeringWith('showUser', 'User', '#/components/schemas/User'),
-        answeringWith('showMember', 'user', './other.yaml#/components/schemas/user'),
-    ], []);
+/**
+ * One document's operations in the order it writes them, or the other way round.
+ *
+ * @param  list<Operation>  $operations
+ * @return list<Operation>
+ */
+function writtenInOrder(array $operations, bool $reversed): array
+{
+    return $reversed ? array_reverse($operations) : $operations;
+}
 
-    expect($plan)->toThrow(
-        UnusableNameException::class,
-        'The schemas written at "#/components/schemas/User" and at "./other.yaml#/components/schemas/user" both generate the response DTO "UserDto"',
-    );
-});
+/**
+ * The DTOs of a plan by class name, in one order whichever the build reached first, so two plans can be compared.
+ *
+ * @return array<string, PlannedResponseDto>
+ */
+function dtosByName(ResponsePlan $plan): array
+{
+    $dtos = array_column($plan->dtos, null, 'shortName');
+    ksort($dtos);
 
-// An inline property's class is derived from its parent, which nobody wrote: the message says what it was derived from
-// and that a component name ends the clash, as the request side's does.
-it('explains the derived name when an inline property meets a component of the same name', function (): void {
-    $user = responseComponent('User', [
-        'address' => new Schema(types: [SchemaType::Object], properties: ['street' => responseString()]),
+    return $dtos;
+}
+
+/**
+ * The orders a contested name is decided in: what the document writes first must not change the answer.
+ *
+ * @return array<string, array{bool}>
+ */
+function documentOrders(): array
+{
+    return ['in the order the document writes' => [false], 'reversed' => [true]];
+}
+
+// A response schema written inline takes its class name from where it sits, which nobody chose, and a component's name
+// is the one its author chose: the component keeps the class, and the inline schema gives way, in either order.
+it("gives an inline response schema's class name to the component that claims it", function (bool $reversed): void {
+    $operations = extractFixture('response-inline-meets-component.yaml');
+    $plan = (new ResponseDtoPlanner)->plan(writtenInOrder($operations, $reversed), []);
+    $dtos = dtosByName($plan);
+    $address = array_column($dtos['UserDto']->properties, null, 'key')['address'];
+    $inline = '#/components/schemas/User/properties/address';
+
+    expect(array_keys($dtos))->toBe(['UserAddressDto', 'UserDto'])
+        ->and($dtos['UserAddressDto']->position)->toBe('#/components/schemas/UserAddress')
+        ->and($address->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($dtos['UserDto']->findings)->toContain(
+            '`address` is `mixed`: its schema (written inline at `'.$inline.'`) derives the class name `UserAddressDto`, '
+            .'which the schema `UserAddress` (`#/components/schemas/UserAddress`) claims. Give it a component name of '
+            .'its own to type it.',
+        )
+        ->and(fallbacksOf($plan))->toBe([[$inline, $inline, ResponseFallbackCause::NameTaken]])
+        ->and(dtosByName((new ResponseDtoPlanner)->plan(writtenInOrder($operations, ! $reversed), [])))->toEqual($dtos);
+})->with(documentOrders());
+
+// Two components that derive one class name are two equals: whichever the document writes first, neither has the DTO,
+// and both say why with the two positions in the same order.
+it('gives no DTO to two response components that claim one class name', function (bool $reversed): void {
+    $operations = extractFixture('response-two-components-one-name.yaml');
+    $plan = (new ResponseDtoPlanner)->plan(writtenInOrder($operations, $reversed), []);
+    $says = 'The `200` response has no DTO: the schema `NewUser` (`#/components/schemas/NewUser`) and the schema `new-user` '
+        .'(`#/components/schemas/new-user`) both derive the class name `NewUserDto`, so neither has it. Rename one of them.';
+
+    expect($plan->dtos)->toBe([])
+        ->and($plan->statuses['get /hyphenated'][0]->sentence())->toBe($says)
+        ->and($plan->statuses['get /studly'][0]->sentence())->toBe($says);
+})->with(documentOrders());
+
+// A component reached as a property is as much a claim as one an operation returns: three uses of the two names give
+// each use the same answer, and the object that holds them keeps its DTO.
+it('gives no DTO to two response components that claim one class name when they are reached as properties', function (bool $reversed): void {
+    $hyphenated = responseComponent('new-user', ['email' => responseString()]);
+    $studly = responseComponent('NewUser', ['name' => responseString()]);
+    $holder = new Schema(types: [SchemaType::Object], properties: [
+        'first' => $hyphenated,
+        'second' => $studly,
+        'tags' => new Schema(types: [SchemaType::Array], items: $studly),
     ]);
-    $address = responseComponent('UserAddress', ['street' => responseString()]);
+    $plan = (new ResponseDtoPlanner)->plan(writtenInOrder([answeringWithSchema($holder)], $reversed), []);
+    $properties = array_column($plan->dtos[0]->properties, null, 'key');
 
-    $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([
-        answeringWithSchema($user, 'showUser'),
-        answeringWithSchema($address, 'showAddress'),
-    ], []);
+    expect(array_column($plan->dtos, 'shortName'))->toBe(['ShowThing200ResponseDto'])
+        ->and($properties['first']->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($properties['second']->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($properties['tags']->type->kind)->toBe(InputDtoType::LIST)
+        ->and($properties['tags']->type->item?->kind)->toBe(InputDtoType::MIXED);
+})->with(documentOrders());
 
-    expect($plan)->toThrow(UnusableNameException::class, 'the schema written at "#/components/schemas/UserAddress" gives the base "UserAddress" (the schema\'s name)')
-        ->and($plan)->toThrow(UnusableNameException::class, '(derived from its parent "User" and the property "address")')
-        ->and($plan)->toThrow(UnusableNameException::class, 'give an inline schema a component name of its own');
-});
+/**
+ * An object written inline, with no name of its own.
+ *
+ * @param  array<string, Schema>  $properties
+ */
+function inlineObject(array $properties): Schema
+{
+    return new Schema(types: [SchemaType::Object], properties: $properties);
+}
+
+// Two inline objects of different shapes that derive one class name are two equals too, so both properties are `mixed`.
+// Two that say the same thing are one class, as they always were.
+it('gives no DTO to two inline response schemas that derive one class name', function (bool $reversed): void {
+    $differently = (new ResponseDtoPlanner)->plan(writtenInOrder([
+        answeringWithSchema(responseComponent('Team', ['leadUser' => inlineObject(['name' => responseString()])]), 'showTeam'),
+        answeringWithSchema(responseComponent('TeamLead', ['user' => inlineObject(['email' => responseString()])]), 'showLead'),
+    ], $reversed), []);
+    $alike = (new ResponseDtoPlanner)->plan(writtenInOrder([
+        answeringWithSchema(responseComponent('Team', ['leadUser' => inlineObject(['name' => responseString()])]), 'showTeam'),
+        answeringWithSchema(responseComponent('TeamLead', ['user' => inlineObject(['name' => responseString()])]), 'showLead'),
+    ], $reversed), []);
+    $team = dtosByName($differently)['TeamDto'];
+    $lead = dtosByName($differently)['TeamLeadDto'];
+    $shared = dtosByName($alike);
+
+    expect(array_keys(dtosByName($differently)))->toBe(['TeamDto', 'TeamLeadDto'])
+        ->and($team->properties[0]->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($lead->properties[0]->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($team->findings)->toContain(
+            '`leadUser` is `mixed`: the inline schema written at `#/components/schemas/Team/properties/leadUser` and '
+            .'the inline schema written at `#/components/schemas/TeamLead/properties/user` both derive the class name '
+            .'`TeamLeadUserDto`, so neither has it. Rename one of them.',
+        )
+        ->and(array_keys($shared))->toBe(['TeamDto', 'TeamLeadDto', 'TeamLeadUserDto'])
+        ->and($shared['TeamDto']->properties[0]->type->class)->toBe('TeamLeadUserDto')
+        ->and($shared['TeamLeadDto']->properties[0]->type->class)->toBe('TeamLeadUserDto');
+})->with(documentOrders());
+
+/**
+ * A component whose `allOf` branches disagree about the type of `id`.
+ */
+function disagreeingComponent(string $name): Schema
+{
+    $branch = static fn (SchemaType $type): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [$type])]);
+
+    return new Schema(name: $name, source: '#/components/schemas/'.$name, allOf: [$branch(SchemaType::Integer), $branch(SchemaType::String)]);
+}
+
+// A name is contested by every schema a response reaches, not by the ones a walk met before the clash: a schema that
+// loses its DTO still holds a property that claims a name, and what is claimed does not depend on the order.
+it('decides a contested name from every schema a response reaches', function (Closure $operations, Closure $says, bool $reversed): void {
+    $plan = (new ResponseDtoPlanner)->plan(writtenInOrder($operations(), $reversed), []);
+
+    $says($plan, dtosByName($plan));
+})->with([
+    'a schema that gives way holds a property that clashes' => [
+        // `address` loses `UserAddressDto` to the component, and holds `new-pet`, which clashes with `NewPet`: the clash
+        // is decided all the same, so neither pet has a DTO.
+        static fn (): array => [
+            answeringWithSchema(responseComponent('User', ['address' => inlineObject([
+                'street' => responseString(),
+                'pet' => responseComponent('new-pet', ['a' => responseString()]),
+            ])]), 'showUser'),
+            answeringWithSchema(responseComponent('UserAddress', ['street' => responseString()]), 'showAddress'),
+            answeringWithSchema(responseComponent('NewPet', ['b' => responseString()]), 'showPet'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['UserAddressDto', 'UserDto'])
+                ->and($plan->statuses['get /showPet'][0]->sentence())->toContain('both derive the class name `NewPetDto`, so neither has it');
+        },
+    ],
+    'a component whose allOf branches disagree still claims its name' => [
+        static fn (): array => [
+            answeringWithSchema(responseComponent('User', ['address' => inlineObject(['street' => responseString()])]), 'showUser'),
+            answeringWithSchema(disagreeingComponent('UserAddress'), 'showAddress'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            $address = array_column($dtos['UserDto']->properties, null, 'key')['address'];
+
+            expect(array_keys($dtos))->toBe(['UserDto'])
+                ->and($address->type->kind)->toBe(InputDtoType::MIXED)
+                ->and($dtos['UserDto']->findings)->toContain(
+                    '`address` is `mixed`: its schema (written inline at `#/components/schemas/User/properties/address`) '
+                    .'derives the class name `UserAddressDto`, which the schema `UserAddress` (`#/components/schemas/UserAddress`) '
+                    .'claims, and that schema gets no DTO either. Give it a component name of its own to type it.',
+                )
+                ->and($plan->statuses['get /showAddress'][0]->sentence())->toContain('its `allOf` branches disagree at `id`');
+        },
+    ],
+    'an inline schema whose allOf branches disagree claims nothing' => [
+        static fn (): array => [
+            answeringWithSchema(responseComponent('User', ['address' => disagreeingBranches()]), 'showUser'),
+            answeringWithSchema(responseComponent('UserAddress', ['street' => responseString()]), 'showAddress'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['UserAddressDto', 'UserDto'])
+                ->and($dtos['UserAddressDto']->position)->toBe('#/components/schemas/UserAddress')
+                ->and($dtos['UserDto']->findings)->toContain(
+                    '`address` is `mixed`: its `allOf` branches disagree at `id`: one branch is `integer` and another is `string`. Make them agree.',
+                )
+                ->and(array_column($plan->fallbacks, 'cause'))->toBe([ResponseFallbackCause::AllOfDisagrees]);
+        },
+    ],
+    'a component whose name leaves no class name never has its properties walked' => [
+        // `new-pet` is reached only through `123`, which has no class name and so no DTO to hold it: it never meets
+        // `NewPet`, which keeps its DTO.
+        static fn (): array => [
+            answeringWithSchema(responseComponent('123', ['pet' => responseComponent('new-pet', ['a' => responseString()])]), 'showCode'),
+            answeringWithSchema(responseComponent('NewPet', ['b' => responseString()]), 'showPet'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['NewPetDto'])
+                ->and($plan->statuses['get /showPet'][0]->sentence())->toContain('is `NewPetDto`')
+                ->and(array_column($plan->fallbacks, 'cause'))->toBe([ResponseFallbackCause::NameUnusable]);
+        },
+    ],
+    'a component whose keys collide still claims its name' => [
+        static fn (): array => [
+            answeringWithSchema(responseComponent('User', ['address' => inlineObject(['street' => responseString()])]), 'showUser'),
+            answeringWithSchema(responseComponent('UserAddress', ['user-id' => responseString(), 'user_id' => responseString()]), 'showAddress'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['UserDto'])
+                ->and($dtos['UserDto']->findings)->toContain(
+                    '`address` is `mixed`: its schema (written inline at `#/components/schemas/User/properties/address`) '
+                    .'derives the class name `UserAddressDto`, which the schema `UserAddress` (`#/components/schemas/UserAddress`) '
+                    .'claims, and that schema gets no DTO either. Give it a component name of its own to type it.',
+                )
+                ->and($plan->statuses['get /showAddress'][0]->sentence())->toContain('both derive the property `$user_id`');
+        },
+    ],
+    'a string enumeration never claims the name an inline object derives' => [
+        // `OrderStatus` would never be a DTO, so it claims nothing, and `Order.status` is still the class it was.
+        static fn (): array => [
+            answeringWithSchema(responseComponent('Order', ['status' => inlineObject(['code' => responseString()])]), 'showOrder'),
+            answeringWithSchema(responseComponent('Delivery', ['state' => new Schema(
+                name: 'OrderStatus',
+                source: '#/components/schemas/OrderStatus',
+                types: [SchemaType::String],
+                enum: ['open', 'closed'],
+            )]), 'showDelivery'),
+            answeringWithSchema(new Schema(
+                name: 'OrderStatusList',
+                source: '#/components/schemas/OrderStatusList',
+                types: [SchemaType::Array],
+                items: new Schema(name: 'OrderStatus', source: '#/components/schemas/OrderStatus', types: [SchemaType::String], enum: ['open', 'closed']),
+            ), 'listStatuses'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['DeliveryDto', 'OrderDto', 'OrderStatusDto'])
+                ->and($dtos['OrderStatusDto']->position)->toBe('#/components/schemas/Order/properties/status')
+                ->and($plan->fallbacks)->toBe([]);
+        },
+    ],
+    'a scalar component with an unusable name is never checked' => [
+        // `2faCode` would never be a DTO, so its name is never read: `code` keeps its type.
+        static fn (): array => [
+            answeringWithSchema(inlineObject(['code' => new Schema(name: '2faCode', source: '#/components/schemas/2faCode', types: [SchemaType::String])]), 'showSession'),
+            answeringWithSchema(new Schema(name: '2faCode', source: '#/components/schemas/2faCode', types: [SchemaType::String]), 'showCode'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            $code = array_column($dtos['ShowSession200ResponseDto']->properties, null, 'key')['code'];
+
+            expect($code->type->kind)->toBe(InputDtoType::STRING)
+                ->and($code->optional)->toBeTrue()
+                ->and($plan->fallbacks)->toBe([])
+                ->and($plan->statuses['get /showCode'][0]->sentence())->toContain('its body is not an object or a list');
+        },
+    ],
+])->with(documentOrders());
 
 // A response enforces nothing, so branches that disagree cost the status its DTO and never the build, and the sentence
 // is for the reader of the controller, not for a rule set.
@@ -599,8 +826,8 @@ function fallbacksOf(ResponsePlan $plan): array
 
 // What a program reads, beside the sentence a person reads: each status or value that lost its type to a schema's own
 // fault, under the cause of that fault.
-it('records each response fallback under a cause of its own', function (string $fixture, array $expected): void {
-    expect(fallbacksOf((new ResponseDtoPlanner)->plan(extractFixture($fixture), [])))->toBe($expected);
+it('records each response fallback under a cause of its own', function (string $fixture, array $expected, array $inputs): void {
+    expect(fallbacksOf((new ResponseDtoPlanner)->plan(extractFixture($fixture), $inputs)))->toBe($expected);
 })->with([
     'two keys deriving one property' => [
         'response-keys-collide.yaml',
@@ -609,6 +836,7 @@ it('records each response fallback under a cause of its own', function (string $
             '#/paths/~1users/get/responses/200/content/application~1json/schema',
             ResponseFallbackCause::KeysCollide,
         ]],
+        [],
     ],
     'allOf branches that disagree' => [
         'response-allof-disagrees.yaml',
@@ -624,6 +852,7 @@ it('records each response fallback under a cause of its own', function (string $
                 ResponseFallbackCause::AllOfDisagrees,
             ],
         ],
+        [],
     ],
     'a name that leaves no class name' => [
         'response-name-unusable.yaml',
@@ -639,6 +868,7 @@ it('records each response fallback under a cause of its own', function (string $
                 ResponseFallbackCause::NameUnusable,
             ],
         ],
+        [],
     ],
     'a property' => [
         'response-property-gives-way.yaml',
@@ -647,6 +877,41 @@ it('records each response fallback under a cause of its own', function (string $
             '#/components/schemas/Team/properties/owner',
             ResponseFallbackCause::KeysCollide,
         ]],
+        [],
+    ],
+    'a class name a component claims' => [
+        'response-inline-meets-component.yaml',
+        [[
+            '#/components/schemas/User/properties/address',
+            '#/components/schemas/User/properties/address',
+            ResponseFallbackCause::NameTaken,
+        ]],
+        [],
+    ],
+    'two components claiming one class name' => [
+        'response-two-components-one-name.yaml',
+        [
+            [
+                '#/paths/~1hyphenated/get/responses/200/content/application~1json/schema',
+                '#/components/schemas/new-user',
+                ResponseFallbackCause::NameTaken,
+            ],
+            [
+                '#/paths/~1studly/get/responses/200/content/application~1json/schema',
+                '#/components/schemas/NewUser',
+                ResponseFallbackCause::NameTaken,
+            ],
+        ],
+        [],
+    ],
+    'a class name an input DTO takes' => [
+        'response-name-taken-by-input.yaml',
+        [[
+            '#/paths/~1users~1{id}/put/responses/200/content/application~1json/schema',
+            '#/components/schemas/UserInput',
+            ResponseFallbackCause::NameTaken,
+        ]],
+        ['UserInputDto' => '#/components/schemas/User'],
     ],
 ]);
 

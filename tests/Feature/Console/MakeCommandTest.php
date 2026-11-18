@@ -511,6 +511,79 @@ it('scaffolds a document whose response cannot be typed', function (string $path
                             value: { type: string }
             YAML,
     ],
+    'an inline schema whose class name a component claims' => [
+        <<<'YAML'
+                /things:
+                    get:
+                        operationId: showThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '200':
+                                description: A thing
+                                content:
+                                    application/json:
+                                        schema:
+                                            $ref: '#/components/schemas/Thing'
+                /parts:
+                    get:
+                        operationId: showPart
+                        responses:
+                            '200':
+                                description: A part
+                                content:
+                                    application/json:
+                                        schema:
+                                            $ref: '#/components/schemas/ThingPart'
+            YAML,
+        <<<'YAML'
+                    Thing:
+                        type: object
+                        properties:
+                            part:
+                                type: object
+                                properties:
+                                    name: { type: string }
+                    ThingPart:
+                        type: object
+                        properties:
+                            name: { type: string }
+            YAML,
+    ],
+    'two components that claim one class name' => [
+        <<<'YAML'
+                /things:
+                    get:
+                        operationId: showThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '200':
+                                description: A thing
+                                content:
+                                    application/json:
+                                        schema:
+                                            $ref: '#/components/schemas/new-thing'
+                /others:
+                    get:
+                        operationId: showOther
+                        responses:
+                            '200':
+                                description: Another
+                                content:
+                                    application/json:
+                                        schema:
+                                            $ref: '#/components/schemas/NewThing'
+            YAML,
+        <<<'YAML'
+                    new-thing:
+                        type: object
+                        properties:
+                            name: { type: string }
+                    NewThing:
+                        type: object
+                        properties:
+                            label: { type: string }
+            YAML,
+    ],
 ]);
 
 it('refuses a singular form when another operation would stop the build', function (): void {

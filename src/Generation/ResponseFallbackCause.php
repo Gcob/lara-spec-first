@@ -15,6 +15,9 @@ namespace Gcob\LaraSpecFirst\Generation;
  */
 enum ResponseFallbackCause
 {
+    /** Another schema claims the class name this one derives, and outranks it or ties with it. */
+    case NameTaken;
+
     /** The schema's name leaves no usable class name. */
     case NameUnusable;
 

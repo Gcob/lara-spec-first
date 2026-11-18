@@ -302,12 +302,22 @@ it('counts the operations whose route lands on their generated parent', function
  */
 
 // Each direction keeps its own names, so only the plan sees both: a response schema `UserInput` and a request schema
-// `User` are one class.
-it('refuses a response DTO name already taken by an input DTO', function (): void {
-    expect(static fn (): BuildPlan => planner()->plan(extractFixture('response-name-taken-by-input.yaml')))
-        ->toThrow(
-            UnusableNameException::class,
-            'The schema written at "#/components/schemas/User" generates the input DTO "UserInputDto" for a request, and the schema written at "#/components/schemas/UserInput" generates a response DTO of the same name',
+// `User` derive one class name, and the request's input DTO outranks it. The response schema gives way and the build
+// goes on, as it does for every contested name.
+it('gives no DTO to a response schema whose class name an input DTO takes', function (): void {
+    $plan = planner()->plan(extractFixture('response-name-taken-by-input.yaml'));
+    $input = collect($plan->files)
+        ->first(static fn (GeneratedFile $file): bool => $file->relativePath === 'Data/UserInputDto.php');
+
+    assert($input instanceof GeneratedFile);
+
+    // Its provenance is the request schema, and it is the input DTO, not the response's.
+    expect($input->contents)->toContain('#/components/schemas/User')
+        ->and($input->contents)->toContain('implements Arrayable, JsonSerializable')
+        ->and(controllerSays($plan, 'ReplaceUser'))->toContain(
+            'The `200` response has no DTO: its schema `UserInput` (`#/components/schemas/UserInput`) derives the class '
+            .'name `UserInputDto`, which is the input DTO of the request schema written at `#/components/schemas/User`. '
+            .'Rename one of the schemas.',
         );
 });
 
@@ -463,4 +473,60 @@ it('still refuses in a request what a response schema gives way to', function (S
         UnusableNameException::class,
         'The schema "123", written at "#/components/schemas/123", would generate a DTO class name that is not a usable PHP identifier',
     ],
+    'an inline property beside a component of the same class name' => [
+        new Schema(name: 'User', source: '#/components/schemas/User', types: [SchemaType::Object], properties: [
+            'address' => new Schema(types: [SchemaType::Object], properties: ['street' => new Schema(types: [SchemaType::String])]),
+            'home' => new Schema(
+                name: 'UserAddress',
+                source: '#/components/schemas/UserAddress',
+                types: [SchemaType::Object],
+                properties: ['street' => new Schema(types: [SchemaType::String])],
+            ),
+        ]),
+        UnusableNameException::class,
+        'both generate the input DTO "UserAddressInputDto", and the two are not the same schema',
+    ],
+    'two components of the same class name' => [
+        new Schema(types: [SchemaType::Object], properties: [
+            'first' => new Schema(name: 'new-user', source: '#/components/schemas/new-user', types: [SchemaType::Object], properties: ['email' => new Schema(types: [SchemaType::String])]),
+            'second' => new Schema(name: 'NewUser', source: '#/components/schemas/NewUser', types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])]),
+        ]),
+        UnusableNameException::class,
+        'both generate the input DTO "NewUserInputDto", and the two are not the same schema',
+    ],
 ]);
+
+/**
+ * What a plan writes under `Data/` and `Controllers/`, by path and in one order: the files that say what a contested
+ * name came to. `routes.php` is left out, because the document's own order is the order of its routes.
+ *
+ * @return array<string, string>
+ */
+function writtenContents(BuildPlan $plan): array
+{
+    $written = [];
+
+    foreach ($plan->files as $file) {
+        if (str_starts_with($file->relativePath, 'Data/') || str_starts_with($file->relativePath, 'Controllers/')) {
+            $written[$file->relativePath] = $file->contents;
+        }
+    }
+
+    ksort($written);
+
+    return $written;
+}
+
+// Which schema keeps a contested name is a fact about the contract, not about the order it is written in: every case a
+// response can give way for is in one document, read both ways round.
+it('generates the same files whichever order the operations come in', function (): void {
+    $operations = extractFixture('response-untypeable.yaml');
+    $forward = writtenContents(planner()->plan($operations));
+    $backward = writtenContents(planner()->plan(array_reverse($operations)));
+
+    expect(array_keys($forward))->toContain('Data/MemberAddressDto.php')
+        ->and(array_keys($forward))->not->toContain('Data/NewUserDto.php')
+        ->and(array_keys($forward))->not->toContain('Data/TeamLeadUserDto.php')
+        ->and(array_keys($backward))->toBe(array_keys($forward))
+        ->and($backward)->toBe($forward);
+});
