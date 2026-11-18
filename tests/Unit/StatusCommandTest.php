@@ -138,7 +138,7 @@ function statusCard(array $overrides): array
         'order' => null,
         'state' => 'OPEN',
         'stateReason' => null,
-        // A closed card was closed before the release tags the tests write (`statusTags()`), unless a test says otherwise.
+        // A closed card was closed on 2026-11-10, before the release a test tags with `tags`, unless a test says otherwise.
         'closedAt' => ($overrides['state'] ?? 'OPEN') === 'CLOSED' ? '2026-11-10T12:00:00Z' : null,
         // A card past Backlog is planned, so it starts on `1.0`, a release like any other (M1): a test that is about a missing milestone says `null`.
         'milestone' => in_array($overrides['status'] ?? 'Todo', ['Todo', 'In Progress', 'In review', 'Ready to publish'], true) ? '1.0' : null,
@@ -1035,6 +1035,8 @@ it('exits 0 and prints no drift for a board that matches git', function (): void
             statusMilestone(['title' => '1.0']),
             statusMilestone(['title' => '0.2.0', 'state' => 'closed']),
         ],
+        // A Done card shipped in it, and a card closed after it waits in Ready to publish.
+        'tags' => ['v0.2.0' => '2026-11-01T00:00:00Z'],
         'cards' => [
             statusCard(['number' => 10, 'status' => 'Todo', 'order' => 10]),
             statusCard(['number' => 11, 'status' => 'Todo', 'order' => 20]),
@@ -1043,12 +1045,12 @@ it('exits 0 and prints no drift for a board that matches git', function (): void
             statusCard(['number' => 14, 'status' => 'Backlog']),
             statusCard(['number' => 15, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
             statusCard(['number' => 16, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Docs', 'milestone' => '0.3.0']),
-            // On the V1 bar and on no release yet: the label plans nothing, so a closed `v1` card with no milestone is history.
-            statusCard(['number' => 17, 'status' => 'Done', 'state' => 'CLOSED', 'labels' => ['v1']]),
-            statusCard(['number' => 18, 'status' => 'Done', 'state' => 'CLOSED']),
+            // On the V1 bar and on no release yet: the label plans nothing, so a closed `v1` card with no milestone is history once a release holds it.
+            statusCard(['number' => 17, 'status' => 'Done', 'state' => 'CLOSED', 'labels' => ['v1'], 'closedAt' => '2026-10-30T12:00:00Z']),
+            statusCard(['number' => 18, 'status' => 'Done', 'state' => 'CLOSED', 'closedAt' => '2026-10-30T12:00:00Z']),
             statusCard(['number' => 19, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Lot']),
             statusCard(['number' => 20, 'status' => 'Done', 'state' => 'CLOSED', 'stateReason' => 'NOT_PLANNED']),
-            statusCard(['number' => 21, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
+            statusCard(['number' => 21, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0', 'closedAt' => '2026-10-30T12:00:00Z']),
             statusCard(['number' => 22, 'status' => 'In Progress', 'kind' => 'Lot']),
             statusCard(['number' => 23, 'status' => 'Todo', 'kind' => 'Lot']),
             statusCard(['number' => 24, 'status' => 'Done', 'state' => 'CLOSED', 'onBoard' => false]),
@@ -1117,7 +1119,7 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             statusCard(['number' => 45, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 48, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 50, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.2.0', 'closedAt' => '2026-11-13T09:00:00Z']),
-            // B6: Done while its release is still open, and nothing was tagged since it closed. The others are history, or need no release.
+            // B6: Done, and nothing was tagged since it closed. The others are history, or need no release.
             statusCard(['number' => 41, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             // Closed before v0.2.0 was tagged: it shipped in it, though its own milestone is still open.
             statusCard(['number' => 51, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
@@ -1128,6 +1130,9 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             statusCard(['number' => 43, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0', 'labels' => ['v1']]),
             // `1.0` is a release milestone and is open: a `v1` card that closed after the tag has not shipped either.
             statusCard(['number' => 54, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0', 'labels' => ['v1'], 'closedAt' => '2026-11-13T09:00:00Z']),
+            // The milestone does not decide it: the card closed after the tag, so no release holds it, closed or missing milestone alike.
+            statusCard(['number' => 56, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0', 'closedAt' => '2026-11-13T09:00:00Z']),
+            statusCard(['number' => 57, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => null, 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 44, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
             statusCard(['number' => 46, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Docs', 'milestone' => '0.3.0']),
         ],
@@ -1143,10 +1148,12 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             '  #52  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
             '  #54  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
             '  #55  Ready to publish, but it was released in v0.2.0. Move it to Done.',
+            '  #56  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #57  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
         ]);
 });
 
-it('flags a Done card on an open release milestone when no release was ever tagged', function (): void {
+it('flags a Done card whatever its milestone when no release was ever tagged', function (): void {
     $project = statusProject([
         'milestones' => [statusMilestone(['title' => '0.3.0'])],
         'cards' => [
@@ -1160,6 +1167,7 @@ it('flags a Done card on an open release milestone when no release was ever tagg
     expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusDrift($run['out'])['lines'])->toBe([
             '  #40  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #41  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
         ]);
 });
 
@@ -1510,6 +1518,7 @@ it('flags a waiting card with no question posted, and a posted question with no 
 
 it('flags a closed card still waiting, and a decision card in Todo that does not wait', function (): void {
     $project = statusProject([
+        'tags' => ['v0.1.0' => '2026-11-12T00:00:00Z'],
         'cards' => [
             // W3: closed, and still waiting.
             statusCard(['number' => 40, 'status' => 'Done', 'state' => 'CLOSED', 'labels' => ['waiting-on-maintainer']]),
@@ -1538,6 +1547,7 @@ it('flags a closed card still waiting, and a decision card in Todo that does not
 
 it('flags a card past Backlog with no milestone', function (): void {
     $project = statusProject([
+        'tags' => ['v0.1.0' => '2026-11-01T00:00:00Z'],
         'cards' => [
             // M1: every status past Backlog needs a milestone, and the `v1` label is not one. A lot card ships nothing, so it needs none.
             statusCard(['number' => 60, 'status' => 'Todo', 'order' => 10, 'milestone' => null]),
@@ -1551,7 +1561,7 @@ it('flags a card past Backlog with no milestone', function (): void {
             statusCard(['number' => 65, 'status' => 'Backlog']),
             statusCard(['number' => 66, 'status' => 'Todo', 'order' => 20, 'milestone' => '1.0']),
             statusCard(['number' => 67, 'status' => 'Todo', 'order' => 30, 'milestone' => '0.3.0']),
-            statusCard(['number' => 68, 'status' => 'Done', 'state' => 'CLOSED']),
+            statusCard(['number' => 68, 'status' => 'Done', 'state' => 'CLOSED', 'closedAt' => '2026-10-30T12:00:00Z']),
         ],
         'milestones' => [statusMilestone(['title' => '0.3.0']), statusMilestone(['title' => '1.0'])],
         'prs' => [statusPr(['number' => 90, 'branch' => 'feature/62/under-review', 'checks' => [['name' => 'lint', 'conclusion' => 'SUCCESS']]])],

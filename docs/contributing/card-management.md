@@ -43,8 +43,8 @@ tags: [planning, conventions, workflow, scope, onboarding]
 > - `Status` moves with the work; `Phase` and `Kind` are set at triage and `Lot` when that lot is cut. The board keeps
 >   each of them, and a card's body carries one only until it gets there. `Order` is the queue, `Milestone` is the
 >   release a card ships in, `1.0` included, and the `v1` label marks what ships by `1.0`.
-> - A card past `Backlog` has a milestone, since no milestone means not planned. A gap that waits with its reason and
->   its triggers carries the `edge-case` label and no release milestone.
+> - A card past `Backlog` has a milestone, since no milestone means not planned (a lot card is the exception). A gap
+>   that waits with its reason and its triggers carries the `edge-case` label and no release milestone.
 > - `just status` prints what is in flight, what comes next and the next release, from the board, GitHub and git, and
 >   flags every place where they disagree. It only reads, so run it before asking what to work on.
 
@@ -690,8 +690,7 @@ card number. A branch whose name ends in `-spike` is a trial, not a card's work,
 **Where a closed card belongs.** A closed card is in `Done` when it is a `Docs`, `Decision` or `Lot` card (the docs site
 publishes on merge, and a lot card closes with its lesson), or when it was closed as not planned, since that ships
 nothing. Any other closed card is in `Ready to publish` until the next release is tagged, and then in `Done`: the card
-ships in the first release tagged after it closed, whatever its milestone. A card in `Done` with no milestone is never
-drift for it, since the release it shipped in is not on the card.
+ships in the first release tagged after it closed, whatever its milestone.
 
 **Drift between the board and the issues:**
 
@@ -700,8 +699,7 @@ drift for it, since the release it shipped in is not on the card.
 - A closed card in neither of those two, or in the one it does not belong in by the paragraph above.
 - A card in `Ready to publish` that closed before the latest release was tagged (`v<major>.<minor>.<patch>`, the newest
   by date, a prerelease excepted), which means it shipped in that release, whatever its milestone. And a card in `Done`
-  whose release milestone (a version such as `0.3.0` or `1.0`) is still open and that closed after the latest release
-  (or with none tagged yet), which means it did not ship.
+  that closed after the latest release (or with none tagged yet), which means it did not ship, whatever its milestone.
 
 **Drift between the board, the pull requests and git:**
 
