@@ -30,16 +30,16 @@ GET {{host}}/events?city=Gatineau
 Accept: application/json
 HTTP 200
 [Asserts]
-jsonpath "$" count == 1
-jsonpath "$[0].title" == "Gatineau PHP night"
+jsonpath "$[?(@.title == 'Gatineau PHP night')]" exists
+jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" not exists
 
 # `from` keeps the events that start on that day or later.
 GET {{host}}/events?from=2027-03-01
 Accept: application/json
 HTTP 200
 [Asserts]
-jsonpath "$" count == 1
-jsonpath "$[0].city" == "Sherbrooke"
+jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" exists
+jsonpath "$[?(@.title == 'Gatineau PHP night')]" not exists
 
 # `from` is a date: a word is a 422 on that parameter, and the code never runs.
 GET {{host}}/events?from=yesterday

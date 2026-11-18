@@ -1,9 +1,9 @@
 # Demo 0.2
 
 The demo of the `0.2` release: an events and RSVPs API, built from an OpenAPI contract and the code a developer writes
-on top of what `lara-spec-first` `0.2.*` generates. This folder is frozen once `0.2.0` is released. It describes the
-package as it was then, and it runs against `0.2.*` from Packagist. How to run it, and why there is one folder per
-minor, is in [the demo's README](../README.md).
+on top of what `lara-spec-first` `0.2.*` generates. This folder is frozen: `0.2.0` is released. It describes the package
+as it was then, and it runs against `0.2.*` from Packagist. How to run it, and why there is one folder per minor, is in
+[the demo's README](../README.md).
 
 ```bash
 demo/run.sh 0.2
