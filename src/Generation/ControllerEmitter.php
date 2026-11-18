@@ -109,7 +109,7 @@ final readonly class ControllerEmitter
             '     * Sends the status the contract declares for what `routeAction` returned, so a child that overrides it gets the',
             '     * status without calling `parent::`. A response object it returns is sent as it is.',
             '     *',
-            '     * @param  array<string, mixed>  $parameters',
+            '     * @param  array<array-key, mixed>  $parameters',
             '     */',
             '    public function callAction(string $method, array $parameters): mixed',
             '    {',
@@ -362,14 +362,7 @@ final readonly class ControllerEmitter
             ];
         }
 
-        $findings = [
-            sprintf(
-                'The return type is `%s`, the DTO of %s success response (%s).',
-                $return->type,
-                count($return->dtoStatuses) > 1 ? 'each' : 'the',
-                $this->statuses($return->dtoStatuses),
-            ),
-        ];
+        $findings = [$this->typeSentence($return)];
 
         if ($return->admitted === JsonResponse::class) {
             $findings[] = 'It admits `JsonResponse` because the operation declares several success statuses, and a '
@@ -388,6 +381,42 @@ final readonly class ControllerEmitter
             .'response is for the exception handler.';
 
         return $findings;
+    }
+
+    /**
+     * Says what the type is made of: the DTO of each success response, or, when one of them is a list, which status
+     * answers with a DTO and which with a list of it (the `array` in the type is not a DTO).
+     */
+    private function typeSentence(RouteActionReturn $return): string
+    {
+        $typed = array_values(array_filter(
+            $return->statuses,
+            static fn (array $status): bool => $status['dto'] !== null,
+        ));
+
+        $lists = array_filter($typed, static fn (array $status): bool => $status['depth'] > 0);
+
+        if ($lists === []) {
+            return sprintf(
+                'The return type is `%s`, the DTO of %s success response (%s).',
+                $return->type,
+                count($return->dtoStatuses) > 1 ? 'each' : 'the',
+                $this->statuses($return->dtoStatuses),
+            );
+        }
+
+        $parts = [];
+
+        foreach ($typed as $index => $status) {
+            $parts[] = sprintf(
+                '%s`%s` for `%s`',
+                $status['depth'] > 0 ? 'a list of '.str_repeat('lists of ', $status['depth'] - 1) : '',
+                (string) $status['dto'],
+                CommentText::safe($return->dtoStatuses[$index]),
+            );
+        }
+
+        return sprintf('The return type is `%s`: %s.', $return->type, implode(', ', $parts));
     }
 
     /**

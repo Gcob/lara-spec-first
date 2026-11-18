@@ -212,8 +212,9 @@ final class BuildCommand extends Command
      *
      * **The file is read, never loaded:** an override that no longer fits is a compile-time fatal, and loading it to
      * ask would end this command. Only a child that extends exactly the parent generated for its operation is judged,
-     * and only by what is sound without resolving a class: a parameter count, and a return type that says `mixed` or
-     * nothing under a parent that declares a class. A class the child names is not this command's to guess.
+     * and only by what is sound without resolving a class: a parameter count, and a return type that is absent or holds
+     * a built-in type the parent's does not (`mixed`, `array` under a DTO, `null` beside one). A class the child names
+     * is not this command's to guess.
      *
      * **Named, one per line, because each is the developer's file and each needs an edit.** The request type and the
      * return type are printed fully qualified, so the line loads as pasted into a child with no `use` for them. The
@@ -252,7 +253,7 @@ final class BuildCommand extends Command
             $returns = RouteActionSignature::returns($controller->operation, $controller->responses, $namespace);
 
             $fitsParameters = $override->fits(RouteActionSignature::count($controller->operation, $request !== null));
-            $fitsReturnType = ! ($returns->isTyped() && $override->returnsMixedOrNothing());
+            $fitsReturnType = ! $override->returnTypeRefusedUnder($returns->type);
 
             if ($fitsParameters && $fitsReturnType) {
                 continue;

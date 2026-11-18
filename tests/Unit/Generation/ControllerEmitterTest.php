@@ -569,7 +569,15 @@ describe('the return type routeAction declares', function (): void {
         ],
         'a list' => [
             [['status' => '200', 'dto' => 'UserDto', 'depth' => 1]],
-            ['The return type is `array`, the DTO of the success response (`200`).', 'throw it (`abort()` or an exception)'],
+            ['The return type is `array`: a list of `UserDto` for `200`.', 'throw it (`abort()` or an exception)'],
+        ],
+        'a list of lists' => [
+            [['status' => '200', 'dto' => 'UserDto', 'depth' => 2]],
+            ['The return type is `array`: a list of lists of `UserDto` for `200`.'],
+        ],
+        'a DTO and a list' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '202', 'dto' => 'TeamDto', 'depth' => 1]],
+            ['The return type is `UserDto|array|JsonResponse`: `UserDto` for `200`, a list of `TeamDto` for `202`.'],
         ],
         'several success statuses' => [
             [['status' => '200', 'dto' => 'UserDto'], ['status' => '202', 'dto' => 'JobDto']],
@@ -627,6 +635,8 @@ describe('the status callAction sends', function (): void {
         expect($contents)
             ->toContain('use Gcob\\LaraSpecFirst\\Http\\SuccessStatus;')
             ->toContain('public function callAction(string $method, array $parameters): mixed')
+            // Laravel splices an injected class into the parameters with an integer key, beside the route's string keys.
+            ->toContain('@param  array<array-key, mixed>  $parameters')
             ->toContain('return SuccessStatus::answer(')
             ->toContain('$this->{$method}(...array_values($parameters)),')
             ->and(declaredStatusRows($contents))->toBe([

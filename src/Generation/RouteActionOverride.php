@@ -18,16 +18,23 @@ use PhpToken;
  * `use` with or without `as`, relative to the namespace of the file), and null when it cannot be: a group `use` hides
  * which names it binds, so a name that might come from one is not guessed at.
  *
- * **A count and a return type that says nothing, never a class.** What PHP refuses to load is decided by the signature
- * as a whole. Two parts of it are sound without resolving a single class, since neither ever flags an override PHP
- * accepts: how many parameters it declares, and a return type that is `mixed` or absent, which PHP refuses under any
- * parent that declares a class. A return type that names one is never judged: whether it is the parent's own DTO or
- * narrower takes resolving the name, and a group `use` can hide which it is.
+ * **A count and the built-in types of a return type, never a class.** What PHP refuses to load is decided by the
+ * signature as a whole. Two parts of it are sound without resolving a single class, since neither ever flags an
+ * override PHP accepts: how many parameters it declares, and a return type that is absent or holds a built-in type its
+ * parent's does not (`mixed`, `array` under a DTO, `null` beside one). A class a return type names is never judged:
+ * whether it is the parent's own DTO or narrower takes resolving the name, and a group `use` can hide which it is.
  *
  * @see docs/guide/controllers.md — "The signature is the contract"
  */
 final readonly class RouteActionOverride
 {
+    /**
+     * The built-in types a return type can name besides `never`, which narrows anything.
+     */
+    private const BUILT_IN = [
+        'array', 'bool', 'callable', 'false', 'float', 'int', 'iterable', 'mixed', 'null', 'object', 'string', 'true', 'void',
+    ];
+
     /**
      * @param  string|null  $extends  the parent class, fully qualified and without a leading separator, or null when
      *                                the class extends nothing or the name cannot be resolved from the file alone
@@ -149,15 +156,68 @@ final readonly class RouteActionOverride
     }
 
     /**
-     * Whether the return type says nothing a parent declaring a class could accept: `mixed`, or none at all.
+     * Whether PHP refuses this return type under a parent that declares `$parent`, judged on what needs no class.
      *
-     * PHP refuses both under a parent that declares anything but `mixed`, and a missing one under `mixed` too. Measured
-     * on PHP 8.5: `: mixed` over `: UserDto` and an absent type over `: UserDto` are fatal at load, `: mixed` over
-     * `: mixed` loads.
+     * **Refused when the child declares none, or declares a built-in type the parent's does not hold.** An override may
+     * only narrow its parent's return type, so each member of the child's has to be one the parent's holds, or `mixed`
+     * has to be the parent's. A missing return type is refused under any parent, `mixed` included. `void` is refused
+     * under any parent this package writes, and so is `mixed` under any but `mixed` itself. `never` narrows everything
+     * and is never refused. Measured on PHP 8.5 against parents `UserDto`, `?UserDto`, `array` and `mixed`: none,
+     * `mixed`, `array`, `int`, `null`, `iterable`, `object`, `void` and `?UserDto` are fatal under `UserDto` (`null`
+     * and `?UserDto` load under `?UserDto`), `array` and `mixed` load under `mixed`, `never` loads under all of them.
+     *
+     * **A class is never judged.** Whether `UserDto`, `UserDto|JsonResponse` or a nullable class is the parent's own
+     * type, narrower or wider takes resolving the name, so a member that is not a built-in type is left to PHP.
+     *
+     * @param  string  $parent  the parent's native return type, as PHP writes it (`TeamDto|array|null`, `?UserDto`)
      */
-    public function returnsMixedOrNothing(): bool
+    public function returnTypeRefusedUnder(string $parent): bool
     {
-        return $this->returns === null || strcasecmp($this->returns, 'mixed') === 0;
+        if ($this->returns === null) {
+            return true;
+        }
+
+        $own = self::members($this->returns);
+
+        if (in_array('void', $own, true)) {
+            return true;
+        }
+
+        $held = self::members($parent);
+
+        if (in_array('mixed', $held, true)) {
+            return false;
+        }
+
+        foreach ($own as $member) {
+            if (in_array($member, self::BUILT_IN, true) && ! in_array($member, $held, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The members of a return type, lower-cased (built-in names are case-insensitive), with `?X` read as `X` and
+     * `null`.
+     *
+     * @return list<string>
+     */
+    private static function members(string $type): array
+    {
+        $members = [];
+
+        if (str_starts_with($type, '?')) {
+            $type = substr($type, 1);
+            $members[] = 'null';
+        }
+
+        foreach (explode('|', $type) as $member) {
+            $members[] = strtolower($member);
+        }
+
+        return $members;
     }
 
     /**

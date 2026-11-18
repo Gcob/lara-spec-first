@@ -30,8 +30,8 @@ tags: [decisions, code-generation, openapi, laravel, versions]
 >   type:** it is thrown (`abort()` or an exception), and the DTO of an error response is for the exception handler.
 > - The generated parent defines `callAction()`, which Laravel's dispatcher calls, and it sends the status the contract
 >   declares through `SuccessStatus`. A child that overrides `routeAction` and never calls `parent::` still gets it.
-> - `spec:make` writes the same return type from the build plan, and `spec:build` names a custom controller that still
->   returns `mixed` under a typed parent.
+> - `spec:make` writes the same return type from the build plan, and `spec:build` names a custom controller whose return
+>   type PHP refuses without resolving a class (none, `mixed` or `array` under a DTO).
 > - Breaking, in a `0.x`: every scaffolded child declared `: mixed`. Turned down: error DTOs in the type, the status
 >   written by the child, and the status logic copied into every parent.
 
@@ -104,9 +104,10 @@ and the same `@return`, and keeps its `parent::routeAction()` call, which answer
 
 **`spec:build` names a custom controller whose return type no longer fits.** The reader that names a `routeAction` that
 fell behind its parent's parameters also reads the return type, and speaks only where it is sure without resolving a
-class: a child that declares `mixed`, or none, under a parent that declares anything but `mixed`. It prints the type the
-parent declares, in full, so the line loads as pasted. A child that declares another class is left to PHP and PHPStan,
-as before.
+class: a child that declares none (under any parent, `mixed` included), or a built-in type the parent's does not hold
+(`mixed`, `array` under a DTO, `null` beside one, `void`). It prints the type the parent declares, in full, so the line
+loads as pasted. A child that declares a class is left to PHP and PHPStan, as before: an `array` where the guide used to
+say a child may narrow `mixed` is the upgrade this catches.
 
 **On Laravel 12 (CI from 12.55, [#188](https://github.com/Gcob/lara-spec-first/issues/188) settles the floor) and 13,**
 the dispatcher calls `callAction()` the same way, and a test sends a request through the router to a parent and a child
@@ -148,7 +149,7 @@ that overrides `routeAction` without `parent::`. `SpecController` does not exten
   has no class, so it takes the first list status. A child that wants another one returns `response()->json([], 202)`.
 - **The return type follows the contract.** When a status stops carrying a DTO the parent's type narrows, and a child
   that still returns the dropped class is refused by PHP when the class loads, and by PHPStan before. A child that
-  declares `mixed` or nothing is the one case `spec:build` names.
+  declares nothing, or a built-in type the parent does not hold, is what `spec:build` names.
 - **A DTO is a type, not a check.** Whether a returned value is the one the contract describes is
   [#122](https://github.com/Gcob/lara-spec-first/issues/122)'s question, and nothing here validates a response.
 - **`SuccessStatus` is frozen by name.** A generated file written before it changes keeps working, and a change to the

@@ -1130,13 +1130,18 @@ function writeChild(string $short, string $parameters, string $return = ': mixed
     file_put_contents(childRoot().'/'.$short.'.php', sprintf(
         "<?php\n\ndeclare(strict_types=1);\n\nnamespace LsfChild;\n\n%s"
         ."final class %s extends \\%s\\Controllers\\%s\n{\n"
-        ."    public function routeAction(%s)%s\n    {\n        return 'mine';\n    }\n}\n",
+        ."    public function routeAction(%s)%s\n    {\n        %s\n    }\n}\n",
         $imports === '' ? '' : $imports."\n\n",
         $short,
         buildNamespace(),
         $short,
         $parameters,
         $return,
+        match ($return) {
+            ': never' => "throw new \\LogicException('mine');",
+            ': void' => '',
+            default => "return 'mine';",
+        },
     ));
 }
 
@@ -1198,15 +1203,17 @@ describe('a custom controller whose routeAction fell behind its parent', functio
             ->and($again)->not->toContain('\\\\');
     });
 
-    // The parent of each of these declares a class, a list or a union, and a child that still says `mixed` (or
-    // says nothing) is a fatal at load: PHP refuses an override whose return type is wider than its parent's.
-    it('names a custom routeAction returning mixed under a typed parent', function (
+    // A child that says nothing, or says a built-in type its parent's does not hold (`mixed`, `array` under a DTO,
+    // `null` beside it, `void`), is a fatal at load: PHP refuses an override whose return type is wider than its
+    // parent's. Each of these is judged without resolving the class the child may also name.
+    it('names a custom routeAction whose return type PHP refuses under its parent', function (
         string $short,
         string $parameters,
         string $return,
         string $signature,
+        string $imports = '',
     ): void {
-        $output = buildStaleOverrides([$short => [$parameters, $return]]);
+        $output = buildStaleOverrides([$short => [$parameters, $return, $imports]]);
         $data = '\\'.buildNamespace().'\\Data\\';
 
         expect($output)
@@ -1227,6 +1234,40 @@ describe('a custom controller whose routeAction fell behind its parent', functio
             '',
             'routeAction(): {data}TeamDto|{data}JobDto|\\Illuminate\\Http\\JsonResponse',
         ],
+        'a DTO, a child saying array (what the guide used to recommend)' => [
+            'ShowTeamController',
+            'string $id',
+            ': array',
+            'routeAction(string $id): {data}TeamDto',
+        ],
+        'a DTO, a child saying a DTO or array' => [
+            'ShowTeamController',
+            'string $id',
+            ': \\LsfChild\\Data\\TeamDto|array',
+            'routeAction(string $id): {data}TeamDto',
+        ],
+        'a DTO, a child saying a nullable class' => [
+            'ShowTeamController',
+            'string $id',
+            ': ?TeamDto',
+            'routeAction(string $id): {data}TeamDto',
+            'use LsfChild\\Data\\TeamDto;',
+        ],
+        'a DTO, a child saying a scalar in capitals' => [
+            'ShowTeamController',
+            'string $id',
+            ': STRING',
+            'routeAction(string $id): {data}TeamDto',
+        ],
+        'a DTO, a child saying void' => ['ShowTeamController', 'string $id', ': void', 'routeAction(string $id): {data}TeamDto'],
+        'a list, a child saying null or array' => ['ListTeamsController', '', ': ?array', 'routeAction(): array'],
+        'a list, a child saying iterable' => ['ListTeamsController', '', ': iterable', 'routeAction(): array'],
+        'a union, a child saying array' => [
+            'CreateTeamController',
+            '',
+            ': array',
+            'routeAction(): {data}TeamDto|{data}JobDto|\\Illuminate\\Http\\JsonResponse',
+        ],
         'a request that fell behind and a return type that did not follow' => [
             'RenameTeamController',
             'string $id',
@@ -1235,14 +1276,26 @@ describe('a custom controller whose routeAction fell behind its parent', functio
         ],
     ]);
 
-    // What a child declares that is not `mixed` is left to PHP, and to PHPStan before that: the class may be the
-    // parent's own DTO, or narrower, and which it is takes resolving a name this reader never loads.
-    it('stays silent on a custom routeAction returning a class it cannot resolve', function (
+    // A child that says nothing under a parent that returns `mixed` is a fatal too: PHP refuses a dropped return type
+    // whatever the parent declares.
+    it('names a custom routeAction with no return type under a parent that returns mixed', function (): void {
+        $output = buildStaleOverrides(['FreshController' => ['string $id', '']]);
+
+        expect($output)
+            ->toContain('1 custom controller(s) declare a routeAction that no longer matches')
+            ->toContain('LsfChild\\FreshController  routeAction(string $id): mixed')
+            ->and(class_exists('LsfChild\\FreshController', false))->toBeFalse();
+    });
+
+    // What a child declares that PHP accepts, or that only resolving a class could judge, stays unnamed: the class may
+    // be the parent's own DTO, or narrower, and which it is takes resolving a name this reader never loads.
+    it('stays silent on a custom routeAction returning a class it cannot resolve, or a type PHP accepts', function (
         string $short,
         string $return,
         string $imports,
+        string $parameters = 'string $id',
     ): void {
-        $output = buildStaleOverrides([$short => ['string $id', $return, $imports]]);
+        $output = buildStaleOverrides([$short => [$parameters, $return, $imports]]);
 
         expect($output)
             ->not->toContain('LsfChild\\'.$short)
@@ -1254,8 +1307,11 @@ describe('a custom controller whose routeAction fell behind its parent', functio
             'use LsfChild\\Data\\{TeamDto as SomeAlias};',
         ],
         'a class written in full' => ['ShowTeamController', ': \\LsfChild\\Data\\TeamDto', ''],
-        'a nullable class' => ['ShowTeamController', ': ?TeamDto', 'use LsfChild\\Data\\TeamDto;'],
-        'a union' => ['ShowTeamController', ': \\LsfChild\\Data\\TeamDto|array', ''],
+        'a class under a union of classes' => ['CreateTeamController', ': \\LsfChild\\Data\\TeamDto', '', ''],
+        'a never under a class' => ['ShowTeamController', ': never', ''],
+        'an array under a list' => ['ListTeamsController', ': array', '', ''],
+        'an array under a parent that returns mixed' => ['FreshController', ': array', ''],
+        'a never under a parent that returns mixed' => ['FreshController', ': never', ''],
     ]);
 
     it('stays silent on a custom routeAction returning mixed under a parent that returns mixed', function (): void {

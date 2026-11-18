@@ -55,7 +55,7 @@ final class ShowAccountController extends SpecController
      * Sends the status the contract declares for what `routeAction` returned, so a child that overrides it gets the
      * status without calling `parent::`. A response object it returns is sent as it is.
      *
-     * @param  array<string, mixed>  $parameters
+     * @param  array<array-key, mixed>  $parameters
      */
     public function callAction(string $method, array $parameters): mixed
     {

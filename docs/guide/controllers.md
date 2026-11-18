@@ -101,7 +101,8 @@ the status all the same, and `201` needs no `response()->json($dto, 201)`.
   status of every such value. With several, a DTO answers the first status whose body is that class, in contract order;
   an array answers the first list status whose items are the class of the first item (an empty array takes the first
   list status); `null` answers the first status whose body may be `null`, and is sent as JSON `null`, never `{}`. Where
-  none matches, Laravel's own answer stands.
+  none matches, Laravel's own answer stands: with several statuses, a bare DTO whose class only a list status carries
+  matches none of them, and answers Laravel's `200`.
 - **Everything else goes to Laravel untouched.** A `Response` of any kind (`response()->json($x, 202)`, `noContent()`, a
   redirect), a `Responsable`, a PSR-7 response, a `Model` and a DTO of another operation keep their own status. That is
   how a child sends the status it picked, and why a recently created `Model` still answers `201`.
@@ -127,7 +128,8 @@ change the parameters. That is ordinary PHP variance rather than a rule of this 
 
 **A child whose signature fell behind is named by the build, and the build still succeeds.** When the contract gains or
 loses a request or a path parameter, or an operation gains a response DTO, a custom child that still declares the old
-list or still returns `mixed` is a class PHP will refuse to load, and it does so at its first load, which is the first
+list, or still returns `mixed`, nothing or a built-in type the parent does not (an `array` under a DTO, which is what
+this guide used to recommend), is a class PHP will refuse to load, and it does so at its first load, which is the first
 request. So `spec:build` prints one header and one line per such child, with the signature to paste:
 
 ```text
@@ -146,11 +148,13 @@ signature, and a list is `array` there. Three choices sit behind that:
 - **It reads the file and never loads the class.** A child that no longer fits is a fatal error at load, and loading it
   to ask would end the build that is naming it. The file is tokenized with PHP's [`PhpToken`](../project/stack.md), so
   no class is ever resolved.
-- **It judges the parameter count, and a return type that says nothing.** Both are sound without resolving a class: the
-  count never flags a class PHP would load, and a `mixed` or missing return type is a fatal under any parent that
-  declares a DTO, a list or a union. A child that declares a class instead is not judged: whether it is the parent's DTO
-  or a narrower one takes resolving the name, and a group `use` can hide it. A renamed request class, a narrowed type or
-  a class that is not the parent's is reported by PHP when the class loads, and by PHPStan before that.
+- **It judges the parameter count, and the built-in types of a return type.** Both are sound without resolving a class:
+  the count never flags a class PHP would load, and a missing return type is a fatal under any parent, `mixed` included.
+  A built-in type the parent's does not hold is one too: `mixed`, `array` or `TeamDto|array` under `TeamDto`, `?UserDto`
+  under `UserDto` (the `null`), `void`, but not `array` under a list (the parent says `array`), anything under a parent
+  that says `mixed`, or `never`, which narrows every type. A class the child names is not judged: whether it is the
+  parent's DTO or a narrower one takes resolving the name, and a group `use` can hide it. A renamed request class, a
+  narrowed type or a class that is not the parent's is reported by PHP when the class loads, and by PHPStan before that.
 
 Only a child that extends exactly the generated parent of its operation is checked. A child that extends something else,
 declares no `routeAction`, or gets one from a trait is left alone, and so is a `routeAction` the file does not write in
@@ -460,9 +464,10 @@ other project clarity. Vendor the reference, or own a copy.
 
 ## What the generated controller contains
 
-Inheritance carries exactly one thing here, the two-class parent-child seam above, and nothing else. `SpecController` is
-one abstract base, shared by every operation, and it stays deliberately thin: no per-operation knowledge, because it
-cannot have any.
+Inheritance carries one thing here, the two-class parent-child seam above, and the `callAction()` the generated parent
+defines (see [the signature is the contract](#the-signature-is-the-contract)), and nothing else. `SpecController` is one
+abstract base, shared by every operation, and it stays deliberately thin: no per-operation knowledge, because it cannot
+have any.
 
 **Everything an operation needs is generated into its own class, narrowly typed.** An earlier draft of this design put
 that knowledge in context objects the controller composed, a `ModelContext` holding the model, the query, the response
