@@ -110,13 +110,14 @@ a body read only as a form, to shape the name above it.
 `filter.a` would refuse that value, so the keys declared below it go in the array branch of the shape check instead:
 `['array:b']`, written `'filter.a' => Rule::when(..., ['sometimes', 'string'], ['array:b'])`. `filter[a][evil]=1` and
 `page[evil]=1` are refused, as the contract refuses them, where `['array']` accepted them and kept only the declared key
-in `validated()`. A branch that drops the array holds the keys in front of the `exclude` (`['array:b', 'exclude']`). A
-key `array:` cannot name keeps `['array']` and the level open, with a finding: a comma in it, and the key of a `*` name
-(`page[*]` beside `page[size]`), which the level accepts along with `page[evil]`, where the contract refuses the second.
-A name that keeps no shape check (typed `array` or `object`, or in a collision) keeps its level open as before. So does
-the level of a name that a name below it appends to (`ids` beside `ids[]`, read as `ids.0`): `['array:0']` would refuse
-a second `ids[]` value that the body accepted before, so the array branch stays `['array']` and a finding says what the
-key check accepts. The append is a separate matter, tracked below.
+in `validated()`. A branch that drops the array holds the keys in front of the `exclude` (`['array:b', 'exclude']`), so
+`filter[a][evil]=1` is refused there too, where that level stayed open. A key `array:` cannot name keeps `['array']` and
+the level open, with a finding: a comma in it, and the key of a `*` name (`page[*]` beside `page[size]`), which the
+level accepts along with `page[evil]`, where the contract refuses the second. A name that keeps no shape check (typed
+`array` or `object`, or in a collision) keeps its level open as before. So does the level of a name that a name below it
+appends to (`ids` beside `ids[]`, read as `ids.0`): `['array:0']` would refuse a second `ids[]` value that the body
+accepted before, so the array branch stays `['array']` and a finding says what the key check accepts. The append is a
+separate matter, tracked below.
 
 **A body that is JSON and a form judges a top-level name by shape too.** `page` beside `page[size]` keeps its rules
 behind `Rule::when()` for both clients: `page=abc` from a form and `{"page": "abc"}` from JSON are refused. The nested

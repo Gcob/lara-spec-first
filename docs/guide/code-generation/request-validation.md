@@ -293,16 +293,17 @@ array nobody checked in `validated()`. **In a closed body the array branch holds
 the name:** `page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and `page[size]=3&page[evil]=1` answer
 422, as the contract refuses them, while `page=2` and `page[size]=3` still pass. A branch that drops the array holds the
 keys too, in front of the `exclude` (`['array:b', 'exclude']` for `filter[a]` beside an object `filter[a][b]` that has a
-name below it, so both are withheld). A key `array:` cannot name keeps `['array']`, and the generated file says the key
-check accepts it: a comma in a key, and the key of a `*` name (`page[*]` beside `page[size]`), which Laravel hides
-behind a placeholder, so `array:size,*` would refuse the `page[*]=5` the contract declares. That level accepts
-`page[evil]=1` too. A comparison is step by step, so `filter[a]` is no ancestor of `filter[ab][c]`. **`dto()` reads the
-name only when it is not an array:** the request lists such names (not those whose array branch is `exclude`, which
-`validated()` never holds) in a `SCALAR_NAMES` constant, and `contractNames()` drops the array once it has read each
-nested name out of it, because `from()` casts what it reads and `(int)` of an array is `1`. So `page[size]=3` reaches
-the DTO as `page[size]` and `page` is `Optional`, which is what a required `page` is there: the array stands in for it,
-and the file says so. The key that two names deliver under one is in the list too, when a name below it has a rule. The
-reasoning is in [ADR 0012](../../project/decisions/0012-judge-plain-form-names-by-shape.md).
+name below it, so both are withheld), so `filter[a][evil]=1` is refused there too, where that level stayed open. A key
+`array:` cannot name keeps `['array']`, and the generated file says the key check accepts it: a comma in a key, and the
+key of a `*` name (`page[*]` beside `page[size]`), which Laravel hides behind a placeholder, so `array:size,*` would
+refuse the `page[*]=5` the contract declares. That level accepts `page[evil]=1` too. A comparison is step by step, so
+`filter[a]` is no ancestor of `filter[ab][c]`. **`dto()` reads the name only when it is not an array:** the request
+lists such names (not those whose array branch is `exclude`, which `validated()` never holds) in a `SCALAR_NAMES`
+constant, and `contractNames()` drops the array once it has read each nested name out of it, because `from()` casts what
+it reads and `(int)` of an array is `1`. So `page[size]=3` reaches the DTO as `page[size]` and `page` is `Optional`,
+which is what a required `page` is there: the array stands in for it, and the file says so. The key that two names
+deliver under one is in the list too, when a name below it has a rule. The reasoning is in
+[ADR 0012](../../project/decisions/0012-judge-plain-form-names-by-shape.md).
 
 **The shape check cannot tell a `page` the client left out from the names it sent instead, when the contract asks for
 `page`.** A required `page`, a `page` that a `dependentRequired` makes required, and a required `page` of an optional

@@ -112,8 +112,10 @@ tags: [versions, conventions, planning]
   the value of `page` itself, so `page[evil]=1` and `page[size]=3&page[evil]=1` were accepted (the second kept only
   `size` in `validated()`). The array branch of `page`'s shape check now holds the keys the contract declares below it
   (`['array:size']`), and `page=2` and `page[size]=3` still pass. It holds at any depth: `filter[a]` beside
-  `filter[a][b]` gives `filter[a][evil]=1` the same refusal. Requests that answered `200` now answer `422` to a client
-  that asks for JSON (see
+  `filter[a][b]` gives `filter[a][evil]=1` the same refusal, and so does a `filter[a]` whose nested names are all
+  withheld (`filter[a][b]` typed `object` with `filter[a][b][c]` below it), where the level stayed open because its
+  array branch drops the array (`exclude`): it now holds the keys first (`['array:b', 'exclude']`). Requests that
+  answered `200` now answer `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   A level whose key `array:` cannot name stays open, and the generated file says so: a comma in a key, and a `*` name
   (`page[*]` beside `page[size]`), whose key Laravel hides behind a placeholder, so `page[*]=5` passes and so does
