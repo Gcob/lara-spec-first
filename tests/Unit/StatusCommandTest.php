@@ -175,20 +175,20 @@ function statusMilestone(array $overrides): array
 }
 
 /**
- * A merged pull request: the cards it closes and the branch it came from.
+ * A merged pull request: the cards it closes, the branch it came from and when it merged.
  *
  * @param  array<string, mixed>  $overrides
- * @return array{number: int, branch: string, closes: list<int>}
+ * @return array{number: int, branch: string, closes: list<int>, mergedAt: string}
  */
 function statusMerged(array $overrides): array
 {
-    /** @var array{number: int, branch: string, closes: list<int>} */
-    return array_merge(['branch' => 'merged-thing', 'closes' => []], $overrides);
+    /** @var array{number: int, branch: string, closes: list<int>, mergedAt: string} */
+    return array_merge(['branch' => 'merged-thing', 'closes' => [], 'mergedAt' => '2026-11-01T12:00:00Z'], $overrides);
 }
 
 /**
- * @param  int|array{number: int, branch: string, closes: list<int>}  $merged  a bare number is a pull request with no
- *                                                                             card
+ * @param  int|array{number: int, branch: string, closes: list<int>, mergedAt: string}  $merged  a bare number is a pull
+ *                                                                                               request with no card
  * @return array<string, mixed>
  */
 function statusMergedNode(int|array $merged): array
@@ -198,7 +198,7 @@ function statusMergedNode(int|array $merged): array
     return [
         'number' => $merged['number'],
         'headRefName' => $merged['branch'],
-        'mergedAt' => '2026-11-01T12:00:00Z',
+        'mergedAt' => $merged['mergedAt'],
         'closingIssuesReferences' => [
             'pageInfo' => ['hasNextPage' => false],
             'nodes' => array_map(static fn (int $number): array => ['number' => $number], $merged['closes']),
@@ -1135,6 +1135,20 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             statusCard(['number' => 57, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => null, 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 44, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
             statusCard(['number' => 46, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Docs', 'milestone' => '0.3.0']),
+            // A card ships in the first release tagged after the pull request that closed it merged, not after the issue closed.
+            // The release card closes after its own tag by design, while its pull request merged before it: it shipped.
+            statusCard(['number' => 58, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Chore', 'milestone' => null, 'closedAt' => '2026-11-13T00:55:00Z']),
+            statusCard(['number' => 59, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-13T00:55:00Z']),
+            // The tag is the pull request's own merge commit, so they share a second: the release holds it.
+            statusCard(['number' => 62, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => null, 'closedAt' => '2026-11-13T00:55:00Z']),
+            // Its pull request merged after the tag, on a milestone that has closed since: it did not ship.
+            statusCard(['number' => 60, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0', 'closedAt' => '2026-11-13T09:00:00Z']),
+        ],
+        'merged' => [
+            statusMerged(['number' => 150, 'branch' => 'chore/58/cut-release', 'mergedAt' => '2026-11-11T12:00:00Z']),
+            statusMerged(['number' => 151, 'branch' => 'feature/59/thing', 'mergedAt' => '2026-11-11T12:00:00Z']),
+            statusMerged(['number' => 152, 'branch' => 'feature/60/thing', 'mergedAt' => '2026-11-13T08:00:00Z']),
+            statusMerged(['number' => 153, 'branch' => 'feature/62/thing', 'mergedAt' => '2026-11-12T00:00:00Z']),
         ],
     ]);
 
@@ -1150,6 +1164,8 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             '  #55  Ready to publish, but it was released in v0.2.0. Move it to Done.',
             '  #56  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
             '  #57  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #59  Ready to publish, but it was released in v0.2.0. Move it to Done.',
+            '  #60  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
         ]);
 });
 

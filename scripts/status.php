@@ -611,7 +611,7 @@ function read_pull_requests(string $root): array
 /**
  * Every merged pull request, read in full, with the cards each served.
  *
- * @return list<array{number: int, serves: list<int>}>
+ * @return list<array{number: int, serves: list<int>, at: int|false}>
  */
 function read_merged_pull_requests(string $root): array
 {
@@ -625,6 +625,7 @@ function read_merged_pull_requests(string $root): array
         $merged[] = [
             'number' => $pr['number'],
             'serves' => served_cards($pr['headRefName'], nested_nodes($pr['closingIssuesReferences'] ?? null, 'closing references', 'pull request #'.$pr['number'])),
+            'at' => is_string($pr['mergedAt'] ?? null) ? strtotime($pr['mergedAt']) : false,
         ];
     }
 
@@ -864,7 +865,7 @@ function describe_checks(array $checks): string
  * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
  * @param  array<int, string>  $questions
  * @param  list<array{number: int, branch: string, draft: bool, serves: list<int>, ci: string}>  $pullRequests
- * @param  list<array{number: int, serves: list<int>}>  $merged
+ * @param  list<array{number: int, serves: list<int>, at: int|false}>  $merged
  * @param  array{sha: string, ci: string, failed: list<string>}  $main
  * @param  array<string, int>  $branches
  * @param  array{name: string, at: int}|null  $release
@@ -874,7 +875,7 @@ function find_drift(array $cards, array $questions, array $pullRequests, array $
 {
     $findings = [
         ...drift_main($main),
-        ...drift_board($cards, $release),
+        ...drift_board($cards, $merged, $release),
         ...drift_pull_requests($cards, $pullRequests, $merged),
         ...drift_branches($cards, $pullRequests, $branches),
         ...drift_queue($cards),
@@ -946,26 +947,44 @@ function home_of_closed(array $card): array
 }
 
 /**
- * Whether a card closed before the latest release was tagged, so that release holds it. B5 and B6 read the same date,
- * which keeps them from sending one card back and forth.
+ * Whether a card was done before the latest release was tagged, so that release holds it. The card is done when the
+ * pull request that closed it merged: the last merged pull request that serves it and merged no later than the card
+ * closed. With no such pull request (closed by hand), it is done when it closed. B5 and B6 read the same date, which
+ * keeps them from sending one card back and forth. A release is dated by its tagged commit, so a pull request merged at
+ * that very second is the tagged commit itself and is in the release, while a card closed at that second is not.
  *
- * @param  array{closedAt: string|null}  $card
+ * @param  array{number: int, closedAt: string|null}  $card
+ * @param  list<array{number: int, serves: list<int>, at: int|false}>  $merged
  * @param  array{name: string, at: int}|null  $release
  */
-function closed_before_release(array $card, ?array $release): bool
+function done_before_release(array $card, array $merged, ?array $release): bool
 {
-    return $release !== null && $card['closedAt'] !== null && strtotime($card['closedAt']) < $release['at'];
+    if ($release === null || $card['closedAt'] === null) {
+        return false;
+    }
+
+    $closed = strtotime($card['closedAt']);
+    $merges = [];
+
+    foreach ($merged as $pr) {
+        if ($pr['at'] !== false && $pr['at'] <= $closed && in_array($card['number'], $pr['serves'], true)) {
+            $merges[] = $pr['at'];
+        }
+    }
+
+    return $merges === [] ? $closed < $release['at'] : max($merges) <= $release['at'];
 }
 
 /**
- * B1 to B6: the board against the issues. B5 and B6 read the same date: a card closed before the latest release was
- * tagged shipped in it, and a card closed at or after that date has not shipped yet.
+ * B1 to B6: the board against the issues. B5 and B6 read the same date: a card done before the latest release was
+ * tagged shipped in it, and a card done at or after that date has not shipped yet.
  *
  * @param  array<int, array{number: int, title: string, state: string, stateReason: string|null, milestone: string|null, closedAt: string|null, labels: list<string>, onBoard: bool, status: string|null, kind: string|null, order: int|float|null, body: string}>  $cards
- * @param  array{name: string, at: int}|null  $release  the latest release, which a card closed before it shipped in
+ * @param  list<array{number: int, serves: list<int>, at: int|false}>  $merged
+ * @param  array{name: string, at: int}|null  $release  the latest release, which a card done before it shipped in
  * @return list<array{rule: string, card: int|null, pr: int|null, text: string}>
  */
-function drift_board(array $cards, ?array $release): array
+function drift_board(array $cards, array $merged, ?array $release): array
 {
     $findings = [];
 
@@ -996,10 +1015,10 @@ function drift_board(array $cards, ?array $release): array
             $findings[] = finding('B3', $number, null, 'Closed, but '.$status.'. Move it to '.$home['status'].'.');
         } elseif ($home['status'] === STATUS_DONE && $status === STATUS_READY_TO_PUBLISH) {
             $findings[] = finding('B4', $number, null, 'Ready to publish, but '.$home['why'].'. Move it to Done.');
-        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && closed_before_release($card, $release)) {
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && done_before_release($card, $merged, $release)) {
             // Whatever its milestone, `1.0` included: a card waits for the next release like any other, and shipped in it.
             $findings[] = finding('B5', $number, null, 'Ready to publish, but it was released in '.$release['name'].'. Move it to Done.');
-        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && ! closed_before_release($card, $release)) {
+        } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && ! done_before_release($card, $merged, $release)) {
             $findings[] = finding('B6', $number, null, 'Done, but no release has been tagged since it closed. Move it back to Ready to publish.');
         }
     }

@@ -170,11 +170,11 @@ writes.
 
 1. **Packagist picks the tag up** through the GitHub hook. Check the version on
    [`packagist.org/packages/gcob/lara-spec-first`](https://packagist.org/packages/gcob/lara-spec-first).
-2. **The release's milestone closes, and every card in `Ready to publish` that closed before the tag moves to `Done`.**
-   That is the board rule, and it is the factory's: a card ships in the first release tagged after it closes, whatever
-   its milestone, so a card planned for a later release, `1.0` included, that merged early shipped in this one. The
-   milestone of `1.0.0` is `1.0`. `just status` then stops showing that release and shows the next one, and flags any
-   card it left behind.
+2. **The release's milestone closes, and every card in `Ready to publish` whose pull request merged before the tag moves
+   to `Done`.** That is the board rule, and it is the factory's: a card ships in the first release tagged after the pull
+   request that closed it merged, whatever its milestone, so a card planned for a later release, `1.0` included, that
+   merged early shipped in this one. The milestone of `1.0.0` is `1.0`. `just status` then stops showing that release
+   and shows the next one, and flags any card it left behind.
 
 ## What this document does not cover
 
