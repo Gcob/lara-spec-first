@@ -145,8 +145,9 @@ it('reads every level of a JSON body as strict', function (): void {
         ->and($set->rules['flags.*'])->toBe(['boolean:strict']);
 });
 
-// The rule compares the float itself, so a JSON integer is exactly as strict as the contract: nothing is left to say, for
-// any integer, bound or enumeration.
+// The rule compares the float itself, so a JSON integer is judged by its exact value and the rule set has nothing to say
+// about a float, for any bound. The one exception is an enumeration value of 1e14 or more sent as a float, which
+// `Rule::in` compares as text and refuses (the guide states it), so its row asserts the missing finding, not the answer.
 it('says nothing about a float for a JSON integer', function (array $properties): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema($properties)]));
 
