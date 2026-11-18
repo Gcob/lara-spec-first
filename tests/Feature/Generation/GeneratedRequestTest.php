@@ -776,6 +776,63 @@ it('accepts a repeat across two lists that are each unique', function (): void {
     expect(statusForBuiltRules(oneField($field), ['field' => [['tags' => ['a']], ['tags' => ['a']]]]))->toBe(200);
 });
 
+/**
+ * A `POST` whose body is one list of a scalar type that may not repeat an element, under `xs`.
+ */
+function postWithUniqueList(string $mediaType, SchemaType $type): Operation
+{
+    return postWithFormSchema($mediaType, new Schema(
+        types: [SchemaType::Object],
+        properties: ['xs' => new Schema(types: [SchemaType::Array], items: new Schema(types: [$type]), uniqueItems: true)],
+    ));
+}
+
+// JSON Schema compares two numbers by value: `1` and `1.0` are one element. `distinct:strict` called them two, so
+// the list passed. The bodies are raw JSON, since `json_encode()` would write `1.0` as `1`.
+it('compares the numbers of a unique list by value in a JSON body', function (SchemaType $type, string $content, int $status, array $keys): void {
+    [$answered, $errors] = errorsForRawJson(emittedRequestClass(postWithUniqueList('application/json', $type)), $content);
+
+    expect($answered)->toBe($status)
+        ->and(array_keys($errors))->toBe($keys);
+})->with([
+    'a whole float and the integer it equals' => [SchemaType::Number, '{"xs":[1,1.0]}', 422, ['xs.0', 'xs.1']],
+    'an exponent and the integer it equals' => [SchemaType::Number, '{"xs":[10,1e1]}', 422, ['xs.0', 'xs.1']],
+    'zero and negative zero' => [SchemaType::Number, '{"xs":[0,-0.0]}', 422, ['xs.0', 'xs.1']],
+    'two different fractions' => [SchemaType::Number, '{"xs":[1.5,2.5]}', 200, []],
+    'two different integers' => [SchemaType::Integer, '{"xs":[1,2]}', 200, []],
+    'the same integer twice' => [SchemaType::Integer, '{"xs":[1,1]}', 422, ['xs.0', 'xs.1']],
+    // A string has no second spelling, so `"1"` and `"01"` stay two elements.
+    'two strings that read as one number' => [SchemaType::String, '{"xs":["1","01"]}', 200, []],
+]);
+
+// A form delivers text, and PHP compares two numeric strings as numbers: `1` and `+1` are one element.
+it('compares the numbers of a unique list by value in a form body', function (SchemaType $type, array $sent, int $status, array $keys): void {
+    $class = emittedRequestClass(postWithUniqueList('application/x-www-form-urlencoded', $type));
+    [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: ['xs' => $sent]);
+
+    /** @var array<string, mixed> $errors */
+    $errors = $body['errors'] ?? [];
+
+    expect($answered)->toBe($status)
+        ->and(array_keys($errors))->toBe($keys);
+})->with([
+    'an integer and its plus-signed spelling' => [SchemaType::Integer, ['1', '+1'], 422, ['xs.0', 'xs.1']],
+    'zero and minus zero' => [SchemaType::Integer, ['0', '-0'], 422, ['xs.0', 'xs.1']],
+    'two different integers' => [SchemaType::Integer, ['1', '2'], 200, []],
+    'a number and its decimal spelling' => [SchemaType::Number, ['1', '1.0'], 422, ['xs.0', 'xs.1']],
+    'a number and its exponent spelling' => [SchemaType::Number, ['10', '1e1'], 422, ['xs.0', 'xs.1']],
+    'two different fractions' => [SchemaType::Number, ['1.5', '2.5'], 200, []],
+]);
+
+// A stated limit, not a wanted behavior: PHP compares an integer with a float as two floats, and these two round to
+// the same one. The guide's `uniqueItems` row says so (2^53).
+it('counts two numbers PHP cannot tell apart as one in a unique list', function (): void {
+    $class = emittedRequestClass(postWithUniqueList('application/json', SchemaType::Number));
+
+    expect(errorsForRawJson($class, '{"xs":[9007199254740993,9007199254740992.0]}'))
+        ->toBe([422, ['xs.0' => ['The xs.0 field has a duplicate value.'], 'xs.1' => ['The xs.1 field has a duplicate value.']]]);
+});
+
 // "All or none", the one mapping the design measured case by case.
 it('accepts an optional body whole or absent, and refuses half of one', function (array $payload, int $status): void {
     $body = new Schema(

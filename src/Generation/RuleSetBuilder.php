@@ -2565,7 +2565,17 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * `distinct:strict`, or null where it would not mean `uniqueItems`.
+     * `distinct` for a number and `distinct:strict` for a string or a boolean, or null where it would not mean
+     * `uniqueItems`.
+     *
+     * JSON Schema compares two numbers by value, so `1` and `1.0` are one element and so are `1` and `+1` in a form:
+     * the loose `distinct` says the same, and `distinct:strict` would call them two. A string or a boolean has no
+     * second spelling, and `"1"` and `"01"` are two strings, so those keep the strict comparison.
+     *
+     * The loose comparison is not exact at float precision, and the guide says so: PHP compares an integer with a
+     * float, or two decimal strings, as two floats, so two numbers it rounds the same way count as one
+     * (`9007199254740993` and `9007199254740992.0` in JSON, `0.1` and `0.10000000000000000001` in a form). The
+     * generated file carries no finding for it.
      *
      * Two shapes break it, both measured on Laravel's validator. Under a wildcard, `distinct` turns every `*` into a
      * pattern and compares across every element of the outer list, so `[{tags: [a]}, {tags: [a]}]` is refused although
@@ -2586,9 +2596,13 @@ final readonly class RuleSetBuilder
         // Only a typed scalar that may not be null. An untyped element may be
         // an object `distinct` cannot compare, and `distinct` lets two nulls
         // through, so both are reported rather than half-enforced.
-        $scalar = in_array($items->soleType(), [SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean], true);
+        $type = $items->soleType();
 
-        return $scalar && ! $items->isNullable() ? 'distinct:strict' : null;
+        if (! in_array($type, [SchemaType::String, SchemaType::Integer, SchemaType::Number, SchemaType::Boolean], true) || $items->isNullable()) {
+            return null;
+        }
+
+        return in_array($type, [SchemaType::Integer, SchemaType::Number], true) ? 'distinct' : 'distinct:strict';
     }
 
     /**

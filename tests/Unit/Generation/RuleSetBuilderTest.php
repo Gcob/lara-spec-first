@@ -1009,6 +1009,41 @@ it('keys the element rules of an array under field.*', function (): void {
     ]);
 });
 
+// JSON Schema compares two numbers by value, so `1` and `1.0` are one element, and Laravel's `distinct` does too.
+// `distinct:strict` would call them two. A string or a boolean has no second spelling, and `"1"` and `"01"` are
+// two strings, so those keep the strict comparison.
+it('compares the numbers of a unique list by value', function (string $mediaType, SchemaType $type, array $element): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(['xs' => uniqueListOf($type)])]));
+
+    expect($set->rules['xs.*'])->toBe($element)
+        ->and(implode('', $set->findings))->not->toContain('uniqueItems');
+})->with([
+    'integers in a JSON body' => ['application/json', SchemaType::Integer, ['integer:strict', 'distinct']],
+    'numbers in a JSON body' => ['application/json', SchemaType::Number, ['numeric:strict', 'distinct']],
+    'integers in a form body' => ['application/x-www-form-urlencoded', SchemaType::Integer, ['integer', 'distinct']],
+    'numbers in a form body' => ['application/x-www-form-urlencoded', SchemaType::Number, ['numeric', 'distinct']],
+    'strings in a JSON body' => ['application/json', SchemaType::String, ['string', 'distinct:strict']],
+    'booleans in a JSON body' => ['application/json', SchemaType::Boolean, ['boolean:strict', 'distinct:strict']],
+]);
+
+// A query string has no element rule: an array query parameter gets its presence rule and nothing else.
+it('writes no element rule for the unique list of a query parameter', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('ids', uniqueListOf(SchemaType::Integer), required: true)],
+    ));
+
+    expect($set->rules)->toBe(['ids' => ['present']]);
+});
+
+/**
+ * An array of one scalar type that may not repeat an element.
+ */
+function uniqueListOf(SchemaType $type): Schema
+{
+    return new Schema(types: [SchemaType::Array], items: new Schema(types: [$type]), uniqueItems: true);
+}
+
 // JSON Schema's `required` asks for keys on the object itself, and so does
 // `required_array_keys`. On the parent rather than on each child, so a nullable
 // object may be `null`: a child's rule would fire on the parent's key whatever
