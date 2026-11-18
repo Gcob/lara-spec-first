@@ -8,12 +8,13 @@ use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
-use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
-use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\InputDtoProperty;
 use Gcob\LaraSpecFirst\Generation\InputDtoType;
 use Gcob\LaraSpecFirst\Generation\PlannedResponseDto;
 use Gcob\LaraSpecFirst\Generation\ResponseDtoPlanner;
+use Gcob\LaraSpecFirst\Generation\ResponseFallback;
+use Gcob\LaraSpecFirst\Generation\ResponseFallbackCause;
+use Gcob\LaraSpecFirst\Generation\ResponsePlan;
 use Gcob\LaraSpecFirst\Generation\StatusResponse;
 
 /**
@@ -35,52 +36,289 @@ function answeringWith(string $operationId, string $schemaName, string $source, 
     );
 }
 
-// A response DTO is named after its schema alone, so two schemas can derive one class name.
-it('refuses two schemas that give one response DTO name', function (): void {
-    $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([
-        answeringWith('showUser', 'User', '#/components/schemas/User'),
-        answeringWith('showMember', 'user', './other.yaml#/components/schemas/user'),
+/**
+ * One document's operations in the order it writes them, or the other way round.
+ *
+ * @param  list<Operation>  $operations
+ * @return list<Operation>
+ */
+function writtenInOrder(array $operations, bool $reversed): array
+{
+    return $reversed ? array_reverse($operations) : $operations;
+}
+
+/**
+ * The DTOs of a plan by class name, in one order whichever the build reached first, so two plans can be compared.
+ *
+ * @return array<string, PlannedResponseDto>
+ */
+function dtosByName(ResponsePlan $plan): array
+{
+    $dtos = array_column($plan->dtos, null, 'shortName');
+    ksort($dtos);
+
+    return $dtos;
+}
+
+/**
+ * The orders a contested name is decided in: what the document writes first must not change the answer.
+ *
+ * @return array<string, array{bool}>
+ */
+function documentOrders(): array
+{
+    return ['in the order the document writes' => [false], 'reversed' => [true]];
+}
+
+// A response schema written inline takes its class name from where it sits, which nobody chose, and a component's name
+// is the one its author chose: the component keeps the class, and the inline schema gives way, in either order.
+it("gives an inline response schema's class name to the component that claims it", function (bool $reversed): void {
+    $operations = extractFixture('response-inline-meets-component.yaml');
+    $plan = (new ResponseDtoPlanner)->plan(writtenInOrder($operations, $reversed), []);
+    $dtos = dtosByName($plan);
+    $address = array_column($dtos['UserDto']->properties, null, 'key')['address'];
+    $inline = '#/components/schemas/User/properties/address';
+
+    expect(array_keys($dtos))->toBe(['UserAddressDto', 'UserDto'])
+        ->and($dtos['UserAddressDto']->position)->toBe('#/components/schemas/UserAddress')
+        ->and($address->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($dtos['UserDto']->findings)->toContain(
+            '`address` is `mixed`: its schema (written inline at `'.$inline.'`) derives the class name `UserAddressDto`, '
+            .'which the schema `UserAddress` (`#/components/schemas/UserAddress`) claims. Give it a component name of '
+            .'its own to type it.',
+        )
+        ->and(fallbacksOf($plan))->toBe([[$inline, $inline, ResponseFallbackCause::NameTaken]])
+        ->and(dtosByName((new ResponseDtoPlanner)->plan(writtenInOrder($operations, ! $reversed), [])))->toEqual($dtos);
+})->with(documentOrders());
+
+// Two components that derive one class name are two equals: whichever the document writes first, neither has the DTO,
+// and both say why with the two positions in the same order.
+it('gives no DTO to two response components that claim one class name', function (bool $reversed): void {
+    $operations = extractFixture('response-two-components-one-name.yaml');
+    $plan = (new ResponseDtoPlanner)->plan(writtenInOrder($operations, $reversed), []);
+    $says = 'The `200` response has no DTO: the schema `NewUser` (`#/components/schemas/NewUser`) and the schema `new-user` '
+        .'(`#/components/schemas/new-user`) both derive the class name `NewUserDto`, so neither has it. Rename one of them.';
+
+    expect($plan->dtos)->toBe([])
+        ->and($plan->statuses['get /hyphenated'][0]->sentence())->toBe($says)
+        ->and($plan->statuses['get /studly'][0]->sentence())->toBe($says);
+})->with(documentOrders());
+
+// A component reached as a property is as much a claim as one an operation returns: three uses of the two names give
+// each use the same answer, and the object that holds them keeps its DTO.
+it('gives no DTO to two response components that claim one class name when they are reached as properties', function (bool $reversed): void {
+    $hyphenated = responseComponent('new-user', ['email' => responseString()]);
+    $studly = responseComponent('NewUser', ['name' => responseString()]);
+    $holder = new Schema(types: [SchemaType::Object], properties: [
+        'first' => $hyphenated,
+        'second' => $studly,
+        'tags' => new Schema(types: [SchemaType::Array], items: $studly),
     ]);
+    $plan = (new ResponseDtoPlanner)->plan(writtenInOrder([answeringWithSchema($holder)], $reversed), []);
+    $properties = array_column($plan->dtos[0]->properties, null, 'key');
 
-    expect($plan)->toThrow(
-        UnusableNameException::class,
-        'The schemas written at "#/components/schemas/User" and at "./other.yaml#/components/schemas/user" both generate the response DTO "UserDto"',
-    );
-});
+    expect(array_column($plan->dtos, 'shortName'))->toBe(['ShowThing200ResponseDto'])
+        ->and($properties['first']->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($properties['second']->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($properties['tags']->type->kind)->toBe(InputDtoType::LIST)
+        ->and($properties['tags']->type->item?->kind)->toBe(InputDtoType::MIXED);
+})->with(documentOrders());
 
-// An inline property's class is derived from its parent, which nobody wrote: the message says what it was derived from
-// and that a component name ends the clash, as the request side's does.
-it('explains the derived name when an inline property meets a component of the same name', function (): void {
-    $user = responseComponent('User', [
-        'address' => new Schema(types: [SchemaType::Object], properties: ['street' => responseString()]),
-    ]);
-    $address = responseComponent('UserAddress', ['street' => responseString()]);
+/**
+ * An object written inline, with no name of its own.
+ *
+ * @param  array<string, Schema>  $properties
+ */
+function inlineObject(array $properties): Schema
+{
+    return new Schema(types: [SchemaType::Object], properties: $properties);
+}
 
-    $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([
-        answeringWithSchema($user, 'showUser'),
-        answeringWithSchema($address, 'showAddress'),
-    ]);
+// Two inline objects of different shapes that derive one class name are two equals too, so both properties are `mixed`.
+// Two that say the same thing are one class, as they always were.
+it('gives no DTO to two inline response schemas that derive one class name', function (bool $reversed): void {
+    $differently = (new ResponseDtoPlanner)->plan(writtenInOrder([
+        answeringWithSchema(responseComponent('Team', ['leadUser' => inlineObject(['name' => responseString()])]), 'showTeam'),
+        answeringWithSchema(responseComponent('TeamLead', ['user' => inlineObject(['email' => responseString()])]), 'showLead'),
+    ], $reversed), []);
+    $alike = (new ResponseDtoPlanner)->plan(writtenInOrder([
+        answeringWithSchema(responseComponent('Team', ['leadUser' => inlineObject(['name' => responseString()])]), 'showTeam'),
+        answeringWithSchema(responseComponent('TeamLead', ['user' => inlineObject(['name' => responseString()])]), 'showLead'),
+    ], $reversed), []);
+    $team = dtosByName($differently)['TeamDto'];
+    $lead = dtosByName($differently)['TeamLeadDto'];
+    $shared = dtosByName($alike);
 
-    expect($plan)->toThrow(UnusableNameException::class, 'the schema written at "#/components/schemas/UserAddress" gives the base "UserAddress" (the schema\'s name)')
-        ->and($plan)->toThrow(UnusableNameException::class, '(derived from its parent "User" and the property "address")')
-        ->and($plan)->toThrow(UnusableNameException::class, 'give an inline schema a component name of its own');
-});
+    expect(array_keys(dtosByName($differently)))->toBe(['TeamDto', 'TeamLeadDto'])
+        ->and($team->properties[0]->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($lead->properties[0]->type->kind)->toBe(InputDtoType::MIXED)
+        ->and($team->findings)->toContain(
+            '`leadUser` is `mixed`: the inline schema written at `#/components/schemas/Team/properties/leadUser` and '
+            .'the inline schema written at `#/components/schemas/TeamLead/properties/user` both derive the class name '
+            .'`TeamLeadUserDto`, so neither has it. Rename one of them.',
+        )
+        ->and(array_keys($shared))->toBe(['TeamDto', 'TeamLeadDto', 'TeamLeadUserDto'])
+        ->and($shared['TeamDto']->properties[0]->type->class)->toBe('TeamLeadUserDto')
+        ->and($shared['TeamLeadDto']->properties[0]->type->class)->toBe('TeamLeadUserDto');
+})->with(documentOrders());
 
-// A response is not a rule set, so its `allOf` refusal names the response and not `rules()`.
-it('words an allOf conflict in a response for a response', function (): void {
+/**
+ * A component whose `allOf` branches disagree about the type of `id`.
+ */
+function disagreeingComponent(string $name): Schema
+{
     $branch = static fn (SchemaType $type): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [$type])]);
-    $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([answeringWithSchema(
+
+    return new Schema(name: $name, source: '#/components/schemas/'.$name, allOf: [$branch(SchemaType::Integer), $branch(SchemaType::String)]);
+}
+
+// A name is contested by every schema a response reaches, not by the ones a walk met before the clash: a schema that
+// loses its DTO still holds a property that claims a name, and what is claimed does not depend on the order.
+it('decides a contested name from every schema a response reaches', function (Closure $operations, Closure $says, bool $reversed): void {
+    $plan = (new ResponseDtoPlanner)->plan(writtenInOrder($operations(), $reversed), []);
+
+    $says($plan, dtosByName($plan));
+})->with([
+    'a schema that gives way holds a property that clashes' => [
+        // `address` loses `UserAddressDto` to the component, and holds `new-pet`, which clashes with `NewPet`: the clash
+        // is decided all the same, so neither pet has a DTO.
+        static fn (): array => [
+            answeringWithSchema(responseComponent('User', ['address' => inlineObject([
+                'street' => responseString(),
+                'pet' => responseComponent('new-pet', ['a' => responseString()]),
+            ])]), 'showUser'),
+            answeringWithSchema(responseComponent('UserAddress', ['street' => responseString()]), 'showAddress'),
+            answeringWithSchema(responseComponent('NewPet', ['b' => responseString()]), 'showPet'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['UserAddressDto', 'UserDto'])
+                ->and($plan->statuses['get /showPet'][0]->sentence())->toContain('both derive the class name `NewPetDto`, so neither has it');
+        },
+    ],
+    'a component whose allOf branches disagree still claims its name' => [
+        static fn (): array => [
+            answeringWithSchema(responseComponent('User', ['address' => inlineObject(['street' => responseString()])]), 'showUser'),
+            answeringWithSchema(disagreeingComponent('UserAddress'), 'showAddress'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            $address = array_column($dtos['UserDto']->properties, null, 'key')['address'];
+
+            expect(array_keys($dtos))->toBe(['UserDto'])
+                ->and($address->type->kind)->toBe(InputDtoType::MIXED)
+                ->and($dtos['UserDto']->findings)->toContain(
+                    '`address` is `mixed`: its schema (written inline at `#/components/schemas/User/properties/address`) '
+                    .'derives the class name `UserAddressDto`, which the schema `UserAddress` (`#/components/schemas/UserAddress`) '
+                    .'claims, and that schema gets no DTO either. Give it a component name of its own to type it.',
+                )
+                ->and($plan->statuses['get /showAddress'][0]->sentence())->toContain('its `allOf` branches disagree at `id`');
+        },
+    ],
+    'an inline schema whose allOf branches disagree claims nothing' => [
+        static fn (): array => [
+            answeringWithSchema(responseComponent('User', ['address' => disagreeingBranches()]), 'showUser'),
+            answeringWithSchema(responseComponent('UserAddress', ['street' => responseString()]), 'showAddress'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['UserAddressDto', 'UserDto'])
+                ->and($dtos['UserAddressDto']->position)->toBe('#/components/schemas/UserAddress')
+                ->and($dtos['UserDto']->findings)->toContain(
+                    '`address` is `mixed`: its `allOf` branches disagree at `id`: one branch is `integer` and another is `string`. Make them agree.',
+                )
+                ->and(array_column($plan->fallbacks, 'cause'))->toBe([ResponseFallbackCause::AllOfDisagrees]);
+        },
+    ],
+    'a component whose name leaves no class name never has its properties walked' => [
+        // `new-pet` is reached only through `123`, which has no class name and so no DTO to hold it: it never meets
+        // `NewPet`, which keeps its DTO.
+        static fn (): array => [
+            answeringWithSchema(responseComponent('123', ['pet' => responseComponent('new-pet', ['a' => responseString()])]), 'showCode'),
+            answeringWithSchema(responseComponent('NewPet', ['b' => responseString()]), 'showPet'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['NewPetDto'])
+                ->and($plan->statuses['get /showPet'][0]->sentence())->toContain('is `NewPetDto`')
+                ->and(array_column($plan->fallbacks, 'cause'))->toBe([ResponseFallbackCause::NameUnusable]);
+        },
+    ],
+    'a component whose keys collide still claims its name' => [
+        static fn (): array => [
+            answeringWithSchema(responseComponent('User', ['address' => inlineObject(['street' => responseString()])]), 'showUser'),
+            answeringWithSchema(responseComponent('UserAddress', ['user-id' => responseString(), 'user_id' => responseString()]), 'showAddress'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['UserDto'])
+                ->and($dtos['UserDto']->findings)->toContain(
+                    '`address` is `mixed`: its schema (written inline at `#/components/schemas/User/properties/address`) '
+                    .'derives the class name `UserAddressDto`, which the schema `UserAddress` (`#/components/schemas/UserAddress`) '
+                    .'claims, and that schema gets no DTO either. Give it a component name of its own to type it.',
+                )
+                ->and($plan->statuses['get /showAddress'][0]->sentence())->toContain('both derive the property `$user_id`');
+        },
+    ],
+    'a string enumeration never claims the name an inline object derives' => [
+        // `OrderStatus` would never be a DTO, so it claims nothing, and `Order.status` is still the class it was.
+        static fn (): array => [
+            answeringWithSchema(responseComponent('Order', ['status' => inlineObject(['code' => responseString()])]), 'showOrder'),
+            answeringWithSchema(responseComponent('Delivery', ['state' => new Schema(
+                name: 'OrderStatus',
+                source: '#/components/schemas/OrderStatus',
+                types: [SchemaType::String],
+                enum: ['open', 'closed'],
+            )]), 'showDelivery'),
+            answeringWithSchema(new Schema(
+                name: 'OrderStatusList',
+                source: '#/components/schemas/OrderStatusList',
+                types: [SchemaType::Array],
+                items: new Schema(name: 'OrderStatus', source: '#/components/schemas/OrderStatus', types: [SchemaType::String], enum: ['open', 'closed']),
+            ), 'listStatuses'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            expect(array_keys($dtos))->toBe(['DeliveryDto', 'OrderDto', 'OrderStatusDto'])
+                ->and($dtos['OrderStatusDto']->position)->toBe('#/components/schemas/Order/properties/status')
+                ->and($plan->fallbacks)->toBe([]);
+        },
+    ],
+    'a scalar component with an unusable name is never checked' => [
+        // `2faCode` would never be a DTO, so its name is never read: `code` keeps its type.
+        static fn (): array => [
+            answeringWithSchema(inlineObject(['code' => new Schema(name: '2faCode', source: '#/components/schemas/2faCode', types: [SchemaType::String])]), 'showSession'),
+            answeringWithSchema(new Schema(name: '2faCode', source: '#/components/schemas/2faCode', types: [SchemaType::String]), 'showCode'),
+        ],
+        function (ResponsePlan $plan, array $dtos): void {
+            $code = array_column($dtos['ShowSession200ResponseDto']->properties, null, 'key')['code'];
+
+            expect($code->type->kind)->toBe(InputDtoType::STRING)
+                ->and($code->optional)->toBeTrue()
+                ->and($plan->fallbacks)->toBe([])
+                ->and($plan->statuses['get /showCode'][0]->sentence())->toContain('its body is not an object or a list');
+        },
+    ],
+])->with(documentOrders());
+
+// A response enforces nothing, so branches that disagree cost the status its DTO and never the build, and the sentence
+// is for the reader of the controller, not for a rule set.
+it('gives no DTO to a response schema whose allOf branches disagree, and says why in its own words', function (): void {
+    $branch = static fn (SchemaType $type): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [$type])]);
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema(
         new Schema(name: 'Thing', source: '#/components/schemas/Thing', allOf: [$branch(SchemaType::Integer), $branch(SchemaType::String)]),
-    )]);
+    )], []);
 
-    expect($plan)->toThrow(ConflictingInputException::class, 'under the `200` response.id whose branches disagree')
-        ->and($plan)->toThrow(ConflictingInputException::class, 'A response cannot match both');
+    expect($plan->dtos)->toBe([])
+        ->and($plan->statuses['get /showThing'][0]->sentence())->toBe(
+            'The `200` response has no DTO: its `allOf` branches disagree at `id`: one branch is `integer` and another is `string`. '
+            .'Make them agree.',
+        );
+});
 
-    try {
-        $plan();
-    } catch (ConflictingInputException $conflict) {
-        expect($conflict->getMessage())->not->toContain('rule set');
-    }
+// In 3.0 a keyword written beside a `$ref` is ignored, so what 3.1 reads as branches that disagree is no conflict here:
+// the status has the referenced class, and `id` keeps the type the component gives it.
+it('gives a status the referenced class when a 3.0 response writes a sibling beside its reference', function (): void {
+    $plan = (new ResponseDtoPlanner)->plan(extractFixture('response-ref-sibling-conflict-3.0.yaml'), []);
+
+    expect(array_column($plan->dtos, 'shortName'))->toBe(['BaseDto'])
+        ->and($plan->dtos[0]->properties[0]->type->kind)->toBe(InputDtoType::INT)
+        ->and($plan->statuses['get /siblings'][0]->sentence())->toContain('is `BaseDto`')
+        ->and($plan->fallbacks)->toBe([]);
 });
 
 // Two operations that return one schema are one type, whatever status each answers with.
@@ -89,7 +327,7 @@ it('shares one response DTO between operations returning one schema', function (
         answeringWith('showUser', 'User', '#/components/schemas/User'),
         answeringWith('showMember', 'User', '#/components/schemas/User'),
         answeringWith('createUser', 'User', '#/components/schemas/User', '201'),
-    ])->dtos;
+    ], [])->dtos;
 
     expect($dtos)->toHaveCount(1)
         ->and($dtos[0]->shortName)->toBe('UserDto')
@@ -112,7 +350,7 @@ function statusDtos(string $operationId): array
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
     ));
 
-    return array_column((new ResponseDtoPlanner)->plan($operations)->dtos, null, 'shortName');
+    return array_column((new ResponseDtoPlanner)->plan($operations, [])->dtos, null, 'shortName');
 }
 
 /**
@@ -127,7 +365,7 @@ function statusesOf(string $operationId): array
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
     ))[0];
 
-    return (new ResponseDtoPlanner)->plan([$operation])->statuses[$operation->label()];
+    return (new ResponseDtoPlanner)->plan([$operation], [])->statuses[$operation->label()];
 }
 
 // An inline schema has no name of its own, so the operation and the status give it one, and what is nested in it adds
@@ -149,7 +387,7 @@ it('names an inline response DTO after the method and path when the operation ha
         static fn (Operation $operation): bool => $operation->operationId === null,
     ))[0];
 
-    expect(array_column((new ResponseDtoPlanner)->plan([$operation])->dtos, 'shortName'))
+    expect(array_column((new ResponseDtoPlanner)->plan([$operation], [])->dtos, 'shortName'))
         ->toBe(['GetHealth200ResponseDto']);
 });
 
@@ -202,7 +440,7 @@ function dtosOfFixture(string $fixture, string $operationId): array
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
     ))[0];
 
-    return array_column((new ResponseDtoPlanner)->plan([$operation])->dtos, null, 'shortName');
+    return array_column((new ResponseDtoPlanner)->plan([$operation], [])->dtos, null, 'shortName');
 }
 
 /**
@@ -217,7 +455,7 @@ function statusesOfFixture(string $fixture, string $operationId): array
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
     ))[0];
 
-    return (new ResponseDtoPlanner)->plan([$operation])->statuses[$operation->label()];
+    return (new ResponseDtoPlanner)->plan([$operation], [])->statuses[$operation->label()];
 }
 
 /**
@@ -259,7 +497,7 @@ function responseString(): Schema
 // No depth: `x-max-depth` limits what a request validates, and a response DTO validates nothing, so the class is the
 // class it points back at at every level.
 it('types a recursive response schema as its own class', function (Schema $comment, bool $list, bool $nullable, bool $optional): void {
-    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($comment)])->dtos;
+    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($comment)], [])->dtos;
     $dto = $dtos[0];
     $property = array_values(array_filter($dto->properties, static fn (InputDtoProperty $property): bool => $property->key === 'link'))[0];
 
@@ -306,7 +544,7 @@ it('types a recursive response schema as its own class', function (Schema $comme
 // A marker with no named schema to point at has no class to be built into, and the file says so in its own words: a
 // response is not something a request validated.
 it('reads a recursion with no class to point at as mixed and does not blame the request', function (Schema $schema, string $says): void {
-    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema)])->dtos;
+    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema)], [])->dtos;
     $owners = array_values(array_filter($dtos, static fn (PlannedResponseDto $dto): bool => str_contains(implode("\n", $dto->findings), $says)));
 
     expect($owners)->toHaveCount(1);
@@ -353,7 +591,7 @@ it('leaves a writeOnly property out of the response DTO', function (): void {
         'email' => responseString(),
         'password' => new Schema(types: [SchemaType::String], writeOnly: true),
         'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
-    ], ['email', 'password', 'id']))])->dtos[0];
+    ], ['email', 'password', 'id']))], [])->dtos[0];
 
     expect(array_map(static fn (InputDtoProperty $property): string => $property->key, $dto->properties))->toBe(['email', 'id'])
         ->and(implode("\n", $dto->findings))->toContain('`password` is `writeOnly`, so a response never sends it and this type has no property for it')
@@ -447,7 +685,7 @@ it('carries only the declared properties beside an additionalProperties schema a
 // A schema that is its type or `null` is its type: the DTO cannot be `null`, so the status says what may be, which is
 // what the controller's finding reads. A list of lists is said as one, and `null` is the body's only when the body is.
 it('plans a nullable response root as its type and says what may be null', function (Closure $schema, int $depth, string $sentence): void {
-    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema())]);
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema())], []);
     $status = $plan->statuses['get /showThing'][0];
 
     expect($status->dto)->toBe('ThingDto')
@@ -513,4 +751,198 @@ it('plans a nullable response root as its type and says what may be null', funct
         1,
         'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`, or `null`, where an item may be `null` too, which no DTO holds.',
     ],
+]);
+
+/**
+ * `allOf` branches that disagree about the type of `id`.
+ */
+function disagreeingBranches(): Schema
+{
+    $branch = static fn (SchemaType $type): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [$type])]);
+
+    return new Schema(allOf: [$branch(SchemaType::Integer), $branch(SchemaType::String)]);
+}
+
+// One property that cannot be typed costs that property and nothing else: the parent keeps its DTO and every other
+// type, and the innermost value is the one that is `mixed`.
+it('types mixed a response value whose schema cannot be typed and keeps the others', function (Schema $value, string $kind, ?string $item, string $says): void {
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema(responseComponent('Team', [
+        'name' => responseString(),
+        'id' => new Schema(types: [SchemaType::Integer]),
+        'x' => $value,
+    ], ['name', 'id']))], []);
+    $properties = array_column($plan->dtos[0]->properties, null, 'key');
+
+    expect(array_column($plan->dtos, 'shortName'))->toBe(['TeamDto'])
+        ->and($properties['name']->type->kind)->toBe(InputDtoType::STRING)
+        ->and($properties['id']->type->kind)->toBe(InputDtoType::INT)
+        ->and($properties['x']->optional)->toBeTrue()
+        ->and($properties['x']->type->kind)->toBe($kind)
+        ->and($properties['x']->type->item?->kind)->toBe($item)
+        ->and(implode("\n", $plan->dtos[0]->findings))->toContain($says);
+})->with([
+    'a name that leaves no class name' => [
+        new Schema(name: '123', source: '#/components/schemas/123', types: [SchemaType::Object], properties: ['a' => new Schema(types: [SchemaType::String])]),
+        InputDtoType::MIXED,
+        null,
+        '`x` is `mixed`: the schema name `123` leaves no class name. Rename it to start with a letter or an underscore.',
+    ],
+    'two keys deriving one property' => [
+        new Schema(types: [SchemaType::Object], properties: [
+            'user-id' => new Schema(types: [SchemaType::String]),
+            'user_id' => new Schema(types: [SchemaType::Integer]),
+        ]),
+        InputDtoType::MIXED,
+        null,
+        '`x` is `mixed`: its keys `user-id` and `user_id` both derive the property `$user_id`. Rename one of them.',
+    ],
+    'allOf branches that disagree' => [
+        disagreeingBranches(),
+        InputDtoType::MIXED,
+        null,
+        '`x` is `mixed`: its `allOf` branches disagree at `id`: one branch is `integer` and another is `string`. Make them agree.',
+    ],
+    'a type no branch shares' => [
+        new Schema(allOf: [new Schema(types: [SchemaType::Integer]), new Schema(types: [SchemaType::String])]),
+        InputDtoType::MIXED,
+        null,
+        '`x` is `mixed`: its `allOf` branches disagree: one branch is `integer` and another is `string`. Make them agree.',
+    ],
+    'a list whose items disagree' => [
+        new Schema(types: [SchemaType::Array], items: disagreeingBranches()),
+        InputDtoType::LIST,
+        InputDtoType::MIXED,
+        '`xItem` is `mixed`: its `allOf` branches disagree at `id`',
+    ],
+    'a map whose values disagree' => [
+        new Schema(types: [SchemaType::Object], additionalPropertiesSchema: disagreeingBranches()),
+        InputDtoType::MAP,
+        InputDtoType::MIXED,
+        '`xValue` is `mixed`: its `allOf` branches disagree at `id`',
+    ],
+]);
+
+/**
+ * Where each fallback of a plan lost a type, the schema that gave way, and why.
+ *
+ * @return list<array{0: string, 1: string, 2: ResponseFallbackCause}>
+ */
+function fallbacksOf(ResponsePlan $plan): array
+{
+    return array_map(
+        static fn (ResponseFallback $fallback): array => [$fallback->where, $fallback->position, $fallback->cause],
+        $plan->fallbacks,
+    );
+}
+
+// What a program reads, beside the sentence a person reads: each status or value that lost its type to a schema's own
+// fault, under the cause of that fault.
+it('records each response fallback under a cause of its own', function (string $fixture, array $expected, array $inputs): void {
+    expect(fallbacksOf((new ResponseDtoPlanner)->plan(extractFixture($fixture), $inputs)))->toBe($expected);
+})->with([
+    'two keys deriving one property' => [
+        'response-keys-collide.yaml',
+        [[
+            '#/paths/~1users/get/responses/200/content/application~1json/schema',
+            '#/paths/~1users/get/responses/200/content/application~1json/schema',
+            ResponseFallbackCause::KeysCollide,
+        ]],
+        [],
+    ],
+    'allOf branches that disagree' => [
+        'response-allof-disagrees.yaml',
+        [
+            [
+                '#/paths/~1things/get/responses/200/content/application~1json/schema',
+                '#/paths/~1things/get/responses/200/content/application~1json/schema',
+                ResponseFallbackCause::AllOfDisagrees,
+            ],
+            [
+                '#/paths/~1siblings/get/responses/200/content/application~1json/schema',
+                '#/paths/~1siblings/get/responses/200/content/application~1json/schema',
+                ResponseFallbackCause::AllOfDisagrees,
+            ],
+        ],
+        [],
+    ],
+    'a name that leaves no class name' => [
+        'response-name-unusable.yaml',
+        [
+            [
+                '#/paths/~1codes/get/responses/200/content/application~1json/schema',
+                '#/components/schemas/123',
+                ResponseFallbackCause::NameUnusable,
+            ],
+            [
+                '#/paths/~1others/get/responses/200/content/application~1json/schema',
+                '#/components/schemas/456',
+                ResponseFallbackCause::NameUnusable,
+            ],
+        ],
+        [],
+    ],
+    'a property' => [
+        'response-property-gives-way.yaml',
+        [[
+            '#/components/schemas/Team/properties/owner',
+            '#/components/schemas/Team/properties/owner',
+            ResponseFallbackCause::KeysCollide,
+        ]],
+        [],
+    ],
+    'a class name a component claims' => [
+        'response-inline-meets-component.yaml',
+        [[
+            '#/components/schemas/User/properties/address',
+            '#/components/schemas/User/properties/address',
+            ResponseFallbackCause::NameTaken,
+        ]],
+        [],
+    ],
+    'two components claiming one class name' => [
+        'response-two-components-one-name.yaml',
+        [
+            [
+                '#/paths/~1hyphenated/get/responses/200/content/application~1json/schema',
+                '#/components/schemas/new-user',
+                ResponseFallbackCause::NameTaken,
+            ],
+            [
+                '#/paths/~1studly/get/responses/200/content/application~1json/schema',
+                '#/components/schemas/NewUser',
+                ResponseFallbackCause::NameTaken,
+            ],
+        ],
+        [],
+    ],
+    'a class name an input DTO takes' => [
+        'response-name-taken-by-input.yaml',
+        [[
+            '#/paths/~1users~1{id}/put/responses/200/content/application~1json/schema',
+            '#/components/schemas/UserInput',
+            ResponseFallbackCause::NameTaken,
+        ]],
+        ['UserInputDto' => '#/components/schemas/User'],
+    ],
+]);
+
+// What a DTO cannot type is not a fault of the schema's own, so it has no record of this kind: a keyword, a recursion
+// with no class, a status with no body, a status with two JSON schemas.
+it('leaves a response fallback unrecorded when the schema is not at fault', function (string $fixture): void {
+    expect((new ResponseDtoPlanner)->plan(extractFixture($fixture), [])->fallbacks)->toBe([]);
+})->with([
+    'a oneOf property' => ['doctor-ignored-keyword-in-response.yaml'],
+    'a 204 and a validation error' => ['response-statuses.yaml'],
+    'two JSON schemas under one status' => ['response-two-json-schemas.yaml'],
+]);
+
+it('leaves a response fallback unrecorded for a property with no type, a union and a recursion with no class', function (Schema $value): void {
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema(responseComponent('Team', ['x' => $value]))], []);
+
+    expect($plan->fallbacks)->toBe([])
+        ->and($plan->dtos[0]->properties[0]->type->kind)->toBe(InputDtoType::MIXED);
+})->with([
+    'no type' => [new Schema],
+    'a union of types' => [new Schema(types: [SchemaType::String, SchemaType::Integer])],
+    'a recursion with no class' => [Schema::recursion('#/components/schemas/Nowhere')],
 ]);

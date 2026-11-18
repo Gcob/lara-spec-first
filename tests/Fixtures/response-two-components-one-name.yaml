@@ -1,0 +1,37 @@
+# Two components whose names derive one class name: `new-user` and `NewUser` are both `NewUserDto`. Neither outranks the
+# other, so neither has a DTO, whichever operation the document writes first.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /hyphenated:
+    get:
+      operationId: showHyphenated
+      responses:
+        '200':
+          description: One of them
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/new-user'
+  /studly:
+    get:
+      operationId: showStudly
+      responses:
+        '200':
+          description: The other
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewUser'
+components:
+  schemas:
+    new-user:
+      type: object
+      properties:
+        email: { type: string }
+    NewUser:
+      type: object
+      properties:
+        name: { type: string }

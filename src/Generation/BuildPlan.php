@@ -26,12 +26,15 @@ final readonly class BuildPlan
      *                                      declared only in media types this package does not read. Counted apart,
      *                                      because "states nothing" is not true of them: they state something this
      *                                      package cannot serve
+     * @param  ResponsePlan  $responses  what the build worked out about the response DTOs, which the files above were
+     *                                   written from. Empty for a plan that has none
      */
     public function __construct(
         public array $controllers,
         public array $files,
         public array $requests = [],
         public array $unreadBodies = [],
+        public ResponsePlan $responses = new ResponsePlan,
     ) {}
 
     /**

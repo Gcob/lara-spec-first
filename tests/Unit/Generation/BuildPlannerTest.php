@@ -7,9 +7,12 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
+use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnroutablePathException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
@@ -299,12 +302,22 @@ it('counts the operations whose route lands on their generated parent', function
  */
 
 // Each direction keeps its own names, so only the plan sees both: a response schema `UserInput` and a request schema
-// `User` are one class.
-it('refuses a response DTO name already taken by an input DTO', function (): void {
-    expect(static fn (): BuildPlan => planner()->plan(extractFixture('response-name-taken-by-input.yaml')))
-        ->toThrow(
-            UnusableNameException::class,
-            'The schema written at "#/components/schemas/User" generates the input DTO "UserInputDto" for a request, and the schema written at "#/components/schemas/UserInput" generates a response DTO of the same name',
+// `User` derive one class name, and the request's input DTO outranks it. The response schema gives way and the build
+// goes on, as it does for every contested name.
+it('gives no DTO to a response schema whose class name an input DTO takes', function (): void {
+    $plan = planner()->plan(extractFixture('response-name-taken-by-input.yaml'));
+    $input = collect($plan->files)
+        ->first(static fn (GeneratedFile $file): bool => $file->relativePath === 'Data/UserInputDto.php');
+
+    assert($input instanceof GeneratedFile);
+
+    // Its provenance is the request schema, and it is the input DTO, not the response's.
+    expect($input->contents)->toContain('#/components/schemas/User')
+        ->and($input->contents)->toContain('implements Arrayable, JsonSerializable')
+        ->and(controllerSays($plan, 'ReplaceUser'))->toContain(
+            'The `200` response has no DTO: its schema `UserInput` (`#/components/schemas/UserInput`) derives the class '
+            .'name `UserInputDto`, which is the input DTO of the request schema written at `#/components/schemas/User`. '
+            .'Rename one of the schemas.',
         );
 });
 
@@ -335,4 +348,185 @@ it('builds a contract with two JSON schemas under one status and says so in the 
         ->and(preg_replace('/\s*\n \*\s+/', ' ', $controller->contents))
         ->toContain('The `200` response has no DTO: it declares two JSON media types with different schemas')
         ->toContain('The `422` response is `ProblemDto`');
+});
+
+/**
+ * The relative paths of every file a plan writes.
+ *
+ * @return list<string>
+ */
+function plannedPaths(BuildPlan $plan): array
+{
+    return array_map(static fn (GeneratedFile $file): string => $file->relativePath, $plan->files);
+}
+
+/**
+ * What one generated controller says, its docblock lines joined the way a reader reads them.
+ */
+function controllerSays(BuildPlan $plan, string $name): string
+{
+    $controller = collect($plan->files)
+        ->first(static fn (GeneratedFile $file): bool => $file->relativePath === 'Controllers/'.$name.'Controller.php');
+
+    assert($controller instanceof GeneratedFile);
+
+    return (string) preg_replace('/\s*\n \*\s+/', ' ', $controller->contents);
+}
+
+/*
+ * A response schema with a fault of its own has no DTO, and the build goes on: the status that would have used it says
+ * why in the controller. Only the contract's own faults count, and 0.2.0 built every one of these documents.
+ */
+
+it('gives no DTO to a response schema whose keys derive one property', function (): void {
+    $plan = planner()->plan(extractFixture('response-keys-collide.yaml'));
+
+    expect(plannedPaths($plan))->not->toContain('Data/ListUsers200ResponseDto.php')
+        ->and(controllerSays($plan, 'ListUsers'))
+        ->toContain('The `200` response has no DTO: its keys `user-id` and `user_id` both derive the property `$user_id`')
+        // A `writeOnly` key is never sent, so the other key does not clash with it.
+        ->and(plannedPaths($plan))->toContain('Data/ListMembers200ResponseDto.php')
+        ->and(controllerSays($plan, 'ListMembers'))->toContain('The `200` response is `ListMembers200ResponseDto`');
+});
+
+it('gives no DTO to a response schema whose allOf branches disagree', function (): void {
+    $plan = planner()->plan(extractFixture('response-allof-disagrees.yaml'));
+
+    // The 3.1 `$ref` with a sibling `properties` meets its branches in the other order.
+    foreach (['ShowThing' => 'integer` and another is `string', 'ShowSibling' => 'string` and another is `integer'] as $controller => $branches) {
+        $says = controllerSays($plan, $controller);
+
+        expect($says)->toContain('The `200` response has no DTO: its `allOf` branches disagree at `id`: one branch is `'.$branches.'`')
+            ->and($says)->not->toContain('rule set')
+            ->and($says)->not->toContain('will not choose');
+    }
+
+    expect(array_filter(plannedPaths($plan), static fn (string $path): bool => str_starts_with($path, 'Data/')))->toBe([]);
+});
+
+it('gives no DTO to a response schema whose name leaves no class name', function (): void {
+    $plan = planner()->plan(extractFixture('response-name-unusable.yaml'));
+
+    expect(controllerSays($plan, 'ShowCode'))
+        ->toContain('The `200` response has no DTO: the schema name `123` leaves no class name')
+        // `456` would be a DTO and its name is no class name: that is what is said first, ahead of its branches.
+        ->and(controllerSays($plan, 'ShowOther'))
+        ->toContain('The `200` response has no DTO: the schema name `456` leaves no class name')
+        ->and(array_filter(plannedPaths($plan), static fn (string $path): bool => str_starts_with($path, 'Data/')))->toBe([]);
+
+    expect(controllerSays($plan, 'ShowOther'))->not->toContain('`allOf`');
+});
+
+it('types mixed a response value whose schema cannot be typed and keeps the others, in the file the build writes', function (): void {
+    $plan = planner()->plan(extractFixture('response-property-gives-way.yaml'));
+    $file = collect($plan->files)
+        ->first(static fn (GeneratedFile $file): bool => $file->relativePath === 'Data/TeamDto.php');
+
+    assert($file instanceof GeneratedFile);
+
+    expect(plannedPaths($plan))->not->toContain('Data/TeamOwnerDto.php')
+        ->and($file->contents)->toContain('public string $name')
+        ->and($file->contents)->toContain('public int $id')
+        ->and($file->contents)->toContain('@param  Optional|mixed  $owner')
+        ->and($file->contents)->toContain('public mixed $owner = new Optional')
+        ->and((string) preg_replace('/\s*\n \*\s+/', ' ', $file->contents))
+        ->toContain('`owner` is `mixed`: its keys `user-id` and `user_id` both derive the property `$user_id`');
+});
+
+// What a response gives way to, a request still refuses: the body is read for what it validates, and a rule set that
+// drops half of what the document wrote enforces half of a contract.
+it('still refuses in a request what a response schema gives way to', function (Schema $body, string $class, string $message): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => $body], true),
+        responses: [new Response('201', [])],
+    );
+
+    expect(static fn (): BuildPlan => planner()->plan([$operation]))->toThrow($class, $message);
+})->with([
+    'two keys deriving one property' => [
+        new Schema(types: [SchemaType::Object], properties: [
+            'user-id' => new Schema(types: [SchemaType::String]),
+            'user_id' => new Schema(types: [SchemaType::Integer]),
+        ]),
+        UnusableNameException::class,
+        'The keys "user-id" and "user_id" of the schema behind the DTO "CreateThingInputDto" both derive the property name "$user_id"',
+    ],
+    'allOf branches that disagree' => [
+        new Schema(allOf: [
+            new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])]),
+            new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])]),
+        ]),
+        ConflictingInputException::class,
+        'whose branches disagree: one branch is `integer` and another is `string`. A payload cannot satisfy both, or one rule set cannot say both',
+    ],
+    'a name that leaves no class name' => [
+        new Schema(
+            name: '123',
+            source: '#/components/schemas/123',
+            types: [SchemaType::Object],
+            properties: ['value' => new Schema(types: [SchemaType::String])],
+        ),
+        UnusableNameException::class,
+        'The schema "123", written at "#/components/schemas/123", would generate a DTO class name that is not a usable PHP identifier',
+    ],
+    'an inline property beside a component of the same class name' => [
+        new Schema(name: 'User', source: '#/components/schemas/User', types: [SchemaType::Object], properties: [
+            'address' => new Schema(types: [SchemaType::Object], properties: ['street' => new Schema(types: [SchemaType::String])]),
+            'home' => new Schema(
+                name: 'UserAddress',
+                source: '#/components/schemas/UserAddress',
+                types: [SchemaType::Object],
+                properties: ['street' => new Schema(types: [SchemaType::String])],
+            ),
+        ]),
+        UnusableNameException::class,
+        'both generate the input DTO "UserAddressInputDto", and the two are not the same schema',
+    ],
+    'two components of the same class name' => [
+        new Schema(types: [SchemaType::Object], properties: [
+            'first' => new Schema(name: 'new-user', source: '#/components/schemas/new-user', types: [SchemaType::Object], properties: ['email' => new Schema(types: [SchemaType::String])]),
+            'second' => new Schema(name: 'NewUser', source: '#/components/schemas/NewUser', types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])]),
+        ]),
+        UnusableNameException::class,
+        'both generate the input DTO "NewUserInputDto", and the two are not the same schema',
+    ],
+]);
+
+/**
+ * What a plan writes under `Data/` and `Controllers/`, by path and in one order: the files that say what a contested
+ * name came to. `routes.php` is left out, because the document's own order is the order of its routes.
+ *
+ * @return array<string, string>
+ */
+function writtenContents(BuildPlan $plan): array
+{
+    $written = [];
+
+    foreach ($plan->files as $file) {
+        if (str_starts_with($file->relativePath, 'Data/') || str_starts_with($file->relativePath, 'Controllers/')) {
+            $written[$file->relativePath] = $file->contents;
+        }
+    }
+
+    ksort($written);
+
+    return $written;
+}
+
+// Which schema keeps a contested name is a fact about the contract, not about the order it is written in: every case a
+// response can give way for is in one document, read both ways round.
+it('generates the same files whichever order the operations come in', function (): void {
+    $operations = extractFixture('response-untypeable.yaml');
+    $forward = writtenContents(planner()->plan($operations));
+    $backward = writtenContents(planner()->plan(array_reverse($operations)));
+
+    expect(array_keys($forward))->toContain('Data/MemberAddressDto.php')
+        ->and(array_keys($forward))->not->toContain('Data/NewUserDto.php')
+        ->and(array_keys($forward))->not->toContain('Data/TeamLeadUserDto.php')
+        ->and(array_keys($backward))->toBe(array_keys($forward))
+        ->and($backward)->toBe($forward);
 });

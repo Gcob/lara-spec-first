@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Generation\Exceptions\UntypeableResponseException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Support\DtoShape;
 use Illuminate\Support\Str;
@@ -45,14 +46,6 @@ abstract class DtoPlanner
      * What a class name ends with: `InputDto` on the request side, `Dto` on the response side.
      */
     abstract protected function suffix(): string;
-
-    /**
-     * Whether this plans the types of a response, which words an `allOf` refusal for a response and not for a rule set.
-     */
-    protected function responds(): bool
-    {
-        return false;
-    }
 
     /**
      * Whether a schema is a file part, which only a request can carry.
@@ -116,10 +109,12 @@ abstract class DtoPlanner
      *
      * @throws UnusableNameException
      * @throws ConflictingInputException
+     * @throws UntypeableResponseException a schema a planner gives no type instead of refusing, which that planner's
+     *                                     own `type()` catches
      */
     protected function type(Schema $written, string $base, string $segment, string $pointer, string $owner): InputDtoType
     {
-        $schema = AllOfMerger::merge($written, $this->identity, '`'.$segment.'`', $this->responds());
+        $schema = AllOfMerger::merge($written, $this->identity, '`'.$segment.'`');
 
         if ($schema->recursesTo !== null) {
             return $this->recursion($schema, $segment, $owner);
@@ -400,7 +395,7 @@ abstract class DtoPlanner
 
         $expanded = $beside === null
             ? $ancestor
-            : AllOfMerger::merge(new Schema(allOf: [$ancestor, $beside]), $this->identity, '`'.$segment.'`', $this->responds());
+            : AllOfMerger::merge(new Schema(allOf: [$ancestor, $beside]), $this->identity, '`'.$segment.'`');
 
         if ($expanded->soleType() === null) {
             $this->registry[$owner]['findings'][] = $this->noSingleTypeFinding($segment, $expanded);
@@ -466,9 +461,9 @@ abstract class DtoPlanner
         $others = $written->allOf;
         unset($others[$found[0]]);
         $rest = new Schema(...[...get_object_vars($written), 'allOf' => array_values($others), 'name' => null, 'source' => null, 'ignored' => []]);
-        $beside = AllOfMerger::merge($rest, $this->identity, $label, $this->responds());
+        $beside = AllOfMerger::merge($rest, $this->identity, $label);
 
-        return [AllOfMerger::merge($written->allOf[$found[0]], $this->identity, $label, $this->responds()), $beside == new Schema ? null : $beside];
+        return [AllOfMerger::merge($written->allOf[$found[0]], $this->identity, $label), $beside == new Schema ? null : $beside];
     }
 
     /**

@@ -1,0 +1,40 @@
+# A response whose `allOf` branches disagree: `Base.id` is an integer and the other branch says string. The first
+# operation writes the `allOf`, the second writes the same conflict as a `$ref` with a sibling `properties`, which 3.1
+# reads as one more branch.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      operationId: showThing
+      responses:
+        '200':
+          description: A thing
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Base'
+                  - type: object
+                    properties:
+                      id: { type: string }
+  /siblings:
+    get:
+      operationId: showSibling
+      responses:
+        '200':
+          description: A sibling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Base'
+                properties:
+                  id: { type: string }
+components:
+  schemas:
+    Base:
+      type: object
+      properties:
+        id: { type: integer }
