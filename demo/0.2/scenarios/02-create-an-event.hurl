@@ -19,6 +19,22 @@ event_id: jsonpath "$.id"
 jsonpath "$.title" == "Montreal PHP meetup"
 jsonpath "$.capacity" == 40
 
+# `starts_at` is an instant: a time sent with an offset is the same moment as
+# its UTC time, and the answer carries it as UTC. 19:00 at -05:00 is midnight at
+# Z, the next day.
+POST {{host}}/events
+Accept: application/json
+Content-Type: application/json
+{
+  "title": "Montreal PHP evening",
+  "city": "Montreal",
+  "starts_at": "2026-12-01T19:00:00-05:00",
+  "capacity": 40
+}
+HTTP 201
+[Asserts]
+jsonpath "$.starts_at" == "2026-12-02T00:00:00.000000Z"
+
 # The title is required: leaving it out is a 422 on that field.
 POST {{host}}/events
 Accept: application/json

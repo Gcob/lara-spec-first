@@ -23,10 +23,11 @@ validation answers a redirect without it
   `capacity` of `"many"` and a `capacity` of `"3"` are each a `422` on their field, because a JSON body keeps its types.
   An id nobody created is a `404`, from the controller.
 - **`03-find-events.hurl`:** `listEvents` takes `city` and `from` as plain query parameters. The code reads them with
-  `validated('city')`. `from=yesterday` is a `422` on `from`.
+  `validated('city')`. `from=yesterday` is a `422` on `from`. A `starts_at` sent with an offset is the same instant as its
+  UTC time, so the filter and the answer agree on the day.
 - **`04-upload-a-cover.hurl`:** `uploadEventCover` takes a `multipart/form-data` body with one file part. A PNG is
-  stored. A text file, or a form with no `cover`, is a `422` on `cover`. A file named `*.php` is refused even when it
-  says it is a PNG, which is Laravel's own rule, stated in the generated request. The package stores nothing: the
+  stored. A text file, or a form with no `cover`, is a `422` on `cover`. A file with a PHP extension is refused even when
+  it says it is a PNG, which is Laravel's own rule, stated in the generated request. The package stores nothing: the
   controller does.
 - **`05-rsvp.hurl`:** `createRsvp` and `listRsvps`. A missing or malformed `email` is a `422`. The contract declares a
   `409` for a full event, and the controller is what enforces it: the contract states the rule, the code keeps it.

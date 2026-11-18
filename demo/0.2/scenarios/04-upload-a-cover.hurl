@@ -35,6 +35,17 @@ HTTP 422
 [Asserts]
 jsonpath "$.errors.cover" exists
 
+# A file with a PHP extension (`.phtml` here) is refused even when it says it is
+# a PNG: Laravel refuses a PHP extension whatever the type, and the generated
+# request says so.
+POST {{host}}/events/{{event_id}}/cover
+Accept: application/json
+[MultipartFormData]
+cover: file,files/cover.phtml; image/png
+HTTP 422
+[Asserts]
+jsonpath "$.errors.cover" exists
+
 # `cover` is required: a form with other parts and no `cover` is a 422 too.
 POST {{host}}/events/{{event_id}}/cover
 Accept: application/json

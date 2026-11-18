@@ -41,6 +41,25 @@ HTTP 200
 jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" exists
 jsonpath "$[?(@.title == 'Gatineau PHP night')]" not exists
 
+# `from` compares days in UTC, and `starts_at` is an instant: 22:00 on December
+# 1st at -05:00 is already December 2nd at Z, so `from=2026-12-02` keeps it.
+POST {{host}}/events
+Accept: application/json
+Content-Type: application/json
+{
+  "title": "Trois-Rivieres late night",
+  "city": "Trois-Rivieres",
+  "starts_at": "2026-12-01T22:00:00-05:00",
+  "capacity": 20
+}
+HTTP 201
+
+GET {{host}}/events?from=2026-12-02&city=Trois-Rivieres
+Accept: application/json
+HTTP 200
+[Asserts]
+jsonpath "$[?(@.title == 'Trois-Rivieres late night')]" exists
+
 # `from` is a date: a word is a 422 on that parameter, and the code never runs.
 GET {{host}}/events?from=yesterday
 Accept: application/json
