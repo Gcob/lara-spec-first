@@ -541,6 +541,40 @@ it('leaves out the response keywords when there is no build plan', function (Clo
     ],
 ]);
 
+// A section that prints `clean` without having read the responses is a claim it cannot make: with no build plan the
+// response findings are left out, so `Support findings` says so beside whatever it did find, in the text and in `--json`.
+it('says the response findings were left out when there is no build plan', function (Closure $arrange): void {
+    $arrange();
+
+    [$exit, $report] = doctorJson('doctor-response-keywords-with-refused-plan.yaml');
+
+    $text = (function (): string {
+        [, $text] = doctor();
+
+        return $text;
+    })();
+    $section = substr($text, (int) strpos($text, 'Support findings'));
+    $section = substr($section, 0, (int) strpos($section, "\n\n"));
+
+    expect($report['notes']['Support findings']['checked'])->toBeTrue()
+        ->and($report['notes']['Support findings']['note'])->toContain('response findings were left out')
+        ->and($report['notes']['Support findings']['note'])->toContain('Routing outcome')
+        ->and($section)->toContain('[note]')
+        ->and($section)->toContain('response findings were left out')
+        ->and($section)->not->toContain('clean')
+        ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
+})->with([
+    'a planner that refuses the document' => [static fn () => null],
+    'a generated namespace that is refused' => [static fn () => config()->set('lara-spec-first.generated.namespace', '')],
+]);
+
+// With the plan, the same section ran in full, so it carries no note.
+it('carries no note on Support findings when the build plan exists', function (): void {
+    [, $report] = doctorJson('doctor-response-keywords.yaml');
+
+    expect($report['notes'])->not->toHaveKey('Support findings');
+});
+
 // --- A document the pipeline could not read is not drift ---
 
 /**

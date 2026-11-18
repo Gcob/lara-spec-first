@@ -289,10 +289,10 @@ tags: [versions, conventions, planning]
   (`minProperties`, `contains`) written in a response are not named, and neither is a schema at fault, which gets no DTO
   and says why in the generated file. The responses no longer print a `Deferred` line, and `Support findings` reads the
   response from the plan the build makes, so a document the build plan refuses (a body and a query parameter naming one
-  field, or a refused `generated.namespace`) names the request's keywords only. This is a breaking change: a contract
-  that exited `0` can exit `2`, so a green CI step may turn red. Remove the keyword from the response schema, or let the
-  CI step that runs `spec:doctor` accept exit `2` until the acknowledgement config is built. This ships
-  [#164](https://github.com/Gcob/lara-spec-first/issues/164).
+  field, or a refused `generated.namespace`) names the request's keywords only, and a note on `Support findings` says
+  the response was left out. This is a breaking change: a contract that exited `0` can exit `2`, so a green CI step may
+  turn red. Remove the keyword from the response schema, or let the CI step that runs `spec:doctor` accept exit `2`
+  until the acknowledgement config is built. This ships [#164](https://github.com/Gcob/lara-spec-first/issues/164).
 
 ### Fixed
 

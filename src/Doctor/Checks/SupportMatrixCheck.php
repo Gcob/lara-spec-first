@@ -38,7 +38,7 @@ use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
  *      properties a response DTO types `mixed`, one finding per keyword (or per cause) per operation. See
  *      {@see self::schemas()}.
  *   4. **Ignored, one line per construct rather than per occurrence**, a count and not a list, for what a count can
- *      say: the `header` and `cookie` parameters. See {@see self::deferred()}.
+ *      say: the `header` and `cookie` parameters. See {@see self::unreadParameters()}.
  *
  * `Open` constructs are not reported: the package has taken no position on them yet, so there is nothing to honor or
  * refuse that a finding could point at. A finding a reader cannot act on is what doctor.md calls a rumor.
@@ -558,14 +558,13 @@ final readonly class SupportMatrixCheck
     }
 
     /**
-     * One line per construct a count can say, naming how many, never one per occurrence: the `header` and `cookie`
-     * parameters, which this package reads and will not turn into a rule. A document whose parameter nodes are
-     * malformed is counted for what is readable.
+     * One line for the `header` and `cookie` parameters, naming how many, never one per occurrence: this package reads
+     * them and will not turn one into a rule. A document whose parameter nodes are malformed is counted for what is
+     * readable.
      *
      * **A response is not counted here any more.** It was the one `Deferred` count until the doctor named the keywords
      * a response DTO does not type, and {@see self::schemas()} says those per operation. No construct is `Deferred` in
-     * a document today, and the method keeps its name: what it counts is the same kind of thing, a total that spans
-     * positions.
+     * a document today, which is why the method says what it counts rather than a level.
      *
      * **No pointer, and that is a property of the finding rather than a gap.** A count spans every position that
      * contributed to it; naming one of them would point a reader at an arbitrary occurrence and imply the other
@@ -579,7 +578,7 @@ final readonly class SupportMatrixCheck
      *
      * @return list<Finding>
      */
-    public static function deferred(?ParsableSpecDocument $document): array
+    public static function unreadParameters(?ParsableSpecDocument $document): array
     {
         if ($document === null) {
             return [];

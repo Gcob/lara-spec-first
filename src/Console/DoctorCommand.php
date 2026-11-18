@@ -103,7 +103,7 @@ final class DoctorCommand extends Command
             ...SupportMatrixCheck::rejected($outcome),
             ...SupportMatrixCheck::missingOperationId($outcome->operations),
             ...SupportMatrixCheck::schemas($outcome->operations, $routing['plan']?->responses),
-            ...SupportMatrixCheck::deferred($outcome->document),
+            ...SupportMatrixCheck::unreadParameters($outcome->document),
             ...SecurityCheck::check($outcome->operations),
             ...LifecycleCheck::check($outcome->operations, $now),
         ];
@@ -112,7 +112,7 @@ final class DoctorCommand extends Command
 
         $findings = [...$findings, ...$this->installation($config)];
 
-        $notes = [...$routing['notes'], ...self::operationSectionNotes($outcome)];
+        $notes = [...$routing['notes'], ...self::operationSectionNotes($outcome), ...self::supportFindingsNotes($routing['plan'])];
 
         return new DiagnosticReport(
             $specPath,
@@ -193,6 +193,30 @@ final class DoctorCommand extends Command
         }
 
         return [];
+    }
+
+    /**
+     * What `Support findings` owes a reader when the build plan it reads the responses from does not exist.
+     *
+     * **Without a plan the response half of the section is left out, and `clean` would be a claim about it.** The plan
+     * is missing when the planner refused the document or when `generated.namespace` or the routes path was refused,
+     * and either way `Routing outcome` says which. The request half still ran, so this is the narrowed kind of note:
+     * the findings stand, and what they cover is less than the section's name says.
+     *
+     * @return array<string, SectionNote>
+     */
+    private static function supportFindingsNotes(?BuildPlan $plan): array
+    {
+        if ($plan !== null) {
+            return [];
+        }
+
+        return [
+            'Support findings' => SectionNote::narrowed(
+                'the response findings were left out: they are read from the build plan, which could not be made, so '.
+                'a keyword or a property a response DTO cannot type is not listed here. See Routing outcome.'
+            ),
+        ];
     }
 
     /**

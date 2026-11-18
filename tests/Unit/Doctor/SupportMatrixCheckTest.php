@@ -102,8 +102,8 @@ function supportMatrixDocumentWithRawPaths(array $raw): ParsableSpecDocument
     ]);
 }
 
-it('is silent about deferred constructs when there are none to count', function (): void {
-    expect(SupportMatrixCheck::deferred(null))->toBe([]);
+it('is silent about unread parameters when there is no document to count them in', function (): void {
+    expect(SupportMatrixCheck::unreadParameters(null))->toBe([]);
 });
 
 // The count split when a `query` parameter first became a rule. What is left
@@ -129,7 +129,7 @@ it('counts header and cookie parameters as one Ignored finding', function (): vo
     ]);
 
     $findings = array_values(array_filter(
-        SupportMatrixCheck::deferred($document),
+        SupportMatrixCheck::unreadParameters($document),
         static fn ($finding): bool => str_contains($finding->message, 'header or cookie parameter'),
     ));
 
@@ -159,7 +159,7 @@ it('makes an unread parameter gate the exit code', function (): void {
         'openapi-external-refs',
         SpecVersion::V3_0,
         [],
-        SupportMatrixCheck::deferred($document),
+        SupportMatrixCheck::unreadParameters($document),
     );
 
     expect($report->exitCode())->toBe(2);
@@ -180,7 +180,7 @@ it('no longer counts a request body as deferred', function (): void {
         ],
     ]);
 
-    expect(SupportMatrixCheck::deferred($document))->toBe([]);
+    expect(SupportMatrixCheck::unreadParameters($document))->toBe([]);
 });
 
 it('does not count a path parameter as an unread one', function (): void {
@@ -193,7 +193,7 @@ it('does not count a path parameter as an unread one', function (): void {
 
     $messages = implode('', array_map(
         static fn ($finding): string => $finding->message,
-        SupportMatrixCheck::deferred($document),
+        SupportMatrixCheck::unreadParameters($document),
     ));
 
     expect($messages)->not->toContain('header or cookie parameter');
@@ -226,11 +226,11 @@ it('survives a parameters node that is not a list', function (): void {
         ]],
     ]);
 
-    expect(SupportMatrixCheck::deferred($document))->toBe([]);
+    expect(SupportMatrixCheck::unreadParameters($document))->toBe([]);
 });
 
 it('survives a node of the wrong type anywhere this section reads one', function (mixed $raw): void {
-    expect(SupportMatrixCheck::deferred(supportMatrixRawDocument($raw)))->toBeArray();
+    expect(SupportMatrixCheck::unreadParameters(supportMatrixRawDocument($raw)))->toBeArray();
 })->with([
     'paths is a list' => [['paths' => ['/users']]],
     'paths is a string' => [['paths' => 'oops']],
@@ -261,7 +261,7 @@ it('no longer counts response declarations as deferred', function (): void {
         ]],
     ]);
 
-    expect(SupportMatrixCheck::deferred($document))->toBe([]);
+    expect(SupportMatrixCheck::unreadParameters($document))->toBe([]);
 });
 
 // Response DTOs are generated, and the keywords a response schema writes are named
@@ -274,7 +274,7 @@ it('leaves no Deferred line for responses', function (): void {
         ]],
     ]);
 
-    $findings = SupportMatrixCheck::deferred($document);
+    $findings = SupportMatrixCheck::unreadParameters($document);
     $messages = implode("\n", array_map(static fn ($finding): string => $finding->message, $findings));
 
     expect(array_filter($findings, static fn ($finding): bool => $finding->level === SupportLevel::Deferred))->toBe([])
@@ -298,7 +298,7 @@ it('counts the parameters a Path Item declares for every operation under it', fu
     ]);
 
     $findings = array_values(array_filter(
-        SupportMatrixCheck::deferred($document),
+        SupportMatrixCheck::unreadParameters($document),
         static fn ($finding): bool => str_contains($finding->message, 'header or cookie parameter'),
     ));
 
@@ -330,7 +330,7 @@ it('resolves a referenced parameter before deciding where it sits', function ():
     ]);
 
     $findings = array_values(array_filter(
-        SupportMatrixCheck::deferred($document),
+        SupportMatrixCheck::unreadParameters($document),
         static fn ($finding): bool => str_contains($finding->message, 'header or cookie parameter'),
     ));
 
@@ -351,7 +351,7 @@ it('skips a reference it cannot follow rather than counting it', function (mixed
     ]);
 
     expect(array_filter(
-        SupportMatrixCheck::deferred($document),
+        SupportMatrixCheck::unreadParameters($document),
         static fn ($finding): bool => str_contains($finding->message, 'header or cookie parameter'),
     ))->toBe([]);
 })->with([
@@ -373,7 +373,7 @@ it('does not count an entry whose location it cannot read', function (mixed $par
     ]);
 
     expect(array_filter(
-        SupportMatrixCheck::deferred($document),
+        SupportMatrixCheck::unreadParameters($document),
         static fn ($finding): bool => str_contains($finding->message, 'header or cookie parameter'),
     ))->toBe([]);
 })->with([
