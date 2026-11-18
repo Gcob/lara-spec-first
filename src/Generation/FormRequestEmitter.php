@@ -139,10 +139,11 @@ final readonly class FormRequestEmitter
      * The constants the generated class reads its keys from, or nothing.
      *
      * `BODY_KEYS` is the closed-root check's, `FORM_NAMES` is where `dto()` finds a form value under a name PHP
-     * rewrote, and `QUERY_KEYS` is what `validationData()` takes from the query string. `FORM_NAMES` is keyed by the
-     * names the document writes. `BODY_KEYS` and `QUERY_KEYS` hold the keys the values arrive under, which is how PHP's
-     * own bags key them: the name the document writes, and for a name PHP rewrites the one it gives it (`page` for a
-     * `query` parameter `page[size]`).
+     * rewrote, `SCALAR_NAMES` lists the names whose value `dto()` reads only when it is not an array, and `QUERY_KEYS`
+     * is what `validationData()` takes from the query string. `FORM_NAMES` is keyed by the names the document writes.
+     * `BODY_KEYS` and `QUERY_KEYS` hold the keys the values arrive under, which is how PHP's own bags key them: the
+     * name the document writes, and for a name PHP rewrites the one it gives it (`page` for a `query` parameter
+     * `page[size]`).
      */
     private function keyConstants(RuleSet $set): string
     {
@@ -166,6 +167,15 @@ final readonly class FormRequestEmitter
                     array_keys($set->formPaths),
                     $set->formPaths,
                 )),
+            );
+        }
+
+        if ($set->scalarNames !== []) {
+            $constants .= sprintf(
+                "    /**\n     * The names a form also nests other names under: a value is theirs only when it is not an array, which is the\n"
+                    ."     * nested names'. `dto()` drops the array after it has read each of them.\n     */\n"
+                    ."    private const SCALAR_NAMES = [%s];\n\n",
+                implode(', ', array_map($this->literal(...), $set->scalarNames)),
             );
         }
 
@@ -296,7 +306,7 @@ final readonly class FormRequestEmitter
             return '';
         }
 
-        $payload = $planned->rules->formPaths === []
+        $payload = $planned->rules->formPaths === [] && $planned->rules->scalarNames === []
             ? '$validator->validated()'
             : '$this->contractNames($validator->validated())';
 
@@ -340,26 +350,24 @@ final readonly class FormRequestEmitter
 
     /**
      * `contractNames()`, or nothing: the validated payload of a form body with each value PHP delivered under another
-     * name also under the name the contract writes, which is the key `from()` reads.
+     * name also under the name the contract writes, which is the key `from()` reads, and without the array a form
+     * builds for the names below a name.
      *
      * **A form client's `user.name` reaches Laravel as `user_name`**, and the rules are keyed by what arrives, so
      * `validated()` holds it there. The DTO's properties are the contract's, and one class serves a JSON body and a
      * nested use too, so the name is put back here and not in the DTO. `validated()` is left as Laravel returns it.
+     *
+     * **A name a form also nests other names under holds the array a form builds for them** (`page` for `page[size]`),
+     * and `from()` casts what it reads (`(int)` of an array is `1`), so the array is dropped once every name is put
+     * back: the nested names were read out of it first.
      */
     private function contractNames(RuleSet $set): string
     {
-        if ($set->formPaths === []) {
+        if ($set->formPaths === [] && $set->scalarNames === []) {
             return '';
         }
 
-        return <<<'PHP'
-
-                /**
-                 * @param  array<array-key, mixed>  $payload
-                 * @return array<array-key, mixed>
-                 */
-                private function contractNames(array $payload): array
-                {
+        $putBack = $set->formPaths === [] ? '' : <<<'PHP'
                     foreach (self::FORM_NAMES as $name => $path) {
                         $value = $payload;
 
@@ -374,7 +382,27 @@ final readonly class FormRequestEmitter
                         $payload[$name] = $value;
                     }
 
-                    return $payload;
+
+            PHP;
+        $dropped = $set->scalarNames === [] ? '' : <<<'PHP'
+                    foreach (self::SCALAR_NAMES as $name) {
+                        if (is_array($payload[$name] ?? null)) {
+                            unset($payload[$name]);
+                        }
+                    }
+
+
+            PHP;
+
+        return <<<PHP
+
+                /**
+                 * @param  array<array-key, mixed>  \$payload
+                 * @return array<array-key, mixed>
+                 */
+                private function contractNames(array \$payload): array
+                {
+            {$putBack}{$dropped}        return \$payload;
                 }
 
             PHP;
@@ -593,12 +621,25 @@ final readonly class FormRequestEmitter
             $list = '['.implode(', ', array_map($this->rule(...), $rules)).']';
 
             if (isset($set->whenNotArray[$key])) {
+                // Why: the key check goes before `exclude`, which drops the array only once the rules before it have judged it.
+                $branch = [];
+
+                if (isset($set->arrayKeys[$key])) {
+                    $branch[] = 'array:'.implode(',', $set->arrayKeys[$key]);
+                }
+
+                if (in_array($key, $set->dropsArray, true)) {
+                    $branch[] = 'exclude';
+                } elseif ($branch === []) {
+                    $branch[] = 'array';
+                }
+
                 $lines[] = sprintf(
-                    "            %s => Rule::when(\n                fn (Fluent \$input): bool => ! is_array(%s),\n                %s,\n                ['%s'],\n            ),",
+                    "            %s => Rule::when(\n                fn (Fluent \$input): bool => ! is_array(%s),\n                %s,\n                [%s],\n            ),",
                     $this->literal($key),
                     $this->valueAt($set->whenNotArray[$key]),
                     $list,
-                    in_array($key, $set->dropsArray, true) ? 'exclude' : 'array',
+                    implode(', ', array_map($this->literal(...), $branch)),
                 );
 
                 continue;

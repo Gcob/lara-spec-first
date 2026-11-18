@@ -909,8 +909,34 @@ it('makes a required property optional when the request cannot check the name PH
         ->toContain('`'.$names[0].'` is required by the schema, but the request cannot check it in a form body');
 })->with([
     'JSON and a form' => [['application/json', 'multipart/form-data'], ['a b']],
-    'a collision' => [['multipart/form-data'], ['page[size]', 'page']],
 ]);
+
+// A form-only body judges a name above the names a form nests under it by shape, and the array of the nested names stands
+// in for it: the request cannot promise a required `page`, so the property is optional, with the finding. The nested name
+// has its own rule, and stays required.
+it('makes a required name optional when the array of the names nested under it stands in for it', function (string $mediaType): void {
+    $plan = planDtos([dtoOperation('doThing', [$mediaType => dtoSchema(
+        ['page' => dtoString(), 'page[size]' => dtoString(), 'plain' => dtoString()],
+        ['page', 'page[size]', 'plain'],
+    )])]);
+    $findings = implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings);
+
+    expect(optionalFlags($plan, 'DoThingInputDto'))->toBe([true, false, false])
+        ->and($findings)->toContain('`page` is required by the schema, but the request cannot check it in a form body: whether it was sent, since the array a form builds for the names nested under it stands in for it')
+        ->and($findings)->not->toContain('`page[size]` is required by the schema, but');
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// A name typed `array` above a nested one keeps the collision: neither has a rule, so neither can be promised.
+it('makes both names optional when an upper name typed array has no rule beside the name below it', function (): void {
+    $plan = planDtos([dtoOperation('doThing', ['multipart/form-data' => dtoSchema(
+        ['page' => new Schema(types: [SchemaType::Array]), 'page[size]' => dtoString()],
+        ['page', 'page[size]'],
+    )])]);
+
+    expect(optionalFlags($plan, 'DoThingInputDto'))->toBe([true, true])
+        ->and(implode("\n", dtoNamed($plan, 'DoThingInputDto')->findings))
+        ->toContain('`page[size]` is required by the schema, but the request cannot check it in a form body');
+});
 
 // Shared by every operation that reaches the schema, so the shape cannot depend on whether the
 // root or a nested use came first.
