@@ -1119,7 +1119,7 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             statusCard(['number' => 45, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 48, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 50, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.2.0', 'closedAt' => '2026-11-13T09:00:00Z']),
-            // B6: Done, and nothing was tagged since it closed. The others are history, or need no release.
+            // B6: Done, and nothing was tagged since its pull request merged, or since it closed with none. The others are history, or need no release.
             statusCard(['number' => 41, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             // Closed before v0.2.0 was tagged: it shipped in it, though its own milestone is still open.
             statusCard(['number' => 51, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
@@ -1157,15 +1157,15 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
     expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusDrift($run['out'])['lines'])->toBe([
             '  #40  Ready to publish, but it was released in v0.2.0. Move it to Done.',
-            '  #41  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #41  Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.',
             '  #47  Ready to publish, but it was released in v0.2.0. Move it to Done.',
-            '  #52  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
-            '  #54  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #52  Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.',
+            '  #54  Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.',
             '  #55  Ready to publish, but it was released in v0.2.0. Move it to Done.',
-            '  #56  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
-            '  #57  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #56  Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.',
+            '  #57  Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.',
             '  #59  Ready to publish, but it was released in v0.2.0. Move it to Done.',
-            '  #60  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #60  Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.',
         ]);
 });
 
@@ -1182,8 +1182,8 @@ it('flags a Done card whatever its milestone when no release was ever tagged', f
 
     expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusDrift($run['out'])['lines'])->toBe([
-            '  #40  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
-            '  #41  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #40  Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.',
+            '  #41  Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.',
         ]);
 });
 

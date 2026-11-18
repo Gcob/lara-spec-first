@@ -690,19 +690,21 @@ card number. A branch whose name ends in `-spike` is a trial, not a card's work,
 **Where a closed card belongs.** A closed card is in `Done` when it is a `Docs`, `Decision` or `Lot` card (the docs site
 publishes on merge, and a lot card closes with its lesson), or when it was closed as not planned, since that ships
 nothing. Any other closed card is in `Ready to publish` until the next release is tagged, and then in `Done`: the card
-ships in the first release tagged after the pull request that closed it merged (after it closed, when no pull request
-did), whatever its milestone. The release card itself closes after its own tag, and its pull request merged before it.
+ships in the first release tagged after the pull request that serves it merged, whatever its milestone. A pull request
+serves a card when it closes it, or else when its branch names it, and the one that counts is the last to merge by the
+time the card closed. A card no merged pull request serves is dated by when it closed. The release card itself closes
+after its own tag, and its pull request merged before it.
 
 **Drift between the board and the issues:**
 
 - An open issue that is not on the board.
 - An open card in `Ready to publish` or `Done`: close the issue, or move the card back.
 - A closed card in neither of those two, or in the one it does not belong in by the paragraph above.
-- A card in `Ready to publish` whose closing pull request merged before the latest release was tagged
-  (`v<major>.<minor>.<patch>`, the newest by date, a prerelease excepted), which means it shipped in that release,
-  whatever its milestone. And a card in `Done` whose closing pull request merged after the latest release (or with none
-  tagged yet), which means it did not ship, whatever its milestone. A card closed by hand has no such pull request: its
-  close date stands in.
+- A card in `Ready to publish` that was done before the latest release was tagged (`v<major>.<minor>.<patch>`, the
+  newest by date, a prerelease excepted), which means it shipped in that release, whatever its milestone. And a card in
+  `Done` that was done after the latest release (or with none tagged yet), which means it did not ship, whatever its
+  milestone. A card is done when the pull request that serves it merged, or when it closed if no merged pull request
+  serves it.
 
 **Drift between the board, the pull requests and git:**
 

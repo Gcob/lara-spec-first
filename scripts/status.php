@@ -1019,7 +1019,7 @@ function drift_board(array $cards, array $merged, ?array $release): array
             // Whatever its milestone, `1.0` included: a card waits for the next release like any other, and shipped in it.
             $findings[] = finding('B5', $number, null, 'Ready to publish, but it was released in '.$release['name'].'. Move it to Done.');
         } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && ! done_before_release($card, $merged, $release)) {
-            $findings[] = finding('B6', $number, null, 'Done, but no release has been tagged since it closed. Move it back to Ready to publish.');
+            $findings[] = finding('B6', $number, null, 'Done, but no release has been tagged since its last pull request merged (or since it closed, with none). Move it back to Ready to publish.');
         }
     }
 
