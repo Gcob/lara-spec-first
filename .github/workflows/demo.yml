@@ -48,10 +48,13 @@ env:
     HURL_VERSION: "8.1.0"
     HURL_DEB_SHA256: c56222c8923d3940533ac3d7085f66cb6fa6c05639f33aaeef8d857ab70622f9
 
+# Both jobs run on Ubuntu 24.04 rather than `ubuntu-latest`. Hurl's package depends on
+# `libxml2`, which Ubuntu 26.04 does not provide under that name, so it cannot be
+# installed there. Move to a newer image with the Hurl release that targets it.
 jobs:
     folders:
         name: List the demo folders
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         outputs:
             minors: ${{ steps.list.outputs.minors }}
 
@@ -72,7 +75,7 @@ jobs:
     demo:
         name: Demo ${{ matrix.minor }}
         needs: folders
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
 
         strategy:
             # Every folder reports: a red one says nothing about the others.
