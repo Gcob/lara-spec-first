@@ -3577,3 +3577,229 @@ it('keeps the query parameters out of the DTO of a map body', function (string $
     'a bracketed query name, sent' => ['page[size]', '?page[size]=3', ['a' => 1], ['a' => 1, 'page' => ['size' => '3']], ['a' => 1]],
     'a body key named like the head of a bracketed name' => ['page[size]', '', ['a' => 1, 'page' => 9], ['a' => 1], ['a' => 1]],
 ]);
+
+/**
+ * An object that declares `$properties` and judges every other key by `$value`: what `properties` and
+ * `additionalProperties: <schema>` say together.
+ *
+ * @param  array<string, Schema>  $properties
+ */
+function mapBeside(array $properties, Schema $value): Schema
+{
+    return new Schema(types: [SchemaType::Object], properties: $properties, additionalPropertiesSchema: $value);
+}
+
+/**
+ * A body whose one property, `meta`, is `$map`.
+ */
+function bodyHolding(Schema $map): Schema
+{
+    return new Schema(types: [SchemaType::Object], properties: ['meta' => $map]);
+}
+
+/**
+ * The answer of a request as `[status, errors]`: the messages by attribute when it was refused, and the validated data
+ * when it passed.
+ *
+ * @param  array<array-key, mixed>  $answer  what `sendThroughEmitted()` returned
+ * @return array{0: int, 1: array<array-key, mixed>}
+ */
+function refusedOrValidated(array $answer): array
+{
+    $body = (array) $answer[1];
+
+    return $answer[0] === 422 ? [422, (array) ($body['errors'] ?? [])] : [$answer[0], keysSortedDeep($body)];
+}
+
+/**
+ * An array with the keys of every level in order: Laravel puts the keys a wildcard reached before the ones a rule
+ * names.
+ *
+ * @param  array<array-key, mixed>  $data
+ * @return array<array-key, mixed>
+ */
+function keysSortedDeep(array $data): array
+{
+    ksort($data);
+
+    return array_map(static fn (mixed $value): mixed => is_array($value) ? keysSortedDeep($value) : $value, $data);
+}
+
+// Beside declared properties the value schema judges every key the object does not declare, and a declared key keeps
+// exactly its own rules: it is never an integer for the value schema's sake, and the message it fails with is its own.
+// Run through the class the emitter writes, since `answerForBuiltRules()` skips the guard the emitter puts on the wildcard.
+it('validates a map\'s values beside declared properties', function (bool $nested, array $json, int $status, array $expected): void {
+    $map = mapBeside(['locale' => new Schema(types: [SchemaType::String], maxLength: 5)], new Schema(types: [SchemaType::Integer]));
+    $class = emittedRequestClass(postWithMapBody($nested ? bodyHolding($map) : $map));
+    $prefix = $nested ? 'meta.' : '';
+
+    $answer = refusedOrValidated(sendThroughEmitted($class, 'POST', json: $nested ? ['meta' => $json] : $json));
+    $expected = $status === 422
+        ? array_combine(
+            array_map(static fn (string $key): string => $prefix.$key, array_keys($expected)),
+            array_map(static fn (string $key, string $message): array => ['The '.$prefix.$key.' field '.$message], array_keys($expected), $expected),
+        )
+        : ($nested ? ['meta' => $expected] : $expected);
+
+    expect($answer)->toBe([$status, $expected]);
+})->with(function (): Generator {
+    $rows = [
+        'a declared key and an undeclared one that is fine' => [['locale' => 'fr', 'a' => 1], 200, ['a' => 1, 'locale' => 'fr']],
+        'only the declared key' => [['locale' => 'fr'], 200, ['locale' => 'fr']],
+        'an undeclared key the value schema refuses' => [['locale' => 'fr', 'a' => 'x'], 422, ['a' => 'must be an integer.']],
+        // Its own message only: `max:5` of a string, never the value schema's `integer`.
+        'a declared key its own rules refuse' => [['locale' => 'toolong'], 422, ['locale' => 'must not be greater than 5 characters.']],
+    ];
+
+    foreach ([false, true] as $nested) {
+        foreach ($rows as $name => [$json, $status, $expected]) {
+            yield ($nested ? 'nested, ' : 'at the root, ').$name => [$nested, $json, $status, $expected];
+        }
+    }
+});
+
+// The declared object of a map of objects is never judged by the value schema, and the children of a value are guarded
+// too: `n` of an undeclared `b` is judged, and the `n` an object the contract declares may carry is not.
+it('judges the objects of a map beside a declared object with a different shape', function (array $meta, int $status, array $errors): void {
+    $declared = new Schema(types: [SchemaType::Object], properties: ['m' => new Schema(types: [SchemaType::String])]);
+    $value = new Schema(types: [SchemaType::Object], properties: ['n' => new Schema(types: [SchemaType::Integer])], required: ['n']);
+    $class = emittedRequestClass(postWithMapBody(bodyHolding(mapBeside(['a' => $declared], $value))));
+
+    [$got, $answer] = sendThroughEmitted($class, 'POST', json: ['meta' => $meta]);
+
+    expect($got)->toBe($status)
+        ->and($status === 422 ? array_keys((array) ($answer['errors'] ?? [])) : [])->toBe($errors);
+})->with([
+    'the declared object lacks the value schema\'s required member' => [['a' => ['m' => 'ok'], 'b' => ['n' => 1]], 200, []],
+    'the declared object carries a member the value schema would refuse' => [['a' => ['m' => 'ok', 'n' => 'str']], 200, []],
+    'an undeclared object missing its required member' => [['a' => ['m' => 'ok'], 'c' => []], 422, ['meta.c']],
+    'an undeclared object with a wrong member' => [['a' => ['m' => 'ok'], 'b' => ['n' => 'str']], 422, ['meta.b.n']],
+]);
+
+// Laravel renumbers an integer-like top-level key when it expands `*`, so a root that declares properties beside a value
+// schema repeats the value rules under each such key, and leaves the declared ones alone: copying over a declared
+// `"2024"` would give it the value schema's rules instead of its own.
+it('keeps and judges the integer-like keys of a root that declares properties', function (array $json, int $status, array $expected): void {
+    $class = emittedRequestClass(postWithMapBody(mapBeside(
+        ['locale' => new Schema(types: [SchemaType::String]), '2024' => new Schema(types: [SchemaType::String])], // @phpstan-ignore argument.type
+        new Schema(types: [SchemaType::Integer]),
+    )));
+
+    $answer = refusedOrValidated(sendThroughEmitted($class, 'POST', json: $json));
+
+    expect($status === 422 ? [422, array_map(strval(...), array_keys($answer[1]))] : $answer)->toBe([$status, $expected]);
+})->with([
+    'an undeclared ID with a good value' => [['1042' => 3], 200, [1042 => 3]],
+    'an undeclared ID the value schema refuses' => [['1042' => 'x'], 422, ['1042']],
+    // The declared `2024` is a string: the integer the value schema asks for would refuse it, and 5 is no string.
+    'a declared ID sent a value of the wrong type for it' => [['2024' => 5], 422, ['2024']],
+    'a declared ID sent its own type' => [['2024' => 'y'], 200, [2024 => 'y']],
+    'a declared ID beside an undeclared one' => [['2024' => 'y', '1042' => 3], 200, [1042 => 3, 2024 => 'y']],
+]);
+
+// A value that is a map itself keeps its own declared key under an integer-like key too: the copy of the root's rules
+// leaves the root's step out of the guard, and the inner step still spares `n`.
+it('keeps the inner guard of a value that is a map itself under an integer-like key of the root', function (): void {
+    $inner = mapBeside(['n' => new Schema(types: [SchemaType::String])], new Schema(types: [SchemaType::Integer]));
+    $class = emittedRequestClass(postWithMapBody(mapBeside(['id' => new Schema(types: [SchemaType::String])], $inner)));
+
+    expect(refusedOrValidated(sendThroughEmitted($class, 'POST', json: ['1042' => ['n' => 'ok', 'k' => 1]])))->toBe([200, [1042 => ['k' => 1, 'n' => 'ok']]])
+        ->and(array_keys(refusedOrValidated(sendThroughEmitted($class, 'POST', json: ['1042' => ['n' => 'ok', 'bad' => 'z']]))[1]))->toBe(['1042.bad']);
+});
+
+// A declared integer-like name nested in a map is spared by its string: the strict comparison would not match the
+// integer PHP makes of the key.
+it('spares a nested declared integer-like name and judges the undeclared ones', function (array $meta, int $status, array $errors): void {
+    $class = emittedRequestClass(postWithMapBody(bodyHolding(mapBeside(
+        ['2024' => new Schema(types: [SchemaType::String])], // @phpstan-ignore argument.type
+        new Schema(types: [SchemaType::Integer]),
+    ))));
+
+    [$got, $answer] = sendThroughEmitted($class, 'POST', json: ['meta' => $meta]);
+
+    expect($got)->toBe($status)
+        ->and($status === 422 ? array_keys((array) ($answer['errors'] ?? [])) : [])->toBe($errors);
+})->with([
+    'the declared name and an undeclared value that is fine' => [['2024' => 'x', '1042' => 3], 200, []],
+    'the declared name and an undeclared value the schema refuses' => [['2024' => 'x', '1042' => 'y'], 422, ['meta.1042']],
+]);
+
+// The recursion cut by `x-max-depth` runs through the values: the declared key at the cut passes, and an undeclared key
+// below the depth answers on the key `missing` puts there.
+it('cuts a recursion through the values beside a declared property at its depth', function (array $json, int $status, array $errors): void {
+    $position = '#/components/schemas/Node';
+    $node = new Schema(
+        name: 'Node',
+        types: [SchemaType::Object],
+        properties: ['id' => new Schema(types: [SchemaType::String])],
+        maxDepth: 1,
+        source: $position,
+        additionalPropertiesSchema: Schema::recursion($position, 'Node'),
+    );
+    $class = emittedRequestClass(postWithMapBody($node));
+
+    [$got, $answer] = sendThroughEmitted($class, 'POST', json: $json);
+
+    expect($got)->toBe($status)
+        ->and($status === 422 ? array_keys((array) ($answer['errors'] ?? [])) : [])->toBe($errors);
+})->with([
+    'a level the depth allows, its declared key at the cut' => [['id' => 'x', 'a' => ['id' => 'y']], 200, []],
+    'an undeclared value below the depth' => [['id' => 'x', 'a' => ['b' => []]], 422, ['a.b']],
+]);
+
+// `validated()` holds the undeclared keys a guarded wildcard judges, beside the declared ones, and `dto()` is the
+// declared properties only: the keys of the map are not on it.
+it('holds the undeclared keys in validated() and the declared properties on the DTO', function (bool $nested): void {
+    $map = mapBeside(['locale' => new Schema(types: [SchemaType::String])], new Schema(types: [SchemaType::Integer]));
+    $class = emittedRequestClass(postWithMapBody($nested ? bodyHolding($map) : $map));
+    $json = ['locale' => 'fr', 'a' => 1];
+
+    expect(refusedOrValidated(sendThroughEmitted($class, 'POST', json: $nested ? ['meta' => $json] : $json)))
+        ->toBe([200, $nested ? ['meta' => ['a' => 1, 'locale' => 'fr']] : ['a' => 1, 'locale' => 'fr']])
+        ->and(dtoThroughEmitted($class, 'POST', $nested ? ['meta' => $json] : $json))
+        ->toBe([200, $nested ? ['meta' => ['locale' => 'fr']] : ['locale' => 'fr']]);
+})->with(['at the root' => [false], 'nested' => [true]]);
+
+// A form carries text, so the value schema's `integer` is loose there. A declared name PHP rewrites (`user.name` arrives
+// as `user_name`) is spared under that name. **The stated gap:** an undeclared `user_name` arrives under the same key and
+// is judged by `user.name`'s rule alone, so it passes though the value schema would refuse it, and the generated file
+// says so. A later fix shows as a change to this row.
+it('validates a form map\'s values beside declared properties', function (string $mediaType): void {
+    $integers = new Schema(types: [SchemaType::Integer]);
+    $beside = emittedRequestClass(postWithMapBody(
+        mapBeside(['locale' => new Schema(types: [SchemaType::String])], $integers),
+        mediaTypes: [$mediaType],
+    ));
+    $rewritten = mapBeside(['user.name' => new Schema(types: [SchemaType::String])], $integers);
+    $dotted = emittedRequestClass(postWithMapBody($rewritten, mediaTypes: [$mediaType]));
+    $planned = plannedRequests([postWithMapBody($rewritten, mediaTypes: [$mediaType])])['requests'][0];
+    $file = (new FormRequestEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($planned)->contents;
+
+    expect(sendThroughEmitted($beside, 'POST', parameters: ['locale' => 'fr', 'a' => 'x'])[0])->toBe(422)
+        ->and(withKeysSorted(sendThroughEmitted($beside, 'POST', parameters: ['locale' => 'fr', 'a' => '3'])))->toBe([200, ['a' => '3', 'locale' => 'fr']])
+        ->and(sendThroughEmitted($dotted, 'POST', parameters: ['user_name' => 'x'])[0])->toBe(200)
+        ->and(sendThroughEmitted($dotted, 'POST', parameters: ['user_name' => 'x', 'other' => 'bad'])[0])->toBe(422)
+        ->and((string) preg_replace('/\s*\n\s*\*\s*/', ' ', $file))
+        ->toContain('A form delivers `user.name` as `user_name`, so an undeclared `user_name` is judged by `user.name`\'s rules, not by the value schema.');
+})->with([
+    'form-encoded' => ['application/x-www-form-urlencoded'],
+    'multipart' => ['multipart/form-data'],
+]);
+
+// The size row: Laravel's own `Rule::forEach` guard takes 22 seconds for a map of 10,000 values beside a declared key
+// (it undots the whole data for every key), `UndeclaredKeys` takes 0.3. A bound of five seconds fails a quadratic
+// mechanism by four times and leaves a slow CI runner more than ten times the room.
+it('validates a map of 10,000 values beside a declared key in under 5 seconds', function (): void {
+    $class = emittedRequestClass(postWithMapBody(bodyHolding(mapBeside(
+        ['locale' => new Schema(types: [SchemaType::String])],
+        new Schema(types: [SchemaType::Integer]),
+    ))));
+    $meta = ['locale' => 'fr'] + array_combine(array_map(static fn (int $i): string => 'key'.$i, range(1, 10000)), range(1, 10000));
+
+    $start = hrtime(true);
+    [$status] = sendThroughEmitted($class, 'POST', json: ['meta' => $meta]);
+    $seconds = (hrtime(true) - $start) / 1e9;
+
+    expect($status)->toBe(200)
+        ->and($seconds)->toBeLessThan(5.0);
+});

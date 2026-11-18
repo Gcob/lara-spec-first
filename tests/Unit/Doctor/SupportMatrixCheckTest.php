@@ -636,27 +636,31 @@ it('keeps reporting an additionalProperties schema where no rule set reads the s
     ];
 });
 
-// The value schema is walked like any child, so a keyword nothing reads that it writes is `Ignored` at its own position,
-// and the map is not: it is `Partial`, since the contract carries it.
-it('reports a keyword written inside an additionalProperties schema', function (): void {
+// The value schema is walked like any child, so a keyword nothing reads that it writes is `Ignored` at its own position.
+// Beside declared properties the request validates the values, so the map is not `Partial`: a declared name the guard
+// cannot spare keeps it.
+it('reports a keyword written inside an additionalProperties schema', function (string $declared, array $levels): void {
     $at = '#/paths/~1things/post/requestBody/content/application~1json/schema/additionalProperties/deprecated';
     $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => new Schema(
         types: [SchemaType::Object],
-        properties: ['id' => new Schema(types: [SchemaType::Integer])],
+        properties: [$declared => new Schema(types: [SchemaType::Integer])],
         additionalPropertiesSchema: new Schema(types: [SchemaType::String], ignored: ['deprecated' => $at]),
     )])]);
 
-    $levels = [];
+    $got = [];
 
     foreach ($findings as $finding) {
-        $levels[$finding->level->value ?? ''][] = $finding->pointer;
+        $got[$finding->level->value ?? ''][] = $finding->pointer;
     }
 
-    expect($levels)->toBe([
-        SupportLevel::Ignored->value => [$at],
+    expect($got)->toBe(array_map(static fn (array $pointers): array => array_map(static fn (string $pointer): string => str_replace('{at}', $at, $pointer), $pointers), $levels));
+})->with([
+    'a declared name the guard spares' => ['id', [SupportLevel::Ignored->value => ['{at}']]],
+    'a declared name it cannot' => ['a.b', [
+        SupportLevel::Ignored->value => ['{at}'],
         SupportLevel::Partial->value => ['#/paths/~1things/post'],
-    ]);
-});
+    ]],
+]);
 
 // The doctor reported every map body as `Ignored`, so a contract whose only gap was a map exited `2`. Once the request
 // validates the values nothing is left unenforced, so the same contract exits `0`: the move the CHANGELOG announces.
@@ -671,10 +675,14 @@ it('gives a map the request validates no additionalProperties finding, and a cle
     yield 'a map body' => [$map];
     yield 'a map body with an empty value schema' => [new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema)];
     yield 'a nested map' => [supportMatrixObject(['labels' => $map])];
+    // The guard spares the declared names, so the values beside them are validated: the move the CHANGELOG announces.
+    yield 'beside declared properties' => [new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]))];
+    yield 'nested beside declared properties' => [supportMatrixObject(['meta' => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]))])];
 });
 
-// The values of a map the build cannot validate are still a finding and still exit `2`: beside declared properties, and
-// at the root beside a `query` parameter.
+// The values of a map the build cannot validate are still a finding and still exit `2`: a declared name the guard cannot
+// spare (a dot Laravel replaces, a `*`, a form name nested in another, a name a body that is JSON and a form reads two
+// ways), the one undeclared key a form delivers under a declared name's key, and a root map beside a `query` parameter.
 it('keeps reporting the values of a map the request leaves unvalidated', function (array $content, array $query): void {
     assert(array_is_list($query));
 
@@ -686,11 +694,17 @@ it('keeps reporting the values of a map the request leaves unvalidated', functio
         ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
 })->with(function (): Generator {
     $value = new Schema(types: [SchemaType::String]);
+    $beside = static fn (string $declared): Schema => new Schema(types: [SchemaType::Object], properties: [$declared => $value], additionalPropertiesSchema: $value);
 
-    yield 'beside declared properties' => [
-        ['application/json' => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: $value)],
+    yield 'beside a declared name holding a dot' => [['application/json' => $beside('a.b')], []];
+    yield 'beside a declared name holding a star' => [['application/json' => $beside('x*y')], []];
+    yield 'beside a form name nested in another' => [['application/x-www-form-urlencoded' => $beside('page[size]')], []];
+    yield 'beside a name a JSON and form body reads two ways' => [
+        ['application/json' => $beside('user.name'), 'application/x-www-form-urlencoded' => $beside('user.name')],
         [],
     ];
+    // Spared under `user_name`, and an undeclared key that arrives under it is judged by the declared name's rules only.
+    yield 'beside a form name PHP delivers under another one' => [['application/x-www-form-urlencoded' => $beside('user.name')], []];
     yield 'a root map beside a query parameter' => [
         ['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value)],
         [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],

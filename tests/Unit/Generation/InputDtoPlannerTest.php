@@ -450,6 +450,45 @@ it('types only the inline map body beside a query parameter as mixed', function 
         ->and(dtoProperty(dtoNamed($plan, 'PatchLabelsInputDto'), 'additionalProperties')->type->doc())->toBe('array<array-key, mixed>');
 });
 
+// The request judges the keys an object does not declare against its value schema, and its DTO carries only the declared
+// properties: the generated file says the values are not read there, on every class the planner makes for the object
+// (the root's full and partial type), and once for a nested class two operations share. An open value schema and an
+// object with no property have nothing to say.
+it('says the DTO carries only the declared properties beside a value schema', function (Schema $body, array $classes, int $findings): void {
+    $plan = planDtos([dtoOperation('receiveHook', ['application/json' => $body])]);
+    $said = static fn (string $class): int => substr_count(
+        implode("\n", dtoNamed($plan, $class)->findings),
+        'but this type carries only the declared properties',
+    );
+
+    expect(array_map($said, $classes))->toBe(array_fill(0, count($classes), $findings));
+})->with(function (): Generator {
+    $value = new Schema(types: [SchemaType::Integer]);
+    $beside = static fn (Schema $values): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => dtoString()], additionalPropertiesSchema: $values);
+
+    yield 'at the root, on the full and the partial class' => [$beside($value), ['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'], 1];
+    yield 'nested' => [dtoSchema(['meta' => $beside($value)]), ['ReceiveHookMetaInputDto'], 1];
+    yield 'an empty value schema' => [$beside(new Schema), ['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'], 0];
+    yield 'an object with no property' => [mapSchema($value), ['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'], 0];
+    yield 'an object with no value schema' => [dtoSchema(['id' => dtoString()]), ['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'], 0];
+});
+
+it('says it once for a nested class two operations share', function (): void {
+    $meta = new Schema(
+        name: 'Meta',
+        source: '#/components/schemas/Meta',
+        types: [SchemaType::Object],
+        properties: ['id' => dtoString()],
+        additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
+    );
+    $plan = planDtos([
+        dtoOperation('createUser', ['application/json' => dtoSchema(['meta' => $meta])]),
+        dtoOperation('createUserAddress', ['application/json' => dtoSchema(['meta' => $meta])], path: '/addresses'),
+    ]);
+
+    expect(substr_count(implode("\n", dtoNamed($plan, 'MetaInputDto')->findings), 'but this type carries only the declared properties'))->toBe(1);
+});
+
 it('says nothing of the kind about a body that declares a property', function (): void {
     $plan = planDtos([dtoOperation('receiveHook', ['application/json' => dtoSchema(['a' => dtoString()])])]);
 

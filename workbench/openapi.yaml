@@ -323,6 +323,31 @@ paths:
             responses:
                 '202': { description: Replaced }
 
+    /posts/{postId}/metadata:
+        # A body that declares a property and holds every other key to a value schema. Read the
+        # generated request's `'*'` key, which `UndeclaredKeys` wraps so that `locale` keeps its
+        # own rules, then send `{"views": "x"}` for a `422` on `views` (a string is not an
+        # integer), `{"locale": "toolong"}` for a `422` on `locale` alone (it is not held to the
+        # integer), and `{"locale": "fr", "views": 3}` for the generated parent's `501`.
+        put:
+            operationId: replacePostMetadata
+            summary: Replace the metadata of a post
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            properties:
+                                locale: { type: string, maxLength: 5 }
+                            additionalProperties:
+                                type: integer
+            responses:
+                '202': { description: Replaced }
+
     /posts/{postId}/legacy-comments:
         # Deprecated with a sunset date. Both reach the generated file's findings,
         # and both are what the doctor will enforce once it exists: a deprecation

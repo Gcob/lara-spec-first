@@ -213,19 +213,30 @@ tags: [versions, conventions, planning]
   rules, under `*` at the root and `field.*` nested, as an element of a list is. A key the object requires without
   declaring it is judged too, and a recursion through a map is cut on its values at `x-max-depth`, where an empty map
   passes. Two `allOf` branches that each write a value schema are merged, and `additionalProperties: {}` is read as
-  `true`. What stays reported and not validated, with a finding and a `Partial` from `spec:doctor`: the values beside
-  declared `properties`, and a root map beside a `query` parameter, since the wildcard would judge the declared key or
-  the parameter too. This is a breaking change: a request that answered `200` with a value the schema refuses
-  (`{"draft": 5}` for a string of at most 30 characters) now answers `422` to a client that asks for JSON. Send values
-  the contract describes, or loosen the schema. A root map keyed by IDs (`{"1042": "abc"}` for a map of integers) is
-  judged as any other, on the key itself. The reasoning is in
-  [ADR 0003](./docs/project/decisions/0003-validate-each-value-of-a-map.md).
+  `true`. An object that declares `properties` beside a value schema has the values of its undeclared keys judged too,
+  and a declared key keeps exactly its own rules: the wildcard is written as a rule of the package, `UndeclaredKeys`
+  (`Gcob\LaraSpecFirst\Validation\UndeclaredKeys`, a new class name a generated request imports), that spares the
+  declared names whatever the order of the array. `validated()` now holds those undeclared keys beside the declared
+  ones, and the DTO of such an object still carries the declared properties only, which its file says. What stays
+  reported and not validated, with a finding and a `Partial` from `spec:doctor`: a declared name Laravel cannot tell
+  from an undeclared key (one holding `*`, a `.` Laravel replaces, a form name nested in another such as `page[size]`, a
+  name a body that is JSON and a form reads two ways), an undeclared form key that arrives under a declared name's key
+  (`user_name` beside `user.name`), and a root map beside a `query` parameter, since the wildcard would judge the
+  parameter too. This is a breaking change: a request that answered `200` with a value the schema refuses
+  (`{"draft": 5}` for a string of at most 30 characters, or `{"views": "x"}` beside a declared `locale`) now answers
+  `422` to a client that asks for JSON. Send values the contract describes, or loosen the schema. A root map keyed by
+  IDs (`{"1042": "abc"}` for a map of integers) is judged as any other, on the key itself, and so is a root that
+  declares properties beside a value schema, except under a declared name. A map beside declared keys costs about 7
+  seconds of validation per megabyte of map near 1 MB (0.3 seconds for 10,000 keys), so cap the request body at the web
+  server. The reasoning is in [ADR 0014](./docs/project/decisions/0014-judge-undeclared-keys-by-name.md).
 - **`spec:doctor` no longer reports a map the request validates, so its exit code can drop from `2` to `0`.** A body or
   a property written `additionalProperties: <schema>` was reported `Ignored`, and a document whose only gap was one
   exited `2`. The values are validated now (see the entry above), and `additionalProperties: {}` states nothing, so such
-  a document exits `0`. A map beside declared `properties`, and a root map beside a `query` parameter, are still
-  reported as `Partial` and still exit `2`. This is a breaking change: every move on the exit-code axis is major, in
-  either direction, so a CI step that expected `2` here will see `0`. Update what it expects.
+  a document exits `0`, a map beside declared `properties` included. A declared name the guard cannot spare, and a root
+  map beside a `query` parameter, are still reported as `Partial` and still exit `2`, and so does a schema used in a
+  request and in a response, for the response's own finding that its DTO carries the declared properties only. This is a
+  breaking change: every move on the exit-code axis is major, in either direction, so a CI step that expected `2` here
+  will see `0`. Update what it expects.
 - **A map property is now typed by its values on the input DTO.** An object property that declares no `properties` and
   writes a schema under `additionalProperties` was `array<string, mixed>` with its values as they arrived, and is now
   `array<array-key, T>`, `T` being what the value schema becomes: a map of `$ref` values holds DTO objects, a map of
@@ -252,8 +263,8 @@ tags: [versions, conventions, planning]
   pass only what `create()` accepts. The reasoning is in
   [ADR 0004](./docs/project/decisions/0004-carry-a-map-body-under-additionalproperties.md). This closes the gap the
   `0.2.0` `Known limits` lists for [#109](https://github.com/Gcob/lara-spec-first/issues/109), except the values of a
-  map beside declared `properties` or beside `query` parameters, which are reported and not validated (and typed `mixed`
-  on the DTO of a map body), until [#169](https://github.com/Gcob/lara-spec-first/issues/169).
+  map beside `query` parameters, which are reported and not validated (and typed `mixed` on the DTO of a map body),
+  until [#169](https://github.com/Gcob/lara-spec-first/issues/169).
 - **`spec:doctor` compares a part's `encoding` with the default of the document's own OpenAPI version, so its exit code
   can rise from `0` to `2`.** A `contentType` written under `encoding` on a part the request does not read as a file is
   reported unless it is that part's default, and the default was the union of every version's. Each minor is now read by

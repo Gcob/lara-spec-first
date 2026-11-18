@@ -381,7 +381,19 @@ final readonly class RuleSetBuilder
 
         self::reportCuts($walk);
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames, $walk->arrayKeys);
+        // In the order of the rules, with the steps in order: an inner map records its step before the map around it.
+        $undeclaredKeys = [];
+
+        foreach (array_keys($walk->rules) as $ruleKey) {
+            $ruleKey = (string) $ruleKey;
+
+            if (isset($walk->undeclaredKeys[$ruleKey])) {
+                $undeclaredKeys[$ruleKey] = $walk->undeclaredKeys[$ruleKey];
+                ksort($undeclaredKeys[$ruleKey]);
+            }
+        }
+
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys);
     }
 
     /**
@@ -498,22 +510,167 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * The value schema of an object, whether or not it declares properties: what the undeclared keys are held to.
+     * {@see self::mapValueSchema()} is the narrower question the DTOs ask, which is about an object with none.
+     */
+    private static function undeclaredValueSchema(Schema $schema): ?Schema
+    {
+        return $schema->additionalPropertiesSchema;
+    }
+
+    /**
+     * The names the guard of a map's wildcard spares, beside declared properties: the keys the declared names arrive
+     * under, as strings (a declared `"2024"` is an integer as an array key, and the comparison is strict).
+     *
+     * **Null when a declared name cannot be told from an undeclared key by what Laravel sees**, and then the values
+     * stay reported, with a finding that says why and the doctor's `Partial`:
+     * - a name holding `*`, which has no rule and no name Laravel can match;
+     * - a name holding `.` that is read as JSON, or sits below the top level of any body (a form keeps the dot of a
+     *   name inside brackets): Laravel replaces the dot of a data key with a placeholder it keeps private, so the key
+     *   the guard compares is not the name;
+     * - at the top of a body read only as a form, a name PHP delivers under two steps or more (`page[size]` as
+     *   `page.size`): sparing the head `page` would leave an undeclared scalar `page` unjudged;
+     * - at the top of a body that is JSON and a form at once, a name PHP rewrites: no one rule set can spare both
+     *   readings.
+     *
+     * A form-only root's name PHP delivers under one other name is spared under that name, and an undeclared key that
+     * arrives under it is judged by the declared name's rules, not by the value schema: stated, as unenforced.
+     *
+     * @param  string  $subject  how a finding names the object (`The body`, or the field's label)
+     * @param  string  $label  what the doctor's `unenforced` names it by
+     * @param  bool  $root  whether the object is the body itself
+     * @return list<string>|null
+     */
+    private static function sparedNames(Schema $schema, RuleWalk $walk, string $subject, string $label, bool $root): ?array
+    {
+        $spared = [];
+        $rewritten = [];
+
+        foreach (array_map('strval', array_keys($schema->properties)) as $name) {
+            if (str_contains($name, '*') || (str_contains($name, '.') && (! $root || ! $walk->formBody))) {
+                return self::cannotSpare($walk, $label, sprintf(
+                    '%s declares `%s`, which Laravel cannot tell apart from an undeclared key, so the values of its other '
+                        .'keys are not validated.',
+                    $subject,
+                    $name,
+                ));
+            }
+
+            if (! $root || ! $walk->formBody) {
+                $spared[] = $name;
+
+                continue;
+            }
+
+            $path = self::deliveredPath($name);
+
+            if ($path === null) {
+                continue;
+            }
+
+            if ($walk->mixedBody) {
+                if ($path !== [$name]) {
+                    return self::cannotSpare($walk, $label, sprintf(
+                        '`%1$s` arrives as `%1$s` from a JSON client and as `%2$s` from a form client, and one rule set '
+                            .'can\'t spare both, so the values of this body\'s other keys are not validated.',
+                        $name,
+                        self::pathKey($path),
+                    ));
+                }
+
+                $spared[] = $name;
+
+                continue;
+            }
+
+            if (count($path) > 1) {
+                $head = $path[0];
+
+                return self::cannotSpare($walk, $label, in_array($head, self::declaredNames($schema), true)
+                    ? sprintf(
+                        'A form delivers `%1$s` inside `%2$s`, and the guard can only spare `%2$s` whole, so an undeclared '
+                            .'key under it (`%2$s[evil]`) would not be judged, and the values of this body\'s other keys '
+                            .'are not validated.',
+                        $name,
+                        $head,
+                    )
+                    : sprintf(
+                        'A form delivers `%1$s` inside `%2$s`, so an undeclared `%2$s` can\'t be told apart from it, and the '
+                            .'values of this body\'s other keys are not validated.',
+                        $name,
+                        $head,
+                    ));
+            }
+
+            $spared[] = $path[0];
+
+            if ($path[0] !== $name) {
+                $rewritten[$name] = $path[0];
+            }
+        }
+
+        foreach ($rewritten as $name => $delivered) {
+            $walk->findings[] = sprintf(
+                'A form delivers `%s` as `%s`, so an undeclared `%2$s` is judged by `%1$s`\'s rules, not by the value schema.',
+                $name,
+                $delivered,
+            );
+            $walk->leaveUnenforced('additionalProperties', $label);
+        }
+
+        return array_values(array_unique($spared));
+    }
+
+    /**
+     * Write the finding of a name the guard cannot spare, which leaves the object's value schema unenforced.
+     *
+     * @return null always, so a caller returns what it says
+     */
+    private static function cannotSpare(RuleWalk $walk, string $label, string $finding): null
+    {
+        $walk->findings[] = $finding;
+        $walk->leaveUnenforced('additionalProperties', $label);
+
+        return null;
+    }
+
+    /**
      * The value rules of a map: one wildcard key below the object, `*` at the root and `<key>.*` nested.
      *
      * A value is present by being in the object, as an element is in a list, so it is asked for with no presence. The
      * label reads like the rule key. **Written after every explicit key of the object**, because Laravel merges the
      * wildcard's rules into a key that came before it and replaces what the wildcard merged into one that came after.
      *
+     * **Beside declared properties the wildcard is guarded**: every rule key written under it is recorded with the
+     * names its step must not be, so the declared keys keep exactly their own rules, whatever the order of the rule
+     * array.
+     *
      * @param  string  $prefix  the rule key of the object followed by a dot, or the empty string for the root
+     * @param  list<string>  $spared  the declared names, as strings: a declared `"2024"` is an integer as an array key
      *
      * @throws ConflictingInputException
      */
-    private static function mapValues(RuleWalk $walk, string $prefix, Schema $value): void
+    private static function mapValues(RuleWalk $walk, string $prefix, Schema $value, array $spared = []): void
     {
         $key = $prefix.'*';
         $walk->mapKeys[$key] = true;
 
         self::field($walk, $key, '`'.$key.'`', $value, '');
+
+        if ($spared === []) {
+            return;
+        }
+
+        // The step of the map's `*`: the dots of the prefix that are not the escaped dot of a name.
+        $step = (int) preg_match_all('/(?<!\\\\)\./', $prefix);
+
+        foreach (array_keys($walk->rules) as $ruleKey) {
+            $ruleKey = (string) $ruleKey;
+
+            if ($ruleKey === $key || str_starts_with($ruleKey, $key.'.')) {
+                $walk->undeclaredKeys[$ruleKey][$step] = $spared;
+            }
+        }
     }
 
     /**
@@ -634,9 +791,20 @@ final readonly class RuleSetBuilder
 
         // Why: beside a `query` parameter the wildcard would judge the parameter's key too, so the values are left
         // reported, unless the value schema allows anything and there is nothing to report.
-        $value = self::mapValueSchema($schema);
+        $value = self::undeclaredValueSchema($schema);
         $open = $value !== null && self::allowsAnyValue($value);
         $judged = $value !== null && ! $open && self::validatesRootMapValues($operation);
+        $spared = [];
+        $unsparable = false;
+
+        // Beside declared properties the wildcard is guarded by their names, unless one cannot be told from an
+        // undeclared key, which keeps the values reported with a finding that says why.
+        if ($judged && $schema->properties !== []) {
+            $spared = self::sparedNames($schema, $walk, 'The body', 'The body itself', true);
+            $unsparable = $spared === null;
+            $judged = ! $unsparable;
+            $spared ??= [];
+        }
 
         // The root goes through the same sweep a field does, minus what the
         // object walk below acts on. Without it a keyword written on the
@@ -649,7 +817,7 @@ final readonly class RuleSetBuilder
             $schema,
             [
                 'type', 'properties', 'required', 'dependentRequired', 'additionalProperties', 'allOf',
-                ...($judged || $open ? ['additionalPropertiesSchema'] : []),
+                ...($judged || $open || $unsparable ? ['additionalPropertiesSchema'] : []),
             ],
         );
 
@@ -670,7 +838,14 @@ final readonly class RuleSetBuilder
         self::recordShapes($walk);
 
         if ($judged) {
-            self::mapValues($walk, '', $value);
+            self::mapValues($walk, '', $value, $spared);
+
+            if ($schema->properties !== [] && $walk->formBody) {
+                $walk->information(
+                    'A form delivers an undeclared key PHP rewrites (`a.b` and `a b` as `a_b`) under the rewritten name, so '
+                    .'the value schema judges it under that name, and `validated()` holds it there.',
+                );
+            }
         }
 
         // Why: the keys of a map or an open object are the data, and `validated()` keeps only a key a rule names. A
@@ -1393,6 +1568,7 @@ final readonly class RuleSetBuilder
         $children = null;
         $value = null;
         $judged = false;
+        $spared = [];
 
         $type = $schema->soleType();
 
@@ -1531,8 +1707,14 @@ final readonly class RuleSetBuilder
                     }
                     array_push($handled, 'properties', 'required', 'dependentRequired', 'additionalProperties');
 
-                    $value = self::mapValueSchema($schema);
+                    $value = self::undeclaredValueSchema($schema);
                     $judged = $value !== null && ! self::allowsAnyValue($value);
+
+                    if ($judged && $schema->properties !== []) {
+                        $spared = self::sparedNames($schema, $walk, $label, $label, false);
+                        $judged = $spared !== null;
+                        $spared ??= [];
+                    }
 
                     if ($value !== null) {
                         $handled[] = 'additionalPropertiesSchema';
@@ -1602,7 +1784,7 @@ final readonly class RuleSetBuilder
 
             if ($judged) {
                 assert($value instanceof Schema);
-                self::mapValues($walk, $key.'.', $value);
+                self::mapValues($walk, $key.'.', $value, $spared);
             }
         }
 

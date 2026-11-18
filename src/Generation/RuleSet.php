@@ -90,6 +90,17 @@ final readonly class RuleSet
      *                                     array a form builds for the names below is theirs, never the property's
      * @param  bool  $mapRoot  whether the body is an object with no declared property, a map or an open object, so its
      *                         keys are all undeclared: `dto()` hands the DTO every body key and no `query` key
+     * @param  array<string, array<int, list<string>>>  $undeclaredKeys  the rule keys written under the wildcard of a
+     *                                                                   map that sits beside declared properties, each
+     *                                                                   by the names a step of the key must not be for
+     *                                                                   the value rules to apply (`meta.*` =>
+     *                                                                   `[1 => ['id']]`: its second step is not `id`).
+     *                                                                   The declared keys keep their own rules and only
+     *                                                                   the undeclared ones get the value schema's. The
+     *                                                                   emitter writes each as the key's value, an
+     *                                                                   `UndeclaredKeys` around the rules, and the
+     *                                                                   names are strings: a declared `"2024"` is an
+     *                                                                   integer as an array key
      */
     public function __construct(
         public array $rules = [],
@@ -114,6 +125,7 @@ final readonly class RuleSet
         public array $information = [],
         public array $scalarNames = [],
         public array $arrayKeys = [],
+        public array $undeclaredKeys = [],
     ) {}
 
     /**
@@ -165,6 +177,15 @@ final readonly class RuleSet
         }
 
         return false;
+    }
+
+    /**
+     * Whether any rule key is guarded by the names it spares, which is what decides whether the emitted file imports
+     * `UndeclaredKeys`.
+     */
+    public function usesUndeclaredKeys(): bool
+    {
+        return $this->undeclaredKeys !== [];
     }
 
     public function isEmpty(): bool

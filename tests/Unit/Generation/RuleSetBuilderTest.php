@@ -1236,18 +1236,67 @@ it('says nothing about a nested object that allows undeclared fields', function 
     expect(implode('', $set->findings))->not->toContain('additionalProperties');
 });
 
-// A value schema is a constraint on every key the object has, and no rule carries it yet: the object with `properties`
-// and a value schema is reported, at the root and nested, and the doctor's data names the keyword as the author wrote it.
-it('reports an additionalProperties schema no rule carries', function (bool $nested): void {
+// A value schema is a constraint on every key the object does not declare. Beside declared properties the wildcard that
+// carries it is guarded by the declared names, so a declared key keeps exactly its own rules (measured on Laravel's
+// validator): the guard is recorded for every rule key written under the wildcard, with the step of the map's `*`.
+it('judges a map\'s values beside declared properties, and spares the declared keys', function (bool $nested): void {
     $map = new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
-    $body = $nested ? objectSchema(['meta' => $map]) : $map;
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body]));
-    $label = $nested ? '`meta`' : 'The body itself';
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
+    $wildcard = $nested ? 'meta.*' : '*';
 
-    expect(array_keys($set->unenforced))->toBe(['additionalProperties'])
-        ->and(implode("\n", $set->findings))->toContain($label.' states `additionalProperties`, which nothing in this rule set enforces.')
-        ->and(implode("\n", $set->findings))->not->toContain('additionalPropertiesSchema');
+    expect($set->rules[$nested ? 'meta.id' : 'id'])->toBe(['sometimes', 'integer:strict'])
+        ->and($set->rules[$wildcard])->toBe(['string'])
+        ->and($set->undeclaredKeys)->toBe([$wildcard => [$nested ? 1 : 0 => ['id']]])
+        ->and($set->unenforced)->toBe([])
+        ->and(implode("\n", $set->findings))->not->toContain('additionalProperties');
 })->with(['at the root' => [false], 'nested' => [true]]);
+
+// Every rule key written under the wildcard is guarded, so a value's own children never reach a declared key either; a
+// value that is a map itself adds its own step to the same guard, and the step counts unescaped dots only.
+it('guards every rule key under the wildcard of a map beside declared properties', function (Schema $body, array $expected): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body]));
+
+    expect($set->undeclaredKeys)->toBe($expected);
+})->with(function (): Generator {
+    $string = new Schema(types: [SchemaType::String]);
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $beside = static fn (Schema $value, string $declared = 'id'): Schema => new Schema(
+        types: [SchemaType::Object],
+        properties: [$declared => $string],
+        additionalPropertiesSchema: $value,
+    );
+
+    yield 'a value schema of objects' => [
+        objectSchema(['meta' => $beside(objectSchema(['n' => $integer], ['n']))]),
+        ['meta.*' => [1 => ['id']], 'meta.*.n' => [1 => ['id']]],
+    ];
+    yield 'a value schema of lists' => [
+        objectSchema(['meta' => $beside(new Schema(types: [SchemaType::Array], items: $integer))]),
+        ['meta.*' => [1 => ['id']], 'meta.*.*' => [1 => ['id']]],
+    ];
+    yield 'under a list' => [
+        objectSchema(['items' => new Schema(types: [SchemaType::Array], items: objectSchema(['meta' => $beside($integer)]))]),
+        ['items.*.meta.*' => [3 => ['id']]],
+    ];
+    // The dot of the escaped name is not a step: the map's `*` is the second.
+    yield 'under an escaped prefix' => [
+        objectSchema(['a.b' => $beside($integer, 'c')]),
+        ['a\\.b.*' => [1 => ['c']]],
+    ];
+    yield 'a value that is a map itself' => [
+        objectSchema(['meta' => $beside($beside($integer, 'n'))]),
+        ['meta.*' => [1 => ['id']], 'meta.*.n' => [1 => ['id']], 'meta.*.*' => [1 => ['id'], 2 => ['n']]],
+    ];
+    // PHP turns a declared `"2024"` into an integer as an array key, and a spared integer would not spare the string.
+    yield 'a declared integer-like name' => [
+        objectSchema(['meta' => $beside($integer, '2024')]),
+        ['meta.*' => [1 => ['2024']]],
+    ];
+    yield 'a map without properties' => [
+        objectSchema(['meta' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer)]),
+        [],
+    ];
+});
 
 // Where no sweep runs, the schema is still reported: the doctor reported it `Ignored` before it was read, and reading it
 // must not make it quieter. A root that is not an object, and a `query` parameter typed `object` or `array`, are the two
@@ -1304,24 +1353,105 @@ it('reads an empty additionalProperties schema as an open object', function (Sch
     }
 });
 
-// The wildcard reaches every key at its level, declared or not (measured on Laravel's validator), so beside declared
-// properties it would judge them by the value schema too. That is a different answer from the contract's, so the values
-// are reported instead and the declared property keeps exactly its own rules.
-it('leaves the values of a map unvalidated beside declared properties', function (bool $nested): void {
+// The guard does not change what a declared key says, and the names it does not spare are the contract's: an undeclared
+// required name is still asked for and judged by the wildcard, an empty value schema is an open object, and a name the
+// guard cannot spare keeps the report.
+it('keeps asking for a required name the properties do not declare, and judges its value by the wildcard', function (): void {
     $map = new Schema(
         types: [SchemaType::Object],
         properties: ['id' => new Schema(types: [SchemaType::Integer])],
+        required: ['x'],
         additionalPropertiesSchema: new Schema(types: [SchemaType::String]),
     );
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $map]));
+
+    expect($set->rules['x'])->toBe(['present'])
+        ->and($set->undeclaredKeys)->toBe(['*' => [0 => ['id']]])
+        ->and(implode("\n", $set->findings))->not->toContain('says nothing about the value');
+});
+
+it('reads an empty value schema beside declared properties as an open object', function (bool $nested): void {
+    $map = new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema);
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
-    $label = $nested ? '`meta`' : 'The body itself';
 
     expect(array_keys($set->rules))->toBe($nested ? ['meta', 'meta.id'] : ['id'])
-        ->and($set->rules[$nested ? 'meta.id' : 'id'])->toBe(['sometimes', 'integer:strict'])
-        ->and(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'additionalProperties'))))
-        ->toBe([$label.' states `additionalProperties`, which nothing in this rule set enforces.'])
-        ->and($set->unenforced)->toBe(['additionalProperties' => [$label]]);
+        ->and($set->undeclaredKeys)->toBe([])
+        ->and($set->unenforced)->toBe([])
+        ->and(implode("\n", $set->findings))->not->toContain('additionalProperties');
 })->with(['at the root' => [false], 'nested' => [true]]);
+
+// Laravel replaces a `.` in a data key with a private placeholder and has no name for a `*`, so a declared name holding
+// one cannot be told from an undeclared key by name: the values keep the report, each reason in its own words, the
+// doctor's data names the keyword, and no value rule is written.
+it('keeps reporting the values of a map beside a declared name the guard cannot spare', function (string $where, array $media, array $properties, string $sentence): void {
+    assert(array_is_list($media));
+    $map = new Schema(types: [SchemaType::Object], properties: $properties, additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]));
+    $nested = $where === 'nested';
+    $content = array_fill_keys($media, $nested ? objectSchema(['meta' => $map]) : $map);
+    $set = RuleSetBuilder::for(operationWithInput(content: $content));
+    $label = $nested ? '`meta`' : 'The body itself';
+
+    expect(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'other keys are not validated'))))
+        ->toBe([str_replace('{body}', $nested ? '`meta`' : 'The body', $sentence)])
+        ->and($set->unenforced)->toBe(['additionalProperties' => [$label]])
+        ->and($set->undeclaredKeys)->toBe([])
+        ->and(array_key_exists($nested ? 'meta.*' : '*', $set->rules))->toBeFalse()
+        ->and(implode("\n", $set->findings))->not->toContain('states `additionalProperties`');
+})->with(function (): Generator {
+    $string = new Schema(types: [SchemaType::String]);
+    $json = ['application/json'];
+    $dotted = '{body} declares `a.b`, which Laravel cannot tell apart from an undeclared key, so the values of its other keys are not validated.';
+    $star = '{body} declares `x*y`, which Laravel cannot tell apart from an undeclared key, so the values of its other keys are not validated.';
+
+    yield 'a dotted name, JSON, at the root' => ['root', $json, ['a.b' => $string], $dotted];
+    yield 'a dotted name, JSON, nested' => ['nested', $json, ['a.b' => $string], $dotted];
+    yield 'a name holding a star, at the root' => ['root', $json, ['x*y' => $string], $star];
+    yield 'a name holding a star, nested' => ['nested', $json, ['x*y' => $string], $star];
+    // A form keeps the dot of a name inside brackets, and Laravel replaces it there.
+    yield 'a dotted name nested in a form body' => ['nested', ['application/x-www-form-urlencoded'], ['a.b' => $string], $dotted];
+    yield 'a name PHP delivers inside another, its head undeclared' => ['root', ['application/x-www-form-urlencoded'], ['page[size]' => $string],
+        'A form delivers `page[size]` inside `page`, so an undeclared `page` can\'t be told apart from it, and the values of this body\'s other keys are not validated.'];
+    yield 'a name PHP delivers inside another, its head declared too' => ['root', ['multipart/form-data'], ['page' => $string, 'page[size]' => $string],
+        'A form delivers `page[size]` inside `page`, and the guard can only spare `page` whole, so an undeclared key under it (`page[evil]`) would not be judged, and the values of this body\'s other keys are not validated.'];
+    yield 'a name a JSON and form body reads two ways' => ['root', ['application/json', 'application/x-www-form-urlencoded'], ['user.name' => $string],
+        '`user.name` arrives as `user.name` from a JSON client and as `user_name` from a form client, and one rule set can\'t spare both, so the values of this body\'s other keys are not validated.'];
+});
+
+// A form-only root's name PHP delivers under one other name is spared under that name, so every other key is judged. An
+// undeclared key that arrives under the same name is judged by the declared one's rules only, which is a constraint the
+// value schema asked and the request drops: stated as unenforced, not as information.
+it('spares the name a form delivers a declared name as, and says an undeclared key under it is not judged by the value schema', function (): void {
+    $map = new Schema(
+        types: [SchemaType::Object],
+        properties: ['user.name' => new Schema(types: [SchemaType::String])],
+        additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
+    );
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => $map]));
+    $stated = 'A form delivers `user.name` as `user_name`, so an undeclared `user_name` is judged by `user.name`\'s rules, not by the value schema.';
+
+    expect($set->undeclaredKeys)->toBe(['*' => [0 => ['user_name']]])
+        ->and($set->findings)->toContain($stated)
+        ->and($set->information)->not->toContain($stated)
+        ->and($set->unenforced)->toBe(['additionalProperties' => ['The body itself']])
+        ->and($set->leavesUnenforced())->toBeTrue();
+});
+
+// An undeclared key PHP rewrites reaches the value schema under its new name: no constraint is lost, so it is
+// information. A name that arrives under none needs no sparing and no fallback.
+it('says an undeclared key a form rewrites is judged under its new name beside declared properties', function (array $media, int $informs): void {
+    assert(array_is_list($media));
+    $map = new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $map)));
+    $named = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'PHP rewrites')));
+
+    expect($named)->toHaveCount($informs)
+        ->and(array_values(array_intersect($named, $set->information)))->toBe($named)
+        ->and($set->unenforced)->toBe([]);
+})->with([
+    'form-encoded' => [['application/x-www-form-urlencoded'], 1],
+    'JSON and a form' => [['application/json', 'application/x-www-form-urlencoded'], 1],
+    'JSON only' => [['application/json'], 0],
+]);
 
 // A query parameter shares the validated data with the body, so a wildcard at the body's root would judge the query's
 // keys by the map's value schema too. The root map's values are reported there; a nested map is not at risk, since its
@@ -1386,7 +1516,10 @@ it('keeps the findings that lose no constraint out of the unenforced warning', f
         'an open object beside a query parameter' => [['application/json' => new Schema(types: [SchemaType::Object])], $page, true, false],
         // Beside a query parameter the values are not validated, which is a constraint left unenforced.
         'a map beside a query parameter' => [['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integers)], $page, true, true],
-        'a map beside properties' => [['application/json' => new Schema(types: [SchemaType::Object], properties: ['id' => $integers], additionalPropertiesSchema: $integers)], [], false, true],
+        // The guard judges the values beside declared properties, so nothing is left unenforced there.
+        'a map beside properties' => [['application/json' => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]))], [], false, false],
+        // A name the guard cannot spare keeps the values reported.
+        'a map beside a name the guard cannot spare' => [['application/json' => new Schema(types: [SchemaType::Object], properties: ['a.b' => $integers], additionalPropertiesSchema: $integers)], [], false, true],
     ];
 });
 

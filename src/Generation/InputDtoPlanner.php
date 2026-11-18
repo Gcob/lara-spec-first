@@ -441,6 +441,18 @@ final class InputDtoPlanner extends DtoPlanner
             $properties[] = $this->payloadProperty($shortName, $merged, $position, $base);
         }
 
+        // Why: the request judges the keys the object does not declare, and this type carries only the declared ones. The
+        // response side writes the same finding for the same shape, in the planner both sides share.
+        if (
+            $merged->properties !== []
+            && $merged->additionalPropertiesSchema !== null
+            && ! RuleSetBuilder::allowsAnyValue($merged->additionalPropertiesSchema)
+        ) {
+            $this->registry[$shortName]['findings'][] = '`additionalProperties` types the values of the keys that are not declared, '
+                .'but this type carries only the declared properties, so those values are not read here, though the request '
+                .'may validate them and `validated()` holds them.';
+        }
+
         $this->registry[$shortName]['properties'] = $properties;
 
         return $shortName;

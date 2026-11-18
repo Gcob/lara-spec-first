@@ -72,7 +72,7 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children    | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for                                   |
 | `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                             | A `query` name PHP appends to (`ids[]`) or delivers under no name, or under a key the body arrives under                |
 | A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)         | A form client's value for a top-level name PHP rewrites, in a body that is JSON too                                     |
-| [A map's values](#a-maps-values-are-validated-one-by-one), each by its `additionalProperties` schema          | A map's values beside declared `properties`, or at the root beside a `query` parameter                                  |
+| [A map's values](#a-maps-values-are-validated-one-by-one), each by its `additionalProperties` schema          | A map's values beside a declared name the guard cannot spare, or at the root beside a `query` parameter                 |
 | A form name beside the names a form nests under it, [judged by shape](#one-rule-set-body-and-query)           | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
 |                                                                                                               | A JSON client's array under a name a body that is JSON and a form judges by shape (`{"page": [1]}`)                     |
 |                                                                                                               | A bound on a field that states no single type                                                                           |
@@ -611,11 +611,11 @@ keeps `present`, as before. Optional bodies do not get it: [their caveat](#patch
 ## Nothing rewrites the rule set
 
 **`rules()` is what the contract produced, and no trait, parent class or hook is allowed to change it.** It is the same
-array for every request, except a root map's, which adds the integer-like keys the request carries
-([below](#a-map-or-open-object-body-is-carried-whole)). The only other thing that moves it is the contract moving and
-the build running again. A root map's added keys are no exception to what follows: the file writes its rules once, under
-`*`, and a generated helper repeats them under each integer-like key the request carries, so the file still shows every
-rule.
+array for every request, except a root map's, or a root that declares properties beside a value schema, which adds the
+integer-like keys the request carries ([below](#a-map-or-open-object-body-is-carried-whole)). The only other thing that
+moves it is the contract moving and the build running again. A root map's added keys are no exception to what follows:
+the file writes its rules once, under `*`, and a generated helper repeats them under each integer-like key the request
+carries, so the file still shows every rule.
 
 Three properties rest on that, and each one goes the moment a rule set carries a rule the file does not show:
 
@@ -849,7 +849,7 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 | `uniqueItems: true`              | `distinct:strict` on `field.*` when the elements are a typed scalar that may not be null, in an array that is not itself an element. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through |
 | `properties`                     | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                     |
 | `additionalProperties: false`    | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                        |
-| `additionalProperties: <schema>` | Each value, under `*` at the root or `field.*` nested, when the object declares no `properties`: [a map's values](#a-maps-values-are-validated-one-by-one)                                                                                                                                           |
+| `additionalProperties: <schema>` | Each value of an undeclared key, under `*` at the root or `field.*` nested: [a map's values](#a-maps-values-are-validated-one-by-one)                                                                                                                                                                |
 | `required` on a nested object    | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                |
 | `dependentRequired`              | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                |
 | `allOf`                          | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                |
@@ -953,7 +953,8 @@ that is JSON and nothing else gets the `:strict` form of its rule, at every leve
   below its depth, and a body with `properties` and no `type` refusing a JSON root that is not an object.
 - **A finding that loses no constraint is not a gap either,** and is left out of the warning the same way. Two kinds
   exist: a body key of a map that is also the name of a `query` parameter (read from the query string, so the body's is
-  left out), and a key a form delivers under a rewritten name (`a.b` as `a_b`) in a map body.
+  left out), and an undeclared key a form delivers under a rewritten name (`a.b` as `a_b`) in a map body, or in a body
+  that declares properties beside a value schema, where the value schema judges it under its new name.
 - **A query parameter and a form or multipart field keep the loose rules**, since every value they carry is text.
 - **A form client of an operation that declares only JSON gets the JSON rules.** `age=30` from an HTML form is a 422
   there, where it was a 200: the contract declares no form, so that client is off-contract, and `rules()` is one array.
@@ -968,11 +969,11 @@ that is JSON and nothing else gets the `:strict` form of its rule, at every leve
 
 ### A map's values are validated one by one
 
-**An object that declares no `properties` and writes a schema under `additionalProperties` is a map, and each of its
-values is judged by that schema's own rules.** The rules sit under one wildcard key, written after the object's own
-keys: `*` for a body that is a map, `labels.*` for a property. A value is present by being in the object, so the rule
-carries no presence, as an element of a list carries none. The reasoning is in
-[ADR 0003](../../project/decisions/0003-validate-each-value-of-a-map.md).
+**An object that writes a schema under `additionalProperties` has each value of a key it does not declare judged by that
+schema's own rules.** The rules sit under one wildcard key, written after the object's own keys: `*` for a body that is
+a map, `labels.*` for a property. A value is present by being in the object, so the rule carries no presence, as an
+element of a list carries none. The reasoning is in
+[ADR 0014](../../project/decisions/0014-judge-undeclared-keys-by-name.md).
 
 ```yaml
 # workbench/openapi.yaml, the body of `PUT /posts/{postId}/labels`
@@ -993,11 +994,71 @@ keeps `present` for `a`, the wildcard adds the value's rules to it, and the find
 about the value" is not written there. **An empty value schema (`additionalProperties: {}`) is an open object**, as
 `true` is: no rule and no finding. A key with a dot in it is the key as sent, never a path.
 
-**Where a wildcard would judge more than the values, they are reported and not validated.** The wildcard reaches every
-key at its level, so beside a declared property (`id` and a value schema) it would hold `id` to the value schema, and a
-root map beside a `query` parameter would hold the parameter's key to it. In both, one finding names
-`additionalProperties`, `spec:doctor` reports it as `Partial`, and the declared property keeps exactly its own rules. A
-map nested in an operation that has a `query` parameter is validated.
+**Beside declared `properties`, a guard spares the declared names.** A plain wildcard reaches every key at its level, so
+`id` beside a value schema would be held to it too. The generated request writes the wildcard as a rule of the package,
+`UndeclaredKeys`, that gives a key no rule when its name is one the object declares:
+
+```yaml
+# workbench/openapi.yaml, the body of `PUT /posts/{postId}/metadata`
+type: object
+properties:
+    locale: { type: string, maxLength: 5 }
+additionalProperties: { type: integer }
+```
+
+```php
+// app/Http/Generated/Requests/ReplacePostMetadataRequest.php
+'locale' => ['sometimes', 'string', 'max:5'],
+'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),
+```
+
+`Gcob\LaraSpecFirst\Validation\UndeclaredKeys` is public API, imported by the generated request, so its name is frozen
+with the rest of what a generated file names. `{"locale": "toolong"}` answers on `locale` alone, with `max:5`'s message
+and never `integer`'s, and `{"views": "x"}` answers on `views`. The declared key keeps exactly its own rules whatever
+the order of the array. Every rule key under the wildcard is guarded the same way (`meta.*`, and `meta.*.n` for an
+object value), so a value's own children never reach a declared key either, and a value that is a map itself adds its
+own names to the guard of the keys below it. A map with no declared property keeps the plain wildcard above.
+
+**The guard reads the key's names and never the data.** Laravel's `Rule::forEach` does the same job and takes 22 seconds
+for a map of 10,000 values, since it hands every key the whole data to undot. `UndeclaredKeys` takes 0.3 seconds for the
+same map. It is quadratic as well, in Laravel's own expansion of a compiled rule under a wildcard: a map beside declared
+keys costs about 7 seconds of validation per megabyte of map near 1 MB, and more than that past it. **Cap the request
+body at the web server** (nginx's default `client_max_body_size` is 1 MB; PHP's `post_max_size` does not bound a JSON
+body in time). A plain wildcard, a map with no declared key, stays linear.
+
+**`validated()` holds the undeclared keys the guard judges, and `dto()` does not.** For `{"locale": "fr", "views": 3}`,
+`validated()` is both keys, where the DTO of an object that declares properties carries `locale` only, and its file says
+the values of the other keys are not read there.
+
+**A root that declares properties beside a value schema keeps an integer-like key too.** Laravel renumbers a key such as
+`"1042"` when it expands `*`, so the generated `rules()` repeats the guarded rules under each such key the request
+carries, as it does for a map root, except under a declared name: copying over a declared `"2024"` would give it the
+value schema's rules in place of its own.
+
+**A declared name the guard cannot spare keeps the report.** Laravel replaces a `.` in a data key with a placeholder it
+keeps private, and has no name for a `*`, so for these names the guard cannot tell a declared key from an undeclared
+one. The values then stay reported and not validated: one finding says why, `spec:doctor` reports it as `Partial`, and
+no value rule is written. Five cases, each with its own finding:
+
+- **A name holding `*`:** "`meta` declares `x*y`, which Laravel cannot tell apart from an undeclared key, so the values
+  of its other keys are not validated."
+- **A name holding `.`,** read as JSON, or below the top level of any body (a form keeps the dot of a name inside
+  brackets, `address[a.b]`): the same sentence, naming that name.
+- **A form name nested in another at the top of a body** (`page[size]`, which PHP delivers as `page.size`): sparing
+  `page` would leave an undeclared scalar `page` unjudged. The finding says "A form delivers `page[size]` inside `page`,
+  so an undeclared `page` can't be told apart from it", and with `page` declared too, that "the guard can only spare
+  `page` whole".
+- **A name a body that is JSON and a form reads two ways** (`user.name`, which a JSON client sends as `user.name` and a
+  form client as `user_name`): one rule set can't spare both.
+- **An undeclared form key that arrives under a declared name's key.** `user.name` in a form body arrives as
+  `user_name`, so the guard spares `user_name` and every other key is judged. A literal undeclared `user_name` arrives
+  under the same key and is judged by `user.name`'s rules only, which is a gap the finding states ("an undeclared
+  `user_name` is judged by `user.name`'s rules, not by the value schema") and `spec:doctor` reports as `Partial`. No
+  public Laravel API gives a rule the original key, and PHP merges the two names itself, so nothing can close it today.
+
+**A root map beside a `query` parameter is reported and not validated.** The wildcard would hold the parameter's key to
+the value schema, so one finding names `additionalProperties` and `spec:doctor` reports it as `Partial`. A map nested in
+an operation that has a `query` parameter is validated.
 
 **Two branches of an `allOf` that each write a value schema are merged exactly:** the values must satisfy both, and a
 value schema written by one branch also holds for the properties the other branch declares. A contradiction is refused,

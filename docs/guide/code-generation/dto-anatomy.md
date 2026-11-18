@@ -290,7 +290,9 @@ value. `from()` and `toArray()` convert each value the way they convert an eleme
 `array_values()`, since the keys are the data. The key type is `array-key` because PHP turns a key such as `"2024"` into
 the integer `2024` when it reads the JSON, so a map of integers can arrive with an `int` key. A map that writes no value
 schema, or `additionalProperties: {}`, is `array<array-key, mixed>`: the request judges nothing about its values. An
-object that declares `properties` is a DTO of its own and carries only those.
+object that declares `properties` is a DTO of its own and carries only those, beside a value schema too: the request
+validates the values of its other keys and `validated()` holds them, but the DTO does not carry them, and the class's
+findings say so.
 
 **A response map is typed the same way, and it is written back as a JSON object.** The same schema gives
 `array<array-key, PetDto>` on a response, with `PetDto` where the request has `PetInputDto`, each value built through
