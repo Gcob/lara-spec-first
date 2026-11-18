@@ -281,8 +281,9 @@ it('reports a missing specification the way the build does', function (): void {
  * A specification of the `paths` given, under the temporary root and made the configured one.
  *
  * @param  string  $paths  the body of the `paths:` mapping, indented by four spaces
+ * @param  string  $schemas  the body of `components.schemas`, indented by eight spaces, or nothing
  */
-function specificationOf(string $paths): string
+function specificationOf(string $paths, string $schemas = ''): string
 {
     $path = scaffoldRoot().'/openapi.yaml';
 
@@ -293,7 +294,7 @@ function specificationOf(string $paths): string
             version: 1.0.0
         paths:
         {$paths}
-        YAML);
+        YAML.($schemas === '' ? '' : "\ncomponents:\n    schemas:\n".$schemas));
 
     config()->set('lara-spec-first.spec.path', $path);
 
@@ -438,6 +439,77 @@ it('refuses before writing a child when the build would refuse the document', fu
             YAML,
         'createThing',
         'both as a property of its request body',
+    ],
+]);
+
+// `0.2.0` read no response, and the build now gives a response schema with a fault of its own no DTO instead of refusing
+// the document, so the command that scaffolds from it goes on.
+it('scaffolds a document whose response cannot be typed', function (string $paths, string $schemas): void {
+    specificationOf($paths, $schemas);
+
+    $output = make(['operation' => 'showThing'], 0);
+
+    expect($output)->toContain('Created')
+        ->and(scaffoldedFiles())->toBe(['ThingController.php'])
+        ->and(is_file(scaffoldGeneratedTree().'/Controllers/ThingController.php'))->toBeTrue();
+})->with([
+    'two keys deriving one property' => [
+        <<<'YAML'
+                /things:
+                    get:
+                        operationId: showThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '200':
+                                description: A thing
+                                content:
+                                    application/json:
+                                        schema:
+                                            type: object
+                                            properties:
+                                                user-id: { type: string }
+                                                user_id: { type: integer }
+            YAML,
+        '',
+    ],
+    'allOf branches that disagree' => [
+        <<<'YAML'
+                /things:
+                    get:
+                        operationId: showThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '200':
+                                description: A thing
+                                content:
+                                    application/json:
+                                        schema:
+                                            allOf:
+                                                - { type: object, properties: { id: { type: integer } } }
+                                                - { type: object, properties: { id: { type: string } } }
+            YAML,
+        '',
+    ],
+    'a name that leaves no class name' => [
+        <<<'YAML'
+                /things:
+                    get:
+                        operationId: showThing
+                        x-controller: LsfMake\Http\Controllers\ThingController
+                        responses:
+                            '200':
+                                description: A thing
+                                content:
+                                    application/json:
+                                        schema:
+                                            $ref: '#/components/schemas/123'
+            YAML,
+        <<<'YAML'
+                    '123':
+                        type: object
+                        properties:
+                            value: { type: string }
+            YAML,
     ],
 ]);
 

@@ -77,13 +77,29 @@ The `200` response is a list of `UserDto`, in `Data/UserDto.php`.
 The `204` response has no DTO: it declares no body.
 ```
 
-The reasons a status has none are no body, no JSON media type, two JSON media types with different schemas, and a body
-that is not an object or a list of objects. None of them refuses the build. **A response schema that also allows
-`null`**, `type: [object, 'null']`, still gets the DTO of the object, and the controller's sentence for that status ends
-"or `null`, which no DTO holds". The DTO does not say so itself, since one DTO serves every operation that returns the
-schema and not all of them may answer `null`. A list of lists is said as one ("a list of lists of `UserDto`"), and a
-list whose items may be `null` says "where an item may be `null`" rather than "or `null`", which is only said of the
-body.
+The reasons a status has none are no body, no JSON media type, two JSON media types with different schemas, a body that
+is not an object or a list of objects, and a schema with a fault of its own (below). None of them refuses the build. **A
+response schema that also allows `null`**, `type: [object, 'null']`, still gets the DTO of the object, and the
+controller's sentence for that status ends "or `null`, which no DTO holds". The DTO does not say so itself, since one
+DTO serves every operation that returns the schema and not all of them may answer `null`. A list of lists is said as one
+("a list of lists of `UserDto`"), and a list whose items may be `null` says "where an item may be `null`" rather than
+"or `null`", which is only said of the body.
+
+**A schema with a fault of its own has no DTO, and says what to change.** Three faults are refused in a request and cost
+a response its type only: a schema name that leaves no class name, two keys that derive one property name, and `allOf`
+branches that disagree. The status says which, and how to fix it:
+
+```text
+The `200` response has no DTO: its keys `user-id` and `user_id` both derive the property `$user_id`. Rename one of them.
+The `200` response has no DTO: its `allOf` branches disagree at `id`: one branch is `integer` and another is `string`. Make them agree.
+The `200` response has no DTO: the schema name `123` leaves no class name. Rename it to start with a letter or an underscore.
+```
+
+A property whose schema has the fault is `mixed` (`Optional|mixed` when optional) in the DTO that holds it, and that
+DTO's findings carry the same reason after "`address` is `mixed`:". Its other properties keep their types. **The value
+that cannot be typed is the one that is `mixed`**, so a list whose items disagree is `list<mixed>`, and a map whose
+values disagree is a map of `mixed`. `spec:build`, `spec:doctor` and `spec:make` go on as `0.2.0` did, which read no
+response: the fix is in the contract, and the generated file says where.
 
 **`routeAction` still returns `mixed`.** The controller's findings say so beside those sentences: the types named there
 are what a response is, and what `routeAction` is typed to return is a later change. Nothing yet makes a controller
@@ -92,7 +108,7 @@ return the DTO.
 **What the DTO is for is the contract reaching the code that reads a response.** A response property the contract
 removes is a changed constructor, so code that reads it fails static analysis, and a test runs PHPStan over such a
 reader to prove it. The reasoning for the choices above is in
-[ADR 0011](../../project/decisions/0011-mirror-a-response-schema-in-its-dto.md).
+[ADR 0013](../../project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md).
 
 ## Factories carry the behavior
 

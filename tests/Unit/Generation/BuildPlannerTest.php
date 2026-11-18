@@ -7,9 +7,12 @@ use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
+use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnroutablePathException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
@@ -336,3 +339,128 @@ it('builds a contract with two JSON schemas under one status and says so in the 
         ->toContain('The `200` response has no DTO: it declares two JSON media types with different schemas')
         ->toContain('The `422` response is `ProblemDto`');
 });
+
+/**
+ * The relative paths of every file a plan writes.
+ *
+ * @return list<string>
+ */
+function plannedPaths(BuildPlan $plan): array
+{
+    return array_map(static fn (GeneratedFile $file): string => $file->relativePath, $plan->files);
+}
+
+/**
+ * What one generated controller says, its docblock lines joined the way a reader reads them.
+ */
+function controllerSays(BuildPlan $plan, string $name): string
+{
+    $controller = collect($plan->files)
+        ->first(static fn (GeneratedFile $file): bool => $file->relativePath === 'Controllers/'.$name.'Controller.php');
+
+    assert($controller instanceof GeneratedFile);
+
+    return (string) preg_replace('/\s*\n \*\s+/', ' ', $controller->contents);
+}
+
+/*
+ * A response schema with a fault of its own has no DTO, and the build goes on: the status that would have used it says
+ * why in the controller. Only the contract's own faults count, and 0.2.0 built every one of these documents.
+ */
+
+it('gives no DTO to a response schema whose keys derive one property', function (): void {
+    $plan = planner()->plan(extractFixture('response-keys-collide.yaml'));
+
+    expect(plannedPaths($plan))->not->toContain('Data/ListUsers200ResponseDto.php')
+        ->and(controllerSays($plan, 'ListUsers'))
+        ->toContain('The `200` response has no DTO: its keys `user-id` and `user_id` both derive the property `$user_id`')
+        // A `writeOnly` key is never sent, so the other key does not clash with it.
+        ->and(plannedPaths($plan))->toContain('Data/ListMembers200ResponseDto.php')
+        ->and(controllerSays($plan, 'ListMembers'))->toContain('The `200` response is `ListMembers200ResponseDto`');
+});
+
+it('gives no DTO to a response schema whose allOf branches disagree', function (): void {
+    $plan = planner()->plan(extractFixture('response-allof-disagrees.yaml'));
+
+    // The 3.1 `$ref` with a sibling `properties` meets its branches in the other order.
+    foreach (['ShowThing' => 'integer` and another is `string', 'ShowSibling' => 'string` and another is `integer'] as $controller => $branches) {
+        $says = controllerSays($plan, $controller);
+
+        expect($says)->toContain('The `200` response has no DTO: its `allOf` branches disagree at `id`: one branch is `'.$branches.'`')
+            ->and($says)->not->toContain('rule set')
+            ->and($says)->not->toContain('will not choose');
+    }
+
+    expect(array_filter(plannedPaths($plan), static fn (string $path): bool => str_starts_with($path, 'Data/')))->toBe([]);
+});
+
+it('gives no DTO to a response schema whose name leaves no class name', function (): void {
+    $plan = planner()->plan(extractFixture('response-name-unusable.yaml'));
+
+    expect(controllerSays($plan, 'ShowCode'))
+        ->toContain('The `200` response has no DTO: the schema name `123` leaves no class name')
+        // `456` would be a DTO and its name is no class name: that is what is said first, ahead of its branches.
+        ->and(controllerSays($plan, 'ShowOther'))
+        ->toContain('The `200` response has no DTO: the schema name `456` leaves no class name')
+        ->and(array_filter(plannedPaths($plan), static fn (string $path): bool => str_starts_with($path, 'Data/')))->toBe([]);
+
+    expect(controllerSays($plan, 'ShowOther'))->not->toContain('`allOf`');
+});
+
+it('types mixed a response value whose schema cannot be typed and keeps the others, in the file the build writes', function (): void {
+    $plan = planner()->plan(extractFixture('response-property-gives-way.yaml'));
+    $file = collect($plan->files)
+        ->first(static fn (GeneratedFile $file): bool => $file->relativePath === 'Data/TeamDto.php');
+
+    assert($file instanceof GeneratedFile);
+
+    expect(plannedPaths($plan))->not->toContain('Data/TeamOwnerDto.php')
+        ->and($file->contents)->toContain('public string $name')
+        ->and($file->contents)->toContain('public int $id')
+        ->and($file->contents)->toContain('@param  Optional|mixed  $owner')
+        ->and($file->contents)->toContain('public mixed $owner = new Optional')
+        ->and((string) preg_replace('/\s*\n \*\s+/', ' ', $file->contents))
+        ->toContain('`owner` is `mixed`: its keys `user-id` and `user_id` both derive the property `$user_id`');
+});
+
+// What a response gives way to, a request still refuses: the body is read for what it validates, and a rule set that
+// drops half of what the document wrote enforces half of a contract.
+it('still refuses in a request what a response schema gives way to', function (Schema $body, string $class, string $message): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => $body], true),
+        responses: [new Response('201', [])],
+    );
+
+    expect(static fn (): BuildPlan => planner()->plan([$operation]))->toThrow($class, $message);
+})->with([
+    'two keys deriving one property' => [
+        new Schema(types: [SchemaType::Object], properties: [
+            'user-id' => new Schema(types: [SchemaType::String]),
+            'user_id' => new Schema(types: [SchemaType::Integer]),
+        ]),
+        UnusableNameException::class,
+        'The keys "user-id" and "user_id" of the schema behind the DTO "CreateThingInputDto" both derive the property name "$user_id"',
+    ],
+    'allOf branches that disagree' => [
+        new Schema(allOf: [
+            new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])]),
+            new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])]),
+        ]),
+        ConflictingInputException::class,
+        'whose branches disagree: one branch is `integer` and another is `string`. A payload cannot satisfy both, or one rule set cannot say both',
+    ],
+    'a name that leaves no class name' => [
+        new Schema(
+            name: '123',
+            source: '#/components/schemas/123',
+            types: [SchemaType::Object],
+            properties: ['value' => new Schema(types: [SchemaType::String])],
+        ),
+        UnusableNameException::class,
+        'The schema "123", written at "#/components/schemas/123", would generate a DTO class name that is not a usable PHP identifier',
+    ],
+]);

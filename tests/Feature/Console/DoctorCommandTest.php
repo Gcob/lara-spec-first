@@ -128,6 +128,22 @@ it('exits 2 on a response schema whose DTO name an input DTO already takes', fun
         ->and($text)->toContain('UserInputDto');
 });
 
+// `0.2.0` read no response, so a document with a response schema at fault exited `0` there. It still does: the build
+// gives the schema no DTO and says so in the generated file, which is not something the doctor has to report.
+it('exits as 0.2.0 did on a response that cannot be typed', function (string $fixture): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath($fixture));
+
+    [$exit, $text] = doctor();
+
+    expect($exit)->toBe(0)
+        ->and($text)->not->toContain('package limit');
+})->with([
+    'two keys deriving one property' => ['response-keys-collide.yaml'],
+    'allOf branches that disagree' => ['response-allof-disagrees.yaml'],
+    'a name that leaves no class name' => ['response-name-unusable.yaml'],
+    'a property that cannot be typed' => ['response-property-gives-way.yaml'],
+]);
+
 it('reports every fault the reading pipeline collected, not only the first', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('multiple-faults.yaml'));
 

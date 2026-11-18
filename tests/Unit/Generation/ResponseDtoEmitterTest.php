@@ -29,7 +29,7 @@ use Gcob\LaraSpecFirst\Generation\ResponseDtoPlanner;
  */
 function goldenResponseDtos(): array
 {
-    return array_column((new ResponseDtoPlanner)->plan(extractFixture('response-dto-golden.yaml'))->dtos, null, 'shortName');
+    return array_column((new ResponseDtoPlanner)->plan(extractFixture('response-dto-golden.yaml'), [])->dtos, null, 'shortName');
 }
 
 function emittedResponseDto(string $shortName, string $namespace = 'App\\Http\\Generated', string $specPath = 'openapi.yaml'): string
@@ -60,7 +60,7 @@ function emittedUserResponse(array $properties, array $required = []): string
     );
 
     return (new ResponseDtoEmitter('App\\Http\\Generated', 'openapi.yaml'))
-        ->emit((new ResponseDtoPlanner)->plan([$operation])->dtos[0])->contents;
+        ->emit((new ResponseDtoPlanner)->plan([$operation], [])->dtos[0])->contents;
 }
 
 it('emits a final readonly response DTO for a referenced object schema', function (): void {
@@ -150,7 +150,7 @@ it('reads a response property with no single type as mixed and says so', functio
  */
 function responseFilesOf(string $fixture): array
 {
-    $plan = (new ResponseDtoPlanner)->plan(extractFixture($fixture));
+    $plan = (new ResponseDtoPlanner)->plan(extractFixture($fixture), []);
     $emitter = new ResponseDtoEmitter('App\\Http\\Generated', 'openapi.yaml');
 
     return array_combine(

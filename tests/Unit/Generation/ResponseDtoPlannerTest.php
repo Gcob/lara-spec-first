@@ -8,12 +8,14 @@ use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
-use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\InputDtoProperty;
 use Gcob\LaraSpecFirst\Generation\InputDtoType;
 use Gcob\LaraSpecFirst\Generation\PlannedResponseDto;
 use Gcob\LaraSpecFirst\Generation\ResponseDtoPlanner;
+use Gcob\LaraSpecFirst\Generation\ResponseFallback;
+use Gcob\LaraSpecFirst\Generation\ResponseFallbackCause;
+use Gcob\LaraSpecFirst\Generation\ResponsePlan;
 use Gcob\LaraSpecFirst\Generation\StatusResponse;
 
 /**
@@ -40,7 +42,7 @@ it('refuses two schemas that give one response DTO name', function (): void {
     $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([
         answeringWith('showUser', 'User', '#/components/schemas/User'),
         answeringWith('showMember', 'user', './other.yaml#/components/schemas/user'),
-    ]);
+    ], []);
 
     expect($plan)->toThrow(
         UnusableNameException::class,
@@ -59,28 +61,26 @@ it('explains the derived name when an inline property meets a component of the s
     $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([
         answeringWithSchema($user, 'showUser'),
         answeringWithSchema($address, 'showAddress'),
-    ]);
+    ], []);
 
     expect($plan)->toThrow(UnusableNameException::class, 'the schema written at "#/components/schemas/UserAddress" gives the base "UserAddress" (the schema\'s name)')
         ->and($plan)->toThrow(UnusableNameException::class, '(derived from its parent "User" and the property "address")')
         ->and($plan)->toThrow(UnusableNameException::class, 'give an inline schema a component name of its own');
 });
 
-// A response is not a rule set, so its `allOf` refusal names the response and not `rules()`.
-it('words an allOf conflict in a response for a response', function (): void {
+// A response enforces nothing, so branches that disagree cost the status its DTO and never the build, and the sentence
+// is for the reader of the controller, not for a rule set.
+it('gives no DTO to a response schema whose allOf branches disagree, and says why in its own words', function (): void {
     $branch = static fn (SchemaType $type): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [$type])]);
-    $plan = static fn (): mixed => (new ResponseDtoPlanner)->plan([answeringWithSchema(
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema(
         new Schema(name: 'Thing', source: '#/components/schemas/Thing', allOf: [$branch(SchemaType::Integer), $branch(SchemaType::String)]),
-    )]);
+    )], []);
 
-    expect($plan)->toThrow(ConflictingInputException::class, 'under the `200` response.id whose branches disagree')
-        ->and($plan)->toThrow(ConflictingInputException::class, 'A response cannot match both');
-
-    try {
-        $plan();
-    } catch (ConflictingInputException $conflict) {
-        expect($conflict->getMessage())->not->toContain('rule set');
-    }
+    expect($plan->dtos)->toBe([])
+        ->and($plan->statuses['get /showThing'][0]->sentence())->toBe(
+            'The `200` response has no DTO: its `allOf` branches disagree at `id`: one branch is `integer` and another is `string`. '
+            .'Make them agree.',
+        );
 });
 
 // Two operations that return one schema are one type, whatever status each answers with.
@@ -89,7 +89,7 @@ it('shares one response DTO between operations returning one schema', function (
         answeringWith('showUser', 'User', '#/components/schemas/User'),
         answeringWith('showMember', 'User', '#/components/schemas/User'),
         answeringWith('createUser', 'User', '#/components/schemas/User', '201'),
-    ])->dtos;
+    ], [])->dtos;
 
     expect($dtos)->toHaveCount(1)
         ->and($dtos[0]->shortName)->toBe('UserDto')
@@ -112,7 +112,7 @@ function statusDtos(string $operationId): array
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
     ));
 
-    return array_column((new ResponseDtoPlanner)->plan($operations)->dtos, null, 'shortName');
+    return array_column((new ResponseDtoPlanner)->plan($operations, [])->dtos, null, 'shortName');
 }
 
 /**
@@ -127,7 +127,7 @@ function statusesOf(string $operationId): array
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
     ))[0];
 
-    return (new ResponseDtoPlanner)->plan([$operation])->statuses[$operation->label()];
+    return (new ResponseDtoPlanner)->plan([$operation], [])->statuses[$operation->label()];
 }
 
 // An inline schema has no name of its own, so the operation and the status give it one, and what is nested in it adds
@@ -149,7 +149,7 @@ it('names an inline response DTO after the method and path when the operation ha
         static fn (Operation $operation): bool => $operation->operationId === null,
     ))[0];
 
-    expect(array_column((new ResponseDtoPlanner)->plan([$operation])->dtos, 'shortName'))
+    expect(array_column((new ResponseDtoPlanner)->plan([$operation], [])->dtos, 'shortName'))
         ->toBe(['GetHealth200ResponseDto']);
 });
 
@@ -202,7 +202,7 @@ function dtosOfFixture(string $fixture, string $operationId): array
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
     ))[0];
 
-    return array_column((new ResponseDtoPlanner)->plan([$operation])->dtos, null, 'shortName');
+    return array_column((new ResponseDtoPlanner)->plan([$operation], [])->dtos, null, 'shortName');
 }
 
 /**
@@ -217,7 +217,7 @@ function statusesOfFixture(string $fixture, string $operationId): array
         static fn (Operation $operation): bool => $operation->operationId === $operationId,
     ))[0];
 
-    return (new ResponseDtoPlanner)->plan([$operation])->statuses[$operation->label()];
+    return (new ResponseDtoPlanner)->plan([$operation], [])->statuses[$operation->label()];
 }
 
 /**
@@ -259,7 +259,7 @@ function responseString(): Schema
 // No depth: `x-max-depth` limits what a request validates, and a response DTO validates nothing, so the class is the
 // class it points back at at every level.
 it('types a recursive response schema as its own class', function (Schema $comment, bool $list, bool $nullable, bool $optional): void {
-    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($comment)])->dtos;
+    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($comment)], [])->dtos;
     $dto = $dtos[0];
     $property = array_values(array_filter($dto->properties, static fn (InputDtoProperty $property): bool => $property->key === 'link'))[0];
 
@@ -306,7 +306,7 @@ it('types a recursive response schema as its own class', function (Schema $comme
 // A marker with no named schema to point at has no class to be built into, and the file says so in its own words: a
 // response is not something a request validated.
 it('reads a recursion with no class to point at as mixed and does not blame the request', function (Schema $schema, string $says): void {
-    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema)])->dtos;
+    $dtos = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema)], [])->dtos;
     $owners = array_values(array_filter($dtos, static fn (PlannedResponseDto $dto): bool => str_contains(implode("\n", $dto->findings), $says)));
 
     expect($owners)->toHaveCount(1);
@@ -353,7 +353,7 @@ it('leaves a writeOnly property out of the response DTO', function (): void {
         'email' => responseString(),
         'password' => new Schema(types: [SchemaType::String], writeOnly: true),
         'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
-    ], ['email', 'password', 'id']))])->dtos[0];
+    ], ['email', 'password', 'id']))], [])->dtos[0];
 
     expect(array_map(static fn (InputDtoProperty $property): string => $property->key, $dto->properties))->toBe(['email', 'id'])
         ->and(implode("\n", $dto->findings))->toContain('`password` is `writeOnly`, so a response never sends it and this type has no property for it')
@@ -447,7 +447,7 @@ it('carries only the declared properties beside an additionalProperties schema a
 // A schema that is its type or `null` is its type: the DTO cannot be `null`, so the status says what may be, which is
 // what the controller's finding reads. A list of lists is said as one, and `null` is the body's only when the body is.
 it('plans a nullable response root as its type and says what may be null', function (Closure $schema, int $depth, string $sentence): void {
-    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema())]);
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema($schema())], []);
     $status = $plan->statuses['get /showThing'][0];
 
     expect($status->dto)->toBe('ThingDto')
@@ -513,4 +513,160 @@ it('plans a nullable response root as its type and says what may be null', funct
         1,
         'The `200` response is a list of `ThingDto`, in `Data/ThingDto.php`, or `null`, where an item may be `null` too, which no DTO holds.',
     ],
+]);
+
+/**
+ * `allOf` branches that disagree about the type of `id`.
+ */
+function disagreeingBranches(): Schema
+{
+    $branch = static fn (SchemaType $type): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [$type])]);
+
+    return new Schema(allOf: [$branch(SchemaType::Integer), $branch(SchemaType::String)]);
+}
+
+// One property that cannot be typed costs that property and nothing else: the parent keeps its DTO and every other
+// type, and the innermost value is the one that is `mixed`.
+it('types mixed a response value whose schema cannot be typed and keeps the others', function (Schema $value, string $kind, ?string $item, string $says): void {
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema(responseComponent('Team', [
+        'name' => responseString(),
+        'id' => new Schema(types: [SchemaType::Integer]),
+        'x' => $value,
+    ], ['name', 'id']))], []);
+    $properties = array_column($plan->dtos[0]->properties, null, 'key');
+
+    expect(array_column($plan->dtos, 'shortName'))->toBe(['TeamDto'])
+        ->and($properties['name']->type->kind)->toBe(InputDtoType::STRING)
+        ->and($properties['id']->type->kind)->toBe(InputDtoType::INT)
+        ->and($properties['x']->optional)->toBeTrue()
+        ->and($properties['x']->type->kind)->toBe($kind)
+        ->and($properties['x']->type->item?->kind)->toBe($item)
+        ->and(implode("\n", $plan->dtos[0]->findings))->toContain($says);
+})->with([
+    'a name that leaves no class name' => [
+        new Schema(name: '123', source: '#/components/schemas/123', types: [SchemaType::Object], properties: ['a' => new Schema(types: [SchemaType::String])]),
+        InputDtoType::MIXED,
+        null,
+        '`x` is `mixed`: the schema name `123` leaves no class name. Rename it to start with a letter or an underscore.',
+    ],
+    'two keys deriving one property' => [
+        new Schema(types: [SchemaType::Object], properties: [
+            'user-id' => new Schema(types: [SchemaType::String]),
+            'user_id' => new Schema(types: [SchemaType::Integer]),
+        ]),
+        InputDtoType::MIXED,
+        null,
+        '`x` is `mixed`: its keys `user-id` and `user_id` both derive the property `$user_id`. Rename one of them.',
+    ],
+    'allOf branches that disagree' => [
+        disagreeingBranches(),
+        InputDtoType::MIXED,
+        null,
+        '`x` is `mixed`: its `allOf` branches disagree at `id`: one branch is `integer` and another is `string`. Make them agree.',
+    ],
+    'a type no branch shares' => [
+        new Schema(allOf: [new Schema(types: [SchemaType::Integer]), new Schema(types: [SchemaType::String])]),
+        InputDtoType::MIXED,
+        null,
+        '`x` is `mixed`: its `allOf` branches disagree: one branch is `integer` and another is `string`. Make them agree.',
+    ],
+    'a list whose items disagree' => [
+        new Schema(types: [SchemaType::Array], items: disagreeingBranches()),
+        InputDtoType::LIST,
+        InputDtoType::MIXED,
+        '`xItem` is `mixed`: its `allOf` branches disagree at `id`',
+    ],
+    'a map whose values disagree' => [
+        new Schema(types: [SchemaType::Object], additionalPropertiesSchema: disagreeingBranches()),
+        InputDtoType::MAP,
+        InputDtoType::MIXED,
+        '`xValue` is `mixed`: its `allOf` branches disagree at `id`',
+    ],
+]);
+
+/**
+ * Where each fallback of a plan lost a type, the schema that gave way, and why.
+ *
+ * @return list<array{0: string, 1: string, 2: ResponseFallbackCause}>
+ */
+function fallbacksOf(ResponsePlan $plan): array
+{
+    return array_map(
+        static fn (ResponseFallback $fallback): array => [$fallback->where, $fallback->position, $fallback->cause],
+        $plan->fallbacks,
+    );
+}
+
+// What a program reads, beside the sentence a person reads: each status or value that lost its type to a schema's own
+// fault, under the cause of that fault.
+it('records each response fallback under a cause of its own', function (string $fixture, array $expected): void {
+    expect(fallbacksOf((new ResponseDtoPlanner)->plan(extractFixture($fixture), [])))->toBe($expected);
+})->with([
+    'two keys deriving one property' => [
+        'response-keys-collide.yaml',
+        [[
+            '#/paths/~1users/get/responses/200/content/application~1json/schema',
+            '#/paths/~1users/get/responses/200/content/application~1json/schema',
+            ResponseFallbackCause::KeysCollide,
+        ]],
+    ],
+    'allOf branches that disagree' => [
+        'response-allof-disagrees.yaml',
+        [
+            [
+                '#/paths/~1things/get/responses/200/content/application~1json/schema',
+                '#/paths/~1things/get/responses/200/content/application~1json/schema',
+                ResponseFallbackCause::AllOfDisagrees,
+            ],
+            [
+                '#/paths/~1siblings/get/responses/200/content/application~1json/schema',
+                '#/paths/~1siblings/get/responses/200/content/application~1json/schema',
+                ResponseFallbackCause::AllOfDisagrees,
+            ],
+        ],
+    ],
+    'a name that leaves no class name' => [
+        'response-name-unusable.yaml',
+        [
+            [
+                '#/paths/~1codes/get/responses/200/content/application~1json/schema',
+                '#/components/schemas/123',
+                ResponseFallbackCause::NameUnusable,
+            ],
+            [
+                '#/paths/~1others/get/responses/200/content/application~1json/schema',
+                '#/components/schemas/456',
+                ResponseFallbackCause::NameUnusable,
+            ],
+        ],
+    ],
+    'a property' => [
+        'response-property-gives-way.yaml',
+        [[
+            '#/components/schemas/Team/properties/owner',
+            '#/components/schemas/Team/properties/owner',
+            ResponseFallbackCause::KeysCollide,
+        ]],
+    ],
+]);
+
+// What a DTO cannot type is not a fault of the schema's own, so it has no record of this kind: a keyword, a recursion
+// with no class, a status with no body, a status with two JSON schemas.
+it('leaves a response fallback unrecorded when the schema is not at fault', function (string $fixture): void {
+    expect((new ResponseDtoPlanner)->plan(extractFixture($fixture), [])->fallbacks)->toBe([]);
+})->with([
+    'a oneOf property' => ['doctor-ignored-keyword-in-response.yaml'],
+    'a 204 and a validation error' => ['response-statuses.yaml'],
+    'two JSON schemas under one status' => ['response-two-json-schemas.yaml'],
+]);
+
+it('leaves a response fallback unrecorded for a property with no type, a union and a recursion with no class', function (Schema $value): void {
+    $plan = (new ResponseDtoPlanner)->plan([answeringWithSchema(responseComponent('Team', ['x' => $value]))], []);
+
+    expect($plan->fallbacks)->toBe([])
+        ->and($plan->dtos[0]->properties[0]->type->kind)->toBe(InputDtoType::MIXED);
+})->with([
+    'no type' => [new Schema],
+    'a union of types' => [new Schema(types: [SchemaType::String, SchemaType::Integer])],
+    'a recursion with no class' => [Schema::recursion('#/components/schemas/Nowhere')],
 ]);

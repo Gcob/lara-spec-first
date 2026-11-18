@@ -48,9 +48,12 @@ tags: [versions, conventions, planning]
   a changed constructor, so the code that reads it fails static analysis. The generated controller's findings now name
   the DTO of each status, or say why it has none (no body, no JSON media type, two JSON media types with different
   schemas, a body that is not an object or a list of objects), where they said "The return type is `mixed` because no
-  response schema is read yet". `routeAction` still returns `mixed`, and no factory is generated yet. This is not a
-  breaking change on its own: it only adds files and a sentence. The reasoning is in
-  [ADR 0011](./docs/project/decisions/0011-mirror-a-response-schema-in-its-dto.md). This ships
+  response schema is read yet". A response schema with a fault of its own gets no DTO instead of stopping the build: a
+  schema name that leaves no class name, two keys that derive one property name, and `allOf` branches that disagree. The
+  status that would have used it says why in the generated controller, and a property that would have held it is `mixed`
+  with a finding, while everything else is typed as the contract writes it. `routeAction` still returns `mixed`, and no
+  factory is generated yet. This is not a breaking change on its own: it only adds files and a sentence. The reasoning
+  is in [ADR 0013](./docs/project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md). This ships
   [#39](https://github.com/Gcob/lara-spec-first/issues/39).
 
 ### Changed
@@ -264,18 +267,14 @@ tags: [versions, conventions, planning]
   default of the document's version, or drop the `encoding` entry. The reasoning is in
   [ADR 0005](./docs/project/decisions/0005-read-default-content-type-by-latest-patch.md). This closes the `0.2.0`
   `Known limits` item for [#131](https://github.com/Gcob/lara-spec-first/issues/131).
-- **A response schema now meets the build refusals a request schema already made, so a contract that builds on `0.2.0`
-  can stop building.** `spec:build` reads each response schema to write its DTO, and refuses what it already refused in
-  a request, each time with a message that says where: a response DTO whose name an input DTO already takes (a response
-  schema `UserInput` gives `UserInputDto`, which a request schema `User` gives too), and two different response schemas
-  that derive one class name; a response schema name that leaves no class name once it is turned into one; two keys of
-  one response schema that derive one property name; and `allOf` branches in a response schema that disagree (two types,
-  two enumerations that share no value, two `format`, `pattern`, `multipleOf` or `contentMediaType` values, a branch
-  writing `additionalProperties: false` beside one declaring properties it does not, or a value schema under
-  `additionalProperties` that contradicts a property another branch declares). `spec:doctor` runs the same build
-  planner, so it now exits `2` for a response schema that meets one of these refusals, and `spec:make` refuses it. This
-  is a breaking change: a document that builds today and writes such a response stops building, and a green CI step that
-  runs the doctor can turn red. Rename the schema or the key, or make the branches agree.
+- **A response schema whose class name another schema or an input DTO already takes now stops the build, so a contract
+  that builds on `0.2.0` can stop building.** `spec:build` reads each response schema to write its DTO, and refuses,
+  with a message that says where, a response DTO whose name an input DTO already takes (a response schema `UserInput`
+  gives `UserInputDto`, which a request schema `User` gives too), and two different response schemas that derive one
+  class name. `spec:doctor` runs the same build planner, so it now exits `2` for a response schema that meets one of
+  these refusals, and `spec:make` refuses it. This is a breaking change: a document that builds today and writes such a
+  response stops building, and a green CI step that runs the doctor can turn red. Rename one of the schemas, or give an
+  inline schema a component name of its own.
 - **`spec:doctor` words its response line differently, and still exits the same.** The `Deferred` line for responses
   read "Recognized, support planned, not built yet. See https://github.com/Gcob/lara-spec-first#roadmap." and now reads
   "Response DTOs are generated from them, but a keyword a response schema writes is not named yet, see

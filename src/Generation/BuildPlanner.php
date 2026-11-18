@@ -118,7 +118,7 @@ final readonly class BuildPlanner
 
         // Before the controllers are written, so that each one can say what its statuses answer with. A response DTO is
         // built from the operations alone: nothing about a request reaches it.
-        $responses = (new ResponseDtoPlanner)->plan($operations);
+        $responses = (new ResponseDtoPlanner)->plan($operations, []);
 
         foreach ($paired as [$operation, $name, $request]) {
             $planned[] = new PlannedController(
@@ -171,7 +171,7 @@ final readonly class BuildPlanner
 
         $files[] = (new RoutesEmitter($this->namespace, $this->specPath))->emit($planned);
 
-        return new BuildPlan($planned, $files, $requests, $unreadBodies);
+        return new BuildPlan($planned, $files, $requests, $unreadBodies, $responses);
     }
 
     /**
