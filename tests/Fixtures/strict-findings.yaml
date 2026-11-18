@@ -1,5 +1,5 @@
-# A request whose only finding says it is stricter than the contract: a JSON integer is
-# `integer:strict`, which refuses `1.0` where JSON Schema 2020-12 reads it as an integer.
+# A request whose only finding says it is stricter than the contract: an unbounded JSON integer is `integer` beside
+# `numeric:strict`, which refuses a whole float of 1e14 or more where JSON Schema 2020-12 reads it as an integer.
 # Nothing here is read and left unenforced, so the build has no warning to print for it.
 openapi: 3.1.0
 info:

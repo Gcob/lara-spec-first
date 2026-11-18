@@ -155,9 +155,10 @@ function frameworkRules(array $built): array
  * Send one JSON payload at a route validated by exactly what `RuleSetBuilder` emits for a body schema — the builder's
  * output, not a hand-written copy of it, so a regression in the builder fails here.
  *
- * @param  array<string, mixed>  $payload
+ * @param  array<string, mixed>|string  $payload  a string is sent as the raw JSON body, for a number `json_encode()`
+ *                                                would write another way (`1e2`)
  */
-function statusForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true): int
+function statusForBuiltRules(Schema $body, array|string $payload, bool $bodyRequired = true): int
 {
     return responseForBuiltRules($body, $payload, $bodyRequired)[0];
 }
@@ -165,12 +166,12 @@ function statusForBuiltRules(Schema $body, array $payload, bool $bodyRequired = 
 /**
  * The same request as {@see statusForBuiltRules()}, with the keys the 422 names.
  *
- * @param  array<string, mixed>  $payload
+ * @param  array<string, mixed>|string  $payload
  * @param  list<string>  $mediaTypes  what the body declares, over the one schema; the request sent is JSON whatever
  *                                    they are
  * @return array{0: int, 1: list<string>}
  */
-function responseForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true, array $mediaTypes = ['application/json']): array
+function responseForBuiltRules(Schema $body, array|string $payload, bool $bodyRequired = true, array $mediaTypes = ['application/json']): array
 {
     [$status, $decoded] = answerForBuiltRules($body, $payload, $bodyRequired, $mediaTypes);
 
@@ -181,11 +182,11 @@ function responseForBuiltRules(Schema $body, array $payload, bool $bodyRequired 
  * The same request as {@see responseForBuiltRules()}, with what the route answered: the validated data for a 200, and
  * the framework's error bag for a 422.
  *
- * @param  array<string, mixed>  $payload
+ * @param  array<string, mixed>|string  $payload
  * @param  list<string>  $mediaTypes
  * @return array{0: int, 1: array<array-key, mixed>}
  */
-function answerForBuiltRules(Schema $body, array $payload, bool $bodyRequired = true, array $mediaTypes = ['application/json']): array
+function answerForBuiltRules(Schema $body, array|string $payload, bool $bodyRequired = true, array $mediaTypes = ['application/json']): array
 {
     $built = RuleSetBuilder::for(new Operation(
         index: 0,
@@ -207,7 +208,7 @@ function answerForBuiltRules(Schema $body, array $payload, bool $bodyRequired = 
         [],
         ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
         // Without the flag `1.0` is sent as `1`, and the one payload this is for would never be sent.
-        (string) json_encode($payload, JSON_PRESERVE_ZERO_FRACTION),
+        is_string($payload) ? $payload : (string) json_encode($payload, JSON_PRESERVE_ZERO_FRACTION),
     ));
 
     /** @var array<array-key, mixed> $decoded */
@@ -229,14 +230,14 @@ function scalarBody(SchemaType $type, bool $nullable = false, float|int|null $mi
 }
 
 // A JSON body keeps its types: `"42"` is a string, `true` is a boolean, and Laravel's loose `integer`, `numeric`
-// and `boolean` accept what a form or a query string writes. `1.0` is the one a JSON Schema validator accepts and
-// this refuses (D32).
-it('refuses a string for an integer, a number or a boolean in a JSON body', function (Schema $body, array $payload, string $key): void {
+// and `boolean` accept what a form or a query string writes. A whole number written as a float (`1.0`) is an integer
+// to a JSON Schema validator and to this; a fraction is not.
+it('refuses a string for an integer, a number or a boolean in a JSON body', function (Schema $body, array|string $payload, string $key): void {
     expect(responseForBuiltRules($body, $payload))->toBe([422, [$key]]);
 })->with([
     'an integer as a string' => [scalarBody(SchemaType::Integer), ['field' => '42'], 'field'],
     'an integer as true' => [scalarBody(SchemaType::Integer), ['field' => true], 'field'],
-    'an integer as a float' => [scalarBody(SchemaType::Integer), ['field' => 1.0], 'field'],
+    'an integer as a fraction' => [scalarBody(SchemaType::Integer), '{"field": 1.5}', 'field'],
     'a number as a string' => [scalarBody(SchemaType::Number), ['field' => '1.5'], 'field'],
     'a number as a whole string' => [scalarBody(SchemaType::Number), ['field' => '2'], 'field'],
     'a boolean as the string one' => [scalarBody(SchemaType::Boolean), ['field' => '1'], 'field'],
@@ -265,6 +266,190 @@ it('accepts a JSON integer, number and boolean as sent', function (Schema $body,
     'false' => [scalarBody(SchemaType::Boolean), false],
     'null for a nullable integer' => [scalarBody(SchemaType::Integer, nullable: true), null],
 ]);
+
+// A JSON integer is `integer` beside `numeric:strict`: Laravel's `integer` takes the float `1.0`, and `numeric:strict`
+// refuses what is not a JSON number. The bodies are raw JSON, since `json_encode()` would write `1e2` as `100.0`.
+it('accepts a JSON integer written as a whole float', function (string $written): void {
+    expect(statusForBuiltRules(scalarBody(SchemaType::Integer), '{"field": '.$written.'}'))->toBe(200);
+})->with([
+    'a decimal point' => ['1.0'],
+    'an exponent' => ['1e2'],
+    'a decimal point and an exponent' => ['1.0e1'],
+    'negative zero' => ['-0.0'],
+    'the last float below 1e14' => ['99999999999999.0'],
+    'an integer' => ['42'],
+]);
+
+// What a JSON integer still refuses, with the message of the rule that refused it: a string and a boolean fail the
+// number rule, a fraction fails `integer`, and a value that is neither fails both. A float of 1e14 or more fails
+// `integer`, which reads it as `1.0E+14` under PHP's default `precision`.
+it('refuses what is not a whole number for a JSON integer, with the message of the rule that refused it', function (string $written, array $messages): void {
+    $class = emittedRequestClass(postWithFormSchema('application/json', oneField(new Schema(types: [SchemaType::Integer]), required: false)));
+
+    expect(errorsForRawJson($class, '{"field": '.$written.'}'))->toBe([422, ['field' => $messages]]);
+})->with([
+    'a string' => ['"42"', ['The field field must be a number.']],
+    'true' => ['true', ['The field field must be a number.']],
+    'a fraction' => ['1.5', ['The field field must be an integer.']],
+    'a string that spells a float' => ['"1.0"', ['The field field must be an integer.', 'The field field must be a number.']],
+    'false' => ['false', ['The field field must be an integer.', 'The field field must be a number.']],
+    'text' => ['"abc"', ['The field field must be an integer.', 'The field field must be a number.']],
+    'a list' => ['[]', ['The field field must be an integer.', 'The field field must be a number.']],
+    'one hundred trillion' => ['1e14', ['The field field must be an integer.']],
+    'minus one hundred trillion' => ['-1e14', ['The field field must be an integer.']],
+]);
+
+it('lets a nullable JSON integer be null or a whole float, and refuses a string', function (string $written, int $status): void {
+    expect(statusForBuiltRules(scalarBody(SchemaType::Integer, nullable: true), '{"field": '.$written.'}'))->toBe($status);
+})->with([
+    'null' => ['null', 200],
+    'a whole float' => ['1.0', 200],
+    'a string' => ['"42"', 422],
+]);
+
+it('accepts a whole float at every level of a JSON body', function (string $content, int $status, array $keys): void {
+    $body = oneField(new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'b' => new Schema(types: [SchemaType::Integer]),
+            'xs' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer])),
+        ],
+    ), required: false);
+
+    expect(responseForBuiltRules($body, $content))->toBe([$status, $keys]);
+})->with([
+    'a nested integer' => ['{"field": {"b": 1.0}}', 200, []],
+    'an element' => ['{"field": {"xs": [1, 2.0]}}', 200, []],
+    'a nested fraction' => ['{"field": {"b": 1.5}}', 422, ['field.b']],
+    'an element that is a string' => ['{"field": {"xs": [1, "2"]}}', 422, ['field.xs.1']],
+]);
+
+// `min`, `max`, `gt`, `lt` and `multiple_of` find the number by the name of the rule beside them, so they keep
+// comparing it as a number when it was written as a float.
+it('compares the bounds of a JSON integer written as a float', function (Schema $field, string $written, int $status): void {
+    expect(statusForBuiltRules(oneField($field, required: false), '{"field": '.$written.'}'))->toBe($status);
+})->with([
+    'a minimum met' => [new Schema(types: [SchemaType::Integer], minimum: 5.0), '10.0', 200],
+    'a minimum missed' => [new Schema(types: [SchemaType::Integer], minimum: 5.0), '3.0', 422],
+    'a maximum met' => [new Schema(types: [SchemaType::Integer], maximum: 100.0), '1e2', 200],
+    'a maximum missed' => [new Schema(types: [SchemaType::Integer], maximum: 100.0), '1.01e2', 422],
+    'a multiple' => [new Schema(types: [SchemaType::Integer], multipleOf: 3.0), '9.0', 200],
+    'not a multiple' => [new Schema(types: [SchemaType::Integer], multipleOf: 3.0), '10.0', 422],
+    'at an exclusive minimum' => [new Schema(types: [SchemaType::Integer], exclusiveMinimum: 5.0), '5.0', 422],
+    'above an exclusive minimum' => [new Schema(types: [SchemaType::Integer], exclusiveMinimum: 5.0), '6.0', 200],
+    'an enumeration met' => [new Schema(types: [SchemaType::Integer], enum: [1, 2]), '2.0', 200],
+    'an enumeration missed' => [new Schema(types: [SchemaType::Integer], enum: [1, 2]), '3.0', 422],
+]);
+
+// The list of integers with `uniqueItems` meets both changes: a whole float is accepted, and compared by value.
+it('compares the whole floats of a unique list of JSON integers by value', function (string $content, int $status, array $keys): void {
+    $class = emittedRequestClass(postWithUniqueList('application/json', SchemaType::Integer));
+
+    [$answered, $errors] = errorsForRawJson($class, $content);
+
+    expect($answered)->toBe($status)
+        ->and(array_keys($errors))->toBe($keys);
+})->with([
+    'the same value twice' => ['{"xs": [1, 1.0]}', 422, ['xs.0', 'xs.1']],
+    'two values' => ['{"xs": [1, 2.0]}', 200, []],
+]);
+
+// A body that is JSON and a form keeps the loose `integer`, which takes `1.0` and refuses what PHP prints with an
+// exponent. A JSON client's `"42"` and `true` stay accepted there, the limit its finding states.
+it('takes a whole float from a JSON client of a body that is JSON and a form, up to 1e14', function (string $written, int $status): void {
+    $class = emittedRequestClass(postWithJsonAndForm('application/x-www-form-urlencoded', oneField(new Schema(types: [SchemaType::Integer]), required: false)));
+
+    expect(statusForRawJson($class, '{"field": '.$written.'}'))->toBe($status);
+})->with([
+    'a decimal point' => ['1.0', 200],
+    'an exponent' => ['1e2', 200],
+    'one hundred trillion' => ['1e14', 422],
+    'a string' => ['"42"', 200],
+    'true' => ['true', 200],
+]);
+
+// A map's values are judged by the guard of a root that declares properties, and the pair compiles inside it.
+it('takes a whole float for a map value beside declared properties, and refuses a fraction', function (string $content, int $status, array $keys): void {
+    $class = emittedRequestClass(postWithFormSchema('application/json', new Schema(
+        types: [SchemaType::Object],
+        properties: ['locale' => new Schema(types: [SchemaType::String])],
+        additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
+    )));
+
+    [$answered, $errors] = errorsForRawJson($class, $content);
+
+    expect($answered)->toBe($status)
+        ->and(array_keys($errors))->toBe($keys);
+})->with([
+    'a whole float' => ['{"locale": "fr", "views": 3.0}', 200, []],
+    'a fraction' => ['{"locale": "fr", "views": 1.5}', 422, ['views']],
+    'a string' => ['{"locale": "fr", "views": "3"}', 422, ['views']],
+]);
+
+/**
+ * One request through the real kernel carrying `$content` as its JSON body, to a route that answers the PHP type of
+ * each top-level value `validated()` or `dto()` holds.
+ *
+ * @param  class-string<FormRequest>  $class
+ * @return array{0: int, 1: array<string, string>}
+ */
+function typesForRawJson(string $class, string $content, bool $dto = false): array
+{
+    Route::post('/_generated/raw-json-types', fn () => response()->json(array_map(
+        static fn (mixed $value): string => get_debug_type($value),
+        $dto ? get_object_vars(app($class)->dto()) : app($class)->validated(),
+    )));
+
+    $response = app(HttpKernel::class)->handle(Request::create(
+        '/_generated/raw-json-types',
+        'POST',
+        [],
+        [],
+        [],
+        ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+        $content,
+    ));
+
+    /** @var array<string, string> $decoded */
+    $decoded = json_decode((string) $response->getContent(), true) ?? [];
+
+    return [$response->getStatusCode(), $decoded];
+}
+
+// `validated()` returns what was sent, as it does for a query parameter's text, and `dto()` is the typed path.
+it('hands validated() the float as sent and the DTO an int', function (): void {
+    $class = emittedRequestClass(postWithFormSchema('application/json', oneField(new Schema(types: [SchemaType::Integer]), required: false)));
+
+    expect(typesForRawJson($class, '{"field": 31.0}'))->toBe([200, ['field' => 'float']])
+        ->and(typesForRawJson($class, '{"field": 31.0}', dto: true))->toBe([200, ['field' => 'int']])
+        ->and(typesForRawJson($class, '{"field": 31}'))->toBe([200, ['field' => 'int']]);
+});
+
+// The golden request, through the kernel: its `age` is `integer` beside `numeric:strict` and `min:18`.
+it('hands the golden request a whole float for age, and refuses a string', function (): void {
+    Route::post('/_generated/users-types', fn (CreateUserRequest $request) => response()->json(array_map(
+        static fn (mixed $value): string => get_debug_type($value),
+        $request->validated(),
+    )));
+
+    $send = static function (string $content): array {
+        $response = app(HttpKernel::class)->handle(Request::create(
+            '/_generated/users-types',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
+            $content,
+        ));
+
+        return [$response->getStatusCode(), json_decode((string) $response->getContent(), true)];
+    };
+
+    expect($send('{"email": "someone@example.test", "age": 31.0}'))->toBe([200, ['email' => 'string', 'age' => 'float']])
+        ->and($send('{"email": "someone@example.test", "age": 17.0}')[0])->toBe(422)
+        ->and($send('{"email": "someone@example.test", "age": "31"}')[0])->toBe(422);
+});
 
 // D33: a body that is JSON and a form keeps the loose rules, because one rule set cannot read a form's text and refuse
 // a JSON string. So a JSON client's `"42"` passes there, and the generated file says so. This pins the stated limit,
@@ -3443,7 +3628,7 @@ it('returns null from dto() for a null body that requires a property', function 
         ->and($returns?->allowsNull())->toBeTrue();
 });
 
-// Laravel skips every rule that is not implicit on a blank string, and `integer:strict`, `numeric:strict` and
+// Laravel skips every rule that is not implicit on a blank string, and `integer`, `numeric:strict` and
 // `boolean:strict` are not. `required` is, which is how a required integer, number or boolean refused `""` in a project
 // that removed `ConvertEmptyStringsToNull`. A nullable required body asks through its siblings instead, so those keys
 // also get `filled`, and the answer stays the one the same body gives when it cannot be `null`.
@@ -3703,7 +3888,8 @@ it('validates a map\'s values beside declared properties', function (bool $neste
     $rows = [
         'a declared key and an undeclared one that is fine' => [['locale' => 'fr', 'a' => 1], 200, ['a' => 1, 'locale' => 'fr']],
         'only the declared key' => [['locale' => 'fr'], 200, ['locale' => 'fr']],
-        'an undeclared key the value schema refuses' => [['locale' => 'fr', 'a' => 'x'], 422, ['a' => 'must be an integer.']],
+        // A fraction rather than text: text fails `numeric:strict` too, and says so.
+        'an undeclared key the value schema refuses' => [['locale' => 'fr', 'a' => 1.5], 422, ['a' => 'must be an integer.']],
         // Its own message only: `max:5` of a string, never the value schema's `integer`.
         'a declared key its own rules refuse' => [['locale' => 'toolong'], 422, ['locale' => 'must not be greater than 5 characters.']],
     ];
@@ -3896,7 +4082,7 @@ it('validates a root map\'s values beside a query parameter', function (string $
 })->with([
     'a good value and the parameter' => ['page', '?page=2', ['a' => 1], 200, ['a' => 1, 'page' => '2']],
     'a value the map refuses' => ['page', '?page=2', ['a' => 'x'], 422, ['a']],
-    // The parameter's own rule, `integer`, and never the map's `integer:strict`: `page` is not a key of the map.
+    // The parameter's own rule, `integer`, and never the map's `integer` beside `numeric:strict`: `page` is not a key of the map.
     'a parameter its own rule refuses' => ['page', '?page=abc', ['a' => 1], 422, ['page']],
     'an ID the map refuses' => ['page', '?page=2', ['1042' => 'x'], 422, ['1042']],
     'an ID the map accepts' => ['page', '?page=2', ['1042' => 3], 200, [1042 => 3, 'page' => '2']],

@@ -314,6 +314,17 @@ tags: [versions, conventions, planning]
   `9007199254740992.0`): the guide states that limit and the generated file carries no finding for it. An array query
   parameter has no element rule, so it does not change. This is a breaking change: a list a client could send twice the
   same number in now gets a `422`. This ships [#173](https://github.com/Gcob/lara-spec-first/issues/173).
+- **A JSON integer now accepts a whole number written as a float (`1.0`, `1e2`), where `0.2.0` answered `422`.** Its
+  rule is `integer` beside `numeric:strict`: `"42"`, `true` and `1.5` are still refused, but `"42"` and `true` now read
+  "must be a number" rather than "must be an integer", and a value that is neither (`"abc"`, `false`, `[]`) gets both
+  messages, "must be an integer" first. `validated()` holds the float as sent (`31.0`) and `dto()` casts it to an `int`.
+  A whole float of 1e14 or more in magnitude stays refused, since PHP writes it with an exponent under its default
+  `precision` and Laravel's `integer` refuses that text. The finding in the generated file now says so, only on a
+  request with an integer field that can hold such a value (an integer with `format: int32`, bounds under 1e14 or an
+  `enum` under it gets none), and also on a body that is JSON and a form. The Laravel constraint is unchanged, and the
+  stated reason for it now says what CI tests. This is a breaking change: code that reads an integer from `validated()`
+  can get a float, and a client that matches the message for `"42"` sees a new one. This also ships
+  [#173](https://github.com/Gcob/lara-spec-first/issues/173).
 
 ### Fixed
 

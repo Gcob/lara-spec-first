@@ -152,7 +152,7 @@ public function rules(): array
 {
     return [
         'email' => ['present', 'string', 'email', 'max:255'],
-        'age' => ['sometimes', 'integer:strict', 'min:18'],   // a JSON body keeps its types
+        'age' => ['sometimes', 'integer', 'numeric:strict', 'min:18'],   // a JSON body keeps its types
         'notify' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],   // ?notify=true, a query parameter
     ];
 }
@@ -603,7 +603,7 @@ integer, number or boolean reports `filled`'s ("must have a value") where it rep
 finding about a form with no field when the body's required-key check refuses it.
 
 **A required integer, number or boolean also gets `filled`.** `required` is implicit, so it refused `""` for them even
-where nothing turns `""` into `null`; `present_with` and `sometimes` are not, and Laravel skips `integer:strict`,
+where nothing turns `""` into `null`; `present_with` and `sometimes` are not, and Laravel skips `integer`,
 `numeric:strict` and `boolean:strict` on a blank string. So `filled` takes `required`'s place beside the rule that asks
 through the siblings, and a project without `ConvertEmptyStringsToNull` still refuses `""` there. A nullable property
 keeps `present`, as before. Optional bodies do not get it: [their caveat](#patch-empties-the-required-list) stays.
@@ -732,9 +732,11 @@ are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
   string refuse `""`, which is the framework's and not a rule here, so
   [it is stated above](#patch-empties-the-required-list) rather than reported per field.
 - **A stricter rule without that reason:**
-  [a JSON integer written as a float](../../project/decisions/0007-keep-json-scalars-strict.md) (`1.0`) is refused by
-  `integer:strict` today, and a finding says so. Laravel's `integer` beside `numeric:strict` would accept it, and
-  [#173](https://github.com/Gcob/lara-spec-first/issues/173) tracks the choice.
+  [a JSON integer written as a float of 1e14 or more](../../project/decisions/0007-keep-json-scalars-strict.md) in
+  magnitude is refused, and a finding says so on a field that can hold one. Accepting it would take a rule of the
+  package's own for a client that writes a whole number of 15 digits or more with a fraction or an exponent (a
+  JavaScript client writes `123456789012345` without either, so PHP decodes an integer), and it has no card: the limit
+  is stated here.
 
 Which keywords are honored at all is [the support matrix](../openapi-support.md#schemas)'s to state; what each honored
 one becomes is this table's.
@@ -744,7 +746,7 @@ one becomes is this table's.
 | Schema                                                  | Laravel rule                                                                                                                                                                                                                                      |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `type: string`                                          | `string`                                                                                                                                                                                                                                          |
-| `type: integer`                                         | `integer:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                                    |
+| `type: integer`                                         | `integer` beside `numeric:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                   |
 | `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                                                                    |
 | `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                                                                   |
 | `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                                                                        |
@@ -757,7 +759,7 @@ one becomes is this table's.
 | `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`. Laravel's `email` accepts an RFC 5322 comment (`test(comment)@example.com`) that JSON Schema's refuses, which [#167](https://github.com/Gcob/lara-spec-first/issues/167) tracks                                  |
 | `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                                                                                                                        |
 | `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                                                                                                                     |
-| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer:strict` is `is_int()` on the decoded JSON, and `integer` is PHP's `FILTER_VALIDATE_INT`: both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number                                                |
+| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer` is PHP's `FILTER_VALIDATE_INT`, which refuses what a 64-bit integer cannot hold, and `numeric` takes any JSON number                                                                                                      |
 | `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                                                                                                                                 |
 
 **Laravel's `boolean` refuses the string `"true"`, so a boolean that arrives as text does not get it.** It accepts `1`,
@@ -929,23 +931,31 @@ them, and the reading collects them with their position instead. See
 
 ### A JSON body keeps its types
 
-**A JSON body keeps its types: `integer:strict`, `numeric:strict` and `boolean:strict`.** JSON writes `42`, `1.5` and
-`true` already typed, and `"42"` is a string. Laravel's loose `integer`, `numeric` and `boolean` read what a form or a
-query string writes, so on a JSON body they would accept `"42"`, `"1.5"` and `1` for a boolean, which the contract
-refuses. The reasoning is in [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md). A field of a body
-that is JSON and nothing else gets the `:strict` form of its rule, at every level (`a.b`, `items.*`):
+**A JSON body keeps its types: `numeric:strict` and `boolean:strict`, and an integer is `integer` beside
+`numeric:strict`.** JSON writes `42`, `1.5` and `true` already typed, and `"42"` is a string. Laravel's loose `integer`,
+`numeric` and `boolean` read what a form or a query string writes, so on a JSON body they would accept `"42"`, `"1.5"`
+and `1` for a boolean, which the contract refuses. The reasoning is in
+[ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md). A field of a body that is JSON and nothing else
+gets the `:strict` form of its rule, at every level (`a.b`, `items.*`):
 
-- **`integer:strict` is `is_int()` on the decoded value.** `"42"`, `true` and `1.0` are refused. `min`, `max`, `gt`,
-  `lt` and `multiple_of` beside it still compare as numbers, since Laravel finds an integer or a number by the rule's
-  name, whatever follows the colon.
+- **An integer is `integer` beside `numeric:strict`.** `integer` accepts a whole number written as a float (`1.0`,
+  `1e2`), which JSON Schema 2020-12 reads as an integer. `numeric:strict` refuses what is not a JSON number, so `"42"`
+  and `true`, which `integer` alone would accept, are still refused. A fraction (`1.5`) is refused by `integer`. `min`,
+  `max`, `gt`, `lt` and `multiple_of` beside the pair still compare as numbers, since Laravel finds an integer or a
+  number by the rule's name, whatever follows the colon. `integer` comes first, so a value that is neither a number nor
+  an integer (`"abc"`, `false`, `[]`) gets both messages, "must be an integer" first, and `"42"` and `true` read "must
+  be a number". `validated()` keeps the float as sent (`31.0`), as it keeps a query parameter's text, and `dto()` casts
+  it to an `int`.
 - **`numeric:strict` refuses a string**, `"1.5"` and `"2"` alike. An integer is a number, so `2` passes.
 - **`boolean:strict` accepts `true` and `false` and nothing else**: not `1`, `0`, `"1"` or `"true"`.
-- **A whole number written as a float is refused for an integer (`1.0`, `1e2`), and that is stricter than JSON Schema
-  2020-12**, where `1.0` is an integer. `integer:strict` is `is_int()` on the decoded value, which refuses a float.
-  Laravel's `integer` beside `numeric:strict` would accept it, and the package refuses it today: the generated file says
-  so in one finding per request that has an integer field, and a request with none says nothing.
-  [#173](https://github.com/Gcob/lara-spec-first/issues/173) tracks the choice, and
-  [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md) holds the rule.
+- **A whole number written as a float is refused for an integer from 1e14 in magnitude, and that is stricter than JSON
+  Schema 2020-12**, where `1e14` is an integer. Under PHP's default `precision` (14) a float of that size is written
+  with an exponent (`1.0E+14`), and Laravel's `integer` refuses that text. Below it, `1.0`, `1e2` and `99999999999999.0`
+  pass. The generated file says so in one finding per request, written only when an integer field can hold such a value:
+  an integer with `format: int32`, bounds under 1e14 in magnitude, or an `enum` or `const` of values under it gets none,
+  and neither does a request with no integer. A body that is JSON and a form gets the finding too, in its own wording,
+  since its loose `integer` refuses a JSON client's `1e14` as well.
+  [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md) holds the reasoning.
 - **A finding that says the request is stricter is not a gap.** It is in the Findings block like any other, but
   `spec:build` does not count it in its "read a constraint they do not enforce" warning, and the file keeps its "Nothing
   was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly
@@ -963,9 +973,10 @@ that is JSON and nothing else gets the `:strict` form of its rule, at every leve
   `true`, a number accepts `"1.5"`, and a boolean accepts `"1"` and `1`, all of which the contract refuses. The
   generated file says so in one finding per field, and `spec:doctor` stays silent on it, like the other prose-only
   cases. [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them.
-- **`integer:strict` needs Laravel 12.22.** Before it the parameter is silently ignored, and an integer would accept
-  `"42"`. `numeric:strict` and `boolean:strict` exist from 12.21, so `integer:strict` is the rule that sets the floor,
-  and the reason the package requires `^12.22 || ^13.0`.
+- **The package requires `^12.22 || ^13.0`, the constraint `0.2.0` shipped.** No generated rule needs 12.22 any more:
+  the `strict` parameter exists from 12.21 on `numeric` and `boolean`, and from 12.22 on `integer`, which no generated
+  rule uses now. CI tests Laravel 12 from 12.55, the lowest its testbench allows, so nothing below it is tested, and
+  [#188](https://github.com/Gcob/lara-spec-first/issues/188) settles the floor.
 
 ### A map's values are validated one by one
 
@@ -1011,7 +1022,7 @@ additionalProperties: { type: integer }
 private const SPARED_KEYS = ['locale'];
 
 'locale' => ['sometimes', 'string', 'max:5'],
-'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),
+'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer', 'numeric:strict']),
 ```
 
 `Gcob\LaraSpecFirst\Validation\UndeclaredKeys` is public API, imported by the generated request, so its name is frozen
@@ -1079,7 +1090,7 @@ requestBody:
 private const QUERY_KEYS = ['dryRun'];
 private const SPARED_KEYS = [...self::QUERY_KEYS];
 
-'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),
+'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer', 'numeric:strict']),
 'dryRun' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],
 ```
 

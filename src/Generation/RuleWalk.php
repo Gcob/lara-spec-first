@@ -141,8 +141,8 @@ final class RuleWalk
     public bool $jsonBody = false;
 
     /**
-     * Whether the finding that a JSON integer written as a float is refused has been written, since one request says it
-     * once however many integers it has.
+     * Whether the finding that a JSON integer written as a float of 1e14 or more is refused has been written, since one
+     * request says it once however many integers it has.
      */
     public bool $integralFloatNamed = false;
 

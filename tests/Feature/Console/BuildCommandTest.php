@@ -305,8 +305,10 @@ it('keeps a stricter-than-the-contract finding out of the build warning', functi
     $prose = (string) preg_replace('/\s*\n\s*\*\s*/', ' ', $request);
 
     expect($output->fetch())->not->toContain('read a constraint they do not enforce')
-        ->and($request)->toContain("'count' => ['sometimes', 'integer:strict'],")
-        ->and($prose)->toContain('so the request is stricter than the contract for them')
+        ->and($request)->toContain("'count' => ['sometimes', 'integer', 'numeric:strict'],")
+        ->and($prose)->toContain('beside `numeric:strict`')
+        ->and($prose)->toContain('1e14')
+        ->and($prose)->toContain('so the request is stricter than the contract for it')
         ->and($prose)->toContain('Nothing was read and left unenforced.');
 });
 

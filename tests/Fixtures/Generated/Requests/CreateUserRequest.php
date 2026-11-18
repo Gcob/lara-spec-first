@@ -33,10 +33,11 @@ use Illuminate\Validation\Validator;
  *   - `dto()` returns the body as `CreateUserInputDto`, built from `validated()`, which keeps
  *     returning Laravel's array. A `query` parameter is not a property of it: read one with
  *     `validated('name')`.
- *   - An `integer` in this JSON body is `integer:strict`, which refuses a whole number written
- *     with a fraction or an exponent (`1.0`, `1e2`). JSON Schema 2020-12 reads those as integers,
- *     so the request is stricter than the contract for them. The same rule is what refuses `"42"`
- *     and `true`.
+ *   - An `integer` in this JSON body is `integer` beside `numeric:strict`, which accepts a whole
+ *     number written as a float (`1.0`, `1e2`) below 1e14 in magnitude and refuses one at or past
+ *     it: under PHP's default `precision` such a float is written with an exponent, which
+ *     Laravel's `integer` refuses. JSON Schema 2020-12 reads it as an integer, so the request is
+ *     stricter than the contract for it.
  *   - `website` declares `format: uri`, which no Laravel rule means the same as, so it is not
  *     enforced.
  *   - `notify` is a boolean read from a query string, where `?name=true` is how OpenAPI writes
@@ -78,7 +79,7 @@ final class CreateUserRequest extends FormRequest
     {
         return [
             'email' => ['present', 'string', 'max:255', 'email'],
-            'age' => ['sometimes', 'integer:strict', 'min:18'],
+            'age' => ['sometimes', 'integer', 'numeric:strict', 'min:18'],
             'nickname' => ['sometimes', 'nullable', 'string'],
             'role' => ['sometimes', 'string', Rule::in(['admin', 'member'])],
             'tags' => ['sometimes', 'array', 'list'],

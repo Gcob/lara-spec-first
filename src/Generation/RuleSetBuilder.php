@@ -71,6 +71,21 @@ final readonly class RuleSetBuilder
     private const ANNOTATION_FORMATS = ['password'];
 
     /**
+     * The magnitude from which PHP writes a whole float with an exponent under its default `precision` (14), so that
+     * Laravel's `integer` refuses it.
+     */
+    private const FLOAT_CUT_OFF = 1e14;
+
+    private const INTEGRAL_FLOAT_FINDING = 'An `integer` in this JSON body is `integer` beside `numeric:strict`, which accepts a whole number '
+        .'written as a float (`1.0`, `1e2`) below 1e14 in magnitude and refuses one at or past it: under PHP\'s default '
+        .'`precision` such a float is written with an exponent, which Laravel\'s `integer` refuses. JSON Schema 2020-12 '
+        .'reads it as an integer, so the request is stricter than the contract for it.';
+
+    private const INTEGRAL_FLOAT_MIXED_FINDING = 'An `integer` in this body is Laravel\'s `integer`, which refuses a JSON client\'s whole number '
+        .'written as a float of 1e14 or more in magnitude: under PHP\'s default `precision` such a float is written with an '
+        .'exponent. JSON Schema 2020-12 reads it as an integer, so the request is stricter than the contract for it.';
+
+    /**
      * The range `format: int32` states, which `integer` does not carry: PHP's integers are 64-bit.
      */
     private const INT32_MINIMUM = -2147483648;
@@ -1609,19 +1624,21 @@ final readonly class RuleSetBuilder
                     self::stringRules($schema, $label, $rules, $handled, $walk);
                     break;
                 case SchemaType::Integer:
-                    // Why: Laravel's `min` and `max` find `Integer` and `Numeric` by the rule's name whatever its
-                    // parameters, so a strict rule still compares as a number.
-                    $rules[] = $walk->strictJson() ? 'integer:strict' : 'integer';
+                    // Why: `integer` takes a whole number written as a float (`1.0`), which JSON Schema 2020-12 reads as an
+                    // integer, and `numeric:strict` refuses what is not a JSON number (`"42"`, `true`), which `integer`
+                    // alone accepts. Laravel's `min` and `max` find `Integer` and `Numeric` by the rule's name whatever
+                    // its parameters, so the bounds still compare as numbers.
+                    $rules[] = 'integer';
+
+                    if ($walk->strictJson()) {
+                        $rules[] = 'numeric:strict';
+                    }
+
                     self::numberRules($schema, $rules, $handled);
 
-                    if ($walk->strictJson() && ! $walk->integralFloatNamed) {
+                    if ($walk->textSource === null && $walk->jsonBody && ! $walk->integralFloatNamed && self::canHoldAFloatPastTheCutOff($schema)) {
                         $walk->integralFloatNamed = true;
-                        $walk->stricter(
-                            'An `integer` in this JSON body is `integer:strict`, which refuses a whole number written '
-                                .'with a fraction or an exponent (`1.0`, `1e2`). JSON Schema 2020-12 reads those as '
-                                .'integers, so the request is stricter than the contract for them. The same rule is '
-                                .'what refuses `"42"` and `true`.',
-                        );
+                        $walk->stricter($walk->strictJson() ? self::INTEGRAL_FLOAT_FINDING : self::INTEGRAL_FLOAT_MIXED_FINDING);
                     }
 
                     if ($walk->mixedBody) {
@@ -2540,6 +2557,42 @@ final readonly class RuleSetBuilder
         self::bound($schema->exclusiveMaximum, 'lt', $rules);
         self::bound($schema->multipleOf, 'multiple_of', $rules);
         array_push($handled, 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf');
+    }
+
+    /**
+     * Whether an integer field can hold a value of 1e14 or more in magnitude, which a float written for it would be
+     * refused at: the one place the request is stricter than the contract for a whole float.
+     *
+     * An enumeration decides alone when it has values (`const` is read as one), whatever the bounds say, and `int32`
+     * stays inside its range. Otherwise it is the bounds: no upper bound, a `maximum` at or above 1e14 or an
+     * `exclusiveMaximum` above it reaches, and the same below.
+     */
+    private static function canHoldAFloatPastTheCutOff(Schema $schema): bool
+    {
+        if ($schema->enum !== null) {
+            $values = array_values(array_filter($schema->enum, static fn (mixed $value): bool => $value !== null));
+
+            if ($values !== [] && self::allScalar($values)) {
+                foreach ($values as $value) {
+                    if ((is_int($value) || is_float($value)) && abs($value) >= self::FLOAT_CUT_OFF) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        if ($schema->format === 'int32') {
+            return false;
+        }
+
+        $above = ($schema->maximum === null || $schema->maximum >= self::FLOAT_CUT_OFF)
+            && ($schema->exclusiveMaximum === null || $schema->exclusiveMaximum > self::FLOAT_CUT_OFF);
+        $below = ($schema->minimum === null || $schema->minimum <= -self::FLOAT_CUT_OFF)
+            && ($schema->exclusiveMinimum === null || $schema->exclusiveMinimum < -self::FLOAT_CUT_OFF);
+
+        return $above || $below;
     }
 
     /**
