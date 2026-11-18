@@ -14,10 +14,13 @@ use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Generation\InputDtoType;
+use Gcob\LaraSpecFirst\Generation\PlannedResponseDto;
 use Gcob\LaraSpecFirst\Generation\ResponseDtoPlanner;
 use Gcob\LaraSpecFirst\Generation\ResponsePlan;
 use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\UntypedResponseCause;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 
@@ -31,8 +34,9 @@ use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
  *   2. **Partial, `operationId`.** Required on an operation that is both `public` and `stable`. See
  *      {@see self::missingOperationId()}.
  *   3. **Partial and Ignored, in a request schema and in a response schema.** What the body and the `query` parameters
- *      write and the generated request does not enforce, and what a response writes that its DTO cannot type, one
- *      finding per keyword per operation. See {@see self::schemas()}.
+ *      write and the generated request does not enforce, what a response writes that its DTO cannot type, and the
+ *      properties a response DTO types `mixed`, one finding per keyword (or per cause) per operation. See
+ *      {@see self::schemas()}.
  *   4. **Ignored, one line per construct rather than per occurrence**, a count and not a list, for what a count can
  *      say: the `header` and `cookie` parameters. See {@see self::deferred()}.
  *
@@ -181,6 +185,10 @@ final readonly class SupportMatrixCheck
      * planner refused the document, or the generated tree's settings were refused) the response keywords are left out
      * and the request half stands: `Routing outcome` already says why, and a plan is not guessed.
      *
+     * **A property a response DTO types `mixed` is a finding too**, one per cause and per operation, under every
+     * operation whose response reaches the DTO that holds it: the plan records each, and the DTO is shared by every
+     * operation that returns its schema or holds it in a property. See {@see self::untypedValues()}.
+     *
      * **A package limit, always.** The contract is correct and this package does not enforce it, so these exit `2` and
      * never `1`. That is a gate a first run on a published contract will trip, and docs/guide/openapi-support.md says
      * why it is a position rather than a gap.
@@ -201,7 +209,11 @@ final readonly class SupportMatrixCheck
         foreach ($operations as $operation) {
             array_push(
                 $findings,
-                ...self::operationFindings($operation, $responses === null ? [] : self::responseKeywords($operation, $responses)),
+                ...self::operationFindings(
+                    $operation,
+                    $responses === null ? [] : self::responseKeywords($operation, $responses),
+                    $responses === null ? [] : self::untypedValues($operation, $responses),
+                ),
             );
         }
 
@@ -223,9 +235,10 @@ final readonly class SupportMatrixCheck
 
     /**
      * @param  array<string, list<string>>  $responseKeywords  each keyword the operation's responses write, by position
+     * @param  list<Finding>  $untyped  what the DTOs of its responses type `mixed`, which goes after the rest
      * @return list<Finding>
      */
-    private static function operationFindings(Operation $operation, array $responseKeywords): array
+    private static function operationFindings(Operation $operation, array $responseKeywords, array $untyped): array
     {
         $findings = [];
         $request = self::ignoredKeywords($operation);
@@ -317,7 +330,137 @@ final readonly class SupportMatrixCheck
             );
         }
 
+        return [...$findings, ...$untyped];
+    }
+
+    /**
+     * What the DTOs the operation's responses reach type `mixed`, or do not carry, for what the contract says: one
+     * `Partial` finding per cause, listing every position, in the order the plan met them.
+     *
+     * **Reached** is every DTO of a status that got one, and every DTO a property of a reached DTO holds, directly, as
+     * a list's items or as a map's values. **A value that writes a keyword the doctor names is left out**: that
+     * keyword's finding says it, and a second one for the property would be the same line twice. One that writes only
+     * an annotation, or nothing, is named. A schema at fault is not here at all: it is a fallback, which the doctor
+     * never reads.
+     *
+     * @return list<Finding>
+     */
+    private static function untypedValues(Operation $operation, ResponsePlan $responses): array
+    {
+        $dtos = [];
+
+        foreach ($responses->dtos as $dto) {
+            $dtos[$dto->shortName] = $dto;
+        }
+
+        $reached = [];
+
+        foreach ($responses->statuses[$operation->label()] ?? [] as $status) {
+            if ($status->dto !== null) {
+                self::reachDto($status->dto, $dtos, $reached);
+            }
+        }
+
+        $positions = [];
+
+        foreach ($responses->untyped as $value) {
+            if (! isset($reached[$value->owner]) || array_intersect_key($value->keywords, array_flip(self::RESPONSE_KEYWORDS)) !== []) {
+                continue;
+            }
+
+            if (! in_array($value->position, $positions[$value->cause->name]['positions'] ?? [], true)) {
+                $positions[$value->cause->name]['positions'][] = $value->position;
+            }
+
+            $positions[$value->cause->name]['cause'] = $value->cause;
+        }
+
+        $findings = [];
+
+        foreach ($positions as $found) {
+            $findings[] = new Finding(
+                FindingClass::PackageLimit,
+                self::SECTION,
+                SupportLevel::Partial,
+                $found['positions'][0],
+                sprintf(
+                    '%s answers with a DTO that %s. See docs/guide/code-generation/response-dtos.md, "What the build '.
+                    'writes for a response". This is a fact about this package, not a defect in your contract.',
+                    $operation->label(),
+                    self::untypedSentence($found['cause'], implode(', ', $found['positions'])),
+                ),
+            );
+        }
+
         return $findings;
+    }
+
+    /**
+     * What a DTO does with a value, and why, for one cause.
+     */
+    private static function untypedSentence(UntypedResponseCause $cause, string $positions): string
+    {
+        return match ($cause) {
+            UntypedResponseCause::NoSingleType => sprintf(
+                'types `mixed` what is written at %s, because it states no single type (a union of types, no type at '.
+                'all, or only `null`). State one type to have it typed',
+                $positions,
+            ),
+            UntypedResponseCause::UnbuiltRecursion => sprintf(
+                'types `mixed` what is written at %s, because it points back at a schema that is not a single named '.
+                'schema, so there is no class to build it into. Give the schema it points back at a component name to '.
+                'have it typed',
+                $positions,
+            ),
+            UntypedResponseCause::PropertiesBesideReference => sprintf(
+                'types `mixed` what is written at %s, because it writes properties beside a reference to a schema it '.
+                'points back at, and the class of that schema does not carry them. Move the properties into that '.
+                'schema, or drop them',
+                $positions,
+            ),
+            UntypedResponseCause::AncestorNotAnObject => sprintf(
+                'types `mixed` what is written at %s, because it points back at a schema that is not an object with '.
+                'properties, so there is no class to read it into',
+                $positions,
+            ),
+            UntypedResponseCause::ValuesBesideProperties => sprintf(
+                'does not carry the values `additionalProperties` types at %s, because it carries only the declared '.
+                'properties beside them. Declare the keys you want typed, or leave `additionalProperties` out',
+                $positions,
+            ),
+        };
+    }
+
+    /**
+     * @param  array<string, PlannedResponseDto>  $dtos
+     * @param  array<string, true>  $reached
+     */
+    private static function reachDto(string $class, array $dtos, array &$reached): void
+    {
+        if (isset($reached[$class]) || ! isset($dtos[$class])) {
+            return;
+        }
+
+        $reached[$class] = true;
+
+        foreach ($dtos[$class]->properties as $property) {
+            self::reachType($property->type, $dtos, $reached);
+        }
+    }
+
+    /**
+     * @param  array<string, PlannedResponseDto>  $dtos
+     * @param  array<string, true>  $reached
+     */
+    private static function reachType(InputDtoType $type, array $dtos, array &$reached): void
+    {
+        if ($type->kind === InputDtoType::DTO && $type->class !== null) {
+            self::reachDto($type->class, $dtos, $reached);
+        }
+
+        if ($type->item !== null) {
+            self::reachType($type->item, $dtos, $reached);
+        }
     }
 
     /**

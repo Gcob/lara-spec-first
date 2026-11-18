@@ -474,6 +474,27 @@ it('names a 3.1 keyword written only in a response, through the command', functi
         ]);
 });
 
+// A property a response DTO types `mixed` is named under every operation whose response reaches that DTO, directly or
+// through a property: `showTeam` reaches `User`, and `User` reaches `Address`, by references alone. One finding per
+// reason per operation, listing every position, and the annotation beside `kind` is not named.
+it('names a mixed response property under every operation that reaches its DTO', function (): void {
+    [$exit, $report] = doctorJson('doctor-response-mixed.yaml');
+
+    $partial = doctorSupportFindings($report, 'partial');
+    $positions = '#/components/schemas/Address/properties/zip, #/components/schemas/User/properties/kind';
+
+    expect($exit)->toBe(2)
+        ->and($partial)->toHaveCount(3)
+        ->and(array_column($partial, 'class'))->toBe(['package_limit', 'package_limit', 'package_limit'])
+        ->and($partial[0]['message'])->toContain('get /users/{id} answers with a DTO that types `mixed` what is written at '.$positions)
+        ->and($partial[0]['pointer'])->toBe('#/components/schemas/Address/properties/zip')
+        ->and($partial[1]['message'])->toContain('get /teams/{id} answers with a DTO that types `mixed` what is written at '.$positions)
+        ->and($partial[1]['pointer'])->toBe('#/components/schemas/Address/properties/zip')
+        ->and($partial[2]['message'])->toContain('get /pets/{id} answers with a DTO that does not carry the values `additionalProperties` types at #/components/schemas/Pet/additionalProperties')
+        ->and($partial[2]['pointer'])->toBe('#/components/schemas/Pet/additionalProperties')
+        ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
+});
+
 // The response DTOs of this contract hold every type it writes, so there is nothing to name.
 it('still exits zero on a contract whose responses the DTOs type in full', function (): void {
     [$exit, $report] = doctorJson('response-dto-golden.yaml');

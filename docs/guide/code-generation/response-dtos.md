@@ -124,8 +124,16 @@ A property whose schema has the fault is `mixed` (`Optional|mixed` when optional
 DTO's findings carry the same reason after "`address` is `mixed`:". Its other properties keep their types. **The value
 that cannot be typed is the one that is `mixed`**, so a list whose items disagree is `list<mixed>`, and a map whose
 values disagree is a map of `mixed`. `spec:build`, `spec:doctor` and `spec:make` go on for such a schema as `0.2.0` did,
-and the doctor says nothing about it: the fix is in the contract, and the generated file says where. What the doctor
-does name is a keyword a response DTO cannot type, such as a `oneOf`, once per operation, and it exits `2` on one.
+and the doctor says nothing about it: the fix is in the contract, and the generated file says where.
+
+**What the doctor names is what the contract says and the DTO cannot type.** A keyword a response DTO cannot type, such
+as a `oneOf`, is one finding per operation, as it is in a request. A property the DTO types `mixed`, or does not carry,
+for what the contract says (not for a schema at fault) is one `Partial` finding per reason and per operation: a type
+that is a union, no type at all or only `null`, a recursion with no class to point at, properties written beside a
+reference a recursion points back at, a target that is not an object with properties, and the values of
+`additionalProperties` beside declared properties. It is named under every operation whose response reaches the DTO that
+holds it, directly or through a property, a list or a map, and a value that writes a keyword the doctor names is named
+by the keyword and not twice. Both exit `2`.
 
 **`routeAction` still returns `mixed`.** The controller's findings say so beside those sentences: the types named there
 are what a response is, and what `routeAction` is typed to return is a later change. Nothing yet makes a controller

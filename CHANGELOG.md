@@ -275,19 +275,24 @@ tags: [versions, conventions, planning]
   default of the document's version, or drop the `encoding` entry. The reasoning is in
   [ADR 0005](./docs/project/decisions/0005-read-default-content-type-by-latest-patch.md). This closes the `0.2.0`
   `Known limits` item for [#131](https://github.com/Gcob/lara-spec-first/issues/131).
-- **`spec:doctor` names the keywords a response DTO cannot type, and exits `2` on one.** It used to read no response
-  keyword: a `oneOf` in a response schema was one `Deferred` count of response declarations, and the exit stayed `0`.
-  Now each operation gets one `Ignored` finding per keyword in the JSON schemas of its responses that got a DTO, listing
-  every position it is written at, in the same section as a request's: `oneOf`, `anyOf`, `not`, `if`, `then`, `else`,
+- **`spec:doctor` names what a response DTO cannot type, and exits `2` on it.** It used to read no response keyword: a
+  `oneOf` in a response schema was one `Deferred` count of response declarations, and the exit stayed `0`. Now each
+  operation gets one `Ignored` finding per keyword in the JSON schemas of its responses that got a DTO, listing every
+  position it is written at, in the same section as a request's: `oneOf`, `anyOf`, `not`, `if`, `then`, `else`,
   `discriminator`, `patternProperties`, `prefixItems`, `unevaluatedProperties`, `unevaluatedItems` and
-  `dependentSchemas`. A keyword written in the request and in a response of one operation is one finding. An annotation
-  (`default`, `deprecated`) and a value constraint (`minProperties`, `contains`) written in a response are not named,
-  and neither is a schema at fault, which gets no DTO and says why in the generated file. The responses no longer print
-  a `Deferred` line, and `Support findings` reads the response from the plan the build makes, so a document the build
-  plan refuses (a body and a query parameter naming one field, or a refused `generated.namespace`) names the request's
-  keywords only. This is a breaking change: a contract that exited `0` can exit `2`, so a green CI step may turn red.
-  Remove the keyword from the response schema, or
-  [acknowledge the finding](./docs/guide/doctor.md#acknowledged-limits-the-consumers-opt-out).
+  `dependentSchemas`. A keyword written in the request and in a response of one operation is one finding. A property a
+  response DTO types `mixed` for what the contract says, or does not carry, is named too, as one `Partial` finding per
+  reason and per operation under every operation that reaches its DTO: a union of types, no type or only `null`, a
+  recursion with no class to point at, properties written beside a reference a recursion points back at, a target that
+  is not an object with properties, and the values of `additionalProperties` beside declared properties. A value that
+  writes a keyword above is named by that keyword once. An annotation (`default`, `deprecated`) and a value constraint
+  (`minProperties`, `contains`) written in a response are not named, and neither is a schema at fault, which gets no DTO
+  and says why in the generated file. The responses no longer print a `Deferred` line, and `Support findings` reads the
+  response from the plan the build makes, so a document the build plan refuses (a body and a query parameter naming one
+  field, or a refused `generated.namespace`) names the request's keywords only. This is a breaking change: a contract
+  that exited `0` can exit `2`, so a green CI step may turn red. Remove the keyword from the response schema, or
+  [acknowledge the finding](./docs/guide/doctor.md#acknowledged-limits-the-consumers-opt-out). This ships
+  [#164](https://github.com/Gcob/lara-spec-first/issues/164).
 
 ### Fixed
 

@@ -1,0 +1,73 @@
+# Response properties a DTO types `mixed`, or does not carry, for what the contract says. `Address.zip` and `User.kind` are
+# a union of types: `showUser` reaches both (`kind` directly, `zip` through `address`), and `showTeam` reaches them
+# through `Team.lead`. `kind` also writes `default`, which the doctor does not name. `Pet` writes `additionalProperties`
+# beside declared properties, so its DTO does not carry the values.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /users/{id}:
+    get:
+      operationId: showUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /teams/{id}:
+    get:
+      operationId: showTeam
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+  /pets/{id}:
+    get:
+      operationId: showPet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A pet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        address:
+          $ref: '#/components/schemas/Address'
+        kind:
+          type: [string, integer]
+          default: person
+    Address:
+      type: object
+      properties:
+        street: { type: string }
+        zip: { type: [string, integer] }
+    Team:
+      type: object
+      properties:
+        name: { type: string }
+        lead:
+          $ref: '#/components/schemas/User'
+    Pet:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+      additionalProperties: { type: string }

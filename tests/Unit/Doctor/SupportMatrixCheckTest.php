@@ -9,6 +9,7 @@ use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Doctor\Checks\SupportMatrixCheck;
@@ -833,4 +834,128 @@ it('names a 3.1 keyword written only in a response', function (): void {
         $schema.'/rest/unevaluatedItems',
         $schema.'/card/dependentSchemas',
     ]);
+});
+
+// --- Response schemas: a property a DTO types mixed, or does not carry ---
+
+/**
+ * One `GET /things` answering `200` with this schema.
+ */
+function supportMatrixAnswering(Schema $schema): Operation
+{
+    return new Operation(
+        0,
+        HttpMethod::Get,
+        PathTemplate::fromString('/things'),
+        'showThing',
+        responses: [new Response('200', ['application/json' => $schema])],
+    );
+}
+
+/**
+ * A component answered with, holding one property.
+ */
+function supportMatrixComponent(string $name, Schema $property): Schema
+{
+    return new Schema(
+        name: $name,
+        source: '#/components/schemas/'.$name,
+        types: [SchemaType::Object],
+        properties: ['x' => $property],
+    );
+}
+
+/**
+ * @return list<Finding>
+ */
+function supportMatrixFindingsFor(Operation $operation): array
+{
+    return SupportMatrixCheck::schemas([$operation], (new ResponseDtoPlanner)->plan([$operation], []));
+}
+
+// Each way a response DTO ends up with a value it types `mixed`, or does not carry, is one finding of its own under the
+// operation, with its cause in the words, so the author knows what to change.
+it('names each reason a response DTO types a value mixed', function (Schema $schema, string $position, string $reason): void {
+    $findings = supportMatrixFindingsFor(supportMatrixAnswering($schema));
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($findings[0]->level)->toBe(SupportLevel::Partial)
+        ->and($findings[0]->section)->toBe('Support findings')
+        ->and($findings[0]->pointer)->toBe($position)
+        ->and($findings[0]->message)->toContain('get /things answers with a DTO that')
+        ->and($findings[0]->message)->toContain($position)
+        ->and($findings[0]->message)->toContain($reason);
+})->with([
+    'a type union' => [
+        supportMatrixComponent('Team', new Schema(types: [SchemaType::String, SchemaType::Integer])),
+        '#/components/schemas/Team/properties/x',
+        'because it states no single type (a union of types, no type at all, or only `null`)',
+    ],
+    'a recursion with no class to point at' => [
+        new Schema(types: [SchemaType::Object], properties: [
+            'link' => Schema::recursion('#/paths/~1showThing/get/responses/200/content/application~1json/schema'),
+        ]),
+        '#/paths/~1things/get/responses/200/content/application~1json/schema/properties/link',
+        'because it points back at a schema that is not a single named schema, so there is no class to build it into',
+    ],
+    'properties written beside the reference' => [
+        new Schema(
+            name: 'Node',
+            source: '#/components/schemas/Node',
+            types: [SchemaType::Object],
+            properties: ['link' => new Schema(
+                name: 'Node',
+                types: [SchemaType::Object],
+                properties: ['extra' => new Schema(types: [SchemaType::String])],
+                recursesTo: '#/components/schemas/Node',
+            )],
+        ),
+        '#/components/schemas/Node/properties/link',
+        'because it writes properties beside a reference to a schema it points back at, and the class of that schema does not carry them',
+    ],
+    'a target that is not an object with properties' => [
+        supportMatrixComponent('Shelf', new Schema(
+            name: 'Forest',
+            source: '#/components/schemas/Forest',
+            types: [SchemaType::Array],
+            items: new Schema(types: [SchemaType::Object], properties: [
+                'link' => Schema::recursion('#/components/schemas/Forest', 'Forest'),
+            ]),
+        )),
+        '#/components/schemas/Shelf/properties/x/items/properties/link',
+        'because it points back at a schema that is not an object with properties, so there is no class to read it into',
+    ],
+    'values beside declared properties' => [
+        new Schema(
+            name: 'Pet',
+            source: '#/components/schemas/Pet',
+            types: [SchemaType::Object],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+            additionalPropertiesSchema: new Schema(types: [SchemaType::String]),
+        ),
+        '#/components/schemas/Pet/additionalProperties',
+        'does not carry the values `additionalProperties` types',
+    ],
+]);
+
+// A value that writes a keyword the doctor names is one fact, and the keyword's finding is the one that says it: a
+// second finding for the property would be the same line twice. One that writes only an annotation keeps its own.
+it('names a keyword once when the mixed value writes it', function (): void {
+    $findings = supportMatrixSchemaFindings('response-untyped-keywords.yaml');
+    $order = '#/components/schemas/Order/properties';
+
+    expect(array_map(static fn (Finding $finding): ?SupportLevel => $finding->level, $findings))->toBe([SupportLevel::Ignored, SupportLevel::Ignored])
+        ->and(array_map(static fn (Finding $finding): string => $finding->pointer, $findings))->toBe([
+            $order.'/payment/oneOf',
+            '#/components/schemas/Note/anyOf',
+        ]);
+
+    $annotated = supportMatrixFindingsFor(supportMatrixAnswering(supportMatrixComponent('Team', new Schema(
+        types: [SchemaType::String, SchemaType::Integer],
+        ignored: ['default' => '#/components/schemas/Team/properties/x/default'],
+    ))));
+
+    expect($annotated)->toHaveCount(1)
+        ->and($annotated[0]->level)->toBe(SupportLevel::Partial);
 });
