@@ -369,10 +369,12 @@ name a form body also nests other names under** (`page` beside `page[size]`, or 
 request judges it only when its value is not an array, and the array of the nested names stands in for it, so the
 payload cannot promise `page`. Its value reaches `from()` only when it is not an array, which `dto()` ensures:
 `page[size]=3` reaches the DTO as `page[size]` and never as a `page` of `1`. The same holds for the key two names
-deliver under one, when a name below it has a rule. **A name PHP rewrites in a form body that the request does check is
-not hedged**: `page[size]` and `a b` are read by `from()` under the contract's name, which the request's `dto()` puts
-back from the name PHP delivered, so a required one stays required. A required `user.name` is the exception, and for the
-reason above rather than this one: a dot breaks the key list, so it stays optional.
+deliver under one, when a name below it has a rule. In a body that is JSON and a form at once the same holds for a
+top-level name: a form's array, or a JSON client's, stands in for a required `page`, and the array is left out of the
+data, so `dto()` has nothing to drop. **A name PHP rewrites in a form body that the request does check is not hedged**:
+`page[size]` and `a b` are read by `from()` under the contract's name, which the request's `dto()` puts back from the
+name PHP delivered, so a required one stays required. A required `user.name` is the exception, and for the reason above
+rather than this one: a dot breaks the key list, so it stays optional.
 
 **An enumeration value is written in the docblock only when it is safe to.** A value is data from the specification and
 a docblock is code: a string holding the sequence that closes a comment would end it early. Such a value costs the

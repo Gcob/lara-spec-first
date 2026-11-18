@@ -119,6 +119,22 @@ tags: [versions, conventions, planning]
   change: drop the key, or declare it. The reasoning is in
   [ADR 0012](./docs/project/decisions/0012-judge-plain-form-names-by-shape.md), and this ships
   [#168](https://github.com/Gcob/lara-spec-first/issues/168).
+- **A body that is JSON and a form and declares `page` beside `page[size]` now judges `page`, where neither name had a
+  rule.** `page` keeps its rules behind a shape check (judged only when its value is not an array) for both clients, and
+  `page[size]` keeps its JSON rule under the literal key `page[size]`, as before: a form client's `page[size]` is still
+  not checked. Requests that answered `200` now answer `422` to a client that asks for JSON (see
+  [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)):
+  `page=abc` from a form client and `{"page": "abc"}` from a JSON client; a required `page` left out, from either
+  client; for a body that may be absent, a JSON `{}` (refused on `page` through the required-keys check); and a
+  `dependentRequired` that `page` triggers now asks for its dependents (`page=2` without the dependent answers `422`,
+  and so does a form's `page[size]=3` alone, which is stricter than the contract and stated in the generated file).
+  `dto()` now carries `page`. Two limits, stated in the generated file: a `page` whose presence the contract asks for is
+  satisfied by a form's `page[size]=3` alone or by a JSON array under it, and **a JSON client's array under `page`
+  (`{"page": [1]}`) passes and is left out of `validated()`,** where the contract refuses it, since `rules()` does not
+  branch on the media type. The build counts it as a constraint it does not enforce. This is a breaking change: send
+  values the contract describes, or loosen the contract. The reasoning is in
+  [ADR 0012](./docs/project/decisions/0012-judge-plain-form-names-by-shape.md), and this ships
+  [#168](https://github.com/Gcob/lara-spec-first/issues/168).
 - **`ext-tokenizer` is now a declared requirement.** `spec:build` reads a custom controller with PHP's tokenizer to
   compare its `routeAction` with the generated parent. This is not a breaking change: every Laravel application already
   has the extension, since the framework requires it, and `composer` only now says so in this package's own
@@ -293,8 +309,9 @@ tags: [versions, conventions, planning]
   `page => ['*' => '5']`, an array the `integer` rule of `page` refused. A `*` name has no rule, so the array is the
   shape check's to skip: it now passes, with `page` left out of `validated()`. A `page` the contract asks for (required,
   or a `dependentRequired` dependent) still refuses it, and the generated file now says that a valid `page=2&page[*]=5`
-  is refused as well, since PHP keeps the later name: that refusal is not new, and now has its finding. This ships
-  [#168](https://github.com/Gcob/lara-spec-first/issues/168).
+  is refused as well, since PHP keeps the later name: that refusal is not new, and now has its finding. A `PATCH` asks
+  for no presence through `required`, so a required `page` there is shaped like an optional one and passes both. This
+  ships [#168](https://github.com/Gcob/lara-spec-first/issues/168).
 - **`spec:make` plans the build before it writes anything.** A document the build refuses (a path parameter named
   `request`, `this` or `2fa`, two operations claiming one request name, a body property and a query parameter with one
   name) used to leave a child controller that did not compile, which the command then never overwrote. It is now refused

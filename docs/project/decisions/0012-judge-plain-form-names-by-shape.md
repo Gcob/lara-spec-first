@@ -3,8 +3,9 @@ title: "ADR 0012: A plain form name is judged by shape beside the names a form n
 audience: Users and contributors
 covers: >
     The decision to judge a name of a body read as a form only when its value is not an array when other declared names
-    are delivered below it (`page` beside `page[size]`), to read the value of such a name in `dto()` only when it is not
-    an array, what the shape check cannot tell and what it states as stricter, and the alternatives turned down.
+    are delivered below it (`page` beside `page[size]`), in a body that is JSON as well too, to read the value of such a
+    name in `dto()` only when it is not an array, what the shape check cannot tell and what it states as stricter, and
+    the alternatives turned down.
 read_before: >
     Asking why a plain form name is wrapped in `Rule::when()`, why `dto()` drops an array, why a required `page` beside
     `page[size]` is `Optional` on the DTO, or changing how a form body's names that PHP nests are validated.
@@ -15,16 +16,18 @@ tags: [decisions, code-generation, openapi]
 
 > **In brief**
 >
-> - A name of a body read only as a form, declared beside names a form nests under it (`page` beside `page[size]`,
+> - A name of a body read as a form, declared beside names a form nests under it (`page` beside `page[size]`,
 >   `filter[a]` beside `filter[a][b]`, `ids` beside `ids[]`), keeps its rules, judged only when its value is not an
 >   array. The nested names keep theirs. It is the rule [ADR 0002](./0002-judge-plain-query-names-by-shape.md) set for
->   the query string.
+>   the query string. A body that is JSON as well gets it for a top-level name, with one gap: a JSON client's array
+>   under the name passes.
 > - `dto()` reads such a name only when its value is not an array, and a required one is `Optional` on the DTO: the
 >   array of the nested names stands in for it, so a required `page` is satisfied by `page[size]=3` alone.
 > - The request is stricter than the contract in two cases, and the generated file says so: a `dependentRequired` that a
 >   shaped name triggers, and a name the contract asks for beside only `*` names.
-> - Turned down: giving both names no rule, which let `page=abc` through, and shaping a name the contract asks for
->   beside a `*` name, which turned a 422 into a 200.
+> - Turned down: giving both names no rule, which let `page=abc` through, shaping a name the contract asks for beside a
+>   `*` name, which turned a 422 into a 200, and branching the shape check on the media type, which a rule set cannot do
+>   today.
 
 **Status:** Accepted · **Card:** [#168](https://github.com/Gcob/lara-spec-first/issues/168)
 
@@ -74,8 +77,9 @@ promise it. A shaped name that is not required is already `Optional`.
 
 **What the shape check cannot tell, stated.** A name whose presence the contract asks for (`required`, a dependent of a
 `dependentRequired`, or a required name of an optional body, through its "all or none") is satisfied by the array of the
-names nested under it: `page[size]=3` alone passes a required `page`. A name that nothing asks for has no such blind
-spot, and neither has a rule that judges the nested name.
+names nested under it: `page[size]=3` alone passes a required `page`. A `PATCH` asks for no presence through `required`,
+so a required name there binds none: it is shaped like an optional one, and no array stands in for it. A name that
+nothing asks for has no such blind spot, and neither has a rule that judges the nested name.
 
 **Stricter than the contract, with a finding in the generated file:**
 
@@ -83,15 +87,16 @@ spot, and neither has a rule that judges the nested name.
   `present_with:page`, and a form that sends only `page[size]=3` delivers an array under `page`, which `present_with`
   counts as `page` sent. `other` is asked for where the contract never sees `page`.
 - **A name the contract asks for, beside only `*` names.** `page` beside `page[*]` is shaped only when nothing asks for
-  `page`. When something does, it keeps its rule as it was, and a valid `page=2&page[*]=5` is refused (PHP keeps the
-  later name, so `page` arrives as an array).
+  `page` (a `required` name of a `PATCH` is not asked for). When something does, it keeps its rule as it was, and a
+  valid `page=2&page[*]=5` is refused (PHP keeps the later name, so `page` arrives as an array).
 
 **What keeps no rule, as before.** Two names under the exact same key (`user.name` and `user_name`): the value of one is
 the value of the other. A name below them keeps its own rule, and they keep their finding. A name typed `array` or
 `object` beside a name below it: its own value may be an array, so no rule can tell it from the array a form builds, and
-`Rule::when()` would never run its rules. An untyped name is shaped, as on the query side. A body that is JSON as well
-keeps the collision, since one rule set serves both clients and `rules()` does not branch on the media type. A `*` name
-has no rule at all, as before: it claims its path in a body read only as a form, to shape the name above it.
+`Rule::when()` would never run its rules. An untyped name is shaped, as on the query side. In a body that is JSON as
+well, a name PHP rewrites above a name below it keeps the collision too: a JSON client sends it under one key and a form
+client under another, so no one shape check holds both. A `*` name has no rule at all, as before: it claims its path in
+a body read only as a form, to shape the name above it.
 
 **A closed body closes the level a shaped name is delivered at through the array branch.** `filter` is closed to `a` and
 `c`, and `filter.a` is the key of `filter[a]`, whose rules judge a value that is not an array. A rule of its own on
@@ -99,7 +104,22 @@ has no rule at all, as before: it claims its path in a body read only as a form,
 `['array:b']`, written `'filter.a' => Rule::when(..., ['sometimes', 'string'], ['array:b'])`. `filter[a][evil]=1` and
 `page[evil]=1` are refused, as the contract refuses them, where `['array']` accepted them and kept only the declared key
 in `validated()`. A key `array:` cannot name (a comma in it) keeps `['array']` and the level open, with a finding, and a
-name that keeps no shape check (typed `array` or `object`, or in a collision) keeps its level open as before.
+name that keeps no shape check (typed `array` or `object`, or in a collision) keeps its level open as before. So does
+the level of a name that a name below it appends to (`ids` beside `ids[]`, read as `ids.0`): `['array:0']` would refuse
+a second `ids[]` value that the body accepted before, so the array branch stays `['array']` and a finding says what the
+key check accepts. The append is a separate matter, tracked below.
+
+**A body that is JSON and a form judges a top-level name by shape too.** `page` beside `page[size]` keeps its rules
+behind `Rule::when()` for both clients: `page=abc` from a form and `{"page": "abc"}` from JSON are refused. The nested
+name keeps its JSON rule under the literal key `page[size]`, which a form client's array never reaches, so a form
+client's value for it is not checked, as for any name PHP rewrites in such a body. The array branch is `['exclude']`,
+since no ruled name sits below `page` there, and `dto()` has nothing to drop. The shape check is the one the contract's
+two clients can share, with **one gap, stated in the generated file and counted as a constraint the build does not
+enforce:** `rules()` does not branch on the media type, so a JSON client's array under `page` (`{"page": [1]}`) passes
+and is left out of the validated data, where the contract refuses it. A rule that refused it would refuse the array a
+form builds for `page[size]=3`. A required `page` is asked for from either client, and for a body that may be absent a
+JSON `{}` is refused through the required-keys check, but a form's `page[size]=3` alone, or a JSON array, satisfies it
+(the same blind spot), and the DTO property is `Optional`.
 
 ## Alternatives turned down
 
@@ -111,6 +131,11 @@ name that keeps no shape check (typed `array` or `object`, or in a collision) ke
   defect. A name the contract asks for keeps its rule instead, and the request says it is stricter.
 - **Leave out the dependency of a shaped trigger.** `page=2` without `other` would then pass, which the contract
   refuses, where today it is refused. The stricter finding is the smaller departure.
+- **Keep both names without a rule in a body that is JSON as well.** One rule set cannot tell a JSON client's `page`
+  from the array a form builds, so the old answer held that no shape check was possible there. It is possible: the shape
+  check judges every scalar, and what it cannot tell is a JSON array, which is one gap instead of two names with no rule
+  at all. A rule for the JSON array would need `rules()` to branch on the media type, which is
+  [#133](https://github.com/Gcob/lara-spec-first/issues/133)'s question.
 - **Change the DTO class instead of `contractNames()`.** The class serves a JSON body and nested uses as well, where an
   array under `page` is a value of its own.
 - **Replace ADR 0002.** Its decision still holds for the query string, and an ADR is never edited into another.
@@ -123,6 +148,9 @@ name that keeps no shape check (typed `array` or `object`, or in a collision) ke
 - **The shape check has one blind spot,** the one the query side has: `page[size]=3` satisfies a presence the contract
   asks of `page`. The [guide](../../guide/code-generation/request-validation.md#one-rule-set-body-and-query) and the
   CHANGELOG state it.
+- **A body that is JSON and a form refuses what it accepted:** `page=abc` from a form and `{"page": "abc"}` from JSON, a
+  required `page` left out, a JSON `{}` for a body that may be absent, and a `dependentRequired` that `page` triggers.
+  The CHANGELOG lists them as a breaking change.
 - **A closed body refuses an undeclared key below a shaped name** (`page[evil]=1` beside `page` and `page[size]`), which
   it accepted. The CHANGELOG lists it as a breaking change.
 - **`dto()` carries the nested names again:** `page[size]` reaches it, and a required one is no longer `Optional`.

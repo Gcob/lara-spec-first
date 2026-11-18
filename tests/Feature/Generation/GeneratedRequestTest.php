@@ -2129,24 +2129,130 @@ it('checks a JSON client on the name the contract writes and lets a form client 
         ->toBe([200, ['plain' => 'x']]);
 });
 
-// `page` and `page[size]` in a body that is JSON and a form: a rule on `page` would judge the array a
-// form builds from `page[size]=3` and refuse it, so neither has one.
-it('does not refuse a form client for a name that collides with another in a mixed body', function (): void {
+/**
+ * A `POST` or `PATCH` whose body is read as JSON and as a form, from one schema.
+ */
+function postWithJsonAndForm(string $formType, Schema $schema, bool $bodyRequired = true, HttpMethod $method = HttpMethod::Post): Operation
+{
+    return new Operation(
+        index: 0,
+        method: $method,
+        path: PathTemplate::fromString('/mixed-shaped'),
+        operationId: 'sendMixedShaped',
+        requestBody: new RequestBody(['application/json' => $schema, $formType => $schema], $bodyRequired),
+    );
+}
+
+// `page` and `page[size]` in a body that is JSON and a form: `page`'s rules judge every scalar from either client, and
+// `page[size]` keeps its JSON rule under the literal key. The array a form builds for `page[size]=3` is `page`'s array
+// branch, which is `exclude`. What a JSON client's array under `page` does is the one gap: it passes and is left out of
+// `validated()`, since `rules()` does not branch on the media type.
+it('judges a plain name by shape in a body that is JSON and a form', function (string $formType): void {
+    $class = emittedRequestClass(postWithJsonAndForm($formType, new Schema(
+        types: [SchemaType::Object],
+        properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer]), 'plain' => new Schema(types: [SchemaType::String])],
+    )));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3'], 'plain' => 'x']))->toBe([200, ['plain' => 'x']])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => '2']))->toBe([200, ['page' => '2']])
+        ->and(array_keys(sendThroughEmitted($class, 'POST', parameters: ['page' => 'abc'])[1]['errors'] ?? []))->toBe(['page'])
+        ->and(sendThroughEmitted($class, 'POST', json: ['page' => 1, 'page[size]' => 3, 'plain' => 'x']))
+        ->toBe([200, ['page' => 1, 'page[size]' => 3, 'plain' => 'x']])
+        ->and(array_keys(sendThroughEmitted($class, 'POST', json: ['page' => 'abc'])[1]['errors'] ?? []))->toBe(['page'])
+        ->and(array_keys(sendThroughEmitted($class, 'POST', json: ['page[size]' => 'x'])[1]['errors'] ?? []))->toBe(['page[size]'])
+        // The stated gap.
+        ->and(sendThroughEmitted($class, 'POST', json: ['page' => [1]]))->toBe([200, []]);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// A required `page` is asked for from either client when nothing is sent, and by the required-keys check for a JSON `{}`
+// when the body may be absent. `page[size]=3` alone satisfies it, since the array stands in for it: the blind spot the
+// guide states, which the DTO shows as an `Optional` property.
+it('asks for a required shaped name in a body that is JSON and a form, and lets the array of a form client stand in', function (string $formType): void {
     $schema = new Schema(
         types: [SchemaType::Object],
         properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer]), 'plain' => new Schema(types: [SchemaType::String])],
+        required: ['page'],
     );
+    $required = emittedRequestClass(postWithJsonAndForm($formType, $schema));
+    $optional = emittedRequestClass(postWithJsonAndForm($formType, $schema, bodyRequired: false));
+
+    expect(sendThroughEmitted($required, 'POST')[0])->toBe(422)
+        ->and(array_keys(sendThroughEmitted($required, 'POST', json: ['plain' => 'x'])[1]['errors'] ?? []))->toBe(['page'])
+        ->and(sendThroughEmitted($required, 'POST', json: ['page' => 2]))->toBe([200, ['page' => 2]])
+        ->and(sendThroughEmitted($required, 'POST', parameters: ['page' => ['size' => '3']]))->toBe([200, []])
+        ->and(statusForRawJson($optional, '{}'))->toBe(422)
+        ->and(statusForRawJson($optional, '{"page":2}'))->toBe(200);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// `dependentRequired: {page: [other]}` gives `other` `present_with:page`, and the array of a form client's `page[size]`
+// counts as `page` sent, so `page[size]=3` alone asks for `other` where the contract never sees `page`: stricter, and the
+// file says so. `page=2` alone is refused as the contract refuses it, from either client.
+it('keeps what a shaped name triggers in a body that is JSON and a form', function (string $formType): void {
+    $class = emittedRequestClass(postWithJsonAndForm($formType, new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'page' => new Schema(types: [SchemaType::Integer]),
+            'page[size]' => new Schema(types: [SchemaType::Integer]),
+            'other' => new Schema(types: [SchemaType::String]),
+        ],
+        dependentRequired: ['page' => ['other']],
+    )));
+
+    expect(array_keys(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3']])[1]['errors'] ?? []))->toBe(['other'])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3'], 'other' => 'x'])[0])->toBe(200)
+        ->and(array_keys(sendThroughEmitted($class, 'POST', parameters: ['page' => '2'])[1]['errors'] ?? []))->toBe(['other'])
+        ->and(array_keys(sendThroughEmitted($class, 'POST', json: ['page' => 2])[1]['errors'] ?? []))->toBe(['other'])
+        ->and(sendThroughEmitted($class, 'POST', json: ['page' => 2, 'other' => 'x'])[0])->toBe(200);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// `dto()` of a JSON client's array under `page`: `exclude` leaves it out of the data, so the property is `Optional` and the
+// request is a 200, not a `TypeError` or a silent `1`.
+it('builds the DTO of a body that is JSON and a form without the array under a shaped name', function (): void {
+    $class = emittedRequestClass(postWithJsonAndForm('multipart/form-data', new Schema(
+        types: [SchemaType::Object],
+        properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+        required: ['page'],
+    )));
+
+    expect(dtoForRawJson($class, 'POST', '{"page":[1]}'))->toBe([200, []])
+        ->and(dtoForRawJson($class, 'POST', '{"page":2}'))->toBe([200, ['page' => 2]]);
+});
+
+// A `PATCH` asks for no presence, so a `required` `page` beside `page[*]` is shaped like an optional one: `page[*]=5` alone
+// passes with `page` left out, and so does `page=2&page[*]=5`, which PHP delivers as `page => ['*' => '5']`. `page=2` is
+// judged, and `page=abc` refused. The class is built for the `PATCH` operation and driven by a `POST` request, since
+// `Request::create()` gives a `PATCH` no form `Content-Type`, and an empty body would be read as absent.
+it('shapes a plain form name a PATCH requires beside a wildcard name', function (string $mediaType): void {
     $class = emittedRequestClass(new Operation(
         index: 0,
-        method: HttpMethod::Post,
-        path: PathTemplate::fromString('/mixed-collide'),
-        operationId: 'sendMixedCollision',
-        requestBody: new RequestBody(['application/json' => $schema, 'multipart/form-data' => $schema], true),
+        method: HttpMethod::Patch,
+        path: PathTemplate::fromString('/patched'),
+        operationId: 'patchShaped',
+        requestBody: new RequestBody([$mediaType => new Schema(
+            types: [SchemaType::Object],
+            properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
+            required: ['page'],
+        )], true),
     ));
 
-    expect(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3'], 'plain' => 'x'])[0])->toBe(200)
-        ->and(sendThroughEmitted($class, 'POST', json: ['page' => 1, 'page[size]' => 3, 'plain' => 'x'])[0])->toBe(200);
-});
+    expect(sendThroughEmitted($class, 'POST', parameters: ['page' => ['*' => '5']]))->toBe([200, []])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => '2']))->toBe([200, ['page' => '2']])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => 'abc'])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// `ids[]` is read as `ids.0`, so `array:0` on the array branch of `ids` would refuse a second value that the body accepted
+// before this check and that an open body still accepts. The closed body leaves that level open, as the open one does.
+it('accepts the values of a name that is appended to beside its plain name in a closed body', function (string $mediaType, bool $closed): void {
+    $class = emittedRequestClass(postWithFormSchema($mediaType, new Schema(
+        types: [SchemaType::Object],
+        properties: ['ids' => new Schema(types: [SchemaType::Integer]), 'ids[]' => new Schema(types: [SchemaType::Integer])],
+        additionalProperties: $closed ? false : null,
+    )));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['ids' => '4']))->toBe([200, ['ids' => '4']])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['ids' => ['4', '5']]))->toBe([200, ['ids' => ['4']]])
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['ids' => ['abc']])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with([false, true]);
 
 // An optional body asks for what it requires once any key is sent, and a form sends `user.name`
 // as `user_name`.

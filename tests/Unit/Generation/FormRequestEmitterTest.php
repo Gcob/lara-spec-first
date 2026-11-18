@@ -590,6 +590,43 @@ it('writes no list of scalar names for a form body whose names do not nest', fun
         ->and($emitted)->not->toContain('SCALAR_NAMES');
 });
 
+// A body that is JSON and a form writes the shape check for a top-level name too, with `exclude` in the array branch (no
+// ruled name sits below it, as the nested name keeps its literal JSON key), and no list of scalar names: an array never
+// reaches `validated()`. Read by Pint, so a consumer's formatter has nothing to rewrite.
+it('writes a plain name behind Rule::when beside the name a form nests under it in a body that is JSON and a form', function (): void {
+    $schema = new Schema(
+        types: [SchemaType::Object],
+        properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+    );
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => $schema, 'multipart/form-data' => $schema], true),
+    ), controllerShortName: 'CreateThingController');
+
+    expect($emitted)
+        ->toContain(
+            "            'page' => Rule::when(\n"
+            ."                fn (Fluent \$input): bool => ! is_array(\$input->get('page')),\n"
+            ."                ['sometimes', 'integer'],\n"
+            ."                ['exclude'],\n"
+            .'            ),'
+        )
+        ->toContain("            'page[size]' => ['sometimes', 'integer'],")
+        ->and($emitted)->not->toContain('SCALAR_NAMES');
+
+    $file = tempnam(sys_get_temp_dir(), 'lsf-request-').'.php';
+    file_put_contents($file, $emitted);
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $file], dirname(__DIR__, 3));
+    $pint->run();
+    unlink($file);
+
+    expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
 /**
  * A `GET` whose only input is one query parameter.
  */
