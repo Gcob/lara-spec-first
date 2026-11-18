@@ -3803,3 +3803,76 @@ it('validates a map of 10,000 values beside a declared key in under 5 seconds', 
     expect($status)->toBe(200)
         ->and($seconds)->toBeLessThan(5.0);
 });
+
+// A root map beside a `query` parameter is validated: the guard spares the key the parameter arrives under (read from the
+// query string, with its own loose rules), and every other key of the body is the map's. `validated()` holds both, and the
+// DTO holds the body's keys alone.
+it('validates a root map\'s values beside a query parameter', function (string $parameter, string $query, array $json, int $status, array $expected): void {
+    $class = emittedRequestClass(postWithMapBody(
+        mapOf(new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter($parameter, new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    $answer = refusedOrValidated(sendThroughEmitted($class, 'POST', $query, $json));
+
+    expect($status === 422 ? [422, array_map(strval(...), array_keys($answer[1]))] : $answer)->toBe([$status, $expected]);
+})->with([
+    'a good value and the parameter' => ['page', '?page=2', ['a' => 1], 200, ['a' => 1, 'page' => '2']],
+    'a value the map refuses' => ['page', '?page=2', ['a' => 'x'], 422, ['a']],
+    // The parameter's own rule, `integer`, and never the map's `integer:strict`: `page` is not a key of the map.
+    'a parameter its own rule refuses' => ['page', '?page=abc', ['a' => 1], 422, ['page']],
+    'an ID the map refuses' => ['page', '?page=2', ['1042' => 'x'], 422, ['1042']],
+    'an ID the map accepts' => ['page', '?page=2', ['1042' => 3], 200, [1042 => 3, 'page' => '2']],
+    // PHP delivers `page[size]` under `page`, so the head is the key the guard spares.
+    'a bracketed name, its head spared' => ['page[size]', '?page[size]=3', ['a' => 1], 200, ['a' => 1, 'page' => ['size' => '3']]],
+]);
+
+it('keeps the message of a query parameter its own beside a root map', function (): void {
+    $class = emittedRequestClass(postWithMapBody(
+        mapOf(new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    [$status, $answer] = sendThroughEmitted($class, 'POST', '?page=abc', ['a' => 1]);
+
+    expect($status)->toBe(422)
+        ->and($answer['errors'] ?? null)->toBe(['page' => ['The page field must be an integer.']]);
+});
+
+it('types the DTO of a root map beside a query parameter by its values, and emits the value class', function (): void {
+    $pet = new Schema(name: 'Pet', source: '#/components/schemas/Pet', types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])]);
+    $class = emittedRequestClass(postWithMapBody(mapOf($pet), [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]))]));
+    $namespace = substr($class, 0, (int) strrpos($class, '\\Requests\\'));
+
+    expect(class_exists($namespace.'\\Data\\PetInputDto'))->toBeTrue()
+        ->and(dtoThroughEmitted($class, 'POST', ['x' => ['name' => 'a']], query: '?dryRun=1'))->toBe([200, ['x' => ['name' => 'a']]])
+        ->and(sendThroughEmitted($class, 'POST', '?dryRun=1', ['x' => ['name' => 5]])[0])->toBe(422);
+});
+
+// A root that declares properties beside a value schema and a `query` parameter: an undeclared key is judged, the
+// parameter's key is read from the query string whatever the body says, and a body key of that name is left out.
+it('validates the undeclared keys of a root with properties beside a query parameter', function (string $query, array $json, int $status, array $expected): void {
+    $class = emittedRequestClass(postWithMapBody(
+        mapBeside(['locale' => new Schema(types: [SchemaType::String])], new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    $answer = refusedOrValidated(sendThroughEmitted($class, 'POST', $query, $json));
+
+    expect($status === 422 ? [422, array_map(strval(...), array_keys($answer[1]))] : $answer)->toBe([$status, $expected]);
+})->with([
+    'a declared key, an undeclared one and the parameter' => ['?page=2', ['locale' => 'fr', 'a' => 1], 200, ['a' => 1, 'locale' => 'fr', 'page' => '2']],
+    'an undeclared key the value schema refuses' => ['?page=2', ['locale' => 'fr', 'a' => 'x'], 422, ['a']],
+    'a body key named like the parameter' => ['', ['locale' => 'fr', 'page' => 'bad'], 200, ['locale' => 'fr']],
+]);
+
+it('says a body key named like a query parameter is left out, beside declared properties', function (): void {
+    $planned = plannedRequests([postWithMapBody(
+        mapBeside(['locale' => new Schema(types: [SchemaType::String])], new Schema(types: [SchemaType::Integer])),
+        [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    )])['requests'][0];
+    $file = (new FormRequestEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($planned)->contents;
+
+    expect((string) preg_replace('/\s*\n\s*\*\s*/', ' ', $file))
+        ->toContain('A body key named `page` is not an undeclared key of this body: `page` is also a `query` parameter');
+});

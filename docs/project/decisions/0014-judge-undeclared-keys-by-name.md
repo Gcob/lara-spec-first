@@ -6,11 +6,12 @@ covers: >
     The decision to validate the value schema of an object that declares properties beside it, with a package rule
     (`UndeclaredKeys`) on the object's wildcard that gives a declared key exactly its own rules, how it is recorded and
     written, the declared names it cannot spare and the finding each leaves, what `validated()` holds, the cost of a
-    large map and the remedy, and the alternatives turned down. It also restates what of ADR 0003 still holds.
+    large map and the remedy, a root map beside a `query` parameter, and the alternatives turned down. It also restates
+    what of ADR 0003 still holds.
 read_before: >
-    Asking why a map's values are validated beside declared `properties`, why a generated request imports
-    `UndeclaredKeys`, why a declared name with a dot keeps `spec:doctor` at `Partial`, why `validated()` holds keys no
-    property names, or changing how the wildcard of a map is written.
+    Asking why a map's values are validated beside declared `properties` or a `query` parameter, why a generated request
+    imports `UndeclaredKeys`, why a declared name with a dot keeps `spec:doctor` at `Partial`, why `validated()` holds
+    keys no property names, or changing how the wildcard of a map is written.
 tags: [decisions, code-generation, openapi]
 ---
 
@@ -24,7 +25,8 @@ tags: [decisions, code-generation, openapi]
 > - The wildcard is a package rule, `Gcob\LaraSpecFirst\Validation\UndeclaredKeys`, that the generated request writes as
 >   the key's value. It reads the key's names, never the data, which is what keeps it affordable.
 > - A declared name Laravel cannot tell from an undeclared key by what it sees keeps the report (`Partial` in
->   `spec:doctor`), with a finding that says why. A root map beside a `query` parameter is still reported.
+>   `spec:doctor`), with a finding that says why. A root map beside a `query` parameter is validated too: the guard
+>   spares the key the parameter arrives under.
 > - Turned down: ordering the rules so the declared key wins, building a rule for every undeclared key at request time,
 >   and `Rule::forEach`, which takes 22 seconds for a map of 10,000 values.
 > - This supersedes [ADR 0003](./0003-validate-each-value-of-a-map.md), and restates what of it still holds.
@@ -97,8 +99,12 @@ array no longer matters, and a declared key never gets the value schema's rules.
   and PHP itself merges the two names.
 - **An undeclared key PHP rewrites** (`a b` as `a_b`) reaches the value schema under its new name. That loses no
   constraint, so it is information, like the same finding on a map root.
-- **A root map beside a `query` parameter is still reported,** as ADR 0003 says: the parameter's key sits among the
-  map's.
+- **A root map beside a `query` parameter is validated, and the guard spares the parameter's key.** ADR 0003 reported
+  it, since the validated data holds the body and the query string and a plain wildcard would hold the parameter's key
+  to the value schema. The root's guard spares the keys the parameters arrive under (`page` for a parameter written
+  `page[size]`) beside the declared names, so the parameter keeps its own rules and a body key of that name is left out
+  of the validated data, which is information, as for a map root. The keys of a `query` parameter never hold a `.` (PHP
+  rewrites it) and a name holding `*` has no key to spare, so the guard can always spare them.
 
 ### What of ADR 0003 still holds
 
@@ -128,10 +134,10 @@ written again under each integer-like key.
 
 ## Consequences
 
-- **A request that answered `200` may answer `422`:** an undeclared key beside declared properties now has its value
-  checked.
-- **`spec:doctor` exits `0` where it exited `2`** for a document whose only gap was such a map, and still exits `2` for
-  the cases the guard cannot spare and for a root map beside a `query` parameter. A schema used in a request and in a
+- **A request that answered `200` may answer `422`:** an undeclared key beside declared properties, and a key of a root
+  map beside a `query` parameter, now has its value checked.
+- **`spec:doctor` exits `0` where it exited `2`** for a document whose only gap was such a map or a root map beside a
+  `query` parameter, and still exits `2` for the cases the guard cannot spare. A schema used in a request and in a
   response still exits `2` for the response's own finding.
 - **A generated request imports `Gcob\LaraSpecFirst\Validation\UndeclaredKeys`:** a class name a generated file depends
   on, frozen with the rest at 1.0.

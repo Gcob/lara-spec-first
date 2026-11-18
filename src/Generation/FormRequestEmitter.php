@@ -198,22 +198,29 @@ final readonly class FormRequestEmitter
             );
         }
 
-        $spared = $this->rootSparedNames($set);
-
-        if ($spared !== null) {
-            $constants .= sprintf(
-                "    /**\n     * The top-level names the body declares, which the values of its other keys never judge: the guard of the\n"
-                    ."     * root `*` and the copies under integer-like keys read the same list.\n     */\n"
-                    ."    private const SPARED_KEYS = [%s];\n\n",
-                implode(', ', array_map($this->literal(...), $spared)),
-            );
-        }
-
         if ($set->queryKeys !== []) {
             $constants .= sprintf(
                 "    /**\n     * The keys the contract's `query` parameters arrive under, the only ones read from the query string.\n     */\n"
                     ."    private const QUERY_KEYS = [%s];\n\n",
                 implode(', ', array_map($this->literal(...), $set->queryKeys)),
+            );
+        }
+
+        $spared = $this->rootSparedNames($set);
+
+        if ($spared !== null) {
+            // The keys the `query` parameters arrive under are the constant's own, so the two lists cannot disagree.
+            $names = array_map($this->literal(...), array_values(array_diff($spared, $set->queryKeys)));
+
+            if ($set->queryKeys !== []) {
+                $names[] = '...self::QUERY_KEYS';
+            }
+
+            $constants .= sprintf(
+                "    /**\n     * The top-level names the body declares and the keys its `query` parameters arrive under, which the values of\n"
+                    ."     * the other keys never judge: the guard of the root `*` and the copies under integer-like keys read the same list.\n     */\n"
+                    ."    private const SPARED_KEYS = [%s];\n\n",
+                implode(', ', $names),
             );
         }
 

@@ -365,15 +365,34 @@ final readonly class RuleSetBuilder
             }
         }
 
+        // Why: the root's wildcard would judge a `query` parameter's key too, since the validated data holds both. The
+        // guard spares the keys the parameters arrive under, as it spares the declared names. The body's rules are built
+        // before the parameters are planned, so the names are added here, to every rule key under the root `*`.
+        if ($walk->rootJudged && $queryKeys !== []) {
+            foreach (array_keys($walk->rules) as $ruleKey) {
+                $ruleKey = (string) $ruleKey;
+
+                if ($ruleKey === '*' || str_starts_with($ruleKey, '*.')) {
+                    $walk->undeclaredKeys[$ruleKey][0] = array_values(array_unique([...$walk->undeclaredKeys[$ruleKey][0] ?? [], ...$queryKeys]));
+                }
+            }
+        }
+
         // Why: `validationData()` takes a `query` parameter's key from the query string and drops it from the body, so a
         // body key of that name is not a key of the body. A map has no declared name to refuse it for.
-        if ($walk->openMapRoot) {
+        if ($walk->openMapRoot || $walk->rootJudged) {
             foreach ($queryKeys as $queryKey) {
-                $walk->information(sprintf(
-                    'A body key named `%1$s` is not a key of this map: `%1$s` is also a `query` parameter, so it is read from '
-                        .'the query string, and a `%1$s` in the body is left out of the validated data and of the DTO.',
-                    $queryKey,
-                ));
+                $walk->information($walk->mapRoot
+                    ? sprintf(
+                        'A body key named `%1$s` is not a key of this map: `%1$s` is also a `query` parameter, so it is read from '
+                            .'the query string, and a `%1$s` in the body is left out of the validated data and of the DTO.',
+                        $queryKey,
+                    )
+                    : sprintf(
+                        'A body key named `%1$s` is not an undeclared key of this body: `%1$s` is also a `query` parameter, so it '
+                            .'is read from the query string, and a `%1$s` in the body is left out of the validated data.',
+                        $queryKey,
+                    ));
             }
         }
 
@@ -467,21 +486,6 @@ final readonly class RuleSetBuilder
         }
 
         return false;
-    }
-
-    /**
-     * Whether the values of a map body are judged by the request: when no `query` parameter shares the validated data.
-     *
-     * The wildcard that judges them reaches every key at its level, and `validationData()` puts the query string beside
-     * the body, so a `query` parameter's key would be judged by the map's value schema too. The body's rules are built
-     * before the query names are planned, so a declared parameter is all there is to ask. A root map beside one leaves
-     * its values reported instead.
-     *
-     * @internal Public so the input DTO asks the question the rules did.
-     */
-    public static function validatesRootMapValues(Operation $operation): bool
-    {
-        return $operation->queryParameters === [];
     }
 
     /**
@@ -790,11 +794,9 @@ final readonly class RuleSetBuilder
             }
         }
 
-        // Why: beside a `query` parameter the wildcard would judge the parameter's key too, so the values are left
-        // reported, unless the value schema allows anything and there is nothing to report.
         $value = self::undeclaredValueSchema($schema);
         $open = $value !== null && self::allowsAnyValue($value);
-        $judged = $value !== null && ! $open && self::validatesRootMapValues($operation);
+        $judged = $value !== null && ! $open;
         $spared = [];
         $unsparable = false;
 
@@ -806,6 +808,8 @@ final readonly class RuleSetBuilder
             $judged = ! $unsparable;
             $spared ??= [];
         }
+
+        $walk->rootJudged = $judged;
 
         // The root goes through the same sweep a field does, minus what the
         // object walk below acts on. Without it a keyword written on the

@@ -81,6 +81,12 @@ final class RuleWalk
     public array $undeclaredKeys = [];
 
     /**
+     * Whether the body's value schema is judged at the root, under `*`: the build adds the keys the `query` parameters
+     * arrive under to the names the root's guard spares, once the parameters are planned.
+     */
+    public bool $rootJudged = false;
+
+    /**
      * Whether the body is a map or an open object that allows other keys (`additionalProperties` is not `false`): the
      * findings about the keys a client may send are about it alone, since a closed body refuses them all.
      */

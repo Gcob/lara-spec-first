@@ -23,7 +23,8 @@ tags: [decisions, code-generation, openapi]
 > - Turned down: an empty DTO that carries nothing, a property per key, and patching a class when a later operation
 >   arrives.
 
-**Status:** Accepted · **Card:** [#109](https://github.com/Gcob/lara-spec-first/issues/109) · **Pull request:**
+**Status:** Superseded by [ADR 0015](./0015-type-the-values-of-a-map-body.md) · **Card:**
+[#109](https://github.com/Gcob/lara-spec-first/issues/109) · **Pull request:**
 [#170](https://github.com/Gcob/lara-spec-first/pull/170)
 
 ## Context

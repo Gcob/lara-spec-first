@@ -348,6 +348,30 @@ paths:
             responses:
                 '202': { description: Replaced }
 
+    /posts/{postId}/counters:
+        # A body that is a map beside a `query` parameter. The generated request's `'*'` key is
+        # wrapped in `UndeclaredKeys`, which spares `dryRun` (it is read from the query string
+        # and keeps its own rules), and `ReplacePostCountersInputDto` types the values as
+        # integers. Send `{"views": "x"}` for a `422` on `views`, and `?dryRun=1` with
+        # `{"views": 3}` for the generated parent's `501`.
+        put:
+            operationId: replacePostCounters
+            summary: Replace the counters of a post
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+                - { name: dryRun, in: query, schema: { type: boolean } }
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            additionalProperties:
+                                type: integer
+            responses:
+                '202': { description: Replaced }
+
     /posts/{postId}/legacy-comments:
         # Deprecated with a sunset date. Both reach the generated file's findings,
         # and both are what the doctor will enforce once it exists: a deprecation

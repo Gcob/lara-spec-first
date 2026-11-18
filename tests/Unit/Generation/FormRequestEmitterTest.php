@@ -972,6 +972,29 @@ it('repeats a root\'s value rules under its integer-like keys, skipping the decl
         ->and(pintAcceptsEmitted($emitted))->toBeTrue();
 });
 
+// The root's guard also spares the keys the `query` parameters arrive under, and the emitted class reads them from the
+// constant it already has for them, so the guard and the list of keys read from the query string cannot disagree.
+it('spares the query keys beside the declared names at the root', function (array $properties, string $constant): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => new Schema(types: [SchemaType::Object], properties: $properties, additionalPropertiesSchema: $integer)], true),
+        queryParameters: [new QueryParameter('page[size]', $integer), new QueryParameter('limit', $integer)],
+    ));
+
+    expect($emitted)
+        ->toContain("private const QUERY_KEYS = ['page', 'limit'];")
+        ->toContain($constant)
+        ->toContain("            '*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),")
+        ->and(pintAcceptsEmitted($emitted))->toBeTrue();
+})->with([
+    'a map root' => [[], 'private const SPARED_KEYS = [...self::QUERY_KEYS];'],
+    'a root with properties' => [['id' => new Schema(types: [SchemaType::Integer])], "private const SPARED_KEYS = ['id', ...self::QUERY_KEYS];"],
+]);
+
 // The `dto()` finding names the key a rewritten `query` name is read under only for a request that has one, with its
 // own example, so the others carry no key they never use.
 it('names the key of a rewritten query name in the dto finding only where there is one', function (): void {

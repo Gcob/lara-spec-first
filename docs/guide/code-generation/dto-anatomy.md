@@ -307,7 +307,7 @@ for a [map property](#what-each-schema-type-becomes) (`array<array-key, int>` fo
 `array<array-key, mixed>` for an open object, whose values the request judges nothing about. `from()` hands the whole
 payload to the property, converting each value, and `toArray()` returns it, so `{"a": 1, "b": 2}` is
 `$dto->additionalProperties === ['a' => 1, 'b' => 2]`. The partial type is the same, since no key of it can be absent.
-The reasoning is in [ADR 0004](../../project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
+The reasoning is in [ADR 0015](../../project/decisions/0015-type-the-values-of-a-map-body.md).
 
 **A response object with no `properties` is carried whole in the same way.**
 `{type: object, additionalProperties: {type: integer}}` under a status is a DTO of one property, `additionalProperties`,
@@ -321,17 +321,15 @@ schema is not carried**: the DTO has the declared properties only, and the file'
 keys are not read. The reasoning is in
 [ADR 0013](../../project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md).
 
-**Beside a `query` parameter, the values are `mixed`.** The request judges the values of a root map only where no
-`query` parameter shares the validated data with the body (see
-[a map's values](./request-validation.md#a-maps-values-are-validated-one-by-one)), and the DTO never types what the
-request did not check. A map of integers beside `?dryRun=` is `array<array-key, mixed>`, and the file's findings say
-why. The keys of the `query` parameters are never in the DTO: `validated()` holds both, and `dto()` hands the DTO the
-body's keys alone. A body key named like a `query` parameter is read from the query string instead, which the request's
-findings name. A key a form delivers under a rewritten name (`a.b` as `a_b`) is carried under that name, and so is it
-said. A key such as an ID (`"1042"`) is kept, as the `int` key `1042`, and its value is judged: the
-[request writes a rule for each one](./request-validation.md#a-map-or-open-object-body-is-carried-whole). **A response
-has no `query` parameter, so the values of a response map are always typed** and that finding never appears in a
-response DTO.
+**Beside a `query` parameter, the values are typed the same way.** The request judges the values of a root map there too
+(its guard spares the keys the `query` parameters arrive under, see
+[a map's values](./request-validation.md#a-maps-values-are-validated-one-by-one)), so a map of integers beside
+`?dryRun=` is `array<array-key, int>`, and a map of `$ref` values holds the value class. The keys of the `query`
+parameters are never in the DTO: `validated()` holds both, and `dto()` hands the DTO the body's keys alone. A body key
+named like a `query` parameter is read from the query string instead, which the request's findings name. A key a form
+delivers under a rewritten name (`a.b` as `a_b`) is carried under that name, and so is it said. A key such as an ID
+(`"1042"`) is kept, as the `int` key `1042`, and its value is judged: the
+[request writes a rule for each one](./request-validation.md#a-map-or-open-object-body-is-carried-whole).
 
 **A node that recurses is the class of the schema it points back at.** `Address` holds an `Address`: `parent` is typed
 `Optional|AddressInputDto`, and `Optional|AddressInputDto|null` when the schema is nullable (`?AddressInputDto` for a

@@ -664,25 +664,31 @@ it('reports a keyword written inside an additionalProperties schema', function (
 
 // The doctor reported every map body as `Ignored`, so a contract whose only gap was a map exited `2`. Once the request
 // validates the values nothing is left unenforced, so the same contract exits `0`: the move the CHANGELOG announces.
-it('gives a map the request validates no additionalProperties finding, and a clean exit', function (Schema $body): void {
-    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => $body])]);
+it('gives a map the request validates no additionalProperties finding, and a clean exit', function (Schema $body, array $query): void {
+    assert(array_is_list($query));
+
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/json' => $body], $query)]);
 
     expect($findings)->toBe([])
         ->and(supportMatrixReport($findings)->exitCode())->toBe(0);
 })->with(function (): Generator {
     $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
+    $page = [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))];
 
-    yield 'a map body' => [$map];
-    yield 'a map body with an empty value schema' => [new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema)];
-    yield 'a nested map' => [supportMatrixObject(['labels' => $map])];
+    yield 'a map body' => [$map, []];
+    yield 'a map body with an empty value schema' => [new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema), []];
+    yield 'a nested map' => [supportMatrixObject(['labels' => $map]), []];
     // The guard spares the declared names, so the values beside them are validated: the move the CHANGELOG announces.
-    yield 'beside declared properties' => [new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]))];
-    yield 'nested beside declared properties' => [supportMatrixObject(['meta' => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]))])];
+    yield 'beside declared properties' => [new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String])), []];
+    yield 'nested beside declared properties' => [supportMatrixObject(['meta' => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]))]), []];
+    // And it spares the key a `query` parameter arrives under.
+    yield 'a root map beside a query parameter' => [$map, $page];
+    yield 'a root with properties beside a query parameter' => [new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String])), $page];
 });
 
 // The values of a map the build cannot validate are still a finding and still exit `2`: a declared name the guard cannot
 // spare (a dot Laravel replaces, a `*`, a form name nested in another, a name a body that is JSON and a form reads two
-// ways), the one undeclared key a form delivers under a declared name's key, and a root map beside a `query` parameter.
+// ways), and the one undeclared key a form delivers under a declared name's key.
 it('keeps reporting the values of a map the request leaves unvalidated', function (array $content, array $query): void {
     assert(array_is_list($query));
 
@@ -705,10 +711,6 @@ it('keeps reporting the values of a map the request leaves unvalidated', functio
     ];
     // Spared under `user_name`, and an undeclared key that arrives under it is judged by the declared name's rules only.
     yield 'beside a form name PHP delivers under another one' => [['application/x-www-form-urlencoded' => $beside('user.name')], []];
-    yield 'a root map beside a query parameter' => [
-        ['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value)],
-        [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    ];
 });
 
 // --- Keywords written beside a $ref, at 3.1 ---

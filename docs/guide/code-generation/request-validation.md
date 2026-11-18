@@ -72,7 +72,7 @@ sub-namespace of the generated tree, and declares it as `routeAction`'s first pa
 | [An optional body's "all or none"](#an-optional-body-all-or-none), and a nested object's required children    | A field name carrying `*`, which Laravel reads as a wildcard and offers no escape for                                   |
 | `allOf` merged, `dependentRequired`, `additionalProperties: false` at every depth                             | A `query` name PHP appends to (`ids[]`) or delivers under no name, or under a key the body arrives under                |
 | A recursive schema, [down to the depth it states](#a-recursive-schema-is-validated-to-a-stated-depth)         | A form client's value for a top-level name PHP rewrites, in a body that is JSON too                                     |
-| [A map's values](#a-maps-values-are-validated-one-by-one), each by its `additionalProperties` schema          | A map's values beside a declared name the guard cannot spare, or at the root beside a `query` parameter                 |
+| [A map's values](#a-maps-values-are-validated-one-by-one), each by its `additionalProperties` schema          | A map's values beside a declared name the guard cannot spare                                                            |
 | A form name beside the names a form nests under it, [judged by shape](#one-rule-set-body-and-query)           | Two top-level names a form delivers under one key, which no rule can tell apart                                         |
 |                                                                                                               | A JSON client's array under a name a body that is JSON and a form judges by shape (`{"page": [1]}`)                     |
 |                                                                                                               | A bound on a field that states no single type                                                                           |
@@ -1056,9 +1056,32 @@ no value rule is written. Five cases, each with its own finding:
   `user_name` is judged by `user.name`'s rules, not by the value schema") and `spec:doctor` reports as `Partial`. No
   public Laravel API gives a rule the original key, and PHP merges the two names itself, so nothing can close it today.
 
-**A root map beside a `query` parameter is reported and not validated.** The wildcard would hold the parameter's key to
-the value schema, so one finding names `additionalProperties` and `spec:doctor` reports it as `Partial`. A map nested in
-an operation that has a `query` parameter is validated.
+**A root map beside a `query` parameter is validated, and the guard spares the parameter's key.** The validated data
+holds the body and the query string, so a plain wildcard would hold the parameter's key to the value schema. The root's
+guard spares the keys the parameters arrive under (`page` for a parameter written `page[size]`) beside the declared
+names, and the generated file reads them from the constant that lists the keys read from the query string:
+
+```yaml
+# workbench/openapi.yaml, `PUT /posts/{postId}/counters`
+parameters:
+    - { name: dryRun, in: query, schema: { type: boolean } }
+requestBody:
+    content:
+        application/json:
+            schema: { type: object, additionalProperties: { type: integer } }
+```
+
+```php
+// app/Http/Generated/Requests/ReplacePostCountersRequest.php
+private const QUERY_KEYS = ['dryRun'];
+private const SPARED_KEYS = [...self::QUERY_KEYS];
+
+'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),
+'dryRun' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],
+```
+
+`{"views": "x"}` answers on `views`, and `?dryRun=abc` answers on `dryRun` with its own message. A map nested in an
+operation that has a `query` parameter needs no guard: its keys sit under a name of its own.
 
 **Two branches of an `allOf` that each write a value schema are merged exactly:** the values must satisfy both, and a
 value schema written by one branch also holds for the properties the other branch declares. A contradiction is refused,
@@ -1306,10 +1329,10 @@ payload, whose keys are the contract's own property names, so there is nothing t
 
 **A body that is an object with no `properties` has one property on its DTO, `additionalProperties`, and `validated()`
 holds every body key.** The keys of such a body are the data, so `validated()` would hold none of them if no rule named
-one: the root gets `'*' => ['sometimes']` where no value rule is emitted (an open object, an empty value schema, a map
-beside a `query` parameter), after every explicit key, so the wildcard keeps each key without asking anything of it. A
-map whose values are validated has its value rules under the same `*`. A controller that passed `validated()` to
-`create()` now passes the body, where it passed `[]`.
+one: the root gets `'*' => ['sometimes']` where no value rule is emitted (an open object, an empty value schema), after
+every explicit key, so the wildcard keeps each key without asking anything of it. A map whose values are validated has
+its value rules under the same `*`. A controller that passed `validated()` to `create()` now passes the body, where it
+passed `[]`.
 
 ```php
 // app/Http/Generated/Data/ReplacePostLabelsInputDto.php
@@ -1321,13 +1344,12 @@ public function __construct(
 ) {}
 ```
 
-**A value is typed only where the request judged it.** Beside a `query` parameter the values of a root map are
-[reported and not validated](#a-maps-values-are-validated-one-by-one), so the DTO says `array<array-key, mixed>` rather
-than the schema's type. One class serves every operation that reaches a named schema, so the type is decided before any
-class is written: if any operation leaves the values unvalidated, the class is `mixed` for all of them, and no value
-class (`PetInputDto` for a map of `Pet`) is written for a map that ends up `mixed`. The classes are the same in every
-document order. The reasoning is in
-[ADR 0004](../../project/decisions/0004-carry-a-map-body-under-additionalproperties.md).
+**A map's values are typed by their schema, beside a `query` parameter too.** The request judges them there (its guard
+spares the parameter's key), so the DTO types them as anywhere else: `array<array-key, int>` for a map of integers
+beside `?dryRun=`, and a value class (`PetInputDto` for a map of `Pet`) is written for a map of objects. One class
+serves every operation that reaches a named schema, and what its values are typed as depends on the schema alone, so the
+classes are the same in every document order. The reasoning is in
+[ADR 0015](../../project/decisions/0015-type-the-values-of-a-map-body.md).
 
 **`dto()` takes the `query` parameters' keys out of the data before the DTO reads it**, since `validated()` holds the
 body's keys and the `query` string's, and the DTO is the body's. Findings are written for such a body (the two below,
@@ -1335,7 +1357,8 @@ and the key Laravel drops, after them):
 
 - **A map key named like a `query` parameter** is read from the query string, never from the body, so a body key of that
   name is left out of `validated()` and of the DTO. The finding names the key the value arrives under (`page` for a
-  parameter written `page[size]`).
+  parameter written `page[size]`). A root that declares properties beside a value schema writes the same finding, since
+  its undeclared keys are the map's.
 - **A key a form delivers under another name** (`a.b` and `a b` as `a_b`) is validated and carried under the rewritten
   name, since the body declares no key to say which one the client meant. A JSON body keeps every key as sent.
 
