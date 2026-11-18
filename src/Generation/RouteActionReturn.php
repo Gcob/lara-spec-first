@@ -141,6 +141,30 @@ final readonly class RouteActionReturn
     }
 
     /**
+     * The native return type with every class named in full, so the line loads in a file that imports none of them.
+     *
+     * Never the `@return` docblock: a docblock is not a signature, and the line this is pasted into has to load.
+     */
+    public function qualified(): string
+    {
+        $full = [];
+
+        foreach ($this->imports as $import) {
+            $full[self::shortName($import)] = '\\'.$import;
+        }
+
+        return implode('|', array_map(
+            static function (string $member) use ($full): string {
+                $nullable = str_starts_with($member, '?');
+                $name = $nullable ? substr($member, 1) : $member;
+
+                return ($nullable ? '?' : '').($full[$name] ?? $name);
+            },
+            explode('|', $this->type),
+        ));
+    }
+
+    /**
      * The statuses that count as success: every `2xx` and `2XX`, or `default` only when none of them is declared.
      *
      * @param  list<StatusResponse>  $responses

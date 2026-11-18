@@ -212,10 +212,12 @@ final class BuildCommand extends Command
      *
      * **The file is read, never loaded:** an override that no longer fits is a compile-time fatal, and loading it to
      * ask would end this command. Only a child that extends exactly the parent generated for its operation is judged,
-     * and only by a parameter count; a type PHP reports at load is not this command's to guess.
+     * and only by what is sound without resolving a class: a parameter count, and a return type that says `mixed` or
+     * nothing under a parent that declares a class. A class the child names is not this command's to guess.
      *
-     * **Named, one per line, because each is the developer's file and each needs an edit.** The request type is printed
-     * fully qualified, so the line loads as pasted into a child with no `use` for it.
+     * **Named, one per line, because each is the developer's file and each needs an edit.** The request type and the
+     * return type are printed fully qualified, so the line loads as pasted into a child with no `use` for them. The
+     * return type is the parent's native one, never the `@return` docblock.
      *
      * @see docs/guide/controllers.md — "The signature is the contract"
      */
@@ -247,15 +249,19 @@ final class BuildCommand extends Command
             }
 
             $request = $controller->request;
+            $returns = RouteActionSignature::returns($controller->operation, $controller->responses, $namespace);
 
-            if ($override->fits(RouteActionSignature::count($controller->operation, $request !== null))) {
+            $fitsParameters = $override->fits(RouteActionSignature::count($controller->operation, $request !== null));
+            $fitsReturnType = ! ($returns->isTyped() && $override->returnsMixedOrNothing());
+
+            if ($fitsParameters && $fitsReturnType) {
                 continue;
             }
 
             $stale[$custom] = 'routeAction('.RouteActionSignature::declaration(
                 $controller->operation,
                 $request === null ? null : '\\'.$request->fullyQualifiedName($namespace),
-            ).')';
+            ).'): '.$returns->qualified();
         }
 
         if ($stale === []) {
@@ -263,8 +269,8 @@ final class BuildCommand extends Command
         }
 
         $this->components->warn(sprintf(
-            '%d custom controller(s) declare a routeAction that no longer matches the parameters their generated parent '
-                .'declares, so PHP will refuse to load them. Give each the signature below:',
+            '%d custom controller(s) declare a routeAction that no longer matches the parameters or the return type their '
+                .'generated parent declares, so PHP will refuse to load them. Give each the signature below:',
             count($stale),
         ));
 

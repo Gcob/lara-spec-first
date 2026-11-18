@@ -18,8 +18,11 @@ use PhpToken;
  * `use` with or without `as`, relative to the namespace of the file), and null when it cannot be: a group `use` hides
  * which names it binds, so a name that might come from one is not guessed at.
  *
- * **A count, never a type.** What PHP refuses to load is decided by the signature as a whole; the count is the part
- * that is sound without resolving a single class, since it never flags an override PHP accepts.
+ * **A count and a return type that says nothing, never a class.** What PHP refuses to load is decided by the signature
+ * as a whole. Two parts of it are sound without resolving a single class, since neither ever flags an override PHP
+ * accepts: how many parameters it declares, and a return type that is `mixed` or absent, which PHP refuses under any
+ * parent that declares a class. A return type that names one is never judged: whether it is the parent's own DTO or
+ * narrower takes resolving the name, and a group `use` can hide which it is.
  *
  * @see docs/guide/controllers.md — "The signature is the contract"
  */
@@ -32,12 +35,14 @@ final readonly class RouteActionOverride
      * @param  int  $required  how many a caller has to pass: up to the last parameter with no default, since PHP reads
      *                         a default that precedes a required parameter as required too
      * @param  bool  $variadic  whether the last parameter collects the rest
+     * @param  string|null  $returns  the return type as the file writes it, or null when `routeAction` declares none
      */
     private function __construct(
         public ?string $extends,
         public int $parameters,
         public int $required,
         public bool $variadic,
+        public ?string $returns,
     ) {}
 
     /**
@@ -144,6 +149,18 @@ final readonly class RouteActionOverride
     }
 
     /**
+     * Whether the return type says nothing a parent declaring a class could accept: `mixed`, or none at all.
+     *
+     * PHP refuses both under a parent that declares anything but `mixed`, and a missing one under `mixed` too. Measured
+     * on PHP 8.5: `: mixed` over `: UserDto` and an absent type over `: UserDto` are fatal at load, `: mixed` over
+     * `: mixed` loads.
+     */
+    public function returnsMixedOrNothing(): bool
+    {
+        return $this->returns === null || strcasecmp($this->returns, 'mixed') === 0;
+    }
+
+    /**
      * @param  list<PhpToken>  $tokens
      * @param  int  $from  the first token after the class name
      * @param  array<string, string>  $imports  lower-cased alias to fully qualified name
@@ -200,8 +217,9 @@ final readonly class RouteActionOverride
     {
         $segments = [[]];
         $depth = 1;
+        $at = $open + 1;
 
-        for ($at = $open + 1, $count = count($tokens); $at < $count; $at++) {
+        for ($count = count($tokens); $at < $count; $at++) {
             $token = $tokens[$at];
 
             if (self::opens($token)) {
@@ -237,7 +255,32 @@ final readonly class RouteActionOverride
             }
         }
 
-        return new self($extends, count($segments), $required, $variadic);
+        return new self($extends, count($segments), $required, $variadic, self::readReturnType($tokens, $at + 1));
+    }
+
+    /**
+     * The return type written right after the parameter list, as the file spells it, or null when there is none.
+     *
+     * @param  list<PhpToken>  $tokens
+     * @param  int  $after  the position of the token after the closing parenthesis
+     */
+    private static function readReturnType(array $tokens, int $after): ?string
+    {
+        if (! self::is($tokens[$after] ?? null, ':')) {
+            return null;
+        }
+
+        $type = '';
+
+        for ($at = $after + 1, $count = count($tokens); $at < $count; $at++) {
+            if (self::is($tokens[$at], '{') || self::is($tokens[$at], ';')) {
+                break;
+            }
+
+            $type .= $tokens[$at]->text;
+        }
+
+        return $type;
     }
 
     /**

@@ -32,10 +32,12 @@ tags: [versions, conventions, planning]
   to load at its first request. The build now prints one header and one line per such child, with the signature to paste
   (the request is written fully qualified, so the line loads in a child with no `use` for it), and still exits `0`: it
   warns rather than refuses, since a refused build would never generate the request class the child has to match. It
-  reads the file and never loads the class, and it counts parameters only: a renamed request class or a narrowed type is
-  still reported by PHP when the class loads, and by PHPStan before. A child that extends something other than its
-  generated parent, or that gets `routeAction` from a trait, is not checked. This closes the second half of the `0.2.0`
-  `Known limits` item for [#112](https://github.com/Gcob/lara-spec-first/issues/112).
+  reads the file and never loads the class, and it judges what is sound without resolving one: the parameter count, and
+  a return type that says `mixed` or nothing under a parent that declares a response DTO (the signature to paste carries
+  the parent's return type, written in full). A renamed request class, a narrowed type or a class that is not the
+  parent's is still reported by PHP when the class loads, and by PHPStan before. A child that extends something other
+  than its generated parent, or that gets `routeAction` from a trait, is not checked. This closes the second half of the
+  `0.2.0` `Known limits` item for [#112](https://github.com/Gcob/lara-spec-first/issues/112).
 - **`spec:build` writes a response DTO for each documented response shape, and the generated controller names it.** A
   declared status (`200`, `201`, `2XX`, `default`) with a JSON body that is an object, or a list of objects, gets a
   `final readonly` class in the `Data` sub-namespace, named after its schema without `Input` (`$ref: User` gives

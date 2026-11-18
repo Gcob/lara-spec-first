@@ -195,3 +195,40 @@ it('fits a parent only when PHP would load the override', function (
     'the same count' => ['\\Acme\\R $request, string $id', 2, true],
     'a parent with nothing, a child with nothing' => ['', 0, true],
 ]);
+
+it('reads the return type a custom routeAction declares, as it is written', function (
+    string $declaration,
+    ?string $returns,
+    bool $mixedOrNothing,
+): void {
+    $override = RouteActionOverride::read(childSource($declaration), 'Acme\\Child');
+
+    expect($override)->not->toBeNull()
+        ->and($override?->returns)->toBe($returns)
+        ->and($override?->returnsMixedOrNothing())->toBe($mixedOrNothing);
+})->with([
+    'none' => ['public function routeAction(string $id) { return 1; }', null, true],
+    'mixed' => ['public function routeAction(string $id): mixed { return 1; }', 'mixed', true],
+    'mixed in capitals' => ['public function routeAction(string $id): MIXED { return 1; }', 'MIXED', true],
+    'a class' => ['public function routeAction(string $id): UserDto { return 1; }', 'UserDto', false],
+    'a fully qualified class' => [
+        'public function routeAction(string $id): \\Acme\\Data\\UserDto { return 1; }',
+        '\\Acme\\Data\\UserDto',
+        false,
+    ],
+    'a nullable class' => ['public function routeAction(string $id): ?UserDto { return 1; }', '?UserDto', false],
+    'a union' => ['public function routeAction(string $id): UserDto|array { return 1; }', 'UserDto|array', false],
+    'a scalar' => ['public function routeAction(string $id): array { return 1; }', 'array', false],
+    'after a default that holds a parenthesis and a colon' => [
+        'public function routeAction(string $id, $x = new Foo(1, ["a" => 2])): mixed { return 1; }',
+        'mixed',
+        true,
+    ],
+    'returned by reference' => ['public function &routeAction(string $id): mixed { return 1; }', 'mixed', true],
+    'a body that holds a colon is not a return type' => [
+        'public function routeAction(string $id) { return $id ? 1 : 2; }',
+        null,
+        true,
+    ],
+    'an abstract declaration' => ['abstract public function routeAction(string $id): UserDto;', 'UserDto', false],
+]);

@@ -94,28 +94,31 @@ it, `UserDto` where the parent says `UserDto|JsonResponse`, and `mixed` only whe
 change the parameters. That is ordinary PHP variance rather than a rule of this package.
 
 **A child whose signature fell behind is named by the build, and the build still succeeds.** When the contract gains or
-loses a request or a path parameter, a custom child that still declares the old list is a class PHP will refuse to load,
-and it does so at its first load, which is the first request. So `spec:build` prints one header and one line per such
-child, with the signature to paste:
+loses a request or a path parameter, or an operation gains a response DTO, a custom child that still declares the old
+list or still returns `mixed` is a class PHP will refuse to load, and it does so at its first load, which is the first
+request. So `spec:build` prints one header and one line per such child, with the signature to paste:
 
 ```text
-WARN  1 custom controller(s) declare a routeAction that no longer matches the parameters their generated parent
-declares, so PHP will refuse to load them. Give each the signature below:
+WARN  1 custom controller(s) declare a routeAction that no longer matches the parameters or the return type their
+generated parent declares, so PHP will refuse to load them. Give each the signature below:
 
-  App\Http\Controllers\UpdateUserController  routeAction(\App\Http\Generated\Requests\UpdateUserRequest $request, string $id)
+  App\Http\Controllers\UpdateUserController  routeAction(\App\Http\Generated\Requests\UpdateUserRequest $request, string $id): \App\Http\Generated\Data\UserDto
 ```
 
-The request type is written fully qualified, so the line loads as pasted into a child that has no `use` for it. Three
-choices sit behind that:
+The request type and the return type are written fully qualified, so the line loads as pasted into a child that has no
+`use` for them. The return type is the one the parent declares, never the `@return` docblock: a docblock is not a
+signature, and a list is `array` there. Three choices sit behind that:
 
 - **It warns rather than refuses.** The developer cannot make the child match a request class the refused build never
   generated, so a refusal would wait on the very file it blocks. A warning changes no generated file and no exit status.
 - **It reads the file and never loads the class.** A child that no longer fits is a fatal error at load, and loading it
   to ask would end the build that is naming it. The file is tokenized with PHP's [`PhpToken`](../project/stack.md), so
   no class is ever resolved.
-- **It counts parameters and nothing else.** The count is the part that never flags a class PHP would load, because it
-  needs no class resolved. A renamed request class or a narrowed type is not judged here: PHP reports it when the class
-  loads, and PHPStan before that.
+- **It judges the parameter count, and a return type that says nothing.** Both are sound without resolving a class: the
+  count never flags a class PHP would load, and a `mixed` or missing return type is a fatal under any parent that
+  declares a DTO, a list or a union. A child that declares a class instead is not judged: whether it is the parent's DTO
+  or a narrower one takes resolving the name, and a group `use` can hide it. A renamed request class, a narrowed type or
+  a class that is not the parent's is reported by PHP when the class loads, and by PHPStan before that.
 
 Only a child that extends exactly the generated parent of its operation is checked. A child that extends something else,
 declares no `routeAction`, or gets one from a trait is left alone, and so is a `routeAction` the file does not write in

@@ -1119,28 +1119,49 @@ function removeChildren(): void
     }
 }
 
-function writeChild(string $short, string $parameters): void
+/**
+ * Writes a child of the generated parent of the same short name.
+ *
+ * @param  string  $return  the return clause as written, colon included, or nothing
+ * @param  string  $imports  statements for the top of the file, between the namespace and the class
+ */
+function writeChild(string $short, string $parameters, string $return = ': mixed', string $imports = ''): void
 {
     file_put_contents(childRoot().'/'.$short.'.php', sprintf(
-        "<?php\n\ndeclare(strict_types=1);\n\nnamespace LsfChild;\n\n"
+        "<?php\n\ndeclare(strict_types=1);\n\nnamespace LsfChild;\n\n%s"
         ."final class %s extends \\%s\\Controllers\\%s\n{\n"
-        ."    public function routeAction(%s): mixed\n    {\n        return 'mine';\n    }\n}\n",
+        ."    public function routeAction(%s)%s\n    {\n        return 'mine';\n    }\n}\n",
+        $imports === '' ? '' : $imports."\n\n",
         $short,
         buildNamespace(),
         $short,
         $parameters,
+        $return,
     ));
 }
 
 /**
- * Builds the stale-override document with its two children, and gives back the output.
+ * Builds the stale-override document with the children it is given, and gives back the output.
+ *
+ * With none given, the two that answer with no schema are written, as `: mixed` children whose parents return `mixed`:
+ * one that fell behind by its parameters and one that did not. With some, only those are, so that what the build prints
+ * is about them.
+ *
+ * @param  array<string, array{0: string, 1?: string, 2?: string}>  $children  short name to the parameters, the return
+ *                                                                             clause and the imports of a child
  */
-function buildStaleOverrides(): string
+function buildStaleOverrides(array $children = []): string
 {
     config()->set('lara-spec-first.spec.path', specFixturePath('stale-override.yaml'));
 
-    writeChild('StaleController', 'string $id');
-    writeChild('FreshController', 'string $id');
+    if ($children === []) {
+        writeChild('StaleController', 'string $id');
+        writeChild('FreshController', 'string $id');
+    }
+
+    foreach ($children as $short => $child) {
+        writeChild($short, $child[0], $child[1] ?? ': mixed', $child[2] ?? '');
+    }
 
     $output = new BufferedOutput;
 
@@ -1175,6 +1196,72 @@ describe('a custom controller whose routeAction fell behind its parent', functio
             ->toContain('so PHP will refuse to load them')
             ->toContain('routeAction('.$request.' $request, string $id)')
             ->and($again)->not->toContain('\\\\');
+    });
+
+    // The parent of each of these declares a class, a list or a union, and a child that still says `mixed` (or
+    // says nothing) is a fatal at load: PHP refuses an override whose return type is wider than its parent's.
+    it('names a custom routeAction returning mixed under a typed parent', function (
+        string $short,
+        string $parameters,
+        string $return,
+        string $signature,
+    ): void {
+        $output = buildStaleOverrides([$short => [$parameters, $return]]);
+        $data = '\\'.buildNamespace().'\\Data\\';
+
+        expect($output)
+            ->toContain('no longer matches the parameters or the return type')
+            ->toContain('1 custom controller(s) declare a routeAction that no longer matches')
+            ->toContain('so PHP will refuse to load them')
+            ->toContain('LsfChild\\'.$short.'  '.str_replace(['{data}', '{ns}'], [$data, '\\'.buildNamespace()], $signature))
+            ->and(substr_count($output, 'LsfChild\\'))->toBe(1)
+            // The file was read, never loaded: a load of this child is a compile-time fatal.
+            ->and(class_exists('LsfChild\\'.$short, false))->toBeFalse();
+    })->with([
+        'a DTO, a child saying mixed' => ['ShowTeamController', 'string $id', ': mixed', 'routeAction(string $id): {data}TeamDto'],
+        'a DTO, a child saying nothing' => ['ShowTeamController', 'string $id', '', 'routeAction(string $id): {data}TeamDto'],
+        'a list, a child saying mixed' => ['ListTeamsController', '', ': mixed', 'routeAction(): array'],
+        'a union, a child saying nothing' => [
+            'CreateTeamController',
+            '',
+            '',
+            'routeAction(): {data}TeamDto|{data}JobDto|\\Illuminate\\Http\\JsonResponse',
+        ],
+        'a request that fell behind and a return type that did not follow' => [
+            'RenameTeamController',
+            'string $id',
+            ': mixed',
+            'routeAction({ns}\\Requests\\RenameTeamRequest $request, string $id): {data}TeamDto',
+        ],
+    ]);
+
+    // What a child declares that is not `mixed` is left to PHP, and to PHPStan before that: the class may be the
+    // parent's own DTO, or narrower, and which it is takes resolving a name this reader never loads.
+    it('stays silent on a custom routeAction returning a class it cannot resolve', function (
+        string $short,
+        string $return,
+        string $imports,
+    ): void {
+        $output = buildStaleOverrides([$short => ['string $id', $return, $imports]]);
+
+        expect($output)
+            ->not->toContain('LsfChild\\'.$short)
+            ->and(class_exists('LsfChild\\'.$short, false))->toBeFalse();
+    })->with([
+        'an alias bound by a group use' => [
+            'ShowTeamController',
+            ': SomeAlias',
+            'use LsfChild\\Data\\{TeamDto as SomeAlias};',
+        ],
+        'a class written in full' => ['ShowTeamController', ': \\LsfChild\\Data\\TeamDto', ''],
+        'a nullable class' => ['ShowTeamController', ': ?TeamDto', 'use LsfChild\\Data\\TeamDto;'],
+        'a union' => ['ShowTeamController', ': \\LsfChild\\Data\\TeamDto|array', ''],
+    ]);
+
+    it('stays silent on a custom routeAction returning mixed under a parent that returns mixed', function (): void {
+        $output = buildStaleOverrides();
+
+        expect($output)->not->toContain('FreshController');
     });
 
     // `WrittenController` declares `routeAction()` over a parent of one parameter, which
