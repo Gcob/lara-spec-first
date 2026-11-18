@@ -241,7 +241,7 @@ Rules:
 
 - **Front matter is authoritative.** The [inventory](#document-inventory) lists files only, and it deliberately carries
   no descriptions, because that is what `covers` is for.
-- **A new Markdown document without front matter is an incomplete change**, with one exception below.
+- **A new Markdown document without front matter is an incomplete change**, with the exceptions below.
 - **`covers` is a claim of ownership.** Before adding a subject to a file, check that no other file already claims it.
   Overlapping `covers` fields are the earliest warning that duplication is starting.
 
@@ -982,3 +982,8 @@ Repository root:
 - [`LICENSE`](https://github.com/Gcob/lara-spec-first/blob/main/LICENSE) — MIT, plain text, no front matter
 
 Adding a Markdown document to the repository means adding it here **and** giving it front matter.
+
+Two places hold Markdown outside the documentation set: `demo/`, whose READMEs are frozen with their minor release, and
+`.github/ISSUE_TEMPLATE/`, which holds GitHub's issue forms. Neither carries front matter or an inventory line, and the
+site builds no page from either (`srcExclude`). A document that links into one uses an absolute GitHub URL, because a
+relative link would break the site build the day the target moves.
