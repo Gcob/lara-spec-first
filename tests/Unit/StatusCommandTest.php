@@ -822,6 +822,37 @@ it('says so when no release milestone is open', function (): void {
         ->and(statusSection($run['out'], 'Release'))->toBe(['  No release milestone is open.']);
 });
 
+it('reads a milestone as a release only when its whole title is a version', function (string $title): void {
+    $project = statusProject(['milestones' => [statusMilestone(['title' => $title])]]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusSection($run['out'], 'Release'))->toBe(['  No release milestone is open.']);
+})->with([
+    'a release candidate' => '1.0-rc',
+    'a pre-release of a patch' => '0.3.0-beta',
+    'a label, not a number' => 'v1',
+    'four numbers' => '0.3.0.1',
+    'a wildcard' => '1.0.x',
+    'a number alone' => '1',
+    'words' => 'Backlog ideas',
+]);
+
+it('reads a milestone titled with only numbers and dots as a release', function (string $title): void {
+    $project = statusProject(['milestones' => [statusMilestone(['title' => $title])]]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and($run['out'])->toContain("\nRelease {$title}: 0 of 0 closed (0 ready to publish, 0 done)\n");
+})->with([
+    'major and minor' => '0.3',
+    'major, minor and patch' => '0.3.0',
+    'the first stable release' => '1.0',
+    'several digits' => '12.10.4',
+]);
+
 it('prints the header, and the sections that have nothing to say', function (): void {
     $project = statusProject(['ci' => [statusRun('a'), statusRun('b')]]);
     $sha = statusGit($project['work'], ['rev-parse', '--short', 'origin/main']);

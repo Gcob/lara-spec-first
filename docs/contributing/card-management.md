@@ -122,7 +122,8 @@ is worth it, and it is not a rule in either direction. It is safe when two condi
 - **Everything in the card's `Ready when` is merged.** A card whose blocker is still open is checked against a tree that
   is about to change under it.
 - **It shares no file with a card already in progress.** Two branches editing the same file meet in a conflict, and the
-  second card's `Decisions` were checked against code the first one is rewriting.
+  second card's `Decisions` were checked against code the first one is rewriting. `CHANGELOG.md` does not count: each
+  card adds its own lines under `[Unreleased]`, and the second to merge re-places its lines.
 
 When either is in doubt, the cards go one after the other. Preparing a card while another one is being coded is the same
 question: its assumptions are only as good as the tree they were checked against, which is why step five checks them
