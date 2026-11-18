@@ -1,23 +1,25 @@
-# A request whose only finding says it is stricter than the contract: an unbounded JSON integer is `integer` beside
-# `numeric:strict`, which refuses a whole float of 1e14 or more where JSON Schema 2020-12 reads it as an integer.
+# A request whose only finding says it is stricter than the contract: an avatar written `contentMediaType: image/png`
+# is checked with `mimetypes`, which also refuses a file named like PHP whatever its type.
 # Nothing here is read and left unenforced, so the build has no warning to print for it.
 openapi: 3.1.0
 info:
   title: Fixture API
   version: 1.0.0
 paths:
-  /counters:
+  /avatars:
     post:
-      operationId: createCounter
+      operationId: createAvatar
       requestBody:
-        required: true
+        required: false
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               properties:
-                count:
-                  type: integer
+                avatar:
+                  type: string
+                  format: binary
+                  contentMediaType: image/png
       responses:
         '201':
           description: Created

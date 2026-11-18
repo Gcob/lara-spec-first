@@ -15,6 +15,7 @@ use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
+use Gcob\LaraSpecFirst\Validation\WholeNumber;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
@@ -137,14 +138,14 @@ it('hands a boolean query parameter to validated() as the string it was sent', f
  * The emitter writes an `InRule` as `Rule::in([...])`; the validator needs the framework's object, so the same
  * translation happens here.
  *
- * @param  array<string, list<string|InRule|NullOrAbsent>>  $built
+ * @param  array<string, list<string|InRule|NullOrAbsent|WholeNumber>>  $built
  * @return array<string, list<mixed>>
  */
 function frameworkRules(array $built): array
 {
     return array_map(
         static fn (array $list): array => array_map(
-            static fn (string|InRule|NullOrAbsent $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
+            static fn (string|InRule|NullOrAbsent|WholeNumber $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
             $list,
         ),
         $built,
@@ -267,8 +268,9 @@ it('accepts a JSON integer, number and boolean as sent', function (Schema $body,
     'null for a nullable integer' => [scalarBody(SchemaType::Integer, nullable: true), null],
 ]);
 
-// A JSON integer is `integer` beside `numeric:strict`: Laravel's `integer` takes the float `1.0`, and `numeric:strict`
-// refuses what is not a JSON number. The bodies are raw JSON, since `json_encode()` would write `1e2` as `100.0`.
+// A JSON integer is the package's `WholeNumber` beside `numeric`: it takes a float whose value is exactly whole, and
+// compares the float itself, where Laravel's `integer` reads it as text with 14 significant digits. The bodies are raw
+// JSON, since `json_encode()` would write `1e2` as `100.0`.
 it('accepts a JSON integer written as a whole float', function (string $written): void {
     expect(statusForBuiltRules(scalarBody(SchemaType::Integer), '{"field": '.$written.'}'))->toBe(200);
 })->with([
@@ -277,26 +279,37 @@ it('accepts a JSON integer written as a whole float', function (string $written)
     'a decimal point and an exponent' => ['1.0e1'],
     'negative zero' => ['-0.0'],
     'the last float below 1e14' => ['99999999999999.0'],
+    // Laravel's `integer` refuses these, because PHP writes them with an exponent: the rule compares the float itself.
+    'one hundred trillion' => ['1e14'],
+    'minus one hundred trillion' => ['-1e14'],
+    'past 2^53, still exact' => ['9007199254740992.0'],
+    'the largest integer' => ['9223372036854775807'],
     'an integer' => ['42'],
 ]);
 
-// What a JSON integer still refuses, with the message of the rule that refused it: a string and a boolean fail the
-// number rule, a fraction fails `integer`, and a value that is neither fails both. A float of 1e14 or more fails
-// `integer`, which reads it as `1.0E+14` under PHP's default `precision`.
+// What a JSON integer refuses, with the message of the rule that refused it: a float that is not exactly whole fails
+// `WholeNumber` alone, a string fails it and passes `numeric`, and a value that is no number fails both. The near-whole
+// floats are what a client computes (`0.3 / 0.1` is `2.9999999999999996` in JavaScript): Laravel's `integer` reads them
+// as `3`, and `dto()` would then have made them `2`.
 it('refuses what is not a whole number for a JSON integer, with the message of the rule that refused it', function (string $written, array $messages): void {
     $class = emittedRequestClass(postWithFormSchema('application/json', oneField(new Schema(types: [SchemaType::Integer]), required: false)));
 
     expect(errorsForRawJson($class, '{"field": '.$written.'}'))->toBe([422, ['field' => $messages]]);
 })->with([
-    'a string' => ['"42"', ['The field field must be a number.']],
-    'true' => ['true', ['The field field must be a number.']],
     'a fraction' => ['1.5', ['The field field must be an integer.']],
-    'a string that spells a float' => ['"1.0"', ['The field field must be an integer.', 'The field field must be a number.']],
+    'just under three' => ['2.9999999999999996', ['The field field must be an integer.']],
+    'just under five' => ['4.999999999999999', ['The field field must be an integer.']],
+    'just over five' => ['5.00000000000001', ['The field field must be an integer.']],
+    'a large float with a fraction' => ['12345678901234.6', ['The field field must be an integer.']],
+    'a string' => ['"42"', ['The field field must be an integer.']],
+    'a string that spells a float' => ['"1.0"', ['The field field must be an integer.']],
+    'true' => ['true', ['The field field must be an integer.', 'The field field must be a number.']],
     'false' => ['false', ['The field field must be an integer.', 'The field field must be a number.']],
     'text' => ['"abc"', ['The field field must be an integer.', 'The field field must be a number.']],
     'a list' => ['[]', ['The field field must be an integer.', 'The field field must be a number.']],
-    'one hundred trillion' => ['1e14', ['The field field must be an integer.']],
-    'minus one hundred trillion' => ['-1e14', ['The field field must be an integer.']],
+    // The range of a 64-bit integer, which `(int)` can hold: past it a cast warns and wraps.
+    'past the largest integer' => ['1e20', ['The field field must be an integer.']],
+    'past the smallest integer' => ['-1e20', ['The field field must be an integer.']],
 ]);
 
 it('lets a nullable JSON integer be null or a whole float, and refuses a string', function (string $written, int $status): void {
@@ -324,8 +337,8 @@ it('accepts a whole float at every level of a JSON body', function (string $cont
     'an element that is a string' => ['{"field": {"xs": [1, "2"]}}', 422, ['field.xs.1']],
 ]);
 
-// `min`, `max`, `gt`, `lt` and `multiple_of` find the number by the name of the rule beside them, so they keep
-// comparing it as a number when it was written as a float.
+// `min`, `max`, `gt`, `lt` and `multiple_of` find the number by the name of the rule beside them (`numeric`), so they
+// keep comparing it as a number when it was written as a float.
 it('compares the bounds of a JSON integer written as a float', function (Schema $field, string $written, int $status): void {
     expect(statusForBuiltRules(oneField($field, required: false), '{"field": '.$written.'}'))->toBe($status);
 })->with([
@@ -354,21 +367,21 @@ it('compares the whole floats of a unique list of JSON integers by value', funct
     'two values' => ['{"xs": [1, 2.0]}', 200, []],
 ]);
 
-// A body that is JSON and a form keeps the loose `integer`, which takes `1.0` and refuses what PHP prints with an
-// exponent. A JSON client's `"42"` and `true` stay accepted there, the limit its finding states.
-it('takes a whole float from a JSON client of a body that is JSON and a form, up to 1e14', function (string $written, int $status): void {
+// A body that is JSON and a form keeps the loose `integer`, which takes `1.0` and `1e2`. A JSON client's `"42"` and
+// `true` stay accepted there, the limit its finding states.
+it('takes a whole float from a JSON client of a body that is JSON and a form', function (string $written, int $status): void {
     $class = emittedRequestClass(postWithJsonAndForm('application/x-www-form-urlencoded', oneField(new Schema(types: [SchemaType::Integer]), required: false)));
 
     expect(statusForRawJson($class, '{"field": '.$written.'}'))->toBe($status);
 })->with([
     'a decimal point' => ['1.0', 200],
     'an exponent' => ['1e2', 200],
-    'one hundred trillion' => ['1e14', 422],
+    'a fraction' => ['1.5', 422],
     'a string' => ['"42"', 200],
     'true' => ['true', 200],
 ]);
 
-// A map's values are judged by the guard of a root that declares properties, and the pair compiles inside it.
+// A map's values are judged by the guard of a root that declares properties, and the rule compiles inside it.
 it('takes a whole float for a map value beside declared properties, and refuses a fraction', function (string $content, int $status, array $keys): void {
     $class = emittedRequestClass(postWithFormSchema('application/json', new Schema(
         types: [SchemaType::Object],
@@ -383,6 +396,7 @@ it('takes a whole float for a map value beside declared properties, and refuses 
 })->with([
     'a whole float' => ['{"locale": "fr", "views": 3.0}', 200, []],
     'a fraction' => ['{"locale": "fr", "views": 1.5}', 422, ['views']],
+    'a float a hair under three' => ['{"locale": "fr", "views": 2.9999999999999996}', 422, ['views']],
     'a string' => ['{"locale": "fr", "views": "3"}', 422, ['views']],
 ]);
 
@@ -422,10 +436,12 @@ it('hands validated() the float as sent and the DTO an int', function (): void {
 
     expect(typesForRawJson($class, '{"field": 31.0}'))->toBe([200, ['field' => 'float']])
         ->and(typesForRawJson($class, '{"field": 31.0}', dto: true))->toBe([200, ['field' => 'int']])
-        ->and(typesForRawJson($class, '{"field": 31}'))->toBe([200, ['field' => 'int']]);
+        ->and(typesForRawJson($class, '{"field": 31}'))->toBe([200, ['field' => 'int']])
+        // Nothing is read as text now, so a float of 1e14 or more is as whole as any other, and the cast loses nothing.
+        ->and(typesForRawJson($class, '{"field": 1e14}', dto: true))->toBe([200, ['field' => 'int']]);
 });
 
-// The golden request, through the kernel: its `age` is `integer` beside `numeric:strict` and `min:18`.
+// The golden request, through the kernel: its `age` is `WholeNumber` beside `numeric` and `min:18`.
 it('hands the golden request a whole float for age, and refuses a string', function (): void {
     Route::post('/_generated/users-types', fn (CreateUserRequest $request) => response()->json(array_map(
         static fn (mixed $value): string => get_debug_type($value),
@@ -3628,7 +3644,7 @@ it('returns null from dto() for a null body that requires a property', function 
         ->and($returns?->allowsNull())->toBeTrue();
 });
 
-// Laravel skips every rule that is not implicit on a blank string, and `integer`, `numeric:strict` and
+// Laravel skips every rule that is not implicit on a blank string, and `WholeNumber`, `numeric:strict` and
 // `boolean:strict` are not. `required` is, which is how a required integer, number or boolean refused `""` in a project
 // that removed `ConvertEmptyStringsToNull`. A nullable required body asks through its siblings instead, so those keys
 // also get `filled`, and the answer stays the one the same body gives when it cannot be `null`.
@@ -3888,7 +3904,7 @@ it('validates a map\'s values beside declared properties', function (bool $neste
     $rows = [
         'a declared key and an undeclared one that is fine' => [['locale' => 'fr', 'a' => 1], 200, ['a' => 1, 'locale' => 'fr']],
         'only the declared key' => [['locale' => 'fr'], 200, ['locale' => 'fr']],
-        // A fraction rather than text: text fails `numeric:strict` too, and says so.
+        // A fraction rather than text: text fails `numeric` too, and says so.
         'an undeclared key the value schema refuses' => [['locale' => 'fr', 'a' => 1.5], 422, ['a' => 'must be an integer.']],
         // Its own message only: `max:5` of a string, never the value schema's `integer`.
         'a declared key its own rules refuse' => [['locale' => 'toolong'], 422, ['locale' => 'must not be greater than 5 characters.']],
@@ -4082,7 +4098,7 @@ it('validates a root map\'s values beside a query parameter', function (string $
 })->with([
     'a good value and the parameter' => ['page', '?page=2', ['a' => 1], 200, ['a' => 1, 'page' => '2']],
     'a value the map refuses' => ['page', '?page=2', ['a' => 'x'], 422, ['a']],
-    // The parameter's own rule, `integer`, and never the map's `integer` beside `numeric:strict`: `page` is not a key of the map.
+    // The parameter's own rule, `integer`, and never the map's `WholeNumber`: `page` is not a key of the map.
     'a parameter its own rule refuses' => ['page', '?page=abc', ['a' => 1], 422, ['page']],
     'an ID the map refuses' => ['page', '?page=2', ['1042' => 'x'], 422, ['1042']],
     'an ID the map accepts' => ['page', '?page=2', ['1042' => 3], 200, [1042 => 3, 'page' => '2']],

@@ -2,13 +2,13 @@
 title: "ADR 0016: A JSON body's scalars keep their types, and a whole number written as a float is an integer"
 audience: Users and contributors
 covers: >
-    The decision that a JSON integer is Laravel's `integer` beside `numeric:strict`, so it accepts a whole number
-    written as a float (`1.0`, `1e2`) below 1e14 in magnitude and still refuses `"42"` and `true`, that a unique list of
-    numbers is compared by value, what of ADR 0007 still holds (strict numbers and booleans in a JSON body, loose text
-    fields, a body that is JSON and a form, the Laravel constraint), and the alternatives turned down.
+    The decision that a JSON integer is judged by the package's own `WholeNumber` rule, so it accepts a whole number
+    written as a float (`1.0`, `1e2`) and still refuses `"42"`, `true` and a float a hair off a whole number, that a
+    unique list of numbers is compared by value, what of ADR 0007 still holds (strict numbers and booleans in a JSON
+    body, loose text fields, a body that is JSON and a form, the Laravel constraint), and the alternatives turned down.
 read_before: >
-    Asking why a JSON client's `1.0` is a `200` for an integer and `"42"` is not, why `1e14` is still refused, why a
-    unique list calls `1` and `1.0` one element, or changing the rule a JSON integer gets.
+    Asking why a JSON client's `1.0` is a `200` for an integer and `"42"` is not, why a generated request imports
+    `WholeNumber`, why a unique list calls `1` and `1.0` one element, or changing the rule a JSON integer gets.
 tags: [decisions, code-generation, compatibility, laravel, versions]
 ---
 
@@ -16,21 +16,22 @@ tags: [decisions, code-generation, compatibility, laravel, versions]
 
 > **In brief**
 >
-> - A JSON integer is `integer` beside `numeric:strict`: `1.0` and `1e2` pass, as they do for JSON Schema 2020-12, and
->   `"42"`, `true` and `1.5` are still refused.
-> - A whole float of 1e14 or more in magnitude stays refused, because PHP writes it with an exponent under its default
->   `precision` and Laravel's `integer` refuses that text. A finding says so, only where a field can hold such a value.
+> - A JSON integer is judged by `WholeNumber`, a rule of the package's: an `int`, or a `float` whose value is exactly
+>   whole. `1.0`, `1e2` and `1e14` pass, as they do for JSON Schema 2020-12, and `"42"`, `true`, `1.5` and
+>   `2.9999999999999996` are refused.
+> - Laravel's own rules cannot do it: `integer:strict` refuses `1.0`, and the loose `integer` reads a float as text with
+>   14 significant digits, so a float a hair off a whole number passes it, and `dto()` truncates it.
 > - A list with `uniqueItems` compares numbers by value (`distinct`), so `[1, 1.0]` is a duplicate. Past float precision
 >   the comparison is not exact, and that limit is stated, not reported.
 > - The rest of ADR 0007 holds: strict numbers and booleans in a JSON body, loose rules for text, the body that is JSON
 >   and a form, the Laravel constraint.
-> - Turned down: keeping `integer:strict`, and a rule of the package's own for a float of 1e14 or more.
+> - Turned down: keeping `integer:strict`, and Laravel's `integer` beside `numeric:strict`.
 
 **Status:** Accepted · **Cards:** [#35](https://github.com/Gcob/lara-spec-first/issues/35),
 [#107](https://github.com/Gcob/lara-spec-first/issues/107) and
 [#173](https://github.com/Gcob/lara-spec-first/issues/173) · **Pull requests:**
 [#105](https://github.com/Gcob/lara-spec-first/pull/105), [#135](https://github.com/Gcob/lara-spec-first/pull/135) and
-its pull request
+[#195](https://github.com/Gcob/lara-spec-first/pull/195)
 
 ## Context
 
@@ -38,36 +39,37 @@ its pull request
 value. That refused `"42"` and `true`, as the contract does, and it also refused `1.0` and `1e2`, which JSON Schema
 2020-12 reads as integers. The decision took the refusal as the price of the strict rule, and said so in a finding.
 
-The premise was that only a rule of the package's own could accept `1.0` and still refuse `"42"`. It was false:
-Laravel's `integer` accepts a whole number written as a float, and `numeric:strict` refuses what is not a JSON number,
-so `integer` beside `numeric:strict` does both. Measured on the vendored validator, `1.0`, `1e2`, `-0.0` and
-`99999999999999.0` pass, `"42"` and `true` are refused by `numeric:strict`, and `1.5` is refused by `integer`.
+It assumed that no Laravel rule accepts `1.0` and still refuses `"42"`. That is half false: Laravel's loose `integer`
+accepts a whole number written as a float, and `numeric:strict` refuses what is not a JSON number, so `integer` beside
+`numeric:strict` accepts `1.0`, `1e2` and `-0.0` and refuses `"42"` and `true`. But it is not exact. `integer` is PHP's
+`FILTER_VALIDATE_INT` on the float read as text, and PHP writes a float with 14 significant digits: `2.9999999999999996`
+(what JavaScript gives for `0.3 / 0.1`), `4.999999999999999` and `5.00000000000001` become `3`, `5` and `5` and pass,
+and `dto()` then casts them to `2`, `4` and `5`. The same text read refuses a whole float of 1e14 or more, which PHP
+writes with an exponent. `multiple_of:1` and `decimal:0` read the same text and close neither.
 
-One thing does not pass. `integer` is PHP's `FILTER_VALIDATE_INT` on the value read as text, and under PHP's default
-`precision` (14) a float of 1e14 or more is written with an exponent (`1.0E+14`), which that filter refuses. So the
-request is still stricter than the contract for a whole float of that size.
-
-Moving to the pair also changes what a unique list does. `distinct:strict` called `1` and `1.0` two elements, so once a
-JSON integer accepts `1.0`, a list with `uniqueItems` would let `[1, 1.0]` through, which the contract calls a
-duplicate. The same gap already existed for a list of numbers (`[1, 1.0]`, `[10, 1e1]`, `[0, -0.0]`) and for a form list
-(`1` and `+1`, `1` and `1.0`).
+Moving to a rule that accepts `1.0` also changes what a unique list does. `distinct:strict` called `1` and `1.0` two
+elements, so a list with `uniqueItems` would let `[1, 1.0]` through, which the contract calls a duplicate. The same gap
+already existed for a list of numbers (`[1, 1.0]`, `[10, 1e1]`, `[0, -0.0]`) and for a form list (`1` and `+1`, `1` and
+`1.0`).
 
 ## Decision
 
-**A JSON integer is `integer` beside `numeric:strict`, at every level** (`a.b`, `items.*`, a map's values) of a body
-that is JSON and nothing else. `integer` comes first, so a value that is neither a number nor an integer (`"abc"`,
-`false`, `[]`) gets "must be an integer" first, and `"42"` and `true` read "must be a number". No `bail`: that is
-Laravel's default, and it would also hide a `min` or `max` message. `min`, `max`, `gt`, `lt` and `multiple_of` beside
-the pair still compare as numbers, because Laravel finds an integer or a number by the rule's name.
+**A JSON integer is `WholeNumber`, at every level** (`a.b`, `items.*`, a map's values) of a body that is JSON and
+nothing else. It passes an `int`, and a `float` whose value is exactly whole (`floor($value) === $value`) inside the
+range of a 64-bit integer, since `(int)` on a float past it warns and wraps. It refuses everything else: a fraction, a
+float a hair off a whole number, `"42"`, `true`, `null`, `INF` and `NAN`. It compares the float itself, so no float is
+read as text. A generated request imports `Gcob\LaraSpecFirst\Validation\WholeNumber`, which is public API like
+`NullOrAbsent` and `UndeclaredKeys`, with its name frozen.
 
-**A whole float of 1e14 or more in magnitude stays refused, and the finding says why.** It is one finding per request,
-written only when an integer field can hold such a value: an integer with `format: int32`, with bounds under 1e14 in
-magnitude, or with an `enum` or a `const` of values under it gets none. A body that is JSON and a form gets it too, in
-its own wording, because its loose `integer` refuses a JSON client's `1e14` as well. It is a finding that says the
-request is stricter than the contract, so it stays out of the build warning.
+**`numeric` goes beside it, and `WholeNumber` comes first.** Laravel finds the number `min`, `max`, `gt`, `lt` and
+`multiple_of` compare by the name of a rule (`numeric`, `integer`, `decimal`), and an object has none, so without it
+they would compare the length of the text. The first message is `WholeNumber`'s, "must be an integer", and a value that
+is no number at all (`true`, `false`, `"abc"`, `[]`) gets `numeric`'s as well. No `bail`: that is Laravel's default, and
+it would also hide a `min` or `max` message.
 
 **`validated()` keeps the float as sent, and `dto()` casts it to an `int`.** That is how a query parameter's text
-already works: `validated()` returns what the client wrote, and the typed path is the DTO.
+already works: `validated()` returns what the client wrote, and the typed path is the DTO. With no near-whole float let
+through, the cast loses nothing.
 
 **A list with `uniqueItems` compares integers and numbers by value.** Its element rule is Laravel's `distinct` in a JSON
 body and in a form, and `distinct:strict` stays for strings and booleans, which have no second spelling (`"1"` and
@@ -88,13 +90,14 @@ body and in a form, and `distinct:strict` stays for strings and booleans, which 
 
 ## Alternatives turned down
 
-- **Keeping `integer:strict`.** It is exact about `"42"` and `true`, and it refuses `1.0` and `1e2` with a finding. It
-  was the decision of ADR 0007 on a premise that no longer holds, and it is stricter than the contract for every JSON
-  client that writes a whole number as a float, such as `1.0` for a computed value.
-- **A rule of the package's own for a whole float of 1e14 or more.** It would take a public class every generated file
-  imports, for a client that writes a whole number of 15 digits or more with a fraction or an exponent. A JavaScript
-  client writes `123456789012345` without either, and PHP decodes an integer. The refusal is a stated limit with its
-  finding, and no card.
+- **Keeping `integer:strict`.** It is exact, and it refuses `1.0` and `1e2` with a finding. It was the decision of ADR
+  0007, and it is stricter than the contract for every JSON client that writes a whole number as a float, such as `1.0`
+  for a computed value.
+- **Laravel's `integer` beside `numeric:strict`.** It reads well and needs no class of the package's, and it was the
+  first reading of this decision. It reads a float as text with 14 significant digits, so a float a hair off a whole
+  number is a `200` where `main` answered `422`, with `dto()` truncating it, and a whole float of 1e14 or more is a
+  `422`. Both would need a finding on nearly every JSON integer, for a rule that is neither as strict nor as loose as
+  the contract.
 - **Rewriting a float to an `int` in `validated()`.** Laravel's `validated()` returns what was sent, and the DTO is the
   typed path. A hook in `passedValidation()` would make `validated()` differ from every other request.
 - **`distinct:strict` for numbers as well,** and reporting `uniqueItems` for the float it lets through. It would leave
@@ -102,18 +105,20 @@ body and in a form, and `distinct:strict` stays for strings and booleans, which 
 
 ## Consequences
 
+- **One more public class.** `WholeNumber` joins `NullOrAbsent` and `UndeclaredKeys` in what a generated file imports,
+  so a request generated before this decision keeps `integer:strict` and still refuses `1.0` until `spec:build` runs
+  again.
 - **A float reaches the controller.** Code that reads an integer from `validated()` can get `31.0`, and the DTO gives an
-  `int`. A client that matches the message for `"42"` sees "must be a number" where it read "must be an integer", and a
-  value that is neither gets both messages. The CHANGELOG lists both as breaking.
+  `int`. The CHANGELOG lists it as breaking.
+- **A JSON integer is exactly as strict as the contract**, within the range of a 64-bit integer: no finding is written
+  for it, and a float of 2^63 or more is refused, as the loose `integer` refuses it, because the DTO could not cast it.
+  A body that is JSON and a form keeps the loose `integer`, with the gaps its finding names.
 - **A unique list refuses two equal numbers it used to accept**: `[1, 1.0]`, `[10, 1e1]` and `[0, -0.0]` in JSON, `1`
   and `+1` or `1` and `1.0` in a form. The CHANGELOG lists it as breaking.
 - **A unique list of numbers is not exact at float precision (2^53).** PHP compares an integer with a float, or two
   decimal strings, as two floats, so two numbers it rounds the same way count as one: `9007199254740993` and
   `9007199254740992.0` in JSON, `0.1` and `0.10000000000000000001` in a form. The guide states it, a test pins it, and
-  the generated file carries no finding, since nothing in the contract names the case. A JSON integer list cannot meet
-  it: a float that large is refused by `integer` first.
-- **A whole float of 1e14 or more is refused**, with its finding, and that is the one place a JSON integer is stricter
-  than JSON Schema 2020-12 for a whole float.
+  the generated file carries no finding, since nothing in the contract names the case.
 - **The Laravel constraint is unchanged, and its floor is untested.**
   [#188](https://github.com/Gcob/lara-spec-first/issues/188) settles it: test the declared floor in CI, or raise it to
   what CI installs.

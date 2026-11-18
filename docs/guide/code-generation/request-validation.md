@@ -152,7 +152,7 @@ public function rules(): array
 {
     return [
         'email' => ['present', 'string', 'email', 'max:255'],
-        'age' => ['sometimes', 'integer', 'numeric:strict', 'min:18'],   // a JSON body keeps its types
+        'age' => ['sometimes', new WholeNumber, 'numeric', 'min:18'],   // a JSON body keeps its types
         'notify' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],   // ?notify=true, a query parameter
     ];
 }
@@ -603,7 +603,7 @@ integer, number or boolean reports `filled`'s ("must have a value") where it rep
 finding about a form with no field when the body's required-key check refuses it.
 
 **A required integer, number or boolean also gets `filled`.** `required` is implicit, so it refused `""` for them even
-where nothing turns `""` into `null`; `present_with` and `sometimes` are not, and Laravel skips `integer`,
+where nothing turns `""` into `null`; `present_with` and `sometimes` are not, and Laravel skips `WholeNumber`,
 `numeric:strict` and `boolean:strict` on a blank string. So `filled` takes `required`'s place beside the rule that asks
 through the siblings, and a project without `ConvertEmptyStringsToNull` still refuses `""` there. A nullable property
 keeps `present`, as before. Optional bodies do not get it: [their caveat](#patch-empties-the-required-list) stays.
@@ -731,12 +731,6 @@ are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
   `properties` and no `type` refuses a JSON root that is not an object. `ConvertEmptyStringsToNull` makes a non-nullable
   string refuse `""`, which is the framework's and not a rule here, so
   [it is stated above](#patch-empties-the-required-list) rather than reported per field.
-- **A stricter rule without that reason:**
-  [a JSON integer written as a float of 1e14 or more](../../project/decisions/0016-keep-json-scalars-typed.md) in
-  magnitude is refused, and a finding says so on a field that can hold one. Accepting it would take a rule of the
-  package's own for a client that writes a whole number of 15 digits or more with a fraction or an exponent (a
-  JavaScript client writes `123456789012345` without either, so PHP decodes an integer), and it has no card: the limit
-  is stated here.
 
 Which keywords are honored at all is [the support matrix](../openapi-support.md#schemas)'s to state; what each honored
 one becomes is this table's.
@@ -746,7 +740,7 @@ one becomes is this table's.
 | Schema                                                  | Laravel rule                                                                                                                                                                                                                                      |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `type: string`                                          | `string`                                                                                                                                                                                                                                          |
-| `type: integer`                                         | `integer` beside `numeric:strict` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                   |
+| `type: integer`                                         | `WholeNumber` beside `numeric` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                      |
 | `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                                                                    |
 | `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                                                                   |
 | `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                                                                        |
@@ -759,7 +753,7 @@ one becomes is this table's.
 | `format: email`, `uuid`, `ipv4`, `ipv6`                 | `email`, `uuid`, `ipv4`, `ipv6`. Laravel's `email` accepts an RFC 5322 comment (`test(comment)@example.com`) that JSON Schema's refuses, which [#167](https://github.com/Gcob/lara-spec-first/issues/167) tracks                                  |
 | `format: uri`                                           | Nothing. Laravel's `url` turns away the non-hierarchical URIs (`urn:…`) JSON Schema allows                                                                                                                                                        |
 | `format: int32` on an `integer`                         | `min:-2147483648` and `max:2147483647`, each merged with the `minimum` or `maximum` the contract states: the tighter one wins                                                                                                                     |
-| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `integer` is PHP's `FILTER_VALIDATE_INT`, which refuses what a 64-bit integer cannot hold, and `numeric` takes any JSON number                                                                                                      |
+| `format: int64` on an `integer`, `double` on a `number` | Nothing more. `WholeNumber` and `integer` both refuse what a 64-bit integer cannot hold, and `numeric` takes any JSON number                                                                                                                      |
 | `format: password`                                      | Nothing. It is an annotation, and asserts nothing                                                                                                                                                                                                 |
 
 **Laravel's `boolean` refuses the string `"true"`, so a boolean that arrives as text does not get it.** It accepts `1`,
@@ -931,35 +925,30 @@ them, and the reading collects them with their position instead. See
 
 ### A JSON body keeps its types
 
-**A JSON body keeps its types: `numeric:strict` and `boolean:strict`, and an integer is `integer` beside
-`numeric:strict`.** JSON writes `42`, `1.5` and `true` already typed, and `"42"` is a string. Laravel's loose `integer`,
-`numeric` and `boolean` read what a form or a query string writes, so on a JSON body they would accept `"42"`, `"1.5"`
-and `1` for a boolean, which the contract refuses. The reasoning is in
+**A JSON body keeps its types: `numeric:strict` and `boolean:strict`, and an integer is the package's `WholeNumber`.**
+JSON writes `42`, `1.5` and `true` already typed, and `"42"` is a string. Laravel's loose `integer`, `numeric` and
+`boolean` read what a form or a query string writes, so on a JSON body they would accept `"42"`, `"1.5"` and `1` for a
+boolean, which the contract refuses. The reasoning is in
 [ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md). A field of a body that is JSON and nothing else
-gets the `:strict` form of its rule, at every level (`a.b`, `items.*`):
+gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every level (`a.b`, `items.*`):
 
-- **An integer is `integer` beside `numeric:strict`.** `integer` accepts a whole number written as a float (`1.0`,
-  `1e2`), which JSON Schema 2020-12 reads as an integer. `numeric:strict` refuses what is not a JSON number, so `"42"`
-  and `true`, which `integer` alone would accept, are still refused. A fraction (`1.5`) is refused by `integer`. `min`,
-  `max`, `gt`, `lt` and `multiple_of` beside the pair still compare as numbers, since Laravel finds an integer or a
-  number by the rule's name, whatever follows the colon. `integer` comes first, so a value that is neither a number nor
-  an integer (`"abc"`, `false`, `[]`) gets both messages, "must be an integer" first, and `"42"` and `true` read "must
-  be a number". `validated()` keeps the float as sent (`31.0`), as it keeps a query parameter's text, and `dto()` casts
-  it to an `int`.
+- **An integer is `WholeNumber` beside `numeric`.** `WholeNumber` passes an `int`, and a `float` whose value is exactly
+  whole (`1.0`, `1e2`, `1e14`), which JSON Schema 2020-12 reads as an integer. It refuses everything else: a fraction
+  (`1.5`), a float a hair off a whole number (`2.9999999999999996`, which JavaScript gives for `0.3 / 0.1`), a numeric
+  string (`"42"`), a boolean, and a float outside the range of a 64-bit integer, which `dto()` could not cast. It
+  compares the float itself: Laravel's `integer:strict` refuses `1.0`, and its loose `integer` reads a float as text
+  with 14 significant digits, so `2.9999999999999996` passes it and `dto()` makes it `2`. `numeric` goes beside it
+  because Laravel finds the number `min`, `max`, `gt`, `lt` and `multiple_of` compare by the name of a rule, and an
+  object has none. The first message is `WholeNumber`'s, "must be an integer", and a value that is no number at all
+  (`true`, `false`, `"abc"`, `[]`) also gets `numeric`'s, "must be a number". `validated()` keeps the float as sent
+  (`31.0`), as it keeps a query parameter's text, and `dto()` casts it to an `int`. A generated request imports
+  `Gcob\LaraSpecFirst\Validation\WholeNumber`.
 - **`numeric:strict` refuses a string**, `"1.5"` and `"2"` alike. An integer is a number, so `2` passes.
 - **`boolean:strict` accepts `true` and `false` and nothing else**: not `1`, `0`, `"1"` or `"true"`.
-- **A whole number written as a float is refused for an integer from 1e14 in magnitude, and that is stricter than JSON
-  Schema 2020-12**, where `1e14` is an integer. Under PHP's default `precision` (14) a float of that size is written
-  with an exponent (`1.0E+14`), and Laravel's `integer` refuses that text. Below it, `1.0`, `1e2` and `99999999999999.0`
-  pass. The generated file says so in one finding per request, written only when an integer field can hold such a value:
-  an integer with `format: int32`, bounds under 1e14 in magnitude, or an `enum` or `const` of values under it gets none,
-  and neither does a request with no integer. A body that is JSON and a form gets the finding too, in its own wording,
-  since its loose `integer` refuses a JSON client's `1e14` as well.
-  [ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md) holds the reasoning.
 - **A finding that says the request is stricter is not a gap.** It is in the Findings block like any other, but
   `spec:build` does not count it in its "read a constraint they do not enforce" warning, and the file keeps its "Nothing
-  was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly
-  every JSON request. The four are this one, `mimetypes` refusing a file named like PHP, a recursive schema refused
+  was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on a request
+  that enforces everything it read. The three are `mimetypes` refusing a file named like PHP, a recursive schema refused
   below its depth, and a body with `properties` and no `type` refusing a JSON root that is not an object.
 - **A finding that loses no constraint is not a gap either,** and is left out of the warning the same way. Two kinds
   exist: a body key of a map that is also the name of a `query` parameter (read from the query string, so the body's is
@@ -1022,16 +1011,16 @@ additionalProperties: { type: integer }
 private const SPARED_KEYS = ['locale'];
 
 'locale' => ['sometimes', 'string', 'max:5'],
-'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer', 'numeric:strict']),
+'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], [new WholeNumber, 'numeric']),
 ```
 
 `Gcob\LaraSpecFirst\Validation\UndeclaredKeys` is public API, imported by the generated request, so its name is frozen
 with the rest of what a generated file names, and so are its constructor and `below()`, which the file calls.
-`{"locale": "toolong"}` answers on `locale` alone, with `max:5`'s message and never `integer`'s, and `{"views": "x"}`
-answers on `views`. The declared key keeps exactly its own rules whatever the order of the array. Every rule key under
-the wildcard is guarded the same way (`meta.*`, and `meta.*.n` for an object value), so a value's own children never
-reach a declared key either, and a value that is a map itself adds its own names to the guard of the keys below it. A
-map with no declared property keeps the plain wildcard above.
+`{"locale": "toolong"}` answers on `locale` alone, with `max:5`'s message and never `WholeNumber`'s, and
+`{"views": "x"}` answers on `views`. The declared key keeps exactly its own rules whatever the order of the array. Every
+rule key under the wildcard is guarded the same way (`meta.*`, and `meta.*.n` for an object value), so a value's own
+children never reach a declared key either, and a value that is a map itself adds its own names to the guard of the keys
+below it. A map with no declared property keeps the plain wildcard above.
 
 **The guard reads the key's names and never the data.** Laravel's `Rule::forEach` does the same job and takes 22 seconds
 for a map of 10,000 values, since it hands every key the whole data to undot. `UndeclaredKeys` takes 0.3 seconds for the
@@ -1090,7 +1079,7 @@ requestBody:
 private const QUERY_KEYS = ['dryRun'];
 private const SPARED_KEYS = [...self::QUERY_KEYS];
 
-'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer', 'numeric:strict']),
+'*' => new UndeclaredKeys([0 => self::SPARED_KEYS], [new WholeNumber, 'numeric']),
 'dryRun' => ['sometimes', Rule::in(['true', 'false', '1', '0'])],
 ```
 

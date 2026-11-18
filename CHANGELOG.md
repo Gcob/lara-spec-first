@@ -313,17 +313,20 @@ tags: [versions, conventions, planning]
   two elements). Two numbers PHP cannot tell apart past float precision also count as one (`9007199254740993` and
   `9007199254740992.0`): the guide states that limit and the generated file carries no finding for it. An array query
   parameter has no element rule, so it does not change. This is a breaking change: a list a client could send twice the
-  same number in now gets a `422`. This ships [#173](https://github.com/Gcob/lara-spec-first/issues/173).
-- **A JSON integer now accepts a whole number written as a float (`1.0`, `1e2`), where `0.2.0` answered `422`.** Its
-  rule is `integer` beside `numeric:strict`: `"42"`, `true` and `1.5` are still refused, but `"42"` and `true` now read
-  "must be a number" rather than "must be an integer", and a value that is neither (`"abc"`, `false`, `[]`) gets both
-  messages, "must be an integer" first. `validated()` holds the float as sent (`31.0`) and `dto()` casts it to an `int`.
-  A whole float of 1e14 or more in magnitude stays refused, since PHP writes it with an exponent under its default
-  `precision` and Laravel's `integer` refuses that text. The finding in the generated file now says so, only on a
-  request with an integer field that can hold such a value (an integer with `format: int32`, bounds under 1e14 or an
-  `enum` under it gets none), and also on a body that is JSON and a form. The Laravel constraint is unchanged, and the
-  stated reason for it now says what CI tests. This is a breaking change: code that reads an integer from `validated()`
-  can get a float, and a client that matches the message for `"42"` sees a new one. The reasoning is in
+  same number in now gets a `422`. The reasoning is in
+  [ADR 0016](./docs/project/decisions/0016-keep-json-scalars-typed.md), and this ships
+  [#173](https://github.com/Gcob/lara-spec-first/issues/173).
+- **A JSON integer now accepts a whole number written as a float (`1.0`, `1e2`, `1e14`), where `0.2.0` answered `422`.**
+  A generated request judges it with `Gcob\LaraSpecFirst\Validation\WholeNumber`, a rule of the package's, beside
+  Laravel's `numeric`: it passes an integer and a float whose value is exactly whole, and refuses a fraction, a float a
+  hair off a whole number (`2.9999999999999996`, which Laravel's own `integer` reads as `3`), a numeric string (`"42"`),
+  a boolean, and a float outside the range of a 64-bit integer. `"42"` and `1.5` still read "must be an integer", and a
+  value that is no number at all (`true`, `false`, `"abc"`, `[]`) now gets "must be a number" as well. `validated()`
+  holds the float as sent (`31.0`) and `dto()` casts it to an `int`. The finding that said the request refused `1.0` is
+  gone from the generated file, since a JSON integer is now exactly as strict as the contract. The Laravel constraint is
+  unchanged, and the stated reason for it now says what CI tests. This is a breaking change: code that reads an integer
+  from `validated()` can get a float, and a generated request imports a new class, so run `spec:build` again (a request
+  generated before still refuses `1.0`). The reasoning is in
   [ADR 0016](./docs/project/decisions/0016-keep-json-scalars-typed.md), which supersedes ADR 0007, and this also ships
   [#173](https://github.com/Gcob/lara-spec-first/issues/173).
 

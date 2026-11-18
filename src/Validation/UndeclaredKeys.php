@@ -21,8 +21,10 @@ use Illuminate\Validation\Rule;
  * key the whole gathered data to undot, which is quadratic and measured at 22 seconds for a map of 10,000 values; this
  * rule is quadratic as well, in Laravel's own expansion of a compiled rule under a wildcard, and 75 times faster there.
  *
- * **Under a wildcard it must be the key's value itself**, never an element of a list: Laravel compiles it only there,
- * and anywhere else it reads the object as a rule name and throws.
+ * **Under a wildcard it must be the key's value itself**, never an element of a list: Laravel compiles it only there.
+ * Anywhere else it reads the object as a rule name, and what happens depends on the rules inside (measured): a rule
+ * with a parameter (`min:5`) throws `BadMethodCallException`, an object rule throws `TypeError`, and a plain rule
+ * (`integer`) judges every key, the spared ones included.
  *
  * **It is public API surface**, because a generated request imports it: the name and namespace are frozen with the rest
  * of what a generated file names, and so are the constructor and {@see self::below()}, which a generated file calls.

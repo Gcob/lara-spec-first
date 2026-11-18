@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Validation\UndeclaredKeys;
+use Gcob\LaraSpecFirst\Validation\WholeNumber;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -37,7 +38,7 @@ function judgedByUndeclaredKeys(array $data, array $rules): array
 
 it('judges an undeclared key by the value rules and a declared key by its own rules, whatever the order', function (bool $guardFirst): void {
     $own = ['meta.a' => ['sometimes', 'string', 'max:3']];
-    $guard = ['meta.*' => new UndeclaredKeys([1 => ['a']], ['integer', 'numeric:strict'])];
+    $guard = ['meta.*' => new UndeclaredKeys([1 => ['a']], [new WholeNumber, 'numeric'])];
     $rules = ['meta' => ['sometimes', 'array'], ...($guardFirst ? [...$guard, ...$own] : [...$own, ...$guard])];
 
     $answer = judgedByUndeclaredKeys(['meta' => ['a' => 'xyzw', 'b' => 1, 'c' => 'y']], $rules);
@@ -53,7 +54,7 @@ it('names only the failed rule of a declared key, never the value rule', functio
         [
             'meta' => ['array'],
             'meta.a' => ['string', 'max:3'],
-            'meta.*' => new UndeclaredKeys([1 => ['a']], ['integer', 'numeric:strict']),
+            'meta.*' => new UndeclaredKeys([1 => ['a']], [new WholeNumber, 'numeric']),
         ],
     );
 
@@ -66,7 +67,7 @@ it('keeps the declared and the undeclared keys in validated()', function (): voi
         [
             'meta' => ['array'],
             'meta.a' => ['sometimes', 'string'],
-            'meta.*' => new UndeclaredKeys([1 => ['a']], ['integer', 'numeric:strict']),
+            'meta.*' => new UndeclaredKeys([1 => ['a']], [new WholeNumber, 'numeric']),
         ],
     );
 
@@ -75,7 +76,7 @@ it('keeps the declared and the undeclared keys in validated()', function (): voi
 
 it('spares the declared key of each level of a value that is a map itself', function (): void {
     // `meta.*.*` is the values of the values: the first step spares `id`, the second one `n`.
-    $guard = static fn (): UndeclaredKeys => new UndeclaredKeys([1 => ['id'], 2 => ['n']], ['integer', 'numeric:strict']);
+    $guard = static fn (): UndeclaredKeys => new UndeclaredKeys([1 => ['id'], 2 => ['n']], [new WholeNumber, 'numeric']);
     $rules = [
         'meta' => ['array'],
         'meta.id' => ['string'],
@@ -94,7 +95,7 @@ it('judges the object values of a map beside a declared object by their own chil
         'meta' => ['array'],
         'meta.a' => ['array'],
         'meta.*' => new UndeclaredKeys([1 => ['a']], ['array', 'required_array_keys:n']),
-        'meta.*.n' => new UndeclaredKeys([1 => ['a']], ['integer', 'numeric:strict']),
+        'meta.*.n' => new UndeclaredKeys([1 => ['a']], [new WholeNumber, 'numeric']),
     ];
 
     $answer = judgedByUndeclaredKeys(['meta' => ['a' => ['n' => 'str'], 'b' => ['n' => 'z'], 'c' => []]], $rules);
@@ -103,7 +104,7 @@ it('judges the object values of a map beside a declared object by their own chil
 });
 
 it('counts the step of a key below a list and below an escaped dot', function (string $key, array $data, array $failed): void {
-    $rules = [$key => new UndeclaredKeys([str_contains($key, 'items') ? 3 : 1 => ['c']], ['integer', 'numeric:strict'])];
+    $rules = [$key => new UndeclaredKeys([str_contains($key, 'items') ? 3 : 1 => ['c']], [new WholeNumber, 'numeric'])];
 
     expect(judgedByUndeclaredKeys($data, $rules)['errors'])->toBe($failed);
 })->with([
@@ -114,7 +115,7 @@ it('counts the step of a key below a list and below an escaped dot', function (s
 it('spares a declared integer-like key written as a string, and not one written as an int', function (): void {
     $data = ['meta' => ['2024' => 'x', '1042' => 'bad']];
 
-    expect(judgedByUndeclaredKeys($data, ['meta' => ['array'], 'meta.2024' => ['string'], 'meta.*' => new UndeclaredKeys([1 => ['2024']], ['integer', 'numeric:strict'])])['errors'])
+    expect(judgedByUndeclaredKeys($data, ['meta' => ['array'], 'meta.2024' => ['string'], 'meta.*' => new UndeclaredKeys([1 => ['2024']], [new WholeNumber, 'numeric'])])['errors'])
         ->toBe(['meta.1042']);
 });
 
@@ -127,7 +128,7 @@ it('judges every value rule, an enumeration among them, of an undeclared key', f
 
 it('raises nothing when the map is absent or not a map', function (mixed $meta): void {
     $data = $meta === '__absent' ? [] : ['meta' => $meta];
-    $rules = ['meta' => ['sometimes', 'nullable', 'array'], 'meta.*' => new UndeclaredKeys([1 => ['id']], ['integer', 'numeric:strict'])];
+    $rules = ['meta' => ['sometimes', 'nullable', 'array'], 'meta.*' => new UndeclaredKeys([1 => ['id']], [new WholeNumber, 'numeric'])];
 
     expect(judgedByUndeclaredKeys($data, $rules)['errors'])->toBe($meta === 'x' ? ['meta'] : []);
 })->with([
@@ -140,7 +141,7 @@ it('raises nothing when the map is absent or not a map', function (mixed $meta):
 it('judges the keys a root guard does not spare, beside a key of its own', function (): void {
     $rules = [
         'page' => ['sometimes', 'integer'],
-        '*' => new UndeclaredKeys([0 => ['name', 'page']], ['integer', 'numeric:strict']),
+        '*' => new UndeclaredKeys([0 => ['name', 'page']], [new WholeNumber, 'numeric']),
     ];
 
     $answer = judgedByUndeclaredKeys(['name' => 'x', 'a' => 1, 'b' => 'bad', 'page' => 'abc'], $rules + ['name' => ['string']]);
@@ -148,14 +149,27 @@ it('judges the keys a root guard does not spare, beside a key of its own', funct
     expect($answer['errors'])->toBe(['b', 'page']);
 });
 
-it('is the key\'s value, never an element of a list of rules', function (): void {
-    // Laravel compiles a `CompilableRules` object under a wildcard only when it is the value itself. In a list it is read
-    // as a rule name, so a rule with a parameter (`numeric:strict`) is a method Laravel does not have.
-    expect(fn () => Validator::make(
-        ['meta' => ['a' => 1]],
-        ['meta' => ['array'], 'meta.*' => [new UndeclaredKeys([1 => ['id']], ['numeric:strict'])]],
-    )->passes())->toThrow(BadMethodCallException::class);
-});
+// Laravel compiles a `CompilableRules` object under a wildcard only when it is the value itself. In a list it is read as
+// a rule name, and what comes of that depends on the rules inside: both ways a list goes wrong are pinned.
+it('is the key\'s value, never an element of a list of rules', function (array $rules, ?string $thrown, array $errors): void {
+    $validate = static fn (): array => judgedByUndeclaredKeys(
+        ['meta' => ['id' => 'x', 'a' => 1]],
+        ['meta' => ['array'], 'meta.*' => [new UndeclaredKeys([1 => ['id']], array_values($rules))]],
+    )['errors'];
+
+    if ($thrown !== null) {
+        expect($validate)->toThrow($thrown);
+
+        return;
+    }
+
+    expect($validate())->toBe($errors);
+})->with([
+    'a rule with a parameter is a method Laravel does not have' => [['min:5'], BadMethodCallException::class, []],
+    'an object rule is not a name' => [[new WholeNumber], TypeError::class, []],
+    // The spared `id` is judged as well, which the guard would have spared.
+    'a plain rule judges every key, the spared one too' => [['integer'], null, ['meta.id']],
+]);
 
 // A spared key compiles to no rule at all: `validated()` keeps every data key that has a rule entry, so an empty entry
 // would let a child of a declared object through that nothing judged (here `n`, which only the value schema names).
@@ -167,7 +181,7 @@ it('keeps a child of a declared key out of validated() when only the guarded rul
             'meta.a' => ['array'],
             'meta.a.m' => ['string'],
             'meta.*' => new UndeclaredKeys([1 => ['a']], ['array']),
-            'meta.*.n' => new UndeclaredKeys([1 => ['a']], ['integer', 'numeric:strict']),
+            'meta.*.n' => new UndeclaredKeys([1 => ['a']], [new WholeNumber, 'numeric']),
         ],
     );
 

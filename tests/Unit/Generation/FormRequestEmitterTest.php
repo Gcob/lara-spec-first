@@ -50,7 +50,7 @@ it('emits a final class extending the framework base', function (): void {
 it('writes the rule set as rules() returns it', function (): void {
     expect(emittedRequest(goldenOperation()))
         ->toContain("'email' => ['present', 'string', 'max:255', 'email'],")
-        ->toContain("'age' => ['sometimes', 'integer', 'numeric:strict', 'min:18'],")
+        ->toContain("'age' => ['sometimes', new WholeNumber, 'numeric', 'min:18'],")
         ->toContain("'nickname' => ['sometimes', 'nullable', 'string'],")
         ->toContain("'tags.*' => ['string', 'distinct:strict'],")
         ->toContain("'address' => ['sometimes', 'array', 'required_array_keys:city'],")
@@ -952,7 +952,7 @@ it('writes the spared names as strings, one step each', function (): void {
 
     expect($emitted)
         ->toContain("'meta.*' => new UndeclaredKeys([1 => ['2024']], ['array']),")
-        ->toContain("'meta.*.*' => new UndeclaredKeys([1 => ['2024'], 2 => ['n']], ['integer', 'numeric:strict']),")
+        ->toContain("'meta.*.*' => new UndeclaredKeys([1 => ['2024'], 2 => ['n']], [new WholeNumber, 'numeric']),")
         ->and(pintAcceptsEmitted($emitted))->toBeTrue();
 });
 
@@ -988,7 +988,7 @@ it('spares the query keys beside the declared names at the root', function (arra
     expect($emitted)
         ->toContain("private const QUERY_KEYS = ['page', 'limit'];")
         ->toContain($constant)
-        ->toContain("            '*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer', 'numeric:strict']),")
+        ->toContain("            '*' => new UndeclaredKeys([0 => self::SPARED_KEYS], [new WholeNumber, 'numeric']),")
         ->and(pintAcceptsEmitted($emitted))->toBeTrue();
 })->with([
     'a map root' => [[], 'private const SPARED_KEYS = [...self::QUERY_KEYS];'],
