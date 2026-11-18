@@ -140,7 +140,7 @@ function statusCard(array $overrides): array
         'stateReason' => null,
         // A closed card was closed before the release tags the tests write (`statusTags()`), unless a test says otherwise.
         'closedAt' => ($overrides['state'] ?? 'OPEN') === 'CLOSED' ? '2026-11-10T12:00:00Z' : null,
-        // A card past Backlog is planned, so it starts on `1.0` (M1): a test that is about a missing milestone says `null`.
+        // A card past Backlog is planned, so it starts on `1.0`, a release like any other (M1): a test that is about a missing milestone says `null`.
         'milestone' => in_array($overrides['status'] ?? 'Todo', ['Todo', 'In Progress', 'In review', 'Ready to publish'], true) ? '1.0' : null,
         'labels' => [],
         'labelsNext' => false,
@@ -792,17 +792,34 @@ it('reports the next release as the open release milestone with the lowest versi
         ]);
 });
 
-it('says so when no release milestone is open, and never shows 1.0 there', function (): void {
+it('shows 1.0 as the next release when it is the lowest open release milestone', function (): void {
     $project = statusProject([
         'milestones' => [statusMilestone(['title' => '1.0']), statusMilestone(['title' => '0.2.0', 'state' => 'closed'])],
-        'cards' => [statusCard(['number' => 49, 'status' => 'Todo', 'milestone' => '1.0'])],
+        'cards' => [
+            statusCard(['number' => 49, 'status' => 'Todo', 'order' => 10, 'milestone' => '1.0']),
+            statusCard(['number' => 50, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0']),
+            statusCard(['number' => 51, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Decision', 'milestone' => '1.0']),
+        ],
+        'prs' => [],
+        'merged' => [],
     ]);
 
     $run = statusRunScript($project);
 
-    expect($run['exit'])->toBe(1, $run['err'])
-        ->and(statusSection($run['out'], 'Release'))->toBe(['  No release milestone is open.'])
-        ->and($run['out'])->not->toContain('Release 1.0');
+    expect($run['out'])->toContain("\nRelease 1.0: 2 of 3 closed (1 ready to publish, 1 done)\n")
+        ->and(statusSection($run['out'], 'Release 1.0: 2 of 3 closed (1 ready to publish, 1 done)'))->toBe(['  Todo  #49']);
+});
+
+it('says so when no release milestone is open', function (): void {
+    $project = statusProject([
+        'milestones' => [statusMilestone(['title' => '0.2.0', 'state' => 'closed'])],
+        'cards' => [statusCard(['number' => 49, 'status' => 'Backlog'])],
+    ]);
+
+    $run = statusRunScript($project);
+
+    expect($run['exit'])->toBe(0, $run['err'])
+        ->and(statusSection($run['out'], 'Release'))->toBe(['  No release milestone is open.']);
 });
 
 it('prints the header, and the sections that have nothing to say', function (): void {
@@ -995,7 +1012,8 @@ it('exits 0 and prints no drift for a board that matches git', function (): void
             statusCard(['number' => 14, 'status' => 'Backlog']),
             statusCard(['number' => 15, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0']),
             statusCard(['number' => 16, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Docs', 'milestone' => '0.3.0']),
-            statusCard(['number' => 17, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0']),
+            // On the V1 bar and on no release yet: the label plans nothing, so a closed `v1` card with no milestone is history.
+            statusCard(['number' => 17, 'status' => 'Done', 'state' => 'CLOSED', 'labels' => ['v1']]),
             statusCard(['number' => 18, 'status' => 'Done', 'state' => 'CLOSED']),
             statusCard(['number' => 19, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Lot']),
             statusCard(['number' => 20, 'status' => 'Done', 'state' => 'CLOSED', 'stateReason' => 'NOT_PLANNED']),
@@ -1062,7 +1080,8 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
         'cards' => [
             // B5: closed before v0.2.0 was tagged, so it shipped in it, whatever its milestone.
             statusCard(['number' => 40, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
-            statusCard(['number' => 47, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0']),
+            statusCard(['number' => 47, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0', 'labels' => ['v1']]),
+            statusCard(['number' => 55, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'labels' => ['v1']]),
             // Closed after the tag: it waits for the next release.
             statusCard(['number' => 45, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 48, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '1.0', 'closedAt' => '2026-11-13T09:00:00Z']),
@@ -1075,7 +1094,9 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
             statusCard(['number' => 52, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-12T00:00:00Z']),
             statusCard(['number' => 53, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => '0.3.0', 'closedAt' => '2026-11-12T00:00:00Z']),
             statusCard(['number' => 42, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => null]),
-            statusCard(['number' => 43, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0']),
+            statusCard(['number' => 43, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0', 'labels' => ['v1']]),
+            // `1.0` is a release milestone and is open: a `v1` card that closed after the tag has not shipped either.
+            statusCard(['number' => 54, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '1.0', 'labels' => ['v1'], 'closedAt' => '2026-11-13T09:00:00Z']),
             statusCard(['number' => 44, 'status' => 'Done', 'state' => 'CLOSED', 'milestone' => '0.2.0']),
             statusCard(['number' => 46, 'status' => 'Done', 'state' => 'CLOSED', 'kind' => 'Docs', 'milestone' => '0.3.0']),
         ],
@@ -1086,9 +1107,11 @@ it('flags a Ready to publish card closed before the latest release, and a Done c
     expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusDrift($run['out'])['lines'])->toBe([
             '  #40  Ready to publish, but it was released in v0.2.0. Move it to Done.',
-            '  #41  Done, but its release 0.3.0 has not shipped. Move it back to Ready to publish.',
+            '  #41  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
             '  #47  Ready to publish, but it was released in v0.2.0. Move it to Done.',
-            '  #52  Done, but its release 0.3.0 has not shipped. Move it back to Ready to publish.',
+            '  #52  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #54  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
+            '  #55  Ready to publish, but it was released in v0.2.0. Move it to Done.',
         ]);
 });
 
@@ -1105,7 +1128,7 @@ it('flags a Done card on an open release milestone when no release was ever tagg
 
     expect($run['exit'])->toBe(1, $run['err'])
         ->and(statusDrift($run['out'])['lines'])->toBe([
-            '  #40  Done, but its release 0.3.0 has not shipped. Move it back to Ready to publish.',
+            '  #40  Done, but no release has been tagged since it closed. Move it back to Ready to publish.',
         ]);
 });
 
@@ -1485,13 +1508,15 @@ it('flags a closed card still waiting, and a decision card in Todo that does not
 it('flags a card past Backlog with no milestone', function (): void {
     $project = statusProject([
         'cards' => [
-            // M1: every status past Backlog needs a milestone, a lot card in Todo included.
+            // M1: every status past Backlog needs a milestone, and the `v1` label is not one. A lot card ships nothing, so it needs none.
             statusCard(['number' => 60, 'status' => 'Todo', 'order' => 10, 'milestone' => null]),
             statusCard(['number' => 61, 'status' => 'In Progress', 'milestone' => null]),
             statusCard(['number' => 62, 'status' => 'In review', 'milestone' => null]),
             statusCard(['number' => 63, 'status' => 'Ready to publish', 'state' => 'CLOSED', 'milestone' => null]),
+            statusCard(['number' => 69, 'status' => 'Todo', 'order' => 40, 'labels' => ['v1'], 'milestone' => null]),
+            // Fine: a lot card, Backlog is not planned yet, 1.0 is a release milestone like any other, and Done is history.
             statusCard(['number' => 64, 'status' => 'Todo', 'kind' => 'Lot', 'milestone' => null]),
-            // Fine: Backlog is not planned yet, 1.0 counts as a milestone, a release milestone is one, and Done is history.
+            statusCard(['number' => 59, 'status' => 'In Progress', 'labels' => ['v1'], 'milestone' => '0.3.0']),
             statusCard(['number' => 65, 'status' => 'Backlog']),
             statusCard(['number' => 66, 'status' => 'Todo', 'order' => 20, 'milestone' => '1.0']),
             statusCard(['number' => 67, 'status' => 'Todo', 'order' => 30, 'milestone' => '0.3.0']),
@@ -1502,6 +1527,7 @@ it('flags a card past Backlog with no milestone', function (): void {
         'merged' => [],
     ]);
     statusPushBranch($project, 'feature/61/started', 0);
+    statusPushBranch($project, 'feature/59/started', 0);
 
     $run = statusRunScript($project);
 
@@ -1512,7 +1538,7 @@ it('flags a card past Backlog with no milestone', function (): void {
                 '  #61  In Progress with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
                 '  #62  In review with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
                 '  #63  Ready to publish with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
-                '  #64  Todo with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
+                '  #69  Todo with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.',
             ],
             'count' => 5,
             'header' => 5,
@@ -1534,8 +1560,10 @@ it('flags an edge case without its reason, or planned for a release', function (
             statusCard(['number' => 75, 'status' => 'Backlog', 'labels' => ['edge-case'], 'onBoard' => false]),
             // The same words on a card that is not an edge case are nobody's business.
             statusCard(['number' => 76, 'status' => 'Backlog', 'body' => STATUS_COMPLETE_BODY]),
+            // `1.0` is a release milestone: an edge case ships in no release yet, the release of 1.0 included.
+            statusCard(['number' => 77, 'status' => 'Backlog', 'labels' => ['edge-case', 'v1'], 'milestone' => '1.0', 'body' => $withReason]),
         ],
-        'milestones' => [statusMilestone(['title' => '0.3.0'])],
+        'milestones' => [statusMilestone(['title' => '0.3.0']), statusMilestone(['title' => '1.0'])],
     ]);
 
     $run = statusRunScript($project);
@@ -1549,18 +1577,19 @@ it('flags an edge case without its reason, or planned for a release', function (
                 '  #73  An edge case with no ## Why it can wait. Write the reason it waits and its triggers, under Moves to Todo when:.',
                 '  #73  An edge case on release 0.3.0. A trigger fired, so take edge-case off; or take the milestone off, since an edge case ships in no release yet.',
                 '  #75  Open, but not on the board. Add it and triage it.',
+                '  #77  An edge case on release 1.0. A trigger fired, so take edge-case off; or take the milestone off, since an edge case ships in no release yet.',
             ],
-            'count' => 6,
-            'header' => 6,
+            'count' => 7,
+            'header' => 7,
         ]);
 });
 
-it('accepts an edge case that waits with no milestone, or on 1.0', function (): void {
+it('accepts an edge case that waits with no milestone, v1 included', function (): void {
     $withReason = "## Decisions\n\nSettled.\n\n## Why it can wait\r\n\r\nNothing passes that the contract refuses.\n\nMoves to Todo when:\n\n- the 1.0 gate opens\n";
     $project = statusProject([
         'cards' => [
             statusCard(['number' => 80, 'status' => 'Backlog', 'labels' => ['edge-case'], 'body' => $withReason]),
-            statusCard(['number' => 81, 'status' => 'Backlog', 'labels' => ['edge-case'], 'milestone' => '1.0', 'body' => $withReason]),
+            statusCard(['number' => 81, 'status' => 'Backlog', 'labels' => ['edge-case', 'v1'], 'body' => $withReason]),
         ],
         'milestones' => [statusMilestone(['title' => '1.0'])],
     ]);

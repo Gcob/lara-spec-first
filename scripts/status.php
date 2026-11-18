@@ -16,9 +16,10 @@ declare(strict_types=1);
  *     they are. A lot card is never listed: nobody works on one directly;
  *   - Next: the open `Todo` cards, by `Order` and then by number, those with no
  *     `Order` last;
- *   - Release: the open release milestone (`0.x.y`) with the lowest version, how many
- *     of its issues are closed, and its open cards by status. `1.0` is the V1 bar, not
- *     a release, so it never shows here;
+ *   - Release: the open release milestone with the lowest version (`1.0` included: it
+ *     is the release of 1.0 itself), how many of its issues are closed, and its open
+ *     cards by status. The `v1` label marks what ships in 1.0, whatever release a card
+ *     gets on the way; no rule reads it;
  *   - Maintainer's turn: the open cards that carry the waiting label, with the question
  *     posted on each;
  *   - Drift: every place where the board, the issues, the pull requests, git and CI
@@ -917,9 +918,12 @@ function drift_main(array $main): array
     return [finding('C1', null, null, 'CI on main failed: '.implode(', ', $main['failed']).'. Repair main before anything else.')];
 }
 
+/**
+ * A release milestone is titled `<major>.<minor>` or `<major>.<minor>.<patch>`, such as `0.3.0` or `1.0`.
+ */
 function is_release_milestone(string $title): bool
 {
-    return preg_match('/^0\.\d+\.\d+$/', $title) === 1;
+    return preg_match('/^\d+\.\d+(\.\d+)?$/', $title) === 1;
 }
 
 /**
@@ -1004,10 +1008,10 @@ function drift_board(array $cards, array $milestones, ?array $release): array
         } elseif ($home['status'] === STATUS_DONE && $status === STATUS_READY_TO_PUBLISH) {
             $findings[] = finding('B4', $number, null, 'Ready to publish, but '.$home['why'].'. Move it to Done.');
         } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_READY_TO_PUBLISH && closed_before_release($card, $release)) {
-            // Whatever its milestone: a card on `1.0` waits for the next release like any other, and shipped in it.
+            // Whatever its milestone, `1.0` included: a card waits for the next release like any other, and shipped in it.
             $findings[] = finding('B5', $number, null, 'Ready to publish, but it was released in '.$release['name'].'. Move it to Done.');
         } elseif ($home['status'] === STATUS_READY_TO_PUBLISH && $status === STATUS_DONE && $opening === true && ! closed_before_release($card, $release)) {
-            $findings[] = finding('B6', $number, null, 'Done, but its release '.$card['milestone'].' has not shipped. Move it back to Ready to publish.');
+            $findings[] = finding('B6', $number, null, 'Done, but no release has been tagged since it closed. Move it back to Ready to publish.');
         }
     }
 
@@ -1233,8 +1237,8 @@ function drift_milestones(array $cards): array
     foreach ($cards as $card) {
         $number = $card['number'];
 
-        // No milestone means not planned: `1.0` counts as one, and a lot card in `Todo` is an opened lot.
-        if ($card['onBoard'] && $card['milestone'] === null && in_array($card['status'], [STATUS_TODO, STATUS_IN_PROGRESS, STATUS_IN_REVIEW, STATUS_READY_TO_PUBLISH], true)) {
+        // No milestone means not planned: any milestone counts, a label does not, and a lot card ships nothing.
+        if ($card['onBoard'] && $card['kind'] !== 'Lot' && $card['milestone'] === null && in_array($card['status'], [STATUS_TODO, STATUS_IN_PROGRESS, STATUS_IN_REVIEW, STATUS_READY_TO_PUBLISH], true)) {
             $findings[] = finding('M1', $number, null, $card['status'].' with no milestone. Give it the release it ships in, or the milestone of the card in progress whose files it touches.');
         }
 

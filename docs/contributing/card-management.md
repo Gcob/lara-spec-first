@@ -11,12 +11,12 @@ covers: >
     what a finished lot owes the next one, the path from a lot's sketch to a card an agent can take and when two cards
     may be worked on at once, when a card is written and what a Backlog card is worth before then, what an Acceptance
     scenario holds, why nothing runs it and what ten cards have done with it so far, how a card cites a file, what the
-    board's Status, Phase, Lot, Kind, Order and Milestone fields mean, who moves them and why a card's body stops
-    carrying one the moment the board does, what `just status` prints and how to read it, where a closed card belongs
-    and which disagreements between the board, git, the pull requests and CI it flags as drift, what the
-    `waiting-on-maintainer` label means and how a question and its decision are posted on a card, why no milestone means
-    a card is not planned and what the `edge-case` label asks of a card that waits, and the grouping mechanisms this
-    project declines to use.
+    board's Status, Phase, Lot, Kind, Order and Milestone fields and the `v1` label mean, who moves them and why a
+    card's body stops carrying one the moment the board does, what `just status` prints and how to read it, where a
+    closed card belongs and which disagreements between the board, git, the pull requests and CI it flags as drift, what
+    the `waiting-on-maintainer` label means and how a question and its decision are posted on a card, why no milestone
+    means a card is not planned and what the `edge-case` label asks of a card that waits, and the grouping mechanisms
+    this project declines to use.
 read_before: Opening a card, cutting a lot, or deciding what to do with work that turned up while one was open.
 tags: [planning, conventions, workflow, scope, onboarding]
 ---
@@ -41,8 +41,8 @@ tags: [planning, conventions, workflow, scope, onboarding]
 > - The template is the [issue form](https://github.com/Gcob/lara-spec-first/blob/main/.github/ISSUE_TEMPLATE/task.md).
 >   This file is where its reasoning lives.
 > - `Status` moves with the work; `Phase` and `Kind` are set at triage and `Lot` when that lot is cut. The board keeps
->   each of them, and a card's body carries one only until it gets there. `Order` is the queue, and `Milestone` is the
->   release a card ships in.
+>   each of them, and a card's body carries one only until it gets there. `Order` is the queue, `Milestone` is the
+>   release a card ships in, `1.0` included, and the `v1` label marks what ships by `1.0`.
 > - A card past `Backlog` has a milestone, since no milestone means not planned. A gap that waits with its reason and
 >   its triggers carries the `edge-case` label and no release milestone.
 > - `just status` prints what is in flight, what comes next and the next release, from the board, GitHub and git, and
@@ -596,7 +596,7 @@ of the board, and `Milestone` is the issue's own.
 | `Lot`       | `Lot 0` through `Lot 7`                                                   | Set when the lot is cut, rarely after; on a lot card, when it is created |
 | `Kind`      | `Feature`, `Docs`, `Decision`, `Chore`, `Lot`                             | Set at triage, rarely after                                              |
 | `Order`     | A number, in steps of 10 (`10`, `20`, `30`)                               | The maintainer, by hand, when a card goes to `Todo`                      |
-| `Milestone` | A release such as `0.3.0`, or `1.0`, or none                              | Set at triage, and when a card is planned for a release                  |
+| `Milestone` | A release such as `0.3.0` or `1.0`, or none                               | Set at triage, and when a card is planned for a release                  |
 
 `Status` is the only field that moves often, and what each value claims about a card is
 [above](#cards-are-cut-when-the-lot-opens-not-before): `Backlog` is a sketch, `Todo` is a specification. The one a
@@ -608,11 +608,18 @@ number, and a `Todo` card with none comes last. Steps of 10 leave room to slot a
 such as `15.5` once `15` is taken) without renumbering the others. A lot card is never in the queue, so it carries none.
 The field is a Number on the board, not a body line, so moving a card in the queue is one edit and no card is rewritten.
 
-**`Milestone` means three things.** A `0.x.y` milestone is the release a card ships in, and it closes when that release
-is tagged. `1.0` is the bar for a stable release, not a release to plan for: what a team needs to write its next
-endpoints spec-first, and the gates that freeze the public names. A card with no milestone is not planned for any
-release yet. An issue has one milestone, so a card is on a release or on `1.0`, and a card on `1.0` stays there until
-the maintainer decides which release it ships in.
+**`Milestone` means two things.** A release milestone, a version such as `0.3.0` or `1.0`, is the release a card ships
+in, and it closes when that release is tagged. `1.0` is a release like any other: the release of 1.0 itself. A card with
+no milestone is not planned for any release yet. An issue has one milestone, so a card is on one release at a time, and
+it moves to another when the maintainer decides it ships there.
+
+**The `v1` label marks the V1 bar.** The bar is what a team needs to write its next endpoints spec-first, and the gates
+that freeze the public names: whatever ships in `1.0` carries `v1`, whatever release milestone the card gets on the way.
+"In which release" is the milestone, and "part of 1.0" is the label, so a card keeps `v1` when it gets `0.4.0`, and
+`label:v1` on the issues is how far the bar has come. No rule of [`just status`](#what-just-status-prints) reads the
+label: a label plans no release, so a `v1` card past `Backlog` still needs its milestone. One milestone could not say
+both, since an issue carries only one, and a list of the bar's cards in the README would be a second copy to keep in
+step with the board, so the label stays.
 
 **A card can legitimately carry no `Phase` either.** [#68](https://github.com/Gcob/lara-spec-first/issues/68), which
 asks how ownership gets declared in the contract, is a positioning question rather than a feature, and forcing it into a
@@ -665,8 +672,8 @@ the board and cross-check it against the branches. It prints a one-line header (
   they are. A lot card is never listed.
 - **Next:** the `Todo` cards in the order of their `Order`, the ones with none last, with the milestone each ships in.
 - **Release:** the open release milestone with the lowest version, how many of its issues are closed, how many of those
-  wait to be published and how many are done, and its open cards grouped by status. `1.0` is never shown here, since it
-  is the bar for a stable release and not the next one.
+  wait to be published and how many are done, and its open cards grouped by status. `1.0` is shown there too, once it is
+  the lowest open release.
 - **Maintainer's turn:** the open cards that carry the `waiting-on-maintainer` label, by number, with their status and
   either the question posted on each or `decision card`. When nothing waits, it says so.
 
@@ -682,8 +689,8 @@ card number. A branch whose name ends in `-spike` is a trial, not a card's work,
 **Where a closed card belongs.** A closed card is in `Done` when it is a `Docs`, `Decision` or `Lot` card (the docs site
 publishes on merge, and a lot card closes with its lesson), or when it was closed as not planned, since that ships
 nothing. Any other closed card is in `Ready to publish` until the next release is tagged, and then in `Done`: the card
-ships in the first release tagged after it closed, whatever its milestone, so a closed card on `1.0` waits there too. A
-card in `Done` on `1.0` or with no milestone is never drift for it, since the release it shipped in is not on the card.
+ships in the first release tagged after it closed, whatever its milestone. A card in `Done` with no milestone is never
+drift for it, since the release it shipped in is not on the card.
 
 **Drift between the board and the issues:**
 
@@ -692,8 +699,8 @@ card in `Done` on `1.0` or with no milestone is never drift for it, since the re
 - A closed card in neither of those two, or in the one it does not belong in by the paragraph above.
 - A card in `Ready to publish` that closed before the latest release was tagged (`v<major>.<minor>.<patch>`, the newest
   by date, a prerelease excepted), which means it shipped in that release, whatever its milestone. And a card in `Done`
-  whose release milestone (`0.x.y`) is still open and that closed after the latest release (or with none tagged yet),
-  which means it did not ship.
+  whose release milestone (a version such as `0.3.0` or `1.0`) is still open and that closed after the latest release
+  (or with none tagged yet), which means it did not ship.
 
 **Drift between the board, the pull requests and git:**
 
@@ -718,9 +725,9 @@ excepted, see below), a closed card still carries the label, and a `decision` ca
 `In review` without it. A `decision` card in `Backlog` waits on its lot rather than on an answer, so it is never drift
 for lacking the label.
 
-**Drift in the milestones:** a card in `Todo`, `In Progress`, `In review` or `Ready to publish` with no milestone, an
-open `edge-case` card with no `## Why it can wait` section, and an open `edge-case` card on a release milestone
-(`0.x.y`; one on `1.0` is fine, since it is the bar for a stable release and not a release).
+**Drift in the milestones:** a card in `Todo`, `In Progress`, `In review` or `Ready to publish` with no milestone (a lot
+card excepted, since it ships nothing), an open `edge-case` card with no `## Why it can wait` section, and an open
+`edge-case` card on a release milestone, `1.0` included.
 
 **It reads and never writes.** It asks GitHub only for reads, and runs one `git fetch --prune` and one
 `git ls-remote --tags` of the remote that names this repository. It reads that remote's branches and its release tags
@@ -775,11 +782,12 @@ card with no open question that is not a `decision` card, still carrying it show
 ## No milestone means not planned
 
 **A card past `Backlog` has a milestone, and a card with none is not planned for anything.** `Todo`, `In Progress`,
-`In review` and `Ready to publish` each say the card is going to ship: the release in its `Milestone` is where, and
-`1.0` counts, since a card on it is part of the bar for a stable release. A `Backlog` card has none yet, and a `Done`
-card is history, so neither is asked for one. A card worked because it touches the files of a card already in progress
-takes that card's milestone rather than its own guess. [`just status`](#what-just-status-prints) names a card in one of
-those four statuses with no milestone, and the fix is to give it one.
+`In review` and `Ready to publish` each say the card is going to ship: the release in its `Milestone` is where, and any
+milestone counts, while the [`v1` label](#the-board) is not one. A lot card needs none, since it ships nothing. A
+`Backlog` card has none yet, and a `Done` card is history, so neither is asked for one. A card worked because it touches
+the files of a card already in progress takes that card's milestone rather than its own guess.
+[`just status`](#what-just-status-prints) names a card in one of those four statuses with no milestone, and the fix is
+to give it one.
 
 **A card that waits, with its reason, carries the `edge-case` label and no release milestone.** An edge case is a gap
 that is real and rare: a contract the package accepts that it should refuse, or a shape nobody has met yet, with nothing

@@ -108,8 +108,9 @@ is in flight, what is done, and in which order. This section is the shape of the
 request validation and the input DTOs, and the response DTOs have been built since (`Unreleased`). The response
 factories are next.
 
-**The next release** is the board filtered on its milestone, the open one named `0.x.y` with the lowest version, and
-`just status` prints it.
+**The next release** is the board filtered on its milestone, the open release milestone with the lowest version (`1.0`
+is the release of 1.0 itself), and `just status` prints it. What ships in 1.0 carries the `v1` label, as
+[the card guide](./docs/contributing/card-management.md#the-board) says.
 
 ### Phase 1: the foundation
 
