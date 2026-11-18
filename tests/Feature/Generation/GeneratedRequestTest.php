@@ -2066,6 +2066,15 @@ it('refuses an undeclared key beside the names below a plain name in a closed fo
         ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['size' => '3', 'evil' => '1']])[0])->toBe(422);
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
+// The declared key is written into the generated file, so an apostrophe in it has to be escaped: the class loads, and
+// the key is accepted while another one is refused.
+it('loads the class of a closed form body that declares a key with an apostrophe below a plain name', function (string $mediaType): void {
+    $class = emittedRequestClass(postWithBracketedNames($mediaType, ['page', "page[it's]"], closed: true));
+
+    expect(sendThroughEmitted($class, 'POST', parameters: ['page' => ["it's" => '3']])[0])->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['evil' => '1']])[0])->toBe(422);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
 // Both names keep a rule, and `formPaths` hands each one's value to `dto()`: `filter[a]=x` reaches it again (0.2.0 did
 // too), and `filter[a][b]=1` reaches it as `filter[a][b]`, without the array under `filter[a]`.
 it('hands both names below a bracketed name to dto', function (): void {

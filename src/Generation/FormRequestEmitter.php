@@ -622,11 +622,11 @@ final readonly class FormRequestEmitter
 
             if (isset($set->whenNotArray[$key])) {
                 $lines[] = sprintf(
-                    "            %s => Rule::when(\n                fn (Fluent \$input): bool => ! is_array(%s),\n                %s,\n                ['%s'],\n            ),",
+                    "            %s => Rule::when(\n                fn (Fluent \$input): bool => ! is_array(%s),\n                %s,\n                [%s],\n            ),",
                     $this->literal($key),
                     $this->valueAt($set->whenNotArray[$key]),
                     $list,
-                    in_array($key, $set->dropsArray, true) ? 'exclude' : 'array'.(isset($set->arrayKeys[$key]) ? ':'.implode(',', $set->arrayKeys[$key]) : ''),
+                    $this->literal(in_array($key, $set->dropsArray, true) ? 'exclude' : 'array'.(isset($set->arrayKeys[$key]) ? ':'.implode(',', $set->arrayKeys[$key]) : '')),
                 );
 
                 continue;

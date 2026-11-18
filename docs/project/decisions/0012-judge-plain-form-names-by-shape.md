@@ -29,7 +29,8 @@ tags: [decisions, code-generation, openapi]
 >   `*` name, which turned a 422 into a 200, and branching the shape check on the media type, which a rule set cannot do
 >   today.
 
-**Status:** Accepted · **Card:** [#168](https://github.com/Gcob/lara-spec-first/issues/168)
+**Status:** Accepted · **Card:** [#168](https://github.com/Gcob/lara-spec-first/issues/168) · **Pull request:**
+[#185](https://github.com/Gcob/lara-spec-first/pull/185)
 
 ## Context
 
@@ -67,10 +68,11 @@ the query side:
 'page.size' => ['sometimes', 'integer'],
 ```
 
-**`dto()` reads the name only when it is not an array.** The generated request lists such names in `SCALAR_NAMES`, and
-`contractNames()` drops the array after it has read each nested name out of it, so `page[size]=3` reaches the DTO as
-`page[size]` and `page` is `Optional`. The DTO class is untouched: it serves JSON and nested uses too, which is why
-`contractNames()` exists. The key two names deliver under one is in the list too, when a name below it has a rule.
+**`dto()` reads the name only when it is not an array.** The generated request lists such names in `SCALAR_NAMES` (not
+the ones whose array branch is `exclude`, since `validated()` never holds that array), and `contractNames()` drops the
+array after it has read each nested name out of it, so `page[size]=3` reaches the DTO as `page[size]` and `page` is
+`Optional`. The DTO class is untouched: it serves JSON and nested uses too, which is why `contractNames()` exists. The
+key two names deliver under one is in the list too, when a name below it has a rule.
 
 **A required shaped name is `Optional` on the DTO, with a finding.** The array stands in for it, so the payload cannot
 promise it. A shaped name that is not required is already `Optional`.
@@ -154,7 +156,8 @@ JSON `{}` is refused through the required-keys check, but a form's `page[size]=3
 - **A closed body refuses an undeclared key below a shaped name** (`page[evil]=1` beside `page` and `page[size]`), which
   it accepted. The CHANGELOG lists it as a breaking change.
 - **`dto()` carries the nested names again:** `page[size]` reaches it, and a required one is no longer `Optional`.
-- **`spec:build` stops warning** for these names, since they have rules, and `spec:doctor` stays silent on them.
+- **`spec:build` stops warning** for these names in a body read only as a form, since they have rules, and `spec:doctor`
+  stays silent on them.
 - **This does not settle** a form body's appended name (`ids[]` read as `ids.0`: a second value goes to `ids.1`,
   unjudged), tracked by [#174](https://github.com/Gcob/lara-spec-first/issues/174), nor a `*` name beside a plain name
   outside a body read only as a form, tracked by [#175](https://github.com/Gcob/lara-spec-first/issues/175).

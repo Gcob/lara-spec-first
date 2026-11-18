@@ -2892,11 +2892,7 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
-            foreach ($members as $member) {
-                $collided[$member] = true;
-                $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
-                $walk->withheld[$member] = true;
-            }
+            self::withhold($members, $walk, $collided);
 
             $walk->findings[] = sprintf(
                 '%s reach Laravel under one name, `%s`, which a form delivers them as, so no rule can tell them apart. '
@@ -2924,11 +2920,7 @@ final readonly class RuleSetBuilder
                     $other,
                 );
 
-                foreach ([$name, $other] as $member) {
-                    $collided[$member] = true;
-                    $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
-                    $walk->withheld[$member] = true;
-                }
+                self::withhold([$name, $other], $walk, $collided);
 
                 continue;
             }
@@ -2948,11 +2940,7 @@ final readonly class RuleSetBuilder
                     $type,
                 );
 
-                foreach ([$name, $other] as $member) {
-                    $collided[$member] = true;
-                    $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
-                    $walk->withheld[$member] = true;
-                }
+                self::withhold([$name, $other], $walk, $collided);
 
                 continue;
             }
@@ -3062,6 +3050,22 @@ final readonly class RuleSetBuilder
                     break;
                 }
             }
+        }
+    }
+
+    /**
+     * Withhold names that reach Laravel under one key: no rule is emitted for them, and neither their type nor their
+     * presence is enforced.
+     *
+     * @param  list<string>  $members
+     * @param  array<string, true>  $collided
+     */
+    private static function withhold(array $members, RuleWalk $walk, array &$collided): void
+    {
+        foreach ($members as $member) {
+            $collided[$member] = true;
+            $walk->unchecked[$member] = 'another name in the body reaches Laravel under the same key';
+            $walk->withheld[$member] = true;
         }
     }
 
@@ -3178,6 +3182,9 @@ final readonly class RuleSetBuilder
             }
 
             $walk->dropsArray[] = $key;
+
+            // Why: `exclude` already keeps the array out of the validated data, so `dto()` has nothing to drop.
+            $walk->scalarNames = array_values(array_diff($walk->scalarNames, [$name]));
         }
     }
 

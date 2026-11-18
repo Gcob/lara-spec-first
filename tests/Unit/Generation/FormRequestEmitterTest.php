@@ -544,6 +544,11 @@ it('writes the declared keys below a shaped form name in its array branch when t
                 'filter[a]' => new Schema(types: [SchemaType::String]),
                 'filter[a][b]' => new Schema(types: [SchemaType::String]),
                 'filter[c]' => new Schema(types: [SchemaType::String]),
+                // A declared key may carry an apostrophe or end in a backslash: either would end the literal early.
+                'tag' => new Schema(types: [SchemaType::Integer]),
+                "tag[it's]" => new Schema(types: [SchemaType::Integer]),
+                'path' => new Schema(types: [SchemaType::Integer]),
+                'path[a\\]' => new Schema(types: [SchemaType::Integer]),
             ],
             additionalProperties: $closed ? false : null,
         )], true),
@@ -559,6 +564,8 @@ it('writes the declared keys below a shaped form name in its array branch when t
             .'            ),'
         )
         ->toContain("                ['array:b'],\n")
+        ->toContain("                ['array:it\\'s'],\n")
+        ->toContain("                ['array:a\\\\'],\n")
         ->toContain("            'filter' => ['sometimes', 'array:a,c'],")
         ->and($emit(false))->toContain("                ['array'],\n")
         ->and($emit(false))->not->toContain('array:');
@@ -571,6 +578,24 @@ it('writes the declared keys below a shaped form name in its array branch when t
     unlink($file);
 
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
+});
+
+// A shaped name no ruled name sits below drops the array a form builds with `exclude`, so `validated()` never holds it
+// and `dto()` has no array to remove: no list of scalar names, no loop.
+it('writes no list of scalar names for a shaped form name whose array branch excludes the array', function (): void {
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
+        )], true),
+    ), controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain("                ['exclude'],\n")
+        ->and($emitted)->not->toContain('SCALAR_NAMES');
 });
 
 // A name no form delivers below another keeps `contractNames()` as it was: no list, no loop.
