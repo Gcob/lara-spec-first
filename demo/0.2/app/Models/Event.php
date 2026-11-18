@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Event extends Model
 {
@@ -19,5 +20,10 @@ class Event extends Model
             'starts_at' => 'datetime',
             'capacity' => 'integer',
         ];
+    }
+
+    public function rsvps(): HasMany
+    {
+        return $this->hasMany(Rsvp::class);
     }
 }

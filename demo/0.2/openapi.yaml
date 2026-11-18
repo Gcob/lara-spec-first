@@ -7,6 +7,36 @@ info:
     contract the demo for the 0.2 release runs against.
 paths:
   /events:
+    get:
+      operationId: listEvents
+      x-controller: App\Http\Controllers\ListEventsController
+      tags: [Events]
+      summary: List events, optionally by city or from a date
+      parameters:
+        - name: city
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: The events that match, soonest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+        '422':
+          description: A query parameter does not match the contract.
     post:
       operationId: createEvent
       x-controller: App\Http\Controllers\CreateEventController
@@ -64,6 +94,106 @@ paths:
                 $ref: '#/components/schemas/Event'
         '404':
           description: No such event.
+  /events/{event}/cover:
+    post:
+      operationId: uploadEventCover
+      x-controller: App\Http\Controllers\UploadEventCoverController
+      tags: [Events]
+      summary: Upload the cover image of an event
+      parameters:
+        - name: event
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [cover]
+              properties:
+                cover:
+                  type: string
+                  format: binary
+                  maxLength: 2097152
+            encoding:
+              cover:
+                contentType: image/png, image/jpeg
+      responses:
+        '200':
+          description: The cover was stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cover'
+        '404':
+          description: No such event.
+        '422':
+          description: The cover is missing, not a PNG or a JPEG, or over 2 MB.
+  /events/{event}/rsvps:
+    get:
+      operationId: listRsvps
+      x-controller: App\Http\Controllers\ListRsvpsController
+      tags: [RSVPs]
+      summary: List who is coming to an event
+      parameters:
+        - name: event
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The attendees, in the order they replied.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rsvp'
+        '404':
+          description: No such event.
+    post:
+      operationId: createRsvp
+      x-controller: App\Http\Controllers\CreateRsvpController
+      tags: [RSVPs]
+      summary: RSVP to an event
+      parameters:
+        - name: event
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                email:
+                  type: string
+                  format: email
+      responses:
+        '201':
+          description: The RSVP was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rsvp'
+        '404':
+          description: No such event.
+        '409':
+          description: The event is full. The contract states this rule, the application keeps it.
+        '422':
+          description: The body does not match the contract.
 components:
   schemas:
     Event:
@@ -81,3 +211,22 @@ components:
           format: date-time
         capacity:
           type: integer
+    Cover:
+      type: object
+      required: [id, cover]
+      properties:
+        id:
+          type: integer
+        cover:
+          type: string
+    Rsvp:
+      type: object
+      required: [id, name, email]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email

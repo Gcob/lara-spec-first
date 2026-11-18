@@ -32,3 +32,44 @@ Content-Type: application/json
 HTTP 422
 [Asserts]
 jsonpath "$.errors.title" exists
+
+# Every other operation answers the same way: its request passes, nobody has
+# written its controller, and the 501 names the operation.
+GET {{host}}/events
+Accept: application/json
+HTTP 501
+[Asserts]
+body contains "listEvents"
+
+GET {{host}}/events/1
+Accept: application/json
+HTTP 501
+[Asserts]
+body contains "getEvent"
+
+# A multipart upload is read too: the file part is checked, and a good one
+# reaches the generated controller.
+POST {{host}}/events/1/cover
+Accept: application/json
+[MultipartFormData]
+cover: file,files/cover.png; image/png
+HTTP 501
+[Asserts]
+body contains "uploadEventCover"
+
+POST {{host}}/events/1/rsvps
+Accept: application/json
+Content-Type: application/json
+{
+  "name": "Ada",
+  "email": "ada@example.com"
+}
+HTTP 501
+[Asserts]
+body contains "createRsvp"
+
+GET {{host}}/events/1/rsvps
+Accept: application/json
+HTTP 501
+[Asserts]
+body contains "listRsvps"

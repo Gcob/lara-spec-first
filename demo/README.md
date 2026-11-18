@@ -58,4 +58,5 @@ not a Composer dependency, so `run.sh` checks that it is installed and CI instal
 
 ## The folders
 
-- [`0.2/`](./0.2): the first demo. A contract with `createEvent` and `getEvent`, validated before any code exists.
+- [`0.2/`](./0.2): the first demo. Six operations: events with a filtered list and a cover upload, and RSVPs with a full
+  event refused. Validated before any code exists.
