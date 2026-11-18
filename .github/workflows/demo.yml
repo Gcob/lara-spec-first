@@ -1,0 +1,118 @@
+name: Demo
+
+# Runs the demo of each release (`demo/<minor>/`) with `demo/run.sh`: a brand-new
+# Laravel app, the package installed, the contract built, and Hurl scenarios
+# against the running app. See demo/README.md.
+#
+# Not part of `All checks passed`, on purpose. This workflow carries a `paths`
+# filter, and a required check that is filtered out never reports, which blocks
+# the pull request forever rather than passing it (the reason tests.yml has none).
+# It runs when `demo/` or this file changes, which is also the only time its
+# result can differ: a frozen folder runs against its own release, so a pull
+# request that touches `src/` cannot change it.
+#
+# A folder whose minor has a `v<minor>.*` tag runs against that release from
+# Packagist (`demo/run.sh 0.2`). A folder with no tag yet, the one a pull request
+# is adding for the next release, runs against this checkout through `run.sh`'s
+# branch mode, so that pull request proves its own demo before the tag exists.
+
+# The two path filters are identical and must stay that way. They are written twice
+# because GitHub Actions does not support YAML anchors.
+on:
+    push:
+        branches: [main]
+        paths:
+            - "demo/**"
+            - ".github/workflows/demo.yml"
+    pull_request:
+        paths:
+            - "demo/**"
+            - ".github/workflows/demo.yml"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+# A pull request cancels its own previous run: the only result that matters is
+# the one for the head commit. Pushes to the default branch are not cancelled.
+concurrency:
+    group: demo-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The official Debian package of a Hurl release, checked against the sha256 the
+# release publishes next to it (`hurl_<version>_amd64.deb.sha256`). Not a
+# third-party action and never a script piped into a shell: one less thing to trust.
+# Both values are written here once. Moving to another release means changing both,
+# and `hurl --version` in the install step prints which one the run used.
+env:
+    HURL_VERSION: "8.1.0"
+    HURL_DEB_SHA256: c56222c8923d3940533ac3d7085f66cb6fa6c05639f33aaeef8d857ab70622f9
+
+jobs:
+    folders:
+        name: List the demo folders
+        runs-on: ubuntu-latest
+        outputs:
+            minors: ${{ steps.list.outputs.minors }}
+
+        steps:
+            - uses: actions/checkout@v7
+
+            # One matrix cell per `demo/<major>.<minor>/` folder, so a new minor's
+            # folder gets a check without touching this file.
+            - id: list
+              run: |
+                  minors=$(find demo -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | jq --raw-input . | jq --slurp --compact-output .)
+                  if [ "$minors" = "[]" ]; then
+                      echo "There is no demo/<minor> folder to run." >&2
+                      exit 1
+                  fi
+                  echo "minors=$minors" >> "$GITHUB_OUTPUT"
+
+    demo:
+        name: Demo ${{ matrix.minor }}
+        needs: folders
+        runs-on: ubuntu-latest
+
+        strategy:
+            # Every folder reports: a red one says nothing about the others.
+            fail-fast: false
+            matrix:
+                minor: ${{ fromJson(needs.folders.outputs.minors) }}
+
+        steps:
+            # The whole history, with its tags: they decide which mode a folder
+            # runs in, and the Composer `vcs` repository that branch mode installs
+            # from is a clone of this checkout.
+            - uses: actions/checkout@v7
+              with:
+                  fetch-depth: 0
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: "8.3"
+                  extensions: fileinfo, mbstring, pdo_sqlite
+                  ini-values: memory_limit=512M
+                  coverage: none
+
+            - name: Install Hurl ${{ env.HURL_VERSION }}
+              run: |
+                  curl --fail --silent --show-error --location \
+                      --output "$RUNNER_TEMP/hurl.deb" \
+                      "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb"
+                  echo "${HURL_DEB_SHA256}  $RUNNER_TEMP/hurl.deb" | sha256sum --check
+                  sudo apt-get install --yes "$RUNNER_TEMP/hurl.deb"
+                  hurl --version
+
+            # The minor reaches the shell as an environment variable, never spliced
+            # into the script text.
+            - name: Run demo/${{ matrix.minor }}
+              env:
+                  MINOR: ${{ matrix.minor }}
+              run: |
+                  if [ -n "$(git tag --list "v${MINOR}.*")" ]; then
+                      demo/run.sh "$MINOR"
+                  else
+                      git switch --create demo-under-test
+                      demo/run.sh "$MINOR" demo-under-test
+                  fi
