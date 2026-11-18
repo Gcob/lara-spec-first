@@ -732,7 +732,7 @@ are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
   string refuse `""`, which is the framework's and not a rule here, so
   [it is stated above](#patch-empties-the-required-list) rather than reported per field.
 - **A stricter rule without that reason:**
-  [a JSON integer written as a float of 1e14 or more](../../project/decisions/0007-keep-json-scalars-strict.md) in
+  [a JSON integer written as a float of 1e14 or more](../../project/decisions/0016-keep-json-scalars-typed.md) in
   magnitude is refused, and a finding says so on a field that can hold one. Accepting it would take a rule of the
   package's own for a client that writes a whole number of 15 digits or more with a fraction or an exponent (a
   JavaScript client writes `123456789012345` without either, so PHP decodes an integer), and it has no card: the limit
@@ -768,7 +768,7 @@ one becomes is this table's.
 contract it follows, which is a rule refusing what the contract accepts. So for **a `query` parameter and a field of a
 form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body gets
 [`boolean:strict`](#a-json-body-keeps-its-types), where `true` arrives already typed
-([ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md) holds the reasoning for the split). Four things
+([ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md) holds the reasoning for the split). Four things
 come with it:
 
 - **`false` is not in the list as a PHP value.** `Rule::in` compares `(string) false`, which is the empty string, and a
@@ -935,7 +935,7 @@ them, and the reading collects them with their position instead. See
 `numeric:strict`.** JSON writes `42`, `1.5` and `true` already typed, and `"42"` is a string. Laravel's loose `integer`,
 `numeric` and `boolean` read what a form or a query string writes, so on a JSON body they would accept `"42"`, `"1.5"`
 and `1` for a boolean, which the contract refuses. The reasoning is in
-[ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md). A field of a body that is JSON and nothing else
+[ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md). A field of a body that is JSON and nothing else
 gets the `:strict` form of its rule, at every level (`a.b`, `items.*`):
 
 - **An integer is `integer` beside `numeric:strict`.** `integer` accepts a whole number written as a float (`1.0`,
@@ -955,7 +955,7 @@ gets the `:strict` form of its rule, at every level (`a.b`, `items.*`):
   an integer with `format: int32`, bounds under 1e14 in magnitude, or an `enum` or `const` of values under it gets none,
   and neither does a request with no integer. A body that is JSON and a form gets the finding too, in its own wording,
   since its loose `integer` refuses a JSON client's `1e14` as well.
-  [ADR 0007](../../project/decisions/0007-keep-json-scalars-strict.md) holds the reasoning.
+  [ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md) holds the reasoning.
 - **A finding that says the request is stricter is not a gap.** It is in the Findings block like any other, but
   `spec:build` does not count it in its "read a constraint they do not enforce" warning, and the file keeps its "Nothing
   was read and left unenforced" line when it is the only kind there is. Otherwise that warning would fire on nearly

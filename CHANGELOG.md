@@ -323,7 +323,8 @@ tags: [versions, conventions, planning]
   request with an integer field that can hold such a value (an integer with `format: int32`, bounds under 1e14 or an
   `enum` under it gets none), and also on a body that is JSON and a form. The Laravel constraint is unchanged, and the
   stated reason for it now says what CI tests. This is a breaking change: code that reads an integer from `validated()`
-  can get a float, and a client that matches the message for `"42"` sees a new one. This also ships
+  can get a float, and a client that matches the message for `"42"` sees a new one. The reasoning is in
+  [ADR 0016](./docs/project/decisions/0016-keep-json-scalars-typed.md), which supersedes ADR 0007, and this also ships
   [#173](https://github.com/Gcob/lara-spec-first/issues/173).
 
 ### Fixed

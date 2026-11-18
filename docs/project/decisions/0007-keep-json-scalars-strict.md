@@ -25,7 +25,8 @@ tags: [decisions, code-generation, compatibility, laravel, versions]
 > - Turned down: Laravel's loose rules on a JSON body, which accept `"42"`, and rules of the package's own to keep
 >   Laravel 12.0 to 12.21.
 
-**Status:** Accepted · **Cards:** [#35](https://github.com/Gcob/lara-spec-first/issues/35) (the text boolean) and
+**Status:** Superseded by [ADR 0016](./0016-keep-json-scalars-typed.md) · **Cards:**
+[#35](https://github.com/Gcob/lara-spec-first/issues/35) (the text boolean) and
 [#107](https://github.com/Gcob/lara-spec-first/issues/107) · **Pull requests:**
 [#105](https://github.com/Gcob/lara-spec-first/pull/105) and [#135](https://github.com/Gcob/lara-spec-first/pull/135)
 
