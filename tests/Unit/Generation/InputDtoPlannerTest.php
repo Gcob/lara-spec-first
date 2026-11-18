@@ -352,8 +352,7 @@ it('still refuses two inline copies whose enums are loosely equal and not the sa
 
 // A body with no `properties` is a map or an open object: its keys are the data, so the type has one property,
 // `additionalProperties`, which holds them all and is never `Optional` (an absent or empty body is `[]`). The values are
-// typed by their schema only where the request judged them: a `query` parameter shares the validated data with the body,
-// so beside one the request judges no value and the type says `mixed` rather than a claim nothing checked.
+// typed by their schema: the request judges them, beside a `query` parameter too, whose key its guard spares.
 it('carries a map body whole under additionalProperties', function (Schema $body, array $queryParameters, string $doc): void {
     assert(array_is_list($queryParameters));
     $plan = planDtos([dtoOperation('receiveHook', ['application/json' => $body], queryParameters: $queryParameters)]);
@@ -372,24 +371,22 @@ it('carries a map body whole under additionalProperties', function (Schema $body
     'a map of nullable integers' => [mapSchema(new Schema(types: [SchemaType::Integer, SchemaType::Null])), [], 'array<array-key, int|null>'],
     'an open object' => [dtoSchema([]), [], 'array<array-key, mixed>'],
     'an empty value schema' => [mapSchema(new Schema), [], 'array<array-key, mixed>'],
-    // The values are not validated beside a `query` parameter, so the DTO does not type them (the request's own rule,
-    // asked of the same predicate).
+    // The request judges the values beside a `query` parameter, so the DTO types them as it does anywhere else.
     'a map of integers beside a query parameter' => [
         mapSchema(new Schema(types: [SchemaType::Integer])),
         [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]))],
-        'array<array-key, mixed>',
+        'array<array-key, int>',
     ],
 ]);
 
-it('says why a map body is mixed beside a query parameter, and only then', function (): void {
+it('writes no mixed finding for a map body beside a query parameter', function (): void {
     $map = mapSchema(new Schema(types: [SchemaType::Integer]));
     $dryRun = [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]))];
 
     $beside = dtoNamed(planDtos([dtoOperation('receiveHook', ['application/json' => $map], queryParameters: $dryRun)]), 'ReceiveHookInputDto');
-    $alone = dtoNamed(planDtos([dtoOperation('receiveHook', ['application/json' => $map])]), 'ReceiveHookInputDto');
 
-    expect(implode("\n", $beside->findings))->toContain('The request does not validate the values')
-        ->and(implode("\n", $alone->findings))->not->toContain('The request does not validate the values');
+    // Not asserted on a sentence: nothing is left to say about the values, whatever the wording was.
+    expect($beside->findings)->toBe([]);
 });
 
 // The value of a root map is named after the property with `Value`, as a nested map's is.
@@ -401,10 +398,9 @@ it('names the class of an inline object value of a map body after additionalProp
         ->and(dtoNames($plan->dtos))->toContain('ReceiveHookAdditionalPropertiesValueInputDto');
 });
 
-// One class serves every operation that reaches a named schema, so whether its values are typed cannot depend on which
-// operation the build meets first: `/a` validates them and `/b`, beside a `query` parameter, does not. Compared as the
-// files the build would write, byte for byte, with a `$ref` value, which is what an order-dependent build would emit as
-// an orphan class.
+// One class serves every operation that reaches a named schema, so what its values are typed as cannot depend on which
+// operation the build meets first: `/a` and `/b`, beside a `query` parameter, type them the same. Compared as the files
+// the build would write, byte for byte, with a `$ref` value, whose class is emitted once whichever operation comes first.
 it('plans the same classes for a map body whatever the order of the operations that read it', function (): void {
     $pet = dtoSchema(['name' => dtoString()], name: 'Pet', source: '#/components/schemas/Pet');
     $labels = new Schema(
@@ -425,15 +421,14 @@ it('plans the same classes for a map body whatever the order of the operations t
     $plainFirst = emittedDtos([$plain, $beside]);
 
     expect(emittedDtos([$beside, $plain]))->toBe($plainFirst)
-        ->and(array_keys($plainFirst))->toBe(['LabelsInputDto', 'LabelsPartialInputDto'])
-        ->and($plainFirst['LabelsInputDto'])->toContain('@param  array<array-key, mixed>  $additionalProperties')
-        ->and($plainFirst['LabelsPartialInputDto'])->toContain('@param  array<array-key, mixed>  $additionalProperties');
+        ->and(array_keys($plainFirst))->toBe(['LabelsInputDto', 'LabelsPartialInputDto', 'PetInputDto'])
+        ->and($plainFirst['LabelsInputDto'])->toContain('@param  array<array-key, PetInputDto>  $additionalProperties')
+        ->and($plainFirst['LabelsPartialInputDto'])->toContain('@param  array<array-key, PetInputDto>  $additionalProperties');
 });
 
-// An inline body is a class per operation, named after its request, so the class that goes `mixed` is the one beside the
-// `query` parameter and not the other: the position that decides it is the operation's own, and a shape key would turn
-// both.
-it('types only the inline map body beside a query parameter as mixed', function (): void {
+// An inline body is a class per operation, named after its request: the one beside a `query` parameter is typed as the
+// other is, and the value class an inline object value needs is emitted for it too.
+it('types the inline map body beside a query parameter as the one beside none', function (): void {
     $map = mapSchema(new Schema(types: [SchemaType::Integer]));
     $plan = planDtos([
         dtoOperation('replaceLabels', ['application/json' => $map], method: 'put', path: '/a'),
@@ -447,7 +442,42 @@ it('types only the inline map body beside a query parameter as mixed', function 
     ]);
 
     expect(dtoProperty(dtoNamed($plan, 'ReplaceLabelsInputDto'), 'additionalProperties')->type->doc())->toBe('array<array-key, int>')
-        ->and(dtoProperty(dtoNamed($plan, 'PatchLabelsInputDto'), 'additionalProperties')->type->doc())->toBe('array<array-key, mixed>');
+        ->and(dtoProperty(dtoNamed($plan, 'PatchLabelsInputDto'), 'additionalProperties')->type->doc())->toBe('array<array-key, int>');
+});
+
+it('says the DTO carries only the declared properties beside a value schema', function (Schema $body, array $classes, int $findings): void {
+    $plan = planDtos([dtoOperation('receiveHook', ['application/json' => $body])]);
+    $said = static fn (string $class): int => substr_count(
+        implode("\n", dtoNamed($plan, $class)->findings),
+        'but this type carries only the declared properties',
+    );
+
+    expect(array_map($said, $classes))->toBe(array_fill(0, count($classes), $findings));
+})->with(function (): Generator {
+    $value = new Schema(types: [SchemaType::Integer]);
+    $beside = static fn (Schema $values): Schema => new Schema(types: [SchemaType::Object], properties: ['id' => dtoString()], additionalPropertiesSchema: $values);
+
+    yield 'at the root, on the full and the partial class' => [$beside($value), ['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'], 1];
+    yield 'nested' => [dtoSchema(['meta' => $beside($value)]), ['ReceiveHookMetaInputDto'], 1];
+    yield 'an empty value schema' => [$beside(new Schema), ['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'], 0];
+    yield 'an object with no property' => [mapSchema($value), ['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'], 0];
+    yield 'an object with no value schema' => [dtoSchema(['id' => dtoString()]), ['ReceiveHookInputDto', 'ReceiveHookPartialInputDto'], 0];
+});
+
+it('says it once for a nested class two operations share', function (): void {
+    $meta = new Schema(
+        name: 'Meta',
+        source: '#/components/schemas/Meta',
+        types: [SchemaType::Object],
+        properties: ['id' => dtoString()],
+        additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
+    );
+    $plan = planDtos([
+        dtoOperation('createUser', ['application/json' => dtoSchema(['meta' => $meta])]),
+        dtoOperation('createUserAddress', ['application/json' => dtoSchema(['meta' => $meta])], path: '/addresses'),
+    ]);
+
+    expect(substr_count(implode("\n", dtoNamed($plan, 'MetaInputDto')->findings), 'but this type carries only the declared properties'))->toBe(1);
 });
 
 it('says nothing of the kind about a body that declares a property', function (): void {

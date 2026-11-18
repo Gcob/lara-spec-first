@@ -965,6 +965,8 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0011-mirror-a-response-schema-in-its-dto.md`](../project/decisions/0011-mirror-a-response-schema-in-its-dto.md)
     - [`0012-judge-plain-form-names-by-shape.md`](../project/decisions/0012-judge-plain-form-names-by-shape.md)
     - [`0013-mirror-a-response-schema-or-leave-it-untyped.md`](../project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md)
+    - [`0014-judge-undeclared-keys-by-name.md`](../project/decisions/0014-judge-undeclared-keys-by-name.md)
+    - [`0015-type-the-values-of-a-map-body.md`](../project/decisions/0015-type-the-values-of-a-map-body.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

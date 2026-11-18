@@ -53,15 +53,6 @@ final class InputDtoPlanner extends DtoPlanner
      */
     private array $readBy = [];
 
-    /**
-     * The positions of the map bodies whose values the request leaves unvalidated, found before any class is
-     * registered. One class serves every operation that reaches a named schema, so whether its values are typed is
-     * decided here for all of them, and the tree is the same in every document order.
-     *
-     * @var array<string, true>
-     */
-    private array $unvalidatedBodies = [];
-
     private bool $multipart = false;
 
     protected function suffix(): string
@@ -136,18 +127,6 @@ final class InputDtoPlanner extends DtoPlanner
      */
     public function plan(array $requests): InputDtoPlan
     {
-        $this->unvalidatedBodies = [];
-
-        foreach ($requests as $request) {
-            if (! RuleSetBuilder::validatesRootMapValues($request->operation)) {
-                $root = $this->locate($request);
-
-                if ($root !== null) {
-                    $this->unvalidatedBodies[$root['position']] = true;
-                }
-            }
-        }
-
         foreach ($requests as $request) {
             $this->root($request);
         }
@@ -174,8 +153,7 @@ final class InputDtoPlanner extends DtoPlanner
      * Where an operation's body is written, and what it merges to, or null when it has no body the rule set reads as an
      * object.
      *
-     * One computation for the walk and for the pre-pass of {@see self::plan()}, so the position a map body is recorded
-     * at is the position its class is registered under.
+     * Its position is the one the body's class is registered under.
      *
      * @return array{written: Schema, merged: Schema, name: string|null, position: string}|null
      *
@@ -441,6 +419,18 @@ final class InputDtoPlanner extends DtoPlanner
             $properties[] = $this->payloadProperty($shortName, $merged, $position, $base);
         }
 
+        // Why: the request judges the keys the object does not declare, and this type carries only the declared ones. The
+        // response planner writes the same finding for the same shape.
+        if (
+            $merged->properties !== []
+            && $merged->additionalPropertiesSchema !== null
+            && ! RuleSetBuilder::allowsAnyValue($merged->additionalPropertiesSchema)
+        ) {
+            $this->registry[$shortName]['findings'][] = '`additionalProperties` types the values of the keys that are not declared, '
+                .'but this type carries only the declared properties, so those values are not read here, though the request '
+                .'may validate them and `validated()` holds them.';
+        }
+
         $this->registry[$shortName]['properties'] = $properties;
 
         return $shortName;
@@ -449,31 +439,21 @@ final class InputDtoPlanner extends DtoPlanner
     /**
      * The one property of a map or open-object body: `additionalProperties`, holding every key as sent.
      *
-     * **Typed by the value schema only where the request judged the values.** A `query` parameter shares the validated
-     * data with the body, so beside one the request judges no value, and the DTO says `mixed` rather than a type
-     * nothing checked. That is asked of {@see RuleSetBuilder::validatesRootMapValues()}, before any class is registered
-     * ({@see self::plan()}), so a class several operations read is the same whichever came first, and the value schema
-     * of a map that ends up `mixed` is never walked: no class is registered for a value nothing reads.
+     * **Typed by the value schema**, as the request judges the values whether or not a `query` parameter shares the
+     * validated data with the body: the keys of the parameters are spared by the request's guard and left out of the
+     * payload by `dto()`.
      *
      * Never `Optional`: an absent or empty body is `[]`.
      */
     private function payloadProperty(string $shortName, Schema $merged, string $position, string $base): InputDtoProperty
     {
-        $value = RuleSetBuilder::mapValueSchema($merged);
-
-        if (isset($this->unvalidatedBodies[$position])) {
-            if ($value !== null && ! RuleSetBuilder::allowsAnyValue($value)) {
-                $this->registry[$shortName]['findings'][] = 'The request does not validate the values of this body, because a `query` '
-                    .'parameter shares the validated data with it, so `additionalProperties` holds `mixed` values '
-                    .'rather than the type the schema states for them.';
-            }
-
-            $type = new InputDtoType(InputDtoType::MAP);
-        } else {
-            $type = $this->map($merged, $base, 'additionalProperties', $position, false, $shortName);
-        }
-
-        return new InputDtoProperty('additionalProperties', 'additionalProperties', $type, false, wholePayload: true);
+        return new InputDtoProperty(
+            'additionalProperties',
+            'additionalProperties',
+            $this->map($merged, $base, 'additionalProperties', $position, false, $shortName),
+            false,
+            wholePayload: true,
+        );
     }
 
     /**

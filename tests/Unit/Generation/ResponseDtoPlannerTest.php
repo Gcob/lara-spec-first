@@ -681,7 +681,9 @@ it('carries only the declared properties beside an additionalProperties schema a
     $pet = dtosOfFixture('response-maps.yaml', 'showPet')['PetDto'];
 
     expect(array_map(static fn (InputDtoProperty $property): string => $property->key, $pet->properties))->toBe(['name'])
-        ->and(implode("\n", $pet->findings))->toContain('`additionalProperties` types the values of the keys that are not declared, but this type carries only the declared properties');
+        ->and(implode("\n", $pet->findings))->toContain('`additionalProperties` types the values of the keys that are not declared, but this type carries only the declared properties')
+        // Once: the request side writes its own in the input planner, and the shared type mapping adds none.
+        ->and(substr_count(implode("\n", $pet->findings), 'but this type carries only the declared properties'))->toBe(1);
 });
 
 // A schema that is its type or `null` is its type: the DTO cannot be `null`, so the status says what may be, which is

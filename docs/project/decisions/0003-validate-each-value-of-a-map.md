@@ -22,7 +22,8 @@ tags: [decisions, code-generation, openapi]
 > - Turned down: dropping the schema in silence, and ordering the rules so the wildcard spares a declared key, which
 >   rests on how Laravel happens to merge them.
 
-**Status:** Accepted · **Card:** [#109](https://github.com/Gcob/lara-spec-first/issues/109) · **Pull request:**
+**Status:** Superseded by [ADR 0014](./0014-judge-undeclared-keys-by-name.md) · **Card:**
+[#109](https://github.com/Gcob/lara-spec-first/issues/109) · **Pull request:**
 [#170](https://github.com/Gcob/lara-spec-first/pull/170)
 
 ## Context

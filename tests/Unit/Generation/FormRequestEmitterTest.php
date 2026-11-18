@@ -892,6 +892,109 @@ it('writes a plain query name behind Rule::when beside the names PHP nests under
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
 });
 
+/**
+ * The PHP of a `/things` request whose JSON body is `$body`.
+ */
+function emittedBodyWithMap(Schema $body): string
+{
+    return emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => $body], true),
+    ));
+}
+
+/**
+ * Whether Pint, with the project's own rules, has nothing to rewrite in `$emitted`.
+ */
+function pintAcceptsEmitted(string $emitted): bool
+{
+    $file = tempnam(sys_get_temp_dir(), 'lsf-request-').'.php';
+    file_put_contents($file, $emitted);
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $file], dirname(__DIR__, 3));
+    $pint->run();
+    unlink($file);
+
+    return $pint->getExitCode() === 0;
+}
+
+// A map beside declared keys is judged by a name guard written as the key's value, never inside a list: Laravel compiles
+// the object only there. A map with no declared key keeps today's plain wildcard, with no guard and no import.
+it('wraps a map\'s value rules in UndeclaredKeys beside declared keys', function (): void {
+    $string = new Schema(types: [SchemaType::String]);
+    $beside = emittedBodyWithMap(new Schema(types: [SchemaType::Object], properties: ['meta' => new Schema(types: [SchemaType::Object], properties: ['id' => $string], additionalPropertiesSchema: $string)]));
+    $plain = emittedBodyWithMap(new Schema(types: [SchemaType::Object], properties: ['meta' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $string)]));
+
+    expect($beside)
+        ->toContain("            'meta.*' => new UndeclaredKeys([1 => ['id']], ['string']),")
+        ->toContain("            'meta.id' => ['sometimes', 'string'],")
+        ->toContain("use Gcob\\LaraSpecFirst\\Validation\\UndeclaredKeys;\n")
+        ->toContain('@return array<string, list<mixed>|UndeclaredKeys>')
+        ->and(pintAcceptsEmitted($beside))->toBeTrue()
+        ->and($plain)->toContain("            'meta.*' => ['string'],")
+        ->toContain('@return array<string, list<mixed>>')
+        ->and($plain)->not->toContain('UndeclaredKeys');
+});
+
+// A spared integer-like name is a string, as the strict comparison needs, and a value that is a map itself adds its own
+// step to the guard of the keys below it.
+it('writes the spared names as strings, one step each', function (): void {
+    $string = new Schema(types: [SchemaType::String]);
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $emitted = emittedBodyWithMap(new Schema(types: [SchemaType::Object], properties: ['meta' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['2024' => $string], // @phpstan-ignore argument.type
+        additionalPropertiesSchema: new Schema(types: [SchemaType::Object], properties: ['n' => $string], additionalPropertiesSchema: $integer),
+    )]));
+
+    expect($emitted)
+        ->toContain("'meta.*' => new UndeclaredKeys([1 => ['2024']], ['array']),")
+        ->toContain("'meta.*.*' => new UndeclaredKeys([1 => ['2024'], 2 => ['n']], ['integer:strict']),")
+        ->and(pintAcceptsEmitted($emitted))->toBeTrue();
+});
+
+// A root that declares properties beside a value schema has the integer-like key problem a map root has (Laravel
+// renumbers such a key when it expands `*`), and its declared names must not be overwritten by the copy: one constant
+// holds the names, and the guard and the copy read it, so the two cannot disagree.
+it('repeats a root\'s value rules under its integer-like keys, skipping the declared ones', function (): void {
+    $string = new Schema(types: [SchemaType::String]);
+    $emitted = emittedBodyWithMap(new Schema(types: [SchemaType::Object], properties: ['id' => $string, '2024' => $string], additionalPropertiesSchema: $string)); // @phpstan-ignore argument.type
+
+    expect($emitted)
+        ->toContain("private const SPARED_KEYS = ['id', '2024'];")
+        ->toContain("            '*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['string']),")
+        ->toContain('return $this->withIntegerKeys([')
+        ->toContain('in_array((string) $key, self::SPARED_KEYS, true)')
+        ->toContain('$rules[$key.substr($name, 1)] = $set instanceof UndeclaredKeys ? $set->below(0) : $set;')
+        ->and(pintAcceptsEmitted($emitted))->toBeTrue();
+});
+
+// The root's guard also spares the keys the `query` parameters arrive under, and the emitted class reads them from the
+// constant it already has for them, so the guard and the list of keys read from the query string cannot disagree.
+it('spares the query keys beside the declared names at the root', function (array $properties, string $constant): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => new Schema(types: [SchemaType::Object], properties: $properties, additionalPropertiesSchema: $integer)], true),
+        queryParameters: [new QueryParameter('page[size]', $integer), new QueryParameter('limit', $integer)],
+    ));
+
+    expect($emitted)
+        ->toContain("private const QUERY_KEYS = ['page', 'limit'];")
+        ->toContain($constant)
+        ->toContain("            '*' => new UndeclaredKeys([0 => self::SPARED_KEYS], ['integer:strict']),")
+        ->and(pintAcceptsEmitted($emitted))->toBeTrue();
+})->with([
+    'a map root' => [[], 'private const SPARED_KEYS = [...self::QUERY_KEYS];'],
+    'a root with properties' => [['id' => new Schema(types: [SchemaType::Integer])], "private const SPARED_KEYS = ['id', ...self::QUERY_KEYS];"],
+]);
+
 // The `dto()` finding names the key a rewritten `query` name is read under only for a request that has one, with its
 // own example, so the others carry no key they never use.
 it('names the key of a rewritten query name in the dto finding only where there is one', function (): void {

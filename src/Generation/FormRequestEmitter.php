@@ -8,6 +8,7 @@ use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
+use Gcob\LaraSpecFirst\Validation\UndeclaredKeys;
 use Illuminate\Support\Fluent;
 
 /**
@@ -117,6 +118,10 @@ final readonly class FormRequestEmitter
             $imports[] = $this->import(NullOrAbsent::class);
         }
 
+        if ($set->usesUndeclaredKeys()) {
+            $imports[] = $this->import(UndeclaredKeys::class);
+        }
+
         if ($set->closedKeys !== null || $set->jsonRoot || $planned->dto !== null) {
             $imports[] = $this->import(self::VALIDATOR_CLASS);
         }
@@ -198,6 +203,24 @@ final readonly class FormRequestEmitter
                 "    /**\n     * The keys the contract's `query` parameters arrive under, the only ones read from the query string.\n     */\n"
                     ."    private const QUERY_KEYS = [%s];\n\n",
                 implode(', ', array_map($this->literal(...), $set->queryKeys)),
+            );
+        }
+
+        $spared = $this->rootSparedNames($set);
+
+        if ($spared !== null) {
+            // The keys the `query` parameters arrive under are the constant's own, so the two lists cannot disagree.
+            $names = array_map($this->literal(...), array_values(array_diff($spared, $set->queryKeys)));
+
+            if ($set->queryKeys !== []) {
+                $names[] = '...self::QUERY_KEYS';
+            }
+
+            $constants .= sprintf(
+                "    /**\n     * The top-level names the body declares and the keys its `query` parameters arrive under, which the values of\n"
+                    ."     * the other keys never judge: the guard of the root `*` and the copies under integer-like keys read the same list.\n     */\n"
+                    ."    private const SPARED_KEYS = [%s];\n\n",
+                implode(', ', $names),
             );
         }
 
@@ -556,27 +579,33 @@ final readonly class FormRequestEmitter
      * `array_merge()`, which renumbers an integer-like top-level key, so the wildcard never reaches it: the key would
      * be missing from `validated()` and its value never judged. Every rule under the root `*` is written again under
      * each integer-like key the body carries, which is what a request for a map of IDs needs. A key that is not an
-     * integer (`sku-1`, `a.b`) is the wildcard's, since Laravel keeps it as it is.
+     * integer (`sku-1`, `a.b`) is the wildcard's, since Laravel keeps it as it is. A root that declares properties
+     * beside a value schema has the same problem for its undeclared keys, and the copy leaves a declared integer-like
+     * name alone: it would overwrite the rule that name has.
      */
     private function rulesMethod(RuleSet $set): string
     {
         $rules = $this->rules($set);
+        $value = $set->usesUndeclaredKeys() ? 'list<mixed>|UndeclaredKeys' : 'list<mixed>';
 
-        if (! $set->mapRoot || ! array_key_exists('*', $set->rules)) {
-            return "    /**\n     * @return array<string, list<mixed>>\n     */\n    public function rules(): array\n    {\n        return [\n"
+        if (! array_key_exists('*', $set->rules)) {
+            return "    /**\n     * @return array<string, {$value}>\n     */\n    public function rules(): array\n    {\n        return [\n"
                 .$rules."\n        ];\n    }";
         }
 
         $skip = $set->queryKeys === [] ? '' : ' (the `query` parameters have their own rules)';
+        $declared = $this->rootSparedNames($set) !== null;
+        $copy = $set->usesUndeclaredKeys() ? '$set instanceof UndeclaredKeys ? $set->below(0) : $set' : '$set';
 
-        return "    /**\n     * @return array<array-key, list<mixed>>\n     */\n    public function rules(): array\n    {\n        return \$this->withIntegerKeys([\n"
+        return "    /**\n     * @return array<array-key, {$value}>\n     */\n    public function rules(): array\n    {\n        return \$this->withIntegerKeys([\n"
             .$rules."\n        ]);\n    }\n\n"
             ."    /**\n"
             ."     * Why: Laravel renumbers an integer-like top-level key when it expands `*`, so the wildcard never reaches it.\n"
-            ."     * Each rule under `*` is written again under every integer-like key the body carries{$skip}.\n"
+            ."     * Each rule under `*` is written again under every integer-like key the body carries{$skip}"
+            .($declared ? ",\n     * except a key the body declares, which keeps its own rule.\n" : ".\n")
             ."     *\n"
-            ."     * @param  array<string, list<mixed>>  \$rules\n"
-            ."     * @return array<array-key, list<mixed>>\n"
+            ."     * @param  array<string, {$value}>  \$rules\n"
+            ."     * @return array<array-key, {$value}>\n"
             ."     */\n"
             ."    private function withIntegerKeys(array \$rules): array\n"
             ."    {\n"
@@ -587,7 +616,9 @@ final readonly class FormRequestEmitter
             ."        \$wildcard = \$rules;\n"
             ."\n"
             ."        foreach (array_keys(\$body) as \$key) {\n"
-            ."            if (! is_int(\$key)) {\n"
+            .($declared
+                ? "            if (! is_int(\$key) || in_array((string) \$key, self::SPARED_KEYS, true)) {\n"
+                : "            if (! is_int(\$key)) {\n")
             ."                continue;\n"
             ."            }\n"
             ."\n"
@@ -595,13 +626,30 @@ final readonly class FormRequestEmitter
             ."                \$name = (string) \$name;\n"
             ."\n"
             ."                if (\$name === '*' || str_starts_with(\$name, '*.')) {\n"
-            ."                    \$rules[\$key.substr(\$name, 1)] = \$set;\n"
+            ."                    \$rules[\$key.substr(\$name, 1)] = {$copy};\n"
             ."                }\n"
             ."            }\n"
             ."        }\n"
             ."\n"
             ."        return \$rules;\n"
             .'    }';
+    }
+
+    /**
+     * The top-level names the root's guard spares, which the copies under integer-like keys skip, or null when the root
+     * has no guard of its own step.
+     *
+     * @return list<string>|null
+     */
+    private function rootSparedNames(RuleSet $set): ?array
+    {
+        foreach ($set->undeclaredKeys as $steps) {
+            if (isset($steps[0])) {
+                return $steps[0];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -645,10 +693,40 @@ final readonly class FormRequestEmitter
                 continue;
             }
 
+            if (isset($set->undeclaredKeys[$key])) {
+                // Why: Laravel compiles the object only when it is the key's value, and reads it as a rule name inside a list.
+                $lines[] = sprintf(
+                    '            %s => new UndeclaredKeys(%s, %s),',
+                    $this->literal($key),
+                    $this->spared($set->undeclaredKeys[$key]),
+                    $list,
+                );
+
+                continue;
+            }
+
             $lines[] = sprintf('            %s => %s,', $this->literal($key), $list);
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The names a guard spares, by step: the root's from the constant the integer-like copies read too.
+     *
+     * @param  array<int, list<string>>  $steps
+     */
+    private function spared(array $steps): string
+    {
+        $pairs = [];
+
+        foreach ($steps as $step => $names) {
+            $pairs[] = $step.' => '.($step === 0
+                ? 'self::SPARED_KEYS'
+                : '['.implode(', ', array_map($this->literal(...), $names)).']');
+        }
+
+        return '['.implode(', ', $pairs).']';
     }
 
     /**
