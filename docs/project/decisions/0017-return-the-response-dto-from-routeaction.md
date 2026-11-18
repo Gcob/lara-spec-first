@@ -35,8 +35,8 @@ tags: [decisions, code-generation, openapi, laravel, versions]
 > - Breaking, in a `0.x`: every scaffolded child declared `: mixed`. Turned down: error DTOs in the type, the status
 >   written by the child, and the status logic copied into every parent.
 
-**Status:** Accepted · **Card:** [#165](https://github.com/Gcob/lara-spec-first/issues/165) · **Pull request:** its pull
-request
+**Status:** Accepted · **Card:** [#165](https://github.com/Gcob/lara-spec-first/issues/165) · **Pull request:**
+[#200](https://github.com/Gcob/lara-spec-first/pull/200)
 
 ## Context
 

@@ -261,6 +261,18 @@ it('sends a returned null as JSON null', function (string $operationId, array $r
     'a status that is not JSON' => ['csvOnly', [['status' => '200', 'media' => ['text/csv']]], 200, ''],
 ]);
 
+// A child that returned `null` used to answer Laravel's empty `200` here. Ending without a `return` is a `TypeError`.
+it('answers a lone JSON success whose child returns null with a JSON null, not an empty 200', function (): void {
+    $child = answeringRoute('jsonNullContentType', [['status' => '200']]);
+    returning($child, static fn (): null => null);
+
+    $response = answerFrom('jsonNullContentType');
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($response->getContent())->toBe('null')
+        ->and($response->headers->get('Content-Type'))->toStartWith('application/json');
+});
+
 it('passes any returned Response through untouched', function (string $operationId, array $rows, Closure $returned, int $status, string $body): void {
     $child = answeringRoute($operationId, $rows);
     returning($child, $returned);

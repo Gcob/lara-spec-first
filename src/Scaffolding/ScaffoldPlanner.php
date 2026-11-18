@@ -40,13 +40,14 @@ final readonly class ScaffoldPlanner
 
     /**
      * @param  list<Operation>  $operations
-     * @param  BuildPlan|null  $build  the plan the build would make of the document these operations come from. It is
-     *                                 where each scaffold learns what its parent's `routeAction` returns, so that the
-     *                                 child declares the same: a second planning would be a second chance to differ.
-     *                                 Without one, no return type is known and each scaffold writes `mixed`
+     * @param  BuildPlan  $build  the plan the build would make of the document these operations come from. It is where
+     *                            each scaffold learns what its parent's `routeAction` returns, so that the child
+     *                            declares the same: a second planning would be a second chance to differ. Required,
+     *                            because a scaffold planned without it writes `mixed`, which PHP refuses to load under
+     *                            a typed parent
      * @return list<PlannedScaffold>
      */
-    public function plan(array $operations, ?BuildPlan $build = null): array
+    public function plan(array $operations, BuildPlan $build): array
     {
         $planned = [];
 
@@ -85,9 +86,9 @@ final readonly class ScaffoldPlanner
     /**
      * What the parent of this operation's controller returns, read from the plan the build made.
      */
-    private function returnOf(Operation $operation, ?BuildPlan $build): RouteActionReturn
+    private function returnOf(Operation $operation, BuildPlan $build): RouteActionReturn
     {
-        foreach ($build->controllers ?? [] as $controller) {
+        foreach ($build->controllers as $controller) {
             if ($controller->operation->identity() === $operation->identity()) {
                 return RouteActionSignature::returns($operation, $controller->responses, $this->namespace);
             }

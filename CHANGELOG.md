@@ -83,9 +83,10 @@ tags: [versions, conventions, planning]
   `routeAction(...): mixed` under a typed parent is a class PHP refuses to load, at its first request**, and so is one
   that returns a type the parent no longer allows. Change each to the type its parent declares. `spec:build` names every
   such child that declares `mixed`, or no return type, and prints the signature to paste (see the `Added` entry on the
-  custom controllers it names). A controller that returned a plain DTO for a `201`, or nothing for a `204`, now answers
-  the status the contract declares, where it answered `200`. The reasoning is in
-  [ADR 0017](./docs/project/decisions/0017-return-the-response-dto-from-routeaction.md), and this ships
+  custom controllers it names). A controller that returned a plain DTO for a `201`, or `null` for a `204`, now answers
+  the status the contract declares, where it answered `200`. A controller of an operation whose lone success has a JSON
+  body and no DTO, and that returns `null`, now answers a JSON `null`, where it answered an empty `200`. The reasoning
+  is in [ADR 0017](./docs/project/decisions/0017-return-the-response-dto-from-routeaction.md), and this ships
   [#165](https://github.com/Gcob/lara-spec-first/issues/165).
 - **An optional JSON body that requires properties now refuses `{}`, and an object that carries none of them, where it
   used to pass.** A body with `requestBody.required: false` and a schema that requires `reason` meant "a body, or none",

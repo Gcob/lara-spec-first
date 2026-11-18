@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Scaffolding\PlannedScaffold;
 use Gcob\LaraSpecFirst\Scaffolding\ScaffoldPlanner;
 
@@ -36,7 +37,7 @@ function scaffoldPlan(array $rows): array
         );
     }
 
-    return (new ScaffoldPlanner('App\\Http\\Generated'))->plan($operations);
+    return (new ScaffoldPlanner('App\\Http\\Generated'))->plan($operations, new BuildPlan([], []));
 }
 
 it('plans one file per operation that declares a custom controller', function (): void {
@@ -102,7 +103,7 @@ it('separates a class in a namespace nothing maps from what it can plan', functi
 
     $planner = new ScaffoldPlanner('App\\Http\\Generated');
 
-    expect($planner->plan($operations))->toBe([])
+    expect($planner->plan($operations, new BuildPlan([], [])))->toBe([])
         ->and($planner->unplaceable($operations))->toHaveCount(1);
 });
 
@@ -121,7 +122,7 @@ it('separates the operations no scaffold can be planned for', function (): void 
 
     $planner = new ScaffoldPlanner('App\\Http\\Generated');
 
-    expect($planner->plan($operations))->toBe([])
+    expect($planner->plan($operations, new BuildPlan([], [])))->toBe([])
         ->and($planner->undeclarable($operations))->toHaveCount(1)
         ->and($planner->unplaceable($operations))->toBe([]);
 });

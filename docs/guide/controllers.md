@@ -18,7 +18,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 > **In brief**
 >
-> - Each operation gets its own controller, holding one method, always called `routeAction`.
+> - Each operation gets its own controller, with one route method, always called `routeAction` (and a `callAction()`
+>   that sends the declared status).
 > - `x-controller` is how you take an operation over: it names the class you will write, and the generated parent drops
 >   its `final` so you can extend it.
 > - An operation that declares no `x-controller` gets a `final` controller, which nothing can extend.
@@ -300,10 +301,11 @@ the nominal path is short, and everything else is a reason to stop and hand the 
 work a generator should have done. The return type is the parent's, read from the plan the command already made of the
 build, and the classes it names are imported.
 
-**That one line is a call to the parent, and it is not decoration.** A method with an empty body returns `null`, which
-Laravel renders as an **empty `200`**, so an empty scaffold would quietly turn the operation's honest `501` into a lie,
-in the one command whose whole job is to help. The parent call keeps the `501` until the developer replaces it, and
-replacing it is exactly what implementing the operation means:
+**That one line is a call to the parent, and it is not decoration.** The scaffold declares the parent's return type, and
+PHP refuses a method that declares one and ends without returning (a `TypeError`, so a `500`, under `mixed` too). An
+empty scaffold would turn the operation's honest `501` into a server error that says nothing about why, in the one
+command whose whole job is to help. The parent call keeps the `501` until the developer replaces it, and replacing it is
+exactly what implementing the operation means:
 
 ```php
 use App\Http\Generated\Data\UserDto;
