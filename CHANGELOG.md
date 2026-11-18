@@ -323,10 +323,11 @@ tags: [versions, conventions, planning]
   a boolean, and a float outside the range of a 64-bit integer. `"42"` and `1.5` still read "must be an integer", and a
   value that is no number at all (`true`, `false`, `"abc"`, `[]`) now gets "must be a number" as well. `validated()`
   holds the float as sent (`31.0`) and `dto()` casts it to an `int`. The finding that said the request refused `1.0` is
-  gone from the generated file, since a JSON integer is now exactly as strict as the contract. The Laravel constraint is
+  gone from the generated file, since a JSON integer is now judged by its exact value. The Laravel constraint is
   unchanged, and the stated reason for it now says what CI tests. This is a breaking change: code that reads an integer
-  from `validated()` can get a float, and a generated request imports a new class, so run `spec:build` again (a request
-  generated before still refuses `1.0`). The reasoning is in
+  from `validated()` can get a float, a project's `validation.custom.<field>.integer` message no longer applies to a
+  JSON integer (`WholeNumber` answers with `validation.integer`), and a generated request imports a new class, so run
+  `spec:build` again (a request generated before still refuses `1.0`). The reasoning is in
   [ADR 0016](./docs/project/decisions/0016-keep-json-scalars-typed.md), which supersedes ADR 0007, and this also ships
   [#173](https://github.com/Gcob/lara-spec-first/issues/173).
 

@@ -72,8 +72,11 @@ already works: `validated()` returns what the client wrote, and the typed path i
 through, the cast loses nothing.
 
 **A list with `uniqueItems` compares integers and numbers by value.** Its element rule is Laravel's `distinct` in a JSON
-body and in a form, and `distinct:strict` stays for strings and booleans, which have no second spelling (`"1"` and
-`"01"` are two strings). An array query parameter has no element rule, so nothing changes for it.
+body and in a form, and `distinct:strict` stays for strings and booleans. A string has no second spelling, nor does a
+boolean in JSON (`"1"` and `"01"` are two strings), but a form's boolean has two, `"true"` and `"1"`, which
+`distinct:strict` calls two elements: a gap this decision leaves open
+([#197](https://github.com/Gcob/lara-spec-first/issues/197)). An array query parameter has no element rule, so nothing
+changes for it.
 
 **The rest of [ADR 0007](./0007-keep-json-scalars-strict.md) holds, and is restated here:**
 
@@ -81,8 +84,8 @@ body and in a form, and `distinct:strict` stays for strings and booleans, which 
 - A query parameter and a form or multipart field keep the loose `integer` and `numeric`, and a text boolean, because
   every value they carry is text.
 - A form client of an operation that declares only JSON gets the JSON rules.
-- A body that is JSON and a form at once keeps the loose rules, so a JSON client's `"42"` and `true` get through an
-  integer, and a finding per field says so. A runtime branch would close it
+- A body that is JSON and a form at once keeps the loose rules, so a JSON client's `"42"`, `true` and a float within 14
+  digits of a whole number get through an integer, and a finding per field says so. A runtime branch would close it
   ([#133](https://github.com/Gcob/lara-spec-first/issues/133)).
 - The package requires Laravel `^12.22 || ^13.0`. It is the constraint `0.2.0` shipped, and no generated rule needs
   12.22 now that no rule uses `integer:strict`. CI tests Laravel 12 from 12.55, the lowest its testbench allows, so
@@ -110,9 +113,15 @@ body and in a form, and `distinct:strict` stays for strings and booleans, which 
   again.
 - **A float reaches the controller.** Code that reads an integer from `validated()` can get `31.0`, and the DTO gives an
   `int`. The CHANGELOG lists it as breaking.
-- **A JSON integer is exactly as strict as the contract**, within the range of a 64-bit integer: no finding is written
-  for it, and a float of 2^63 or more is refused, as the loose `integer` refuses it, because the DTO could not cast it.
-  A body that is JSON and a form keeps the loose `integer`, with the gaps its finding names.
+- **A JSON integer is judged by its exact value**, within the range of a 64-bit integer: no finding is written for it,
+  and a float of 2^63 or more is refused, as the loose `integer` refuses it, because the DTO could not cast it. One
+  exception: an integer `enum` value of 1e14 or more sent as a float is refused, since `Rule::in` compares text and PHP
+  writes that float as `1.0E+14`.
+- **A body that is JSON and a form keeps the loose `integer`, with the gaps its finding names:** a JSON client's `"42"`
+  and `true` get through, a float within 14 digits of a whole number (`2.9999999999999996`) passes as `3` and `dto()`
+  casts it to `2`, and a whole float of 1e14 or more is refused. A runtime branch
+  ([#133](https://github.com/Gcob/lara-spec-first/issues/133)) would close the first two, and
+  [#196](https://github.com/Gcob/lara-spec-first/issues/196) tracks the integer's.
 - **A unique list refuses two equal numbers it used to accept**: `[1, 1.0]`, `[10, 1e1]` and `[0, -0.0]` in JSON, `1`
   and `+1` or `1` and `1.0` in a form. The CHANGELOG lists it as breaking.
 - **A unique list of numbers is not exact at float precision (2^53).** PHP compares an integer with a float, or two

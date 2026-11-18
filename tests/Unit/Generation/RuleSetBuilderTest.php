@@ -1024,8 +1024,9 @@ it('keys the element rules of an array under field.*', function (): void {
 });
 
 // JSON Schema compares two numbers by value, so `1` and `1.0` are one element, and Laravel's `distinct` does too.
-// `distinct:strict` would call them two. A string or a boolean has no second spelling, and `"1"` and `"01"` are
-// two strings, so those keep the strict comparison.
+// `distinct:strict` would call them two. A string has no second spelling, nor does a boolean in JSON, and `"1"` and
+// `"01"` are two strings, so those keep the strict comparison. A form's boolean has two (`"true"` and `"1"`), a gap
+// the guide states.
 it('compares the numbers of a unique list by value', function (string $mediaType, SchemaType $type, array $element): void {
     $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(['xs' => uniqueListOf($type)])]));
 
@@ -2788,7 +2789,8 @@ it('says what a body that is JSON and a form lets through', function (SchemaType
         'integer',
         '`field` is an integer in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
             .'still refuse a string in JSON, so it keeps `integer`: a JSON client\'s `"42"` and `true` get through, though the '
-            .'contract refuses them.',
+            .'contract refuses them. So does a float within 14 digits of a whole number (`2.9999999999999996` passes as `3`, and '
+            .'`dto()` casts it to `2`), while a whole float of 1e14 or more is refused, though the contract accepts it.',
     ],
     'a number' => [
         SchemaType::Number,
@@ -4171,8 +4173,8 @@ it('says in one finding that a deeper payload is refused and names x-max-depth a
         ->toContain('422');
 });
 
-// The three findings that say the request is stricter than the contract (D41): each is in `findings` and in `stricter`,
-// and none leaves a constraint unenforced. "Nothing below it is validated" is looser: it is no stricter finding, and it
+// The three findings that say the request is stricter than the contract: each is in `findings` and in `stricter`, so the
+// build does not count it as a constraint left unenforced, and none leaves one unenforced. "Nothing below it is validated" is looser: it is no stricter finding, and it
 // does leave one unenforced.
 it('names the findings that say the request is stricter than the contract', function (RuleSet $set, bool $leavesUnenforced): void {
     expect($set->findings)->not->toBe([])

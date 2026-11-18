@@ -1623,7 +1623,7 @@ final readonly class RuleSetBuilder
                     self::numberRules($schema, $rules, $handled);
 
                     if ($walk->mixedBody) {
-                        $walk->findings[] = self::mixedBodyFinding($label, 'an integer', 'integer', '`"42"` and `true` get through, though the contract refuses them.');
+                        $walk->findings[] = self::mixedBodyFinding($label, 'an integer', 'integer', '`"42"` and `true` get through, though the contract refuses them. So does a float within 14 digits of a whole number (`2.9999999999999996` passes as `3`, and `dto()` casts it to `2`), while a whole float of 1e14 or more is refused, though the contract accepts it.');
                     }
                     break;
                 case SchemaType::Number:
@@ -2568,7 +2568,8 @@ final readonly class RuleSetBuilder
      *
      * JSON Schema compares two numbers by value, so `1` and `1.0` are one element and so are `1` and `+1` in a form:
      * the loose `distinct` says the same, and `distinct:strict` would call them two. A string or a boolean has no
-     * second spelling, and `"1"` and `"01"` are two strings, so those keep the strict comparison.
+     * second spelling in JSON, and `"1"` and `"01"` are two strings, so those keep the strict comparison. A form's
+     * boolean has two (`"true"` and `"1"`), which `distinct:strict` calls two elements: a gap the guide states.
      *
      * The loose comparison is not exact at float precision, and the guide says so: PHP compares an integer with a
      * float, or two decimal strings, as two floats, so two numbers it rounds the same way count as one
