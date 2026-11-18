@@ -249,7 +249,7 @@ Opened by \`just release-prep $VERSION $CARD\`.
 - [ ] Add an "Upgrading from $previous" block at the top of the entry, one item per breaking change, grouped by what the user changes.
 - [ ] Update the \`Known limits\` summary line and the release paragraph of \`CHANGELOG.md\`.
 - [ ] README ("Where we are" and the phase paragraph), \`AGENTS.md\` and \`docs/project/stack.md\` name the version where they name the shipped one.
-- [ ] \`just docs-build\` passes, and the smoke test is committed on this branch.
+- [ ] \`just docs-build\` passes, and \`demo/run.sh <minor> <this branch>\` passes.
 
 **The heading's date must be the day the tag is cut.** It says $TODAY, the day this branch was prepared: if the tag lands another day, fix the heading before the merge.
 

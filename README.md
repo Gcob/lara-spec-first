@@ -18,6 +18,9 @@ architecture while letting your business logic live safely in standard Laravel c
 **[gcob.github.io/lara-spec-first](https://gcob.github.io/lara-spec-first/)** publishes every page under `docs/`, with
 search and a sidebar. It is the same content this repository carries, so each link below works from either one.
 
+**[The demo](https://github.com/Gcob/lara-spec-first/tree/main/demo)** is a small events and RSVPs API built from an
+OpenAPI contract in a brand-new Laravel app, and run before every release. It shows what the package does, end to end.
+
 ## Key Features
 
 - **Contract-Driven Routing:** Automatically register routes based on your OpenAPI specification.
