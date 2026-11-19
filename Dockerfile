@@ -10,11 +10,22 @@
 #   docker compose build --build-arg PHP_VERSION=8.5
 ARG PHP_VERSION=8.3
 
+# Hurl runs the demo scenarios (`demo/run.sh`). The version is the one CI installs
+# (.github/workflows/demo.yml), and a test keeps the two equal. The image is pinned
+# by its digest (the index, so both architectures): Docker verifies what it pulls.
+ARG HURL_VERSION=8.1.0
+ARG HURL_IMAGE_DIGEST=sha256:f8aed33658ba793ed53c5a5b2e57cadd9ec9322c8b56c550652c1f4cbaa241c5
+FROM ghcr.io/orange-opensource/hurl:${HURL_VERSION}@${HURL_IMAGE_DIGEST} AS hurl
+
 FROM php:${PHP_VERSION}-cli-alpine
+
+# An ARG set before the first FROM is not visible inside a stage.
+ARG HURL_VERSION
 
 # git   — Composer needs it to install packages from source
 # unzip — Composer needs it to extract dist archives
-RUN apk add --no-cache git unzip
+# libcurl, libxml2 and libgcc are the libraries Hurl's binary links against.
+RUN apk add --no-cache git unzip libcurl libxml2 libgcc
 
 # pcov powers `composer test:coverage`. It is lighter than Xdebug and sufficient
 # for line coverage. The build toolchain is removed in the same layer so it does
@@ -25,6 +36,11 @@ RUN apk add --no-cache --virtual .build-deps ${PHPIZE_DEPS} \
     && apk del .build-deps
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+COPY --from=hurl /usr/bin/hurl /usr/local/bin/hurl
+# Docker ignores the tag when a digest is given, so this line is what proves the
+# copied binary is the version named above. It also fails if the binary cannot run.
+RUN hurl --version | grep -q "^hurl ${HURL_VERSION} "
 
 # The base image ships memory_limit=128M, which PHPStan exceeds while analysing
 # a Laravel application graph — it crashes its worker with a bare
