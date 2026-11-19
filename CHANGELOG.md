@@ -91,15 +91,17 @@ tags: [versions, conventions, planning]
   `null`, now answers a JSON `null`, where it answered an empty `200`. The reasoning is in
   [ADR 0017](./docs/project/decisions/0017-return-the-response-dto-from-routeaction.md), and this ships
   [#165](https://github.com/Gcob/lara-spec-first/issues/165).
-- **An optional JSON body that requires properties now refuses `{}`, and an object that carries none of them, where it
-  used to pass.** A body with `requestBody.required: false` and a schema that requires `reason` meant "a body, or none",
-  but a rule cannot tell `{}` from no body, so `{}` and `{"zzz": 1}` were accepted. They answer `422` to a client that
-  asks for JSON (see
+- **An optional JSON body that requires properties now refuses `{}` sent as JSON, and a JSON object that carries none of
+  them, where it used to pass.** A body with `requestBody.required: false` and a schema that requires `reason` meant "a
+  body, or none", but a rule cannot tell `{}` from no body, so `{}` and `{"zzz": 1}` were accepted. Sent with a type
+  Laravel reads as JSON (`application/json`, or a `+json` type such as `application/vnd.api+json`), they answer `422` to
+  a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)),
   on each required key the object lacks. An absent body (no content, or only blanks) and a JSON `null` on a nullable
-  body still pass. A form that sends none of the body's keys is still accepted, and the generated file says so in a
-  finding. The finding no longer names `{}`, and a JSON-only body no longer carries it. This is a breaking change: a
-  client that sent `{}` and got a `200` now gets a refusal. Send the key, or send no body.
+  body still pass, and so does a `{}` sent as `text/plain` or with no `Content-Type`: Laravel does not decode it, so the
+  request reads it as an absent body. A form that sends none of the body's keys is still accepted, and the generated
+  file says so in a finding. The finding no longer names `{}`, and a JSON-only body no longer carries it. This is a
+  breaking change: a client that sent `{}` as JSON and got a `200` now gets a refusal. Send the key, or send no body.
 - **A required body sent with an empty content and a type that is not a form is refused, where it used to pass.** An
   `application/xml` or `text/plain` request (compared without case, parameters like `; charset=utf-8` ignored) with no
   content, or only blanks, answers `422` to a client that asks for JSON (see

@@ -421,20 +421,21 @@ name of the contract is it). The key is written in the generated `after()`.
 **An empty content is an absent body, and the body's `required` decides.** A required body sent as nothing is refused on
 the body's own key, with Laravel's `required` message, since no rule says so when every property is optional (they are
 all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one: a required body accepts it
-when no property is required, and an optional JSON body that requires properties refuses it, key by key. The check is
-for a JSON body and a form body alike, and it reads any request whose type is not a form's as absent: one that is JSON,
-one that is `text/plain` or `application/xml`, and one with no `Content-Type` at all (`curl -X POST url` and
-`fetch(url, { method: 'POST' })` send none when there is no body). The type is compared without case, and its parameters
-(`; charset=utf-8`) do not count. A request with no `Content-Type` carries no form field either, since a multipart
-always sets one, and one with an uploaded file is never read as absent. What stays ambiguous is a form: a request with a
-form `Content-Type` and no content has its body read from the form bag, whose fields need not show in the raw content
-(PHP leaves `php://input` empty for `multipart/form-data`), so an empty `application/x-www-form-urlencoded` body and a
-multipart with no parts are not read as an absent body, whatever the case its type is spelled in, and the generated file
-says so in a finding whenever a required body is read as a form and no required field, or the body's required-key check,
-already refuses an empty form. A required key asked with `present` or `required` (a required property, a required file
-part, a required name `properties` does not declare) refuses a form that sends no field on its own, so the finding would
-only be noise there. A key that follows another through `dependentRequired`, a `readOnly` one, a name the request leaves
-unchecked and a `PATCH` ask nothing of an empty form, and keep the finding.
+when no property is required, and an optional JSON body that requires properties refuses it, key by key, when it is sent
+as JSON. The check is for a JSON body and a form body alike, and it reads any request whose type is not a form's as
+absent: one that is JSON, one that is `text/plain` or `application/xml`, and one with no `Content-Type` at all
+(`curl -X POST url` and `fetch(url, { method: 'POST' })` send none when there is no body). The type is compared without
+case, and its parameters (`; charset=utf-8`) do not count. A request with no `Content-Type` carries no form field
+either, since a multipart always sets one, and one with an uploaded file is never read as absent. What stays ambiguous
+is a form: a request with a form `Content-Type` and no content has its body read from the form bag, whose fields need
+not show in the raw content (PHP leaves `php://input` empty for `multipart/form-data`), so an empty
+`application/x-www-form-urlencoded` body and a multipart with no parts are not read as an absent body, whatever the case
+its type is spelled in, and the generated file says so in a finding whenever a required body is read as a form and no
+required field, or the body's required-key check, already refuses an empty form. A required key asked with `present` or
+`required` (a required property, a required file part, a required name `properties` does not declare) refuses a form
+that sends no field on its own, so the finding would only be noise there. A key that follows another through
+`dependentRequired`, a `readOnly` one, a name the request leaves unchecked and a `PATCH` ask nothing of an empty form,
+and keep the finding.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body
@@ -538,15 +539,16 @@ required ones would accept a body made of an optional key alone, which is a body
 When the body declares one key and requires it, there is nothing else to name, and it becomes `sometimes`. With two or
 more required, each is asked for through the others, so a body that sends none of them asks for none. A rule cannot tell
 a body sent as `{}` from one that is not sent, since both leave every key out of the data, so the rules alone would
-accept `{}` whenever the body is optional and requires something. **A JSON request closes that gap in the generated
-`after()`, which reads the raw content:** an empty content is an absent body and passes, and a JSON object that lacks a
-required key is refused on that key, whatever else it carries (`{}`, or `{"zzz": 1}`), with the rule the key would get
-in a required body. The keys are one `REQUIRED_KEYS` constant in the generated file, and a key `present_with` already
-refused is named once. **Only a form keeps the gap**: an empty form cannot be told from an absent body, and a form's
-required names arrive rewritten or nested (`user_name`, `page.size`), so the generated file says in a finding that a
-form that sends none of the body's keys is accepted, which the contract refuses. (The empty content the request refuses
-is a required body's, never an optional one's.) With nothing required, every field was already `sometimes` and an absent
-body was already valid.
+accept `{}` whenever the body is optional and requires something. **A request sent as JSON closes that gap in the
+generated `after()`, which reads the raw content:** an empty content is an absent body and passes, and a JSON object
+that lacks a required key is refused on that key, whatever else it carries (`{}`, or `{"zzz": 1}`), with the rule the
+key would get in a required body. The keys are one `REQUIRED_KEYS` constant in the generated file, and a key
+`present_with` already refused is named once. **Only a request Laravel does not read as JSON keeps the gap**: a `{}`
+sent as `text/plain` or with no `Content-Type` is not decoded, so it reads as an absent body, and an empty form cannot
+be told from an absent body either; a form's required names arrive rewritten or nested (`user_name`, `page.size`), so
+the generated file says in a finding that a form that sends none of the body's keys is accepted, which the contract
+refuses. (The empty content the request refuses is a required body's, never an optional one's.) With nothing required,
+every field was already `sometimes` and an absent body was already valid.
 
 **The cost is noise, and it is bounded.** Eight required properties mean eight rules naming seven siblings each, in a
 file nobody edits by hand. Nothing else in the rule set grows that way, and an optional body that requires properties is

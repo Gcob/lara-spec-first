@@ -3036,6 +3036,20 @@ it('names a missing required key once when a sibling was sent', function (array 
     'a dotted name, a sibling sent' => [['user.name', 'b'], ['user.name'], '{"b":"x"}', ['user.name']],
 ]);
 
+// The `{}` is refused only when Laravel reads the request as JSON, which is a `Content-Type` holding `/json` or `+json`.
+// Any other type, or none, leaves the content undecoded, so the request reads an absent body and passes.
+it('reads an empty object sent as another type as an absent optional body', function (?string $contentType, int $status): void {
+    $class = emittedRequestClass(postWithOptionalJsonRequiring(['a', 'b'], ['a']));
+
+    expect(statusForContentType($class, $contentType, '{}'))->toBe($status);
+})->with([
+    'text/plain' => ['text/plain', 200],
+    'no type' => [null, 200],
+    'a form type' => ['application/x-www-form-urlencoded', 200],
+    'a +json type is JSON' => ['application/vnd.api+json', 422],
+    'control: JSON' => ['application/json', 422],
+]);
+
 /**
  * One request through the real kernel carrying `$content` with the `Content-Type` as given, or none: what
  * `curl -X POST url` sends, which `Request::create()` would otherwise default to a form's.
