@@ -135,7 +135,7 @@ fi
 if [ "$(git show "HEAD:CHANGELOG.md" 2>/dev/null | unreleased_lines)" -eq 0 ]; then
     pass "[Unreleased] is empty at HEAD"
 else
-    fail "[Unreleased] is empty at HEAD: something merged after the release pull request, so the tag would carry a line that is not in the $VERSION entry. If it corrects the entry, move it into the $VERSION entry through a pull request. Otherwise revert the change on main through a pull request. Then run this again"
+    fail "[Unreleased] is empty at HEAD: something merged after the release pull request, so the tag would carry a line that is not in the $VERSION entry. If it corrects the entry, move it into the $VERSION entry through a pull request. Otherwise revert the change on main: the revert is the one pull request, besides a CHANGELOG.md correction, that the hold lets through. Then run this again"
 fi
 
 # Why the heading's count and not its first appearance: the newest commit on main's first-parent line that changes how
@@ -162,7 +162,7 @@ else
             NR <= 5 { list = list (NR > 1 ? ", " : "") $0 }
             END { if (NR > 5) list = list " and " NR - 5 " more"; print list }
         ')
-        fail "$only_changelog ($release_merge_short): $late_list. The tag would carry what the release pull request did not review. Revert the change on main through a pull request, then run this again: it lands in the next release"
+        fail "$only_changelog ($release_merge_short): $late_list. The tag would carry what the release pull request did not review. Revert the change on main (the one pull request, besides a CHANGELOG.md correction, that the hold lets through), then run this again. To keep the change, revert the release pull request's merge and cut the release again"
     fi
 fi
 

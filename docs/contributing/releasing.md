@@ -67,9 +67,11 @@ are the same string.
    [the tag step](#the-tag-is-the-maintainers) in the release plan, as an action for the maintainer.
 
 **Every other pull request is held from the moment the release pull request opens until the tag.** Only a correction to
-`CHANGELOG.md` (the heading's date, the version's entry) may merge in between. A pull request that merges while the
-release pull request is in review lands in the tag without being in that pull request's diff, so the hold starts when it
-opens, not when it merges. `just release` refuses to tag over anything else, as its tenth check below.
+`CHANGELOG.md` (the heading's date, the version's entry) may merge in between, and so may the revert of a change that
+merged by mistake. A pull request that merges while the release pull request is in review lands in the tag without being
+in that pull request's diff, so the hold starts when it opens, not when it merges. That window is the hold's to keep:
+`just release` does not see it. Its tenth check below covers what merged after the release pull request merged, and
+refuses to tag over it.
 
 ## `release-prep` does the mechanical half
 
@@ -149,17 +151,18 @@ when any check is red. An exit code of 0 means the real run would go through.
    `origin`'s address, and the release links are pinned with it.
 9. `[Unreleased]` is empty at `HEAD`. A changelog line that merged after the release pull request sits outside the
    version's entry, and this check is red until it is moved into the entry (when it corrects the entry) or its change is
-   reverted on `main` through a pull request. It sees only a change that wrote a line under `[Unreleased]`: a change
-   with no changelog line is the next check's.
+   reverted on `main` (the revert is allowed during the hold). It sees only a change that wrote a line under
+   `[Unreleased]`: a change with no changelog line is the next check's.
 10. `only CHANGELOG.md changed since the release pull request merged`. The tag goes on the tip of `origin/main`, so
     nothing may merge between the release pull request and the tag, except a correction to `CHANGELOG.md`. The check
     finds the release pull request's merge commit (the newest commit on `main`'s first-parent line that changes how many
     times the version's heading appears, so a date fix is not it, and a release that was merged, reverted and cut again
     is judged from its last cut), then compares its tree with `HEAD`'s. Any file other than `CHANGELOG.md` that differs
     is red, named with the merge commit's short SHA: up to five files, then `and N more`. It is a tree comparison, so a
-    change that was merged and then reverted is green, and the way out of a red is to revert the change on `main`
-    through a pull request: it lands in the next release. A shallow clone is red too, since the merge can't be found
-    there: `git fetch --unshallow` first.
+    change that was merged and then reverted is green. A red keeps the hold: the way out is to revert the change on
+    `main` (the one pull request besides a `CHANGELOG.md` correction that the hold lets through), or, to keep it, to
+    revert the release pull request's merge and cut the release again. A shallow clone is red too, since the merge can't
+    be found there: `git fetch --unshallow` first.
 
 **`--publish` then asks a person.** With every check green, it shows who the tag will be created by (the git identity of
 the checkout) and waits for the version to be typed at a terminal. The identity is shown rather than checked because a
