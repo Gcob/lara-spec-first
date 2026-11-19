@@ -13,6 +13,9 @@ use Symfony\Component\Process\Process;
  * so the scripts can read the owner and the repository from its path, and git may use
  * no transport but a local one: a remote that is not on disk fails instead of reaching
  * the network. A fake `gh` goes first on `PATH`.
+ * The scripts read today's date with the shell's `date`, in the shell's time zone, and the fixtures write it with
+ * PHP's `date()`, in PHP's. The scripts get PHP's time zone as `TZ`, so the two always name the same day, in the
+ * evening west of UTC too.
  * The fake answers the few questions the scripts ask (who is logged in, what the
  * card says, whether CI is green) from files the test writes, and records every
  * call it gets, one file per call, so a test can say exactly what the scripts
@@ -194,16 +197,31 @@ function releaseProject(string $changelog = RELEASE_UNRELEASED_CHANGELOG): array
  * into `main` with a merge commit, pushed. The fixture's root commit already carries a heading, so this one starts from
  * a project made with the default changelog.
  *
+ * `$meanwhile` are files that land on `main` after the branch is cut and before it merges: the release pull request is
+ * in review, and another pull request merges. `$squash` merges the way GitHub's squash button does: no second parent.
+ *
  * @param  array<string, string>  $project
+ * @param  list<string>  $meanwhile
  * @return string the merge commit
  */
-function releaseMergeCut(array $project, string $branch, string $date): string
+function releaseMergeCut(array $project, string $branch, string $date, array $meanwhile = [], bool $squash = false): string
 {
     releaseGit($project['work'], ['switch', '--quiet', '--create', $branch]);
     file_put_contents($project['work'].'/CHANGELOG.md', str_replace('__TODAY__', $date, RELEASE_PREPARED_CHANGELOG));
     releaseGit($project['work'], ['commit', '--quiet', '--all', '-m', 'docs(release): cut 0.2.0 in the changelog']);
     releaseGit($project['work'], ['switch', '--quiet', 'main']);
-    releaseGit($project['work'], ['merge', '--quiet', '--no-ff', '--no-edit', $branch]);
+
+    if ($meanwhile !== []) {
+        releaseLand($project, $meanwhile, 'docs: land while the release is in review');
+    }
+
+    if ($squash) {
+        releaseGit($project['work'], ['merge', '--quiet', '--squash', $branch]);
+        releaseGit($project['work'], ['commit', '--quiet', '-m', 'docs(release): cut 0.2.0 in the changelog (#1)']);
+    } else {
+        releaseGit($project['work'], ['merge', '--quiet', '--no-ff', '--no-edit', $branch]);
+    }
+
     releaseGit($project['work'], ['push', '--quiet', 'origin', 'main']);
 
     return releaseGit($project['work'], ['rev-parse', 'HEAD']);
@@ -272,6 +290,7 @@ function releaseRun(array $project, string $script, array $arguments, ?string $i
             'PATH' => $project['bin'].':'.getenv('PATH'),
             'FAKE_GH_DIR' => $project['state'],
             'GIT_TERMINAL_PROMPT' => '0',
+            'TZ' => date_default_timezone_get(),
         ],
         $input ?? '',
     );
@@ -344,6 +363,20 @@ it('keeps every test off the network: origin is a path on disk, and git refuses 
         ->and($elsewhere->getExitCode())->not->toBe(0)
         ->and($elsewhere->getOutput().$elsewhere->getErrorOutput())->toContain("transport 'https' not allowed");
 });
+
+it('reads owner and repository from the address a maintainer has for origin', function (string $address): void {
+    $project = releaseProject();
+    releaseGit($project['work'], ['config', 'remote.origin.url', $address]);
+
+    $slug = (new Process(['sh', '-c', '. scripts/release-lib.sh && origin_slug'], $project['work'], releaseGitEnvironment()))->mustRun()->getOutput();
+
+    expect(trim($slug))->toBe('Gcob/lara-spec-first');
+})->with([
+    'https' => ['https://github.com/Gcob/lara-spec-first.git'],
+    'https without .git' => ['https://github.com/Gcob/lara-spec-first'],
+    'ssh' => ['git@github.com:Gcob/lara-spec-first.git'],
+    'ssh url' => ['ssh://git@github.com/Gcob/lara-spec-first.git'],
+]);
 
 describe('release-prep', function (): void {
     it('prepares a release on a branch of its own, with a draft pull request that says who opened it', function (): void {
@@ -573,7 +606,7 @@ describe('release', function (): void {
             ],
             'a file changed after the release pull request merged' => [
                 fn (array $p) => releaseLand($p, ['docs-late.md']),
-                'RED   only CHANGELOG.md changed since the release pull request merged (',
+                'RED   only CHANGELOG.md changed since the release pull request was reviewed (',
                 '0.2.0',
             ],
             'the history is shallow' => [
@@ -583,7 +616,7 @@ describe('release', function (): void {
                     rename($p['work'], $p['dir'].'/work-full');
                     rename($p['dir'].'/shallow', $p['work']);
                 },
-                'RED   only CHANGELOG.md changed since the release pull request merged: the history is shallow',
+                'RED   only CHANGELOG.md changed since the release pull request was reviewed: the history is shallow',
                 '0.2.0',
             ],
             'the heading is not dated today' => [
@@ -676,7 +709,7 @@ describe('release', function (): void {
 
         expect($run['exit'])->toBe(0, $run['out'])
             ->and($run['out'])->not->toContain('RED')
-            ->and($run['out'])->toContain('ok    only CHANGELOG.md changed since the release pull request merged ('.substr($judged, 0, 7).')');
+            ->and($run['out'])->toContain('ok    only CHANGELOG.md changed since the release pull request was reviewed ('.substr($judged, 0, 7).')');
     })->with([
         'the date fixed' => [
             '2026-01-01',
@@ -724,11 +757,37 @@ describe('release', function (): void {
         $run = releaseRun($project, 'release.sh', ['0.2.0']);
 
         expect($run['exit'])->toBe(1)
-            ->and($run['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request merged ('.substr($merge, 0, 7).'): '.$listed);
+            ->and($run['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr($merge, 0, 7).'): '.$listed);
     })->with([
         'five files' => [5, 'late-1.md, late-2.md, late-3.md, late-4.md, late-5.md. '],
         'six files' => [6, 'late-1.md, late-2.md, late-3.md, late-4.md, late-5.md and 1 more. '],
     ]);
+
+    it('names a change that merged while the release pull request was in review, when the release was merged with a merge commit', function (): void {
+        $project = releaseProject();
+        $merge = releaseMergeCut($project, 'release/126/0.2.0', date('Y-m-d'), ['src-late.php']);
+
+        $dryRun = releaseRun($project, 'release.sh', ['0.2.0']);
+        $publish = releaseRun($project, 'release.sh', ['0.2.0', '--publish']);
+
+        expect($dryRun['exit'])->toBe(1)
+            ->and($dryRun['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr($merge, 0, 7).'): src-late.php. ')
+            ->and($publish['exit'])->not->toBe(0)
+            ->and($publish['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed')
+            ->and(releaseGhWrites($project))->toBe([])
+            ->and(releaseGit($project['origin'], ['tag', '--list']))->toBe('');
+    });
+
+    it('judges a release merged with a squash from its merge, which has no tip to compare from', function (): void {
+        $project = releaseProject();
+        $squash = releaseMergeCut($project, 'release/126/0.2.0', date('Y-m-d'), ['docs-meanwhile.md'], squash: true);
+        releaseLand($project, ['docs-after.md']);
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr($squash, 0, 7).'): docs-after.md. ');
+    });
 
     it('refuses to tag when origin cannot be asked whether the tag exists', function (): void {
         $project = releaseProject(RELEASE_PREPARED_CHANGELOG);

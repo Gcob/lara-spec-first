@@ -141,19 +141,28 @@ fi
 # Why the heading's count and not its first appearance: the newest commit on main's first-parent line that changes how
 # many times "## [<version>] - " appears is the merge of the release pull request, and a date fix (the same count) is
 # not it. A release merged, reverted and cut again is then judged from its last cut.
-only_changelog="only CHANGELOG.md changed since the release pull request merged"
+#
+# Why the comparison starts at the merge's second parent when it has one: a change that merged while the release pull
+# request was in review is already in the merge's tree, so a comparison from the merge would not see it. The second
+# parent is the tip the pull request was reviewed at. A squash merge has none, and is compared from the merge itself.
+only_changelog="only CHANGELOG.md changed since the release pull request was reviewed"
+release_merge=$(git log --first-parent --format=%H -S"## [$VERSION] - " HEAD -- CHANGELOG.md 2>/dev/null | head -n 1)
 
 if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
     # Why: in a shallow clone the oldest commit it holds has no parent, so git reports the heading as added by it and
     # the check would be green over a change merged after the release.
     fail "$only_changelog: the history is shallow, so the release pull request's merge can't be found. Run git fetch --unshallow, then run this again"
-elif ! release_merge=$(git log --first-parent --format=%H -S"## [$VERSION] - " HEAD -- CHANGELOG.md 2>/dev/null | head -n 1) \
-    || [ -z "$release_merge" ]; then
+elif [ -z "$release_merge" ]; then
     fail "$only_changelog: no commit on main brought in a \"## [$VERSION] - \" heading"
 else
     release_merge_short=$(echo "$release_merge" | cut -c1-7)
+    reviewed=$release_merge
 
-    if ! late_files=$(git diff --name-only "$release_merge" HEAD -- . ':(exclude)CHANGELOG.md' 2>/dev/null); then
+    if git rev-parse --quiet --verify "$release_merge^2" >/dev/null 2>&1; then
+        reviewed="$release_merge^2"
+    fi
+
+    if ! late_files=$(git diff --name-only "$reviewed" HEAD -- . ':(exclude)CHANGELOG.md' 2>/dev/null); then
         fail "$only_changelog ($release_merge_short): git could not compare that commit with HEAD"
     elif [ -z "$late_files" ]; then
         pass "$only_changelog ($release_merge_short)"
