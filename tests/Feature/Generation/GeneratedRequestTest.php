@@ -3006,7 +3006,8 @@ it('refuses an empty JSON object on an optional body that requires properties', 
     [$answered, $errors] = errorsForRawJson($class, $content);
 
     expect($answered)->toBe($status)
-        ->and(array_keys($errors))->toBe($keys);
+        ->and(array_keys($errors))->toBe($keys)
+        ->and(array_map('count', $errors))->each->toBe(1);
 })->with([
     'two properties, an empty object' => [['a', 'b'], ['a'], false, '{}', 422, ['a']],
     'two properties, only a key it does not declare' => [['a', 'b'], ['a'], false, '{"zzz":1}', 422, ['a']],
@@ -3604,6 +3605,10 @@ it('answers every other body as the same body not nullable does', function (arra
     expect($twinStatus)->toBe($status)
         ->and($nullableStatus)->toBe($twinStatus)
         ->and($nullableKeys)->toBe($twinKeys)
+        // The required-key check skips a key `present_with` already refused, a dotted one included: each key is named
+        // once, never twice.
+        ->and(array_map('count', $nullableErrors))->each->toBe(1)
+        ->and(array_map('count', $twinErrors))->each->toBe(1)
         // The key is the name as written, never the escaped one the rules are keyed by.
         ->and(implode(',', $nullableKeys))->not->toContain('\\');
 })->with(fn (): array => nullableTwinRows());
