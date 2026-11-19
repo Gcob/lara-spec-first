@@ -33,7 +33,7 @@ tags: [decisions, code-generation, compatibility]
 >   computed by the package, `$fail()`, a float divisor, a rule for JSON fields only, and a finding per field.
 
 **Status:** Accepted · **Card:** [#198](https://github.com/Gcob/lara-spec-first/issues/198) · **Pull request:**
-[#221](https://github.com/Gcob/lara-spec-first/pull/221)
+[#224](https://github.com/Gcob/lara-spec-first/pull/224)
 
 ## Context
 
