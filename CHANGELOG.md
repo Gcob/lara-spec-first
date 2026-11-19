@@ -381,7 +381,9 @@ tags: [versions, conventions, planning]
   the `null` an empty form field becomes) now reads "must be a number" beside "must be an integer", from either client.
   This is a breaking change: a JSON client that sent `true` or a near-whole float for such an integer gets a `422`, a
   project's `validation.custom.<field>.integer` message no longer applies there, and a request generated before keeps
-  `integer` until `spec:build` runs again. This ships [#196](https://github.com/Gcob/lara-spec-first/issues/196).
+  `integer` until `spec:build` runs again. The reasoning is in
+  [ADR 0019](./docs/project/decisions/0019-judge-a-json-integer-by-its-value.md), which supersedes ADR 0016, and this
+  ships [#196](https://github.com/Gcob/lara-spec-first/issues/196).
 
 ### Fixed
 

@@ -766,8 +766,8 @@ one becomes is this table's.
 contract it follows, which is a rule refusing what the contract accepts. So for **a `query` parameter and a field of a
 form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body gets
 [`boolean:strict`](#a-json-body-keeps-its-types), where `true` arrives already typed
-([ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md) holds the reasoning for the split). Four things
-come with it:
+([ADR 0019](../../project/decisions/0019-judge-a-json-integer-by-its-value.md) holds the reasoning for the split). Four
+things come with it:
 
 - **`false` is not in the list as a PHP value.** `Rule::in` compares `(string) false`, which is the empty string, and a
   list holding it would accept the `null` an empty value becomes, which a non-nullable boolean refuses.
@@ -933,8 +933,8 @@ not in a rule set at all, since nothing reads them, and the reading collects the
 JSON writes `42`, `1.5` and `true` already typed, and `"42"` is a string. Laravel's loose `integer`, `numeric` and
 `boolean` read what a form or a query string writes, so on a JSON body they would accept `"42"`, `"1.5"` and `1` for a
 boolean, which the contract refuses. The reasoning is in
-[ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md). A field of a body that is JSON and nothing else
-gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every level (`a.b`, `items.*`):
+[ADR 0019](../../project/decisions/0019-judge-a-json-integer-by-its-value.md). A field of a body that is JSON and
+nothing else gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every level (`a.b`, `items.*`):
 
 - **An integer is `WholeNumber` beside `numeric`.** `WholeNumber` passes an `int`, and a `float` whose value is exactly
   whole (`1.0`, `1e2`, `1e14`), which JSON Schema 2020-12 reads as an integer. It refuses everything else: a fraction
