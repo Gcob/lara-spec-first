@@ -106,8 +106,8 @@ and the same `@return`, and keeps its `parent::routeAction()` call, which answer
 fell behind its parent's parameters also reads the return type, and speaks only where it is sure without resolving a
 class: a child that declares none (under any parent, `mixed` included), or a built-in type the parent's does not hold
 (`mixed`, `array` under a DTO, `null` beside one, `void`). It prints the type the parent declares, in full, so the line
-loads as pasted. A child that declares a class is left to PHP and PHPStan, as before: an `array` where the guide used to
-say a child may narrow `mixed` is the upgrade this catches.
+loads as pasted. An `array` where the guide used to say a child may narrow `mixed` is the upgrade this catches. A child
+that declares a class is left to PHP and PHPStan, as before.
 
 **On Laravel 12 (CI from 12.55, [#188](https://github.com/Gcob/lara-spec-first/issues/188) settles the floor) and 13,**
 the dispatcher calls `callAction()` the same way, and a test sends a request through the router to a parent and a child

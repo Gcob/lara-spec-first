@@ -151,10 +151,11 @@ signature, and a list is `array` there. Three choices sit behind that:
 - **It judges the parameter count, and the built-in types of a return type.** Both are sound without resolving a class:
   the count never flags a class PHP would load, and a missing return type is a fatal under any parent, `mixed` included.
   A built-in type the parent's does not hold is one too: `mixed`, `array` or `TeamDto|array` under `TeamDto`, `?UserDto`
-  under `UserDto` (the `null`), `void`, but not `array` under a list (the parent says `array`), anything under a parent
-  that says `mixed`, or `never`, which narrows every type. A class the child names is not judged: whether it is the
-  parent's DTO or a narrower one takes resolving the name, and a group `use` can hide it. A renamed request class, a
-  narrowed type or a class that is not the parent's is reported by PHP when the class loads, and by PHPStan before that.
+  under `UserDto` (the `null`), `void`. Under a parent that says `mixed`, `void` is the only declared type named, since
+  PHP loads every other one there. Not named either: `array` under a list (the parent says `array`), and `never`, which
+  narrows every type. A class the child names is not judged: whether it is the parent's DTO or a narrower one takes
+  resolving the name, and a group `use` can hide it. A renamed request class, a narrowed type or a class that is not the
+  parent's is reported by PHP when the class loads, and by PHPStan before that.
 
 Only a child that extends exactly the generated parent of its operation is checked. A child that extends something else,
 declares no `routeAction`, or gets one from a trait is left alone, and so is a `routeAction` the file does not write in
