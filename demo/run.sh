@@ -45,6 +45,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Set by scripts/demo-in-docker.sh, never by CI, to let git read a linked
+# worktree from inside the container. They are not named after git's own
+# variables because Composer clears those from the environment of every script
+# it runs, and `composer demo` runs this file.
+if [ -n "${DEMO_GIT_DIR:-}" ]; then
+    export GIT_DIR="$DEMO_GIT_DIR" GIT_WORK_TREE="${DEMO_GIT_WORK_TREE:-$ROOT}"
+fi
+
 WORK=""
 SERVER_PID=""
 FAILED=0
@@ -111,8 +120,10 @@ done
 if [ "${#missing[@]}" -gt 0 ]; then
     for command in "${missing[@]}"; do
         if [ "$command" = hurl ]; then
-            echo "FAIL  hurl is not on the PATH. Install it: https://hurl.dev/docs/installation.html" >&2
-            echo "      (\`brew install hurl\` on macOS). CI installs it in .github/workflows/demo.yml." >&2
+            echo "FAIL  hurl is not on the PATH. Run the demo in Docker, whose image carries it:" >&2
+            echo "      \`just demo <minor> [<branch>]\`. To run it natively, install Hurl:" >&2
+            echo "      https://hurl.dev/docs/installation.html (\`brew install hurl\` on macOS)." >&2
+            echo "      CI installs it in .github/workflows/demo.yml." >&2
         else
             echo "FAIL  $command is not on the PATH" >&2
         fi
@@ -132,6 +143,8 @@ for file in laravel-version doctor-exit openapi.yaml; do
 done
 SKELETON="$(tr -d '[:space:]' <"$FOLDER/laravel-version")"
 EXPECTED_DOCTOR="$(tr -d '[:space:]' <"$FOLDER/doctor-exit")"
+
+echo "PHP $(php -r 'echo PHP_VERSION;'), Hurl $(hurl --version | awk 'NR == 1 { print $2 }')"
 
 WORK="$(mktemp -d)"
 APP="$WORK/app"

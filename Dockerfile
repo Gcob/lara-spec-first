@@ -24,8 +24,9 @@ ARG HURL_VERSION
 
 # git   — Composer needs it to install packages from source
 # unzip — Composer needs it to extract dist archives
+# bash is there because demo/run.sh is a bash script and the base image has none.
 # libcurl, libxml2 and libgcc are the libraries Hurl's binary links against.
-RUN apk add --no-cache git unzip libcurl libxml2 libgcc
+RUN apk add --no-cache git unzip bash libcurl libxml2 libgcc
 
 # pcov powers `composer test:coverage`. It is lighter than Xdebug and sufficient
 # for line coverage. The build toolchain is removed in the same layer so it does
@@ -52,5 +53,14 @@ RUN printf 'memory_limit = 512M\n' > /usr/local/etc/php/conf.d/zz-development.in
 # inside the container. Point its cache somewhere writable instead.
 ENV COMPOSER_HOME=/tmp/composer \
     COMPOSER_MEMORY_LIMIT=-1
+
+# The directory has to exist, and be writable by any user, or Docker creates the
+# `composer-cache` volume's root owned by root and Composer runs without a cache.
+RUN mkdir -p /tmp/composer && chmod 1777 /tmp/composer
+
+# The checkout is mounted from the host, and git refuses a repository owned by
+# another user. HOME is not writable for the host user, so this goes in the system
+# config, written here as root.
+RUN git config --system --add safe.directory /app
 
 WORKDIR /app
