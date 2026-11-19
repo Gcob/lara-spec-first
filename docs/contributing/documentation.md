@@ -969,6 +969,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0015-type-the-values-of-a-map-body.md`](../project/decisions/0015-type-the-values-of-a-map-body.md)
     - [`0016-keep-json-scalars-typed.md`](../project/decisions/0016-keep-json-scalars-typed.md)
     - [`0017-return-the-response-dto-from-routeaction.md`](../project/decisions/0017-return-the-response-dto-from-routeaction.md)
+    - [`0018-test-the-declared-laravel-floor.md`](../project/decisions/0018-test-the-declared-laravel-floor.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

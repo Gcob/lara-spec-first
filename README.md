@@ -46,7 +46,7 @@ OpenAPI contract in a brand-new Laravel app, and run before every release. It sh
 
 ## Installation
 
-PHP 8.3 or newer, Laravel 12.22+ or 13. The [full matrix](#requirements) is below.
+PHP 8.3 or newer, Laravel 12.55+ or 13. The [full matrix](#requirements) is below.
 
 ```bash
 composer require gcob/lara-spec-first
@@ -190,7 +190,7 @@ Every technology choice, its status, and the reasoning behind it live in
 |               | Supported                                      |
 | ------------- | ---------------------------------------------- |
 | **PHP**       | 8.3, 8.4, 8.5                                  |
-| **Laravel**   | 12.22+, 13.x                                   |
+| **Laravel**   | 12.55+, 13.x                                   |
 | **Extension** | `tokenizer` (every Laravel application has it) |
 
 ## Development Environment

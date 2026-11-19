@@ -199,9 +199,32 @@ just check-lowest
 composer check:lowest
 ```
 
-It installs the lowest **Laravel and Testbench** this package allows, runs the full check suite against them, and
-restores the newest. It reports failure if the downgrade or the restore itself fails, so a pass always means the lower
-bound was really exercised.
+It installs the Laravel floor `composer.json` declares **exactly** (12.55.0 for the `^12.55` alternative, and 13.0.0 for
+`^13.0`) with the Testbench that goes with it, runs the full check suite against them, and restores the newest. It
+reports failure if the downgrade or the restore itself fails, and when Composer cannot reach the declared floor and
+lands on a newer Laravel: a pass always means the floor was really exercised.
+
+Composer 2.9 and newer refuses, by default, a Laravel with a known security advisory, and the floors have some. So the
+script turns Composer's security blocking off for that one install, for the whole dependency graph, and the restore puts
+it back on. This is for CI and for this check only: nothing is served from that install, and an application should
+upgrade Laravel rather than do the same.
+
+Run it on **PHP 8.3**, the version CI uses, for either floor. On PHP 8.4 and newer, Pest 5 and PHPUnit 13 keep Composer
+on a newer Laravel than the floor (13.35 where 12.55 was asked), and the script stops on its comparison: its message
+names the PHP version as the likely cause.
+
+A bare `composer check:lowest` goes to the lowest of the whole range, which is Laravel 12. CI runs one leg per Laravel
+major, and each leg pins its major first (`composer require --no-update` on `illuminate/routing` and
+`illuminate/support`). The Laravel 13 floor is therefore tested in CI only. To reproduce it locally, pin the 13
+constraint in `composer.json` and run the script the same way. With PHP 8.3 first on your `PATH` (the path depends on
+how you installed it; this one is Homebrew on macOS):
+
+```bash
+LSF_LARAVEL_PINNED=1 PATH=/opt/homebrew/opt/php@8.3/bin:$PATH composer check:lowest
+```
+
+`LSF_LARAVEL_PINNED=1` tells `SupportFloorTest` that `composer.json` is pinned to one Laravel, as it is in a CI leg.
+Without it, that test reads the pin as a range that lost an alternative and fails on a file that is not broken.
 
 The development tooling, Pint, Larastan and Pest, is deliberately left at its current version. Otherwise a minor Pint
 release that changes a formatting rule would turn this red while the Laravel lower bound is perfectly healthy, and a
@@ -288,9 +311,10 @@ A later commit that only reformats goes in the same file.
 ### What CI runs on your pull request
 
 `.github/workflows/tests.yml` runs those same three commands on GitHub, across PHP 8.3 / 8.4 / 8.5 x Laravel 12 / 13,
-plus the lowest-supported-dependency run that `composer check:lowest` performs locally, and the marker check described
-[above](#deferred-work-leaves-a-marker), which runs with `--online` there and so also fails on a marker whose card has
-closed. Every job reports on its own, so a failure names the cell it belongs to.
+plus a lowest-supported-dependency run, which is the work `composer check:lowest` does locally but with one leg per
+Laravel major, each at its floor, and the marker check described [above](#deferred-work-leaves-a-marker), which runs
+with `--online` there and so also fails on a marker whose card has closed. Every job reports on its own, so a failure
+names the cell it belongs to.
 
 They then feed one `All checks passed` job, which is the job **meant to be marked required** on `main`. Whether it
 actually blocks a merge is a repository setting rather than anything the workflow decides: until a maintainer requires

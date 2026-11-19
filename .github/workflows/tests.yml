@@ -45,11 +45,11 @@ jobs:
                 # the PHP 8.3 floor buys. Testbench tracks Laravel minus two, so its
                 # major is a property of the Laravel cell rather than a third axis.
                 include:
-                    # `constraint` is the Laravel this cell installs. Laravel 12's starts at 12.22, the constraint
-                    # `0.2.0` shipped: no generated rule needs 12.22 since #173, and this cell installs from 12.55,
-                    # the lowest testbench 10.11 allows. #188 settles the floor.
+                    # `constraint` is the Laravel this cell installs, and each one is an alternative of the range
+                    # composer.json declares. Laravel 12's starts at 12.55, the lowest testbench 10.11 allows: the
+                    # `lowest` job below installs exactly that, so the declared floor is one CI really tests.
                     - laravel: "12"
-                      constraint: "^12.22"
+                      constraint: "^12.55"
                       testbench: "^10.11"
                     - laravel: "13"
                       constraint: "^13.0"
@@ -73,10 +73,12 @@ jobs:
             # something. Testbench keeps `--dev`, or requiring it would move it into
             # the runtime dependencies.
             - name: Pin this cell's Laravel
-              run: >
-                  composer require --no-update --no-interaction
-                  "illuminate/routing:${{ matrix.constraint }}"
-                  "illuminate/support:${{ matrix.constraint }}"
+              run: |
+                  composer require --no-update --no-interaction \
+                      "illuminate/routing:${{ matrix.constraint }}" \
+                      "illuminate/support:${{ matrix.constraint }}"
+                  # SupportFloorTest reads the range composer.json declares, which this step just narrowed.
+                  echo "LSF_LARAVEL_PINNED=1" >> "$GITHUB_ENV"
 
             - name: Pin this cell's Testbench
               run: >
@@ -104,8 +106,22 @@ jobs:
             - run: composer test
 
     lowest:
-        name: Lowest supported dependencies
+        name: Lowest supported dependencies / Laravel ${{ matrix.laravel }}
         runs-on: ubuntu-latest
+
+        strategy:
+            # Each leg proves one floor, so a red one must not hide the other.
+            fail-fast: false
+            matrix:
+                # One leg per alternative of the Laravel range in composer.json, pinned the way the test
+                # job pins its cells. `composer check:lowest` then installs that leg's floor exactly (12.55.0
+                # and 13.0.0) and fails when Composer gives anything else, so the floor is never a number
+                # nobody installs.
+                include:
+                    - laravel: "12"
+                      constraint: "^12.55"
+                    - laravel: "13"
+                      constraint: "^13.0"
 
         steps:
             - uses: actions/checkout@v7
@@ -116,14 +132,24 @@ jobs:
                   ini-values: memory_limit=512M
                   coverage: none
 
+            # Without this, the lowest of `^12.55 || ^13.0` is always Laravel 12 and the 13 floor is never
+            # installed.
+            - name: Pin this leg's Laravel
+              run: |
+                  composer require --no-update --no-interaction \
+                      "illuminate/routing:${{ matrix.constraint }}" \
+                      "illuminate/support:${{ matrix.constraint }}"
+                  # SupportFloorTest reads the range composer.json declares, which this step just narrowed.
+                  echo "LSF_LARAVEL_PINNED=1" >> "$GITHUB_ENV"
+
             - id: composer-cache
               run: echo "dir=$(composer config --global cache-files-dir)" >> "$GITHUB_OUTPUT"
 
             - uses: actions/cache@v4
               with:
                   path: ${{ steps.composer-cache.outputs.dir }}
-                  key: composer-lowest-${{ hashFiles('composer.json') }}
-                  restore-keys: composer-lowest-
+                  key: composer-lowest-laravel${{ matrix.laravel }}-${{ hashFiles('composer.json') }}
+                  restore-keys: composer-lowest-laravel${{ matrix.laravel }}-
 
             # The same command a contributor runs before opening a pull request, so
             # which packages get downgraded is decided in scripts/check-lowest.sh
@@ -165,6 +191,10 @@ jobs:
             - run: composer format:check
 
             - run: composer analyse
+
+            # The only job that runs SupportFloorTest: it installs unpinned, so composer.json still declares the
+            # whole Laravel range, which every job above narrows to one Laravel before its tests run.
+            - run: composer test -- --filter=SupportFloor
 
     # Every deferred-work marker names a card and every card it names is open,
     # and every open card carrying the `decision` label is named by a marker. The
