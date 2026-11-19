@@ -9,7 +9,10 @@ use Symfony\Component\Process\Process;
  * maintainer runs them: as shell scripts, on the host, from inside a repository.
  *
  * Nothing here reaches GitHub. Each test builds a scratch repository whose
- * `origin` is a bare repository on disk, and puts a fake `gh` first on `PATH`.
+ * `origin` is a bare repository on disk, named like the GitHub one (`Gcob/lara-spec-first.git`)
+ * so the scripts can read the owner and the repository from its path, and git may use
+ * no transport but a local one: a remote that is not on disk fails instead of reaching
+ * the network. A fake `gh` goes first on `PATH`.
  * The fake answers the few questions the scripts ask (who is logged in, what the
  * card says, whether CI is green) from files the test writes, and records every
  * call it gets, one file per call, so a test can say exactly what the scripts
@@ -150,9 +153,9 @@ afterEach(function (): void {
 function releaseProject(string $changelog = RELEASE_UNRELEASED_CHANGELOG): array
 {
     $dir = realpath(sys_get_temp_dir()).'/lsf-release-'.bin2hex(random_bytes(6));
-    $project = ['dir' => $dir, 'work' => $dir.'/work', 'origin' => $dir.'/origin.git', 'bin' => $dir.'/bin', 'state' => $dir.'/state'];
+    $project = ['dir' => $dir, 'work' => $dir.'/work', 'origin' => $dir.'/Gcob/lara-spec-first.git', 'bin' => $dir.'/bin', 'state' => $dir.'/state'];
 
-    foreach ([$dir, $project['work'], $project['origin'], $project['bin'], $project['state']] as $path) {
+    foreach ([$dir, $dir.'/Gcob', $project['work'], $project['origin'], $project['bin'], $project['state']] as $path) {
         is_dir($path) || mkdir($path);
     }
 
@@ -173,10 +176,7 @@ function releaseProject(string $changelog = RELEASE_UNRELEASED_CHANGELOG): array
     file_put_contents($project['work'].'/CHANGELOG.md', str_replace('__TODAY__', date('Y-m-d'), $changelog));
     releaseGit($project['work'], ['add', '.']);
     releaseGit($project['work'], ['commit', '--quiet', '-m', 'chore: start']);
-    // The remote carries the address GitHub gives it, and git sends it to the bare repository on disk. The scripts read
-    // the address from the configuration, as they would in a checkout, and everything they push goes to the disk.
-    releaseGit($project['work'], ['remote', 'add', 'origin', 'https://github.com/Gcob/lara-spec-first.git']);
-    releaseGit($project['work'], ['config', 'url.'.$project['origin'].'.insteadOf', 'https://github.com/Gcob/lara-spec-first.git']);
+    releaseGit($project['work'], ['remote', 'add', 'origin', $project['origin']]);
     releaseGit($project['work'], ['push', '--quiet', '--set-upstream', 'origin', 'main']);
 
     file_put_contents($project['bin'].'/gh', RELEASE_FAKE_GH);
@@ -195,11 +195,22 @@ function releaseRepository(): string
 }
 
 /**
+ * The environment of every git the tests run, and the one the scripts run: no user or system configuration, and no
+ * transport but a local path, so a remote that is not on disk fails at once instead of reaching the network.
+ *
+ * @return array<string, string>
+ */
+function releaseGitEnvironment(): array
+{
+    return ['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1', 'GIT_ALLOW_PROTOCOL' => 'file'];
+}
+
+/**
  * @param  list<string>  $arguments
  */
 function releaseGit(string $directory, array $arguments): string
 {
-    $process = new Process(['git', ...$arguments], $directory, ['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1']);
+    $process = new Process(['git', ...$arguments], $directory, releaseGitEnvironment());
     $process->mustRun();
 
     return trim($process->getOutput());
@@ -220,10 +231,9 @@ function releaseRun(array $project, string $script, array $arguments, ?string $i
         ['sh', 'scripts/'.$script, ...$arguments],
         $project['work'],
         [
+            ...releaseGitEnvironment(),
             'PATH' => $project['bin'].':'.getenv('PATH'),
             'FAKE_GH_DIR' => $project['state'],
-            'GIT_CONFIG_GLOBAL' => '/dev/null',
-            'GIT_CONFIG_NOSYSTEM' => '1',
             'GIT_TERMINAL_PROMPT' => '0',
         ],
         $input ?? '',
@@ -278,6 +288,25 @@ function releaseNothingWritten(array $project, string $branchHead): void
         ->and(releaseGit($project['origin'], ['branch', '--format=%(refname:short)']))->toBe('main')
         ->and(releaseGhWrites($project))->toBe([]);
 }
+
+it('keeps every test off the network: origin is a path on disk, and git refuses any other transport', function (): void {
+    $project = releaseProject();
+
+    $url = releaseGit($project['work'], ['config', '--get', 'remote.origin.url']);
+    $rewrites = new Process(['git', 'config', '--get-regexp', '^url\.'], $project['work'], releaseGitEnvironment());
+    $rewrites->run();
+
+    $elsewhere = new Process(['git', 'ls-remote', 'https://127.0.0.1:9/Gcob/lara-spec-first.git'], $project['work'], releaseGitEnvironment());
+    $elsewhere->run();
+
+    expect($url)->toBe($project['origin'])
+        ->and($url)->toStartWith($project['dir'].'/')
+        ->and($url)->toEndWith('/Gcob/lara-spec-first.git')
+        ->and($rewrites->getExitCode())->toBe(1, 'a rewrite rule would send an address somewhere else')
+        ->and($rewrites->getOutput())->toBe('')
+        ->and($elsewhere->getExitCode())->not->toBe(0)
+        ->and($elsewhere->getOutput().$elsewhere->getErrorOutput())->toContain("transport 'https' not allowed");
+});
 
 describe('release-prep', function (): void {
     it('prepares a release on a branch of its own, with a draft pull request that says who opened it', function (): void {

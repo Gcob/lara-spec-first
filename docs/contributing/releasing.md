@@ -165,9 +165,10 @@ construction**: the factory's rules forbid it, and [the agent guide](../../AGENT
    it was written, and a release page that follows `main` would show them as they are today.
 
 **The scripts never give `gh` a `--repo`.** `gh` reads the repository from `origin`, and that is what keeps the tests
-off GitHub: they point `origin` at a local bare repository and put a fake `gh` first on `PATH`, which records what it
-was asked and answers from files. A test asserts that the fake saw the `release create` call and nothing else that
-writes.
+off GitHub: they point `origin` at a local bare repository, named like the GitHub one so the owner and repository parse
+from its path, allow git no transport but a local one (`GIT_ALLOW_PROTOCOL=file`, so a remote that is not on disk fails
+instead of reaching the network), and put a fake `gh` first on `PATH`, which records what it was asked and answers from
+files. A test asserts that the fake saw the `release create` call and nothing else that writes.
 
 ## After the tag
 
