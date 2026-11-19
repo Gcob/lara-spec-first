@@ -371,6 +371,17 @@ tags: [versions, conventions, planning]
   this version, so upgrade Laravel first. The reasoning is in
   [ADR 0018](./docs/project/decisions/0018-test-the-declared-laravel-floor.md), and this ships
   [#188](https://github.com/Gcob/lara-spec-first/issues/188).
+- **An integer of a body that is JSON and a form now judges a JSON client's number by its exact value, so a float a hair
+  off a whole number and `true` are refused, and a whole float of 1e14 or more passes.** A generated request gives such
+  an integer `new WholeNumber(acceptsText: true)` beside Laravel's `numeric`, where it gave Laravel's `integer`, which
+  reads a float as text with 14 significant digits: a JSON client's `2.9999999999999996` passed as `3` and `dto()` cast
+  it to `2`, `true` passed as `1`, and `1e14` was refused. They now get a `422`, a `422` and a `200`, as JSON Schema
+  reads them. A form client's text is judged as before (`42` and `+42` pass, `1.0` does not), and a JSON client's `"42"`
+  still gets through, which the generated file's finding states. A value that is no number at all (`"abc"`, `true`, and
+  the `null` an empty form field becomes) now reads "must be a number" beside "must be an integer", from either client.
+  This is a breaking change: a JSON client that sent `true` or a near-whole float for such an integer gets a `422`, a
+  project's `validation.custom.<field>.integer` message no longer applies there, and a request generated before keeps
+  `integer` until `spec:build` runs again. This ships [#196](https://github.com/Gcob/lara-spec-first/issues/196).
 
 ### Fixed
 

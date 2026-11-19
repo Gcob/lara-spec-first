@@ -774,7 +774,7 @@ final readonly class FormRequestEmitter
         }
 
         if ($rule instanceof WholeNumber) {
-            return 'new WholeNumber';
+            return $rule->acceptsText ? 'new WholeNumber(acceptsText: true)' : 'new WholeNumber';
         }
 
         return 'Rule::in(['.implode(', ', array_map(
