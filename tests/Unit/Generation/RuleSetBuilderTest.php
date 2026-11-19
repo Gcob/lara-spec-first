@@ -1703,6 +1703,19 @@ it('writes each finding that loses no constraint as information', function (Oper
             $json(objectSchema(['any' => new Schema(examples: ['x'])])),
             '`any` states no type',
         ],
+        // An annotation constrains nothing: a value of any shape is still accepted, in the contract and in the request.
+        'an untyped field with a default' => [
+            $json(objectSchema(['meta' => new Schema(ignored: ['default' => '#/paths/~1things/post/requestBody'])])),
+            '`meta` states no type',
+        ],
+        'an untyped field that is deprecated' => [
+            $json(objectSchema(['legacy' => new Schema(ignored: ['deprecated' => '#/paths/~1things/post/requestBody'])])),
+            '`legacy` states no type',
+        ],
+        'an untyped field with a $defs and an $anchor' => [
+            $json(objectSchema(['any' => new Schema(ignored: ['$defs' => '#/paths/~1things/post/requestBody', '$anchor' => '#/paths/~1things/post/requestBody'])])),
+            '`any` states no type',
+        ],
     ];
 });
 

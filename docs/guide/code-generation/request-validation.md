@@ -957,13 +957,14 @@ gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every l
   that is `required`; a body declared under two media types over one schema; the optional fields of a `PUT`, which the
   request accepts as the schema says and whose stored value the controller keeps; a name the body requires without
   declaring it, where the contract says nothing about the value; and a field that states no type and nothing else
-  (`{}`), which accepts any value in the contract and in the request. Its look-alikes still count: a body that is also
-  multipart with a file part (a file is refused there as a string), a `PATCH` whose required list is read as empty, a
-  required name beside a value schema the guard cannot spare, and a field with no type that writes an `enum`, a `const`
-  or a keyword the package does not read (`oneOf`, on the field, through a `$ref` or in an `allOf` branch), that is
-  typed only `null`, or that declares more than one type. A sentence counts once per field: the same words said as
-  information on one field and as a gap on another (`address.id` beside the `id` of `address`) leave the gap counted. An
-  untyped `enum` of numbers counts because `Rule::in()` compares as text, so it accepts `"1"` and `true` for `1`.
+  (`{}`), or only an annotation (`default`, `deprecated`, `$defs`, `$anchor`), which accepts any value in the contract
+  and in the request. Its look-alikes still count: a body that is also multipart with a file part (a file is refused
+  there as a string), a `PATCH` whose required list is read as empty, a required name beside a value schema the guard
+  cannot spare, and a field with no type that writes an `enum`, a `const` or a keyword the package does not read
+  (`oneOf`, on the field, through a `$ref` or in an `allOf` branch), that is typed only `null`, or that declares more
+  than one type. A sentence counts once per field: the same words said as information on one field and as a gap on
+  another (`address.id` beside the `id` of `address`) leave the gap counted. An untyped `enum` of numbers counts because
+  `Rule::in()` compares as text, so it accepts `"1"` and `true` for `1`.
 - **A query parameter and a form or multipart field keep the loose rules**, since every value they carry is text.
 - **A form client of an operation that declares only JSON gets the JSON rules.** `age=30` from an HTML form is a 422
   there, where it was a 200: the contract declares no form, so that client is off-contract, and `rules()` is one array.

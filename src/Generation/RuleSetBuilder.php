@@ -1748,7 +1748,8 @@ final readonly class RuleSetBuilder
                         $message = sprintf('%s %s, so no type rule is emitted for it.', $label, $unmapped);
 
                         // Why: a field that states no type and nothing else accepts any value, in the contract and in the
-                        // request. Any keyword it writes besides is a constraint the rule set does not carry.
+                        // request. A keyword it writes besides that constrains a value (an `enum`, a `oneOf`) is one the
+                        // rule set does not carry. An annotation (`default`, `deprecated`) constrains nothing.
                         if ($unmapped === 'states no type' && $schema->types === [] && ! self::writesAKeyword($written)) {
                             $walk->information($message);
                         } else {
@@ -2815,14 +2816,17 @@ final readonly class RuleSetBuilder
 
     /**
      * Whether a written schema, or any `allOf` branch of it, states a value constraint besides its type: an `enum` (a
-     * `const` is a one-value enum), or a keyword the package does not read.
+     * `const` is a one-value enum), or a keyword the package does not read that constrains a value. `default`,
+     * `deprecated`, `$defs` and `$anchor` are the ones that do not: they annotate or name, and accept every value.
      *
      * Read on the written schema, never the merged one: the merge drops a branch's ignored keywords. An `enum` counts
      * because `Rule::in()` compares `(string) $value`, so an untyped `[1, 2, 3]` accepts `"1"` and `true`.
      */
     private static function writesAKeyword(Schema $written): bool
     {
-        if ($written->ignored !== [] || $written->enum !== null) {
+        $constraints = array_diff_key($written->ignored, array_flip(['default', 'deprecated', '$defs', '$anchor']));
+
+        if ($constraints !== [] || $written->enum !== null) {
             return true;
         }
 

@@ -65,8 +65,10 @@ final class RuleWalk
 
     /**
      * The findings that lose no constraint: the same sentences as in {@see self::$findings}, which stays whole. They
-     * say what a reader of the file would otherwise not see (a body key a `query` parameter shadows, a name a form
-     * rewrites), and nothing is unenforced by them, so the build does not count them.
+     * say what a reader of the file would otherwise not see: a body key a `query` parameter shadows, a name a form
+     * rewrites, a `readOnly` field that is required, two media types over one schema, the optional fields of a `PUT`, a
+     * required name no `properties` declares, an untyped field that states nothing else. Nothing is unenforced by them,
+     * so the build does not count them.
      *
      * @var list<string>
      */

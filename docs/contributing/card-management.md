@@ -403,7 +403,8 @@ silently ignored before it. The support floor rose with the rule.
 **Findings stricter than the contract drowned the build warning.**
 [#107](https://github.com/Gcob/lara-spec-first/issues/107) produced enough of them that the warning stopped saying
 anything. They are real, but nothing is left unenforced by them, so the build warning no longer counts them.
-Informational findings still do ([#134](https://github.com/Gcob/lara-spec-first/issues/134)).
+Informational findings counted too, until [#134](https://github.com/Gcob/lara-spec-first/issues/134) moved them out: a
+finding that loses no constraint is said in the file and stays out of the count.
 
 **A fix can regress a case it does not target, so re-check the old cases and not only the new one.**
 [#118](https://github.com/Gcob/lara-spec-first/issues/118) ([#136](https://github.com/Gcob/lara-spec-first/pull/136))

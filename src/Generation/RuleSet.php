@@ -82,9 +82,12 @@ final readonly class RuleSet
      *                                                  array is dropped), so an undeclared key beside the nested names
      *                                                  is refused. A key not here keeps `array` (or `exclude`): a level
      *                                                  with a key `array:` cannot name, such as a `*` name's
-     * @param  list<string>  $information  the findings that lose no constraint (a body key a `query` parameter shadows,
-     *                                     a name a form rewrites), which are in `findings` too. Nothing is left
-     *                                     unenforced by one, so the build does not count a request for them alone
+     * @param  list<string>  $information  the findings that lose no constraint, which are in `findings` too: a body key
+     *                                     a `query` parameter shadows, a name a form rewrites, a `readOnly` field that
+     *                                     is required, two media types over one schema, the optional fields of a `PUT`,
+     *                                     a required name no `properties` declares, an untyped field that states
+     *                                     nothing else. Nothing is left unenforced by one, so the build does not count
+     *                                     a request for them alone
      * @param  list<string>  $scalarNames  for a body read only as a form: the keys of the validated data whose value
      *                                     `dto()` reads only when it is not an array. A name above the names a form
      *                                     nests under it (`page` above `page[size]`) is the contract's own name for it,
