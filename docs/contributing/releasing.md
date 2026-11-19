@@ -72,8 +72,9 @@ merged by mistake. A pull request that merges while the release pull request is 
 in that pull request's diff, so the hold starts when it opens, not when it merges. Merged with a merge commit, the
 release pull request's own tip is the reference and `just release` names such a change, unless the release branch was
 brought up to date with `main` first, which puts the change in the tip. Merged with a squash, there is no tip left to
-compare from. In both cases the window while it was in review is the hold's alone: `just release` does not see it. The
-tenth check below says what it covers in each case, and refuses to tag over it.
+compare from. When the branch was brought up to date, or when it was squashed, the window while it was in review is the
+hold's alone: `just release` does not see it. The tenth check below says what it covers in each case, and refuses to tag
+over it.
 
 ## `release-prep` does the mechanical half
 
@@ -162,11 +163,12 @@ when any check is red. An exit code of 0 means the real run would go through.
     is judged from its last cut), then compares `HEAD`'s tree with the tip the pull request was reviewed at: the merge's
     second parent when it was merged with a merge commit, so a change that merged while it was in review is named too,
     or the merge itself when it was squashed, which has no second parent, so only what merged after the squash is seen.
-    Any file other than `CHANGELOG.md` that differs is red, named with the merge commit's short SHA: up to five files,
-    then `and N more`. It is a tree comparison, so a change that was merged and then reverted is green. A red keeps the
-    hold: the way out is to revert the change on `main` (the one pull request besides a `CHANGELOG.md` correction that
-    the hold lets through), or, to keep it, to revert the release pull request's merge and cut the release again. A
-    shallow clone is red too, since the merge can't be found there: `git fetch --unshallow` first.
+    Any file other than `CHANGELOG.md` that differs is red, named with the short SHA of the commit it compared from (so
+    `git diff <sha> HEAD` lists them): up to five files, then `and N more`. It is a tree comparison, so a change that
+    was merged and then reverted is green. A red keeps the hold: the way out is to revert the change on `main` (the one
+    pull request besides a `CHANGELOG.md` correction that the hold lets through), or, to keep it, to revert the release
+    pull request's merge and cut the release again. A shallow clone is red too, since the merge can't be found there:
+    `git fetch --unshallow` first.
 
 **`--publish` then asks a person.** With every check green, it shows who the tag will be created by (the git identity of
 the checkout) and waits for the version to be typed at a terminal. The identity is shown rather than checked because a

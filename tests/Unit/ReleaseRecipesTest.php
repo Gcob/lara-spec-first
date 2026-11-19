@@ -228,6 +228,19 @@ function releaseMergeCut(array $project, string $branch, string $date, array $me
 }
 
 /**
+ * The commit the tenth check compares from: the release merge's second parent (the tip the pull request was reviewed
+ * at) when it has one, else the merge itself, which a squash leaves alone.
+ *
+ * @param  array<string, string>  $project
+ */
+function releaseComparedFrom(array $project, string $merge): string
+{
+    $parents = explode(' ', releaseGit($project['work'], ['log', '-1', '--format=%P', $merge]));
+
+    return $parents[1] ?? $merge;
+}
+
+/**
  * Commit the given files on `main` and push.
  *
  * @param  array<string, string>  $project
@@ -709,7 +722,7 @@ describe('release', function (): void {
 
         expect($run['exit'])->toBe(0, $run['out'])
             ->and($run['out'])->not->toContain('RED')
-            ->and($run['out'])->toContain('ok    only CHANGELOG.md changed since the release pull request was reviewed ('.substr($judged, 0, 7).')');
+            ->and($run['out'])->toContain('ok    only CHANGELOG.md changed since the release pull request was reviewed ('.substr(releaseComparedFrom($project, $judged), 0, 7).')');
     })->with([
         'the date fixed' => [
             '2026-01-01',
@@ -757,7 +770,7 @@ describe('release', function (): void {
         $run = releaseRun($project, 'release.sh', ['0.2.0']);
 
         expect($run['exit'])->toBe(1)
-            ->and($run['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr($merge, 0, 7).'): '.$listed);
+            ->and($run['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr(releaseComparedFrom($project, $merge), 0, 7).'): '.$listed);
     })->with([
         'five files' => [5, 'late-1.md, late-2.md, late-3.md, late-4.md, late-5.md. '],
         'six files' => [6, 'late-1.md, late-2.md, late-3.md, late-4.md, late-5.md and 1 more. '],
@@ -771,7 +784,7 @@ describe('release', function (): void {
         $publish = releaseRun($project, 'release.sh', ['0.2.0', '--publish']);
 
         expect($dryRun['exit'])->toBe(1)
-            ->and($dryRun['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr($merge, 0, 7).'): src-late.php. ')
+            ->and($dryRun['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr(releaseComparedFrom($project, $merge), 0, 7).'): src-late.php. ')
             ->and($publish['exit'])->not->toBe(0)
             ->and($publish['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed')
             ->and(releaseGhWrites($project))->toBe([])

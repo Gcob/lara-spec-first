@@ -155,23 +155,25 @@ if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
 elif [ -z "$release_merge" ]; then
     fail "$only_changelog: no commit on main brought in a \"## [$VERSION] - \" heading"
 else
-    release_merge_short=$(echo "$release_merge" | cut -c1-7)
     reviewed=$release_merge
 
     if git rev-parse --quiet --verify "$release_merge^2" >/dev/null 2>&1; then
         reviewed="$release_merge^2"
     fi
 
+    # Why: the SHA shown is the commit the files are compared from, so git diff <sha> HEAD lists them.
+    reviewed_short=$(git rev-parse "$reviewed" 2>/dev/null | cut -c1-7)
+
     if ! late_files=$(git diff --name-only "$reviewed" HEAD -- . ':(exclude)CHANGELOG.md' 2>/dev/null); then
-        fail "$only_changelog ($release_merge_short): git could not compare that commit with HEAD"
+        fail "$only_changelog ($reviewed_short): git could not compare that commit with HEAD"
     elif [ -z "$late_files" ]; then
-        pass "$only_changelog ($release_merge_short)"
+        pass "$only_changelog ($reviewed_short)"
     else
         late_list=$(printf '%s\n' "$late_files" | awk '
             NR <= 5 { list = list (NR > 1 ? ", " : "") $0 }
             END { if (NR > 5) list = list " and " NR - 5 " more"; print list }
         ')
-        fail "$only_changelog ($release_merge_short): $late_list. The tag would carry what the release pull request did not review. Revert the change on main (the one pull request, besides a CHANGELOG.md correction, that the hold lets through), then run this again. To keep the change, revert the release pull request's merge and cut the release again"
+        fail "$only_changelog ($reviewed_short): $late_list. The tag would carry what the release pull request did not review. Revert the change on main (the one pull request, besides a CHANGELOG.md correction, that the hold lets through), then run this again. To keep the change, revert the release pull request's merge and cut the release again"
     fi
 fi
 
