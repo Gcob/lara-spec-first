@@ -135,9 +135,11 @@ reference a recursion points back at, a target that is not an object with proper
 holds it, directly or through a property, a list or a map, and a value that writes a keyword the doctor names is named
 by the keyword and not twice. Both exit `2`.
 
-**`routeAction` still returns `mixed`.** The controller's findings say so beside those sentences: the types named there
-are what a response is, and what `routeAction` is typed to return is a later change. Nothing yet makes a controller
-return the DTO.
+**`routeAction` returns the DTO.** The controller declares the DTO of its success statuses as the return type, and its
+findings say which ones and why, beside the sentences about each status. An operation with no DTO on a success status
+stays `mixed`. [The signature is the contract](../controllers.md#the-signature-is-the-contract) says how the type is
+built, that an error status is thrown, never returned, and that the generated parent sends the status the contract
+declares. [ADR 0017](../../project/decisions/0017-return-the-response-dto-from-routeaction.md) holds the reasoning.
 
 **What the DTO is for is the contract reaching the code that reads a response.** A response property the contract
 removes is a changed constructor, so code that reads it fails static analysis, and a test runs PHPStan over such a

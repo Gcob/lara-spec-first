@@ -8,7 +8,10 @@ use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Exceptions\OperationNotImplementedException;
 use Gcob\LaraSpecFirst\Http\Controllers\SpecController;
+use Gcob\LaraSpecFirst\Http\SuccessStatus;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
+use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Turns one operation into the PHP of its generated controller.
@@ -22,6 +25,8 @@ use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
  * codebase, cannot infer a convention from ten sibling examples, and has no way to know that the interesting behavior
  * lives three directories away unless the file says so. Every guess it has to make is a chance to write something
  * plausible and wrong into an application.
+ *
+ * @phpstan-import-type SentStatus from RouteActionReturn
  *
  * @see docs/guide/code-generation/generated-file-anatomy.md — "Every generated file explains itself"
  * @see docs/guide/controllers.md — "One controller, one routeAction"
@@ -51,14 +56,102 @@ final readonly class ControllerEmitter
             {$this->docblock($planned)}
             {$this->modifier($planned)}class {$planned->name->shortName} extends SpecController
             {
-                public function routeAction({$this->signature($planned)}): mixed
+            {$this->routeAction($planned)}
                 {
                     throw OperationNotImplementedException::operation({$this->literal($operation->label())}, {$this->name($operation)});
-                }
+                }{$this->callAction($planned)}
             }
 
             PHP,
         );
+    }
+
+    /**
+     * The method's declaration, from its `@return` tag (when the native type says less than the contract) to the end of
+     * its parameter list and return type, indented as it sits in the class.
+     */
+    private function routeAction(PlannedController $planned): string
+    {
+        $return = $this->returnOf($planned);
+        $declaration = '    public function routeAction('.$this->signature($planned).'): '.$return->type;
+
+        if ($return->tag === null) {
+            return $declaration;
+        }
+
+        return "    /**\n     * @return {$return->tag}\n     */\n".$declaration;
+    }
+
+    /**
+     * The method that sends the status the contract declares, or nothing for an operation that declares no success.
+     *
+     * Written beside `routeAction` rather than in {@see SpecController}, which holds nothing per operation, and found
+     * by Laravel's dispatcher on its own: it calls `callAction()` when a controller has one, so a child that overrides
+     * `routeAction` and never calls `parent::` still gets the status. {@see SuccessStatus} says what is sent for what.
+     */
+    private function callAction(PlannedController $planned): string
+    {
+        $statuses = $this->returnOf($planned)->statuses;
+
+        if ($statuses === []) {
+            return '';
+        }
+
+        $rows = array_map(
+            fn (array $status): string => '            '.$this->statusRow($status).',',
+            $statuses,
+        );
+
+        return implode("\n", [
+            '',
+            '',
+            '    /**',
+            '     * Sends the status the contract declares for what `routeAction` returned, so a child that overrides it gets the',
+            '     * status without calling `parent::`. A response object it returns is sent as it is.',
+            '     *',
+            '     * @param  array<array-key, mixed>  $parameters',
+            '     */',
+            '    public function callAction(string $method, array $parameters): mixed',
+            '    {',
+            '        return SuccessStatus::answer(',
+            '            $this->{$method}(...array_values($parameters)),',
+            ...$rows,
+            '        );',
+            '    }',
+        ]);
+    }
+
+    /**
+     * One `new SuccessStatus(...)`, with only what differs from its defaults.
+     *
+     * @param  SentStatus  $status
+     */
+    private function statusRow(array $status): string
+    {
+        $arguments = [(string) $status['code']];
+
+        if ($status['dto'] !== null) {
+            $arguments[] = $status['dto'].'::class';
+        }
+
+        if ($status['depth'] > 0) {
+            $arguments[] = 'depth: '.$status['depth'];
+        }
+
+        if ($status['nullable']) {
+            $arguments[] = 'nullable: true';
+        }
+
+        if (! $status['json']) {
+            $arguments[] = 'json: false';
+        }
+
+        return 'new SuccessStatus('.implode(', ', $arguments).')';
+    }
+
+    private function returnOf(PlannedController $planned): RouteActionReturn
+    {
+        return RouteActionSignature::returns($planned->operation, $planned->responses, $this->namespace);
     }
 
     /**
@@ -76,11 +169,7 @@ final readonly class ControllerEmitter
      * Every `use` the emitted file needs, in the order the formatter would put them.
      *
      * Sorted here rather than left to a consumer's formatter, because a formatter with something to reorder is a
-     * formatter fighting the next build. **And sorted the way php-cs-fixer's `ordered_imports` sorts**, which a plain
-     * `sort()` is not: that fixer compares with `\\` replaced by a space and case folded, so
-     * `Gcob\\LaraSpecFirst\\Http` and `Gcob\\LaraSpecFirstX` land on opposite sides of where bytes would put them. The
-     * generated tree's own namespace is the consumer's to choose, so this is not a case that can be ruled out by
-     * inspection.
+     * formatter fighting the next build: {@see ImportOrder} says how it sorts.
      *
      * @return list<string>
      */
@@ -95,12 +184,15 @@ final readonly class ControllerEmitter
             $imports[] = $this->import($planned->request->fullyQualifiedName($this->namespace));
         }
 
-        usort($imports, static fn (string $first, string $second): int => strcasecmp(
-            str_replace('\\', ' ', $first),
-            str_replace('\\', ' ', $second),
-        ));
+        foreach ($this->returnOf($planned)->imports as $class) {
+            $imports[] = $this->import($class);
+        }
 
-        return $imports;
+        if ($this->returnOf($planned)->statuses !== []) {
+            $imports[] = $this->import(SuccessStatus::class);
+        }
+
+        return ImportOrder::sorted($imports);
     }
 
     /**
@@ -251,6 +343,94 @@ final readonly class ControllerEmitter
     }
 
     /**
+     * What `routeAction` returns and why, and where an error status goes.
+     *
+     * Said here because a reader who sees `: UserDto|Response` asks where the `Response` came from, and one who sees
+     * `: mixed` asks why nothing is typed when the statuses below have DTOs.
+     *
+     * @return non-empty-list<string>
+     */
+    private function returnFindings(PlannedController $planned): array
+    {
+        $return = $this->returnOf($planned);
+
+        if (! $return->isTyped()) {
+            return [
+                'The return type is `mixed`, because no success response of this operation has a DTO to name. It is '
+                    .'deliberately not `never`, which would be accurate today and would forbid every future override.',
+                'An error status is thrown (`abort()` or an exception), never returned.',
+            ];
+        }
+
+        $findings = [$this->typeSentence($return)];
+
+        if ($return->admitted === JsonResponse::class) {
+            $findings[] = 'It admits `JsonResponse` because the operation declares several success statuses, and a '
+                .'response object is how a controller sends the one it picked.';
+        }
+
+        if ($return->admitted === SymfonyResponse::class) {
+            $findings[] = sprintf(
+                'It admits Symfony\'s `Response` because the contract declares an answer that is not a JSON body (%s), '
+                    .'and only a response object sends one.',
+                $this->statuses($return->answered),
+            );
+        }
+
+        $findings[] = 'An error status is not returned: throw it (`abort()` or an exception), and the DTO of an error '
+            .'response is for the exception handler.';
+
+        return $findings;
+    }
+
+    /**
+     * Says what the type is made of: the DTO of each success response, or, when one of them is a list, which status
+     * answers with a DTO and which with a list of it (the `array` in the type is not a DTO).
+     */
+    private function typeSentence(RouteActionReturn $return): string
+    {
+        $typed = array_values(array_filter(
+            $return->statuses,
+            static fn (array $status): bool => $status['dto'] !== null,
+        ));
+
+        $lists = array_filter($typed, static fn (array $status): bool => $status['depth'] > 0);
+
+        if ($lists === []) {
+            return sprintf(
+                'The return type is `%s`, the DTO of %s success response (%s).',
+                $return->type,
+                count($return->dtoStatuses) > 1 ? 'each' : 'the',
+                $this->statuses($return->dtoStatuses),
+            );
+        }
+
+        $parts = [];
+
+        foreach ($typed as $index => $status) {
+            $parts[] = sprintf(
+                '%s`%s` for `%s`',
+                $status['depth'] > 0 ? 'a list of '.str_repeat('lists of ', $status['depth'] - 1) : '',
+                (string) $status['dto'],
+                CommentText::safe($return->dtoStatuses[$index]),
+            );
+        }
+
+        return sprintf('The return type is `%s`: %s.', $return->type, implode(', ', $parts));
+    }
+
+    /**
+     * @param  list<string>  $statuses
+     */
+    private function statuses(array $statuses): string
+    {
+        return implode(', ', array_map(
+            static fn (string $status): string => '`'.CommentText::safe($status).'`',
+            $statuses,
+        ));
+    }
+
+    /**
      * What each declared status answers with: its DTO, or why it has none.
      *
      * Said here because the controller is where a reader asks what the operation returns, and the DTOs are other files.
@@ -298,8 +478,7 @@ final readonly class ControllerEmitter
                     .'rewritten on every build.'
                 : 'Nothing implements this operation, so it answers 501. That is the honest answer '
                     .'while the contract describes an endpoint and no code does.',
-            'The return type is `mixed`, whatever the response types below say. It is deliberately not '
-                .'`never`, which would be accurate today and would forbid every future override.',
+            ...$this->returnFindings($planned),
             ...$this->responseFindings($planned),
         ];
 

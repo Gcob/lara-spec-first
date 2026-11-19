@@ -27,8 +27,10 @@ use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
  *     resolved to its default here, so this says what applies rather than what was written.
  *   - Nothing implements this operation, so it answers 501. That is the honest answer while the
  *     contract describes an endpoint and no code does.
- *   - The return type is `mixed`, whatever the response types below say. It is deliberately not
- *     `never`, which would be accurate today and would forbid every future override.
+ *   - The return type is `mixed`, because no success response of this operation has a DTO to name.
+ *     It is deliberately not `never`, which would be accurate today and would forbid every future
+ *     override.
+ *   - An error status is thrown (`abort()` or an exception), never returned.
  *   - The contract declares no response for this operation, so there is no response type to name.
  *
  * Navigation

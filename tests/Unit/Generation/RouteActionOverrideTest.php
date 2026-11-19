@@ -195,3 +195,70 @@ it('fits a parent only when PHP would load the override', function (
     'the same count' => ['\\Acme\\R $request, string $id', 2, true],
     'a parent with nothing, a child with nothing' => ['', 0, true],
 ]);
+
+it('reads the return type a custom routeAction declares, as it is written', function (
+    string $declaration,
+    ?string $returns,
+): void {
+    $override = RouteActionOverride::read(childSource($declaration), 'Acme\\Child');
+
+    expect($override)->not->toBeNull()
+        ->and($override?->returns)->toBe($returns);
+})->with([
+    'none' => ['public function routeAction(string $id) { return 1; }', null],
+    'mixed' => ['public function routeAction(string $id): mixed { return 1; }', 'mixed'],
+    'mixed in capitals' => ['public function routeAction(string $id): MIXED { return 1; }', 'MIXED'],
+    'a class' => ['public function routeAction(string $id): UserDto { return 1; }', 'UserDto'],
+    'a fully qualified class' => [
+        'public function routeAction(string $id): \\Acme\\Data\\UserDto { return 1; }',
+        '\\Acme\\Data\\UserDto',
+    ],
+    'a nullable class' => ['public function routeAction(string $id): ?UserDto { return 1; }', '?UserDto'],
+    'a union' => ['public function routeAction(string $id): UserDto|array { return 1; }', 'UserDto|array'],
+    'a scalar' => ['public function routeAction(string $id): array { return 1; }', 'array'],
+    'after a default that holds a parenthesis and a colon' => [
+        'public function routeAction(string $id, $x = new Foo(1, ["a" => 2])): mixed { return 1; }',
+        'mixed',
+    ],
+    'returned by reference' => ['public function &routeAction(string $id): mixed { return 1; }', 'mixed'],
+    'a body that holds a colon is not a return type' => [
+        'public function routeAction(string $id) { return $id ? 1 : 2; }',
+        null,
+    ],
+    'an abstract declaration' => ['abstract public function routeAction(string $id): UserDto;', 'UserDto'],
+]);
+
+it('refuses a return type PHP would, judged on built-in types and absence alone', function (
+    string $declaration,
+    string $parent,
+    bool $refused,
+): void {
+    $override = RouteActionOverride::read(childSource("public function routeAction(string \$id){$declaration} { return 1; }"), 'Acme\\Child');
+
+    expect($override?->returnTypeRefusedUnder($parent))->toBe($refused);
+})->with([
+    'none under a class' => ['', 'UserDto', true],
+    'none under mixed' => ['', 'mixed', true],
+    'mixed under a class' => [': mixed', 'UserDto', true],
+    'mixed under mixed' => [': mixed', 'mixed', false],
+    'an array under a class' => [': array', 'UserDto', true],
+    'an array under a list' => [': array', 'array', false],
+    'an array under mixed' => [': array', 'mixed', false],
+    'a union with an array under a class' => [': TeamDto|array', 'TeamDto', true],
+    'a union with an array under a union that holds one' => [': TeamDto|array', 'TeamDto|array|JsonResponse', false],
+    'a nullable class under a class' => [': ?UserDto', 'UserDto', true],
+    'a nullable class under a nullable class' => [': ?UserDto', '?UserDto', false],
+    'null under a union that holds it' => [': UserDto|null', 'UserDto|array|null', false],
+    'null under a union that does not' => [': UserDto|null', 'UserDto|array', true],
+    'a scalar under a union of classes' => [': int', 'UserDto|JsonResponse', true],
+    'a scalar written in capitals' => [': Array', 'UserDto', true],
+    'iterable under a list' => [': iterable', 'array', true],
+    'void under mixed' => [': void', 'mixed', true],
+    'never under a class' => [': never', 'UserDto', false],
+    'never under mixed' => [': never', 'mixed', false],
+    'a class under a class' => [': UserDto', 'UserDto', false],
+    'a class under a union that holds it' => [': UserDto', 'UserDto|JsonResponse', false],
+    'another class, left to PHP' => [': OtherDto', 'UserDto', false],
+    'a union of classes, left to PHP' => [': UserDto|JsonResponse', 'UserDto', false],
+    'an intersection, left to PHP' => [': (A&B)|null', 'UserDto|null', false],
+]);

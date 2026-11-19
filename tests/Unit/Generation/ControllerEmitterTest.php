@@ -8,6 +8,7 @@ use Gcob\LaraSpecFirst\Contract\Lifecycle;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Response;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Contract\SecurityRequirement;
@@ -62,6 +63,7 @@ function emittedController(
  * One operation, with everything the docblock reads named rather than positional.
  *
  * @param  list<SecurityRequirement>|null  $security
+ * @param  list<Response>  $responses  what the contract declares, for the questions about a media type
  */
 function operationFor(
     string $method = 'get',
@@ -73,6 +75,7 @@ function operationFor(
     ?string $sunset = null,
     ?array $security = null,
     ?string $controller = null,
+    array $responses = [],
 ): Operation {
     // Named rather than positional: `Operation` takes ten parameters, six of them
     // with defaults, so a reordering there would bind the wrong values here and
@@ -89,7 +92,69 @@ function operationFor(
         sunset: $sunset,
         security: $security,
         controller: $controller,
+        responses: $responses,
     );
+}
+
+/**
+ * One response the contract declares, with the media types it writes a schema for.
+ *
+ * @param  list<string>  $mediaTypes  empty for a status that declares no body
+ */
+function declaredResponse(string $status, array $mediaTypes = ['application/json']): Response
+{
+    $content = [];
+
+    foreach ($mediaTypes as $mediaType) {
+        $content[$mediaType] = new Schema(types: [SchemaType::Object]);
+    }
+
+    return new Response($status, $content);
+}
+
+/**
+ * The controller of an operation whose statuses are described by rows, each one both what the contract declares and
+ * what the response plan made of it, so the two cannot disagree by accident.
+ *
+ * A row with a `dto` is a status with a DTO; one without is a status with none, and its `media` says what the contract
+ * declares for it (nothing, by default: a body-less status).
+ *
+ * @param  array<array{status: string, dto?: string, depth?: int, nullable?: bool, itemsNullable?: bool, media?: list<string>}>  $rows
+ */
+function controllerAnswering(array $rows): string
+{
+    $declared = [];
+    $planned = [];
+
+    foreach ($rows as $row) {
+        $dto = $row['dto'] ?? null;
+        $declared[] = declaredResponse($row['status'], $row['media'] ?? ($dto === null ? [] : ['application/json']));
+        $planned[] = $dto === null
+            ? StatusResponse::without($row['status'], 'it has no DTO')
+            : StatusResponse::of($row['status'], $dto, $row['depth'] ?? 0, $row['nullable'] ?? false, $row['itemsNullable'] ?? false);
+    }
+
+    return emittedController(operationFor(responses: $declared), responses: $planned);
+}
+
+/**
+ * What `routeAction` declares after its parameters, as written.
+ */
+function declaredReturnType(string $contents): string
+{
+    if (preg_match('/public function routeAction\(.*\): (.+)\n/', $contents, $found) !== 1) {
+        throw new RuntimeException('the emitted file declares no routeAction');
+    }
+
+    return $found[1];
+}
+
+/**
+ * The `@return` tag on `routeAction`, or null when it carries none.
+ */
+function declaredReturnTag(string $contents): ?string
+{
+    return preg_match('/@return (.+)\n     \*\/\n    public function routeAction/', $contents, $found) === 1 ? $found[1] : null;
 }
 
 /**
@@ -248,12 +313,19 @@ describe('the findings', function (): void {
     it('says the operation answers 501 and why the return type is mixed', function (): void {
         expect(emittedController(operationFor()))
             ->toContain('answers 501')
-            ->toContain('The return type is `mixed`');
+            ->toContain('The return type is `mixed`, because no success response of this operation has a DTO');
     });
 
-    // The return type is still `mixed`, but no longer because nothing is read: each status says what it is.
+    // Each status says what it is, and the return type above them is the sum of the success ones.
     it('names each status response DTO in the controller findings', function (): void {
-        $docblock = emittedDocblock(emittedController(operationFor(), responses: [
+        $operation = operationFor(responses: [
+            declaredResponse('200'),
+            declaredResponse('201'),
+            declaredResponse('204', []),
+            declaredResponse('default', ['text/plain']),
+        ]);
+
+        $docblock = emittedDocblock(emittedController($operation, responses: [
             StatusResponse::of('200', 'UserDto', 0),
             StatusResponse::of('201', 'CreateUser201ResponseItemDto', 1),
             StatusResponse::without('204', 'it declares no body'),
@@ -265,7 +337,7 @@ describe('the findings', function (): void {
             ->toContain('The `201` response is a list of `CreateUser201ResponseItemDto`')
             ->toContain('The `204` response has no DTO: it declares no body.')
             ->toContain('The `default` response has no DTO: it declares no JSON media type.')
-            ->toContain('The return type is `mixed`');
+            ->toContain('The return type is `UserDto|array|Response`');
         expect($docblock)->not->toContain('is read yet');
     });
 
@@ -319,6 +391,302 @@ describe('the findings', function (): void {
     it('reports nothing for an operation that explicitly requires none', function (): void {
         expect(emittedController(operationFor(security: [])))->not->toContain('security requirement');
     });
+});
+
+describe('the return type routeAction declares', function (): void {
+    it('declares the success response DTO as routeAction return type', function (
+        array $rows,
+        string $type,
+        ?string $tag,
+    ): void {
+        $contents = controllerAnswering($rows);
+
+        expect(declaredReturnType($contents))->toBe($type)
+            ->and(declaredReturnTag($contents))->toBe($tag);
+    })->with([
+        'a DTO' => [[['status' => '200', 'dto' => 'UserDto']], 'UserDto', null],
+        'a list' => [[['status' => '200', 'dto' => 'UserDto', 'depth' => 1]], 'array', 'list<UserDto>'],
+        'a list of lists' => [[['status' => '200', 'dto' => 'UserDto', 'depth' => 2]], 'array', 'list<list<UserDto>>'],
+        'the DTO of a status that is also a 4xx' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '400', 'dto' => 'ProblemDto']],
+            'UserDto',
+            null,
+        ],
+    ]);
+
+    it('imports each DTO the return type names, from the generated Data namespace', function (): void {
+        $contents = controllerAnswering([
+            ['status' => '200', 'dto' => 'UserDto'],
+            ['status' => '201', 'dto' => 'JobDto', 'depth' => 1],
+        ]);
+
+        expect($contents)
+            ->toContain("use App\\Http\\Generated\\Data\\JobDto;\nuse App\\Http\\Generated\\Data\\UserDto;");
+    });
+
+    it('follows the nullable shapes the response plan carries', function (
+        array $rows,
+        string $type,
+        ?string $tag,
+    ): void {
+        $contents = controllerAnswering($rows);
+
+        expect(declaredReturnType($contents))->toBe($type)
+            ->and(declaredReturnTag($contents))->toBe($tag);
+    })->with([
+        'a nullable body' => [[['status' => '200', 'dto' => 'UserDto', 'nullable' => true]], '?UserDto', null],
+        'a nullable list' => [[['status' => '200', 'dto' => 'UserDto', 'depth' => 1, 'nullable' => true]], '?array', 'list<UserDto>|null'],
+        'nullable items' => [[['status' => '200', 'dto' => 'UserDto', 'depth' => 1, 'itemsNullable' => true]], 'array', 'list<UserDto|null>'],
+        'nullable items in a list of lists' => [
+            [['status' => '200', 'dto' => 'UserDto', 'depth' => 2, 'itemsNullable' => true]],
+            'array',
+            'list<list<UserDto|null>|null>',
+        ],
+        'a nullable body among several statuses' => [
+            [['status' => '200', 'dto' => 'UserDto', 'nullable' => true], ['status' => '202', 'dto' => 'JobDto']],
+            'UserDto|JobDto|JsonResponse|null',
+            null,
+        ],
+    ]);
+
+    it('declares a union and JsonResponse when several success statuses exist', function (
+        array $rows,
+        string $type,
+        ?string $tag,
+    ): void {
+        $contents = controllerAnswering($rows);
+
+        expect(declaredReturnType($contents))->toBe($type)
+            ->and(declaredReturnTag($contents))->toBe($tag)
+            ->and($contents)->toContain('use Illuminate\\Http\\JsonResponse;')
+            ->and($contents)->not->toContain('HttpFoundation');
+    })->with([
+        'two DTOs' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '202', 'dto' => 'JobDto']],
+            'UserDto|JobDto|JsonResponse',
+            null,
+        ],
+        'one DTO twice' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '201', 'dto' => 'UserDto']],
+            'UserDto|JsonResponse',
+            null,
+        ],
+        'a DTO beside a status that gave way to a fallback' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '201', 'media' => ['application/json']]],
+            'UserDto|JsonResponse',
+            null,
+        ],
+        'a DTO beside a list' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '201', 'dto' => 'UserDto', 'depth' => 1]],
+            'UserDto|array|JsonResponse',
+            'UserDto|list<UserDto>|JsonResponse',
+        ],
+        'a DTO beside a status with two JSON schemas' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '202', 'media' => ['application/json', 'application/problem+json']]],
+            'UserDto|JsonResponse',
+            null,
+        ],
+    ]);
+
+    it('admits a Response where the contract declares an answer that is not JSON', function (array $rows): void {
+        $contents = controllerAnswering($rows);
+
+        expect(declaredReturnType($contents))->toBe('UserDto|Response')
+            ->and($contents)->toContain('use Symfony\\Component\\HttpFoundation\\Response;')
+            ->and($contents)->not->toContain('JsonResponse');
+    })->with([
+        'a 204 with no body' => [[['status' => '200', 'dto' => 'UserDto'], ['status' => '204']]],
+        'a 202 with no body' => [[['status' => '200', 'dto' => 'UserDto'], ['status' => '202']]],
+        'a 201 offered only as text/csv' => [[['status' => '200', 'dto' => 'UserDto'], ['status' => '201', 'media' => ['text/csv']]]],
+        'a 200 offering JSON and text/csv' => [[['status' => '200', 'dto' => 'UserDto', 'media' => ['application/json', 'text/csv']]]],
+        'a 302' => [[['status' => '200', 'dto' => 'UserDto'], ['status' => '302']]],
+        'a 3XX range' => [[['status' => '200', 'dto' => 'UserDto'], ['status' => '3XX']]],
+        'a 204 and several DTO statuses' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '201', 'dto' => 'UserDto'], ['status' => '204']],
+        ],
+    ]);
+
+    it('keeps mixed when no success response has a DTO', function (array $rows): void {
+        $contents = controllerAnswering($rows);
+
+        expect(declaredReturnType($contents))->toBe('mixed')
+            ->and(declaredReturnTag($contents))->toBeNull()
+            ->and($contents)->not->toContain('HttpFoundation')
+            ->and($contents)->not->toContain('JsonResponse')
+            ->and($contents)->not->toContain('Generated\\Data');
+    })->with([
+        'a 204' => [[['status' => '204']]],
+        'a text/csv-only 200' => [[['status' => '200', 'media' => ['text/csv']]]],
+        'two JSON schemas' => [[['status' => '200', 'media' => ['application/json', 'application/problem+json']]]],
+        'a schema that gave way to a fallback' => [[['status' => '200', 'media' => ['application/json']]]],
+        'a DTO only on an error status' => [[['status' => '200'], ['status' => '400', 'dto' => 'ProblemDto']]],
+        'a redirect beside nothing typed' => [[['status' => '200'], ['status' => '302']]],
+        'no response at all' => [[]],
+    ]);
+
+    it('counts default as success only when no 2xx is declared', function (array $rows, string $type): void {
+        $contents = controllerAnswering($rows);
+
+        expect(declaredReturnType($contents))->toBe($type)
+            ->and($contents)->not->toContain('use App\\Http\\Generated\\Data\\ProblemDto;');
+    })->with([
+        'default alone' => [[['status' => 'default', 'dto' => 'UserDto']], 'UserDto'],
+        'a 200 beside a default error' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => 'default', 'dto' => 'ProblemDto']],
+            'UserDto',
+        ],
+        'a 2XX range' => [[['status' => '2XX', 'dto' => 'UserDto']], 'UserDto'],
+        'a 2XX range beside a default error' => [
+            [['status' => '2XX', 'dto' => 'UserDto'], ['status' => 'default', 'dto' => 'ProblemDto']],
+            'UserDto',
+        ],
+        'a 400 never enters it' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '400', 'dto' => 'ProblemDto']],
+            'UserDto',
+        ],
+        'a default beside a body-less 204' => [[['status' => '204'], ['status' => 'default', 'dto' => 'ProblemDto']], 'mixed'],
+    ]);
+
+    // The finding is read by a person who opens the file to learn why the type is what it is.
+    it('says what routeAction returns and that an error status is thrown', function (
+        array $rows,
+        array $sentences,
+    ): void {
+        $docblock = (string) preg_replace('/\s*\n \*\s+/', ' ', emittedDocblock(controllerAnswering($rows)));
+
+        foreach ($sentences as $sentence) {
+            expect($docblock)->toContain($sentence);
+        }
+
+        expect($docblock)->not->toContain('whatever the response types below say');
+    })->with([
+        'a DTO' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '400', 'dto' => 'ProblemDto']],
+            [
+                'The return type is `UserDto`, the DTO of the success response (`200`).',
+                'An error status is not returned: throw it (`abort()` or an exception), and the DTO of an error response is for the exception handler.',
+            ],
+        ],
+        'a list' => [
+            [['status' => '200', 'dto' => 'UserDto', 'depth' => 1]],
+            ['The return type is `array`: a list of `UserDto` for `200`.', 'throw it (`abort()` or an exception)'],
+        ],
+        'a list of lists' => [
+            [['status' => '200', 'dto' => 'UserDto', 'depth' => 2]],
+            ['The return type is `array`: a list of lists of `UserDto` for `200`.'],
+        ],
+        'a DTO and a list' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '202', 'dto' => 'TeamDto', 'depth' => 1]],
+            ['The return type is `UserDto|array|JsonResponse`: `UserDto` for `200`, a list of `TeamDto` for `202`.'],
+        ],
+        'several success statuses' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '202', 'dto' => 'JobDto']],
+            [
+                'The return type is `UserDto|JobDto|JsonResponse`, the DTO of each success response (`200`, `202`).',
+                'It admits `JsonResponse` because the operation declares several success statuses, and a response object is how a controller sends the one it picked.',
+                'throw it (`abort()` or an exception)',
+            ],
+        ],
+        'an answer that is not JSON' => [
+            [['status' => '200', 'dto' => 'UserDto'], ['status' => '204'], ['status' => '302']],
+            [
+                'The return type is `UserDto|Response`',
+                'It admits Symfony\'s `Response` because the contract declares an answer that is not a JSON body (`204`, `302`), and only a response object sends one.',
+                'throw it (`abort()` or an exception)',
+            ],
+        ],
+        'no DTO' => [
+            [['status' => '204']],
+            [
+                'The return type is `mixed`, because no success response of this operation has a DTO to name.',
+                'It is deliberately not `never`, which would be accurate today and would forbid every future override.',
+                'An error status is thrown (`abort()` or an exception), never returned.',
+            ],
+        ],
+        'no response' => [
+            [],
+            ['The return type is `mixed`, because no success response of this operation has a DTO to name.'],
+        ],
+    ]);
+});
+
+/**
+ * The `SuccessStatus` rows `callAction()` hands the runtime, one per line as written.
+ *
+ * @return list<string>
+ */
+function declaredStatusRows(string $contents): array
+{
+    preg_match_all('/^ {12}(new SuccessStatus\(.*\)),$/m', $contents, $found);
+
+    return $found[1];
+}
+
+describe('the status callAction sends', function (): void {
+    // Said in the file the reader opens to learn what an operation answers with, and shaped so a child that overrides
+    // `routeAction` gets the status without a line of its own.
+    it('writes callAction with the status each success response declares', function (): void {
+        $contents = controllerAnswering([
+            ['status' => '200', 'dto' => 'UserDto'],
+            ['status' => '202', 'dto' => 'TeamDto'],
+            ['status' => '204'],
+        ]);
+
+        expect($contents)
+            ->toContain('use Gcob\\LaraSpecFirst\\Http\\SuccessStatus;')
+            ->toContain('public function callAction(string $method, array $parameters): mixed')
+            // Laravel splices an injected class into the parameters with an integer key, beside the route's string keys.
+            ->toContain('@param  array<array-key, mixed>  $parameters')
+            ->toContain('return SuccessStatus::answer(')
+            ->toContain('$this->{$method}(...array_values($parameters)),')
+            ->and(declaredStatusRows($contents))->toBe([
+                'new SuccessStatus(200, UserDto::class)',
+                'new SuccessStatus(202, TeamDto::class)',
+                'new SuccessStatus(204, json: false)',
+            ]);
+    });
+
+    it('sends 200 for a range or a lone default, the one number it can choose', function (string $status): void {
+        expect(declaredStatusRows(controllerAnswering([['status' => $status, 'dto' => 'UserDto']])))
+            ->toBe(['new SuccessStatus(200, UserDto::class)']);
+    })->with([
+        'a 2XX range' => ['2XX'],
+        'a lowercase range' => ['2xx'],
+        'a lone default' => ['default'],
+    ]);
+
+    it('carries what a returned value is matched on', function (array $rows, string $expected): void {
+        expect(declaredStatusRows(controllerAnswering($rows)))->toBe([$expected]);
+    })->with([
+        'a list' => [[['status' => '201', 'dto' => 'UserDto', 'depth' => 1]], 'new SuccessStatus(201, UserDto::class, depth: 1)'],
+        'a list of lists' => [[['status' => '201', 'dto' => 'UserDto', 'depth' => 2]], 'new SuccessStatus(201, UserDto::class, depth: 2)'],
+        'a nullable body' => [[['status' => '200', 'dto' => 'UserDto', 'nullable' => true]], 'new SuccessStatus(200, UserDto::class, nullable: true)'],
+        'a JSON body with no DTO' => [[['status' => '200', 'media' => ['application/json']]], 'new SuccessStatus(200)'],
+        'a body that is not JSON' => [[['status' => '200', 'media' => ['text/csv']]], 'new SuccessStatus(200, json: false)'],
+        'no body' => [[['status' => '204']], 'new SuccessStatus(204, json: false)'],
+    ]);
+
+    it('leaves an error status out of the table', function (): void {
+        $contents = controllerAnswering([
+            ['status' => '200', 'dto' => 'UserDto'],
+            ['status' => '400', 'dto' => 'ProblemDto'],
+            ['status' => 'default', 'dto' => 'ProblemDto'],
+        ]);
+
+        expect(declaredStatusRows($contents))->toBe(['new SuccessStatus(200, UserDto::class)']);
+    });
+
+    // The existing behavior is the right one for an operation that declares no success: Laravel's own answer.
+    it('writes no callAction for an operation that declares no success status', function (array $rows): void {
+        $contents = controllerAnswering($rows);
+
+        expect($contents)->not->toContain('callAction');
+        expect($contents)->not->toContain('SuccessStatus');
+    })->with([
+        'no response at all' => [[]],
+        'an error only' => [[['status' => '400', 'dto' => 'ProblemDto']]],
+        'a redirect only' => [[['status' => '302']]],
+    ]);
 });
 
 describe('what the metadata deliberately does not carry', function (): void {
@@ -553,14 +921,51 @@ it('reproduces the controller golden file byte for byte', function (): void {
     ));
 });
 
-it('emits a controller Pint has nothing to change in', function (): void {
-    $golden = dirname(__DIR__, 2).'/Fixtures/Generated/Controllers/CreateUserController.php';
+/**
+ * The controller the typed golden file is generated from: an operation with no request, two DTO statuses and a status
+ * with no body, in the namespace whose `Data/UserDto.php` and `Data/TeamDto.php` exist, so the file is a real class.
+ */
+function typedGoldenController(): string
+{
+    $operation = operationFor(
+        path: '/accounts/{id}',
+        operationId: 'showAccount',
+        responses: [declaredResponse('200'), declaredResponse('202'), declaredResponse('204', [])],
+    );
 
-    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $golden], dirname(__DIR__, 3));
+    $planned = new PlannedController(
+        $operation,
+        ControllerName::for($operation),
+        [
+            StatusResponse::of('200', 'UserDto', 0),
+            StatusResponse::of('202', 'TeamDto', 0),
+            StatusResponse::without('204', 'it declares no body'),
+        ],
+    );
+
+    return (new ControllerEmitter(
+        'Gcob\\LaraSpecFirst\\Tests\\Fixtures\\GeneratedResponse',
+        'tests/Fixtures/response-dto-golden.yaml',
+    ))->emit($planned)->contents;
+}
+
+it('reproduces the typed controller golden file byte for byte', function (): void {
+    expect(typedGoldenController())->toBe(file_get_contents(
+        dirname(__DIR__, 2).'/Fixtures/GeneratedResponse/Controllers/ShowAccountController.php'
+    ));
+});
+
+it('emits a controller Pint has nothing to change in', function (string $golden): void {
+    $path = dirname(__DIR__, 2).'/Fixtures/'.$golden;
+
+    $pint = new Process([PHP_BINARY, 'vendor/bin/pint', '--test', $path], dirname(__DIR__, 3));
     $pint->run();
 
     expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
-});
+})->with([
+    'the one with a request' => ['Generated/Controllers/CreateUserController.php'],
+    'the typed one' => ['GeneratedResponse/Controllers/ShowAccountController.php'],
+]);
 
 // `ordered_imports` compares with `\` replaced by a space and case folded, so a
 // plain byte sort puts two namespaces on the wrong side of each other whenever

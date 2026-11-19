@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Scaffolding;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Generation\CommentText;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
+use Gcob\LaraSpecFirst\Generation\ImportOrder;
 use Gcob\LaraSpecFirst\Generation\RouteActionSignature;
 use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnwritableScaffoldException;
 
@@ -87,12 +88,21 @@ final readonly class CustomControllerScaffold
             $lines[] = '';
         }
 
-        // The one class this file imports. The parent is written in full below
-        // and for a reason of its own; the request has a short name of its own,
-        // so importing it keeps the signature readable — and the signature is
-        // the part PHP will not let the developer reword.
-        if ($scaffold->request !== null) {
-            $lines[] = 'use '.ltrim($scaffold->request, '\\').';';
+        // What the signature names is imported, the request and what the
+        // method returns. The parent is written in full below and for a reason of
+        // its own; these have short names of their own, so importing them keeps
+        // the signature readable — and the signature is the part PHP will not let
+        // the developer reword. In the order a formatter would put them.
+        $imports = ImportOrder::sorted([
+            ...($scaffold->request === null ? [] : [$scaffold->request]),
+            ...$scaffold->return->imports,
+        ]);
+
+        foreach ($imports as $import) {
+            $lines[] = 'use '.$import.';';
+        }
+
+        if ($imports !== []) {
             $lines[] = '';
         }
 
@@ -156,7 +166,7 @@ final readonly class CustomControllerScaffold
         $signature = 'public function routeAction('.RouteActionSignature::declaration(
             $operation,
             $hasRequest ? $this->shortNameOf((string) $scaffold->request) : null,
-        ).'): mixed';
+        ).'): '.$scaffold->return->type;
 
         $comment = array_map(
             static fn (string $line): string => '    // '.$line,
@@ -166,7 +176,12 @@ final readonly class CustomControllerScaffold
             ), 84),
         );
 
+        $tag = $scaffold->return->tag === null
+            ? []
+            : ['/**', ' * @return '.$scaffold->return->tag, ' */'];
+
         return [
+            ...$tag,
             $signature,
             '{',
             ...$comment,
