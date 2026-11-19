@@ -1745,7 +1745,15 @@ final readonly class RuleSetBuilder
                         // Without a type rule Laravel reads `min` and `max` as a string
                         // length, so a bound on an untyped field is reported rather than
                         // half-translated.
-                        $walk->findings[] = sprintf('%s %s, so no type rule is emitted for it.', $label, $unmapped);
+                        $message = sprintf('%s %s, so no type rule is emitted for it.', $label, $unmapped);
+
+                        // Why: a field that states no type and nothing else accepts any value, in the contract and in the
+                        // request. Any keyword it writes besides is a constraint the rule set does not carry.
+                        if ($unmapped === 'states no type' && $schema->types === [] && ! self::writesAKeyword($written)) {
+                            $walk->information($message);
+                        } else {
+                            $walk->findings[] = $message;
+                        }
                     }
             }
         }
@@ -2803,6 +2811,28 @@ final readonly class RuleSetBuilder
         }
 
         return $stated === [] ? 'states no type' : null;
+    }
+
+    /**
+     * Whether a written schema, or any `allOf` branch of it, states a value constraint besides its type: an `enum` (a
+     * `const` is a one-value enum), or a keyword the package does not read.
+     *
+     * Read on the written schema, never the merged one: the merge drops a branch's ignored keywords. An `enum` counts
+     * because `Rule::in()` compares `(string) $value`, so an untyped `[1, 2, 3]` accepts `"1"` and `true`.
+     */
+    private static function writesAKeyword(Schema $written): bool
+    {
+        if ($written->ignored !== [] || $written->enum !== null) {
+            return true;
+        }
+
+        foreach ($written->allOf as $branch) {
+            if (self::writesAKeyword($branch)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

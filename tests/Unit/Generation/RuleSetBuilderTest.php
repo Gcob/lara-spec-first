@@ -1695,6 +1695,14 @@ it('writes each finding that loses no constraint as information', function (Oper
             $json(new Schema(types: [SchemaType::Object], properties: ['a' => $string], required: ['a', 'b'], additionalProperties: false)),
             'requires `b` without declaring it',
         ],
+        'an untyped field' => [
+            $json(objectSchema(['any' => new Schema])),
+            '`any` states no type',
+        ],
+        'an untyped field with an example' => [
+            $json(objectSchema(['any' => new Schema(examples: ['x'])])),
+            '`any` states no type',
+        ],
     ];
 });
 
@@ -1712,6 +1720,7 @@ it('still counts a gap whose finding reads like information', function (Operatio
     $string = new Schema(types: [SchemaType::String]);
     $integer = new Schema(types: [SchemaType::Integer]);
     $avatar = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $json = static fn (Schema $schema): Operation => operationWithInput(content: ['application/json' => $schema]);
 
     return [
         // A multipart upload of a file meets `string` there and is refused.
@@ -1733,7 +1742,71 @@ it('still counts a gap whose finding reads like information', function (Operatio
             ),
             'is read as empty here',
         ],
+        // A type of `null` alone is read as "states no type", and its rules accept any value.
+        'type null alone' => [
+            $json(objectSchema(['field' => new Schema(types: [SchemaType::Null])])),
+            '`field` states no type',
+        ],
+        'more than one type' => [
+            $json(objectSchema(['field' => new Schema(types: [SchemaType::String, SchemaType::Integer])])),
+            '`field` declares more than one type',
+        ],
+        // `Rule::in()` compares `(string) $value`, so an untyped enumeration of numbers or booleans accepts `"1"` and
+        // `true` for `1`: the enumeration is lost there, and the finding that says the field has no type counts.
+        'an untyped enum of integers' => [
+            $json(objectSchema(['field' => new Schema(enum: [1, 2, 3])])),
+            '`field` states no type',
+        ],
+        'an untyped enum of booleans' => [
+            $json(objectSchema(['field' => new Schema(enum: [true, false])])),
+            '`field` states no type',
+        ],
+        'an untyped const' => [
+            $json(objectSchema(['field' => new Schema(enum: [5])])),
+            '`field` states no type',
+        ],
+        'an untyped enum of integers in an allOf branch' => [
+            $json(objectSchema(['field' => new Schema(allOf: [new Schema(enum: [1, 2, 3])])])),
+            '`field` states no type',
+        ],
+        'an untyped const in an allOf branch' => [
+            $json(objectSchema(['field' => new Schema(allOf: [new Schema(enum: [5])])])),
+            '`field` states no type',
+        ],
+        // A keyword the package does not read is written on a field with no type: the finding is the only place that
+        // says it is not enforced.
+        'an untyped field writing oneOf' => [
+            $json(objectSchema(['field' => new Schema(ignored: ['oneOf' => '#/paths/~1things/post/requestBody'])])),
+            '`field` states no type',
+        ],
+        'an untyped field writing oneOf through a $ref' => [
+            fixtureOperation('untyped-field-ignored-keyword.yaml', 'untypedThroughRef'),
+            '`filter` states no type',
+        ],
+        // The merge drops a branch's ignored keywords, so only the written schema still says `oneOf` was there.
+        'an untyped field writing oneOf in an allOf branch' => [
+            fixtureOperation('untyped-field-ignored-keyword.yaml', 'untypedInBranch'),
+            '`filter` states no type',
+        ],
+        'an untyped field writing oneOf in the document itself' => [
+            fixtureOperation('untyped-field-ignored-keyword.yaml', 'untypedDirect'),
+            '`filter` states no type',
+        ],
     ];
+});
+
+// An untyped field with a bound is said to state no type, and the bound's own finding keeps the request counted.
+it('still counts the bound of a field that states no type', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'field' => new Schema(minLength: 3),
+    ])]));
+    $counted = array_values(array_diff($set->findings, $set->information, $set->stricter));
+
+    expect($set->information)->toHaveCount(1)
+        ->and($set->information[0])->toContain('`field` states no type')
+        ->and($counted)->toHaveCount(1)
+        ->and($counted[0])->toContain('minLength')
+        ->and($set->leavesUnenforced())->toBeTrue();
 });
 
 // The finding of a name required without being declared is information, but a value schema the guard cannot spare is
