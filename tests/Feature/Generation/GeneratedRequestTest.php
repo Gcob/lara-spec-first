@@ -394,7 +394,7 @@ it('judges a JSON client\'s integer by its exact value in a body that is JSON an
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with([
     'a float a hair under three' => ['2.9999999999999996', 422, ['The field field must be an integer.']],
     'a fraction' => ['2.5', 422, ['The field field must be an integer.']],
-    // `min` has no number to compare for `true`, so it reads its own message too.
+    // `true` has no number to compare, so `min` compares the length of "1" and a minimum of 2 fails too.
     'true' => ['true', 422, ['The field field must be an integer.', 'The field field must be a number.', 'The field field must be at least 2.']],
     'text' => ['"abc"', 422, ['The field field must be an integer.', 'The field field must be a number.']],
     'one hundred trillion' => ['1e14', 200, []],

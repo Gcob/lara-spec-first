@@ -90,7 +90,15 @@ text in `validated()`.
 - A form client of an operation that declares only JSON gets the JSON rules.
 - A list with `uniqueItems` compares integers and numbers by value (`distinct`), and keeps `distinct:strict` for strings
   and booleans. A form's boolean has two spellings, `"true"` and `"1"`, which `distinct:strict` calls two elements: a
-  gap left open ([#197](https://github.com/Gcob/lara-spec-first/issues/197)).
+  gap left open ([#197](https://github.com/Gcob/lara-spec-first/issues/197)). So `[1, 1.0]`, `[10, 1e1]` and `[0, -0.0]`
+  in JSON, and `1` and `+1` in a form, are duplicates. This came with ADR 0016, and `uniquenessRule()` is unchanged
+  here. A form's `1.0` is not an integer, so `1` and `1.0` cannot both be valid there.
+- A unique list of numbers is not exact at float precision (2^53). PHP compares an integer with a float, or two decimal
+  strings, as two floats, so `9007199254740993` and `9007199254740992.0` in JSON, or `0.1` and `0.10000000000000000001`
+  in a form, count as one. The guide states it, a test pins it, and the generated file carries no finding, since nothing
+  in the contract names the case.
+- A JSON client's `31.0` reaches `validated()` as a float and the DTO gives an `int`, which the loose `integer` of this
+  body already allowed.
 - A JSON integer is judged within the range of a 64-bit integer, and an integer `enum` value of 1e14 or more sent as a
   float is refused, since `Rule::in` compares text and PHP writes that float as `1.0E+14`.
 - The Laravel constraint is no longer part of this decision: no rule described here needs a Laravel version, and
@@ -104,8 +112,8 @@ text in `validated()`.
 - **A second class for the body that is JSON and a form** (`IntegerText`). It would judge the same value in a different
   way for one parameter, and cost a second import in a generated file and every type union that names `WholeNumber` (the
   rule walk, the rule set, the builder, the tests' helpers). Laravel has one `integer` with a `strict` mode, not two
-  rules, and one class with a mode follows it. `WholeNumber` has not shipped, and the default is the behavior it has
-  today.
+  rules, and one class with a mode follows it. `WholeNumber` had not shipped when this was decided (0.2.0 did not have
+  it), and the default is the behavior it has today.
 - **Laravel's `integer` beside a float check.** A check on the float keeps the refusal of a whole float of 1e14 or more,
   which `integer` reads as `1.0E+14`, and it still lets `true` through. It also needs a rule written for that one body,
   where `WholeNumber` already holds the exact comparison.
@@ -120,19 +128,12 @@ text in `validated()`.
   CHANGELOG lists it as breaking. A project's `validation.custom.<field>.integer` message no longer applies to this
   body, and a request generated before keeps `integer` until `spec:build` runs again.
 - **A non-number reads two messages.** "Must be a number" is added beside "must be an integer" for `"abc"`, `true` and
-  an empty form field, for a form client as well. A `true` with a `minimum` also reads the `min` message, since there is
-  no number to compare.
+  an empty form field, for a form client as well. A `true` can also read the `min` or `max` message, which compares the
+  length of `"1"` since there is no number: a `minimum` above 1 or a `maximum` below 1 adds it, and `min:0` or `min:1`
+  does not.
 - **A JSON client's `"42"` still passes for an integer of a body that is JSON and a form,** as a number's `"1.5"` and a
   boolean's `"1"` and `1` do. The finding says so, and [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the
   way to close it.
-- **A float reaches the controller.** Code that reads an integer from `validated()` can get `31.0`, and the DTO gives an
-  `int`. A form client's text stays text in `validated()`.
-- **A unique list refuses two equal numbers it used to accept:** `[1, 1.0]`, `[10, 1e1]` and `[0, -0.0]` in JSON, `1`
-  and `+1` or `1` and `1.0` in a form.
-- **A unique list of numbers is not exact at float precision (2^53).** PHP compares an integer with a float, or two
-  decimal strings, as two floats, so `9007199254740993` and `9007199254740992.0` in JSON, or `0.1` and
-  `0.10000000000000000001` in a form, count as one. The guide states it, a test pins it, and the generated file carries
-  no finding, since nothing in the contract names the case.
 - **Earlier records keep their examples.** ADRs [0003](./0003-validate-each-value-of-a-map.md) and
   [0014](./0014-judge-undeclared-keys-by-name.md) show a map value as `integer:strict`,
   [ADR 0006](./0006-hold-rules-to-the-contract.md) lists the integral float among the gaps, and
