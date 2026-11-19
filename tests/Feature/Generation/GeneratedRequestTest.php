@@ -3073,7 +3073,9 @@ it('names a missing required key once when a sibling was sent', function (array 
 ]);
 
 // The `{}` is refused only when Laravel reads the request as JSON, which is a `Content-Type` holding `/json` or `+json`.
-// Any other type, or none, leaves the content undecoded, so the request reads an absent body and passes.
+// Any other type, or none, reads an absent body and passes: no declared key arrives. A form type is no exception to
+// that, although PHP would decode a form `{}` as a field named `{}`: `Request::create()` does not parse the content, so
+// that row passes for the same reason and the field is never built.
 it('reads an empty object sent as another type as an absent optional body', function (?string $contentType, int $status): void {
     $class = emittedRequestClass(postWithOptionalJsonRequiring(['a', 'b'], ['a']));
 

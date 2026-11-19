@@ -145,8 +145,9 @@ tags: [versions, conventions, planning]
   sent `a[evil]=1` to such a body and got a `200` now gets a `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   The shared key itself is still not checked, as the generated file says: `a[c]=abc` and `a[c][evil]=1` pass, and
-  `validated()` now carries what was sent there under `a`, where it carried nothing. This is a breaking change: drop the
-  key, or declare it.
+  `validated()` now carries what was sent there under `a`, where it carried nothing. A body that also declares `a`
+  itself is not closed yet: it still accepts `a[evil]=1` ([#206](https://github.com/Gcob/lara-spec-first/issues/206)).
+  This is a breaking change: drop the key, or declare it.
 - **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it
   used to accept it.** The body is closed to its declared names, but the level `page` is delivered at was left open for
   the value of `page` itself, so `page[evil]=1` and `page[size]=3&page[evil]=1` were accepted (the second kept only
