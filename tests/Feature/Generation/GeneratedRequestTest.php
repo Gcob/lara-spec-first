@@ -2333,6 +2333,32 @@ it('loads the class of a closed form body that declares a key with an apostrophe
         ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['evil' => '1']])[0])->toBe(422);
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
+// PHP drops what follows a closing bracket, so `a[c]` and `a[c]x` both arrive as `a.c`: the pair builds (the DTO names
+// differ) and a form delivers it under one key. A closed body closes the level above (`a` takes only `c`), but the shared
+// key has no rule, so what arrives under it is not checked, and `validated()` keeps it. An open body checks nothing.
+// Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
+it('closes the level above two names a form delivers under one key, and checks nothing below it', function (
+    bool $closed,
+    array $parameters,
+    int $status,
+    array $answer,
+): void {
+    $class = emittedRequestClass(postWithBracketedNames('application/x-www-form-urlencoded', ['a[c]', 'a[c]x'], $closed));
+
+    [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: $parameters);
+
+    expect($answered)->toBe($status)
+        ->and($status === 422 ? array_keys($body['errors']) : $body)->toBe($answer);
+})->with([
+    'an undeclared key beside them' => [true, ['a' => ['evil' => '1']], 422, ['a']],
+    'the shared key, not a number' => [true, ['a' => ['c' => 'abc']], 200, ['a' => ['c' => 'abc']]],
+    // TODO (#206): this value is never checked, so it should not reach `validated()`: flip the answer to `[]` when it stops.
+    'an array under the shared key' => [true, ['a' => ['c' => ['evil' => '1']]], 200, ['a' => ['c' => ['evil' => '1']]]],
+    'the shared key, a number' => [true, ['a' => ['c' => '5']], 200, ['a' => ['c' => '5']]],
+    'open: an undeclared key' => [false, ['a' => ['evil' => '1']], 200, []],
+    'open: the shared key' => [false, ['a' => ['c' => 'abc']], 200, []],
+]);
+
 // A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a
 // rule there, but the array a form builds for them still stands in for `page`. The contract wants a `page` the form
 // never sent (a stated gap, as for every required name a form nests other names under), so `validated()` has no `page`

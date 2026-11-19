@@ -268,7 +268,8 @@ under is one the contract declares, the closed body says nothing more about it. 
 the levels above it like any other: `filter[a]`, `filter[a][b]` and `filter[c]` give
 `'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and `filter[a]` closes `filter.a` in its own
 array branch (`['array:b']`), so `filter[a][evil]=1` is refused too. Two names a form delivers under one bracketed key
-(`a.b[c]` beside `a_b[c]`, both `a_b.c`) close `a_b` to `c`.
+(`a[c]` beside `a[c]x`, both `a.c`, since PHP drops what follows a closing bracket) close `a` to `c`; the shared key has
+no rule, so what arrives under it is not checked, and a closed body's `validated()` carries it.
 
 **A name a form body declares beside the names a form nests under it is judged by shape, as a query name is.** `page`
 beside `page[size]`, `filter[a]` beside `filter[a][b]`, at any depth, and `ids` beside `ids[]`, which a form reads as
@@ -288,12 +289,12 @@ under:
 
 `page=abc` and `page[size]=abc` answer 422, `page=2` and `page[size]=3` pass, and no finding is written: both names have
 their rules. The array branch is `['array']` when a name below has a rule, and `['exclude']` when none has (`page`
-beside `page[*]` in an open body, or `a_b` beside `a.b[c]` and `a_b[c]`, which collide), so Laravel does not keep an
-array nobody checked in `validated()`. **In a closed body the array branch holds the keys the contract declares below
-the name:** `page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and `page[size]=3&page[evil]=1` answer
-422, as the contract refuses them, while `page=2` and `page[size]=3` still pass. A branch that drops the array holds the
-keys too, in front of the `exclude` (`['array:b', 'exclude']` for `filter[a]` beside an object `filter[a][b]` that has a
-name below it, so both are withheld), so `filter[a][evil]=1` is refused there too, where that level stayed open. A key
+beside `page[*]` in an open body, or `a` beside `a[c]` and `a[c]x`, which collide), so Laravel does not keep an array
+nobody checked in `validated()`. **In a closed body the array branch holds the keys the contract declares below the
+name:** `page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and `page[size]=3&page[evil]=1` answer 422,
+as the contract refuses them, while `page=2` and `page[size]=3` still pass. A branch that drops the array holds the keys
+too, in front of the `exclude` (`['array:b', 'exclude']` for `filter[a]` beside an object `filter[a][b]` that has a name
+below it, so both are withheld), so `filter[a][evil]=1` is refused there too, where that level stayed open. A key
 `array:` cannot name keeps `['array']`, and the generated file says the key check accepts it: a comma in a key, and the
 key of a `*` name (`page[*]` beside `page[size]`), which Laravel hides behind a placeholder, so `array:size,*` would
 refuse the `page[*]=5` the contract declares. That level accepts `page[evil]=1` too. A comparison is step by step, so
