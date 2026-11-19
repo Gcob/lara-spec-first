@@ -6,6 +6,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Validation\MultipleOf;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Gcob\LaraSpecFirst\Validation\WholeNumber;
 
@@ -21,7 +22,7 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
 final class RuleWalk
 {
     /**
-     * @var array<string, list<string|InRule|NullOrAbsent|WholeNumber>>
+     * @var array<string, list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>>
      */
     public array $rules = [];
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Validation\MultipleOf;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Gcob\LaraSpecFirst\Validation\WholeNumber;
 
@@ -21,10 +22,11 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
 final readonly class RuleSet
 {
     /**
-     * @param  array<string, list<string|InRule|NullOrAbsent|WholeNumber>>  $rules  one entry per rule key, in the order
-     *                                                                              the document writes the fields: the
-     *                                                                              body's first, then the query
-     *                                                                              parameters
+     * @param  array<string, list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>>  $rules  one entry per rule key,
+     *                                                                                         in the order the document
+     *                                                                                         writes the fields: the
+     *                                                                                         body's first, then the
+     *                                                                                         query parameters
      * @param  list<string>  $findings  what the build read and did not act on, one line each
      * @param  list<string>|null  $closedKeys  the body's top-level property names when its schema forbids any other,
      *                                         and null when it does not. A root has no field for `array:` to sit on, so
@@ -204,6 +206,22 @@ final readonly class RuleSet
         foreach ($this->rules as $rules) {
             foreach ($rules as $rule) {
                 if ($rule instanceof WholeNumber) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether any rule is the package's own "multiple of", which is what decides whether the emitted file imports it.
+     */
+    public function usesMultipleOf(): bool
+    {
+        foreach ($this->rules as $rules) {
+            foreach ($rules as $rule) {
+                if ($rule instanceof MultipleOf) {
                     return true;
                 }
             }

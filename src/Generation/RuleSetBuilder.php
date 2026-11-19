@@ -11,6 +11,7 @@ use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
+use Gcob\LaraSpecFirst\Validation\MultipleOf;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Gcob\LaraSpecFirst\Validation\WholeNumber;
 
@@ -2261,7 +2262,7 @@ final readonly class RuleSetBuilder
      * **`maxLength` is bytes and `max` is kilobytes, and the ceiling is exact.** Laravel's `max` takes a decimal, so
      * 2500 bytes is `max:2.44140625`.
      *
-     * @param  list<string|InRule|NullOrAbsent|WholeNumber>  $rules
+     * @param  list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>  $rules
      * @param  list<string>  $handled
      * @param  string|null  $contentType  the `encoding` the document wrote for this part, as written
      *
@@ -2475,7 +2476,7 @@ final readonly class RuleSetBuilder
     /**
      * What a string's own keywords become.
      *
-     * @param  list<string|InRule|NullOrAbsent|WholeNumber>  $rules
+     * @param  list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>  $rules
      * @param  list<string>  $handled
      */
     private static function stringRules(Schema $schema, string $label, array &$rules, array &$handled, RuleWalk $walk): void
@@ -2525,9 +2526,10 @@ final readonly class RuleSetBuilder
      * What an integer's or a number's own keywords become.
      *
      * Beside `integer` or `numeric`, `min` and `max` compare the value, and `gt` and `lt` take a number as readily as a
-     * field name.
+     * field name. `multipleOf` is the package's `MultipleOf` on every field, since Laravel's `multiple_of` throws on a
+     * number PHP cannot hold: a JSON `1e400`, read as `INF`, and a text exponent of 2^63 - 1 or more.
      *
-     * @param  list<string|InRule|NullOrAbsent|WholeNumber>  $rules
+     * @param  list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>  $rules
      * @param  list<string>  $handled
      */
     private static function numberRules(Schema $schema, array &$rules, array &$handled): void
@@ -2557,12 +2559,16 @@ final readonly class RuleSetBuilder
         self::bound($maximum, 'max', $rules);
         self::bound($schema->exclusiveMinimum, 'gt', $rules);
         self::bound($schema->exclusiveMaximum, 'lt', $rules);
-        self::bound($schema->multipleOf, 'multiple_of', $rules);
+
+        if ($schema->multipleOf !== null) {
+            $rules[] = new MultipleOf(self::number($schema->multipleOf));
+        }
+
         array_push($handled, 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf');
     }
 
     /**
-     * @param  list<string|InRule|NullOrAbsent|WholeNumber>  $rules
+     * @param  list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>  $rules
      */
     private static function bound(int|float|null $value, string $rule, array &$rules): void
     {

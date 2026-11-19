@@ -971,6 +971,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0017-return-the-response-dto-from-routeaction.md`](../project/decisions/0017-return-the-response-dto-from-routeaction.md)
     - [`0018-test-the-declared-laravel-floor.md`](../project/decisions/0018-test-the-declared-laravel-floor.md)
     - [`0019-judge-a-json-integer-by-its-value.md`](../project/decisions/0019-judge-a-json-integer-by-its-value.md)
+    - [`0020-check-multipleof-through-the-package.md`](../project/decisions/0020-check-multipleof-through-the-package.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

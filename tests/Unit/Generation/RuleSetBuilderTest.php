@@ -16,6 +16,7 @@ use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
+use Gcob\LaraSpecFirst\Validation\MultipleOf;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Gcob\LaraSpecFirst\Validation\WholeNumber;
 
@@ -74,7 +75,7 @@ function operationWithInput(
  *
  * @param  array<string, Schema>  $properties
  * @param  list<string>  $required
- * @return array<string, list<string|InRule|NullOrAbsent|WholeNumber>>
+ * @return array<string, list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>>
  */
 function rulesFor(array $properties, array $required = [], string $method = 'post'): array
 {
@@ -168,8 +169,91 @@ it('keeps a rule named numeric beside the whole number, whatever bounds the inte
         'n' => new Schema(types: [SchemaType::Integer], minimum: 5.0, maximum: 100.0, multipleOf: 5.0),
     ])]));
 
-    expect($set->rules['n'])->toEqual(['sometimes', new WholeNumber, 'numeric', 'min:5', 'max:100', 'multiple_of:5'])
-        ->and($set->usesWholeNumber())->toBeTrue();
+    expect($set->rules['n'])->toEqual(['sometimes', new WholeNumber, 'numeric', 'min:5', 'max:100', new MultipleOf('5')])
+        ->and($set->usesWholeNumber())->toBeTrue()
+        ->and($set->usesMultipleOf())->toBeTrue();
+});
+
+// Laravel's `multiple_of` throws on a number PHP cannot hold, in a body and in the query alike (a JSON `1e400` is read
+// as `INF`, and a text exponent past 64 bits cannot be read), so no field keeps it: every `multipleOf` is the package's
+// `MultipleOf`, whatever the media type, the type, the level and the input.
+it('writes the package rule for multipleOf on every field', function (array $mediaTypes, SchemaType $type, string $where): void {
+    $field = new Schema(types: [$type], multipleOf: 2.0);
+    [$body, $key] = [
+        'a top-level field' => [objectSchema(['field' => $field]), 'field'],
+        'a nested field' => [objectSchema(['a' => objectSchema(['b' => $field])]), 'a.b'],
+        'a list element' => [objectSchema(['xs' => new Schema(types: [SchemaType::Array], items: $field)]), 'xs.*'],
+        'a map value' => [objectSchema(['meta' => new Schema(types: [SchemaType::Object], properties: ['id' => $field], additionalPropertiesSchema: $field)]), 'meta.*'],
+    ][$where];
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($mediaTypes, $body)));
+
+    expect($set->rules[$key])->toContainEqual(new MultipleOf('2'))
+        ->and(array_filter($set->rules[$key], static fn (mixed $rule): bool => is_string($rule) && str_starts_with($rule, 'multiple_of')))->toBe([])
+        ->and($set->usesMultipleOf())->toBeTrue();
+})->with([
+    'JSON' => [['application/json']],
+    'JSON and a form' => [['application/json', 'application/x-www-form-urlencoded']],
+    'JSON and multipart' => [['application/json', 'multipart/form-data']],
+    'a form' => [['application/x-www-form-urlencoded']],
+    'multipart' => [['multipart/form-data']],
+])->with([
+    'an integer' => [SchemaType::Integer],
+    'a number' => [SchemaType::Number],
+])->with(['a top-level field', 'a nested field', 'a list element', 'a map value']);
+
+it('writes the package rule for multipleOf on a query parameter', function (SchemaType $type): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('limit', new Schema(types: [$type], multipleOf: 2.0))],
+    ));
+
+    expect($set->rules['limit'])->toEqual(['sometimes', $type === SchemaType::Integer ? 'integer' : 'numeric', new MultipleOf('2')])
+        ->and($set->usesMultipleOf())->toBeTrue();
+})->with(['an integer' => [SchemaType::Integer], 'a number' => [SchemaType::Number]]);
+
+// A form name beside the names PHP nests under it is judged behind a shape check, and its rule list is the same list.
+it('writes the package rule for multipleOf on a form name judged by shape', function (string $mediaType): void {
+    $integer = new Schema(types: [SchemaType::Integer], multipleOf: 2.0);
+    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(['page' => $integer, 'page[size]' => $integer])]));
+
+    expect($set->whenNotArray)->toHaveKey('page')
+        ->and($set->rules['page'])->toContainEqual(new MultipleOf('2'))
+        ->and($set->rules['page.size'])->toContainEqual(new MultipleOf('2'))
+        ->and($set->usesMultipleOf())->toBeTrue();
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
+
+// The divisor is the text `multiple_of:` held: a whole float without its `.0`, a fraction as PHP prints it.
+it('gives the package rule the divisor multiple_of had', function (float $divisor, string $text): void {
+    $field = new Schema(types: [SchemaType::Number], multipleOf: $divisor);
+    $body = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]));
+    $query = RuleSetBuilder::for(operationWithInput(method: 'get', query: [new QueryParameter('field', $field)]));
+
+    expect($body->rules['field'])->toEqual(['sometimes', 'numeric:strict', new MultipleOf($text)])
+        ->and($query->rules['field'])->toEqual(['sometimes', 'numeric', new MultipleOf($text)]);
+})->with([
+    'a whole float' => [5.0, '5'],
+    'a quarter' => [0.25, '0.25'],
+    'a tenth' => [0.1, '0.1'],
+    'a hundred quintillion' => [1e20, '1.0E+20'],
+    'a tiny fraction' => [1.5e-7, '1.5E-7'],
+]);
+
+// Refusing a number PHP cannot hold is a stated limit, with no finding in the generated file: the field is judged and
+// nothing more is left unenforced than for a field without `multipleOf`.
+it('says nothing new about multipleOf', function (): void {
+    $plain = new Schema(types: [SchemaType::Number]);
+    $multiple = new Schema(types: [SchemaType::Number], multipleOf: 2.0);
+    $bodyOf = static fn (Schema $field): RuleSet => RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['field' => $field]), 'application/x-www-form-urlencoded' => objectSchema(['field' => $field])],
+        query: [new QueryParameter('q', $field)],
+    ));
+    $without = $bodyOf($plain);
+    $with = $bodyOf($multiple);
+
+    expect($with->findings)->toBe($without->findings)
+        ->and($with->stricter)->toBe($without->stricter)
+        ->and($with->information)->toBe($without->information)
+        ->and($with->leavesUnenforced())->toBe($without->leavesUnenforced());
 });
 
 // A body that is JSON and a form judges an integer by its exact value, as a JSON-only body does, and passes the text a
@@ -936,7 +1020,7 @@ it('reports a media type it does not read rather than refusing it', function ():
 /**
  * The rules one field gets, alone in an otherwise empty object body.
  *
- * @return list<string|InRule|NullOrAbsent|WholeNumber>
+ * @return list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>
  */
 function fieldRules(Schema $field): array
 {
@@ -965,7 +1049,7 @@ it('maps each constraint to the Laravel rule that means the same thing', functio
     ],
     'multipleOf' => [
         new Schema(types: [SchemaType::Number], multipleOf: 0.25),
-        ['sometimes', 'numeric:strict', 'multiple_of:0.25'],
+        ['sometimes', 'numeric:strict', new MultipleOf('0.25')],
     ],
     'format: date' => [
         new Schema(types: [SchemaType::String], format: 'date'),
@@ -2096,7 +2180,7 @@ it('reports a body whose own schema is not an object', function (): void {
  * The rules and findings of one multipart property.
  *
  * @param  array<int, string>  $mediaTypes
- * @return array{0: array<string, list<string|InRule|NullOrAbsent|WholeNumber>>, 1: string}
+ * @return array{0: array<string, list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>>, 1: string}
  */
 function filePartRules(Schema $part, bool $required = true, array $mediaTypes = ['multipart/form-data'], string $method = 'post'): array
 {
