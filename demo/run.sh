@@ -187,6 +187,9 @@ INSTALLED="$(composer show gcob/lara-spec-first --format=json --no-interaction |
 printf '  ...   installed gcob/lara-spec-first %s%s\n' "$INSTALLED" \
     "${BRANCH:+ (commit $(git -C "$ROOT" rev-parse --short "refs/heads/$BRANCH"))}"
 
+# This checks how the demo installs a branch (the archive, not a clone), not which
+# files `.gitattributes` marks: `vendor/` comes from the same archive it compares.
+#
 # What a tag's zip leaves out is decided by git, from the branch's own
 # `.gitattributes`: the files in the branch's tree that `git archive` does not
 # write. None of them may be in `vendor/`. An empty list fails too, because the

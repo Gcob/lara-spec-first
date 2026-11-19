@@ -12,10 +12,10 @@ just demo 0.3 release/0.3.0        # a minor not released yet: name the local br
 ```
 
 `just demo` is the way to run it on your machine: it needs only Docker with Compose and `just`. It builds the
-development image once (PHP 8.3, Composer and [Hurl](https://hurl.dev/), at the version CI installs) and runs
-`composer demo` in it. A run prints the PHP and Hurl versions it found. It works from a linked git worktree as well as
-from a plain clone. Composer prints a note that it could not detect the root package version and defaults to `1.0.0`: it
-is expected and harmless.
+development image (PHP 8.3, Composer and [Hurl](https://hurl.dev/), at the version CI installs), rebuilding it when the
+Dockerfile changed, and runs `composer demo` in it. A run prints the PHP and Hurl versions it found. It works from a
+linked git worktree as well as from a plain clone. Composer prints a note that it could not detect the root package
+version and defaults to `1.0.0`: it is expected and harmless.
 
 It creates a Laravel app in a temporary directory, requires the package, builds the contract, scaffolds every
 controller, serves the app, and runs the Hurl scenarios against it. Nothing is left behind. It exits `0` when everything
@@ -31,6 +31,7 @@ A branch is installed from an archive of the branch made with `git archive`, whi
 (`export-ignore` in `.gitattributes`), so only committed work is tested and the package is what a release ships. A
 branch run then checks it: it prints `installed gcob/lara-spec-first dev-<branch> (commit <short>)`, and a
 `vendor/ holds none of the N files a tag leaves out` line, which fails the run if any of those files reached `vendor/`.
+It checks how the demo installs a branch, not which files `.gitattributes` marks.
 
 ## One folder per minor
 

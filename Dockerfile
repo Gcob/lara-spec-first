@@ -13,6 +13,9 @@ ARG PHP_VERSION=8.3
 # Hurl runs the demo scenarios (`demo/run.sh`). The version is the one CI installs
 # (.github/workflows/demo.yml), and a test keeps the two equal. The image is pinned
 # by its digest (the index, so both architectures): Docker verifies what it pulls.
+# To move to another Hurl, change `HURL_VERSION` here and in demo.yml (with its
+# `HURL_DEB_SHA256`), and take the new tag's index digest from
+# `docker buildx imagetools inspect ghcr.io/orange-opensource/hurl:<version>`.
 ARG HURL_VERSION=8.1.0
 ARG HURL_IMAGE_DIGEST=sha256:f8aed33658ba793ed53c5a5b2e57cadd9ec9322c8b56c550652c1f4cbaa241c5
 FROM ghcr.io/orange-opensource/hurl:${HURL_VERSION}@${HURL_IMAGE_DIGEST} AS hurl
@@ -38,6 +41,9 @@ RUN apk add --no-cache --virtual .build-deps ${PHPIZE_DEPS} \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# The binary was built on the Hurl image's Alpine, not on this one. If a newer PHP
+# base changes a library it links against, the `RUN hurl --version` below is what
+# fails the build.
 COPY --from=hurl /usr/bin/hurl /usr/local/bin/hurl
 # Docker ignores the tag when a digest is given, so this line is what proves the
 # copied binary is the version named above. It also fails if the binary cannot run.

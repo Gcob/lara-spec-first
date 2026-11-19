@@ -16,6 +16,10 @@
 # git's own, because Composer clears git's two variables from the environment of
 # every script it runs. demo/run.sh turns them back into git's variables.
 #
+# It passes `--build`, so an image built before the Dockerfile changed (one with
+# no bash and no Hurl) is rebuilt instead of failing with exit 127; the layer
+# cache makes it a no-op when nothing changed.
+#
 # It runs `docker compose run` itself, as format-markdown.sh runs `docker run`, so
 # the `demo` recipe stays a one-line wrapper. The user is set here rather than read
 # from the justfile's exported UID, so the script also works run by hand.
@@ -36,4 +40,4 @@ else
     set -- php composer demo -- "$@"
 fi
 
-exec docker compose run --rm --user "$(id -u):$(id -g)" "$@"
+exec docker compose run --build --rm --user "$(id -u):$(id -g)" "$@"
