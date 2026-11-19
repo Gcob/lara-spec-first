@@ -73,8 +73,9 @@ it runs: nothing is served from the install and the CI runner is discarded.
 
 **A unit test pins the files to one floor.** `SupportFloorTest` reads `composer.json` and `.github/workflows/tests.yml`
 and fails, naming the file to fix, when routing and support declare different ranges, when a test cell installs a floor
-the range does not declare, or when a declared floor has no lowest leg. It skips in CI, where each job pins one Laravel
-in `composer.json` first and the test would read that pin, and the guard covers that case.
+the range does not declare, or when a declared floor has no lowest leg. It skips in the jobs that pin one Laravel in
+`composer.json` first, where the test would read that pin, and runs in CI's `static` job
+(`composer test -- --filter=SupportFloor`), which installs unpinned and so sees the declared range.
 
 ## Alternatives turned down
 
@@ -102,9 +103,13 @@ in `composer.json` first and the test would read that pin, and the guard covers 
   the package, which is a reason to upgrade Laravel and not a limit of this package. The package's own check turns
   blocking off for itself only.
 - **The Laravel 13 floor is tested in CI only.** Locally, `composer check:lowest` goes to the lowest of the whole range,
-  which is Laravel 12, and reproducing the 13 leg needs the 13 constraint pinned and PHP 8.3, as
+  which is Laravel 12, and reproducing the 13 leg needs the 13 constraint pinned, as
   [CONTRIBUTING](../../../CONTRIBUTING.md#your-code-runs-on-12-and-13) says.
-- **The test of the floor does not run where each job pins one Laravel.** A pinned floor that drifts is still red in CI,
-  through the guard, which reads what Composer installed.
+- **`composer check:lowest` needs PHP 8.3, for either floor.** On PHP 8.4 and newer, Pest 5 and PHPUnit 13 keep Composer
+  on Laravel 13.35, above both floors, and the guard stops the run. CI runs PHP 8.3, and the guard's message names the
+  PHP version as the likely cause.
+- **The test of the floor runs in the `static` job only.** The jobs that pin one Laravel skip it. A test cell that
+  drifts from `composer.json`, a declared alternative with no leg, and routing and support ranges that differ are red
+  there, and a drifted `lowest` leg is also red through the guard, which reads what Composer installed.
 - **Earlier records keep their numbers.** ADR 0007's 12.22 and ADR 0016's "CI tests Laravel 12 from 12.55" are dated
   records: the second one is true again, and neither is superseded whole.

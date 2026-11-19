@@ -11,8 +11,9 @@ use Symfony\Component\Yaml\Yaml;
 //
 // A CI job narrows composer.json to one Laravel before it runs the suite (the
 // pin step of tests.yml, which sets LSF_LARAVEL_PINNED), so there the declared
-// range is no longer readable and these tests skip. The lowest job's guard
-// covers that side: a leg whose pin names a floor Composer cannot install is red.
+// range is no longer readable and these tests skip. The static job installs
+// unpinned and runs them (`composer test -- --filter=SupportFloor`); the lowest
+// job's guard also turns a leg whose pin names a floor Composer cannot install red.
 
 function composerIsPinned(): bool
 {

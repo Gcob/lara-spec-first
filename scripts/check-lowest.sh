@@ -90,6 +90,9 @@ if [ -z "$floor" ] || [ "$installed" != "$floor" ]; then
     echo "" >&2
     echo "The Laravel floor in composer.json is '$floor', but the lowest install got '$installed'. Nothing was verified." >&2
     echo "Either composer.json declares a floor nothing can install, or a dependency now needs a newer Laravel." >&2
+    if [ -n "$floor" ] && [ -n "$installed" ] && php -r 'exit(version_compare($argv[1], $argv[2], ">") ? 0 : 1);' "$installed" "$floor"; then
+        echo "Check your PHP version first: on PHP 8.4 and newer, Pest 5 and PHPUnit 13 keep Composer on a newer Laravel than the floor. CI runs PHP 8.3." >&2
+    fi
     restore || echo "Restore also failed. Run 'composer update' before continuing." >&2
     exit 1
 fi

@@ -192,6 +192,10 @@ jobs:
 
             - run: composer analyse
 
+            # The only job that runs SupportFloorTest: it installs unpinned, so composer.json still declares the
+            # whole Laravel range, which every job above narrows to one Laravel before its tests run.
+            - run: composer test -- --filter=SupportFloor
+
     # Every deferred-work marker names a card and every card it names is open,
     # and every open card carrying the `decision` label is named by a marker. The
     # second direction is the one that catches a card outliving the answer already

@@ -209,11 +209,15 @@ script turns Composer's security blocking off for that one install, for the whol
 it back on. This is for CI and for this check only: nothing is served from that install, and an application should
 upgrade Laravel rather than do the same.
 
-A bare `composer check:lowest` goes to the lowest of the whole range, which is always Laravel 12. CI runs one leg per
-Laravel major, and each leg pins its major first (`composer require --no-update` on `illuminate/routing` and
+Run it on **PHP 8.3**, the version CI uses, for either floor. On PHP 8.4 and newer, Pest 5 and PHPUnit 13 keep Composer
+on a newer Laravel than the floor (13.35 where 12.55 was asked), and the script stops on its comparison: its message
+names the PHP version as the likely cause.
+
+A bare `composer check:lowest` goes to the lowest of the whole range, which is Laravel 12. CI runs one leg per Laravel
+major, and each leg pins its major first (`composer require --no-update` on `illuminate/routing` and
 `illuminate/support`). The Laravel 13 floor is therefore tested in CI only. To reproduce it locally, pin the 13
-constraint in `composer.json` and run the script on **PHP 8.3** (on 8.4 and newer, Pest 5 and PHPUnit 13 keep Composer
-on Laravel 13.35 and the script stops on its comparison):
+constraint in `composer.json` and run the script the same way. With PHP 8.3 first on your `PATH` (the path depends on
+how you installed it; this one is Homebrew on macOS):
 
 ```bash
 PATH=/opt/homebrew/opt/php@8.3/bin:$PATH composer check:lowest
@@ -304,10 +308,10 @@ A later commit that only reformats goes in the same file.
 ### What CI runs on your pull request
 
 `.github/workflows/tests.yml` runs those same three commands on GitHub, across PHP 8.3 / 8.4 / 8.5 x Laravel 12 / 13,
-plus the lowest-supported-dependency run that `composer check:lowest` performs locally (one leg per Laravel major, each
-at its floor), and the marker check described [above](#deferred-work-leaves-a-marker), which runs with `--online` there
-and so also fails on a marker whose card has closed. Every job reports on its own, so a failure names the cell it
-belongs to.
+plus a lowest-supported-dependency run, which is the work `composer check:lowest` does locally but with one leg per
+Laravel major, each at its floor, and the marker check described [above](#deferred-work-leaves-a-marker), which runs
+with `--online` there and so also fails on a marker whose card has closed. Every job reports on its own, so a failure
+names the cell it belongs to.
 
 They then feed one `All checks passed` job, which is the job **meant to be marked required** on `main`. Whether it
 actually blocks a merge is a repository setting rather than anything the workflow decides: until a maintainer requires

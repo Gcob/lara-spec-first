@@ -363,11 +363,12 @@ tags: [versions, conventions, planning]
 - **Laravel 12.55 is the new floor, and CI installs each floor exactly.** `illuminate/routing` and `illuminate/support`
   need `^12.55 || ^13.0`, where they were `^12.22 || ^13.0`. 12.22 was never tested: the test harness cannot install a
   Laravel 12 older than 12.55, and no generated rule needs anything older. CI's lowest-dependencies run now has one leg
-  per Laravel major, installs Laravel 12.55.0 and 13.0.0, and fails when it gets any other version. Composer 2.9 and
-  newer refuses, by default, a Laravel with a known security advisory, which today means anything below 12.71 or from
-  13.0 to 13.39: that is a reason to upgrade Laravel, not a limit of this package, and the package's own check turns
-  Composer's security blocking off for that install only. This is a breaking change: an application on Laravel 12.22 to
-  12.54 cannot install this version, so upgrade Laravel first. The reasoning is in
+  per Laravel major, installs Laravel 12.55.0 and 13.0.0, and fails when it gets any other version, and a unit test in
+  CI's `static` job fails when `composer.json` and the workflow disagree on a floor. Composer 2.9 and newer refuses, by
+  default, a Laravel with a known security advisory, which today means anything below 12.71 or from 13.0 to 13.39: that
+  is a reason to upgrade Laravel, not a limit of this package, and the package's own check turns Composer's security
+  blocking off for that install only. This is a breaking change: an application on Laravel 12.22 to 12.54 cannot install
+  this version, so upgrade Laravel first. The reasoning is in
   [ADR 0018](./docs/project/decisions/0018-test-the-declared-laravel-floor.md), and this ships
   [#188](https://github.com/Gcob/lara-spec-first/issues/188).
 
