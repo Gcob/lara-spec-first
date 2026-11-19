@@ -55,13 +55,13 @@ are the same string.
 4. **The judgment steps are done by hand on that branch.** They are listed in
    [the section after](#the-judgment-steps-stay-by-hand).
 5. **The docs build.** `just docs-build` passes, and it fails on a dead link.
-6. **The demo passes.** `demo/run.sh <minor> <branch>` on the release branch, which builds a fresh Laravel app, runs the
-   minor's contract through `spec:build`, `spec:make` and `spec:doctor`, and runs its Hurl scenarios against the served
-   app. The minor's folder is already on `main`: its own card built it before the release, as a copy of the previous
-   folder, then that minor's features and corrections, its README in the words of the day, and the newest Laravel
-   skeleton pinned. The release card's `Ready when` names that card. At release time, this step only runs the demo. Once
-   the minor is released, its folder is frozen, and a patch runs its minor's folder. Links into `demo/` are absolute
-   GitHub URLs, since the folder sits outside the documentation site.
+6. **The demo passes.** `just demo <minor> <branch>` on the release branch (CI runs `demo/run.sh` natively), which
+   builds a fresh Laravel app, runs the minor's contract through `spec:build`, `spec:make` and `spec:doctor`, and runs
+   its Hurl scenarios against the served app. The minor's folder is already on `main`: its own card built it before the
+   release, as a copy of the previous folder, then that minor's features and corrections, its README in the words of the
+   day, and the newest Laravel skeleton pinned. The release card's `Ready when` names that card. At release time, this
+   step only runs the demo. Once the minor is released, its folder is frozen, and a patch runs its minor's folder. Links
+   into `demo/` are absolute GitHub URLs, since the folder sits outside the documentation site.
 7. **The release pull request is reviewed and merged.** `pr-reviewer` reads it first and `blind-reviewer` second, and it
    merges under the factory's guardrails with CI green. The factory then puts the command of
    [the tag step](#the-tag-is-the-maintainers) in the release plan, as an action for the maintainer.

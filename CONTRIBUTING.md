@@ -238,6 +238,21 @@ Two habits that prevent most of these:
 - **Check the version a symbol landed in** before using it. Laravel's release notes list what each major added. If a
   feature is 13-only, either use the form that works on both, or guard it.
 
+## The demo
+
+`demo/` holds a small events API built in a fresh Laravel app from an OpenAPI contract, one folder per minor release. It
+is the last check before a release, and a way to see the package work end to end.
+
+```bash
+just demo 0.2                  # the 0.2 demo, against 0.2.* from Packagist
+just demo 0.3 my-branch        # a branch of this checkout, installed as a release would ship
+```
+
+Through `just` it runs in the same container as the other recipes, with Hurl included, so it needs only Docker and
+`just`. It checks that the package installs, that `spec:build`, `spec:make` and `spec:doctor` run, and that the app
+answers its Hurl scenarios. [`demo/README.md`](https://github.com/Gcob/lara-spec-first/blob/main/demo/README.md) says
+what each part does and how CI runs it.
+
 ## Before you open a pull request
 
 Run the full check suite:

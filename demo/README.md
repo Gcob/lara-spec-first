@@ -7,20 +7,30 @@ of what the package does and the last check before a release: if the demo breaks
 ## Run it
 
 ```bash
-demo/run.sh 0.2                    # the 0.2 demo, against 0.2.* from Packagist
-demo/run.sh 0.3 release/0.3.0      # a minor not released yet: name the local branch to test
+just demo 0.2                      # the 0.2 demo, against 0.2.* from Packagist
+just demo 0.3 release/0.3.0        # a minor not released yet: name the local branch to test
 ```
+
+`just demo` is the way to run it on your machine: it needs only Docker with Compose and `just`. It builds the
+development image once (PHP 8.3, Composer and [Hurl](https://hurl.dev/), at the version CI installs) and runs
+`composer demo` in it. A run prints the PHP and Hurl versions it found. It works from a linked git worktree as well as
+from a plain clone. Composer prints a note that it could not detect the root package version and defaults to `1.0.0`: it
+is expected and harmless.
 
 It creates a Laravel app in a temporary directory, requires the package, builds the contract, scaffolds every
 controller, serves the app, and runs the Hurl scenarios against it. Nothing is left behind. It exits `0` when everything
 passes, `1` when a check failed, and `2` when it could not get as far as checking.
 
-It needs `php`, `composer`, `curl`, `git` and [Hurl](https://hurl.dev/docs/installation.html) (`brew install hurl` on
-macOS) on the `PATH`, with PHP's `pdo_sqlite` extension, and the network for Packagist. The workflow in
-`.github/workflows/demo.yml` installs Hurl in CI, and runs every folder when `demo/`, `src/`, `config/` or
-`composer.json` changes, and every Monday.
+CI does not use the container. The workflow in `.github/workflows/demo.yml` installs Hurl, runs `demo/run.sh` natively
+on every folder when `demo/`, `src/`, `config/` or `composer.json` changes, and runs it every Monday. To do the same on
+your machine, `demo/run.sh 0.2` (or `demo/run.sh 0.3 release/0.3.0`) needs `php`, `composer`, `curl`, `git`, `tar` and
+Hurl (`brew install hurl` on macOS, or [another way](https://hurl.dev/docs/installation.html)) on the `PATH`, with PHP's
+`pdo_sqlite` extension, and the network for Packagist.
 
-A branch comes from a Composer `vcs` repository on this checkout, so only committed work is tested.
+A branch is installed from an archive of the branch made with `git archive`, which leaves out what a tag leaves out
+(`export-ignore` in `.gitattributes`), so only committed work is tested and the package is what a release ships. A
+branch run then checks it: it prints `installed gcob/lara-spec-first dev-<branch> (commit <short>)`, and a
+`vendor/ holds none of the N files a tag leaves out` line, which fails the run if any of those files reached `vendor/`.
 
 ## One folder per minor
 
