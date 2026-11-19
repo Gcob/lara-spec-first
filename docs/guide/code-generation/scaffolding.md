@@ -46,6 +46,28 @@ the class [`x-controller`](../controllers.md#the-contract-decides-what-is-custom
 operation's generated parent, in [the file PSR-4 says it belongs in](#where-your-classes-go), and then it runs the
 build, because [the `extends` has nothing to reach until it does](../controllers.md#specmake-is-the-only-way-in).
 
+**What it writes carries the parent's signature, return type included.** `spec:make showUser` on an operation whose
+`200` is a `User` writes `routeAction(string $id): UserDto` with `use` lines for the classes it names, and a
+`@return list<UserDto>` above it where the type is an `array`. The return type is read from the plan the command already
+makes of the build, and never worked out again, because PHP refuses a child that declares anything the parent does not
+allow:
+
+```php
+use App\Http\Generated\Data\UserDto;
+
+class ShowUserController extends \App\Http\Generated\Controllers\ShowUserController
+{
+    public function routeAction(string $id): UserDto
+    {
+        // Replace this line with your answer to `get /users/{id}`.
+        return parent::routeAction($id);
+    }
+}
+```
+
+An operation with no DTO on a success status keeps `: mixed`. The status is not in the child at all: the generated
+parent sends the one the contract declares, as [`controllers.md`](../controllers.md#the-signature-is-the-contract) says.
+
 Four refusals are worth naming, because each of them protects something this subject promised elsewhere:
 
 - **A document the build would refuse is refused before anything is written.** The command plans the build first, as

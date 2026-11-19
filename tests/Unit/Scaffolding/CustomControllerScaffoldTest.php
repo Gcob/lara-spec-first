@@ -6,7 +6,13 @@ use Composer\Autoload\ClassLoader;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\Response;
+use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
+use Gcob\LaraSpecFirst\Generation\RouteActionReturn;
+use Gcob\LaraSpecFirst\Generation\RouteActionSignature;
+use Gcob\LaraSpecFirst\Generation\StatusResponse;
 use Gcob\LaraSpecFirst\Scaffolding\CustomControllerScaffold;
 use Gcob\LaraSpecFirst\Scaffolding\Exceptions\UnwritableScaffoldException;
 use Gcob\LaraSpecFirst\Scaffolding\PlannedScaffold;
@@ -55,6 +61,7 @@ function plannedScaffold(
     string $template = '/users/{id}',
     ?string $operationId = 'showUser',
     ?string $request = null,
+    ?RouteActionReturn $return = null,
 ): PlannedScaffold {
     $operation = new Operation(
         index: 0,
@@ -71,7 +78,39 @@ function plannedScaffold(
         'App\\Http\\Generated\\Controllers\\UserController',
         false,
         $request,
+        $return,
     );
+}
+
+/**
+ * What the parent declares for an operation answering with these statuses, as the build plan hands it to the scaffold.
+ *
+ * @param  array<array{0: string, 1: string|null, 2?: int, 3?: list<string>}>  $rows  status, DTO or null, depth, and
+ *                                                                                    the media types the contract
+ *                                                                                    writes
+ */
+function returnOf(array $rows): RouteActionReturn
+{
+    $declared = [];
+    $planned = [];
+
+    foreach ($rows as $row) {
+        $media = $row[3] ?? ($row[1] === null ? [] : ['application/json']);
+        $declared[] = new Response($row[0], array_fill_keys($media, new Schema(types: [SchemaType::Object])));
+        $planned[] = $row[1] === null
+            ? StatusResponse::without($row[0], 'it has no DTO')
+            : StatusResponse::of($row[0], $row[1], $row[2] ?? 0);
+    }
+
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/users/{id}'),
+        operationId: 'showUser',
+        responses: $declared,
+    );
+
+    return RouteActionSignature::returns($operation, $planned, 'App\\Http\\Generated');
 }
 
 function scaffoldOf(PlannedScaffold $scaffold): string
@@ -181,6 +220,81 @@ describe('the file it writes', function (): void {
             ->toContain('use App\\Http\\Generated\\Requests\\ShowUserRequest;')
             ->toContain('public function routeAction(ShowUserRequest $request, string $id): mixed')
             ->toContain('return parent::routeAction($request, $id);');
+    });
+
+    /*
+     * The return type is the parent's, because PHP refuses an override that widens it: a child declaring `mixed` under a
+     * parent declaring `UserDto` does not load. The plan hands the scaffold the value, and the scaffold writes it.
+     */
+    it('scaffolds a child with the parent return type', function (
+        array $rows,
+        ?string $request,
+        string $declaration,
+        array $imports,
+        ?string $tag,
+    ): void {
+        $contents = scaffoldOf(plannedScaffold(request: $request, return: returnOf($rows)));
+
+        expect($contents)->toContain($declaration);
+
+        $written = array_values(array_filter(
+            explode("\n", $contents),
+            static fn (string $line): bool => str_starts_with($line, 'use '),
+        ));
+
+        expect($written)->toBe($imports);
+
+        if ($tag === null) {
+            expect($contents)->not->toContain('@return');
+        } else {
+            expect($contents)->toContain("    /**\n     * @return {$tag}\n     */\n    public function routeAction");
+        }
+    })->with([
+        'a DTO' => [
+            [['200', 'UserDto']],
+            null,
+            'public function routeAction(string $id): UserDto',
+            ['use App\\Http\\Generated\\Data\\UserDto;'],
+            null,
+        ],
+        'a DTO beside an answer that is not JSON' => [
+            [['200', 'UserDto'], ['204', null]],
+            null,
+            'public function routeAction(string $id): UserDto|Response',
+            ['use App\\Http\\Generated\\Data\\UserDto;', 'use Symfony\\Component\\HttpFoundation\\Response;'],
+            null,
+        ],
+        'a list' => [
+            [['200', 'UserDto', 1]],
+            null,
+            'public function routeAction(string $id): array',
+            ['use App\\Http\\Generated\\Data\\UserDto;'],
+            'list<UserDto>',
+        ],
+        'several DTOs, with the request beside them' => [
+            [['200', 'UserDto'], ['202', 'JobDto']],
+            'App\\Http\\Generated\\Requests\\ShowUserRequest',
+            'public function routeAction(ShowUserRequest $request, string $id): UserDto|JobDto|JsonResponse',
+            [
+                'use App\\Http\\Generated\\Data\\JobDto;',
+                'use App\\Http\\Generated\\Data\\UserDto;',
+                'use App\\Http\\Generated\\Requests\\ShowUserRequest;',
+                'use Illuminate\\Http\\JsonResponse;',
+            ],
+            null,
+        ],
+        'nothing typed' => [
+            [['204', null]],
+            null,
+            'public function routeAction(string $id): mixed',
+            [],
+            null,
+        ],
+    ]);
+
+    it('keeps the call to the parent when the return type is typed', function (): void {
+        expect(scaffoldOf(plannedScaffold(return: returnOf([['200', 'UserDto']]))))
+            ->toContain('return parent::routeAction($id);');
     });
 
     it('declares nothing extra for an operation with nothing to validate', function (): void {
