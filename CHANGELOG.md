@@ -455,7 +455,7 @@ tags: [versions, conventions, planning]
   `multiple_of`, in a body and in the query, with `multiple_of`'s message, custom messages and `failed()` entry. Such a
   number is refused whatever the divisor, though the contract accepts some (`1e400` is a multiple of `0.5`): once read,
   its value is gone. A request generated before keeps `multiple_of` until the next `spec:build`. The reasoning is in
-  [ADR 0020](./docs/project/decisions/0020-check-multipleof-through-the-package.md), and this ships
+  [ADR 0021](./docs/project/decisions/0021-judge-multipleof-from-the-digits.md), and this ships
   [#198](https://github.com/Gcob/lara-spec-first/issues/198).
 - **A number written as text, on a field with `multipleOf`, is judged exactly and in milliseconds, where a huge exponent
   or a long decimal took seconds or answered `500`.** Laravel's `multiple_of` writes out every digit an exponent stands
@@ -463,7 +463,8 @@ tags: [versions, conventions, planning]
   error that answered `500`, and an exponent too large for brick/math answered `500` too. Without the GMP and BCMath
   extensions, an 8 KB decimal took several seconds. `MultipleOf` now decides from the number's digits and exponent, with
   PHP integers, in time that grows with the length of the text and never with its exponent, and answers every other
-  value as `multiple_of` does. So `1e99999999999999999999` is a multiple of 2, and passes. This ships
+  value as `multiple_of` does. So `1e99999999999999999999` is a multiple of 2, and passes. The reasoning is in
+  [ADR 0021](./docs/project/decisions/0021-judge-multipleof-from-the-digits.md), and this ships
   [#214](https://github.com/Gcob/lara-spec-first/issues/214).
 
 ## [0.2.0] - 2026-11-15

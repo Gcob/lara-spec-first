@@ -32,7 +32,8 @@ tags: [decisions, code-generation, compatibility]
 > - Turned down: `bail`, a rule placed before `multiple_of`, `Validator::extend()`, a string rule name, the remainder
 >   computed by the package, `$fail()`, a float divisor, a rule for JSON fields only, and a finding per field.
 
-**Status:** Accepted · **Card:** [#198](https://github.com/Gcob/lara-spec-first/issues/198) · **Pull request:**
+**Status:** Superseded by [ADR 0021](./0021-judge-multipleof-from-the-digits.md) · **Card:**
+[#198](https://github.com/Gcob/lara-spec-first/issues/198) · **Pull request:**
 [#224](https://github.com/Gcob/lara-spec-first/pull/224)
 
 ## Context
