@@ -458,7 +458,8 @@ tags: [versions, conventions, planning]
   a number is refused whatever the divisor, though the contract accepts some (`1e400` is a multiple of `0.5`): once
   read, its value is gone. A text exponent from the hundreds of millions up to what fits in 64 bits (`"1e200000000"`)
   still exhausts memory in Laravel's check ([#214](https://github.com/Gcob/lara-spec-first/issues/214)). A request
-  generated before keeps `multiple_of` until the next `spec:build`. This ships
+  generated before keeps `multiple_of` until the next `spec:build`. The reasoning is in
+  [ADR 0020](./docs/project/decisions/0020-check-multipleof-through-the-package.md), and this ships
   [#198](https://github.com/Gcob/lara-spec-first/issues/198).
 
 ## [0.2.0] - 2026-11-15
