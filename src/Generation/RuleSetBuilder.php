@@ -242,7 +242,7 @@ final readonly class RuleSetBuilder
      */
     private static function build(Operation $operation, RuleWalk $walk): RuleSet
     {
-        $body = self::bodySchema($operation, $walk->findings);
+        $body = self::bodySchema($operation, $walk);
         $walk->multipart = $operation->requestBody !== null
             && array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES)) === [self::MULTIPART];
         if ($operation->requestBody !== null) {
@@ -419,11 +419,9 @@ final readonly class RuleSetBuilder
     /**
      * The one schema the rule set is built from, or null when the body states none this package reads.
      *
-     * @param  list<string>  $findings
-     *
      * @throws ConflictingInputException
      */
-    private static function bodySchema(Operation $operation, array &$findings): ?Schema
+    private static function bodySchema(Operation $operation, RuleWalk $walk): ?Schema
     {
         $body = $operation->requestBody;
 
@@ -438,7 +436,7 @@ final readonly class RuleSetBuilder
             // is a contract this package does not serve, and refusing the whole
             // build over it would turn away an operation whose other half is
             // perfectly readable.
-            $findings[] = sprintf(
+            $walk->findings[] = sprintf(
                 'The body declares %s, which this package does not read. Nothing in the rule set '
                     .'comes from it.',
                 self::list($unread),
@@ -458,13 +456,18 @@ final readonly class RuleSetBuilder
         self::assertOneSchema($operation, $read);
 
         if (count($read) > 1) {
-            $findings[] = sprintf(
+            $finding = sprintf(
                 'The body declares %s over one schema, so one rule set covers them all.',
                 self::list(array_keys($read)),
-            ).(isset($read[self::MULTIPART]) && self::hasFilePart(reset($read))
-                ? ' A part the schema marks as a file is then read as a string, because a JSON or form-encoded '
-                    .'body cannot carry one and no rule serves both.'
-                : '');
+            );
+
+            if (isset($read[self::MULTIPART]) && self::hasFilePart(reset($read))) {
+                // A gap: a multipart upload of a file meets `string` and is refused, so it loses a constraint.
+                $walk->findings[] = $finding.' A part the schema marks as a file is then read as a string, because a '
+                    .'JSON or form-encoded body cannot carry one and no rule serves both.';
+            } else {
+                $walk->information($finding);
+            }
         }
 
         return reset($read);
@@ -1388,7 +1391,7 @@ final readonly class RuleSetBuilder
             $readOnly = ($asked !== 'sometimes' || $askedBySiblings) && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`');
 
             if ($readOnly) {
-                $walk->findings[] = self::readOnlyFinding('`'.$prefix.$name.'`');
+                $walk->information(self::readOnlyFinding('`'.$prefix.$name.'`'));
                 $asked = 'sometimes';
             }
 
@@ -1465,13 +1468,13 @@ final readonly class RuleSetBuilder
         }
 
         if ($undeclared !== [] && ! $valuesJudged) {
-            $walk->findings[] = sprintf(
+            $walk->information(sprintf(
                 '%s requires %s without declaring %s under `properties`, so the request asks for the '
                     .'key and says nothing about the value.',
                 $prefix === '' ? 'The body' : '`'.rtrim($prefix, '.').'`',
                 self::list($undeclared),
                 count($undeclared) === 1 ? 'it' : 'them',
-            );
+            ));
         }
     }
 
@@ -1705,7 +1708,7 @@ final readonly class RuleSetBuilder
                         }
 
                         if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
-                            $walk->findings[] = self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`');
+                            $walk->information(self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`'));
 
                             continue;
                         }
@@ -2878,6 +2881,7 @@ final readonly class RuleSetBuilder
                         .'Override `update()` on your controller for replacement semantics.',
                     self::list($optional),
                 );
+                $walk->information[] = $findings[array_key_last($findings)];
             }
         }
 
