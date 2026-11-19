@@ -136,7 +136,19 @@ final readonly class RuleSet
      */
     public function leavesUnenforced(): bool
     {
-        return array_diff($this->findings, $this->stricter, $this->information) !== [];
+        $left = $this->findings;
+
+        // Why: one entry per sentence, not every finding with that text. A label is a rule key, so two fields can write
+        // the same sentence, one as information and one as a gap, and the gap must still count.
+        foreach ([...$this->stricter, ...$this->information] as $sentence) {
+            $at = array_search($sentence, $left, true);
+
+            if ($at !== false) {
+                unset($left[$at]);
+            }
+        }
+
+        return $left !== [];
     }
 
     /**

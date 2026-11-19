@@ -1809,6 +1809,22 @@ it('still counts the bound of a field that states no type', function (): void {
         ->and($set->leavesUnenforced())->toBeTrue();
 });
 
+// The label of a finding is the rule key, so a property named `address.id` and the `id` of an `address` object get the
+// same sentence: one is information, the other a gap, and the gap is still counted.
+it('still counts a gap whose sentence is information on another field', function (Schema $nested): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'address.id' => new Schema,
+        'address' => objectSchema(['id' => $nested]),
+    ])]));
+
+    expect($set->information)->toHaveCount(1)
+        ->and(array_count_values($set->findings)[$set->information[0]])->toBe(2)
+        ->and($set->leavesUnenforced())->toBeTrue();
+})->with([
+    'an enum of integers' => [new Schema(enum: [1, 2])],
+    'a oneOf the package does not read' => [new Schema(ignored: ['oneOf' => '#/paths/~1things/post/requestBody'])],
+]);
+
 // The finding of a name required without being declared is information, but a value schema the guard cannot spare is
 // lost beside it, and the finding that says so keeps the request counted.
 it('still counts a gap whose finding reads like information, beside a value schema the guard cannot spare', function (): void {
