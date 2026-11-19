@@ -223,7 +223,7 @@ answer=""
 read -r answer || true
 
 # Why: the tag is named v<version>, so typing the v is a natural answer and names the same version.
-# Both patterns are quoted, so the dots and a typed `*` match only themselves.
+# Both patterns are quoted so that $VERSION is compared as text (it passed is_version: no glob character).
 case "$answer" in
     "$VERSION" | "v$VERSION") ;;
     *)
