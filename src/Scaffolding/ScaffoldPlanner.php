@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Scaffolding;
 
 use Gcob\LaraSpecFirst\Contract\Operation;
+use Gcob\LaraSpecFirst\Generation\BuildPlan;
 use Gcob\LaraSpecFirst\Generation\ControllerName;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
 use Gcob\LaraSpecFirst\Generation\RequestName;
+use Gcob\LaraSpecFirst\Generation\RouteActionReturn;
+use Gcob\LaraSpecFirst\Generation\RouteActionSignature;
 
 /**
  * Works out which files `spec:make` would create for a set of operations.
@@ -37,9 +40,14 @@ final readonly class ScaffoldPlanner
 
     /**
      * @param  list<Operation>  $operations
+     * @param  BuildPlan  $build  the plan the build would make of the document these operations come from. It is where
+     *                            each scaffold learns what its parent's `routeAction` returns, so that the child
+     *                            declares the same: a second planning would be a second chance to differ. Required,
+     *                            because a scaffold planned without it writes `mixed`, which PHP refuses to load under
+     *                            a typed parent
      * @return list<PlannedScaffold>
      */
-    public function plan(array $operations): array
+    public function plan(array $operations, BuildPlan $build): array
     {
         $planned = [];
 
@@ -68,10 +76,25 @@ final readonly class ScaffoldPlanner
                 // shadow with a fresh stub in the first.
                 $this->lookup->exists($operation->controller),
                 RequestName::for($operation)?->fullyQualifiedName($this->namespace),
+                $this->returnOf($operation, $build),
             );
         }
 
         return $planned;
+    }
+
+    /**
+     * What the parent of this operation's controller returns, read from the plan the build made.
+     */
+    private function returnOf(Operation $operation, BuildPlan $build): RouteActionReturn
+    {
+        foreach ($build->controllers as $controller) {
+            if ($controller->operation->identity() === $operation->identity()) {
+                return RouteActionSignature::returns($operation, $controller->responses, $this->namespace);
+            }
+        }
+
+        return RouteActionReturn::untyped();
     }
 
     /**

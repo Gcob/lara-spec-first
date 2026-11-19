@@ -1,7 +1,13 @@
-# Two operations with a custom controller each, written at test time under
-# `LsfChild\`: one whose `routeAction` has fallen behind its generated parent (the
-# operation states a body, so the parent declares a request first), and one whose
-# `routeAction` still matches (a path parameter and nothing to validate).
+# Operations with a custom controller each, written at test time under `LsfChild\`:
+# one whose `routeAction` has fallen behind its generated parent (the operation
+# states a body, so the parent declares a request first), and one whose `routeAction`
+# still matches (a path parameter and nothing to validate). Both answer with no
+# schema, so their parents return `mixed`.
+#
+# The other four answer with a DTO, so their parents declare a class, a list and a
+# union: a child that still returns `mixed` no longer fits any of them. A child is
+# only written for the operation a test asks about, and an operation whose child
+# does not exist is routed to the 501 controller and named by nothing.
 #
 # The children live in a temporary directory rather than in `tests/Fixtures`:
 # each extends a parent generated under a per-test namespace, which static
@@ -40,3 +46,76 @@ paths:
                   schema: { type: string }
             responses:
                 '200': { description: A user }
+    /teams:
+        get:
+            operationId: listTeams
+            x-controller: LsfChild\ListTeamsController
+            responses:
+                '200':
+                    description: The teams
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items: { $ref: '#/components/schemas/Team' }
+        post:
+            operationId: createTeam
+            x-controller: LsfChild\CreateTeamController
+            responses:
+                '200':
+                    description: The team
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/Team' }
+                '202':
+                    description: The job that creates it
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/Job' }
+    /teams/{id}:
+        get:
+            operationId: showTeam
+            x-controller: LsfChild\ShowTeamController
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema: { type: string }
+            responses:
+                '200':
+                    description: The team
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/Team' }
+        put:
+            operationId: renameTeam
+            x-controller: LsfChild\RenameTeamController
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema: { type: string }
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            properties:
+                                name: { type: string }
+            responses:
+                '200':
+                    description: The team
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/Team' }
+components:
+    schemas:
+        Team:
+            type: object
+            properties:
+                name: { type: string }
+        Job:
+            type: object
+            properties:
+                state: { type: string }

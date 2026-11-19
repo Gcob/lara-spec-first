@@ -18,13 +18,23 @@ use PhpToken;
  * `use` with or without `as`, relative to the namespace of the file), and null when it cannot be: a group `use` hides
  * which names it binds, so a name that might come from one is not guessed at.
  *
- * **A count, never a type.** What PHP refuses to load is decided by the signature as a whole; the count is the part
- * that is sound without resolving a single class, since it never flags an override PHP accepts.
+ * **A count and the built-in types of a return type, never a class.** What PHP refuses to load is decided by the
+ * signature as a whole. Two parts of it are sound without resolving a single class, since neither ever flags an
+ * override PHP accepts: how many parameters it declares, and a return type that is absent or holds a built-in type its
+ * parent's does not (`mixed`, `array` under a DTO, `null` beside one). A class a return type names is never judged:
+ * whether it is the parent's own DTO or narrower takes resolving the name, and a group `use` can hide which it is.
  *
  * @see docs/guide/controllers.md — "The signature is the contract"
  */
 final readonly class RouteActionOverride
 {
+    /**
+     * The built-in types a return type can name besides `never`, which narrows anything.
+     */
+    private const BUILT_IN = [
+        'array', 'bool', 'callable', 'false', 'float', 'int', 'iterable', 'mixed', 'null', 'object', 'string', 'true', 'void',
+    ];
+
     /**
      * @param  string|null  $extends  the parent class, fully qualified and without a leading separator, or null when
      *                                the class extends nothing or the name cannot be resolved from the file alone
@@ -32,12 +42,14 @@ final readonly class RouteActionOverride
      * @param  int  $required  how many a caller has to pass: up to the last parameter with no default, since PHP reads
      *                         a default that precedes a required parameter as required too
      * @param  bool  $variadic  whether the last parameter collects the rest
+     * @param  string|null  $returns  the return type as the file writes it, or null when `routeAction` declares none
      */
     private function __construct(
         public ?string $extends,
         public int $parameters,
         public int $required,
         public bool $variadic,
+        public ?string $returns,
     ) {}
 
     /**
@@ -144,6 +156,71 @@ final readonly class RouteActionOverride
     }
 
     /**
+     * Whether PHP refuses this return type under a parent that declares `$parent`, judged on what needs no class.
+     *
+     * **Refused when the child declares none, or declares a built-in type the parent's does not hold.** An override may
+     * only narrow its parent's return type, so each member of the child's has to be one the parent's holds, or `mixed`
+     * has to be the parent's. A missing return type is refused under any parent, `mixed` included. `void` is refused
+     * under any parent this package writes, and so is `mixed` under any but `mixed` itself. `never` narrows everything
+     * and is never refused. Measured on PHP 8.5 against parents `UserDto`, `?UserDto`, `array` and `mixed`: none,
+     * `mixed`, `array`, `int`, `null`, `iterable`, `object`, `void` and `?UserDto` are fatal under `UserDto` (`null`
+     * and `?UserDto` load under `?UserDto`), `array` and `mixed` load under `mixed`, `never` loads under all of them.
+     *
+     * **A class is never judged.** Whether `UserDto`, `UserDto|JsonResponse` or a nullable class is the parent's own
+     * type, narrower or wider takes resolving the name, so a member that is not a built-in type is left to PHP.
+     *
+     * @param  string  $parent  the parent's native return type, as PHP writes it (`TeamDto|array|null`, `?UserDto`)
+     */
+    public function returnTypeRefusedUnder(string $parent): bool
+    {
+        if ($this->returns === null) {
+            return true;
+        }
+
+        $own = self::members($this->returns);
+
+        if (in_array('void', $own, true)) {
+            return true;
+        }
+
+        $held = self::members($parent);
+
+        if (in_array('mixed', $held, true)) {
+            return false;
+        }
+
+        foreach ($own as $member) {
+            if (in_array($member, self::BUILT_IN, true) && ! in_array($member, $held, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The members of a return type, lower-cased (built-in names are case-insensitive), with `?X` read as `X` and
+     * `null`.
+     *
+     * @return list<string>
+     */
+    private static function members(string $type): array
+    {
+        $members = [];
+
+        if (str_starts_with($type, '?')) {
+            $type = substr($type, 1);
+            $members[] = 'null';
+        }
+
+        foreach (explode('|', $type) as $member) {
+            $members[] = strtolower($member);
+        }
+
+        return $members;
+    }
+
+    /**
      * @param  list<PhpToken>  $tokens
      * @param  int  $from  the first token after the class name
      * @param  array<string, string>  $imports  lower-cased alias to fully qualified name
@@ -200,8 +277,9 @@ final readonly class RouteActionOverride
     {
         $segments = [[]];
         $depth = 1;
+        $at = $open + 1;
 
-        for ($at = $open + 1, $count = count($tokens); $at < $count; $at++) {
+        for ($count = count($tokens); $at < $count; $at++) {
             $token = $tokens[$at];
 
             if (self::opens($token)) {
@@ -237,7 +315,32 @@ final readonly class RouteActionOverride
             }
         }
 
-        return new self($extends, count($segments), $required, $variadic);
+        return new self($extends, count($segments), $required, $variadic, self::readReturnType($tokens, $at + 1));
+    }
+
+    /**
+     * The return type written right after the parameter list, as the file spells it, or null when there is none.
+     *
+     * @param  list<PhpToken>  $tokens
+     * @param  int  $after  the position of the token after the closing parenthesis
+     */
+    private static function readReturnType(array $tokens, int $after): ?string
+    {
+        if (! self::is($tokens[$after] ?? null, ':')) {
+            return null;
+        }
+
+        $type = '';
+
+        for ($at = $after + 1, $count = count($tokens); $at < $count; $at++) {
+            if (self::is($tokens[$at], '{') || self::is($tokens[$at], ';')) {
+                break;
+            }
+
+            $type .= $tokens[$at]->text;
+        }
+
+        return $type;
     }
 
     /**

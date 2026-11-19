@@ -83,6 +83,9 @@ composer install
 composer test
 ```
 
+`composer test` sets the PHP settings the suite needs (512M of memory, assertions on). A run through `vendor/bin/pest`
+on a PHP whose `php.ini` turns assertions off fails `SuiteSettingsTest` on purpose, so run the suite through Composer.
+
 All three paths are first-class. Docker and `just` are thin wrappers that invoke the **exact same Composer scripts**,
 and neither carries logic of its own. Our CI runs the suite _without_ Docker, across a matrix of PHP and Laravel
 versions, so the native path is guaranteed to keep working.

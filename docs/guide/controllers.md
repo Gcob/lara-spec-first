@@ -18,7 +18,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 
 > **In brief**
 >
-> - Each operation gets its own controller, holding one method, always called `routeAction`.
+> - Each operation gets its own controller, with one route method, always called `routeAction` (and a `callAction()`
+>   that sends the declared status).
 > - `x-controller` is how you take an operation over: it names the class you will write, and the generated parent drops
 >   its `final` so you can extend it.
 > - An operation that declares no `x-controller` gets a `final` controller, which nothing can extend.
@@ -67,7 +68,47 @@ Two alternatives were considered and dropped:
 ### The signature is the contract
 
 **`routeAction` declares one parameter per path parameter, `string`, named the way the specification names it.**
-`GET /users/{id}` generates `routeAction(string $id): mixed`.
+`GET /users/{id}` generates `routeAction(string $id): UserDto` when its `200` is a `User`.
+
+**The return type is what the operation's success statuses carry.** A success status is any `2xx` or `2XX` one, and
+`default` only when no `2xx` is declared. Each status with a DTO adds a member, in contract order and each once: the DTO
+itself, `array` for a list (a `@return list<UserDto>` says of what), and `null` last where the body may be `null`
+(`?UserDto` when it is the only other member). Two response classes can join the type, and each has one reason:
+
+- **`JsonResponse` joins when the operation declares several success statuses.** `200: User` with `202: Job` is
+  `UserDto|JobDto|JsonResponse`, and `200: User` with `201: User` is `UserDto|JsonResponse`: which status a request gets
+  is the controller's choice, and a response object carrying its own status is how it sends the one it picked. A second
+  status counts even when it has no DTO of its own, a JSON body the build could not type for one.
+- **Symfony's `Response` joins when the contract declares an answer that is not a JSON body**: a success status with no
+  content (`204`), with only another media type (`text/csv`) or with one beside the JSON one, or a `3xx` or `3XX` beside
+  a DTO status. `Response` is what `noContent()` and `redirect()` build, and it admits a `JsonResponse` too, so the two
+  never appear together: `200: User` with a `204` is `UserDto|Response`.
+- **`mixed` stays when no success status has a DTO**: a lone `204`, a `text/csv` body, two JSON schemas under one
+  status, a schema the build could not type. The generated file says which, beside the sentence about each status.
+
+**An error status is never part of the type, and it leaves a controller as an exception.** `abort(404)`, a thrown
+exception or a `ValidationException` is how Laravel sends one, and the handler turns it into the response. The DTO of a
+`4xx` or `5xx` response is for that handler, not for `routeAction`.
+[ADR 0017](../project/decisions/0017-return-the-response-dto-from-routeaction.md) holds the reasoning.
+
+**The generated parent sends the status, so the child never has to.** `routeAction` returns a DTO, and the status number
+is the contract's: `callAction()` is what Laravel's dispatcher calls when a controller has it, and the generated parent
+defines one for every operation that declares a success status. It hands what `routeAction` returned, and one row per
+success status, to the package's `SuccessStatus`. A child that overrides `routeAction` and never calls `parent::` gets
+the status all the same, and `201` needs no `response()->json($dto, 201)`.
+
+- **A status applies to a DTO of this operation, an array, a scalar and `null`.** With one success status, that is the
+  status of every such value. With several, a DTO answers the first status whose body is that class, in contract order;
+  an array answers the first list status whose items are the class of the first item (an empty array takes the first
+  list status); `null` answers the first status whose body may be `null`, and is sent as JSON `null`, never `{}`. Where
+  none matches, Laravel's own answer stands: with several statuses, a bare DTO whose class only a list status carries
+  matches none of them, and answers Laravel's `200`.
+- **Everything else goes to Laravel untouched.** A `Response` of any kind (`response()->json($x, 202)`, `noContent()`, a
+  redirect), a `Responsable`, a PSR-7 response, a `Model` and a DTO of another operation keep their own status. That is
+  how a child sends the status it picked, and why a recently created `Model` still answers `201`.
+- **A `2XX` range or a lone `default` sends `200`,** the one number the parent can choose for them.
+- **`SuccessStatus` is not public API, and its name is frozen,** because a generated file names it. A child that defines
+  its own `callAction()` replaces all of this.
 
 **PHP is what makes this a decision rather than a detail.** An override may not add a required parameter, so a parent
 declaring none would forbid every custom controller from ever seeing `{id}`, and a developer could only reach it through
@@ -81,32 +122,40 @@ signature, and a child overriding it has to follow. Identity is
 is asked for rename detection rather than for signatures, and the two must not be conflated.
 
 **`string` until something says otherwise.** A route parameter is text on the wire; `x-model` is what will turn one into
-a bound model, and the parent will declare that type when it does. A child may narrow the return type, `array` where the
-parent says `mixed`, but not the parameters, which is ordinary PHP variance rather than a rule of this package.
+a bound model, and the parent will declare that type when it does. A child may narrow the return type where PHP allows
+it, `UserDto` where the parent says `UserDto|JsonResponse`, and `mixed` only where the parent is `mixed`; it may not
+change the parameters. That is ordinary PHP variance rather than a rule of this package.
 
 **A child whose signature fell behind is named by the build, and the build still succeeds.** When the contract gains or
-loses a request or a path parameter, a custom child that still declares the old list is a class PHP will refuse to load,
-and it does so at its first load, which is the first request. So `spec:build` prints one header and one line per such
-child, with the signature to paste:
+loses a request or a path parameter, or an operation gains a response DTO, a custom child that still declares the old
+list, or still returns `mixed`, nothing or a built-in type the parent does not (an `array` under a DTO, which is what
+this guide used to recommend), is a class PHP will refuse to load, and it does so at its first load, which is the first
+request. So `spec:build` prints one header and one line per such child, with the signature to paste:
 
 ```text
-WARN  1 custom controller(s) declare a routeAction that no longer matches the parameters their generated parent
-declares, so PHP will refuse to load them. Give each the signature below:
+WARN  1 custom controller(s) declare a routeAction that no longer matches the parameters or the return type their
+generated parent declares, so PHP will refuse to load them. Give each the signature below:
 
-  App\Http\Controllers\UpdateUserController  routeAction(\App\Http\Generated\Requests\UpdateUserRequest $request, string $id)
+  App\Http\Controllers\UpdateUserController  routeAction(\App\Http\Generated\Requests\UpdateUserRequest $request, string $id): \App\Http\Generated\Data\UserDto
 ```
 
-The request type is written fully qualified, so the line loads as pasted into a child that has no `use` for it. Three
-choices sit behind that:
+The request type and the return type are written fully qualified, so the line loads as pasted into a child that has no
+`use` for them. The return type is the one the parent declares, never the `@return` docblock: a docblock is not a
+signature, and a list is `array` there. Three choices sit behind that:
 
 - **It warns rather than refuses.** The developer cannot make the child match a request class the refused build never
   generated, so a refusal would wait on the very file it blocks. A warning changes no generated file and no exit status.
 - **It reads the file and never loads the class.** A child that no longer fits is a fatal error at load, and loading it
   to ask would end the build that is naming it. The file is tokenized with PHP's [`PhpToken`](../project/stack.md), so
   no class is ever resolved.
-- **It counts parameters and nothing else.** The count is the part that never flags a class PHP would load, because it
-  needs no class resolved. A renamed request class or a narrowed type is not judged here: PHP reports it when the class
-  loads, and PHPStan before that.
+- **It judges the parameter count, and the built-in types of a return type.** Both are sound without resolving a class:
+  the count never flags a class PHP would load, and a missing return type is a fatal under any parent, `mixed` included.
+  A built-in type the parent's does not hold is one too: `mixed`, `array` or `TeamDto|array` under `TeamDto`, `?UserDto`
+  under `UserDto` (the `null`), `void`. Under a parent that says `mixed`, `void` is the only declared type named, since
+  PHP loads every other one there. Not named either: `array` under a list (the parent says `array`), and `never`, which
+  narrows every type. A class the child names is not judged: whether it is the parent's DTO or a narrower one takes
+  resolving the name, and a group `use` can hide it. A renamed request class, a narrowed type or a class that is not the
+  parent's is reported by PHP when the class loads, and by PHPStan before that.
 
 Only a child that extends exactly the generated parent of its operation is checked. A child that extends something else,
 declares no `routeAction`, or gets one from a trait is left alone, and so is a `routeAction` the file does not write in
@@ -254,19 +303,23 @@ the nominal path is short, and everything else is a reason to stop and hand the 
 
 **It writes `routeAction` with the signature the parent declares, and one line in it.** Writing the method is what a
 `make` is for: the signature is the fiddly part, PHP will not let a child widen it, and copying it out of a comment is
-work a generator should have done.
+work a generator should have done. The return type is the parent's, read from the plan the command already made of the
+build, and the classes it names are imported.
 
-**That one line is a call to the parent, and it is not decoration.** A method with an empty body returns `null`, which
-Laravel renders as an **empty `200`**, so an empty scaffold would quietly turn the operation's honest `501` into a lie,
-in the one command whose whole job is to help. The parent call keeps the `501` until the developer replaces it, and
-replacing it is exactly what implementing the operation means:
+**That one line is a call to the parent, and it is not decoration.** The scaffold declares the parent's return type, and
+PHP refuses a method that declares one and ends without returning (a `TypeError`, so a `500`, under `mixed` too). An
+empty scaffold would turn the operation's honest `501` into a server error that says nothing about why, in the one
+command whose whole job is to help. The parent call keeps the `501` until the developer replaces it, and replacing it is
+exactly what implementing the operation means:
 
 ```php
+use App\Http\Generated\Data\UserDto;
+
 // The parent below is generated. If PHP cannot find it, run `php artisan spec:build`.
 // If it still fails, the specification no longer has an `x-controller` pointing here.
 class UserController extends \App\Http\Generated\Controllers\UserController
 {
-    public function routeAction(string $id): mixed
+    public function routeAction(string $id): UserDto
     {
         // Replace this line with your answer to `get /users/{id}`.
         return parent::routeAction($id);
@@ -412,9 +465,10 @@ other project clarity. Vendor the reference, or own a copy.
 
 ## What the generated controller contains
 
-Inheritance carries exactly one thing here, the two-class parent-child seam above, and nothing else. `SpecController` is
-one abstract base, shared by every operation, and it stays deliberately thin: no per-operation knowledge, because it
-cannot have any.
+Inheritance carries one thing here, the two-class parent-child seam above, and the `callAction()` the generated parent
+defines (see [the signature is the contract](#the-signature-is-the-contract)), and nothing else. `SpecController` is one
+abstract base, shared by every operation, and it stays deliberately thin: no per-operation knowledge, because it cannot
+have any.
 
 **Everything an operation needs is generated into its own class, narrowly typed.** An earlier draft of this design put
 that knowledge in context objects the controller composed, a `ModelContext` holding the model, the query, the response

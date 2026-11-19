@@ -32,10 +32,12 @@ tags: [versions, conventions, planning]
   to load at its first request. The build now prints one header and one line per such child, with the signature to paste
   (the request is written fully qualified, so the line loads in a child with no `use` for it), and still exits `0`: it
   warns rather than refuses, since a refused build would never generate the request class the child has to match. It
-  reads the file and never loads the class, and it counts parameters only: a renamed request class or a narrowed type is
-  still reported by PHP when the class loads, and by PHPStan before. A child that extends something other than its
-  generated parent, or that gets `routeAction` from a trait, is not checked. This closes the second half of the `0.2.0`
-  `Known limits` item for [#112](https://github.com/Gcob/lara-spec-first/issues/112).
+  reads the file and never loads the class, and it judges what is sound without resolving one: the parameter count, and
+  a return type that says `mixed` or nothing under a parent that declares a response DTO (the signature to paste carries
+  the parent's return type, written in full). A renamed request class, a narrowed type or a class that is not the
+  parent's is still reported by PHP when the class loads, and by PHPStan before. A child that extends something other
+  than its generated parent, or that gets `routeAction` from a trait, is not checked. This closes the second half of the
+  `0.2.0` `Known limits` item for [#112](https://github.com/Gcob/lara-spec-first/issues/112).
 - **`spec:build` writes a response DTO for each documented response shape, and the generated controller names it.** A
   declared status (`200`, `201`, `2XX`, `default`) with a JSON body that is an object, or a list of objects, gets a
   `final readonly` class in the `Data` sub-namespace, named after its schema without `Input` (`$ref: User` gives
@@ -58,14 +60,37 @@ tags: [versions, conventions, planning]
   reading the document in the other order writes the same classes and types (a class shared by several operations lists
   them in the document's order in its `Read by` line). `spec:build` and `spec:make` go on for every one of these as they
   did on `0.2.0`, and `spec:doctor` stays clean on them: a schema at fault is not a keyword the doctor names, the build
-  says it in the generated file. `routeAction` still returns `mixed`, and no factory is generated yet. This is not a
-  breaking change on its own: it only adds files and a sentence. The reasoning is in
-  [ADR 0013](./docs/project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md). This ships
+  says it in the generated file. No factory is generated yet. The files and the sentence are not breaking on their own,
+  but what the generated controller now returns is: see the `Changed` entry on `routeAction`'s return type. The
+  reasoning is in [ADR 0013](./docs/project/decisions/0013-mirror-a-response-schema-or-leave-it-untyped.md). This ships
   [#39](https://github.com/Gcob/lara-spec-first/issues/39) and
   [#178](https://github.com/Gcob/lara-spec-first/issues/178).
 
 ### Changed
 
+- **A generated `routeAction` now returns the DTO of the operation's success statuses, and the generated parent sends
+  the status the contract declares.** `GET /users/{id}` with a `200` that is a `User` generates
+  `routeAction(string $id): UserDto`, where it was `mixed`. A list is `array` (a `@return list<UserDto>` says of what),
+  a body that may be `null` is `?UserDto`, and several success statuses with a DTO make a union. Several success
+  statuses add `JsonResponse`, and a contract that declares an answer that is not a JSON body (a `204`, a `text/csv`
+  body, a redirect) adds Symfony's `Response`. An operation with no DTO on a success status stays `mixed`. An error
+  status is never part of the type: throw it (`abort()` or an exception), and the DTO of an error response is for the
+  exception handler. The generated parent also defines `callAction()`, which Laravel calls with what `routeAction`
+  returned, and sends the status the contract declares through the new `Gcob\LaraSpecFirst\Http\SuccessStatus`: a DTO,
+  an array, a scalar or `null` answers `201` where the contract says `201`, with no `response()->json($dto, 201)`, and a
+  `Response`, a `Responsable`, a PSR-7 response or a `Model` passes to Laravel untouched. A child needs no `parent::`
+  call for it. `spec:make` writes the same return type. This is a breaking change: **a custom controller that declares
+  `routeAction(...): mixed` under a typed parent is a class PHP refuses to load, at its first request**, and so is one
+  that returns a type the parent no longer allows. Change each to the type its parent declares. `spec:build` names every
+  such child, and prints the signature to paste (see the `Added` entry on the custom controllers it names): one that
+  declares `mixed` or no return type, including no return type under a parent that returns `mixed`, and one that
+  declares a built-in type its parent does not hold, such as the `: array` an upgrade from `0.2.0` leaves under a DTO,
+  `: TeamDto|array` under `TeamDto`, or `: ?UserDto` under `UserDto`. A class the child names is still left to PHP. A
+  controller that returned a plain DTO for a `201`, or `null` for a `204`, now answers the status the contract declares,
+  where it answered `200`. A controller of an operation whose lone success has a JSON body and no DTO, and that returns
+  `null`, now answers a JSON `null`, where it answered an empty `200`. The reasoning is in
+  [ADR 0017](./docs/project/decisions/0017-return-the-response-dto-from-routeaction.md), and this ships
+  [#165](https://github.com/Gcob/lara-spec-first/issues/165).
 - **An optional JSON body that requires properties now refuses `{}`, and an object that carries none of them, where it
   used to pass.** A body with `requestBody.required: false` and a schema that requires `reason` meant "a body, or none",
   but a rule cannot tell `{}` from no body, so `{}` and `{"zzz": 1}` were accepted. They answer `422` to a client that
@@ -333,6 +358,15 @@ tags: [versions, conventions, planning]
 
 ### Fixed
 
+- **`spec:build` no longer counts a finding that loses no constraint in its unenforced-constraint warning.** A
+  `readOnly` property that is `required`, a body declared under two media types over one schema, the optional fields of
+  a `PUT`, a name the body requires without declaring it, and a field that states no type and nothing else, or only a
+  `default`, `deprecated`, `$defs` or `$anchor`, are still said in the generated file's Findings block, and a request
+  with only these gains the "Nothing was read and left unenforced" line it did not have. A body that is also multipart
+  with a file part, a field typed only `null`, a field that declares more than one type, a field that states no type but
+  writes an `enum`, a `const`, `oneOf` or another keyword the package does not read (on the field, through a `$ref` or
+  in an `allOf` branch), and a `PATCH`'s emptied required list, still count. This closes the `0.2.0` `Known limits` item
+  for [#134](https://github.com/Gcob/lara-spec-first/issues/134).
 - **A plain `query` name beside the names PHP nests under it refused a valid request, with no finding.** `?page[size]=3`
   arrives as `page => [size => 3]`, so the `integer` rule of `page` refused a request the contract allows (`422`, now
   `200`), and `?ids[]=1` was judged by the rule of `ids` the same way. `page` beside `page[size]`, `ids` beside `ids[]`,

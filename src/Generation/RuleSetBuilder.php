@@ -242,7 +242,7 @@ final readonly class RuleSetBuilder
      */
     private static function build(Operation $operation, RuleWalk $walk): RuleSet
     {
-        $body = self::bodySchema($operation, $walk->findings);
+        $body = self::bodySchema($operation, $walk);
         $walk->multipart = $operation->requestBody !== null
             && array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES)) === [self::MULTIPART];
         if ($operation->requestBody !== null) {
@@ -419,11 +419,9 @@ final readonly class RuleSetBuilder
     /**
      * The one schema the rule set is built from, or null when the body states none this package reads.
      *
-     * @param  list<string>  $findings
-     *
      * @throws ConflictingInputException
      */
-    private static function bodySchema(Operation $operation, array &$findings): ?Schema
+    private static function bodySchema(Operation $operation, RuleWalk $walk): ?Schema
     {
         $body = $operation->requestBody;
 
@@ -438,7 +436,7 @@ final readonly class RuleSetBuilder
             // is a contract this package does not serve, and refusing the whole
             // build over it would turn away an operation whose other half is
             // perfectly readable.
-            $findings[] = sprintf(
+            $walk->findings[] = sprintf(
                 'The body declares %s, which this package does not read. Nothing in the rule set '
                     .'comes from it.',
                 self::list($unread),
@@ -458,13 +456,18 @@ final readonly class RuleSetBuilder
         self::assertOneSchema($operation, $read);
 
         if (count($read) > 1) {
-            $findings[] = sprintf(
+            $finding = sprintf(
                 'The body declares %s over one schema, so one rule set covers them all.',
                 self::list(array_keys($read)),
-            ).(isset($read[self::MULTIPART]) && self::hasFilePart(reset($read))
-                ? ' A part the schema marks as a file is then read as a string, because a JSON or form-encoded '
-                    .'body cannot carry one and no rule serves both.'
-                : '');
+            );
+
+            if (isset($read[self::MULTIPART]) && self::hasFilePart(reset($read))) {
+                // A gap: a multipart upload of a file meets `string` and is refused, so it loses a constraint.
+                $walk->findings[] = $finding.' A part the schema marks as a file is then read as a string, because a '
+                    .'JSON or form-encoded body cannot carry one and no rule serves both.';
+            } else {
+                $walk->information($finding);
+            }
         }
 
         return reset($read);
@@ -1388,7 +1391,7 @@ final readonly class RuleSetBuilder
             $readOnly = ($asked !== 'sometimes' || $askedBySiblings) && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`');
 
             if ($readOnly) {
-                $walk->findings[] = self::readOnlyFinding('`'.$prefix.$name.'`');
+                $walk->information(self::readOnlyFinding('`'.$prefix.$name.'`'));
                 $asked = 'sometimes';
             }
 
@@ -1465,13 +1468,13 @@ final readonly class RuleSetBuilder
         }
 
         if ($undeclared !== [] && ! $valuesJudged) {
-            $walk->findings[] = sprintf(
+            $walk->information(sprintf(
                 '%s requires %s without declaring %s under `properties`, so the request asks for the '
                     .'key and says nothing about the value.',
                 $prefix === '' ? 'The body' : '`'.rtrim($prefix, '.').'`',
                 self::list($undeclared),
                 count($undeclared) === 1 ? 'it' : 'them',
-            );
+            ));
         }
     }
 
@@ -1705,7 +1708,7 @@ final readonly class RuleSetBuilder
                         }
 
                         if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
-                            $walk->findings[] = self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`');
+                            $walk->information(self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`'));
 
                             continue;
                         }
@@ -1742,7 +1745,16 @@ final readonly class RuleSetBuilder
                         // Without a type rule Laravel reads `min` and `max` as a string
                         // length, so a bound on an untyped field is reported rather than
                         // half-translated.
-                        $walk->findings[] = sprintf('%s %s, so no type rule is emitted for it.', $label, $unmapped);
+                        $message = sprintf('%s %s, so no type rule is emitted for it.', $label, $unmapped);
+
+                        // Why: a field that states no type and nothing else accepts any value, in the contract and in the
+                        // request. A keyword it writes besides that constrains a value (an `enum`, a `oneOf`) is one the
+                        // rule set does not carry. An annotation (`default`, `deprecated`) constrains nothing.
+                        if ($unmapped === 'states no type' && $schema->types === [] && ! self::writesAKeyword($written)) {
+                            $walk->information($message);
+                        } else {
+                            $walk->findings[] = $message;
+                        }
                     }
             }
         }
@@ -2803,6 +2815,31 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * Whether a written schema, or any `allOf` branch of it, states a value constraint besides its type: an `enum` (a
+     * `const` is a one-value enum), or a keyword the package does not read that constrains a value. `default`,
+     * `deprecated`, `$defs` and `$anchor` are the ones that do not: they annotate or name, and accept every value.
+     *
+     * Read on the written schema, never the merged one: the merge drops a branch's ignored keywords. An `enum` counts
+     * because `Rule::in()` compares `(string) $value`, so an untyped `[1, 2, 3]` accepts `"1"` and `true`.
+     */
+    private static function writesAKeyword(Schema $written): bool
+    {
+        $constraints = array_diff_key($written->ignored, array_flip(['default', 'deprecated', '$defs', '$anchor']));
+
+        if ($constraints !== [] || $written->enum !== null) {
+            return true;
+        }
+
+        foreach ($written->allOf as $branch) {
+            if (self::writesAKeyword($branch)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether a presence rule refuses a payload that leaves the key out, which `present_with:` does not do on its own.
      */
     private static function refusesAbsence(string $presence): bool
@@ -2878,6 +2915,7 @@ final readonly class RuleSetBuilder
                         .'Override `update()` on your controller for replacement semantics.',
                     self::list($optional),
                 );
+                $walk->information[] = $findings[array_key_last($findings)];
             }
         }
 
