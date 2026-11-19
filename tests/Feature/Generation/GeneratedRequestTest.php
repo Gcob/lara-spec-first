@@ -2351,13 +2351,23 @@ it('closes the level above two names a form delivers under one key, and checks n
         ->and($status === 422 ? array_keys($body['errors']) : $body)->toBe($answer);
 })->with([
     'an undeclared key beside them' => [true, ['a' => ['evil' => '1']], 422, ['a']],
+    // TODO (#206): the three rows below that answer 200 carry a value nobody checked in `validated()`: flip each answer
+    // to `[]` when it stops.
     'the shared key, not a number' => [true, ['a' => ['c' => 'abc']], 200, ['a' => ['c' => 'abc']]],
-    // TODO (#206): this value is never checked, so it should not reach `validated()`: flip the answer to `[]` when it stops.
     'an array under the shared key' => [true, ['a' => ['c' => ['evil' => '1']]], 200, ['a' => ['c' => ['evil' => '1']]]],
     'the shared key, a number' => [true, ['a' => ['c' => '5']], 200, ['a' => ['c' => '5']]],
     'open: an undeclared key' => [false, ['a' => ['evil' => '1']], 200, []],
     'open: the shared key' => [false, ['a' => ['c' => 'abc']], 200, []],
 ]);
+
+// What the payloads above stand for: PHP reads both wire names as `a.c`, and keeps the last one sent.
+it('reads a[c] and a[c]x from a form body as the same key', function (): void {
+    parse_str('a[c]=1&a[c]x=2', $both);
+    parse_str('a[c]x=2', $suffixed);
+
+    expect($both)->toBe(['a' => ['c' => '2']])
+        ->and($suffixed)->toBe(['a' => ['c' => '2']]);
+});
 
 // A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a
 // rule there, but the array a form builds for them still stands in for `page`. The contract wants a `page` the form
