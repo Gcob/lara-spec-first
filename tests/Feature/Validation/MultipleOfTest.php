@@ -307,6 +307,7 @@ it('answers as multiple_of does for a divisor of 17 digits', function (string $v
 // Past the exponent the rule can read (a quadrillion), two exponents that differ look equal, and "equal" would pass a
 // value that is not a multiple. Only a divisor someone wrote by hand reaches it (a float's text has a small exponent),
 // but `MultipleOf` is public, and such a divisor was always refused (Laravel's rule throws on it): never a wrong pass.
+// It is the exponent as written that counts: the divisor's digits (`0.1e...`, `10e-...`) shift it back under the clamp.
 it('refuses a value judged by a divisor whose exponent is past what it can read', function (string $value, string $divisor): void {
     $validator = validatorForMultipleOf($value, ['numeric'], new MultipleOf($divisor));
 
@@ -316,6 +317,10 @@ it('refuses a value judged by a divisor whose exponent is past what it can read'
     'both exponents past it, the divisor larger' => ['1e88888888888888888888', '1e99999999999999999999'],
     'both exponents just past it, the divisor larger' => ['1e1000000000000000', '1e1000000000000001'],
     'both negative exponents past it, the divisor larger' => ['1e-99999999999999999999', '1e-88888888888888888888'],
+    'a decimal divisor whose written exponent is past it, shifted back under it by its digits' => ['1e88888888888888888888', '0.1e99999999999999999999'],
+    'a decimal divisor just past it, the value past it too' => ['1e1000000000000000000', '0.1e1000000000000000005'],
+    'a divisor with a trailing zero whose negative exponent is past it, the value just under' => ['1e-999999999999999', '10e-99999999999999999999'],
+    'a divisor with a trailing zero whose negative exponent is just past it' => ['1e-999999999999999', '10e-1000000000000000'],
 ]);
 
 // The reference for "answers as `multiple_of` does" is Laravel's own rule, run on a seeded set of numbers (signs,

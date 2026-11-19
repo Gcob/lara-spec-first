@@ -33,7 +33,8 @@ tags: [decisions, code-generation, compatibility]
 > - Turned down: Laravel's exponent range, judging exactly only past a threshold, a cap on the digits, brick/math's
 >   `mod()` for every divisor, and a `require` on brick/math.
 
-**Status:** Accepted · **Card:** [#214](https://github.com/Gcob/lara-spec-first/issues/214)
+**Status:** Accepted · **Card:** [#214](https://github.com/Gcob/lara-spec-first/issues/214) · **Pull request:**
+[#227](https://github.com/Gcob/lara-spec-first/pull/227)
 
 ## Context
 
@@ -90,9 +91,10 @@ than the contract on a value the package can judge: a gap in the contract, not o
    since its divisor is a float's text and has at most 17 significant digits.
 
 The exponent is read as a PHP `int`, clamped far above any length a request can carry. Every other term is a text length
-or a float's exponent, so past the clamp only the sign matters, and the clamp keeps it. A divisor whose own exponent
-reaches the clamp, in either sign, refuses the value, since two exponents past it cannot be told apart. A value of zero
-needs no exponent to compare, and stays a multiple of any divisor but zero.
+or a float's exponent, so past the clamp only the sign matters, and the clamp keeps it. A divisor whose own exponent, as
+written, reaches the clamp, in either sign, refuses the value (its digits do not shift it back under:
+`0.1e1000000000000000000` is refused too), since two exponents past it cannot be told apart. A value of zero needs no
+exponent to compare, and stays a multiple of any divisor but zero.
 
 **One path for every value, with no threshold.** The rule does not switch to the exact method past some exponent. A
 threshold would leave the long decimal, which has no exponent, slow on the pure-PHP calculator, and it would give the
@@ -120,9 +122,9 @@ MB: `1e200000000`, a million-digit exponent, plain integers of 100,000 digits an
 milliseconds on every brick/math from 0.11 to 1.0, with the pure-PHP calculator too. A text of 7 million digits takes 31
 to 56 milliseconds, and 0.21 to 0.25 seconds by a divisor of 17 digits, where each chunk holds one digit. What caps the
 length is outside the rule: PHP's `post_max_size` for a `POST` body, the web server's limits for a `PUT` or `PATCH` body
-and the query, and `memory_limit`. Within those, the rule is linear in the text's length, and never slower than
-Laravel's own check on the same text, on every version of brick/math and every calculator tried. Nothing is left for an
-app to declare.
+and the query, and `memory_limit`. Within those, the rule is linear in the text's length, and within a small factor of
+Laravel's check where brick/math has GMP (by a divisor of 17 digits, 1.1 to 1.6 times slower: 0.223 s against 0.198 s on
+7 million digits), on every version of brick/math tried. Nothing is left for an app to declare.
 
 **What carries over from ADR 0020.** The class is `Gcob\LaraSpecFirst\Validation\MultipleOf`, implements Laravel's
 `ValidationRule` and `ValidatorAwareRule`, and is public API: a generated request imports it, so its name, namespace and

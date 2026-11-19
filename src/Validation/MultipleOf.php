@@ -51,7 +51,8 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
 
     /**
      * Every other exponent is a text length or a float's, far below it, so past it only the sign is left. Two exponents
-     * past it cannot be told apart, so a divisor whose exponent reaches it refuses the value.
+     * past it cannot be told apart, so a divisor whose exponent, as written, reaches it refuses the value, whatever its
+     * digits shift the exponent to.
      */
     private const int EXPONENT_CAP = 10 ** 15;
 
@@ -105,13 +106,13 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
         }
 
         [$digits, $exponent] = $read;
-        [$divisorDigits, $divisorExponent] = $divisorRead;
+        [$divisorDigits, $divisorExponent, $divisorClamped] = $divisorRead;
 
         if ($digits === '') {
             return $divisorDigits !== '';
         }
 
-        if ($divisorDigits === '' || $exponent < $divisorExponent || abs($divisorExponent) >= self::EXPONENT_CAP) {
+        if ($divisorDigits === '' || $exponent < $divisorExponent || $divisorClamped) {
             return false;
         }
 
@@ -121,7 +122,8 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
     }
 
     /**
-     * @return array{string, int} the significant digits and the power of ten that follows them
+     * @return array{string, int, bool}|null the significant digits, the power of ten that follows them, and whether the
+     *                                       exponent as written reached the clamp
      */
     private static function read(string $text): ?array
     {
@@ -133,7 +135,9 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
         $digits = ltrim(($match['integral'] ?? '').$fractional, '0');
         $kept = rtrim($digits, '0');
 
-        return [$kept, self::exponent($match['exponent'] ?? '0') - strlen($fractional) + strlen($digits) - strlen($kept)];
+        $written = self::exponent($match['exponent'] ?? '0');
+
+        return [$kept, $written - strlen($fractional) + strlen($digits) - strlen($kept), abs($written) === self::EXPONENT_CAP];
     }
 
     private static function exponent(string $text): int
