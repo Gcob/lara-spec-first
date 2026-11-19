@@ -2333,6 +2333,42 @@ it('loads the class of a closed form body that declares a key with an apostrophe
         ->and(sendThroughEmitted($class, 'POST', parameters: ['page' => ['evil' => '1']])[0])->toBe(422);
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
+// PHP drops what follows a closing bracket, so `a[c]` and `a[c]x` both arrive as `a.c`: the pair builds (the DTO names
+// differ) and a form delivers it under one key. A closed body closes the level above (`a` takes only `c`), but the shared
+// key has no rule, so what arrives under it is not checked, and `validated()` keeps it. An open body checks nothing.
+// Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
+it('closes the level above two names a form delivers under one key, and checks nothing below it', function (
+    bool $closed,
+    array $parameters,
+    int $status,
+    array $answer,
+): void {
+    $class = emittedRequestClass(postWithBracketedNames('application/x-www-form-urlencoded', ['a[c]', 'a[c]x'], $closed));
+
+    [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: $parameters);
+
+    expect($answered)->toBe($status)
+        ->and($status === 422 ? array_keys($body['errors']) : $body)->toBe($answer);
+})->with([
+    'an undeclared key beside them' => [true, ['a' => ['evil' => '1']], 422, ['a']],
+    // TODO (#206): the three rows below that answer 200 carry a value nobody checked in `validated()`: flip each answer
+    // to `[]` when it stops.
+    'the shared key, not a number' => [true, ['a' => ['c' => 'abc']], 200, ['a' => ['c' => 'abc']]],
+    'an array under the shared key' => [true, ['a' => ['c' => ['evil' => '1']]], 200, ['a' => ['c' => ['evil' => '1']]]],
+    'the shared key, a number' => [true, ['a' => ['c' => '5']], 200, ['a' => ['c' => '5']]],
+    'open: an undeclared key' => [false, ['a' => ['evil' => '1']], 200, []],
+    'open: the shared key' => [false, ['a' => ['c' => 'abc']], 200, []],
+]);
+
+// What the payloads above stand for: PHP reads both wire names as `a.c`, and keeps the last one sent.
+it('reads a[c] and a[c]x from a form body as the same key', function (): void {
+    parse_str('a[c]=1&a[c]x=2', $both);
+    parse_str('a[c]x=2', $suffixed);
+
+    expect($both)->toBe(['a' => ['c' => '2']])
+        ->and($suffixed)->toBe(['a' => ['c' => '2']]);
+});
+
 // A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a
 // rule there, but the array a form builds for them still stands in for `page`. The contract wants a `page` the form
 // never sent (a stated gap, as for every required name a form nests other names under), so `validated()` has no `page`
@@ -3006,7 +3042,8 @@ it('refuses an empty JSON object on an optional body that requires properties', 
     [$answered, $errors] = errorsForRawJson($class, $content);
 
     expect($answered)->toBe($status)
-        ->and(array_keys($errors))->toBe($keys);
+        ->and(array_keys($errors))->toBe($keys)
+        ->and(array_map('count', $errors))->each->toBe(1);
 })->with([
     'two properties, an empty object' => [['a', 'b'], ['a'], false, '{}', 422, ['a']],
     'two properties, only a key it does not declare' => [['a', 'b'], ['a'], false, '{"zzz":1}', 422, ['a']],
@@ -3033,6 +3070,22 @@ it('names a missing required key once when a sibling was sent', function (array 
 })->with([
     'a sibling sent' => [['a', 'b', 'c'], ['a', 'c'], '{"b":"x"}', ['a', 'c']],
     'a dotted name, a sibling sent' => [['user.name', 'b'], ['user.name'], '{"b":"x"}', ['user.name']],
+]);
+
+// The `{}` is refused only when Laravel reads the request as JSON, which is a `Content-Type` holding `/json` or `+json`.
+// Any other type, or none, reads an absent body and passes: no declared key arrives. A form type is no exception to
+// that, although PHP would decode a form `{}` as a field named `{}`: `Request::create()` does not parse the content, so
+// that row passes for the same reason and the field is never built.
+it('reads an empty object sent as another type as an absent optional body', function (?string $contentType, int $status): void {
+    $class = emittedRequestClass(postWithOptionalJsonRequiring(['a', 'b'], ['a']));
+
+    expect(statusForContentType($class, $contentType, '{}'))->toBe($status);
+})->with([
+    'text/plain' => ['text/plain', 200],
+    'no type' => [null, 200],
+    'a form type' => ['application/x-www-form-urlencoded', 200],
+    'a +json type is JSON' => ['application/vnd.api+json', 422],
+    'control: JSON' => ['application/json', 422],
 ]);
 
 /**
@@ -3604,6 +3657,10 @@ it('answers every other body as the same body not nullable does', function (arra
     expect($twinStatus)->toBe($status)
         ->and($nullableStatus)->toBe($twinStatus)
         ->and($nullableKeys)->toBe($twinKeys)
+        // The required-key check skips a key `present_with` already refused, a dotted one included: each key is named
+        // once, never twice.
+        ->and(array_map('count', $nullableErrors))->each->toBe(1)
+        ->and(array_map('count', $twinErrors))->each->toBe(1)
         // The key is the name as written, never the escaped one the rules are keyed by.
         ->and(implode(',', $nullableKeys))->not->toContain('\\');
 })->with(fn (): array => nullableTwinRows());

@@ -268,7 +268,8 @@ under is one the contract declares, the closed body says nothing more about it. 
 the levels above it like any other: `filter[a]`, `filter[a][b]` and `filter[c]` give
 `'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and `filter[a]` closes `filter.a` in its own
 array branch (`['array:b']`), so `filter[a][evil]=1` is refused too. Two names a form delivers under one bracketed key
-(`a.b[c]` beside `a_b[c]`, both `a_b.c`) close `a_b` to `c`.
+(`a[c]` beside `a[c]x`, both `a.c`, since PHP drops what follows a closing bracket) close `a` to `c`; the shared key has
+no rule, so what arrives under it is not checked, and a closed body's `validated()` carries it.
 
 **A name a form body declares beside the names a form nests under it is judged by shape, as a query name is.** `page`
 beside `page[size]`, `filter[a]` beside `filter[a][b]`, at any depth, and `ids` beside `ids[]`, which a form reads as
@@ -288,21 +289,22 @@ under:
 
 `page=abc` and `page[size]=abc` answer 422, `page=2` and `page[size]=3` pass, and no finding is written: both names have
 their rules. The array branch is `['array']` when a name below has a rule, and `['exclude']` when none has (`page`
-beside `page[*]` in an open body, or `a_b` beside `a.b[c]` and `a_b[c]`, which collide), so Laravel does not keep an
-array nobody checked in `validated()`. **In a closed body the array branch holds the keys the contract declares below
-the name:** `page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and `page[size]=3&page[evil]=1` answer
-422, as the contract refuses them, while `page=2` and `page[size]=3` still pass. A branch that drops the array holds the
-keys too, in front of the `exclude` (`['array:b', 'exclude']` for `filter[a]` beside an object `filter[a][b]` that has a
-name below it, so both are withheld), so `filter[a][evil]=1` is refused there too, where that level stayed open. A key
-`array:` cannot name keeps `['array']`, and the generated file says the key check accepts it: a comma in a key, and the
-key of a `*` name (`page[*]` beside `page[size]`), which Laravel hides behind a placeholder, so `array:size,*` would
-refuse the `page[*]=5` the contract declares. That level accepts `page[evil]=1` too. A comparison is step by step, so
-`filter[a]` is no ancestor of `filter[ab][c]`. **`dto()` reads the name only when it is not an array:** the request
-lists such names (not those whose array branch is `exclude`, which `validated()` never holds) in a `SCALAR_NAMES`
-constant, and `contractNames()` drops the array once it has read each nested name out of it, because `from()` casts what
-it reads and `(int)` of an array is `1`. So `page[size]=3` reaches the DTO as `page[size]` and `page` is `Optional`,
-which is what a required `page` is there: the array stands in for it, and the file says so. The key that two names
-deliver under one is in the list too, when a name below it has a rule. The reasoning is in
+beside `page[*]` in an open body, or `a` beside `a[c]` and `a[c]x`, which collide), so Laravel does not keep an array
+nobody checked in `validated()`. **In a closed body the array branch holds the keys the contract declares below the
+name:** `page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and `page[size]=3&page[evil]=1` answer 422,
+as the contract refuses them, while `page=2` and `page[size]=3` still pass. A branch that drops the array holds the keys
+too, in front of the `exclude` (`['array:b', 'exclude']` for `filter[a]` beside an object `filter[a][b]` that has a name
+below it, so both are withheld), so `filter[a][evil]=1` is refused there too, where that level stayed open. **Open
+(#206):** the trio `a`, `a[c]` and `a[c]x` in a closed body is not refused yet: its branch is `['exclude']` alone, so
+`a[evil]=1` passes. A key `array:` cannot name keeps `['array']`, and the generated file says the key check accepts it:
+a comma in a key, and the key of a `*` name (`page[*]` beside `page[size]`), which Laravel hides behind a placeholder,
+so `array:size,*` would refuse the `page[*]=5` the contract declares. That level accepts `page[evil]=1` too. A
+comparison is step by step, so `filter[a]` is no ancestor of `filter[ab][c]`. **`dto()` reads the name only when it is
+not an array:** the request lists such names (not those whose array branch is `exclude`, which `validated()` never
+holds) in a `SCALAR_NAMES` constant, and `contractNames()` drops the array once it has read each nested name out of it,
+because `from()` casts what it reads and `(int)` of an array is `1`. So `page[size]=3` reaches the DTO as `page[size]`
+and `page` is `Optional`, which is what a required `page` is there: the array stands in for it, and the file says so.
+The key that two names deliver under one is in the list too, when a name below it has a rule. The reasoning is in
 [ADR 0012](../../project/decisions/0012-judge-plain-form-names-by-shape.md).
 
 **The shape check cannot tell a `page` the client left out from the names it sent instead, when the contract asks for
@@ -421,20 +423,21 @@ name of the contract is it). The key is written in the generated `after()`.
 **An empty content is an absent body, and the body's `required` decides.** A required body sent as nothing is refused on
 the body's own key, with Laravel's `required` message, since no rule says so when every property is optional (they are
 all `sometimes`). An optional body sent as nothing passes, and `{}` is a body, an empty one: a required body accepts it
-when no property is required, and an optional JSON body that requires properties refuses it, key by key. The check is
-for a JSON body and a form body alike, and it reads any request whose type is not a form's as absent: one that is JSON,
-one that is `text/plain` or `application/xml`, and one with no `Content-Type` at all (`curl -X POST url` and
-`fetch(url, { method: 'POST' })` send none when there is no body). The type is compared without case, and its parameters
-(`; charset=utf-8`) do not count. A request with no `Content-Type` carries no form field either, since a multipart
-always sets one, and one with an uploaded file is never read as absent. What stays ambiguous is a form: a request with a
-form `Content-Type` and no content has its body read from the form bag, whose fields need not show in the raw content
-(PHP leaves `php://input` empty for `multipart/form-data`), so an empty `application/x-www-form-urlencoded` body and a
-multipart with no parts are not read as an absent body, whatever the case its type is spelled in, and the generated file
-says so in a finding whenever a required body is read as a form and no required field, or the body's required-key check,
-already refuses an empty form. A required key asked with `present` or `required` (a required property, a required file
-part, a required name `properties` does not declare) refuses a form that sends no field on its own, so the finding would
-only be noise there. A key that follows another through `dependentRequired`, a `readOnly` one, a name the request leaves
-unchecked and a `PATCH` ask nothing of an empty form, and keep the finding.
+when no property is required, and an optional JSON body that requires properties refuses it, key by key, when it is sent
+as JSON. The check is for a JSON body and a form body alike, and it reads any request whose type is not a form's as
+absent: one that is JSON, one that is `text/plain` or `application/xml`, and one with no `Content-Type` at all
+(`curl -X POST url` and `fetch(url, { method: 'POST' })` send none when there is no body). The type is compared without
+case, and its parameters (`; charset=utf-8`) do not count. A request with no `Content-Type` carries no form field
+either, since a multipart always sets one, and one with an uploaded file is never read as absent. What stays ambiguous
+is a form: a request with a form `Content-Type` and no content has its body read from the form bag, whose fields need
+not show in the raw content (PHP leaves `php://input` empty for `multipart/form-data`), so an empty
+`application/x-www-form-urlencoded` body and a multipart with no parts are not read as an absent body, whatever the case
+its type is spelled in, and the generated file says so in a finding whenever a required body is read as a form and no
+required field, or the body's required-key check, already refuses an empty form. A required key asked with `present` or
+`required` (a required property, a required file part, a required name `properties` does not declare) refuses a form
+that sends no field on its own, so the finding would only be noise there. A key that follows another through
+`dependentRequired`, a `readOnly` one, a name the request leaves unchecked and a `PATCH` ask nothing of an empty form,
+and keep the finding.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body
@@ -538,15 +541,16 @@ required ones would accept a body made of an optional key alone, which is a body
 When the body declares one key and requires it, there is nothing else to name, and it becomes `sometimes`. With two or
 more required, each is asked for through the others, so a body that sends none of them asks for none. A rule cannot tell
 a body sent as `{}` from one that is not sent, since both leave every key out of the data, so the rules alone would
-accept `{}` whenever the body is optional and requires something. **A JSON request closes that gap in the generated
-`after()`, which reads the raw content:** an empty content is an absent body and passes, and a JSON object that lacks a
-required key is refused on that key, whatever else it carries (`{}`, or `{"zzz": 1}`), with the rule the key would get
-in a required body. The keys are one `REQUIRED_KEYS` constant in the generated file, and a key `present_with` already
-refused is named once. **Only a form keeps the gap**: an empty form cannot be told from an absent body, and a form's
-required names arrive rewritten or nested (`user_name`, `page.size`), so the generated file says in a finding that a
-form that sends none of the body's keys is accepted, which the contract refuses. (The empty content the request refuses
-is a required body's, never an optional one's.) With nothing required, every field was already `sometimes` and an absent
-body was already valid.
+accept `{}` whenever the body is optional and requires something. **A request sent as JSON closes that gap in the
+generated `after()`, which reads the raw content:** an empty content is an absent body and passes, and a JSON object
+that lacks a required key is refused on that key, whatever else it carries (`{}`, or `{"zzz": 1}`), with the rule the
+key would get in a required body. The keys are one `REQUIRED_KEYS` constant in the generated file, and a key
+`present_with` already refused is named once. **Only a request Laravel does not read as JSON keeps the gap**: a `{}`
+sent as `text/plain` or with no `Content-Type` is not decoded, so it reads as an absent body, and an empty form cannot
+be told from an absent body either; a form's required names arrive rewritten or nested (`user_name`, `page.size`), so
+the generated file says in a finding that a form that sends none of the body's keys is accepted, which the contract
+refuses. (The empty content the request refuses is a required body's, never an optional one's.) With nothing required,
+every field was already `sometimes` and an absent body was already valid.
 
 **The cost is noise, and it is bounded.** Eight required properties mean eight rules naming seven siblings each, in a
 file nobody edits by hand. Nothing else in the rule set grows that way, and an optional body that requires properties is

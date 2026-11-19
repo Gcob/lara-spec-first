@@ -91,15 +91,17 @@ tags: [versions, conventions, planning]
   `null`, now answers a JSON `null`, where it answered an empty `200`. The reasoning is in
   [ADR 0017](./docs/project/decisions/0017-return-the-response-dto-from-routeaction.md), and this ships
   [#165](https://github.com/Gcob/lara-spec-first/issues/165).
-- **An optional JSON body that requires properties now refuses `{}`, and an object that carries none of them, where it
-  used to pass.** A body with `requestBody.required: false` and a schema that requires `reason` meant "a body, or none",
-  but a rule cannot tell `{}` from no body, so `{}` and `{"zzz": 1}` were accepted. They answer `422` to a client that
-  asks for JSON (see
+- **An optional JSON body that requires properties now refuses `{}` sent as JSON, and a JSON object that carries none of
+  them, where it used to pass.** A body with `requestBody.required: false` and a schema that requires `reason` meant "a
+  body, or none", but a rule cannot tell `{}` from no body, so `{}` and `{"zzz": 1}` were accepted. Sent with a type
+  Laravel reads as JSON (`application/json`, or a `+json` type such as `application/vnd.api+json`), they answer `422` to
+  a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)),
   on each required key the object lacks. An absent body (no content, or only blanks) and a JSON `null` on a nullable
-  body still pass. A form that sends none of the body's keys is still accepted, and the generated file says so in a
-  finding. The finding no longer names `{}`, and a JSON-only body no longer carries it. This is a breaking change: a
-  client that sent `{}` and got a `200` now gets a refusal. Send the key, or send no body.
+  body still pass, and so does a `{}` sent as `text/plain` or with no `Content-Type`: Laravel does not decode it, so the
+  request reads it as an absent body. A form that sends none of the body's keys is still accepted, and the generated
+  file says so in a finding. The finding no longer names `{}`, and a JSON-only body no longer carries it. This is a
+  breaking change: a client that sent `{}` as JSON and got a `200` now gets a refusal. Send the key, or send no body.
 - **A required body sent with an empty content and a type that is not a form is refused, where it used to pass.** An
   `application/xml` or `text/plain` request (compared without case, parameters like `; charset=utf-8` ignored) with no
   content, or only blanks, answers `422` to a client that asks for JSON (see
@@ -137,11 +139,14 @@ tags: [versions, conventions, planning]
   query side. This is a breaking change: send values the contract describes, or loosen the contract. The reasoning is in
   [ADR 0012](./docs/project/decisions/0012-judge-plain-form-names-by-shape.md), and this ships
   [#168](https://github.com/Gcob/lara-spec-first/issues/168).
-- **A closed form body that declares two names under one bracketed key now refuses an undeclared key below it, where it
-  used to accept it.** `a.b[c]` beside `a_b[c]` are both delivered as `a_b.c`, and the level above is now closed (`a_b`
-  takes only `c`), where the key check accepted anything under `a_b`. A request that sent `a_b[evil]=1` to such a body
-  and got a `200` now gets a `422` to a client that asks for JSON (see
+- **A closed form body that declares two names under one bracketed key now refuses an undeclared key beside them, where
+  it used to accept it.** PHP delivers `a[c]` and `a[c]x` both as `a.c` (it drops what follows a closing bracket), and
+  the level above is now closed (`a` takes only `c`), where the key check accepted anything under `a`. A request that
+  sent `a[evil]=1` to such a body and got a `200` now gets a `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
+  The shared key itself is still not checked, as the generated file says: `a[c]=abc` and `a[c][evil]=1` pass, and
+  `validated()` now carries what was sent there under `a`, where it carried nothing. A body that also declares `a`
+  itself is not closed yet: it still accepts `a[evil]=1` ([#206](https://github.com/Gcob/lara-spec-first/issues/206)).
   This is a breaking change: drop the key, or declare it.
 - **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it
   used to accept it.** The body is closed to its declared names, but the level `page` is delivered at was left open for
