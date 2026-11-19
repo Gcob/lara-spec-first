@@ -1,0 +1,63 @@
+# An untyped field that writes a keyword the package does not read: on the field, through a `$ref`, and in an `allOf`
+# branch. `oneOf` is one the package ignores, so the field accepts what the contract refuses.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /direct:
+    post:
+      operationId: untypedDirect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filter:
+                  oneOf:
+                    - type: string
+                    - type: integer
+      responses:
+        '204':
+          description: Done
+  /through-ref:
+    post:
+      operationId: untypedThroughRef
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filter:
+                  $ref: '#/components/schemas/Filter'
+      responses:
+        '204':
+          description: Done
+  /in-branch:
+    post:
+      operationId: untypedInBranch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filter:
+                  allOf:
+                    - oneOf:
+                        - type: string
+                        - type: integer
+      responses:
+        '204':
+          description: Done
+components:
+  schemas:
+    Filter:
+      oneOf:
+        - type: string
+        - type: integer

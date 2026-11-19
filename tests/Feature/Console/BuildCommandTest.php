@@ -310,6 +310,28 @@ it('keeps a stricter-than-the-contract finding out of the build warning', functi
         ->and($prose)->toContain('Nothing was read and left unenforced.');
 });
 
+// A finding that loses no constraint is in the file, and is no gap: the warning counts the requests that read
+// something and enforce nothing for it.
+it('keeps an informational finding out of the build warning', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('informational-findings.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+    $prose = static fn (string $request): string => (string) preg_replace(
+        '/\s*\n\s*\*\s*/',
+        ' ',
+        (string) file_get_contents(buildTree().'/Requests/'.$request.'.php'),
+    );
+    $create = $prose('CreateThingRequest');
+    $replace = $prose('ReplaceThingRequest');
+
+    expect($output->fetch())->not->toContain('read a constraint they do not enforce')
+        ->and($create)->toContain('`id` is `readOnly` and required')
+        ->and($create)->toContain('Nothing was read and left unenforced.')
+        ->and($replace)->toContain('A `PUT` whose schema leaves `note` optional')
+        ->and($replace)->toContain('Nothing was read and left unenforced.');
+});
+
 it('still counts a request that leaves a constraint unenforced', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('doctor-unenforced-keyword.yaml'));
 

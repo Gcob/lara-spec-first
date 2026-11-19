@@ -3818,6 +3818,23 @@ it('keeps the unenforced sentence in the file of an open-object body', function 
     expect($flat)->toContain('Nothing was read and left unenforced.');
 });
 
+// A field named `address.id` and the `id` of an `address` object write the same sentence, and the gap of the second is
+// not hidden by the information of the first: the file does not claim that nothing was left unenforced.
+it('does not claim that nothing was left unenforced when a gap shares its sentence with information', function (Schema $nested): void {
+    $body = new Schema(types: [SchemaType::Object], properties: [
+        'address.id' => new Schema,
+        'address' => new Schema(types: [SchemaType::Object], properties: ['id' => $nested]),
+    ]);
+    $planned = plannedRequests([postWithMapBody($body)])['requests'][0];
+    $file = (new FormRequestEmitter('App\\Http\\Generated', 'openapi.yaml'))->emit($planned)->contents;
+    $flat = (string) preg_replace('/\s*\n\s*\*\s*/', ' ', $file);
+
+    expect($flat)->not->toContain('Nothing was read and left unenforced.');
+})->with([
+    'an enum of integers' => [new Schema(enum: [1, 2])],
+    'a oneOf the package does not read' => [new Schema(ignored: ['oneOf' => '#/paths/~1hooks/post/requestBody'])],
+]);
+
 // A `query` parameter's key is read from the query string, so it is in `validated()` and not in the body's keys: the DTO
 // holds the body and none of the query string, and a body key of the same name is in neither. The same for a name PHP
 // nests (`page[size]`), whose key is `page`.
