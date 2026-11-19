@@ -449,19 +449,22 @@ tags: [versions, conventions, planning]
 - **A 3.0 `format: binary` part written `contentType: text/plain` was reported in a `multipart/form-data` body alone and
   read as the default in a form-encoded or mixed one.** 3.0 gives it `application/octet-stream`, so all three bodies now
   report it. See [#131](https://github.com/Gcob/lara-spec-first/issues/131).
-- **A number PHP cannot hold, on a field with `multipleOf`, is refused with a `422`, where the request answered `500`.**
-  PHP reads `1e400` in a JSON body as `INF`, and a text number whose exponent is 2^63 - 1 or more
-  (`?field=1e99999999999999999999`) can't be read at all: Laravel's `multiple_of` throws on both. Every field with
+- **A JSON number PHP cannot hold, on a field with `multipleOf`, is refused with a `422`, where the request answered
+  `500`.** PHP reads `1e400` in a JSON body as `INF`, and Laravel's `multiple_of` throws on it. Every field with
   `multipleOf` now gets the package's `MultipleOf` (`Gcob\LaraSpecFirst\Validation\MultipleOf`) in place of
-  `multiple_of`, in a body and in the query. It refuses those values with `multiple_of`'s message, and answers every
-  other value as `multiple_of` does, with the same message, the same custom messages and the same `failed()` entry. Such
-  a number is refused whatever the divisor, though the contract accepts some (`1e400` is a multiple of `0.5`): once
-  read, its value is gone. A text exponent from the tens of millions (about 63 million under a 128 MB memory limit,
-  `"1e200000000"`) still exhausts memory in Laravel's check
-  ([#214](https://github.com/Gcob/lara-spec-first/issues/214)). A request generated before keeps `multiple_of` until the
-  next `spec:build`. The reasoning is in
+  `multiple_of`, in a body and in the query, with `multiple_of`'s message, custom messages and `failed()` entry. Such a
+  number is refused whatever the divisor, though the contract accepts some (`1e400` is a multiple of `0.5`): once read,
+  its value is gone. A request generated before keeps `multiple_of` until the next `spec:build`. The reasoning is in
   [ADR 0020](./docs/project/decisions/0020-check-multipleof-through-the-package.md), and this ships
   [#198](https://github.com/Gcob/lara-spec-first/issues/198).
+- **A number written as text, on a field with `multipleOf`, is judged exactly and in milliseconds, where a huge exponent
+  or a long decimal took seconds or answered `500`.** Laravel's `multiple_of` writes out every digit an exponent stands
+  for: under a 128 MB memory limit, `?amount=1e50000000` took over 2 seconds, `1e80000000` exhausted memory, a fatal
+  error that answered `500`, and an exponent too large for brick/math answered `500` too. Without the GMP and BCMath
+  extensions, an 8 KB decimal took several seconds. `MultipleOf` now decides from the number's digits and exponent, with
+  PHP integers, in time that grows with the length of the text and never with its exponent, and answers every other
+  value as `multiple_of` does. So `1e99999999999999999999` is a multiple of 2, and passes. This ships
+  [#214](https://github.com/Gcob/lara-spec-first/issues/214).
 
 ## [0.2.0] - 2026-11-15
 
