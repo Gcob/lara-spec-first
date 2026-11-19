@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
+use Gcob\LaraSpecFirst\Validation\MultipleOf;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Gcob\LaraSpecFirst\Validation\UndeclaredKeys;
 use Gcob\LaraSpecFirst\Validation\WholeNumber;
@@ -113,6 +114,10 @@ final readonly class FormRequestEmitter
 
         if ($set->whenNotArray !== []) {
             $imports[] = $this->import(Fluent::class);
+        }
+
+        if ($set->usesMultipleOf()) {
+            $imports[] = $this->import(MultipleOf::class);
         }
 
         if ($set->usesNullOrAbsent()) {
@@ -763,10 +768,14 @@ final readonly class FormRequestEmitter
      * One rule as PHP: a string literal, or `Rule::in()` over the values an enumeration allows — never `in:a,b`, which
      * splits on a comma inside a value.
      */
-    private function rule(string|InRule|NullOrAbsent|WholeNumber $rule): string
+    private function rule(string|InRule|MultipleOf|NullOrAbsent|WholeNumber $rule): string
     {
         if (is_string($rule)) {
             return $this->literal($rule);
+        }
+
+        if ($rule instanceof MultipleOf) {
+            return 'new MultipleOf('.$this->literal($rule->divisor).')';
         }
 
         if ($rule instanceof NullOrAbsent) {
