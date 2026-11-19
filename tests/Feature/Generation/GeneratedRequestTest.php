@@ -14,6 +14,7 @@ use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
+use Gcob\LaraSpecFirst\Validation\MultipleOf;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Gcob\LaraSpecFirst\Validation\WholeNumber;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
@@ -138,14 +139,14 @@ it('hands a boolean query parameter to validated() as the string it was sent', f
  * The emitter writes an `InRule` as `Rule::in([...])`; the validator needs the framework's object, so the same
  * translation happens here.
  *
- * @param  array<string, list<string|InRule|NullOrAbsent|WholeNumber>>  $built
+ * @param  array<string, list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>>  $built
  * @return array<string, list<mixed>>
  */
 function frameworkRules(array $built): array
 {
     return array_map(
         static fn (array $list): array => array_map(
-            static fn (string|InRule|NullOrAbsent|WholeNumber $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
+            static fn (string|InRule|MultipleOf|NullOrAbsent|WholeNumber $rule): mixed => $rule instanceof InRule ? Rule::in($rule->values) : $rule,
             $list,
         ),
         $built,
@@ -337,8 +338,8 @@ it('accepts a whole float at every level of a JSON body', function (string $cont
     'an element that is a string' => ['{"field": {"xs": [1, "2"]}}', 422, ['field.xs.1']],
 ]);
 
-// `min`, `max`, `gt`, `lt` and `multiple_of` find the number by the name of the rule beside them (`numeric`), so they
-// keep comparing it as a number when it was written as a float.
+// `min`, `max`, `gt` and `lt` find the number by the name of the rule beside them (`numeric`), so they keep comparing
+// it as a number when it was written as a float. `multipleOf` reads the value itself.
 it('compares the bounds of a JSON integer written as a float', function (Schema $field, string $written, int $status): void {
     expect(statusForBuiltRules(oneField($field, required: false), '{"field": '.$written.'}'))->toBe($status);
 })->with([
@@ -582,8 +583,8 @@ it('compares min and max as numbers under a strict rule', function (Schema $body
     'a number above maximum' => [scalarBody(SchemaType::Number, maximum: 2.5), 3, 422],
 ]);
 
-// The same for the other rules a number schema writes: `gt`, `lt` and `multiple_of` sit beside the strict rule.
-it('compares gt, lt and multiple_of as numbers under a strict rule', function (Schema $field, float|int $value, int $status): void {
+// The same for the other rules a number schema writes: `gt`, `lt` and `multipleOf` sit beside the strict rule.
+it('compares gt, lt and multipleOf as numbers under a strict rule', function (Schema $field, float|int $value, int $status): void {
     expect(statusForBuiltRules(oneField($field, required: false), ['field' => $value]))->toBe($status);
 })->with([
     'an integer above exclusiveMinimum' => [new Schema(types: [SchemaType::Integer], exclusiveMinimum: 5.0), 6, 200],
@@ -4353,3 +4354,122 @@ it('keeps and judges the integer-like keys of a form root that declares properti
     'form-encoded' => ['application/x-www-form-urlencoded'],
     'multipart' => ['multipart/form-data'],
 ]);
+
+// Laravel's `multiple_of` throws on a number PHP cannot hold, which answers `500`: PHP reads a JSON `1e400` as `INF`, and
+// the package's `MultipleOf` refuses it with a `422`, at every level of the body. `1e308` is a number PHP holds, a
+// multiple of `0.5`, and passes. The raw JSON is sent as written, since `json_encode()` cannot write `1e400`.
+it('answers 422, not 500, to a JSON number too large for a double on a field with multipleOf', function (Schema $body, string $content, int $status, array $keys): void {
+    expect(responseForBuiltRules($body, $content))->toBe([$status, $keys]);
+})->with(function (): Generator {
+    $number = new Schema(types: [SchemaType::Number], multipleOf: 0.5);
+    $integer = new Schema(types: [SchemaType::Integer], multipleOf: 3.0);
+
+    yield 'a number, past the largest double' => [oneField($number, required: false), '{"field": 1e400}', 422, ['field']];
+    yield 'a number, past the smallest double' => [oneField($number, required: false), '{"field": -1e400}', 422, ['field']];
+    yield 'an integer' => [oneField($integer, required: false), '{"field": 1e400}', 422, ['field']];
+    yield 'a number the double holds' => [oneField($number, required: false), '{"field": 1e308}', 200, []];
+    yield 'a nested field' => [
+        oneField(new Schema(types: [SchemaType::Object], properties: ['b' => $number]), required: false),
+        '{"field": {"b": 1e400}}',
+        422,
+        ['field.b'],
+    ];
+    yield 'a list element' => [
+        oneField(new Schema(types: [SchemaType::Object], properties: ['xs' => new Schema(types: [SchemaType::Array], items: $number)]), required: false),
+        '{"field": {"xs": [2, 1e400]}}',
+        422,
+        ['field.xs.1'],
+    ];
+});
+
+// The same body when the operation also declares a form: the generated request reads it as JSON for a JSON client, with
+// one rule set for both.
+it('answers 422 to a JSON client too large for a double in a body that is JSON and a form', function (SchemaType $type): void {
+    $body = oneField(new Schema(types: [$type], multipleOf: 2.0), required: false);
+
+    expect(responseForBuiltRules($body, '{"field": 1e400}', mediaTypes: ['application/json', 'application/x-www-form-urlencoded']))
+        ->toBe([422, ['field']]);
+})->with(['an integer' => [SchemaType::Integer], 'a number' => [SchemaType::Number]]);
+
+// A form-only operation still reads a JSON body as JSON (`bodyInput()` does not look at the media type), so a client off
+// the contract reaches the rule with an `INF` there too.
+it('answers 422 to a JSON client too large for a double on an operation that declares only a form', function (string $mediaType, SchemaType $type, array $messages): void {
+    $class = emittedRequestClass(postWithFormSchema($mediaType, oneField(new Schema(types: [$type], multipleOf: 2.0))));
+
+    expect(errorsForRawJson($class, '{"field": 1e400}'))->toBe([422, ['field' => $messages]]);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with([
+    'a number' => [SchemaType::Number, ['The field field must be a multiple of 2.']],
+    'an integer' => [SchemaType::Integer, ['The field field must be an integer.', 'The field field must be a multiple of 2.']],
+]);
+
+// brick/math cannot read a text exponent past 64 bits either, so `multiple_of` throws on the text of a query, a form
+// field and a JSON string alike. A client on the contract sends the first two, and each is a multiple of 2 that no check
+// can confirm.
+it('answers 422, not 500, to a text number whose exponent PHP cannot hold', function (): void {
+    $number = new Schema(types: [SchemaType::Number], multipleOf: 2.0);
+    $query = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listThings',
+        queryParameters: [new QueryParameter('field', $number)],
+    ));
+    $form = emittedRequestClass(postWithFormSchema('application/x-www-form-urlencoded', oneField($number)));
+    $json = emittedRequestClass(postWithFormSchema('application/json', oneField($number)));
+
+    $fromQuery = sendThroughEmitted($query, 'GET', '?field=1e99999999999999999999');
+    $fromForm = sendThroughEmitted($form, 'POST', parameters: ['field' => '1e99999999999999999999']);
+
+    expect($fromQuery[0])->toBe(422)
+        ->and($fromQuery[1]['errors'])->toBe(['field' => ['The field field must be a multiple of 2.']])
+        ->and($fromForm[0])->toBe(422)
+        ->and($fromForm[1]['errors'])->toBe(['field' => ['The field field must be a multiple of 2.']])
+        ->and(errorsForRawJson($json, '{"field": "1e99999999999999999999"}'))
+        ->toBe([422, ['field' => ['The field field must be a number.', 'The field field must be a multiple of 2.']]]);
+});
+
+// The generated file imports the class and writes the divisor as text, and the answer is `multiple_of`'s own message.
+it('answers the emitted request with the message of multiple_of', function (): void {
+    $class = emittedRequestClass(postWithFormSchema('application/json', new Schema(
+        types: [SchemaType::Object],
+        properties: ['q' => new Schema(types: [SchemaType::Number], multipleOf: 0.5)],
+        required: ['q'],
+    )));
+
+    expect(errorsForRawJson($class, '{"q": 1e400}'))->toBe([422, ['q' => ['The q field must be a multiple of 0.5.']]])
+        ->and(errorsForRawJson($class, '{"q": 1.5}')[0])->toBe(200)
+        ->and(errorsForRawJson($class, '{"q": 1.2}'))->toBe([422, ['q' => ['The q field must be a multiple of 0.5.']]]);
+});
+
+// A form or query client sends text, and the rule answers it as `multiple_of` did: `1e400` as text is a multiple of 2
+// that brick/math reads exactly, and `3` is not. Green before the change too: it pins that the rule asks Laravel.
+it('reads a form or query client\'s text exactly', function (string $where): void {
+    $number = new Schema(types: [SchemaType::Number], multipleOf: 2.0);
+
+    if ($where === 'a query parameter') {
+        $class = emittedRequestClass(new Operation(
+            index: 0,
+            method: HttpMethod::Get,
+            path: PathTemplate::fromString('/things'),
+            operationId: 'listThings',
+            queryParameters: [new QueryParameter('field', $number)],
+        ));
+        $send = static fn (string $text): array => sendThroughEmitted($class, 'GET', '?field='.$text);
+    } else {
+        $class = emittedRequestClass($where === 'a form' ? postWithFormSchema('application/x-www-form-urlencoded', oneField($number)) : postWithJsonAndForm('application/x-www-form-urlencoded', oneField($number)));
+        $send = static fn (string $text): array => sendThroughEmitted($class, 'POST', parameters: ['field' => $text]);
+    }
+
+    expect($send('1e400')[0])->toBe(200)
+        ->and($send('4')[0])->toBe(200)
+        ->and($send('3')[0])->toBe(422)
+        ->and($send('3')[1]['errors'])->toBe(['field' => ['The field field must be a multiple of 2.']]);
+})->with(['a form', 'a body that is JSON and a form', 'a query parameter']);
+
+// A map's value is judged under a wildcard, inside the guard of the keys a map spares.
+it('answers 422 to a map value too large for a double', function (): void {
+    $class = emittedRequestClass(postWithMapBody(mapOf(new Schema(types: [SchemaType::Number], multipleOf: 2.0))));
+
+    expect(errorsForRawJson($class, '{"a": 4, "b": 1e400}'))->toBe([422, ['b' => ['The b field must be a multiple of 2.']]])
+        ->and(errorsForRawJson($class, '{"a": 4, "b": 6}')[0])->toBe(200);
+});

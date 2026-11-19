@@ -449,6 +449,17 @@ tags: [versions, conventions, planning]
 - **A 3.0 `format: binary` part written `contentType: text/plain` was reported in a `multipart/form-data` body alone and
   read as the default in a form-encoded or mixed one.** 3.0 gives it `application/octet-stream`, so all three bodies now
   report it. See [#131](https://github.com/Gcob/lara-spec-first/issues/131).
+- **A number PHP cannot hold, on a field with `multipleOf`, is refused with a `422`, where the request answered `500`.**
+  PHP reads `1e400` in a JSON body as `INF`, and a text number whose exponent doesn't fit in 64 bits
+  (`?field=1e99999999999999999999`) can't be read at all: Laravel's `multiple_of` throws on both. Every field with
+  `multipleOf` now gets the package's `MultipleOf` (`Gcob\LaraSpecFirst\Validation\MultipleOf`) in place of
+  `multiple_of`, in a body and in the query. It refuses those values with `multiple_of`'s message, and answers every
+  other value as `multiple_of` does, with the same message, the same custom messages and the same `failed()` entry. Such
+  a number is refused whatever the divisor, though the contract accepts some (`1e400` is a multiple of `0.5`): once
+  read, its value is gone. A text exponent from the hundreds of millions up to what fits in 64 bits (`"1e200000000"`)
+  still exhausts memory in Laravel's check ([#214](https://github.com/Gcob/lara-spec-first/issues/214)). A request
+  generated before keeps `multiple_of` until the next `spec:build`. This ships
+  [#198](https://github.com/Gcob/lara-spec-first/issues/198).
 
 ## [0.2.0] - 2026-11-15
 

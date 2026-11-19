@@ -258,7 +258,57 @@ it('imports nothing it does not use', function (): void {
     expect($emitted)->not->toContain('use Illuminate\\Validation\\Rule;')
         ->and($emitted)->toContain('use Illuminate\\Validation\\Validator;')
         ->and($emitted)->toContain('assert($validator instanceof Validator);')
-        ->and($emitted)->not->toContain('BODY_KEYS');
+        ->and($emitted)->not->toContain('BODY_KEYS')
+        ->and($emitted)->not->toContain('MultipleOf');
+});
+
+// `multipleOf` is the package's rule on every field, so the file builds it from the divisor's text and imports it, in a
+// body and in a query-only operation, which has no body to hold the import.
+it('writes the package rule for multipleOf, and imports it', function (Operation $operation): void {
+    $emitted = emittedRequest($operation, controllerShortName: 'CreateThingController');
+
+    expect($emitted)
+        ->toContain("new MultipleOf('0.25')")
+        ->toContain("use Gcob\\LaraSpecFirst\\Validation\\MultipleOf;\n")
+        ->and($emitted)->not->toContain('multiple_of')
+        ->and(pintAcceptsEmitted($emitted))->toBeTrue();
+})->with(function (): Generator {
+    $number = new Schema(types: [SchemaType::Number], multipleOf: 0.25);
+    $inBody = static fn (string $mediaType): Operation => new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody([$mediaType => new Schema(types: [SchemaType::Object], properties: ['amount' => $number])], true),
+    );
+
+    yield 'a JSON body' => [$inBody('application/json')];
+    yield 'a form body' => [$inBody('application/x-www-form-urlencoded')];
+    yield 'a query parameter' => [new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listThings',
+        queryParameters: [new QueryParameter('amount', $number)],
+    )];
+});
+
+// A form name beside the names PHP nests under it is judged behind `Rule::when()`, with the same rule list.
+it('writes the package rule for multipleOf on a form name behind Rule::when', function (): void {
+    $integer = new Schema(types: [SchemaType::Integer], multipleOf: 2.0);
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['multipart/form-data' => new Schema(types: [SchemaType::Object], properties: ['page' => $integer, 'page[size]' => $integer])], true),
+    ), controllerShortName: 'CreateThingController');
+
+    expect($emitted)
+        ->toContain("['sometimes', 'integer', new MultipleOf('2')],\n                ['array'],")
+        ->toContain("'page.size' => ['sometimes', 'integer', new MultipleOf('2')],")
+        ->toContain("use Gcob\\LaraSpecFirst\\Validation\\MultipleOf;\n")
+        ->and(pintAcceptsEmitted($emitted))->toBeTrue();
 });
 
 it('imports no Validator for a request with no dto() and no closed root', function (): void {
@@ -962,6 +1012,17 @@ it('wraps a map\'s value rules in UndeclaredKeys beside declared keys', function
         ->and($plain)->toContain("            'meta.*' => ['string'],")
         ->toContain('@return array<string, list<mixed>>')
         ->and($plain)->not->toContain('UndeclaredKeys');
+});
+
+// The value rules of a map sit inside the guard, one list like any other, so the rule is written there too.
+it('writes the package rule for multipleOf inside the guard of a map\'s values', function (): void {
+    $number = new Schema(types: [SchemaType::Number], multipleOf: 2.0);
+    $emitted = emittedBodyWithMap(new Schema(types: [SchemaType::Object], properties: ['meta' => new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: $number)]));
+
+    expect($emitted)
+        ->toContain("'meta.*' => new UndeclaredKeys([1 => ['id']], ['numeric:strict', new MultipleOf('2')]),")
+        ->toContain("use Gcob\\LaraSpecFirst\\Validation\\MultipleOf;\n")
+        ->and(pintAcceptsEmitted($emitted))->toBeTrue();
 });
 
 // A spared integer-like name is a string, as the strict comparison needs, and a value that is a map itself adds its own
