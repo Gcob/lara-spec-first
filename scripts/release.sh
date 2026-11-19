@@ -14,9 +14,9 @@
 #   - Alone it only reads. It prints every check green or red and what it would
 #     do, writes nothing, and exits 1 when any check is red.
 #   - With --publish it needs the same checks green, then a terminal: it shows
-#     who the tag will be signed as, and waits for the version to be typed. With
-#     no terminal (a pipe, CI) or a wrong answer it exits non-zero and
-#     has written nothing.
+#     who the tag will be signed as, and waits for the version to be typed, with
+#     or without the tag's leading v. With no terminal (a pipe, CI) or any other
+#     answer it exits non-zero and has written nothing.
 #   - Then the annotated tag, the push, and the GitHub release whose body is the
 #     version's changelog entry, its relative links turned into links pinned to
 #     the tag so they keep showing the docs as they were at that release.
@@ -222,11 +222,16 @@ printf 'Type the version to tag (%s): ' "$VERSION"
 answer=""
 read -r answer || true
 
-if [ "$answer" != "$VERSION" ]; then
-    echo
-    echo "That is not $VERSION. Nothing was written." >&2
-    exit 1
-fi
+# Why: the tag is named v<version>, so typing the v is a natural answer and names the same version.
+# Both patterns are quoted so that $VERSION is compared as text (it passed is_version: no glob character).
+case "$answer" in
+    "$VERSION" | "v$VERSION") ;;
+    *)
+        echo
+        echo "That is neither $VERSION nor v$VERSION. Nothing was written." >&2
+        exit 1
+        ;;
+esac
 
 base="https://github.com/$slug/blob/v$VERSION"
 

@@ -171,14 +171,15 @@ when any check is red. An exit code of 0 means the real run would go through.
     `git fetch --unshallow` first.
 
 **`--publish` then asks a person.** With every check green, it shows who the tag will be created by (the git identity of
-the checkout) and waits for the version to be typed at a terminal. The identity is shown rather than checked because a
-public script cannot know the maintainer's private address, and a person reading it can.
+the checkout) and waits for the version to be typed at a terminal, with or without the leading `v` of its tag (`0.2.0`
+or `v0.2.0`). The identity is shown rather than checked because a public script cannot know the maintainer's private
+address, and a person reading it can.
 
 **The prompt stops a mistake, not an intention.** Without a terminal (a pipe, CI, a script that forgot the flag), or
-with a wrong answer, `--publish` exits non-zero and has written nothing. That makes the real run impossible by accident.
-It does not stop a process that opens a pseudo-terminal and types the version, which it knows because it is in the
-command, nor a plain `git tag` and `git push`, nor `gh release create`. **Tagging is the maintainer's by rule, not by
-construction**: the factory's rules forbid it, and [the agent guide](../../AGENTS.md) says never to run
+with any other answer, `--publish` exits non-zero and has written nothing. That makes the real run impossible by
+accident. It does not stop a process that opens a pseudo-terminal and types the version, which it knows because it is in
+the command, nor a plain `git tag` and `git push`, nor `gh release create`. **Tagging is the maintainer's by rule, not
+by construction**: the factory's rules forbid it, and [the agent guide](../../AGENTS.md) says never to run
 `just release --publish`.
 
 **With the right answer it does three things:**
