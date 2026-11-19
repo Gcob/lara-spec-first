@@ -367,9 +367,10 @@ it('compares the whole floats of a unique list of JSON integers by value', funct
     'two values' => ['{"xs": [1, 2.0]}', 200, []],
 ]);
 
-// A body that is JSON and a form keeps the loose `integer`, which takes `1.0` and `1e2`. A JSON client's `"42"` and
-// `true` stay accepted there, the limit its finding states.
-it('takes a whole float from a JSON client of a body that is JSON and a form', function (string $written, int $status): void {
+// A body that is JSON and a form judges a JSON client's number by its exact value, as a JSON-only body does, and takes
+// the text of an integer for a form client. A JSON client's `"42"` stays accepted there, the limit its finding states
+// (the runtime branch that would refuse it is #133).
+it('takes a whole float from a JSON client of a body that is JSON and a form, and refuses the rest of what is not whole', function (string $written, int $status): void {
     $class = emittedRequestClass(postWithJsonAndForm('application/x-www-form-urlencoded', oneField(new Schema(types: [SchemaType::Integer]), required: false)));
 
     expect(statusForRawJson($class, '{"field": '.$written.'}'))->toBe($status);
@@ -378,8 +379,95 @@ it('takes a whole float from a JSON client of a body that is JSON and a form', f
     'an exponent' => ['1e2', 200],
     'a fraction' => ['1.5', 422],
     'a string' => ['"42"', 200],
-    'true' => ['true', 200],
+    'true' => ['true', 422],
+    'a float a hair under three' => ['2.9999999999999996', 422],
+    'one hundred trillion' => ['1e14', 200],
 ]);
+
+// What a JSON client sends is judged by its exact value in a body that is JSON and a form too: `WholeNumber` beside
+// `numeric`, as in a JSON-only body. The messages are the same ones. `"42"` is the one value still let through, the gap
+// the generated file states (the runtime branch that would refuse it is #133).
+it('judges a JSON client\'s integer by its exact value in a body that is JSON and a form', function (string $formType, string $written, int $status, array $messages): void {
+    $class = emittedRequestClass(postWithJsonAndForm($formType, oneField(new Schema(types: [SchemaType::Integer], minimum: 2.0), required: false)));
+
+    expect(errorsForRawJson($class, '{"field": '.$written.'}'))->toBe([$status, $messages === [] ? [] : ['field' => $messages]]);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with([
+    'a float a hair under three' => ['2.9999999999999996', 422, ['The field field must be an integer.']],
+    'a fraction' => ['2.5', 422, ['The field field must be an integer.']],
+    // `true` has no number to compare, so `min` compares the length of "1" and a minimum of 2 fails too.
+    'true' => ['true', 422, ['The field field must be an integer.', 'The field field must be a number.', 'The field field must be at least 2.']],
+    'text' => ['"abc"', 422, ['The field field must be an integer.', 'The field field must be a number.']],
+    'one hundred trillion' => ['1e14', 200, []],
+    'past the range of a 64-bit integer' => ['1e20', 422, ['The field field must be an integer.']],
+    'a whole float' => ['3.0', 200, []],
+    'a whole float under the minimum' => ['1.0', 422, ['The field field must be at least 2.']],
+    // The stated gap: the text of an integer, which a form client sends.
+    'the text of an integer' => ['"42"', 200, []],
+]);
+
+// A form client's integer is text, and it is judged as it was: the text Laravel's `integer` takes passes and reaches
+// `validated()` as sent, `1.0` is refused, and a value that is no number reads both messages. An empty field arrives as
+// `null`, and reads both messages too. The framework trims the text before the rule sees it.
+it('passes a form client\'s integer text in a body that is JSON and a form as it did', function (string $formType, string $sent, int $status, array $messages, string $validated = ''): void {
+    $class = emittedRequestClass(postWithJsonAndForm($formType, oneField(new Schema(types: [SchemaType::Integer]), required: false)));
+
+    [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: ['field' => $sent]);
+
+    expect($answered)->toBe($status)
+        ->and($status === 200 ? $body : $body['errors'])->toBe($status === 200 ? ['field' => $validated] : ['field' => $messages]);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with([
+    'digits' => ['42', 200, [], '42'],
+    'a plus sign' => ['+5', 200, [], '+5'],
+    'negative zero' => ['-0', 200, [], '-0'],
+    'padded with spaces' => [' 7 ', 200, [], '7'],
+    'text' => ['abc', 422, ['The field field must be an integer.', 'The field field must be a number.']],
+    'an empty field' => ['', 422, ['The field field must be an integer.', 'The field field must be a number.']],
+    'a fraction' => ['2.5', 422, ['The field field must be an integer.']],
+    'a decimal point on a whole number' => ['1.0', 422, ['The field field must be an integer.']],
+    'past the range of a 64-bit integer' => ['9223372036854775808', 422, ['The field field must be an integer.']],
+]);
+
+// `validated()` keeps what was sent: a JSON client's `31.0` stays a float there, as it did, and `dto()` casts. A float of
+// 1e14 or more used to be refused, and now reaches the DTO, which casts it exactly.
+it('hands a JSON client of a body that is JSON and a form the same types a JSON-only body does', function (): void {
+    $class = emittedRequestClass(postWithJsonAndForm('multipart/form-data', oneField(new Schema(types: [SchemaType::Integer]), required: false)));
+
+    expect(typesForRawJson($class, '{"field": 31.0}'))->toBe([200, ['field' => 'float']])
+        ->and(typesForRawJson($class, '{"field": 31.0}', dto: true))->toBe([200, ['field' => 'int']])
+        ->and(typesForRawJson($class, '{"field": 1e14}', dto: true))->toBe([200, ['field' => 'int']]);
+});
+
+// The rule is the same at every level a body that is JSON and a form reaches: a map's values, a map beside a declared
+// property, a unique list, a nested object. Each judges a JSON client's number by value and a form client's text as text.
+it('judges the integer of every level of a body that is JSON and a form by its exact value', function (Schema $body, string $near, string $large, array $form): void {
+    $class = emittedRequestClass(postWithJsonAndForm('multipart/form-data', $body));
+
+    expect(statusForRawJson($class, $near))->toBe(422)
+        ->and(statusForRawJson($class, $large))->toBe(200)
+        ->and(sendThroughEmitted($class, 'POST', parameters: $form)[0])->toBe(200);
+})->with(function (): Generator {
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    yield 'a map' => [mapOf($integer), '{"views": 2.9999999999999996}', '{"views": 1e14}', ['views' => '3']];
+    yield 'a map beside declared properties' => [
+        mapBeside(['locale' => new Schema(types: [SchemaType::String])], $integer),
+        '{"locale": "fr", "views": 2.9999999999999996}',
+        '{"locale": "fr", "views": 1e14}',
+        ['locale' => 'fr', 'views' => '3'],
+    ];
+    yield 'a unique list' => [
+        oneField(new Schema(types: [SchemaType::Array], items: $integer, uniqueItems: true), required: false),
+        '{"field": [2.9999999999999996]}',
+        '{"field": [1e14]}',
+        ['field' => ['3']],
+    ];
+    yield 'a nested object' => [
+        oneField(new Schema(types: [SchemaType::Object], properties: ['b' => $integer]), required: false),
+        '{"field": {"b": 2.9999999999999996}}',
+        '{"field": {"b": 1e14}}',
+        ['field' => ['b' => '3']],
+    ];
+});
 
 // A map's values are judged by the guard of a root that declares properties, and the rule compiles inside it.
 it('takes a whole float for a map value beside declared properties, and refuses a fraction', function (string $content, int $status, array $keys): void {
@@ -467,10 +555,11 @@ it('hands the golden request a whole float for age, and refuses a string', funct
         ->and($send('{"email": "someone@example.test", "age": "31"}')[0])->toBe(422);
 });
 
-// D33: a body that is JSON and a form keeps the loose rules, because one rule set cannot read a form's text and refuse
-// a JSON string. So a JSON client's `"42"` passes there, and the generated file says so. This pins the stated limit,
-// and the JSON-only operation beside it refuses the same value (the runtime branch is #133).
-it('keeps the loose scalar rules for a body that is JSON and a form', function (Schema $body, mixed $value): void {
+// One rule set cannot read a form's text and refuse a JSON string, so in a body that is JSON and a form a JSON client's
+// text passes: `"42"` for an integer (which accepts the text a form carries), `"1.5"` for a number and `"1"` or `1` for
+// a boolean (which keep the loose rules). The generated file says so. This pins the stated limit, and the JSON-only
+// operation beside it refuses the same value (the runtime branch is #133).
+it('lets a JSON client\'s text through a body that is JSON and a form, which a JSON-only body refuses', function (Schema $body, mixed $value): void {
     $mixed = responseForBuiltRules($body, ['field' => $value], mediaTypes: ['application/json', 'application/x-www-form-urlencoded']);
     $jsonOnly = responseForBuiltRules($body, ['field' => $value]);
 
@@ -478,7 +567,6 @@ it('keeps the loose scalar rules for a body that is JSON and a form', function (
         ->and($jsonOnly)->toBe([422, ['field']]);
 })->with([
     'an integer as a string' => [scalarBody(SchemaType::Integer), '42'],
-    'an integer as true' => [scalarBody(SchemaType::Integer), true],
     'a number as a string' => [scalarBody(SchemaType::Number), '1.5'],
     'a boolean as the string one' => [scalarBody(SchemaType::Boolean), '1'],
     'a boolean as 1' => [scalarBody(SchemaType::Boolean), 1],

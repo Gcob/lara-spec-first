@@ -399,9 +399,10 @@ final class RuleWalk
     }
 
     /**
-     * Whether the fields being walked are read from a JSON body and from nothing else: the one place an `integer`, a
-     * `number` and a `boolean` keep their types. A query parameter is text whatever the body is, and a body that is
-     * also a form carries text too.
+     * Whether the fields being walked are read from a JSON body and from nothing else: the one place a `number` and a
+     * `boolean` keep their types, and an `integer` refuses text. A query parameter is text whatever the body is, and a
+     * body that is also a form carries text too: its number and boolean keep the loose rules, and its integer takes
+     * `WholeNumber(acceptsText: true)`, which judges a JSON number by its value and lets the text of a form through.
      */
     public function strictJson(): bool
     {

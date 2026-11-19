@@ -27,8 +27,8 @@ tags: [decisions, code-generation, compatibility, laravel, versions]
 >   and a form, the Laravel constraint.
 > - Turned down: keeping `integer:strict`, and Laravel's `integer` beside `numeric:strict`.
 
-**Status:** Accepted · **Cards:** [#35](https://github.com/Gcob/lara-spec-first/issues/35),
-[#107](https://github.com/Gcob/lara-spec-first/issues/107) and
+**Status:** Superseded by [ADR 0019](./0019-judge-a-json-integer-by-its-value.md) · **Cards:**
+[#35](https://github.com/Gcob/lara-spec-first/issues/35), [#107](https://github.com/Gcob/lara-spec-first/issues/107) and
 [#173](https://github.com/Gcob/lara-spec-first/issues/173) · **Pull requests:**
 [#105](https://github.com/Gcob/lara-spec-first/pull/105), [#135](https://github.com/Gcob/lara-spec-first/pull/135) and
 [#195](https://github.com/Gcob/lara-spec-first/pull/195)

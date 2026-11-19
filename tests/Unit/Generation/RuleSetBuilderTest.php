@@ -161,8 +161,8 @@ it('says nothing about a float for a JSON integer', function (array $properties)
     'a list of integers' => [['xs' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]))]],
 ]);
 
-// `numeric` goes beside the rule of the package: Laravel finds the number `min`, `max`, `gt`, `lt` and `multiple_of`
-// compare by the name of a rule, and an object has none, so without it they would compare the length of the text.
+// `numeric` goes beside the rule of the package: Laravel finds the number `min`, `max`, `gt` and `lt` compare by the
+// name of a rule, and an object has none, so without it they would compare the length of the text.
 it('keeps a rule named numeric beside the whole number, whatever bounds the integer has', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
         'n' => new Schema(types: [SchemaType::Integer], minimum: 5.0, maximum: 100.0, multipleOf: 5.0),
@@ -170,6 +170,43 @@ it('keeps a rule named numeric beside the whole number, whatever bounds the inte
 
     expect($set->rules['n'])->toEqual(['sometimes', new WholeNumber, 'numeric', 'min:5', 'max:100', 'multiple_of:5'])
         ->and($set->usesWholeNumber())->toBeTrue();
+});
+
+// A body that is JSON and a form judges an integer by its exact value, as a JSON-only body does, and passes the text a
+// form carries: the value's PHP type tells them apart. `numeric` still goes beside it, and the bounds follow it.
+it('judges an integer of a body that is JSON and a form by its exact value, accepting its text', function (string $mediaType, Closure $schema, array $rules, string $key): void {
+    $body = $schema();
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body, $mediaType => $body]));
+
+    expect($set->rules[$key])->toEqual($rules)
+        ->and($set->usesWholeNumber())->toBeTrue();
+})->with(function (): Generator {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $pair = [new WholeNumber(acceptsText: true), 'numeric'];
+
+    foreach (['application/x-www-form-urlencoded', 'multipart/form-data'] as $mediaType) {
+        yield "$mediaType, a top-level field" => [$mediaType, fn (): Schema => objectSchema(['field' => $integer]), ['sometimes', ...$pair], 'field'];
+        yield "$mediaType, a nested object" => [$mediaType, fn (): Schema => objectSchema(['a' => objectSchema(['b' => $integer])]), ['sometimes', ...$pair], 'a.b'];
+        yield "$mediaType, a unique list's elements" => [$mediaType, fn (): Schema => objectSchema(['xs' => uniqueListOf(SchemaType::Integer)]), [...$pair, 'distinct'], 'xs.*'];
+        yield "$mediaType, a bounded field" => [
+            $mediaType,
+            fn (): Schema => objectSchema(['field' => new Schema(types: [SchemaType::Integer], minimum: 2.0, maximum: 9.0)]),
+            ['sometimes', ...$pair, 'min:2', 'max:9'],
+            'field',
+        ];
+        yield "$mediaType, an enumeration" => [
+            $mediaType,
+            fn (): Schema => objectSchema(['field' => new Schema(types: [SchemaType::Integer], enum: [1, 2])]),
+            ['sometimes', ...$pair, new InRule([1, 2])],
+            'field',
+        ];
+        yield "$mediaType, a map's values" => [
+            $mediaType,
+            fn (): Schema => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer),
+            $pair,
+            '*',
+        ];
+    }
 });
 
 it('says nothing about a float for an integer a form or a query string carries', function (): void {
@@ -2979,39 +3016,38 @@ it('reads a boolean of a JSON body as a boolean and nothing looser', function ()
         ->and($set->findings)->toBe([]);
 });
 
-// One rule set cannot read the text a form carries and still refuse a string in JSON, so a body that is both keeps
-// the loose rule, and the file says per field what a JSON client gets through. These are prose findings, not
-// "stricter than the contract": they are gaps, so they count in the build warning, and they leave nothing for the
-// doctor to report.
-it('says what a body that is JSON and a form lets through', function (SchemaType $type, string $rule, string $finding, string $mediaType): void {
+// One rule set cannot read the text a form carries and still refuse a string in JSON, so a body that is both lets a
+// JSON client's text through, and the file says per field what it gets through. A number and a boolean keep the loose
+// rule; an integer judges a JSON number by its value and only accepts the text. These are prose findings, not "stricter
+// than the contract": they are gaps, so they count in the build warning, and they leave nothing for the doctor to report.
+it('says what a body that is JSON and a form lets through', function (SchemaType $type, array $rules, string $finding, string $mediaType): void {
     $schema = objectSchema(['field' => new Schema(types: [$type])]);
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, $mediaType => $schema]));
 
     $named = array_values(array_filter($set->findings, static fn (string $text): bool => str_starts_with($text, '`field` is a')));
 
-    expect($set->rules['field'])->toBe(['sometimes', $rule])
+    expect($set->rules['field'])->toEqual(['sometimes', ...$rules])
         ->and($named)->toBe([$finding])
         ->and($set->stricter)->toBe([])
         ->and($set->unenforced)->toBe([]);
 })->with([
     'an integer' => [
         SchemaType::Integer,
-        'integer',
+        [new WholeNumber(acceptsText: true), 'numeric'],
         '`field` is an integer in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
-            .'still refuse a string in JSON, so it keeps `integer`: a JSON client\'s `"42"` and `true` get through, though the '
-            .'contract refuses them. So does a float within 14 digits of a whole number (`2.9999999999999996` passes as `3`, and '
-            .'`dto()` casts it to `2`), while a whole float of 1e14 or more is refused, though the contract accepts it.',
+            .'still refuse a string in JSON, so it accepts an integer written as text: a JSON client\'s `"42"` gets through, '
+            .'though the contract refuses it.',
     ],
     'a number' => [
         SchemaType::Number,
-        'numeric',
+        ['numeric'],
         '`field` is a number in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
             .'still refuse a string in JSON, so it keeps `numeric`: a JSON client\'s `"1.5"` gets through, though the '
             .'contract refuses it.',
     ],
     'a boolean' => [
         SchemaType::Boolean,
-        'boolean',
+        ['boolean'],
         '`field` is a boolean in a body that is JSON and also a form. One rule set cannot read the text a form carries and '
             .'still refuse a string in JSON, so it keeps `boolean`: a JSON client\'s `"1"` and `1` get through, though the '
             .'contract refuses them, and a form\'s `"true"` is refused, though the contract accepts it.',
@@ -3129,7 +3165,7 @@ it('names a delivered path in the finding of a mixed body', function (): void {
     ]));
 
     expect(implode("\n", $set->findings))->toContain('A form client sends it as `page[size]`, which PHP delivers as `page.size`')
-        ->and($set->rules)->toBe(['page[size]' => ['sometimes', 'integer']]);
+        ->and($set->rules)->toEqual(['page[size]' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric']]);
 });
 
 // Two contract names PHP delivers as one key, or a declared name equal to the delivered one, cannot
@@ -3215,7 +3251,7 @@ it('drops the array beside a plain form name only when no name below it has a ru
     'a pair below it, which has no rule' => [['a_b', 'a.b[c]', 'a_b[c]'], ['a_b']],
 ]);
 
-// A body that is JSON and a form keeps today's rule for a plain name beside a `*` name: a JSON client's `{"page": [1]}`
+// A body that is JSON and a form judges a plain name by its own rule beside a `*` name: a JSON client's `{"page": [1]}`
 // is refused by it, as the contract refuses it. And a `*` name of a form body claims its path only against the names
 // of that body, so a `query` parameter of the same name still builds.
 it('does not let a wildcard name shape a plain name outside a body read only as a form', function (): void {
@@ -3232,7 +3268,7 @@ it('does not let a wildcard name shape a plain name outside a body read only as 
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
     ));
 
-    expect($mixed->rules)->toBe(['page' => ['sometimes', 'integer']])
+    expect($mixed->rules)->toEqual(['page' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric']])
         ->and($mixed->whenNotArray)->toBe([])
         ->and($mixed->formPaths)->toBe([])
         ->and($beside->rules)->toBe(['page' => ['sometimes', 'integer']])
@@ -3433,9 +3469,9 @@ it('judges a plain name by shape beside the name a form nests under it in a body
         $form => $schema,
     ]));
 
-    expect($set->rules)->toBe([
-        'page' => ['sometimes', 'integer'],
-        'page[size]' => ['sometimes', 'integer'],
+    expect($set->rules)->toEqual([
+        'page' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric'],
+        'page[size]' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric'],
         'plain' => ['sometimes', 'string'],
     ])
         ->and($set->whenNotArray)->toBe(['page' => ['page']])
@@ -3488,7 +3524,7 @@ it('keeps the presence of a required shaped name in a body that is JSON and a fo
         'multipart/form-data' => $schema,
     ], bodyRequired: false));
 
-    expect($required->rules['page'])->toBe(['required', 'integer'])
+    expect($required->rules['page'])->toEqual(['required', new WholeNumber(acceptsText: true), 'numeric'])
         ->and($required->requiredOnceSent)->toBe([])
         ->and(array_keys($required->uncheckedNames))->toBe(['page[size]', 'page'])
         ->and($required->uncheckedNames['page'])->toContain('stands in for it')
@@ -3857,10 +3893,10 @@ it('keeps the literal rule keys of names below one another in a body that is JSO
         'multipart/form-data' => $schema,
     ]));
 
-    expect($set->rules)->toBe([
+    expect($set->rules)->toEqual([
         'filter[a]' => ['sometimes', 'string'],
-        'filter[a][b]' => ['sometimes', 'integer'],
-        ...($closed ? ['filter[c]' => ['sometimes', 'integer']] : []),
+        'filter[a][b]' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric'],
+        ...($closed ? ['filter[c]' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric']] : []),
     ])
         ->and($set->rules)->not->toHaveKey('filter')
         ->and(array_keys($set->uncheckedNames))->toBe(['filter[a]', 'filter[a][b]', ...($closed ? ['filter[c]'] : [])])

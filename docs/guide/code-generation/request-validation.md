@@ -744,7 +744,7 @@ one becomes is this table's.
 | Schema                                                  | Laravel rule                                                                                                                                                                                                                                      |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `type: string`                                          | `string`                                                                                                                                                                                                                                          |
-| `type: integer`                                         | `WholeNumber` beside `numeric` in a JSON body, `integer` for a query parameter and a form or multipart field                                                                                                                                      |
+| `type: integer`                                         | `WholeNumber` beside `numeric` in a JSON body, `WholeNumber(acceptsText: true)` beside `numeric` in a body that is JSON and a form, `integer` for a query parameter and a form or multipart field                                                 |
 | `type: number`                                          | `numeric:strict` in a JSON body, `numeric` for a query parameter and a form or multipart field                                                                                                                                                    |
 | `type: boolean`                                         | `boolean:strict` in a JSON body, or `Rule::in(['true', 'false', '1', '0'])` for a query parameter and a form or multipart field                                                                                                                   |
 | `type: array`                                           | `array` and `list`, with the element rules keyed `field.*`                                                                                                                                                                                        |
@@ -766,8 +766,8 @@ one becomes is this table's.
 contract it follows, which is a rule refusing what the contract accepts. So for **a `query` parameter and a field of a
 form-encoded or multipart body**, the rule is `Rule::in(['true', 'false', '1', '0'])`, and a JSON body gets
 [`boolean:strict`](#a-json-body-keeps-its-types), where `true` arrives already typed
-([ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md) holds the reasoning for the split). Four things
-come with it:
+([ADR 0019](../../project/decisions/0019-judge-a-json-integer-by-its-value.md) holds the reasoning for the split). Four
+things come with it:
 
 - **`false` is not in the list as a PHP value.** `Rule::in` compares `(string) false`, which is the empty string, and a
   list holding it would accept the `null` an empty value becomes, which a non-nullable boolean refuses.
@@ -933,8 +933,8 @@ not in a rule set at all, since nothing reads them, and the reading collects the
 JSON writes `42`, `1.5` and `true` already typed, and `"42"` is a string. Laravel's loose `integer`, `numeric` and
 `boolean` read what a form or a query string writes, so on a JSON body they would accept `"42"`, `"1.5"` and `1` for a
 boolean, which the contract refuses. The reasoning is in
-[ADR 0016](../../project/decisions/0016-keep-json-scalars-typed.md). A field of a body that is JSON and nothing else
-gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every level (`a.b`, `items.*`):
+[ADR 0019](../../project/decisions/0019-judge-a-json-integer-by-its-value.md). A field of a body that is JSON and
+nothing else gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every level (`a.b`, `items.*`):
 
 - **An integer is `WholeNumber` beside `numeric`.** `WholeNumber` passes an `int`, and a `float` whose value is exactly
   whole (`1.0`, `1e2`, `1e14`), which JSON Schema 2020-12 reads as an integer. It refuses everything else: a fraction
@@ -972,14 +972,16 @@ gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every l
 - **A query parameter and a form or multipart field keep the loose rules**, since every value they carry is text.
 - **A form client of an operation that declares only JSON gets the JSON rules.** `age=30` from an HTML form is a 422
   there, where it was a 200: the contract declares no form, so that client is off-contract, and `rules()` is one array.
-- **A body that is JSON and a form at once keeps the loose rules, and a JSON client gets through what they accept.** One
-  rule set cannot read the text a form carries and still refuse a string in JSON, so an integer there accepts `"42"` and
-  `true`, a number accepts `"1.5"`, and a boolean accepts `"1"` and `1`, all of which the contract refuses. An integer
-  there also reads a float as text with 14 significant digits: a JSON client's `2.9999999999999996` passes as `3` and
-  `dto()` casts it to `2`, and a whole float of 1e14 or more is refused, though the contract accepts it. The generated
-  file says so in one finding per field, and `spec:doctor` stays silent on it, like the other prose-only cases.
-  [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them, and
-  [#196](https://github.com/Gcob/lara-spec-first/issues/196) tracks the integer's two gaps.
+- **A body that is JSON and a form at once judges an integer by its exact value, and a JSON client still gets through
+  the text.** One rule set cannot read the text a form carries and still refuse a string in JSON, so an integer there
+  accepts `"42"`, a number accepts `"1.5"`, and a boolean accepts `"1"` and `1`, all of which the contract refuses. A
+  number and a boolean keep the loose rules. An integer is `new WholeNumber(acceptsText: true)` beside `numeric`: it
+  judges a JSON number by its exact value, as in a JSON body (`2.9999999999999996` and `true` are refused, `1e14`
+  passes), and passes the text Laravel's `integer` passes, so a form client's `42` and `+42` get through as before and
+  `1.0` does not. A value that is no number at all (`"abc"`, `true`, and the `null` an empty form field becomes) reads
+  "must be a number" beside "must be an integer". The generated file says what still gets through in one finding per
+  field, and `spec:doctor` stays silent on it, like the other prose-only cases.
+  [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them.
 - **The package requires `^12.55 || ^13.0`, and no generated rule needs anything newer than its floor.** The `strict`
   parameter a generated rule uses exists from 12.21 on `numeric` and `boolean`. CI installs and tests both floors
   exactly, Laravel 12.55.0 and 13.0.0, as [the stack](../../project/stack.md) says.

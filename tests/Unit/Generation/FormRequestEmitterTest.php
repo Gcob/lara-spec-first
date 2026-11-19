@@ -637,6 +637,31 @@ it('writes no list of scalar names for a form body whose names do not nest', fun
         ->and($emitted)->not->toContain('SCALAR_NAMES');
 });
 
+// The parameter is written only where it is set: a JSON-only body keeps the bare `new WholeNumber` the goldens hold.
+it('writes the whole-number rule that accepts text for an integer of a body that is JSON and a form', function (string $mediaType, string $line): void {
+    $schema = new Schema(types: [SchemaType::Object], properties: ['field' => new Schema(types: [SchemaType::Integer])]);
+    $emitted = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => $schema, $mediaType => $schema], true),
+    ), controllerShortName: 'CreateThingController');
+    $jsonOnly = emittedRequest(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'createThing',
+        requestBody: new RequestBody(['application/json' => $schema], true),
+    ), controllerShortName: 'CreateThingController');
+
+    expect($emitted)->toContain($line)->toContain('use Gcob\\LaraSpecFirst\\Validation\\WholeNumber;')
+        ->and($jsonOnly)->toContain("'field' => ['sometimes', new WholeNumber, 'numeric'],");
+})->with([
+    'form-encoded' => ['application/x-www-form-urlencoded', "'field' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric'],"],
+    'multipart' => ['multipart/form-data', "'field' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric'],"],
+]);
+
 // A body that is JSON and a form writes the shape check for a top-level name too, with `exclude` in the array branch (no
 // ruled name sits below it, as the nested name keeps its literal JSON key), and no list of scalar names: an array never
 // reaches `validated()`. Read by Pint, so a consumer's formatter has nothing to rewrite.
@@ -657,11 +682,11 @@ it('writes a plain name behind Rule::when beside the name a form nests under it 
         ->toContain(
             "            'page' => Rule::when(\n"
             ."                fn (Fluent \$input): bool => ! is_array(\$input->get('page')),\n"
-            ."                ['sometimes', 'integer'],\n"
+            ."                ['sometimes', new WholeNumber(acceptsText: true), 'numeric'],\n"
             ."                ['exclude'],\n"
             .'            ),'
         )
-        ->toContain("            'page[size]' => ['sometimes', 'integer'],")
+        ->toContain("            'page[size]' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric'],")
         ->and($emitted)->not->toContain('SCALAR_NAMES');
 
     $file = tempnam(sys_get_temp_dir(), 'lsf-request-').'.php';

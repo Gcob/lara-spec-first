@@ -1616,9 +1616,12 @@ final readonly class RuleSetBuilder
                     // Why: Laravel's `integer:strict` refuses `1.0`, which JSON Schema 2020-12 reads as an integer, and
                     // its loose `integer` reads a float as text with 14 significant digits, so `2.9999999999999996` passes.
                     // `WholeNumber` compares the float itself. `numeric` goes beside it because Laravel finds the number
-                    // `min`, `max`, `gt`, `lt` and `multiple_of` compare by the name of a rule, and an object has none.
+                    // `min`, `max`, `gt` and `lt` compare by the name of a rule, and an object has none. A form's text is
+                    // a string, never a float, so beside a form `acceptsText` lets that string through, as `integer` does.
                     if ($walk->strictJson()) {
                         array_push($rules, new WholeNumber, 'numeric');
+                    } elseif ($walk->mixedBody) {
+                        array_push($rules, new WholeNumber(acceptsText: true), 'numeric');
                     } else {
                         $rules[] = 'integer';
                     }
@@ -1626,7 +1629,12 @@ final readonly class RuleSetBuilder
                     self::numberRules($schema, $rules, $handled);
 
                     if ($walk->mixedBody) {
-                        $walk->findings[] = self::mixedBodyFinding($label, 'an integer', 'integer', '`"42"` and `true` get through, though the contract refuses them. So does a float within 14 digits of a whole number (`2.9999999999999996` passes as `3`, and `dto()` casts it to `2`), while a whole float of 1e14 or more is refused, though the contract accepts it.');
+                        $walk->findings[] = sprintf(
+                            '%s is an integer in a body that is JSON and also a form. One rule set cannot read the text a form '
+                                .'carries and still refuse a string in JSON, so it accepts an integer written as text: a JSON '
+                                .'client\'s `"42"` gets through, though the contract refuses it.',
+                            $label,
+                        );
                     }
                     break;
                 case SchemaType::Number:
@@ -2112,9 +2120,10 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * What a body that is JSON and a form says of a scalar field: it keeps the loose rule, and the sentence names what
-     * a JSON client gets through. A gap rather than a stricter rule, so it counts in the build warning, and it leaves
-     * nothing unenforced for the doctor to report.
+     * What a body that is JSON and a form says of a number or a boolean field: it keeps the loose rule, and the
+     * sentence names what a JSON client gets through. (An integer says it on its own: it has a rule that judges a JSON
+     * number exactly.) A gap rather than a stricter rule, so it counts in the build warning, and it leaves nothing
+     * unenforced for the doctor to report.
      */
     private static function mixedBodyFinding(string $label, string $noun, string $rule, string $effect): string
     {

@@ -14,11 +14,13 @@ use Illuminate\Support\Facades\Validator;
  */
 
 /**
- * Whether `$value` passes `field` => WholeNumber.
+ * Whether `$value` passes `field` => WholeNumber, or `WholeNumber(acceptsText: true)`.
  */
-function passesWholeNumber(mixed $value): bool
+function passesWholeNumber(mixed $value, bool $acceptsText = false): bool
 {
-    return Validator::make(['field' => $value], ['field' => [new WholeNumber]])->passes();
+    $rule = $acceptsText ? new WholeNumber(acceptsText: true) : new WholeNumber;
+
+    return Validator::make(['field' => $value], ['field' => [$rule]])->passes();
 }
 
 it('accepts an integer, and a float whose value is exactly whole', function (mixed $value): void {
@@ -96,3 +98,48 @@ it('compares the bounds as numbers beside a rule named numeric', function (mixed
     'a whole float over the maximum' => [1.01e2, false],
     'a fraction inside' => [10.5, false],
 ]);
+
+// The rule of a body that is JSON and a form: a form carries every value as text, and the value's PHP type tells that
+// text from a JSON number. The text passes when Laravel's own `integer` passes it, so a form client is judged as before.
+it('accepts the text of an integer when it accepts text, as Laravel\'s integer does', function (mixed $value): void {
+    expect(passesWholeNumber($value, acceptsText: true))->toBeTrue();
+})->with([
+    'text' => ['42'],
+    'a plus sign' => ['+42'],
+    'negative zero' => ['-0'],
+    'zero' => ['0'],
+    'a leading space' => [' 42'],
+    'the largest integer' => ['9223372036854775807'],
+    'an integer' => [42],
+    'a whole float' => [3.0],
+    'one hundred trillion' => [1e14],
+]);
+
+it('still refuses what is not a whole number when it accepts text', function (mixed $value): void {
+    expect(passesWholeNumber($value, acceptsText: true))->toBeFalse();
+})->with([
+    'a leading zero' => ['042'],
+    'text that spells a float' => ['1.0'],
+    'an exponent as text' => ['1e2'],
+    'text' => ['abc'],
+    'past the largest integer as text' => ['9223372036854775808'],
+    'a near-whole float as text' => ['2.9999999999999996'],
+    'a near-whole float' => [2.9999999999999996],
+    'a fraction' => [1.5],
+    'past 2^63' => [1e20],
+    'true' => [true],
+    'false' => [false],
+    'a list' => [[]],
+]);
+
+it('answers with the language line of integer when it accepts text', function (): void {
+    $validator = Validator::make(['field' => 'abc'], ['field' => [new WholeNumber(acceptsText: true)]]);
+
+    expect($validator->errors()->first('field'))->toBe('The field field must be an integer.');
+});
+
+// A control: the default is a JSON body's rule, which has no text to read.
+it('refuses the text of an integer by default', function (): void {
+    expect((new WholeNumber)->acceptsText)->toBeFalse()
+        ->and(passesWholeNumber('42'))->toBeFalse();
+});
