@@ -980,10 +980,9 @@ gets the `:strict` form of its rule, or `WholeNumber` for an integer, at every l
   file says so in one finding per field, and `spec:doctor` stays silent on it, like the other prose-only cases.
   [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them, and
   [#196](https://github.com/Gcob/lara-spec-first/issues/196) tracks the integer's two gaps.
-- **The package requires `^12.22 || ^13.0`, the constraint `0.2.0` shipped.** No generated rule needs 12.22 any more:
-  the `strict` parameter exists from 12.21 on `numeric` and `boolean`, and from 12.22 on `integer`, which no generated
-  rule uses now. CI tests Laravel 12 from 12.55, the lowest its testbench allows, so nothing below it is tested, and
-  [#188](https://github.com/Gcob/lara-spec-first/issues/188) settles the floor.
+- **The package requires `^12.55 || ^13.0`, and no generated rule needs anything newer than its floor.** The `strict`
+  parameter a generated rule uses exists from 12.21 on `numeric` and `boolean`. CI installs and tests both floors
+  exactly, Laravel 12.55.0 and 13.0.0, as [the stack](../../project/stack.md) says.
 
 ### A map's values are validated one by one
 
