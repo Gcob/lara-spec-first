@@ -133,9 +133,37 @@ else
 fi
 
 if [ "$(git show "HEAD:CHANGELOG.md" 2>/dev/null | unreleased_lines)" -eq 0 ]; then
-    pass "[Unreleased] is empty at HEAD, so nothing merged after the release pull request"
+    pass "[Unreleased] is empty at HEAD"
 else
-    fail "[Unreleased] is empty at HEAD: something merged after the release pull request, so the tag would carry it without an entry. Put it in the $VERSION entry, or release from the commit before it"
+    fail "[Unreleased] is empty at HEAD: something merged after the release pull request, so the tag would carry a line that is not in the $VERSION entry. If it corrects the entry, move it into the $VERSION entry through a pull request. Otherwise revert the change on main through a pull request. Then run this again"
+fi
+
+# Why the heading's count and not its first appearance: the newest commit on main's first-parent line that changes how
+# many times "## [<version>] - " appears is the merge of the release pull request, and a date fix (the same count) is
+# not it. A release merged, reverted and cut again is then judged from its last cut.
+only_changelog="only CHANGELOG.md changed since the release pull request merged"
+
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+    # Why: in a shallow clone the oldest commit it holds has no parent, so git reports the heading as added by it and
+    # the check would be green over a change merged after the release.
+    fail "$only_changelog: the history is shallow, so the release pull request's merge can't be found. Run git fetch --unshallow, then run this again"
+elif ! release_merge=$(git log --first-parent --format=%H -S"## [$VERSION] - " HEAD -- CHANGELOG.md 2>/dev/null | head -n 1) \
+    || [ -z "$release_merge" ]; then
+    fail "$only_changelog: no commit on main brought in a \"## [$VERSION] - \" heading"
+else
+    release_merge_short=$(echo "$release_merge" | cut -c1-7)
+
+    if ! late_files=$(git diff --name-only "$release_merge" HEAD -- . ':(exclude)CHANGELOG.md' 2>/dev/null); then
+        fail "$only_changelog ($release_merge_short): git could not compare that commit with HEAD"
+    elif [ -z "$late_files" ]; then
+        pass "$only_changelog ($release_merge_short)"
+    else
+        late_list=$(printf '%s\n' "$late_files" | awk '
+            NR <= 5 { list = list (NR > 1 ? ", " : "") $0 }
+            END { if (NR > 5) list = list " and " NR - 5 " more"; print list }
+        ')
+        fail "$only_changelog ($release_merge_short): $late_list. The tag would carry what the release pull request did not review. Revert the change on main through a pull request, then run this again: it lands in the next release"
+    fi
 fi
 
 if [ "$PUBLISH" -eq 0 ]; then

@@ -189,6 +189,43 @@ function releaseProject(string $changelog = RELEASE_UNRELEASED_CHANGELOG): array
     return $project;
 }
 
+/**
+ * Cut the release the way the factory does and merge it: a branch of its own with the heading dated `$date`, merged
+ * into `main` with a merge commit, pushed. The fixture's root commit already carries a heading, so this one starts from
+ * a project made with the default changelog.
+ *
+ * @param  array<string, string>  $project
+ * @return string the merge commit
+ */
+function releaseMergeCut(array $project, string $branch, string $date): string
+{
+    releaseGit($project['work'], ['switch', '--quiet', '--create', $branch]);
+    file_put_contents($project['work'].'/CHANGELOG.md', str_replace('__TODAY__', $date, RELEASE_PREPARED_CHANGELOG));
+    releaseGit($project['work'], ['commit', '--quiet', '--all', '-m', 'docs(release): cut 0.2.0 in the changelog']);
+    releaseGit($project['work'], ['switch', '--quiet', 'main']);
+    releaseGit($project['work'], ['merge', '--quiet', '--no-ff', '--no-edit', $branch]);
+    releaseGit($project['work'], ['push', '--quiet', 'origin', 'main']);
+
+    return releaseGit($project['work'], ['rev-parse', 'HEAD']);
+}
+
+/**
+ * Commit the given files on `main` and push.
+ *
+ * @param  array<string, string>  $project
+ * @param  list<string>  $files
+ */
+function releaseLand(array $project, array $files, string $message = 'docs: land after the release'): void
+{
+    foreach ($files as $file) {
+        file_put_contents($project['work'].'/'.$file, 'late');
+        releaseGit($project['work'], ['add', $file]);
+    }
+
+    releaseGit($project['work'], ['commit', '--quiet', '-m', $message]);
+    releaseGit($project['work'], ['push', '--quiet', 'origin', 'main']);
+}
+
 function releaseRepository(): string
 {
     return dirname(__DIR__, 2);
@@ -534,6 +571,21 @@ describe('release', function (): void {
                 'RED   [Unreleased] is empty at HEAD: something merged after the release pull request',
                 '0.2.0',
             ],
+            'a file changed after the release pull request merged' => [
+                fn (array $p) => releaseLand($p, ['docs-late.md']),
+                'RED   only CHANGELOG.md changed since the release pull request merged (',
+                '0.2.0',
+            ],
+            'the history is shallow' => [
+                function (array $p): void {
+                    releaseLand($p, ['docs-late.md']);
+                    releaseGit($p['dir'], ['clone', '--quiet', '--depth', '1', 'file://'.$p['origin'], 'shallow']);
+                    rename($p['work'], $p['dir'].'/work-full');
+                    rename($p['dir'].'/shallow', $p['work']);
+                },
+                'RED   only CHANGELOG.md changed since the release pull request merged: the history is shallow',
+                '0.2.0',
+            ],
             'the heading is not dated today' => [
                 function (array $p): void {
                     $changelog = (string) file_get_contents($p['work'].'/CHANGELOG.md');
@@ -599,6 +651,84 @@ describe('release', function (): void {
             ->and(releaseGit($project['origin'], ['tag', '--list']))->toBe($tags)
             ->and(releaseGit($project['work'], ['rev-parse', 'HEAD']))->toBe($head);
     })->with(releaseRedChecks());
+
+    it('refuses to tag over an unreleased line with a fix that can be done', function (): void {
+        $project = releaseProject(RELEASE_PREPARED_CHANGELOG);
+        $changelog = (string) file_get_contents($project['work'].'/CHANGELOG.md');
+        file_put_contents($project['work'].'/CHANGELOG.md', str_replace("## [Unreleased]\n", "## [Unreleased]\n\n- A late change.\n", $changelog));
+        releaseGit($project['work'], ['commit', '--quiet', '--all', '-m', 'feat: land after the release']);
+        releaseGit($project['work'], ['push', '--quiet', 'origin', 'main']);
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   [Unreleased] is empty at HEAD')
+            ->and($run['out'])->toContain('the 0.2.0 entry')
+            ->and($run['out'])->not->toContain('commit before it');
+    });
+
+    it('tags over a release pull request whose own entry was corrected after it merged', function (string $cutDate, Closure $change): void {
+        $project = releaseProject();
+        $merge = releaseMergeCut($project, 'release/126/0.2.0', $cutDate);
+        $judged = $change($project, $merge) ?? $merge;
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0']);
+
+        expect($run['exit'])->toBe(0, $run['out'])
+            ->and($run['out'])->not->toContain('RED')
+            ->and($run['out'])->toContain('ok    only CHANGELOG.md changed since the release pull request merged ('.substr($judged, 0, 7).')');
+    })->with([
+        'the date fixed' => [
+            '2026-01-01',
+            function (array $p): void {
+                $changelog = (string) file_get_contents($p['work'].'/CHANGELOG.md');
+                file_put_contents($p['work'].'/CHANGELOG.md', str_replace('2026-01-01', date('Y-m-d'), $changelog));
+                releaseGit($p['work'], ['commit', '--quiet', '--all', '-m', 'docs(release): date the entry']);
+                releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+            },
+        ],
+        'the entry reworded' => [
+            date('Y-m-d'),
+            function (array $p): void {
+                $changelog = (string) file_get_contents($p['work'].'/CHANGELOG.md');
+                file_put_contents($p['work'].'/CHANGELOG.md', str_replace('- A thing, see', '- A better thing, see', $changelog));
+                releaseGit($p['work'], ['commit', '--quiet', '--all', '-m', 'docs(release): reword the entry']);
+                releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+            },
+        ],
+        'a late file reverted' => [
+            date('Y-m-d'),
+            function (array $p): void {
+                releaseLand($p, ['docs-late.md']);
+                releaseGit($p['work'], ['revert', '--no-edit', 'HEAD']);
+                releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+            },
+        ],
+        'a release merged, reverted and cut again' => [
+            date('Y-m-d'),
+            function (array $p, string $merge): string {
+                releaseLand($p, ['docs-between.md'], 'docs: land while the release is abandoned');
+                releaseGit($p['work'], ['revert', '--no-edit', '-m', '1', $merge]);
+                releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+
+                return releaseMergeCut($p, 'release/126/0.2.0-again', date('Y-m-d'));
+            },
+        ],
+    ]);
+
+    it('names the files that changed after the release pull request merged, five at most', function (int $count, string $listed): void {
+        $project = releaseProject();
+        $merge = releaseMergeCut($project, 'release/126/0.2.0', date('Y-m-d'));
+        releaseLand($project, array_map(static fn (int $n): string => "late-{$n}.md", range(1, $count)));
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request merged ('.substr($merge, 0, 7).'): '.$listed);
+    })->with([
+        'five files' => [5, 'late-1.md, late-2.md, late-3.md, late-4.md, late-5.md. '],
+        'six files' => [6, 'late-1.md, late-2.md, late-3.md, late-4.md, late-5.md and 1 more. '],
+    ]);
 
     it('refuses to tag when origin cannot be asked whether the tag exists', function (): void {
         $project = releaseProject(RELEASE_PREPARED_CHANGELOG);
