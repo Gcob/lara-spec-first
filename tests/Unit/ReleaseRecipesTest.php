@@ -868,6 +868,21 @@ describe('release', function (): void {
             ->and($notes)->not->toContain('](./');
     })->skip(fn (): bool => ! Process::isPtySupported(), 'This PHP cannot open a pseudo-terminal');
 
+    it('tags when the version is typed with or without the leading v of its tag', function (string $typed): void {
+        $project = releaseProject(RELEASE_PREPARED_CHANGELOG);
+        $head = releaseGit($project['work'], ['rev-parse', 'HEAD']);
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0', '--publish'], $typed, terminal: true);
+
+        expect($run['exit'])->toBe(0, $run['out'])
+            ->and(releaseGit($project['origin'], ['tag', '--list']))->toBe('v0.2.0')
+            ->and(releaseGit($project['origin'], ['rev-parse', 'v0.2.0^{commit}']))->toBe($head)
+            ->and(releaseGhWrites($project))->toHaveCount(1);
+    })->with([
+        'the version' => ["0.2.0\n"],
+        'the version with a leading v' => ["v0.2.0\n"],
+    ])->skip(fn (): bool => ! Process::isPtySupported(), 'This PHP cannot open a pseudo-terminal');
+
     it('tags only after the version is typed, so a wrong answer or no answer writes nothing', function (string $typed): void {
         $project = releaseProject(RELEASE_PREPARED_CHANGELOG);
         $head = releaseGit($project['work'], ['rev-parse', 'HEAD']);
@@ -875,12 +890,14 @@ describe('release', function (): void {
         $run = releaseRun($project, 'release.sh', ['0.2.0', '--publish'], $typed, terminal: true);
 
         expect($run['exit'])->not->toBe(0)
-            ->and($run['out'])->toContain('Nothing was written');
+            ->and($run['out'])->toContain('That is neither 0.2.0 nor v0.2.0. Nothing was written.');
 
         releaseNothingWritten($project, $head);
     })->with([
         'another version' => ["0.2.1\n"],
-        'the version with a leading v' => ["v0.2.0\n"],
+        'another version with a leading v' => ["v0.2.1\n"],
+        'the version with a capital V' => ["V0.2.0\n"],
+        'the version with a doubled v' => ["vv0.2.0\n"],
         'an empty line' => ["\n"],
     ])->skip(fn (): bool => ! Process::isPtySupported(), 'This PHP cannot open a pseudo-terminal');
 
