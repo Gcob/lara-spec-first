@@ -101,8 +101,8 @@ jobs:
 
         steps:
             # The whole history, with its tags: they decide which mode a folder
-            # runs in, and the Composer `vcs` repository that branch mode installs
-            # from is a clone of this checkout.
+            # runs in, and branch mode archives a branch of this checkout, as a
+            # tag's zip is made.
             - uses: actions/checkout@v7
               with:
                   fetch-depth: 0
