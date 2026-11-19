@@ -359,11 +359,13 @@ covers (JSON, form-encoded, multipart, query string) and what PHP and Laravel do
 of a stricter one, and a draft `boolean` rule refused `?notify=true`, which review caught before the merge. Both
 directions are written down in [`request-validation.md`](../guide/code-generation/request-validation.md).
 
-**CI runs the test suite with assertions off (the default of the PHP setup action), so a side effect inside `assert()`
-never runs there.** [#36](https://github.com/Gcob/lara-spec-first/issues/36)
-([#117](https://github.com/Gcob/lara-spec-first/pull/117)) had a `preg_match()` inside `assert()` that passed locally
-and failed in CI, since the match itself never ran. Run the suite once with `-d zend.assertions=-1` before pushing, and
-never put a side effect inside `assert()`.
+**CI used to run the suite with assertions off, so a side effect inside `assert()` never ran there.**
+[#36](https://github.com/Gcob/lara-spec-first/issues/36) ([#117](https://github.com/Gcob/lara-spec-first/pull/117)) had
+a `preg_match()` inside `assert()` that passed locally and failed in CI, since the match itself never ran (the default
+of the PHP setup action turns assertions off). `composer test` now sets `zend.assertions=1` for every run, in
+[`composer.json`](https://github.com/Gcob/lara-spec-first/blob/main/composer.json), so a local run and CI agree: run the
+suite through it, not through `vendor/bin/pest`. Never put a side effect inside `assert()` all the same, since
+production compiles it out.
 
 **A new field on a value object changes every equality built on it.**
 [#36](https://github.com/Gcob/lara-spec-first/issues/36) added `Schema::$ignored` (positions), which broke the DTO

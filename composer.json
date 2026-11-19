@@ -52,8 +52,8 @@
         }
     },
     "scripts": {
-        "test": "@php -d memory_limit=512M vendor/bin/pest",
-        "test:coverage": "@php -d memory_limit=512M vendor/bin/pest --coverage",
+        "test": "@php -d memory_limit=512M -d zend.assertions=1 vendor/bin/pest",
+        "test:coverage": "@test --coverage",
         "artisan": [
             "Composer\\Config::disableProcessTimeout",
             "@php vendor/bin/testbench"
@@ -97,8 +97,8 @@
         ]
     },
     "scripts-descriptions": {
-        "test": "Run the Pest test suite. Runs at 512M, like `analyse`: tests/Conformance/KnownParserBugsTest.php reads a large stderr back from a child process, and PHP's common 128M default fails it with a fatal that has nothing to do with the change under test.",
-        "test:coverage": "Run the test suite with a coverage report. Same 512M as `test`, for the same reason.",
+        "test": "Run the Pest test suite. Runs at 512M, like `analyse`: tests/Conformance/KnownParserBugsTest.php reads a large stderr back from a child process, and PHP's common 128M default fails it with a fatal that has nothing to do with the change under test. Runs with assertions on (-d zend.assertions=1): CI's PHP ships them off and a contributor's usually has them on, and a suite that runs differently in each passes in one and fails in the other. The -d sits here because Composer reads `composer test -d` as its own working-dir option.",
+        "test:coverage": "Run the test suite with a coverage report. It runs `test` with `--coverage`, so it gets the same settings.",
         "artisan": "Run an Artisan command inside the Workbench application: `composer artisan -- route:list`. A package has no artisan binary of its own; Testbench provides one.",
         "format": "Apply Laravel Pint formatting, then reflow docblock prose to the .editorconfig column limit.",
         "format:check": "Report Pint formatting issues and docblocks that need reflowing, without changing files.",

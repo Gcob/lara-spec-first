@@ -264,8 +264,9 @@ it('reports a keyword written at several positions once, listing every one', fun
     $byKeyword = [];
 
     foreach ($ignored as $finding) {
-        // Not inside assert(): CI runs with assertions off, which would skip the match itself. A message without
-        // a keyword lands under its own text, so the key list below fails and shows it.
+        // Not inside assert(): a side effect there is skipped wherever assertions are off, a consumer's production
+        // included, so the match stays outside it. A message without a keyword lands under its own text, so the
+        // key list below fails and shows it.
         $keyword = preg_match('/writes `([^`]+)`/', $finding['message'], $match) === 1 ? $match[1] : $finding['message'];
         $byKeyword[$keyword] = $finding;
     }
