@@ -24,7 +24,7 @@ tags: [decisions, code-generation, compatibility]
 >   form or multipart, at every level) and in the query. It asks Laravel's own check and reports under Laravel's name,
 >   so every value `multiple_of` answered gets the same errors, message and `failed()` entry.
 > - It also refuses a number PHP cannot hold, on which `multiple_of` throws and the request answered `500`: a JSON
->   `1e400`, which PHP reads as `INF`, and a text number whose exponent does not fit in 64 bits. The value is gone once
+>   `1e400`, which PHP reads as `INF`, and a text number whose exponent is 2^63 - 1 or more. The value is gone once
 >   read, so the refusal does not depend on the divisor, and it is a stated limit with no finding, as the others are.
 > - It costs one more public class that a generated file imports, a refusal of a few numbers the contract accepts, and
 >   two cases it does not close: a number too large for a double on a field without `multipleOf`, and a text exponent
@@ -38,10 +38,10 @@ tags: [decisions, code-generation, compatibility]
 ## Context
 
 Laravel's `multiple_of` hands the value to brick/math, which cannot read two kinds of number. PHP reads a JSON `1e400`
-as `INF`, and brick/math refuses it. And brick/math cannot read a text whose exponent does not fit in a 64-bit integer,
-such as `1e99999999999999999999`. On both, `multiple_of` throws an `Illuminate\Support\Exceptions\MathException`, and
-the request answers `500`. Laravel's other numeric rules (`between`, `min`, `max`, `gt`, `lt`) catch that same exception
-and refuse the value with their own message, so `multiple_of` is the one numeric rule that throws.
+as `INF`, and brick/math refuses it. And brick/math cannot read a text whose exponent is 2^63 - 1 or more, such as
+`1e99999999999999999999`. On both, `multiple_of` throws an `Illuminate\Support\Exceptions\MathException`, and the
+request answers `500`. Laravel's other numeric rules (`between`, `min`, `max`, `gt`, `lt`) catch that same exception and
+refuse the value with their own message, so `multiple_of` is the one numeric rule that throws.
 
 Neither `bail` nor the other rules of the field stop it. `numeric:strict` passes `INF`, so nothing fails before
 `multiple_of` runs, and without `bail` every rule runs anyway.
@@ -130,9 +130,10 @@ cannot hold is the same kind of limit. The guide's row for `multipleOf` states i
 - **A few numbers the contract accepts are refused.** `1e400` on a field with `multipleOf: 0.5` is a `422`, and the
   guide says so.
 - **What this does not settle.** A number too large for a double, on a field without `multipleOf`, is a separate case
-  ([#213](https://github.com/Gcob/lara-spec-first/issues/213)). And a text exponent from the hundreds of millions up to
-  what fits in 64 bits (`1e200000000`) makes brick/math build the digits, which exhausts a 128 MB memory limit, a fatal
-  error that no `catch` turns into a `422`, and smaller exponents are slow
+  ([#213](https://github.com/Gcob/lara-spec-first/issues/213)). And a text exponent from the tens of millions up to
+  2^63 - 1 (`1e200000000`) makes brick/math build the digits, which exhausts a 128 MB memory limit from about 63 million
+  (measured: `1e62000000` passes, `1e64000000` is a fatal error that no `catch` turns into a `422`), and smaller
+  exponents are slow (`1e50000000` takes about 2.5 seconds and 100 MB)
   ([#214](https://github.com/Gcob/lara-spec-first/issues/214)).
 - **Earlier records keep their wording.** ADRs [0007](./0007-keep-json-scalars-strict.md) and
   [0016](./0016-keep-json-scalars-typed.md) say Laravel finds the number `multiple_of` compares by the name of a rule,

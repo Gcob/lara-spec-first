@@ -16,7 +16,7 @@ use Illuminate\Validation\Validator;
  *
  * A generated request puts it on every field with `multipleOf`, in a body and in the query. Laravel's `multiple_of`
  * throws a `MathException`, which answers `500`, on two values: a JSON `1e400`, which PHP reads as `INF`, and a text
- * number whose exponent does not fit in 64 bits (`1e99999999999999999999`), which brick/math cannot read. Laravel's
+ * number whose exponent is 2^63 - 1 or more (`1e99999999999999999999`), which brick/math cannot read. Laravel's
  * `between` and size rules catch that exception and refuse the value, and so does this rule.
  *
  * **It asks Laravel, and reports under Laravel's name.** The check is `validateMultipleOf()` of the validator the rule
@@ -25,9 +25,9 @@ use Illuminate\Validation\Validator;
  * `failed()` entry are what `multiple_of` gives. A `$fail(...)` would report under this class's name and lose all of
  * them.
  *
- * **A float that is not finite fails first.** `NAN` and `INF` reach PHP's string casts inside Laravel's rules, and PHP
- * 8.5 warns "unexpected NAN value was coerced to string", which Laravel's handler turns into an `ErrorException` that
- * the `catch` does not cover.
+ * **A float that is not finite fails first.** `NAN` reaches PHP's string casts inside Laravel's rules, and PHP 8.5
+ * warns "unexpected NAN value was coerced to string", which Laravel's handler turns into an `ErrorException` that the
+ * `catch` does not cover. `INF` casts silently, and the `catch` would cover it, but it is refused in the same step.
  *
  * **A number PHP cannot hold is refused whatever the divisor.** `1e400` is a multiple of `0.5`, but once read as `INF`
  * its value is gone, and `INF` can be a multiple of anything or of nothing. Refusing is the only answer that is never

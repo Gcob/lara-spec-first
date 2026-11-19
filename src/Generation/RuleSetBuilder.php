@@ -2527,7 +2527,7 @@ final readonly class RuleSetBuilder
      *
      * Beside `integer` or `numeric`, `min` and `max` compare the value, and `gt` and `lt` take a number as readily as a
      * field name. `multipleOf` is the package's `MultipleOf` on every field, since Laravel's `multiple_of` throws on a
-     * number PHP cannot hold: a JSON `1e400`, read as `INF`, and a text exponent past 64 bits.
+     * number PHP cannot hold: a JSON `1e400`, read as `INF`, and a text exponent of 2^63 - 1 or more.
      *
      * @param  list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>  $rules
      * @param  list<string>  $handled

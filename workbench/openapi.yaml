@@ -476,10 +476,13 @@ components:
                     type: boolean
                 # A JSON body keeps its types: `WholeNumber`, so `"5"` is a 422 where a form
                 # or a query string would have carried it as text, and `5.0` passes as the
-                # whole number it is.
+                # whole number it is. `multipleOf` writes `MultipleOf`, which answers as Laravel's
+                # `multiple_of` does: `7` is a 422, `15` passes. Send `1e400` for a 422 as well, where
+                # `multiple_of` alone would throw and answer 500.
                 readingMinutes:
                     type: integer
                     minimum: 1
+                    multipleOf: 5
                 summary:
                     type: [string, 'null']
                 status:
