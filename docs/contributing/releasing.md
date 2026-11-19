@@ -39,8 +39,9 @@ and the logic behind them is in
 [the branch names](../../CONTRIBUTING.md#branch-names). Its pull request is the one place the entry is reviewed, and the
 pull request is merged before anything is tagged.
 
-**The tag is `v{version}`, annotated, on the tip of `origin/main`, which must be the release pull request's merge
-commit.** The version in the changelog heading, the tag and the GitHub release are the same string.
+**The tag is `v{version}`, annotated, on the tip of `origin/main`, which is the release pull request's merge commit or a
+later commit that only corrected `CHANGELOG.md`.** The version in the changelog heading, the tag and the GitHub release
+are the same string.
 
 ## Before the tag
 
@@ -64,6 +65,16 @@ commit.** The version in the changelog heading, the tag and the GitHub release a
 7. **The release pull request is reviewed and merged.** `pr-reviewer` reads it first and `blind-reviewer` second, and it
    merges under the factory's guardrails with CI green. The factory then puts the command of
    [the tag step](#the-tag-is-the-maintainers) in the release plan, as an action for the maintainer.
+
+**Every other pull request is held from the moment the release pull request opens until the tag.** Only a correction to
+`CHANGELOG.md` (the heading's date, the version's entry) may merge in between, and so may the revert of a change that
+merged by mistake. A pull request that merges while the release pull request is in review lands in the tag without being
+in that pull request's diff, so the hold starts when it opens, not when it merges. Merged with a merge commit, the
+release pull request's own tip is the reference and `just release` names such a change, unless the release branch was
+brought up to date with `main` first, which puts the change in the tip. Merged with a squash, there is no tip left to
+compare from. When the branch was brought up to date, or when it was squashed, the window while it was in review is the
+hold's alone: `just release` does not see it. The tenth check below says what it covers in each case, and refuses to tag
+over it.
 
 ## `release-prep` does the mechanical half
 
@@ -141,9 +152,23 @@ when any check is red. An exit code of 0 means the real run would go through.
 7. `gh` is logged in as `Gcob`.
 8. `gh` reads the repository `origin` is configured with: the `owner/repo` it names must equal the one parsed from
    `origin`'s address, and the release links are pinned with it.
-9. `[Unreleased]` is empty at `HEAD`. The tag goes on the tip of `origin/main`, so nothing may merge between the release
-   pull request and the tag. A change that merged after it would be tagged with no entry, and this check is red until it
-   is written into the version's entry.
+9. `[Unreleased]` is empty at `HEAD`. A changelog line that merged after the release pull request sits outside the
+   version's entry, and this check is red until it is moved into the entry (when it corrects the entry) or its change is
+   reverted on `main` (the revert is allowed during the hold). It sees only a change that wrote a line under
+   `[Unreleased]`: a change with no changelog line is the next check's.
+10. `only CHANGELOG.md changed since the release pull request was reviewed`. The tag goes on the tip of `origin/main`,
+    so nothing may merge between the release pull request and the tag, except a correction to `CHANGELOG.md`. The check
+    finds the release pull request's merge commit (the newest commit on `main`'s first-parent line that changes how many
+    times the version's heading appears, so a date fix is not it, and a release that was merged, reverted and cut again
+    is judged from its last cut), then compares `HEAD`'s tree with the tip the pull request was reviewed at: the merge's
+    second parent when it was merged with a merge commit, so a change that merged while it was in review is named too,
+    or the merge itself when it was squashed, which has no second parent, so only what merged after the squash is seen.
+    Any file other than `CHANGELOG.md` that differs is red, named with the short SHA of the commit it compared from (so
+    `git diff <sha> HEAD` lists them): up to five files, then `and N more`. It is a tree comparison, so a change that
+    was merged and then reverted is green. A red keeps the hold: the way out is to revert the change on `main` (the one
+    pull request besides a `CHANGELOG.md` correction that the hold lets through), or, to keep it, to revert the release
+    pull request's merge and cut the release again. A shallow clone is red too, since the merge can't be found there:
+    `git fetch --unshallow` first.
 
 **`--publish` then asks a person.** With every check green, it shows who the tag will be created by (the git identity of
 the checkout) and waits for the version to be typed at a terminal. The identity is shown rather than checked because a
@@ -165,9 +190,10 @@ construction**: the factory's rules forbid it, and [the agent guide](../../AGENT
    it was written, and a release page that follows `main` would show them as they are today.
 
 **The scripts never give `gh` a `--repo`.** `gh` reads the repository from `origin`, and that is what keeps the tests
-off GitHub: they point `origin` at a local bare repository and put a fake `gh` first on `PATH`, which records what it
-was asked and answers from files. A test asserts that the fake saw the `release create` call and nothing else that
-writes.
+off GitHub: they point `origin` at a local bare repository, named like the GitHub one so the owner and repository parse
+from its path, allow git no transport but a local one (`GIT_ALLOW_PROTOCOL=file`, so a remote that is not on disk fails
+instead of reaching the network), and put a fake `gh` first on `PATH`, which records what it was asked and answers from
+files. A test asserts that the fake saw the `release create` call and nothing else that writes.
 
 ## After the tag
 

@@ -13,7 +13,7 @@ use Symfony\Component\Process\Process;
  * a fake `gh` first on `PATH`. The fake answers each of the script's reads from a
  * file the test writes (the shape `gh api --paginate --slurp` hands back: an array of
  * pages) and records every call it gets, query text included, so a test can say what
- * the script asked and what it did not. The same arrangement as ReleaseRecipesTest.
+ * the script asked and what it did not. The same fake `gh` arrangement as ReleaseRecipesTest.
  *
  * A test states only the cards it is about, through `statusCard()`: the board item
  * and the issue are both derived from it, and everything else is a clean default.

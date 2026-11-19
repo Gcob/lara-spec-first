@@ -9,7 +9,13 @@ use Symfony\Component\Process\Process;
  * maintainer runs them: as shell scripts, on the host, from inside a repository.
  *
  * Nothing here reaches GitHub. Each test builds a scratch repository whose
- * `origin` is a bare repository on disk, and puts a fake `gh` first on `PATH`.
+ * `origin` is a bare repository on disk, named like the GitHub one (`Gcob/lara-spec-first.git`)
+ * so the scripts can read the owner and the repository from its path, and git may use
+ * no transport but a local one: a remote that is not on disk fails instead of reaching
+ * the network. A fake `gh` goes first on `PATH`.
+ * The scripts read today's date with the shell's `date`, in the shell's time zone, and the fixtures write it with
+ * PHP's `date()`, in PHP's. The scripts get PHP's time zone as `TZ`, so the two always name the same day, in the
+ * evening west of UTC too.
  * The fake answers the few questions the scripts ask (who is logged in, what the
  * card says, whether CI is green) from files the test writes, and records every
  * call it gets, one file per call, so a test can say exactly what the scripts
@@ -150,9 +156,9 @@ afterEach(function (): void {
 function releaseProject(string $changelog = RELEASE_UNRELEASED_CHANGELOG): array
 {
     $dir = realpath(sys_get_temp_dir()).'/lsf-release-'.bin2hex(random_bytes(6));
-    $project = ['dir' => $dir, 'work' => $dir.'/work', 'origin' => $dir.'/origin.git', 'bin' => $dir.'/bin', 'state' => $dir.'/state'];
+    $project = ['dir' => $dir, 'work' => $dir.'/work', 'origin' => $dir.'/Gcob/lara-spec-first.git', 'bin' => $dir.'/bin', 'state' => $dir.'/state'];
 
-    foreach ([$dir, $project['work'], $project['origin'], $project['bin'], $project['state']] as $path) {
+    foreach ([$dir, $dir.'/Gcob', $project['work'], $project['origin'], $project['bin'], $project['state']] as $path) {
         is_dir($path) || mkdir($path);
     }
 
@@ -173,10 +179,7 @@ function releaseProject(string $changelog = RELEASE_UNRELEASED_CHANGELOG): array
     file_put_contents($project['work'].'/CHANGELOG.md', str_replace('__TODAY__', date('Y-m-d'), $changelog));
     releaseGit($project['work'], ['add', '.']);
     releaseGit($project['work'], ['commit', '--quiet', '-m', 'chore: start']);
-    // The remote carries the address GitHub gives it, and git sends it to the bare repository on disk. The scripts read
-    // the address from the configuration, as they would in a checkout, and everything they push goes to the disk.
-    releaseGit($project['work'], ['remote', 'add', 'origin', 'https://github.com/Gcob/lara-spec-first.git']);
-    releaseGit($project['work'], ['config', 'url.'.$project['origin'].'.insteadOf', 'https://github.com/Gcob/lara-spec-first.git']);
+    releaseGit($project['work'], ['remote', 'add', 'origin', $project['origin']]);
     releaseGit($project['work'], ['push', '--quiet', '--set-upstream', 'origin', 'main']);
 
     file_put_contents($project['bin'].'/gh', RELEASE_FAKE_GH);
@@ -189,9 +192,85 @@ function releaseProject(string $changelog = RELEASE_UNRELEASED_CHANGELOG): array
     return $project;
 }
 
+/**
+ * Cut the release the way the factory does and merge it: a branch of its own with the heading dated `$date`, merged
+ * into `main` with a merge commit, pushed. The fixture's root commit already carries a heading, so this one starts from
+ * a project made with the default changelog.
+ *
+ * `$meanwhile` are files that land on `main` after the branch is cut and before it merges: the release pull request is
+ * in review, and another pull request merges. `$squash` merges the way GitHub's squash button does: no second parent.
+ *
+ * @param  array<string, string>  $project
+ * @param  list<string>  $meanwhile
+ * @return string the merge commit
+ */
+function releaseMergeCut(array $project, string $branch, string $date, array $meanwhile = [], bool $squash = false): string
+{
+    releaseGit($project['work'], ['switch', '--quiet', '--create', $branch]);
+    file_put_contents($project['work'].'/CHANGELOG.md', str_replace('__TODAY__', $date, RELEASE_PREPARED_CHANGELOG));
+    releaseGit($project['work'], ['commit', '--quiet', '--all', '-m', 'docs(release): cut 0.2.0 in the changelog']);
+    releaseGit($project['work'], ['switch', '--quiet', 'main']);
+
+    if ($meanwhile !== []) {
+        releaseLand($project, $meanwhile, 'docs: land while the release is in review');
+    }
+
+    if ($squash) {
+        releaseGit($project['work'], ['merge', '--quiet', '--squash', $branch]);
+        releaseGit($project['work'], ['commit', '--quiet', '-m', 'docs(release): cut 0.2.0 in the changelog (#1)']);
+    } else {
+        releaseGit($project['work'], ['merge', '--quiet', '--no-ff', '--no-edit', $branch]);
+    }
+
+    releaseGit($project['work'], ['push', '--quiet', 'origin', 'main']);
+
+    return releaseGit($project['work'], ['rev-parse', 'HEAD']);
+}
+
+/**
+ * The commit the tenth check compares from: the release merge's second parent (the tip the pull request was reviewed
+ * at) when it has one, else the merge itself, which a squash leaves alone.
+ *
+ * @param  array<string, string>  $project
+ */
+function releaseComparedFrom(array $project, string $merge): string
+{
+    $parents = explode(' ', releaseGit($project['work'], ['log', '-1', '--format=%P', $merge]));
+
+    return $parents[1] ?? $merge;
+}
+
+/**
+ * Commit the given files on `main` and push.
+ *
+ * @param  array<string, string>  $project
+ * @param  list<string>  $files
+ */
+function releaseLand(array $project, array $files, string $message = 'docs: land after the release'): void
+{
+    foreach ($files as $file) {
+        file_put_contents($project['work'].'/'.$file, 'late');
+        releaseGit($project['work'], ['add', $file]);
+    }
+
+    releaseGit($project['work'], ['commit', '--quiet', '-m', $message]);
+    releaseGit($project['work'], ['push', '--quiet', 'origin', 'main']);
+}
+
 function releaseRepository(): string
 {
     return dirname(__DIR__, 2);
+}
+
+/**
+ * The environment of every git the tests run, and the one the scripts run: no user or system configuration, and no
+ * transport but a local path, so a remote that is not on disk fails at once instead of reaching the network.
+ *
+ * @return array<string, string>
+ */
+function releaseGitEnvironment(): array
+{
+    return ['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1', 'GIT_ALLOW_PROTOCOL' => 'file'];
 }
 
 /**
@@ -199,7 +278,7 @@ function releaseRepository(): string
  */
 function releaseGit(string $directory, array $arguments): string
 {
-    $process = new Process(['git', ...$arguments], $directory, ['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1']);
+    $process = new Process(['git', ...$arguments], $directory, releaseGitEnvironment());
     $process->mustRun();
 
     return trim($process->getOutput());
@@ -220,11 +299,11 @@ function releaseRun(array $project, string $script, array $arguments, ?string $i
         ['sh', 'scripts/'.$script, ...$arguments],
         $project['work'],
         [
+            ...releaseGitEnvironment(),
             'PATH' => $project['bin'].':'.getenv('PATH'),
             'FAKE_GH_DIR' => $project['state'],
-            'GIT_CONFIG_GLOBAL' => '/dev/null',
-            'GIT_CONFIG_NOSYSTEM' => '1',
             'GIT_TERMINAL_PROMPT' => '0',
+            'TZ' => date_default_timezone_get(),
         ],
         $input ?? '',
     );
@@ -278,6 +357,39 @@ function releaseNothingWritten(array $project, string $branchHead): void
         ->and(releaseGit($project['origin'], ['branch', '--format=%(refname:short)']))->toBe('main')
         ->and(releaseGhWrites($project))->toBe([]);
 }
+
+it('keeps every test off the network: origin is a path on disk, and git refuses any other transport', function (): void {
+    $project = releaseProject();
+
+    $url = releaseGit($project['work'], ['config', '--get', 'remote.origin.url']);
+    $rewrites = new Process(['git', 'config', '--get-regexp', '^url\.'], $project['work'], releaseGitEnvironment());
+    $rewrites->run();
+
+    $elsewhere = new Process(['git', 'ls-remote', 'https://127.0.0.1:9/Gcob/lara-spec-first.git'], $project['work'], releaseGitEnvironment());
+    $elsewhere->run();
+
+    expect($url)->toBe($project['origin'])
+        ->and($url)->toStartWith($project['dir'].'/')
+        ->and($url)->toEndWith('/Gcob/lara-spec-first.git')
+        ->and($rewrites->getExitCode())->toBe(1, 'a rewrite rule would send an address somewhere else')
+        ->and($rewrites->getOutput())->toBe('')
+        ->and($elsewhere->getExitCode())->not->toBe(0)
+        ->and($elsewhere->getOutput().$elsewhere->getErrorOutput())->toContain("transport 'https' not allowed");
+});
+
+it('reads owner and repository from the address a maintainer has for origin', function (string $address): void {
+    $project = releaseProject();
+    releaseGit($project['work'], ['config', 'remote.origin.url', $address]);
+
+    $slug = (new Process(['sh', '-c', '. scripts/release-lib.sh && origin_slug'], $project['work'], releaseGitEnvironment()))->mustRun()->getOutput();
+
+    expect(trim($slug))->toBe('Gcob/lara-spec-first');
+})->with([
+    'https' => ['https://github.com/Gcob/lara-spec-first.git'],
+    'https without .git' => ['https://github.com/Gcob/lara-spec-first'],
+    'ssh' => ['git@github.com:Gcob/lara-spec-first.git'],
+    'ssh url' => ['ssh://git@github.com/Gcob/lara-spec-first.git'],
+]);
 
 describe('release-prep', function (): void {
     it('prepares a release on a branch of its own, with a draft pull request that says who opened it', function (): void {
@@ -505,6 +617,21 @@ describe('release', function (): void {
                 'RED   [Unreleased] is empty at HEAD: something merged after the release pull request',
                 '0.2.0',
             ],
+            'a file changed after the release pull request merged' => [
+                fn (array $p) => releaseLand($p, ['docs-late.md']),
+                'RED   only CHANGELOG.md changed since the release pull request was reviewed (',
+                '0.2.0',
+            ],
+            'the history is shallow' => [
+                function (array $p): void {
+                    releaseLand($p, ['docs-late.md']);
+                    releaseGit($p['dir'], ['clone', '--quiet', '--depth', '1', 'file://'.$p['origin'], 'shallow']);
+                    rename($p['work'], $p['dir'].'/work-full');
+                    rename($p['dir'].'/shallow', $p['work']);
+                },
+                'RED   only CHANGELOG.md changed since the release pull request was reviewed: the history is shallow',
+                '0.2.0',
+            ],
             'the heading is not dated today' => [
                 function (array $p): void {
                     $changelog = (string) file_get_contents($p['work'].'/CHANGELOG.md');
@@ -570,6 +697,110 @@ describe('release', function (): void {
             ->and(releaseGit($project['origin'], ['tag', '--list']))->toBe($tags)
             ->and(releaseGit($project['work'], ['rev-parse', 'HEAD']))->toBe($head);
     })->with(releaseRedChecks());
+
+    it('refuses to tag over an unreleased line with a fix that can be done', function (): void {
+        $project = releaseProject(RELEASE_PREPARED_CHANGELOG);
+        $changelog = (string) file_get_contents($project['work'].'/CHANGELOG.md');
+        file_put_contents($project['work'].'/CHANGELOG.md', str_replace("## [Unreleased]\n", "## [Unreleased]\n\n- A late change.\n", $changelog));
+        releaseGit($project['work'], ['commit', '--quiet', '--all', '-m', 'feat: land after the release']);
+        releaseGit($project['work'], ['push', '--quiet', 'origin', 'main']);
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   [Unreleased] is empty at HEAD')
+            ->and($run['out'])->toContain('the 0.2.0 entry')
+            ->and($run['out'])->not->toContain('commit before it');
+    });
+
+    it('tags over a release pull request whose own entry was corrected after it merged', function (string $cutDate, Closure $change): void {
+        $project = releaseProject();
+        $merge = releaseMergeCut($project, 'release/126/0.2.0', $cutDate);
+        $judged = $change($project, $merge) ?? $merge;
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0']);
+
+        expect($run['exit'])->toBe(0, $run['out'])
+            ->and($run['out'])->not->toContain('RED')
+            ->and($run['out'])->toContain('ok    only CHANGELOG.md changed since the release pull request was reviewed ('.substr(releaseComparedFrom($project, $judged), 0, 7).')');
+    })->with([
+        'the date fixed' => [
+            '2026-01-01',
+            function (array $p): void {
+                $changelog = (string) file_get_contents($p['work'].'/CHANGELOG.md');
+                file_put_contents($p['work'].'/CHANGELOG.md', str_replace('2026-01-01', date('Y-m-d'), $changelog));
+                releaseGit($p['work'], ['commit', '--quiet', '--all', '-m', 'docs(release): date the entry']);
+                releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+            },
+        ],
+        'the entry reworded' => [
+            date('Y-m-d'),
+            function (array $p): void {
+                $changelog = (string) file_get_contents($p['work'].'/CHANGELOG.md');
+                file_put_contents($p['work'].'/CHANGELOG.md', str_replace('- A thing, see', '- A better thing, see', $changelog));
+                releaseGit($p['work'], ['commit', '--quiet', '--all', '-m', 'docs(release): reword the entry']);
+                releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+            },
+        ],
+        'a late file reverted' => [
+            date('Y-m-d'),
+            function (array $p): void {
+                releaseLand($p, ['docs-late.md']);
+                releaseGit($p['work'], ['revert', '--no-edit', 'HEAD']);
+                releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+            },
+        ],
+        'a release merged, reverted and cut again' => [
+            date('Y-m-d'),
+            function (array $p, string $merge): string {
+                releaseLand($p, ['docs-between.md'], 'docs: land while the release is abandoned');
+                releaseGit($p['work'], ['revert', '--no-edit', '-m', '1', $merge]);
+                releaseGit($p['work'], ['push', '--quiet', 'origin', 'main']);
+
+                return releaseMergeCut($p, 'release/126/0.2.0-again', date('Y-m-d'));
+            },
+        ],
+    ]);
+
+    it('names the files that changed after the release pull request merged, five at most', function (int $count, string $listed): void {
+        $project = releaseProject();
+        $merge = releaseMergeCut($project, 'release/126/0.2.0', date('Y-m-d'));
+        releaseLand($project, array_map(static fn (int $n): string => "late-{$n}.md", range(1, $count)));
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr(releaseComparedFrom($project, $merge), 0, 7).'): '.$listed);
+    })->with([
+        'five files' => [5, 'late-1.md, late-2.md, late-3.md, late-4.md, late-5.md. '],
+        'six files' => [6, 'late-1.md, late-2.md, late-3.md, late-4.md, late-5.md and 1 more. '],
+    ]);
+
+    it('names a change that merged while the release pull request was in review, when the release was merged with a merge commit', function (): void {
+        $project = releaseProject();
+        $merge = releaseMergeCut($project, 'release/126/0.2.0', date('Y-m-d'), ['src-late.php']);
+
+        $dryRun = releaseRun($project, 'release.sh', ['0.2.0']);
+        $publish = releaseRun($project, 'release.sh', ['0.2.0', '--publish']);
+
+        expect($dryRun['exit'])->toBe(1)
+            ->and($dryRun['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr(releaseComparedFrom($project, $merge), 0, 7).'): src-late.php. ')
+            ->and($publish['exit'])->not->toBe(0)
+            ->and($publish['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed')
+            ->and(releaseGhWrites($project))->toBe([])
+            ->and(releaseGit($project['origin'], ['tag', '--list']))->toBe('');
+    });
+
+    it('judges a release merged with a squash from its merge, which has no tip to compare from', function (): void {
+        $project = releaseProject();
+        $squash = releaseMergeCut($project, 'release/126/0.2.0', date('Y-m-d'), ['docs-meanwhile.md'], squash: true);
+        releaseLand($project, ['docs-after.md']);
+
+        $run = releaseRun($project, 'release.sh', ['0.2.0']);
+
+        expect($run['exit'])->toBe(1)
+            ->and($run['out'])->toContain('RED   only CHANGELOG.md changed since the release pull request was reviewed ('.substr($squash, 0, 7).'): docs-after.md. ');
+    });
 
     it('refuses to tag when origin cannot be asked whether the tag exists', function (): void {
         $project = releaseProject(RELEASE_PREPARED_CHANGELOG);

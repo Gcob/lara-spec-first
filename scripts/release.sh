@@ -133,9 +133,48 @@ else
 fi
 
 if [ "$(git show "HEAD:CHANGELOG.md" 2>/dev/null | unreleased_lines)" -eq 0 ]; then
-    pass "[Unreleased] is empty at HEAD, so nothing merged after the release pull request"
+    pass "[Unreleased] is empty at HEAD"
 else
-    fail "[Unreleased] is empty at HEAD: something merged after the release pull request, so the tag would carry it without an entry. Put it in the $VERSION entry, or release from the commit before it"
+    fail "[Unreleased] is empty at HEAD: something merged after the release pull request, so the tag would carry a line that is not in the $VERSION entry. If it corrects the entry, move it into the $VERSION entry through a pull request. Otherwise revert the change on main: the revert is the one pull request, besides a CHANGELOG.md correction, that the hold lets through. Then run this again"
+fi
+
+# Why the heading's count and not its first appearance: the newest commit on main's first-parent line that changes how
+# many times "## [<version>] - " appears is the merge of the release pull request, and a date fix (the same count) is
+# not it. A release merged, reverted and cut again is then judged from its last cut.
+#
+# Why the comparison starts at the merge's second parent when it has one: a change that merged while the release pull
+# request was in review is already in the merge's tree, so a comparison from the merge would not see it. The second
+# parent is the tip the pull request was reviewed at. A squash merge has none, and is compared from the merge itself.
+only_changelog="only CHANGELOG.md changed since the release pull request was reviewed"
+release_merge=$(git log --first-parent --format=%H -S"## [$VERSION] - " HEAD -- CHANGELOG.md 2>/dev/null | head -n 1)
+
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+    # Why: in a shallow clone the oldest commit it holds has no parent, so git reports the heading as added by it and
+    # the check would be green over a change merged after the release.
+    fail "$only_changelog: the history is shallow, so the release pull request's merge can't be found. Run git fetch --unshallow, then run this again"
+elif [ -z "$release_merge" ]; then
+    fail "$only_changelog: no commit on main brought in a \"## [$VERSION] - \" heading"
+else
+    reviewed=$release_merge
+
+    if git rev-parse --quiet --verify "$release_merge^2" >/dev/null 2>&1; then
+        reviewed="$release_merge^2"
+    fi
+
+    # Why: the SHA shown is the commit the files are compared from, so git diff <sha> HEAD lists them.
+    reviewed_short=$(git rev-parse "$reviewed" 2>/dev/null | cut -c1-7)
+
+    if ! late_files=$(git diff --name-only "$reviewed" HEAD -- . ':(exclude)CHANGELOG.md' 2>/dev/null); then
+        fail "$only_changelog ($reviewed_short): git could not compare that commit with HEAD"
+    elif [ -z "$late_files" ]; then
+        pass "$only_changelog ($reviewed_short)"
+    else
+        late_list=$(printf '%s\n' "$late_files" | awk '
+            NR <= 5 { list = list (NR > 1 ? ", " : "") $0 }
+            END { if (NR > 5) list = list " and " NR - 5 " more"; print list }
+        ')
+        fail "$only_changelog ($reviewed_short): $late_list. The tag would carry what the release pull request did not review. Revert the change on main (the one pull request, besides a CHANGELOG.md correction, that the hold lets through), then run this again. To keep the change, revert the release pull request's merge and cut the release again"
+    fi
 fi
 
 if [ "$PUBLISH" -eq 0 ]; then
