@@ -83,6 +83,10 @@
             "Composer\\Config::disableProcessTimeout",
             "scripts/check-lowest.sh"
         ],
+        "demo": [
+            "Composer\\Config::disableProcessTimeout",
+            "demo/run.sh"
+        ],
         "post-autoload-dump": [
             "@clear",
             "@prepare"
@@ -112,6 +116,7 @@
         "analyse": "Run PHPStan static analysis.",
         "check": "Run every pre-pull-request check: formatting, static analysis, tests.",
         "check:lowest": "Install the Laravel floor composer.json declares exactly (security blocking off for that install), run the same checks against it, then restore the newest. Fails when Composer cannot install that floor. Development tooling is left alone.",
+        "demo": "Run the demo for one minor release against a brand-new Laravel app: `composer demo -- 0.2`, or `composer demo -- 0.3 my-branch` for a local branch. Needs php, composer, curl, git, tar and hurl on the PATH; `just demo` runs it in the Docker image, which carries them all. CI runs demo/run.sh directly.",
         "build": "Rebuild the Workbench application (assets, database, migrations).",
         "serve": "Serve the Workbench application on the PHP development server. Binds 0.0.0.0 so it is reachable from outside the Docker container; running natively, this also exposes it on your local network."
     },

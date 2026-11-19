@@ -246,3 +246,11 @@ shell:
 clean:
     docker compose down --volumes --remove-orphans
     rm -rf vendor composer.lock build
+
+# `demo` runs on the host and wraps a script, which runs `composer demo` in the container, like `format-md` runs
+# Prettier. The script exists because git needs help to read a linked worktree from inside the container (see its
+# header). Native: `composer demo -- 0.2`, or `demo/run.sh 0.2`, which is what CI runs.
+
+# Run the demo for a minor release in a fresh Laravel app: `just demo 0.2`, or `just demo 0.3 my-branch`.
+demo minor branch="":
+    ./scripts/demo-in-docker.sh {{minor}} {{branch}}

@@ -15,8 +15,9 @@
 # What it does, in a temporary directory it deletes on exit:
 #
 #   1. creates a fresh Laravel app, pinned to the folder's `laravel-version`;
-#   2. requires this package: `<minor>.*` from Packagist, or `dev-<branch>`
-#      when a branch is given;
+#   2. requires this package: `<minor>.*` from Packagist, or the archive of
+#      the branch when one is given (`dev-<branch>`), then checks that none of
+#      the files a tag leaves out reached `vendor/`;
 #   3. copies the contract to the app's `openapi.yaml`, the default path;
 #   4. runs `spec:build`, `spec:make --all --yes`, then `spec:doctor`, and
 #      compares the doctor's exit code with `doctor-exit`;
@@ -29,22 +30,34 @@
 # release is picked up by the folder that was frozen with its minor). A minor
 # with no `v<minor>.*` tag in this checkout needs a branch.
 #
-# A branch comes from a Composer `vcs` repository whose URL is THIS git
-# checkout, not GitHub and not a `path` repository, for two reasons. The branch
-# does not have to be pushed to be tested, and a `path` repository takes the
-# version from whatever the checkout has open and symlinks the working tree,
-# while this installs the commits on the named branch exactly as a tag would
-# ship them. The cost: an uncommitted change is not tested, so commit first.
+# A branch is installed as a tag's zip would be. `git archive` writes the branch
+# tip, honouring the branch's own `.gitattributes`, into a temporary directory,
+# and a Composer `path` repository with `symlink` off copies that directory into
+# `vendor/`. So files marked `export-ignore` (`tests/`, `docs/`, `.git`) are not
+# there, and the branch does not have to be pushed to be tested. The cost: only
+# commits are tested, so commit the package's changes first. The folder itself
+# (`demo/<minor>/`) is read from the working tree, so its uncommitted files are
+# tested.
 #
 # Exit codes: 0 when the doctor's code matches and every scenario file passes,
 # 1 when a check failed (the doctor's or Hurl's output is printed), 2 when it
 # could not get as far as checking. Nothing is left behind, so it can be run
-# again at once. The `php`, `composer`, `curl`, `git` and `hurl` commands must
-# be on the PATH, and the machine needs the network for Packagist.
+# again at once. The `php`, `composer`, `curl`, `git`, `tar` and `hurl` commands
+# must be on the PATH, and the machine needs the network for Packagist. `just
+# demo` runs this file in a container where they all are.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Set by scripts/demo-in-docker.sh, never by CI, to let git read a linked
+# worktree from inside the container. They are not named after git's own
+# variables because Composer clears those from the environment of every script
+# it runs, and `composer demo` runs this file.
+if [ -n "${DEMO_GIT_DIR:-}" ]; then
+    export GIT_DIR="$DEMO_GIT_DIR" GIT_WORK_TREE="${DEMO_GIT_WORK_TREE:-$ROOT}"
+fi
+
 WORK=""
 SERVER_PID=""
 FAILED=0
@@ -105,14 +118,16 @@ FOLDER="$ROOT/demo/$MINOR"
 [ -d "$FOLDER" ] || die "there is no demo/$MINOR in $ROOT"
 
 missing=()
-for command in php composer curl git hurl; do
+for command in php composer curl git tar hurl; do
     command -v "$command" >/dev/null 2>&1 || missing+=("$command")
 done
 if [ "${#missing[@]}" -gt 0 ]; then
     for command in "${missing[@]}"; do
         if [ "$command" = hurl ]; then
-            echo "FAIL  hurl is not on the PATH. Install it: https://hurl.dev/docs/installation.html" >&2
-            echo "      (\`brew install hurl\` on macOS). CI installs it in .github/workflows/demo.yml." >&2
+            echo "FAIL  hurl is not on the PATH. Run the demo in Docker, whose image carries it:" >&2
+            echo "      \`just demo <minor> [<branch>]\`. To run it natively, install Hurl:" >&2
+            echo "      https://hurl.dev/docs/installation.html (\`brew install hurl\` on macOS)." >&2
+            echo "      CI installs it in .github/workflows/demo.yml." >&2
         else
             echo "FAIL  $command is not on the PATH" >&2
         fi
@@ -133,6 +148,8 @@ done
 SKELETON="$(tr -d '[:space:]' <"$FOLDER/laravel-version")"
 EXPECTED_DOCTOR="$(tr -d '[:space:]' <"$FOLDER/doctor-exit")"
 
+echo "PHP $(php -r 'echo PHP_VERSION;'), Hurl $(hurl --version | awk 'NR == 1 { print $2 }')"
+
 WORK="$(mktemp -d)"
 APP="$WORK/app"
 
@@ -144,10 +161,22 @@ step "create a Laravel app (laravel/laravel:$SKELETON)" \
 cd "$APP"
 
 if [ -n "$BRANCH" ]; then
+    # Its own shell, for `pipefail`: a failing `git archive` must not be lost
+    # behind `tar`.
+    step "unpack the archive of $BRANCH" bash -c '
+        set -o pipefail
+        mkdir "$3" &&
+        git -C "$1" archive --format=tar "refs/heads/$2" | tar -x -C "$3"
+    ' _ "$ROOT" "$BRANCH" "$WORK/package"
+    REPOSITORY="$(php -r 'echo json_encode([
+        "type" => "path",
+        "url" => $argv[1],
+        "options" => ["symlink" => false, "versions" => ["gcob/lara-spec-first" => "dev-" . $argv[2]]],
+    ], JSON_UNESCAPED_SLASHES);' "$WORK/package" "$BRANCH")"
     step "require gcob/lara-spec-first:dev-$BRANCH" bash -c '
-        composer config repositories.demo vcs "$1" &&
+        composer config repositories.demo "$1" &&
         composer require "gcob/lara-spec-first:dev-$2" --no-interaction --no-progress
-    ' _ "$ROOT" "$BRANCH"
+    ' _ "$REPOSITORY" "$BRANCH"
 else
     step "require gcob/lara-spec-first:$MINOR.*" \
         composer require "gcob/lara-spec-first:$MINOR.*" --no-interaction --no-progress
@@ -155,7 +184,47 @@ fi
 
 INSTALLED="$(composer show gcob/lara-spec-first --format=json --no-interaction |
     php -r 'echo json_decode(stream_get_contents(STDIN), true)["versions"][0] ?? "unknown";')"
-printf '  ...   installed gcob/lara-spec-first %s\n' "$INSTALLED"
+printf '  ...   installed gcob/lara-spec-first %s%s\n' "$INSTALLED" \
+    "${BRANCH:+ (commit $(git -C "$ROOT" rev-parse --short "refs/heads/$BRANCH"))}"
+
+# This checks how the demo installs a branch (the archive, not a clone), not which
+# files `.gitattributes` marks: `vendor/` comes from the same archive it compares.
+#
+# What a tag's zip leaves out is decided by git, from the branch's own
+# `.gitattributes`: the files in the branch's tree that `git archive` does not
+# write. None of them may be in `vendor/`. An empty list fails too, because the
+# check would prove nothing. Only a branch needs it: a Packagist install is
+# already GitHub's zip.
+check_vendor_has_what_a_tag_ships() {
+    local ref="refs/heads/$BRANCH" installed_at="$APP/vendor/gcob/lara-spec-first"
+    local in_tree="$WORK/in-tree.txt" in_archive="$WORK/in-archive.txt" left_out="$WORK/left-out.txt"
+    git -C "$ROOT" -c core.quotePath=false ls-tree -r --name-only "$ref" | LC_ALL=C sort >"$in_tree"
+    git -C "$ROOT" archive --format=tar "$ref" | tar -t | LC_ALL=C sort >"$in_archive"
+    LC_ALL=C comm -23 "$in_tree" "$in_archive" >"$left_out"
+
+    local total=0 leaked=0 sample="" path
+    while IFS= read -r path; do
+        total=$((total + 1))
+        if [ -e "$installed_at/$path" ] || [ -L "$installed_at/$path" ]; then
+            leaked=$((leaked + 1))
+            [ "$leaked" -gt 5 ] || sample="$sample $path"
+        fi
+    done <"$left_out"
+
+    if [ "$total" -eq 0 ]; then
+        printf '  FAIL  the branch leaves no file out of its archive, so there is nothing to check\n'
+        FAILED=$((FAILED + 1))
+    elif [ "$leaked" -gt 0 ]; then
+        printf '  FAIL  vendor/ holds %s of the %s files a tag leaves out, for example:%s\n' "$leaked" "$total" "$sample"
+        FAILED=$((FAILED + 1))
+    else
+        printf '  ok    vendor/ holds none of the %s files a tag leaves out\n' "$total"
+    fi
+}
+
+if [ -n "$BRANCH" ]; then
+    check_vendor_has_what_a_tag_ships
+fi
 
 cp "$FOLDER/openapi.yaml" openapi.yaml
 

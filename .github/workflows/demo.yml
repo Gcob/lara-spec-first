@@ -57,7 +57,9 @@ concurrency:
 # release publishes next to it (`hurl_<version>_amd64.deb.sha256`). Not a
 # third-party action and never a script piped into a shell: one less thing to trust.
 # Both values are written here once. Moving to another release means changing both,
-# and `hurl --version` in the install step prints which one the run used.
+# and `hurl --version` in the install step prints which one the run used. The
+# Dockerfile pins the same version for the dev image (`just demo`), and a test keeps
+# the two equal.
 env:
     HURL_VERSION: "8.1.0"
     HURL_DEB_SHA256: c56222c8923d3940533ac3d7085f66cb6fa6c05639f33aaeef8d857ab70622f9
@@ -99,8 +101,8 @@ jobs:
 
         steps:
             # The whole history, with its tags: they decide which mode a folder
-            # runs in, and the Composer `vcs` repository that branch mode installs
-            # from is a clone of this checkout.
+            # runs in, and branch mode archives a branch of this checkout, as a
+            # tag's zip is made.
             - uses: actions/checkout@v7
               with:
                   fetch-depth: 0
