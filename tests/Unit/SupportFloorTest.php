@@ -22,8 +22,13 @@ function composerIsPinned(): bool
 
 function pinnedSkipMessage(): string
 {
-    return 'This job pinned composer.json to one Laravel, so the declared range is not readable here. '
+    return 'LSF_LARAVEL_PINNED is set: composer.json is pinned to one Laravel, so the declared range is not readable here. '
         .'Run `composer test` on a checkout nobody pinned.';
+}
+
+function pinHint(): string
+{
+    return ' (if composer.json is pinned to one Laravel on purpose, run with LSF_LARAVEL_PINNED=1)';
 }
 
 /**
@@ -68,7 +73,7 @@ it('declares one Laravel range for routing and support', function (): void {
         ->toBe(
             $composer['require']['illuminate/support'] ?? null,
             'illuminate/routing and illuminate/support declare different ranges in composer.json: give them one, '
-            .'or the lowest job pins a floor for one and not the other',
+            .'or the lowest job pins a floor for one and not the other'.pinHint(),
         );
 })->skip(composerIsPinned(), pinnedSkipMessage());
 
@@ -78,12 +83,12 @@ it('runs every test cell on a floor composer.json declares', function (): void {
 
     foreach ($cells as $constraint) {
         expect(in_array($constraint, $alternatives, true))
-            ->toBeTrue("a test cell in tests.yml installs {$constraint}, which composer.json does not declare ({$range}): change one to match the other");
+            ->toBeTrue("a test cell in tests.yml installs {$constraint}, which composer.json does not declare ({$range}): change one to match the other".pinHint());
     }
 
     foreach ($alternatives as $alternative) {
         expect(in_array($alternative, $cells, true))
-            ->toBeTrue("composer.json declares {$alternative}, and no test cell in tests.yml installs it: add a cell");
+            ->toBeTrue("composer.json declares {$alternative}, and no test cell in tests.yml installs it: add a cell".pinHint());
     }
 })->skip(composerIsPinned(), pinnedSkipMessage());
 
@@ -95,11 +100,11 @@ it('installs every declared floor in a lowest leg', function (): void {
         expect(count(array_keys($legs, $alternative, true)))
             ->toBe(1, "composer.json declares {$alternative}, and the lowest job in tests.yml has "
                 .(in_array($alternative, $legs, true) ? 'more than one leg' : 'no leg')
-                .' for it: the lowest job installs no floor of its own, add one leg per declared alternative');
+                .' for it: the lowest job installs no floor of its own, add one leg per declared alternative'.pinHint());
     }
 
     foreach ($legs as $constraint) {
         expect(in_array($constraint, $alternatives, true))
-            ->toBeTrue("a lowest leg in tests.yml installs {$constraint}, which composer.json does not declare ({$range}): change one to match the other");
+            ->toBeTrue("a lowest leg in tests.yml installs {$constraint}, which composer.json does not declare ({$range}): change one to match the other".pinHint());
     }
 })->skip(composerIsPinned(), pinnedSkipMessage());

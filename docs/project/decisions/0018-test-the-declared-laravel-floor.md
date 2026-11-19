@@ -62,8 +62,9 @@ install Laravel 12.55.0 and 13.0.0. The job's checks are named per leg, and `All
 check.
 
 **A guard stops the run when Composer lands elsewhere.** After the downgrade, `scripts/check-lowest.sh` compares the
-installed `laravel/framework` with the floor `composer.json` declares, on major and minor, and stops with "nothing was
-verified" (after the restore) when they differ. The check that used to pass over a version nobody declared now fails.
+installed `laravel/framework` with the floor `composer.json` declares, as the whole version (`12.55.0`, `13.0.0`), and
+stops with "nothing was verified" (after the restore) when they differ. The check that used to pass over a version
+nobody declared now fails.
 
 **Composer's security blocking is off for the downgrade, for the whole dependency graph.** Without it no floor below
 12.71 can be installed, and the floor's own tree carries advisories too (`symfony/yaml` among them). The script sets

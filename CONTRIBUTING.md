@@ -199,7 +199,7 @@ just check-lowest
 composer check:lowest
 ```
 
-It installs the Laravel floor `composer.json` declares **exactly** (12.55 for the `^12.55` alternative, and 13.0 for
+It installs the Laravel floor `composer.json` declares **exactly** (12.55.0 for the `^12.55` alternative, and 13.0.0 for
 `^13.0`) with the Testbench that goes with it, runs the full check suite against them, and restores the newest. It
 reports failure if the downgrade or the restore itself fails, and when Composer cannot reach the declared floor and
 lands on a newer Laravel: a pass always means the floor was really exercised.
@@ -220,8 +220,11 @@ constraint in `composer.json` and run the script the same way. With PHP 8.3 firs
 how you installed it; this one is Homebrew on macOS):
 
 ```bash
-PATH=/opt/homebrew/opt/php@8.3/bin:$PATH composer check:lowest
+LSF_LARAVEL_PINNED=1 PATH=/opt/homebrew/opt/php@8.3/bin:$PATH composer check:lowest
 ```
+
+`LSF_LARAVEL_PINNED=1` tells `SupportFloorTest` that `composer.json` is pinned to one Laravel, as it is in a CI leg.
+Without it, that test reads the pin as a range that lost an alternative and fails on a file that is not broken.
 
 The development tooling, Pint, Larastan and Pest, is deliberately left at its current version. Otherwise a minor Pint
 release that changes a formatting rule would turn this red while the Laravel lower bound is perfectly healthy, and a

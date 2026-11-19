@@ -70,20 +70,21 @@ if ! COMPOSER_NO_SECURITY_BLOCKING=1 composer update --prefer-lowest --prefer-st
     exit 1
 fi
 
-# The floor is the first `^X.Y` of the constraint, major and minor: `^12.55 || ^13.0`
-# is 12.55, and a leg of CI that pinned `^13.0` first is 13.0. The patch is left
-# out on purpose, since Composer picks the lowest patch of the floor's minor.
+# The floor is the first `^X.Y` of the constraint, read as X.Y.0: `^12.55 || ^13.0`
+# is 12.55.0, and a leg of CI that pinned `^13.0` first is 13.0.0. The whole version
+# is compared, so a dependency that needs a later patch of the floor's minor turns
+# the run red instead of leaving the floor itself untested.
 # `display_errors=0` keeps a deprecation notice from an old dependency out of the
 # captured version; the notice still reaches stderr through PHP's error log.
 floor=$(php -d display_errors=0 -r '
     $composer = json_decode(file_get_contents("composer.json"), true);
     preg_match("/\^([0-9]+\.[0-9]+)/", $composer["require"]["illuminate/support"] ?? "", $match);
-    echo $match[1] ?? "";
+    echo isset($match[1]) ? $match[1].".0" : "";
 ')
 installed=$(php -d display_errors=0 -r '
     require "vendor/autoload.php";
     $version = ltrim(\Composer\InstalledVersions::getPrettyVersion("laravel/framework") ?? "", "v");
-    echo implode(".", array_slice(explode(".", $version), 0, 2));
+    echo $version;
 ')
 
 if [ -z "$floor" ] || [ "$installed" != "$floor" ]; then
