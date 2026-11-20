@@ -108,6 +108,11 @@ final readonly class RuleSetBuilder
     ];
 
     /**
+     * The styles OpenAPI defines for an `in: query` parameter.
+     */
+    private const QUERY_STYLES = ['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'];
+
+    /**
      * Every keyword a rule could come from, by the property that carries it.
      *
      * The list is closed and checked per field against what the walk actually acted on, which is what makes a finding a
@@ -296,6 +301,9 @@ final readonly class RuleSetBuilder
                 }
             }
 
+            // Before the no-key skip: a fault is about the document, not about the rule the name does or does not get.
+            [$style, $explode] = self::querySerialization($walk, $parameter);
+
             if ($plan['key'] === null) {
                 self::leaveFieldUnenforced($walk, '`'.$parameter->name.'`', $parameter->schema, $parameter->required);
 
@@ -311,18 +319,15 @@ final readonly class RuleSetBuilder
             $presence = $parameter->required ? self::requiredRule($parameter->schema) : 'sometimes';
             $merged = AllOfMerger::merge($parameter->schema, $operation->label(), '`'.$parameter->name.'`');
 
-            // A query string is not JSON. OpenAPI's default serialization of
-            // an array is `?tag=a&tag=b`, of which PHP keeps only the last, and
-            // `explode: false` sends `?tag=a,b` as one string. `style` and
-            // `explode` are not read, so the value reaching the validator is
-            // not the shape the schema describes, and every rule about that
-            // shape would refuse a valid request. An array's own name is always
-            // sent, so its presence is enforced and the rest reported.
+            // A query string is not JSON. What reaches the validator is the value PHP parsed, and the parameter's
+            // `style` and `explode` say how the client wrote it, so an array or an object is not the shape the schema
+            // describes, and every rule about that shape would refuse a valid request. Neither gets a `field()` call.
             //
-            // An object's is not: the default `form` style with `explode` sends
-            // one key per property — `?status=a` — and the parameter's name
-            // never appears, so even presence would refuse a valid request.
-            // It is `sometimes` whatever its `required` flag, and said so.
+            // An array's own name is always sent, so its presence is enforced and the rest reported. An object's is
+            // not: `form` with `explode: true` sends one key per property (`?status=a`) and never the name, so even
+            // presence would refuse a valid request, and it is `sometimes` whatever its `required` flag. Sent as one
+            // string (`form` with `explode: false`) its name is there, so it gets its presence like an array. A style
+            // the document wrote wrong is read as no style, which is the first of these cases.
             if ($merged->soleType() === SchemaType::Array) {
                 if (self::holdsValueSchema($merged)) {
                     $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
@@ -330,9 +335,9 @@ final readonly class RuleSetBuilder
 
                 $walk->rules[$key] = [$presence];
                 $walk->findings[] = sprintf(
-                    '`%s` is a `query` parameter typed `array`. Its `style` and `explode` serialization is '
-                        .'not read, and PHP does not parse it into that shape, so only its presence is enforced.',
+                    '`%s` is a `query` parameter typed `array`. %s, so only its presence is enforced.',
                     $parameter->name,
+                    self::unreadArray($parameter->name, $style, $explode),
                 );
 
                 continue;
@@ -343,12 +348,13 @@ final readonly class RuleSetBuilder
                     $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
                 }
 
-                $walk->rules[$key] = ['sometimes'];
+                $sentOwnName = $style === 'form' && ! $explode;
+
+                $walk->rules[$key] = [$sentOwnName ? $presence : 'sometimes'];
                 $walk->findings[] = sprintf(
-                    '`%s` is a `query` parameter typed `object`. Its default serialization sends one key per '
-                        .'property and never its own name, and `style` and `explode` are not read, so nothing '
-                        .'about it is enforced, not even its presence.',
+                    '`%s` is a `query` parameter typed `object`. %s',
                     $parameter->name,
+                    self::unreadObject($parameter->name, $style, $explode),
                 );
 
                 continue;
@@ -3803,6 +3809,100 @@ final readonly class RuleSetBuilder
         $last = array_pop($items);
 
         return implode(', ', $items).' and '.$last;
+    }
+
+    /**
+     * How a query parameter is sent, as the build reads it, with a fault recorded for what the document wrote wrong.
+     *
+     * A style OpenAPI does not define for a query is read as no style (null), and an `explode` that is not a boolean as
+     * the style's own default: nothing is guessed from either, and the fault says so. The contract carries the values
+     * as written for exactly this reason.
+     *
+     * @return array{0: string|null, 1: bool}
+     */
+    private static function querySerialization(RuleWalk $walk, QueryParameter $parameter): array
+    {
+        $style = is_string($parameter->style) && in_array($parameter->style, self::QUERY_STYLES, true)
+            ? $parameter->style
+            : null;
+
+        if ($style === null) {
+            $walk->fault(sprintf(
+                '`%s` writes a `style` of `%s`, which is not a style OpenAPI defines for a `query` parameter: that is '
+                    .'a fault in the document, and nothing is read from it.',
+                $parameter->name,
+                self::writtenValue($parameter->style),
+            ));
+        }
+
+        if (is_bool($parameter->explode)) {
+            return [$style, $parameter->explode];
+        }
+
+        $walk->fault(sprintf(
+            '`%s` writes an `explode` of `%s`, which is not a boolean: that is a fault in the document, and nothing is '
+                .'read from it.',
+            $parameter->name,
+            self::writtenValue($parameter->explode),
+        ));
+
+        return [$style, $style === 'form' || $style === null];
+    }
+
+    /**
+     * A value as the document wrote it, for a sentence about what is wrong with it.
+     */
+    private static function writtenValue(mixed $value): string
+    {
+        return is_string($value) ? $value : (json_encode($value) ?: get_debug_type($value));
+    }
+
+    /**
+     * Why an array query parameter is checked at its presence only, by how it is sent.
+     */
+    private static function unreadArray(string $name, ?string $style, bool $explode): string
+    {
+        return match (true) {
+            $style === null => 'Its `style` is not one OpenAPI defines for a `query` parameter, so how it is sent is not known',
+            $style === 'deepObject' => 'Its `style` is `deepObject`, which OpenAPI defines for an object and leaves undefined for an array',
+            $style === 'form' && $explode => sprintf(
+                'Its `form` style with `explode: true` sends it as `?%1$s=a&%1$s=b`, of which PHP keeps only the last value',
+                $name,
+            ),
+            $style === 'form' => sprintf(
+                'Its `form` style with `explode: false` sends it as one string (`?%s=a,b`), which the request does not split',
+                $name,
+            ),
+            default => sprintf('Its `%s` style sends it as one string, which the request does not split', $style),
+        };
+    }
+
+    /**
+     * What an object query parameter gets, by how it is sent: the sentence after the opening of its finding.
+     */
+    private static function unreadObject(string $name, ?string $style, bool $explode): string
+    {
+        return match (true) {
+            $style === null => 'Its `style` is not one OpenAPI defines for a `query` parameter, so how it is sent is not '
+                .'known and nothing about it is enforced, not even its presence.',
+            $style === 'form' && ! $explode => sprintf(
+                'Its `form` style with `explode: false` sends it as one string (`?%s=R,100,G,200`), which the request '
+                    .'does not split, so only its presence is enforced.',
+                $name,
+            ),
+            $style === 'form' => 'Its `form` style with `explode: true` sends one key per property and never its own name, '
+                .'so nothing about it is enforced, not even its presence.',
+            $style === 'deepObject' => sprintf(
+                'Its `deepObject` style sends one key per property under its own name (`?%s[a]=1`), which is not '
+                    .'validated, so nothing about it is enforced, not even its presence.',
+                $name,
+            ),
+            default => sprintf(
+                'Its `%s` style is defined for an array in OpenAPI 3.0, and how it sends an object is not read, so '
+                    .'nothing about it is enforced, not even its presence.',
+                $style,
+            ),
+        };
     }
 
     /**

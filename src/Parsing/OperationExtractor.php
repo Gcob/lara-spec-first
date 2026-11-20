@@ -549,6 +549,8 @@ final readonly class OperationExtractor
                         )
                         : new Schema,
                     $parameter->required === true,
+                    $parameter->style,
+                    $parameter->explode,
                 );
             }
         }

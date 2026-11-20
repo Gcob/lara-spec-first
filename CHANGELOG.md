@@ -384,6 +384,20 @@ tags: [versions, conventions, planning]
   `integer` until `spec:build` runs again. The reasoning is in
   [ADR 0019](./docs/project/decisions/0019-judge-a-json-integer-by-its-value.md), which supersedes ADR 0016, and this
   ships [#196](https://github.com/Gcob/lara-spec-first/issues/196).
+- **A required object `query` parameter written with `form` and `explode: false` now asks for its key, and the findings
+  of the array and object parameters that stay unchecked name the serialization they read.** `?color=R,100,G,200` is how
+  such an object is sent, under its own name, so it gets the presence rule an array gets (`?color=` still passes, and
+  what the object holds is not checked). The generated file now says what each serialization sends where it said that
+  `style` and `explode` are not read: `?tag=a&tag=b` for a default array, one string for `explode: false` and the
+  delimited styles, one key per property for a default object. A scalar keeps its rules whatever its style. This is a
+  breaking change: a request that leaves out such a required key now answers `422`. Send the key, or loosen the
+  contract.
+- **`spec:doctor` now reports a malformed `style` or `explode` of a `query` parameter as a fault in the document, so its
+  exit code can rise from `0` to `1`.** A `style` that is not one of the four OpenAPI defines for a `query` (`form`,
+  `spaceDelimited`, `pipeDelimited`, `deepObject`), or an `explode` that is not a boolean, was read by nothing and
+  reported nowhere. The contract now carries both as written, the generated file says what is wrong, and the parameter
+  is read as if the keyword were not written. This is a breaking change: every move on the exit-code axis is major, so a
+  CI step that expected `0` for such a document will see `1`. Fix the keyword in the document.
 
 ### Fixed
 

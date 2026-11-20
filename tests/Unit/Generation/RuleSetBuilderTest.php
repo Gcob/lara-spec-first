@@ -838,8 +838,118 @@ it('enforces only the presence of an array or object query parameter', function 
     ));
 
     expect($set->rules)->toBe(['tag' => ['present']])
-        ->and(implode('', $set->findings))->toContain('serialization is not read');
+        ->and(implode('', $set->findings))->toContain('?tag=a&tag=b');
 })->with([SchemaType::Array]);
+
+// What a parameter is sent as decides what the request can check, so the finding says which serialization it read:
+// the reader of the generated file learns why a value is not checked, and from which keyword of the document.
+it('names the serialization of a query parameter it does not validate', function (
+    SchemaType $type,
+    string $style,
+    bool $explode,
+    bool $required,
+    array $rules,
+    string $words,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter(
+            'tag',
+            new Schema(types: [$type], items: new Schema(types: [SchemaType::String])),
+            required: $required,
+            style: $style,
+            explode: $explode,
+        )],
+    ));
+
+    expect($set->rules)->toBe(['tag' => $rules])
+        ->and($set->findings)->toHaveCount(1)
+        ->and($set->findings[0])->toContain('`tag` is a `query` parameter typed `'.$type->value.'`')
+        ->and($set->findings[0])->toContain($words)
+        ->and($set->documentFaults)->toBe([]);
+})->with([
+    'an array, form and exploded' => [SchemaType::Array, 'form', true, true, ['present'], '?tag=a&tag=b'],
+    'an array, form and not exploded' => [SchemaType::Array, 'form', false, true, ['present'], 'one string'],
+    'an array, space delimited' => [SchemaType::Array, 'spaceDelimited', false, true, ['present'], 'one string'],
+    'an array, pipe delimited' => [SchemaType::Array, 'pipeDelimited', false, true, ['present'], 'one string'],
+    'an array, deepObject' => [SchemaType::Array, 'deepObject', false, true, ['present'], '`deepObject`'],
+    'an object, form and exploded' => [SchemaType::Object, 'form', true, true, ['sometimes'], 'one key per property'],
+    'an object, form and not exploded, required' => [SchemaType::Object, 'form', false, true, ['present'], 'one string'],
+    'an object, form and not exploded, optional' => [SchemaType::Object, 'form', false, false, ['sometimes'], 'one string'],
+    'an object, pipe delimited' => [SchemaType::Object, 'pipeDelimited', false, true, ['sometimes'], '`pipeDelimited`'],
+    'an object, space delimited' => [SchemaType::Object, 'spaceDelimited', false, true, ['sometimes'], '`spaceDelimited`'],
+]);
+
+// A style or an `explode` the document got wrong is not guessed at. It is a fault in the document, reported in the
+// generated file and to the doctor, and the parameter is read as if it were not written: a style OpenAPI does not
+// define is read as no style, and an `explode` that is not a boolean as the style's default.
+it('reports a malformed style or explode as a fault in the document', function (
+    Schema $schema,
+    mixed $style,
+    mixed $explode,
+    bool $required,
+    string $name,
+    array $rules,
+    string $fault,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter($name, $schema, required: $required, style: $style, explode: $explode)],
+    ));
+
+    expect($set->rules)->toBe($rules)
+        ->and($set->documentFaults)->toHaveCount(1)
+        ->and($set->documentFaults[0])->toContain($fault)
+        ->and($set->documentFaults[0])->toContain('that is a fault in the document')
+        ->and($set->findings)->toContain($set->documentFaults[0]);
+})->with(function (): Generator {
+    $object = new Schema(types: [SchemaType::Object]);
+    $array = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String]));
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    yield 'a number as the style of an object' => [$object, 5, false, false, 'filter', ['filter' => ['sometimes']], '`filter` writes a `style` of `5`'];
+    yield 'an unknown style on an object' => [$object, 'bogus', false, false, 'filter', ['filter' => ['sometimes']], '`filter` writes a `style` of `bogus`'];
+    yield 'a number as the style of an array' => [$array, 5, false, true, 'tag', ['tag' => ['present']], '`tag` writes a `style` of `5`'];
+    yield 'an unknown style on an array' => [$array, 'bogus', false, true, 'tag', ['tag' => ['present']], '`tag` writes a `style` of `bogus`'];
+    yield 'a number as the style of an integer' => [$integer, 5, false, true, 'limit', ['limit' => ['required', 'integer']], '`limit` writes a `style` of `5`'];
+    yield 'an unknown style on an integer' => [$integer, 'bogus', false, true, 'limit', ['limit' => ['required', 'integer']], '`limit` writes a `style` of `bogus`'];
+    // A style no query takes (`simple` is a path and header style) is as wrong as one nobody defined.
+    yield 'a style of another location' => [$object, 'simple', false, false, 'filter', ['filter' => ['sometimes']], '`filter` writes a `style` of `simple`'];
+    // A required object sent as one string is asked for, but only under a style OpenAPI defines: a malformed one never is.
+    yield 'an unknown style on a required object' => [$object, 'bogus', false, true, 'filter', ['filter' => ['sometimes']], '`filter` writes a `style` of `bogus`'];
+    yield 'a text explode on a required object' => [$object, 'form', 'yes', true, 'filter', ['filter' => ['sometimes']], '`filter` writes an `explode` of `yes`'];
+    // The fault is about the document, so a name no rule is keyed by still gets it, beside its own finding.
+    yield 'a name with no key' => [$integer, 5, false, false, 'ids[]', [], '`ids[]` writes a `style` of `5`'];
+});
+
+// A name that has no key is left without a rule and says so; the fault is the document's, and comes with it.
+it('keeps the finding of a query name with no key beside the fault of its style', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('ids[]', new Schema(types: [SchemaType::Integer]), style: 5, explode: false)],
+    ));
+
+    expect($set->rules)->toBe([])
+        ->and($set->findings)->toHaveCount(2)
+        ->and($set->documentFaults)->toHaveCount(1);
+});
+
+// A style OpenAPI defines for a query and a boolean `explode` are never a fault, whatever they are combined with.
+it('reports no fault for a style and an explode OpenAPI defines', function (string $style, bool $explode): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: $style, explode: $explode)],
+    ));
+
+    expect($set->documentFaults)->toBe([]);
+})->with([
+    ['form', true],
+    ['form', false],
+    ['spaceDelimited', false],
+    ['pipeDelimited', false],
+    ['deepObject', true],
+    ['deepObject', false],
+]);
 
 // The default `form` style with `explode` sends an object as one key per
 // property, `?status=a`, and never the parameter's own name, so even its
@@ -4241,7 +4351,7 @@ it('lists every field one keyword is unenforced on, once each, in the order they
 
 // The sentence a reader opens the generated file for is not the data the doctor
 // gates on. A body over two media types, a closed body a form cannot close and a
-// `query` array whose serialization is not read are all worth a line and none is
+// `query` array that is only checked for its presence are all worth a line and none is
 // a keyword the contract wrote that nothing enforces.
 it('records nothing for a finding that is information rather than an unenforced keyword', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(

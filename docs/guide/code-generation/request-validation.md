@@ -175,13 +175,25 @@ get `sometimes`. **And the method does not touch it.**
 statement about the resource's representation, and a query parameter is not part of that representation: `?notify=1` is
 as required on a `PATCH` as it is on a `PUT`.
 
-**An array query parameter gets its presence rule and nothing else, and an object query parameter gets nothing.** A
-query string is not JSON: OpenAPI's default serialization of an array is `?tag=a&tag=b`, of which PHP keeps only the
-last value, and `explode: false` sends `?tag=a,b` as one string. `style` and `explode` are not read, so the value
-reaching the validator is not the shape the schema describes, and every rule about that shape would refuse a valid
-request. An object is worse off still: the default style sends one key per property, `?status=a`, and never the
-parameter's own name, so even its presence would refuse a valid request, and it is `sometimes` whatever its `required`
-flag. The generated file says so in both cases.
+**An array query parameter gets its presence rule and nothing else, and an object query parameter gets nothing, unless
+it is sent as one string.** A query string is not JSON, and what a client sends depends on the parameter's `style` and
+`explode`, so the value reaching the validator is not the shape the schema describes, and every rule about that shape
+would refuse a valid request. The generated file says which serialization it read:
+
+| Type   | Written                                                         | A client sends                                            | The request checks                                 |
+| ------ | --------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------- |
+| array  | `form` with `explode: true` (the default)                       | `?tag=a&tag=b`, of which PHP keeps only the last value    | its presence                                       |
+| array  | `form` with `explode: false`, `spaceDelimited`, `pipeDelimited` | one string, `?tag=a,b`, which the request does not split  | its presence                                       |
+| array  | `deepObject`                                                    | what OpenAPI leaves undefined for an array                | its presence                                       |
+| object | `form` with `explode: true` (the default)                       | one key per property, `?status=a`, and never its own name | nothing: `sometimes`, whatever its `required` flag |
+| object | `form` with `explode: false`                                    | one string under its own name, `?color=R,100,G,200`       | its presence, `present` when it is required        |
+| object | `spaceDelimited`, `pipeDelimited`, `deepObject`                 | what this package does not read for an object             | nothing: `sometimes`, whatever its `required` flag |
+
+A scalar keeps its rules whatever its style, since OpenAPI defines only `form` for a primitive. **A `style` OpenAPI does
+not define for a `query` parameter (anything but `form`, `spaceDelimited`, `pipeDelimited` and `deepObject`), or an
+`explode` that is not a boolean, is a fault in the document.** The generated file says so, `spec:doctor` exits `1`, and
+the parameter is read as if the keyword were not written: a malformed `style` is read as no style, so a required object
+stays `sometimes`, and a malformed `explode` as the style's default.
 
 **A query name PHP rewrites is validated under the key PHP delivers.** PHP parses the query string before Laravel sees
 it: a `.` or a space in a name becomes `_`, so `user.name` arrives as `user_name`, and `[` opens a nested array, so

@@ -1371,6 +1371,39 @@ it('accepts a required object query parameter sent the default way', function ()
     expect($status)->toBe(200);
 });
 
+// `form` with `explode: false` sends an object as one string under its own name (`?color=R,100,G,200`, and `?color=` for
+// an empty one), so the request can ask for it: it is present, whatever it holds. The default `form` sends one key per
+// property and never the name, and a delimited style sends none this package can match, so neither is asked for.
+it('asks for a required object query parameter sent as one string', function (
+    string $style,
+    bool $explode,
+    string $query,
+    int $status,
+): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listColored',
+        queryParameters: [new QueryParameter(
+            'color',
+            new Schema(types: [SchemaType::Object], properties: ['R' => new Schema(types: [SchemaType::Integer])]),
+            required: true,
+            style: $style,
+            explode: $explode,
+        )],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', $query)[0])->toBe($status);
+})->with([
+    'one string, no key' => ['form', false, '', 422],
+    'one string, a value' => ['form', false, '?color=R,100', 200],
+    'one string, empty' => ['form', false, '?color=', 200],
+    'exploded, no key' => ['form', true, '', 200],
+    'exploded, a key per property' => ['form', true, '?R=100', 200],
+    'space delimited, no key' => ['spaceDelimited', false, '', 200],
+]);
+
 // `present_with` rather than `required_with` even for an integer: the latter
 // fires only on a non-blank trigger, so a body of blank keys required nothing.
 it('requires the rest of an optional body when a key is sent blank', function (): void {

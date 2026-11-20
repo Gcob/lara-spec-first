@@ -636,6 +636,29 @@ it('keeps reporting an additionalProperties schema where no rule set reads the s
     ];
 });
 
+// A `style` or an `explode` the document got wrong is the author's to fix, so the doctor reports it as a fault in the
+// document, which exits `1`: before the contract carried them, nothing reported it and the exit code was `0`.
+it('reports a malformed style or explode of a query parameter as a fault in the document', function (mixed $style, mixed $explode, string $written): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
+        new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: $style, explode: $explode),
+    ])]);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->class)->toBe(FindingClass::DocumentFault)
+        ->and($findings[0]->message)->toContain($written)
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(1);
+})->with([
+    'a number as the style' => [5, false, '`filter` writes a `style` of `5`'],
+    'an unknown style' => ['bogus', false, '`filter` writes a `style` of `bogus`'],
+    'a text explode' => ['form', 'yes', '`filter` writes an `explode` of `yes`'],
+]);
+
+it('reports nothing for a query parameter written with a style and an explode OpenAPI defines', function (): void {
+    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
+        new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: 'form', explode: false),
+    ])]))->toBe([]);
+});
+
 // The value schema is walked like any child, so a keyword nothing reads that it writes is `Ignored` at its own position.
 // Beside declared properties the request validates the values, so the map is not `Partial`: a declared name the guard
 // cannot spare keeps it.
