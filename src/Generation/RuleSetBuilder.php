@@ -86,7 +86,8 @@ final readonly class RuleSetBuilder
 
     /**
      * What a body required and read as a form says when nothing in it refuses an empty form: written by
-     * {@see self::rootFindings()} before the walk, and taken out again when the walk finds a required key.
+     * {@see self::rootFindings()} before the walk, as information (an empty form is how a form writes `{}`), and taken
+     * out again, from the findings and from the information, when the walk finds a required key.
      */
     private const EMPTY_FORM_FINDING = 'The body is required and read as a form, so a form with a `Content-Type` and no field '
         .'(an empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is not '
@@ -348,6 +349,9 @@ final readonly class RuleSetBuilder
             // string (`form` with `explode: false`) its name is there, so it gets its presence like an array. A style
             // the document wrote wrong is read as no style, which is the first of these cases.
             if ($merged->soleType() === SchemaType::Array) {
+                // Its presence is enforced, so `required` is not named: its type and what it states are not.
+                self::leaveDropped($walk, '`'.$parameter->name.'`', self::droppedKeywords($merged, false));
+
                 if (self::holdsValueSchema($merged)) {
                     $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
                 }
@@ -386,11 +390,14 @@ final readonly class RuleSetBuilder
                     continue;
                 }
 
+                $sentOwnName = $style === 'form' && ! $explode;
+
+                // Its own name is not sent as separate keys, so the presence of a required one is not enforced either.
+                self::leaveDropped($walk, '`'.$parameter->name.'`', self::droppedKeywords($merged, $parameter->required && ! $sentOwnName));
+
                 if (self::holdsValueSchema($merged)) {
                     $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
                 }
-
-                $sentOwnName = $style === 'form' && ! $explode;
 
                 $walk->rules[$key] = [$sentOwnName ? $presence : 'sometimes'];
                 $walk->findings[] = sprintf(
@@ -520,6 +527,10 @@ final readonly class RuleSetBuilder
                     .'comes from it.',
                 self::list($unread),
             );
+
+            foreach ($unread as $mediaType) {
+                $walk->leaveUnenforced('content', '`'.$mediaType.'`');
+            }
         }
 
         $read = array_filter(
@@ -870,7 +881,7 @@ final readonly class RuleSetBuilder
 
         if (! self::isObjectBody($schema)) {
             if (self::holdsValueSchema($schema)) {
-                $walk->leaveUnenforced('additionalProperties', 'The body');
+                $walk->leaveUnenforced('additionalProperties', 'The body itself');
             }
 
             return null;
@@ -985,6 +996,10 @@ final readonly class RuleSetBuilder
         if ($walk->rootAsksPresence || ($walk->nullableRequiredBody && $walk->requiredOnceSent !== [])) {
             $walk->findings = array_values(array_filter(
                 $walk->findings,
+                static fn (string $finding): bool => $finding !== self::EMPTY_FORM_FINDING,
+            ));
+            $walk->information = array_values(array_filter(
+                $walk->information,
                 static fn (string $finding): bool => $finding !== self::EMPTY_FORM_FINDING,
             ));
         }
@@ -1477,7 +1492,11 @@ final readonly class RuleSetBuilder
             }
 
             if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
-                $walk->findings[] = self::bracketedNameFinding($childLabel, $closed);
+                self::dropFields($walk, self::bracketedNameFinding($childLabel, $closed), [$childLabel => self::droppedKeywords(
+                    $property,
+                    self::askedWhenDropped($walk, $property, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
+                    isset($dependents[$name]),
+                )], $closed ? $parentLabel ?? '`'.rtrim($prefix, '.').'`' : null);
 
                 continue;
             }
@@ -1552,7 +1571,11 @@ final readonly class RuleSetBuilder
             }
 
             if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
-                $walk->findings[] = self::bracketedNameFinding($childLabel, $closed);
+                self::dropFields($walk, self::bracketedNameFinding($childLabel, $closed), [$childLabel => self::droppedKeywords(
+                    new Schema,
+                    self::askedWhenDropped($walk, new Schema, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
+                    isset($dependents[$name]),
+                )], $closed ? $parentLabel ?? '`'.rtrim($prefix, '.').'`' : null);
 
                 continue;
             }
@@ -1622,7 +1645,9 @@ final readonly class RuleSetBuilder
 
     /**
      * The finding for a property of an object read from the query string whose name holds a bracket. It has no rule,
-     * and its presence is not asked for, so nothing a client sends is refused for it.
+     * and its presence is not asked for, so nothing a client sends is refused for it. Written by
+     * {@see self::dropFields()} with what the property states, and, for a closed object, the object's own
+     * `additionalProperties`.
      */
     private static function bracketedNameFinding(string $label, bool $closed): string
     {
@@ -1861,7 +1886,8 @@ final readonly class RuleSetBuilder
                     // not defined (`filter[ids][]=1`, `filter[ids]=1,2`). The application says how its clients do in
                     // `query.deep_object_arrays`, and `brackets` is read by the body path below. With no reading
                     // declared (`any`), any rule about its shape or its items would refuse a request the contract allows:
-                    // only its presence is checked, and the finding says so.
+                    // only its presence is checked, the finding says so, and the doctor names the array and each of
+                    // the four keywords it states.
                     if ($walk->textSource === 'query string' && $walk->options->deepObjectArrays === DeepObjectArrays::Any) {
                         array_push($handled, 'minItems', 'maxItems', 'items', 'uniqueItems');
                         $walk->findings[] = sprintf(
@@ -1871,6 +1897,14 @@ final readonly class RuleSetBuilder
                             $label,
                             trim($label, '`'),
                         );
+                        $walk->leaveUnenforced('type', $label);
+
+                        foreach (['items', 'minItems', 'maxItems', 'uniqueItems'] as $keyword) {
+                            if (self::states($schema, $keyword)) {
+                                $walk->leaveUnenforced($keyword, $label);
+                            }
+                        }
+
                         break;
                     }
 
@@ -3179,20 +3213,29 @@ final readonly class RuleSetBuilder
      * Why information when there is nothing to name: a field that states no type, no keyword and no presence loses
      * nothing by having no rule, and the sentence only tells a reader of the file where the field went.
      *
+     * A field of a closed object that no rule can name also stops the object from refusing undeclared keys (`array:`
+     * would refuse the key PHP delivers the field under), which is the object's own loss: it is recorded first, on the
+     * object's label, and makes the sentence a gap whatever the field states.
+     *
      * @param  array<string, list<string>>  $entries  the keywords each field the sentence is about leaves unenforced,
      *                                                by the field's label
+     * @param  string|null  $closure  the label of the closed object around the field, when it is closed
      */
-    private static function dropFields(RuleWalk $walk, string $finding, array $entries): void
+    private static function dropFields(RuleWalk $walk, string $finding, array $entries, ?string $closure = null): void
     {
         $named = array_filter($entries, static fn (array $keywords): bool => $keywords !== []);
 
-        if ($named === []) {
+        if ($named === [] && $closure === null) {
             $walk->information($finding);
 
             return;
         }
 
         $walk->findings[] = $finding;
+
+        if ($closure !== null) {
+            $walk->leaveUnenforced('additionalProperties', $closure);
+        }
 
         foreach ($named as $label => $keywords) {
             self::leaveDropped($walk, (string) $label, $keywords);
@@ -3381,6 +3424,10 @@ final readonly class RuleSetBuilder
     /**
      * What the body's own root says that a rule set cannot act on, or that a reader would not guess from the rules.
      *
+     * A root that is not an object records what it states, on `The body itself`, and an optional form body records the
+     * names it asks only beside another key. The `PATCH` reading and the empty form are information, like the `PUT`
+     * one.
+     *
      * @return list<string>
      */
     private static function rootFindings(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): array
@@ -3390,6 +3437,7 @@ final readonly class RuleSetBuilder
         if (! self::isObjectBody($schema)) {
             $findings[] = 'The body\'s own schema is not an object, so no rule is derived from it. '
                 .'A rule key is a field name, and a body that is a bare value has none.';
+            self::leaveDropped($walk, 'The body itself', self::droppedKeywords($schema, $body->required));
 
             return $findings;
         }
@@ -3410,6 +3458,9 @@ final readonly class RuleSetBuilder
         // which it cannot read that way.
         if ($body->required && $walk->formBody) {
             $findings[] = self::EMPTY_FORM_FINDING;
+            // Why: an empty form is how a form writes `{}`, which the schema accepts when no required key refuses it, so
+            // the sentence only tells a reader of the file what the request accepts.
+            $walk->information[] = self::EMPTY_FORM_FINDING;
         }
 
         if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
@@ -3418,6 +3469,9 @@ final readonly class RuleSetBuilder
                     .'empty here. Every property is `sometimes`.',
                 self::list($schema->required),
             );
+            // Why: a partial update is what `PATCH` means (RFC 5789), so the sentence says what the request reads and
+            // loses no constraint.
+            $walk->information[] = $findings[array_key_last($findings)];
         } elseif (! $body->required && $schema->required !== [] && $walk->formBody) {
             // Why: a JSON body is not named here, since the request reads its raw content and refuses `{}` itself.
             // A form is the one it cannot read that way: its fields need not show in the content.
@@ -3434,6 +3488,10 @@ final readonly class RuleSetBuilder
                         ? ', so it is required only when another key of the body is sent'
                         : ', so each is required only when another key of the body is sent'),
             );
+
+            foreach ($schema->required as $name) {
+                $walk->leaveUnenforced('required', '`'.$name.'`');
+            }
         }
 
         if ($operation->method === HttpMethod::Put) {

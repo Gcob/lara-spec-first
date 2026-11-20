@@ -461,11 +461,19 @@ tags: [versions, conventions, planning]
   the key a rewritten name is delivered at (`additionalProperties`), a field of more than one type or typed only `null`,
   and the integer, number and boolean of a body that is JSON and a form (`type`), a field with no type and an `enum` or
   a `const` in a JSON body, or holding a boolean or a `null` in a query or a form (`enum`), and a recursion through a
-  schema with no name (`$ref`). A keyword the package does not read on a field with no type is still reported once, as
+  schema with no name (`$ref`). It names what a body or a `query` parameter the request reads only in part states: a
+  body in a media type this package does not read (`content`, on the media type), a body whose root is not an object
+  (`type`, what it states, and `required` for a required body), the names an optional form body asks only beside another
+  key (`required`), a `query` array or object whose serialization the request does not read (`type` and what it states,
+  and `required` for an object whose own name is not sent), an array inside a `deepObject` under
+  `query.deep_object_arrays: any` (`type` and each of `items`, `minItems`, `maxItems` and `uniqueItems` it states), and
+  a `deepObject` property named with a bracket, with the closed object around it, which no longer refuses undeclared
+  keys (`additionalProperties`). A keyword the package does not read on a field with no type is still reported once, as
   `Ignored`, as it was. The generated file's findings are the same, except that a `*` trigger no longer says its `*`
   twice, and says what it no longer asks for. This is a breaking change: a contract that exited `0` can exit `2`, so a
   green CI step may turn red. Fix the contract where the finding says how, or let the CI step accept exit `2` until the
-  acknowledgement config is built. This starts [#119](https://github.com/Gcob/lara-spec-first/issues/119).
+  acknowledgement config is built. This ships [#119](https://github.com/Gcob/lara-spec-first/issues/119) and closes its
+  `0.2.0` `Known limits` item.
 
 ### Fixed
 
@@ -477,11 +485,12 @@ tags: [versions, conventions, planning]
   whole (a `*` name, a form name PHP delivers under no name, a `query` name PHP appends to) that states nothing: no
   type, no keyword, and not required. So is a boolean read from a query string or a form, or an item of a boolean list
   in the query string, which accepts `"1"` and `"0"` as a client of either sends them, and a field with no type whose
-  `enum` or `const` holds numbers or strings, read from a query string or a form, where every value is text. A body that
-  is also multipart with a file part, a field typed only `null`, a field that declares more than one type, a field that
-  states no type but writes an `enum` or a `const` in a body that is JSON or holding a boolean or a `null`, a `oneOf` or
-  another keyword the package does not read (on the field, through a `$ref` or in an `allOf` branch), and a `PATCH`'s
-  emptied required list, still count. This closes the `0.2.0` `Known limits` item for
+  `enum` or `const` holds numbers or strings, read from a query string or a form, where every value is text. So is a
+  `PATCH`'s emptied required list, read as the partial update the method means, and a required form body that accepts an
+  empty form, which is how a form writes `{}`. A body that is also multipart with a file part, a field typed only
+  `null`, a field that declares more than one type, a field that states no type but writes an `enum` or a `const` in a
+  body that is JSON or holding a boolean or a `null`, and a `oneOf` or another keyword the package does not read (on the
+  field, through a `$ref` or in an `allOf` branch), still count. This closes the `0.2.0` `Known limits` item for
   [#134](https://github.com/Gcob/lara-spec-first/issues/134).
 - **A plain `query` name beside the names PHP nests under it refused a valid request, with no finding.** `?page[size]=3`
   arrives as `page => [size => 3]`, so the `integer` rule of `page` refused a request the contract allows (`422`, now

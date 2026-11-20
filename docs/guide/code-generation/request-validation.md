@@ -480,7 +480,9 @@ required field, or the body's required-key check, already refuses an empty form.
 `required` (a required property, a required file part, a required name `properties` does not declare) refuses a form
 that sends no field on its own, so the finding would only be noise there. A key that follows another through
 `dependentRequired`, a `readOnly` one, a name the request leaves unchecked and a `PATCH` ask nothing of an empty form,
-and keep the finding.
+and keep the finding. **The finding is information:** an empty form is how a form writes `{}`, which the schema accepts
+when no required key refuses it, so neither the build warning nor `spec:doctor` counts it. A required name the rule set
+drops (a `*` name, a name PHP delivers nowhere) keeps the finding and counts through the name's own entry.
 
 **For a body typed `object` that is the contract's own answer. For one that names `properties` and no `type`, it is
 stricter than the contract, and it is the exception [the principle](#every-constraint-maps-or-reports) allows.** A body
@@ -529,7 +531,8 @@ its clients write it, once, in `config/lara-spec-first.php`:
 
 - **`any`.** No reading is declared, so the array is checked at its presence only, when it is required, and the
   generated file says so in a finding that names the key. Its items, its bounds and its uniqueness are not checked, and
-  the finding counts in the build warning, since the contract states them.
+  the finding counts in the build warning and `spec:doctor` names the array and each keyword it states (`items`,
+  `minItems`, `maxItems`, `uniqueItems`), since the contract states them.
 
 **`comma` splits in `prepareForValidation()`, into the query string's own bag.** Laravel calls it before it reads the
 data to validate, so the rules, `validated()` and the request a controller type-hints all see the list. The generated
@@ -810,6 +813,11 @@ declared property becomes required: a property the schema left out of `required`
 contract said so, and a generated class that demanded it anyway would be the code contradicting the document. So a field
 that is not required carries `sometimes` under either method, and its remaining rules run only when it is sent.
 
+**The sentence the generated file writes about the emptied list is information.** A partial update is what `PATCH`
+means, so the request reads the list as the method says and loses no constraint: neither the build warning nor
+`spec:doctor` counts it. A top-level name of a `PATCH` body that the rule set drops is not recorded as `required`, for
+the same reason.
+
 **What each half of a schema becomes under the two methods:**
 
 | Declared            | `PUT`                                                                               | `PATCH`                   |
@@ -1063,10 +1071,9 @@ escaped; what the parent cannot say about it — that it is required, or that no
 generated file's findings.
 
 **A constraint that maps to nothing is named per operation by `spec:doctor`**, and by the generated file's own findings
-for the reader who is already looking at the class. A few are still prose only (the ones listed in
-[#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the doctor stays silent on them for now. Neither is a
-fallback for the other: one runs in CI before anything is generated, and the other answers "why is this field not
-enforced" at the moment somebody asks it.
+for the reader who is already looking at the class. Every constraint a generated request counts in the build warning is
+named by the doctor, with the field it is left unenforced on. Neither is a fallback for the other: one runs in CI before
+anything is generated, and the other answers "why is this field not enforced" at the moment somebody asks it.
 
 **The doctor reads data, and the generated file reads prose.** A rule set keeps its findings as sentences, and some of
 them are only worth saying: two media types over one schema, a rule stricter than the contract in one case. Gating an
@@ -1082,13 +1089,20 @@ trigger that has no rule is recorded the same way, on each name it no longer ask
 recorded on the field that states it: a required name `required_array_keys` cannot carry, the closed object around a
 name `array:` cannot carry, a field of more than one type or typed only `null`, an `enum` or a keyword the package does
 not read on a field that states no type, the `type` of an integer, a number or a boolean in a body that is JSON and a
-form, a name judged by shape in such a body, and a recursion through a schema with no name. A field that states none of
-that loses nothing by having no rule, so its finding is information. `required` on a `readOnly` property is not
-recorded, dropped or not: the request does what the contract says there, since `required` takes effect on the response
-only, so the generated file says it in a finding, which the build does not count in its warning, and the doctor has
-nothing to report. Nor is the `required` of a top-level name of a `PATCH` body, which asks for none. The `Ignored`
-keywords are not in a rule set at all, since nothing reads them, and the reading collects them with their position
-instead. See [the doctor's Support findings](../doctor.md#what-it-checks).
+form, a name judged by shape in such a body, and a recursion through a schema with no name. A body or a `query`
+parameter the rule set reads only in part is recorded the same way: a media type it does not read (`content`, on the
+media type), a body whose root is not an object (its `type`, what it states, and `required` for a required body), the
+names an optional form body asks only beside another key, a `query` array or object sent in a serialization it does not
+read (its `type` and what it states, and `required` for an object whose own name is not sent), an array inside a
+`deepObject` under `any` (its `type` and each of `items`, `minItems`, `maxItems` and `uniqueItems` it states), and a
+`deepObject` property named with a bracket (what it states, and the `additionalProperties` of the closed object around
+it, which stops refusing undeclared keys). A field that states none of that loses nothing by having no rule, so its
+finding is information, and so is an empty bracketed property of an open `deepObject`. `required` on a `readOnly`
+property is not recorded, dropped or not: the request does what the contract says there, since `required` takes effect
+on the response only, so the generated file says it in a finding, which the build does not count in its warning, and the
+doctor has nothing to report. Nor is the `required` of a top-level name of a `PATCH` body, which asks for none. The
+`Ignored` keywords are not in a rule set at all, since nothing reads them, and the reading collects them with their
+position instead. See [the doctor's Support findings](../doctor.md#what-it-checks).
 
 ### A JSON body keeps its types
 
@@ -1129,14 +1143,15 @@ nothing else gets the `:strict` form of its rule, or `WholeNumber` for an intege
   item of a boolean list in a `deepObject`: `"1"` and `"0"` are what a client of a query string or a form sends for a
   boolean. So is a field with no type whose only keyword is an `enum` (or a `const`) of numbers and strings, in a query
   string or a body that is a form alone: `Rule::in()` compares as text, so it accepts exactly the texts a client of
-  those writes for its values. Its look-alikes still count: a body that is also multipart with a file part (a file is
-  refused there as a string), a `PATCH` whose required list is read as empty, a required name beside a value schema the
-  guard cannot spare, and a field with no type that writes an `enum` (or a `const`) in a body that is JSON or holding a
-  boolean or a `null`, or a keyword the package does not read (`oneOf`, on the field, through a `$ref` or in an `allOf`
-  branch), that is typed only `null`, or that declares more than one type. `spec:doctor` names each one of those. A
-  sentence counts once per field: the same words said as information on one field and as a gap on another (`address.id`
-  beside the `id` of `address`) leave the gap counted. An untyped `enum` of numbers in a JSON body counts because
-  `Rule::in()` compares as text, so it accepts `"1"` and `true` for `1`.
+  those writes for its values. So is a `PATCH` whose required list is read as empty (a partial update is what the method
+  means), and a required form body that accepts an empty form (how a form writes `{}`). Its look-alikes still count: a
+  body that is also multipart with a file part (a file is refused there as a string), a required name beside a value
+  schema the guard cannot spare, and a field with no type that writes an `enum` (or a `const`) in a body that is JSON or
+  holding a boolean or a `null`, or a keyword the package does not read (`oneOf`, on the field, through a `$ref` or in
+  an `allOf` branch), that is typed only `null`, or that declares more than one type. `spec:doctor` names each one of
+  those. A sentence counts once per field: the same words said as information on one field and as a gap on another
+  (`address.id` beside the `id` of `address`) leave the gap counted. An untyped `enum` of numbers in a JSON body counts
+  because `Rule::in()` compares as text, so it accepts `"1"` and `true` for `1`.
 - **A query parameter and a form or multipart field keep the loose rules**, since every value a client on the contract
   sends there is text. A client that sends JSON to an operation that declares only a form is off-contract: its body is
   read as JSON and judged by those same rules.

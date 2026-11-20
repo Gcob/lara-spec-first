@@ -89,3 +89,81 @@ paths:
       responses:
         '200':
           description: OK
+  /xml:
+    post:
+      operationId: postXml
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /root:
+    post:
+      operationId: postRoot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 3
+              items:
+                type: string
+      responses:
+        '200':
+          description: OK
+  /tags:
+    get:
+      operationId: getTags
+      parameters:
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: OK
+  /bracketed:
+    get:
+      operationId: getBracketed
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            additionalProperties: false
+            properties:
+              'a[b]':
+                type: integer
+      responses:
+        '200':
+          description: OK
+  /optional-form:
+    post:
+      operationId: postOptionalForm
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [a]
+              properties:
+                a:
+                  type: string
+                b:
+                  type: string
+      responses:
+        '200':
+          description: OK

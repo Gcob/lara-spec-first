@@ -1246,7 +1246,8 @@ it('labels the information about a deepObject the way a client writes it', funct
 });
 
 // PHP never delivers a name with brackets under its own name (`a[b]` arrives as `a[b`), so no rule can find it: it gets
-// none, says so, and records nothing in `unenforced`.
+// none, says so, and the doctor names what the property states. A closed object also stops refusing undeclared keys,
+// since `array:` would refuse the key PHP delivers the property under, so the object's own closure is named first.
 it('reports a bracketed property name inside a deepObject', function (bool $closed): void {
     $set = deepObjectRuleSet(
         new Schema(
@@ -1267,7 +1268,11 @@ it('reports a bracketed property name inside a deepObject', function (bool $clos
         ->and($set->findings[0])->toContain('PHP delivers')
         ->and($set->findings[0])->not->toContain('forbids undeclared keys')
         ->and(str_contains($set->findings[0], 'undeclared keys are not refused'))->toBe($closed)
-        ->and($set->unenforced)->toBe([]);
+        ->and($set->unenforced)->toBe([
+            ...($closed ? ['additionalProperties' => ['`filter`']] : []),
+            'required' => ['`filter[a[b]]`'],
+            'type' => ['`filter[a[b]]`'],
+        ]);
 })->with([
     'an open object' => [false],
     'a closed object' => [true],
@@ -1285,26 +1290,28 @@ it('leaves the values of a deepObject map unvalidated beside a bracketed propert
         false,
     );
 
+    // The guard's report comes first: it is written before the properties are walked, and `toBe` reads the order.
     expect($set->rules)->toBe(['filter' => ['sometimes', 'array']])
-        ->and($set->unenforced)->toBe(['additionalProperties' => ['`filter`']])
+        ->and($set->unenforced)->toBe(['additionalProperties' => ['`filter`'], 'type' => ['`filter[a[b]]`']])
         ->and(implode("\n", $set->findings))->toContain('`filter[a[b]]`')
         ->and(implode("\n", $set->findings))->toContain('cannot tell apart from an undeclared key');
 });
 
 // Under `any`, an array inside a deepObject is held at its presence: no reading of how a client writes one
 // (`filter[ids][]=1`, `filter[ids]=1,2`) is declared, so no rule about its shape or its items is written, and the finding
-// says what is not checked and which key would say it.
+// says what is not checked and which key would say it. The doctor names the array and each keyword it states.
 it('holds an array inside a deepObject at its presence', function (
     Schema $schema,
     array $rules,
     string $label,
+    array $unenforced,
     bool $explode,
 ): void {
     // `filter` is required exactly when the schema requires a property: a required array keeps `required_array_keys` under `present`.
     $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== [], options: new RuleSetOptions(DeepObjectArrays::Any));
 
     expect($set->rules)->toEqual($rules)
-        ->and($set->unenforced)->toBe([])
+        ->and($set->unenforced)->toBe($unenforced)
         ->and($set->information)->toBe([])
         ->and($set->findings)->toHaveCount(1)
         ->and($set->findings[0])->toContain($label.' is an array inside a `deepObject`')
@@ -1322,31 +1329,37 @@ it('holds an array inside a deepObject at its presence', function (
             ),
             ['filter' => ['present', 'array', 'required_array_keys:ids'], 'filter.ids' => ['sometimes']],
             '`filter[ids]`',
+            ['type' => ['`filter[ids]`'], 'items' => ['`filter[ids]`'], 'minItems' => ['`filter[ids]`'], 'maxItems' => ['`filter[ids]`'], 'uniqueItems' => ['`filter[ids]`']],
         ],
         'a nested one' => [
             objectSchema(['created' => objectSchema(['ids' => $array($integers, 1)])]),
             ['filter' => ['sometimes', 'array'], 'filter.created' => ['sometimes', 'array'], 'filter.created.ids' => ['sometimes']],
             '`filter[created][ids]`',
+            ['type' => ['`filter[created][ids]`'], 'items' => ['`filter[created][ids]`'], 'minItems' => ['`filter[created][ids]`']],
         ],
         'an array of objects' => [
             objectSchema(['rows' => $array(objectSchema(['a' => $integers], ['a']))]),
             ['filter' => ['sometimes', 'array'], 'filter.rows' => ['sometimes']],
             '`filter[rows]`',
+            ['type' => ['`filter[rows]`'], 'items' => ['`filter[rows]`']],
         ],
         'a boolean array' => [
             objectSchema(['flags' => $array(new Schema(types: [SchemaType::Boolean]), unique: true)]),
             ['filter' => ['sometimes', 'array'], 'filter.flags' => ['sometimes']],
             '`filter[flags]`',
+            ['type' => ['`filter[flags]`'], 'items' => ['`filter[flags]`'], 'uniqueItems' => ['`filter[flags]`']],
         ],
         'the value of a map' => [
             new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $array($integers, max: 2)),
             ['filter' => ['sometimes', 'array'], 'filter.*' => []],
             '`filter[*]`',
+            ['type' => ['`filter[*]`'], 'items' => ['`filter[*]`'], 'maxItems' => ['`filter[*]`']],
         ],
         'the value of a map beside a property' => [
             new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: $array($integers)),
             ['filter' => ['sometimes', 'array'], 'filter.id' => ['sometimes', 'string'], 'filter.*' => []],
             '`filter[*]`',
+            ['type' => ['`filter[*]`'], 'items' => ['`filter[*]`']],
         ],
     ];
 
@@ -1488,7 +1501,7 @@ it('says nothing more about an array inside a deepObject when the reading is any
 it('names no reading for an array of a JSON body or of a form body', function (): void {
     $tags = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
     $json = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['tags' => $tags])]), new RuleSetOptions);
-    $form = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['tags' => $tags])]), new RuleSetOptions);
+    $form = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['tags' => $tags])], bodyRequired: false), new RuleSetOptions);
 
     expect($json->information)->toBe([])
         ->and($form->information)->toBe([]);
@@ -2486,35 +2499,35 @@ it('guards every rule key under the wildcard of a map beside declared properties
 
 // Where no sweep runs, the schema is still reported: the doctor reported it `Ignored` before it was read, and reading it
 // must not make it quieter. A root that is not an object, and a `query` parameter typed `object` or `array`, are the two
-// places a schema is dropped whole.
-it('leaves an additionalProperties schema unenforced where no sweep reads the schema', function (array $content, array $query, string $label): void {
+// places a schema is dropped whole, so the doctor also names what the rest of the field states.
+it('leaves an additionalProperties schema unenforced where no sweep reads the schema', function (array $content, array $query, array $expected): void {
     assert(array_is_list($query));
 
-    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query), new RuleSetOptions);
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query, bodyRequired: false), new RuleSetOptions);
 
-    expect($set->unenforced)->toBe(['additionalProperties' => [$label]]);
+    expect($set->unenforced)->toBe($expected);
 })->with(function (): Generator {
     $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]));
 
     yield 'a body with no type and no property' => [
         ['application/json' => new Schema(additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]))],
         [],
-        'The body',
+        ['additionalProperties' => ['The body itself']],
     ];
     yield 'an array body of maps' => [
         ['application/json' => new Schema(types: [SchemaType::Array], items: $map)],
         [],
-        'The body',
+        ['type' => ['The body itself'], 'items' => ['The body itself'], 'additionalProperties' => ['The body itself']],
     ];
     yield 'a query parameter typed object' => [
         [],
         [new QueryParameter('filter', new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String])))],
-        '`filter`',
+        ['type' => ['`filter`'], 'additionalProperties' => ['`filter`']],
     ];
     yield 'a query parameter typed array of maps' => [
         [],
         [new QueryParameter('filters', new Schema(types: [SchemaType::Array], items: $map))],
-        '`filters`',
+        ['type' => ['`filters`'], 'items' => ['`filters`'], 'additionalProperties' => ['`filters`']],
     ];
 });
 
@@ -2832,6 +2845,20 @@ it('writes each finding that loses no constraint as information', function (Oper
             $json(objectSchema(['a' => $string, 'b' => $string], ['a']), 'put'),
             'A `PUT` whose schema leaves `b` optional',
         ],
+        // A partial update is the standard reading of a `PATCH`, and an empty form is how a form writes `{}`.
+        'a PATCH empties the required list' => [
+            $json(objectSchema(['a' => $string], ['a']), 'patch'),
+            'is read as empty here',
+        ],
+        'a required form body sent as an empty form' => [
+            operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['a' => $string])]),
+            'a form with a `Content-Type` and no field',
+        ],
+        // The property states nothing, so losing it loses nothing, as long as the object does not refuse undeclared keys.
+        'an empty bracketed property of an open deepObject' => [
+            $deepObject(objectSchema(['e[f]' => new Schema])),
+            '`filter[e[f]]` is a property of a `query` parameter whose name holds a bracket',
+        ],
         'a name required without being declared' => [
             $json(objectSchema(['a' => $string], ['a', 'b'])),
             'requires `b` without declaring it',
@@ -2936,14 +2963,6 @@ it('still counts a gap whose finding reads like information', function (Operatio
                 bodyRequired: false,
             ),
             'A part the schema marks as a file is then read as a string',
-        ],
-        // The schema's required list is read as empty, so `{}` passes where the contract asks for `a`.
-        'a PATCH empties the required list' => [
-            operationWithInput(
-                method: 'patch',
-                content: ['application/json' => objectSchema(['a' => $string], ['a'])],
-            ),
-            'is read as empty here',
         ],
         // A type of `null` alone is read as "states no type", and its rules accept any value.
         'type null alone' => [
@@ -3762,7 +3781,7 @@ it('says nothing about a readOnly property that is not required', function (): v
 // PHP rewrites a query name before Laravel sees it: `.` and a space become `_`, and `page[size]` becomes a
 // nested array. The value is there, under the key PHP delivers, so the rule is keyed by that key (measured with
 // `parse_str()`, which the request's query bag is built from) and the name the contract writes stays the label.
-it('keys a query name PHP rewrites by the key PHP delivers', function (string $name, Schema $schema, array $rules, string $head, ?string $finding): void {
+it('keys a query name PHP rewrites by the key PHP delivers', function (string $name, Schema $schema, array $rules, string $head, ?string $finding, array $unenforced = []): void {
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter($name, $schema, required: true)],
@@ -3772,7 +3791,7 @@ it('keys a query name PHP rewrites by the key PHP delivers', function (string $n
     expect($set->rules)->toEqual($rules)
         ->and(array_keys($set->rules))->toBe(array_keys($rules))
         ->and($set->queryKeys)->toBe([$head])
-        ->and($set->unenforced)->toBe([]);
+        ->and($set->unenforced)->toBe($unenforced);
 
     if ($finding === null) {
         expect($set->findings)->toBe([]);
@@ -3786,13 +3805,13 @@ it('keys a query name PHP rewrites by the key PHP delivers', function (string $n
     'a space' => ['a b', new Schema(types: [SchemaType::Integer]), ['a_b' => ['required', 'integer']], 'a_b', null],
     'a dot inside the brackets, which PHP keeps' => ['page[a.b]', new Schema(types: [SchemaType::Integer]), ['page.a\.b' => ['required', 'integer']], 'page', null],
     'a leading space, which PHP drops' => [' a', new Schema(types: [SchemaType::Integer]), ['a' => ['required', 'integer']], 'a', null],
-    'an array, as presence only' => ['filter[ids]', new Schema(types: [SchemaType::Array]), ['filter.ids' => ['present']], 'filter', '`filter[ids]` is a `query` parameter typed `array`'],
+    'an array, as presence only' => ['filter[ids]', new Schema(types: [SchemaType::Array]), ['filter.ids' => ['present']], 'filter', '`filter[ids]` is a `query` parameter typed `array`', ['type' => ['`filter[ids]`']]],
     // The finding hands over code to read the value, so it names the key PHP delivers (`filter.active`) and never the
     // contract's name, which finds nothing in the query bag.
     'a boolean, read under the delivered key' => ['filter[active]', new Schema(types: [SchemaType::Boolean]), ['filter.active' => ['required', new InRule(['true', 'false', '1', '0'])]], 'filter', '`\Illuminate\Support\Arr::has($request->query->all(), \'filter.active\') ? filter_var($request->validated(\'filter.active\'), FILTER_VALIDATE_BOOL) : null`'],
     // A step that holds a dot is no dotted key: `validated()` holds the value nested under it, so the read goes by steps.
     'a boolean, with a dot inside the brackets' => ['filter[a.b]', new Schema(types: [SchemaType::Boolean]), ['filter.a\\.b' => ['required', new InRule(['true', 'false', '1', '0'])]], 'filter', "`data_get(\$request->validated(), ['filter', 'a.b'])` holds the string as sent"],
-    'an object, as sometimes' => ['filter[range]', new Schema(types: [SchemaType::Object]), ['filter.range' => ['sometimes']], 'filter', '`filter[range]` is a `query` parameter typed `object`'],
+    'an object, as sometimes' => ['filter[range]', new Schema(types: [SchemaType::Object]), ['filter.range' => ['sometimes']], 'filter', '`filter[range]` is a `query` parameter typed `object`', ['required' => ['`filter[range]`'], 'type' => ['`filter[range]`']]],
 ]);
 
 // A query bag holds `page => [size => ...]`, so `validationData()` reads the key `page` once, however many names
@@ -5309,16 +5328,14 @@ it('lists every field one keyword is unenforced on, once each, in the order they
 });
 
 // The sentence a reader opens the generated file for is not the data the doctor
-// gates on. A body over two media types, a closed body a form cannot close and a
-// `query` array that is only checked for its presence are all worth a line and none is
-// a keyword the contract wrote that nothing enforces.
+// gates on. A body over two media types, and a closed body a form cannot close, are
+// worth a line and neither is a keyword the contract wrote that nothing enforces.
 it('records nothing for a finding that is information rather than an unenforced keyword', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: [
             'application/json' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
             'multipart/form-data' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
         ],
-        query: [new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])))],
     ), new RuleSetOptions);
 
     expect($set->findings)->not->toBe([])
@@ -5743,6 +5760,178 @@ it('records nothing for a keyword that became a rule', function (): void {
     ])]), new RuleSetOptions);
 
     expect($set->unenforced)->toBe([]);
+});
+
+// A body or a query parameter the rule set reads only in part: a media type it does not read, a root that is not an
+// object, a serialization it does not read whole, an array under `any`, and a bracketed property of a deepObject. The
+// finding in the generated file says so, and the doctor names what the contract states about each, where the rule set
+// holds nothing of it. The rows are written out by hand, in the order the walk meets them.
+it('records a body or a query parameter no rule set reads whole', function (Operation $operation, array $expected, ?RuleSetOptions $options = null): void {
+    $set = RuleSetBuilder::for($operation, $options ?? new RuleSetOptions);
+
+    expect($set->unenforced)->toBe($expected)
+        ->and($set->leavesUnenforced())->toBe($expected !== []);
+})->with(function (): array {
+    $form = 'application/x-www-form-urlencoded';
+    $string = new Schema(types: [SchemaType::String]);
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $root = 'The body itself';
+    $query = static fn (QueryParameter ...$parameters): Operation => operationWithInput(method: 'get', query: array_values($parameters));
+    $deepObject = static fn (Schema $schema): Operation => $query(new QueryParameter('filter', $schema, style: 'deepObject', explode: true));
+    $ids = new Schema(types: [SchemaType::Array], items: $integer, minItems: 1, maxItems: 3, uniqueItems: true);
+    $closed = static fn (array $properties, array $required = []): Schema => new Schema(
+        types: [SchemaType::Object],
+        properties: $properties,
+        required: array_values($required),
+        additionalProperties: false,
+    );
+    $any = new RuleSetOptions(DeepObjectArrays::Any);
+
+    return [
+        'an unread media type alone' => [
+            operationWithInput(content: ['application/xml' => objectSchema(['a' => $string])]),
+            ['content' => ['`application/xml`']],
+        ],
+        'an unread media type beside JSON' => [
+            operationWithInput(content: ['application/json' => objectSchema(['a' => $string]), 'application/xml' => objectSchema(['a' => $string])]),
+            ['content' => ['`application/xml`']],
+        ],
+        'a required array root with a bound' => [
+            operationWithInput(content: ['application/json' => new Schema(types: [SchemaType::Array], items: $string, maxItems: 3)]),
+            ['required' => [$root], 'type' => [$root], 'maxItems' => [$root], 'items' => [$root]],
+        ],
+        'an untyped root with a value schema, optional' => [
+            operationWithInput(content: ['application/json' => new Schema(additionalPropertiesSchema: $integer)], bodyRequired: false),
+            ['additionalProperties' => [$root]],
+        ],
+        'an optional string root' => [
+            operationWithInput(content: ['application/json' => $string], bodyRequired: false),
+            ['type' => [$root]],
+        ],
+        'a required form body with a required field' => [
+            operationWithInput(content: [$form => objectSchema(['a' => $string], ['a'])]),
+            [],
+        ],
+        'an optional form body requiring a name' => [
+            operationWithInput(content: [$form => objectSchema(['a' => $string, 'b' => $string], ['a'])], bodyRequired: false),
+            ['required' => ['`a`']],
+        ],
+        'an optional form body requiring two names' => [
+            operationWithInput(content: [$form => objectSchema(['a' => $string, 'b' => $string], ['a', 'b'])], bodyRequired: false),
+            ['required' => ['`a`', '`b`']],
+        ],
+        'a required form body whose required name is a star' => [
+            operationWithInput(content: [$form => objectSchema(['*' => $string], ['*'])]),
+            ['required' => ['`*`'], 'type' => ['`*`']],
+        ],
+        'an array sent as separate keys' => [
+            $query(new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: $string, maxItems: 3))),
+            ['type' => ['`tags`'], 'maxItems' => ['`tags`'], 'items' => ['`tags`']],
+        ],
+        'an array sent as one string' => [
+            $query(new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: $string, maxItems: 3), style: 'form', explode: false)),
+            ['type' => ['`tags`'], 'maxItems' => ['`tags`'], 'items' => ['`tags`']],
+        ],
+        'an array with a delimited style' => [
+            $query(new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: $string, maxItems: 3), style: 'pipeDelimited', explode: false)),
+            ['type' => ['`tags`'], 'maxItems' => ['`tags`'], 'items' => ['`tags`']],
+        ],
+        'a required array, which keeps its presence' => [
+            $query(new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: $string), required: true)),
+            ['type' => ['`tags`'], 'items' => ['`tags`']],
+        ],
+        'a required object sent as separate keys' => [
+            $query(new QueryParameter('f', objectSchema(['a' => $integer]), required: true)),
+            ['required' => ['`f`'], 'type' => ['`f`'], 'properties' => ['`f`']],
+        ],
+        'a required object sent as one string' => [
+            $query(new QueryParameter('f', objectSchema(['a' => $integer]), required: true, style: 'form', explode: false)),
+            ['type' => ['`f`'], 'properties' => ['`f`']],
+        ],
+        'a deepObject beside a name nested under its key' => [
+            $query(
+                new QueryParameter('page', objectSchema(['size' => $integer]), style: 'deepObject', explode: true),
+                new QueryParameter('page[size]', $integer),
+            ),
+            ['type' => ['`page`'], 'properties' => ['`page`']],
+        ],
+        'a deepObject with an integer property' => [
+            $deepObject(objectSchema(['n' => $integer])),
+            [],
+        ],
+        'an array held under any, with its bounds' => [
+            $deepObject(objectSchema(['ids' => $ids])),
+            ['type' => ['`filter[ids]`'], 'items' => ['`filter[ids]`'], 'minItems' => ['`filter[ids]`'], 'maxItems' => ['`filter[ids]`'], 'uniqueItems' => ['`filter[ids]`']],
+            $any,
+        ],
+        'an array held under any, with only its items' => [
+            $deepObject(objectSchema(['ids' => new Schema(types: [SchemaType::Array], items: $integer)])),
+            ['type' => ['`filter[ids]`'], 'items' => ['`filter[ids]`']],
+            $any,
+        ],
+        'an array held under any, with uniqueItems false' => [
+            $deepObject(objectSchema(['ids' => new Schema(types: [SchemaType::Array], items: $integer, uniqueItems: false)])),
+            ['type' => ['`filter[ids]`'], 'items' => ['`filter[ids]`']],
+            $any,
+        ],
+        'an array under brackets' => [
+            $deepObject(objectSchema(['ids' => $ids])),
+            [],
+        ],
+        'an array under comma' => [
+            $deepObject(objectSchema(['ids' => $ids])),
+            [],
+            new RuleSetOptions(DeepObjectArrays::Comma),
+        ],
+        'a bracketed property of a closed deepObject' => [
+            $deepObject($closed(['a[b]' => $integer])),
+            ['additionalProperties' => ['`filter`'], 'type' => ['`filter[a[b]]`']],
+        ],
+        'an empty bracketed property of a closed deepObject' => [
+            $deepObject($closed(['e[f]' => new Schema])),
+            ['additionalProperties' => ['`filter`']],
+        ],
+        'a bracketed property of an open deepObject' => [
+            $deepObject(objectSchema(['a[b]' => $integer])),
+            ['type' => ['`filter[a[b]]`']],
+        ],
+        'a required bracketed name no property declares, in an open deepObject' => [
+            $deepObject(objectSchema(['ok' => $string], ['c[d]'])),
+            ['required' => ['`filter[c[d]]`']],
+        ],
+        'a required bracketed name no property declares, in a closed deepObject' => [
+            $deepObject($closed(['ok' => $string], ['c[d]'])),
+            ['additionalProperties' => ['`filter`'], 'required' => ['`filter[c[d]]`']],
+        ],
+        'two bracketed names of a closed deepObject' => [
+            $deepObject($closed(['a[b]' => $integer], ['c[d]'])),
+            ['additionalProperties' => ['`filter`'], 'type' => ['`filter[a[b]]`'], 'required' => ['`filter[c[d]]`']],
+        ],
+    ];
+});
+
+// A required form body whose only required name the rule set drops keeps the empty-form sentence, because no rule
+// refuses an empty form, and still counts through the name's own entry.
+it('keeps the empty-form sentence beside a required name the rule set drops', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/x-www-form-urlencoded' => objectSchema(['*' => new Schema(types: [SchemaType::String])], ['*']),
+    ]), new RuleSetOptions);
+    $sentences = array_values(array_filter($set->information, static fn (string $line): bool => str_contains($line, 'a form with a `Content-Type` and no field')));
+
+    expect($sentences)->toHaveCount(1)
+        ->and($set->unenforced)->toHaveKey('required')
+        ->and($set->leavesUnenforced())->toBeTrue();
+});
+
+// The empty form of a required form body is how a form writes `{}`, and the sentence is information. Taken out when a
+// required key refuses it, from the information as from the findings.
+it('takes the empty-form sentence out of the information too when a required key refuses an empty form', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: [
+        'application/x-www-form-urlencoded' => objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+    ]), new RuleSetOptions);
+
+    expect(implode("\n", $set->findings))->not->toContain('a form with a `Content-Type` and no field')
+        ->and(implode("\n", $set->information))->not->toContain('a form with a `Content-Type` and no field');
 });
 
 // A recursive schema is validated down to the depth it states with `x-max-depth`, and a
