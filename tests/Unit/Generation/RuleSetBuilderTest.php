@@ -1393,6 +1393,104 @@ it('refuses a name declared by both the body and a query parameter', function ()
     )))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
 });
 
+// `validationData()` reads a `query` key from the query string and drops it from the body, so a name the body writes
+// and a `query` parameter of that name are one key whether or not the body's name got a rule of its own. The build
+// would be choosing which half of the contract to enforce, so the message is a declared property's, to the word.
+it('refuses a query parameter that shares its name with a name the body writes, with a rule of its own or without', function (Closure $operation): void {
+    $operation = $operation();
+
+    expect(fn () => RuleSetBuilder::for($operation))->toThrow(
+        ConflictingInputException::class,
+        ConflictingInputException::fieldDeclaredTwice($operation->label(), 'token')->getMessage(),
+    );
+})->with([
+    'an optional JSON body that requires it without declaring it' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object], required: ['token'])],
+        bodyRequired: false,
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
+    'a JSON body that may be null and requires it without declaring it' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object, SchemaType::Null], required: ['token'])],
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
+    'an optional map body that requires it' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(
+            types: [SchemaType::Object],
+            required: ['token'],
+            additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
+        )],
+        bodyRequired: false,
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
+    'an allOf branch that requires it, in an optional body' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(allOf: [
+            new Schema(types: [SchemaType::Object]),
+            new Schema(required: ['token']),
+        ])],
+        bodyRequired: false,
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
+    'a PATCH, whose required list is read as partial by default' => [fn (): Operation => operationWithInput(
+        method: 'patch',
+        content: ['application/json' => objectSchema(['name' => new Schema(types: [SchemaType::String])], ['token'])],
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
+    'an optional form body that requires it without declaring it' => [fn (): Operation => operationWithInput(
+        content: ['application/x-www-form-urlencoded' => new Schema(types: [SchemaType::Object], required: ['token'])],
+        bodyRequired: false,
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
+    'a dependentRequired name the body does not declare' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['name' => new Schema(types: [SchemaType::String])],
+            dependentRequired: ['token' => ['name']],
+        )],
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
+    'a deepObject parameter beside an optional body that requires its name' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object], required: ['token'])],
+        bodyRequired: false,
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::Object]), style: 'deepObject')],
+    )],
+    'a required JSON body that requires it without declaring it (a control, refused already)' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object], required: ['token'])],
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
+]);
+
+// The refusal reads the names the schema writes at the top, as written. A key the body does not write (an open map's),
+// a name nested below another, a JSON property that happens to carry brackets, and a body that is not an object leave
+// the query string's key alone, as before.
+it('still builds a query parameter named like a key the body does not write', function (Closure $operation, string $information): void {
+    $set = RuleSetBuilder::for($operation());
+
+    expect($set->queryKeys)->toBe(['token'])
+        ->and(implode("\n", $set->information))->toContain($information);
+})->with([
+    'an open map body that names no key' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Object])],
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    ), 'A body key named `token` is not'],
+    'a name the body nests below another one' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => objectSchema(['address' => new Schema(types: [SchemaType::Object], required: ['token'])])],
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    ), ''],
+    'a body whose root is not an object' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(types: [SchemaType::Array], required: ['token'])],
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    ), ''],
+]);
+
+it('still builds a query parameter named like a key the body does not write, when a JSON property is written with brackets', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['page[size]' => new Schema(types: [SchemaType::Integer])])],
+        query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    ));
+
+    expect($set->queryKeys)->toBe(['page']);
+});
+
 // A `query` parameter is merged into the data the body is validated against, so a key of the body's own
 // failures that is its name would answer for both. A name PHP rewrites is validated under the key it is delivered
 // as, and that is the one compared (`" body"` is `body`, and `body[x]` is `body.x`, a key apart).

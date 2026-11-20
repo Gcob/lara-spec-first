@@ -29,7 +29,8 @@ final class ConflictingInputException extends InvalidArgumentException implement
     }
 
     /**
-     * One name declared by both the body and a query parameter.
+     * One name the body's schema writes (a property, a `required` name or a `dependentRequired` name) and a `query`
+     * parameter.
      *
      * The reason is in the framework rather than in the contract. `Request::all()` is the input source unioned with the
      * query string and the input source wins, so the two arrive as one value with the query string's copy dropped in
