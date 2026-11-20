@@ -27,7 +27,8 @@ tags: [decisions, code-generation, compatibility]
 > - The time grows with the length of the text and never with its exponent, on every version of brick/math the package
 >   supports and with or without the `gmp` and `bcmath` extensions.
 > - Every other value gets `multiple_of`'s answer, message and `failed()` entry, which a seeded test against Laravel's
->   own rule holds. What is a number, and how a text is trimmed and read, stays Laravel's and brick/math's.
+>   own rule holds, except a float of more than 14 significant digits: it is judged as the double PHP reads, by its
+>   shortest exact text. What is a number, and how a text is trimmed and read, stays Laravel's and brick/math's.
 > - The only value refused whatever the divisor is a float PHP reads as `INF` or `NAN`, as before. This replaces
 >   [ADR 0020](./0020-check-multipleof-through-the-package.md), whose decisions about the class stand and are restated.
 > - Turned down: Laravel's exponent range, judging exactly only past a threshold, a cap on the digits, brick/math's
@@ -92,9 +93,11 @@ than the contract on a value the package can judge: a gap in the contract, not o
 
 The exponent is read as a PHP `int`, clamped far above any length a request can carry. Every other term is a text length
 or a float's exponent, so past the clamp only the sign matters, and the clamp keeps it. A divisor whose own exponent, as
-written, reaches the clamp, in either sign, refuses the value (its digits do not shift it back under:
-`0.1e1000000000000000000` is refused too), since two exponents past it cannot be told apart. A value of zero needs no
-exponent to compare, and stays a multiple of any divisor but zero.
+written, reaches a bound set a factor 10 under the clamp, in either sign, refuses the value (its digits do not shift it
+back under: `0.1e1000000000000000000` is refused too). The gap between the bound and the clamp is wider than any text
+can shift an exponent by, so a value whose exponent was clamped is never compared with a divisor it could be mistaken
+for (`1000e-1000000000000000000` by `1e-999999999999998` is refused, not passed). A value of zero needs no exponent to
+compare, and stays a multiple of any divisor but zero.
 
 **One path for every value, with no threshold.** The rule does not switch to the exact method past some exponent. A
 threshold would leave the long decimal, which has no exponent, slow on the pure-PHP calculator, and it would give the
@@ -116,6 +119,16 @@ divisor, with no finding, for the reason [ADR 0019](./0019-judge-a-json-integer-
 PHP's numbers: the guide states it, a test pins it, and no keyword of the contract names the case. A float that is not
 finite fails before anything else, so a `NAN` never reaches a string cast, which PHP 8.5 warns on and a Laravel handler
 turns into an `ErrorException`.
+
+**A JSON number is judged as the double PHP reads, by its shortest exact form.** A finite float is written as the
+shortest text that reads back as the same double (15, then 16, then 17 significant digits, the first that does), and
+that text is judged from its digits like any other. `0.30000000000000004` (`0.1 + 0.2` from a JavaScript client) is no
+multiple of `0.01`, and `0.1` is a multiple of `0.1`. Laravel's `multiple_of` casts the float to a string, which writes
+the `precision` setting's digits (14 by default): it passes `0.30000000000000004` by `0.01` as `0.3`, looser than the
+contract, and with `precision=17` it refuses `0.1` by `0.1` as `0.10000000000000001`, stricter than the contract and
+with no finding. The answer changed with a server setting, which a reader cannot see in the spec or in the generated
+file. [ADR 0006](./0006-hold-rules-to-the-contract.md) rules out the first, and nothing in the contract justifies the
+second. `INF` and `NAN` are the only values left that are not judged by what they are.
 
 **No bound and no configuration.** The work grows with the text's length and never with its exponent. Measured under 128
 MB: `1e200000000`, a million-digit exponent, plain integers of 100,000 digits and the 8 KB decimal take 4 to 13
@@ -168,6 +181,10 @@ keyed `multiple_of` or `<field>.multiple_of`, and the `failed()` entry are what 
   with `multipleOf: 2` is a `200` where it was a `500`, and by 3 a `422`. The CHANGELOG lists it under `Fixed`: every
   value Laravel answered gets the same answer, message and `failed()` entry, and a request that took seconds or answered
   `500` gets a quick answer.
+- **This departs from `multiple_of` on a float whose shortest text has more than 14 digits.** Laravel's rule rounds it
+  with `precision` and answers by the rounded text, so the two differ on `0.30000000000000004` by `0.01`, and an app
+  with another `precision` got another answer. The seeded test leaves such floats out and a row of its own pins the
+  difference, so the claim "answers as `multiple_of` does" holds for every other value.
 - **The arithmetic is the package's.** A seeded test against Laravel's `multiple_of` pins it, and a change to how the
   rule reads a number has to keep that test green. A request generated before keeps `multiple_of` until the next
   `spec:build`.

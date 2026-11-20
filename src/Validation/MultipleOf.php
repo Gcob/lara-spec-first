@@ -33,7 +33,10 @@ use Illuminate\Validation\Validator;
  *
  * **A number PHP cannot hold is refused whatever the divisor.** `1e400` is a multiple of `0.5`, but once a JSON body is
  * read as `INF` its value is gone, and `INF` can be a multiple of anything or of nothing. Refusing is the only answer
- * that is never looser than the contract. This is the one limit: a text keeps its digits, so it is judged.
+ * that is never looser than the contract. This is the one limit: a text keeps its digits, so it is judged, and so is a
+ * finite float, as the double PHP reads, by its shortest exact text. `multiple_of` writes a float with the `precision`
+ * setting instead, so it passes `0.30000000000000004` by `0.01` as `0.3`, and with `precision=17` refuses `0.1` by
+ * `0.1`: an answer that changed with a server setting.
  *
  * **The divisor is Laravel's parameter as Laravel receives it**: the text `multiple_of:` held, `'0.25'` and `'5'`. A
  * divisor of more than 17 digits, which no generated request writes (a float's text has at most 17), goes through
@@ -50,11 +53,18 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
     private const string NUMBER = '/^[-+]?(?<integral>[0-9]+)?(?<point>\.)?(?<fractional>[0-9]+)?(?:[eE](?<exponent>[-+]?[0-9]+))?\z/';
 
     /**
-     * Every other exponent is a text length or a float's, far below it, so past it only the sign is left. Two exponents
-     * past it cannot be told apart, so a divisor whose exponent, as written, reaches it refuses the value, whatever its
-     * digits shift the exponent to.
+     * The most an exponent is read as, a value's or a divisor's. Every other exponent is a text length or a float's,
+     * far below it, so past it only the sign is left, and two exponents past it cannot be told apart.
      */
     private const int EXPONENT_CAP = 10 ** 15;
+
+    /**
+     * A divisor whose exponent, as written, reaches it refuses the value, whatever its digits shift the exponent to. It
+     * sits a factor 10 under `EXPONENT_CAP`: a value's own digits shift its exponent by at most the length of its text,
+     * which is far less than the gap, so a value whose exponent was clamped can never be taken for a multiple of a
+     * divisor that is judged, nor a divisor under the bound for one the value's clamp has moved across.
+     */
+    private const int DIVISOR_EXPONENT_LIMIT = 10 ** 14;
 
     private Validator $validator;
 
@@ -82,11 +92,34 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
         // parameters differently from one Laravel to the next, and static analysis cannot satisfy them all.
         $passes = is_numeric($value)
             && is_numeric($this->divisor)
-            && self::isMultiple(is_string($value) ? trim($value) : (string) $value, trim($this->divisor));
+            && self::isMultiple(is_string($value) ? trim($value) : self::textOf($value), trim($this->divisor));
 
         if (! $passes) {
             $this->validator->addFailure($attribute, 'MultipleOf', [$this->divisor]);
         }
+    }
+
+    /**
+     * The text of a number that is not one: an int is its digits, a float is the shortest text that reads back as the
+     * same double (`0.30000000000000004` stays itself, `0.1` stays `0.1`), so the answer is the one for the number PHP
+     * holds, and not for what the `precision` setting rounds it to.
+     */
+    private static function textOf(mixed $value): string
+    {
+        if (! is_float($value)) {
+            return (string) $value;
+        }
+
+        // Why: `H` is `G` without the locale's decimal separator, which `NUMBER` does not read.
+        foreach ([15, 16] as $digits) {
+            $text = sprintf('%.'.$digits.'H', $value);
+
+            if ((float) $text === $value) {
+                return $text;
+            }
+        }
+
+        return sprintf('%.17H', $value);
     }
 
     /**
@@ -106,13 +139,13 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
         }
 
         [$digits, $exponent] = $read;
-        [$divisorDigits, $divisorExponent, $divisorClamped] = $divisorRead;
+        [$divisorDigits, $divisorExponent, $divisorWritten] = $divisorRead;
 
         if ($digits === '') {
             return $divisorDigits !== '';
         }
 
-        if ($divisorDigits === '' || $exponent < $divisorExponent || $divisorClamped) {
+        if ($divisorDigits === '' || $exponent < $divisorExponent || abs($divisorWritten) >= self::DIVISOR_EXPONENT_LIMIT) {
             return false;
         }
 
@@ -122,8 +155,8 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
     }
 
     /**
-     * @return array{string, int, bool}|null the significant digits, the power of ten that follows them, and whether the
-     *                                       exponent as written reached the clamp
+     * @return array{string, int, int}|null the significant digits, the power of ten that follows them, and the exponent
+     *                                      as written (clamped), before the digits shift it
      */
     private static function read(string $text): ?array
     {
@@ -137,7 +170,7 @@ final class MultipleOf implements ValidationRule, ValidatorAwareRule
 
         $written = self::exponent($match['exponent'] ?? '0');
 
-        return [$kept, $written - strlen($fractional) + strlen($digits) - strlen($kept), abs($written) === self::EXPONENT_CAP];
+        return [$kept, $written - strlen($fractional) + strlen($digits) - strlen($kept), $written];
     }
 
     private static function exponent(string $text): int

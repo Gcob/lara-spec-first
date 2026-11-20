@@ -463,7 +463,9 @@ tags: [versions, conventions, planning]
   error that answered `500`, and an exponent too large for brick/math answered `500` too. Without the GMP and BCMath
   extensions, an 8 KB decimal took several seconds. `MultipleOf` now decides from the number's digits and exponent, with
   PHP integers, in time that grows with the length of the text and never with its exponent, and answers every other
-  value as `multiple_of` does. So `1e99999999999999999999` is a multiple of 2, and passes. The reasoning is in
+  value as `multiple_of` does, except a JSON float of more than 14 significant digits, which it judges as the double PHP
+  reads (`0.30000000000000004` is no multiple of `0.01`, where `multiple_of` rounds it to `0.3` and passes it, by the
+  server's `precision` setting). So `1e99999999999999999999` is a multiple of 2, and passes. The reasoning is in
   [ADR 0021](./docs/project/decisions/0021-judge-multipleof-from-the-digits.md), and this ships
   [#214](https://github.com/Gcob/lara-spec-first/issues/214).
 
