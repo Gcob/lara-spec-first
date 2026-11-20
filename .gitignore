@@ -127,6 +127,9 @@ _ide_helper_models.php
 .cursor/
 CLAUDE.local.md
 
+# The app `demo/run.sh --keep` builds, to read after the run.
+/demo/*/.app/
+
 # others
 repomix*
 worktrees

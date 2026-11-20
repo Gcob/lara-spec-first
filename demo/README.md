@@ -8,6 +8,7 @@ of what the package does and the last check before a release: if the demo breaks
 
 ```bash
 just demo 0.2                      # the 0.2 demo, against 0.2.* from Packagist
+just demo 0.2 --keep               # the same, and keep the app to open afterwards
 just demo 0.3 release/0.3.0        # a minor not released yet: name the local branch to test
 ```
 
@@ -21,11 +22,26 @@ It creates a Laravel app in a temporary directory, requires the package, builds 
 controller, serves the app, and runs the Hurl scenarios against it. Nothing is left behind. It exits `0` when everything
 passes, `1` when a check failed, and `2` when it could not get as far as checking.
 
+With `--keep` (anywhere among the arguments, so `just demo 0.3 my-branch --keep` works too) the app is built in
+`demo/<minor>/.app/` instead, and it stays after the run, whether it passed or failed. Git ignores it. The next `--keep`
+run replaces it, but only once its arguments, tools and branch are checked: a run that stops before building leaves the
+old app as it was, and prints no "kept" line.
+
+- `app/Http/Generated/` is what the package generated, beside the demo's own controllers in `app/Http/Controllers/`.
+- `storage/logs/laravel.log` names the exception behind a `500`, and `storage/logs/serve.log` lists the requests the
+  server received, in order.
+- The app is for reading and for `php artisan`. In branch mode its `composer.json` points at a temporary copy of the
+  package that is gone, so `composer update` fails there: run the demo again instead.
+- In PhpStorm, mark `demo/<minor>/.app/` as Excluded, or open it as its own project. Otherwise every class of the
+  package has a second definition in `.app/vendor/`, and an edit made in that copy is lost on the next run.
+- `rm -rf demo/<minor>/.app` frees its space (about 75 MB). `just clean` does not remove it.
+
 CI does not use the container. The workflow in `.github/workflows/demo.yml` installs Hurl, runs `demo/run.sh` natively
 on every folder when `demo/`, `src/`, `config/` or `composer.json` changes, and runs it every Monday. To do the same on
-your machine, `demo/run.sh 0.2` (or `demo/run.sh 0.3 release/0.3.0`) needs `php`, `composer`, `curl`, `git`, `tar` and
-Hurl (`brew install hurl` on macOS, or [another way](https://hurl.dev/docs/installation.html)) on the `PATH`, with PHP's
-`pdo_sqlite` extension, and the network for Packagist.
+your machine, `demo/run.sh 0.2` (or `demo/run.sh 0.3 release/0.3.0`, or `demo/run.sh 0.2 --keep`) needs `php`,
+`composer`, `curl`, `git`, `tar` and Hurl (`brew install hurl` on macOS, or
+[another way](https://hurl.dev/docs/installation.html)) on the `PATH`, with PHP's `pdo_sqlite` extension, and the
+network for Packagist.
 
 A branch is installed from an archive of the branch made with `git archive`, which leaves out what a tag leaves out
 (`export-ignore` in `.gitattributes`), so only committed work is tested and the package is what a release ships. A
