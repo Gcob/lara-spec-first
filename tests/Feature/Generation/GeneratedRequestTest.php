@@ -4402,31 +4402,56 @@ it('answers 422 to a JSON client too large for a double on an operation that dec
     'an integer' => [SchemaType::Integer, ['The field field must be an integer.', 'The field field must be a multiple of 2.']],
 ]);
 
-// brick/math cannot read a text exponent past 64 bits either, so `multiple_of` throws on the text of a query, a form
-// field and a JSON string alike. A client on the contract sends the first two, and each is a multiple of 2 that no check
-// can confirm.
-it('answers 422, not 500, to a text number whose exponent PHP cannot hold', function (): void {
-    $number = new Schema(types: [SchemaType::Number], multipleOf: 2.0);
-    $query = emittedRequestClass(new Operation(
-        index: 0,
-        method: HttpMethod::Get,
-        path: PathTemplate::fromString('/things'),
-        operationId: 'listThings',
-        queryParameters: [new QueryParameter('field', $number)],
-    ));
-    $form = emittedRequestClass(postWithFormSchema('application/x-www-form-urlencoded', oneField($number)));
-    $json = emittedRequestClass(postWithFormSchema('application/json', oneField($number)));
+// A text number with a huge exponent reaches a query, a form field and a JSON string alike, and Laravel's `multiple_of`
+// writes out every digit the exponent stands for: `1e200000000` is 200 MB of zeros, a memory fatal that answers `500`,
+// and an exponent PHP cannot hold (`1e99999999999999999999`) threw. The package decides from the digits, so each
+// request takes milliseconds, answers by the contract (`10^n` is a multiple of 2 and never of 3), and stays far below
+// a 128 MB `memory_limit`. A JSON string is no number, so it is `422` for that whatever the divisor.
+it('judges a text number with a huge exponent exactly, in a query, a form field and a JSON string', function (string $text): void {
+    $send = function (int $divisor) use ($text): array {
+        $number = new Schema(types: [SchemaType::Number], multipleOf: (float) $divisor);
+        $query = emittedRequestClass(new Operation(
+            index: 0,
+            method: HttpMethod::Get,
+            path: PathTemplate::fromString('/things'),
+            operationId: 'listThings',
+            queryParameters: [new QueryParameter('field', $number)],
+        ));
+        $form = emittedRequestClass(postWithFormSchema('application/x-www-form-urlencoded', oneField($number)));
+        $json = emittedRequestClass(postWithFormSchema('application/json', oneField($number)));
 
-    $fromQuery = sendThroughEmitted($query, 'GET', '?field=1e99999999999999999999');
-    $fromForm = sendThroughEmitted($form, 'POST', parameters: ['field' => '1e99999999999999999999']);
+        memory_reset_peak_usage();
+        $before = memory_get_usage();
+        $start = hrtime(true);
 
-    expect($fromQuery[0])->toBe(422)
-        ->and($fromQuery[1]['errors'])->toBe(['field' => ['The field field must be a multiple of 2.']])
-        ->and($fromForm[0])->toBe(422)
-        ->and($fromForm[1]['errors'])->toBe(['field' => ['The field field must be a multiple of 2.']])
-        ->and(errorsForRawJson($json, '{"field": "1e99999999999999999999"}'))
-        ->toBe([422, ['field' => ['The field field must be a number.', 'The field field must be a multiple of 2.']]]);
-});
+        $answers = [
+            'query' => sendThroughEmitted($query, 'GET', '?field='.$text),
+            'form' => sendThroughEmitted($form, 'POST', parameters: ['field' => $text]),
+            'json' => errorsForRawJson($json, '{"field": "'.$text.'"}'),
+        ];
+
+        return [$answers, (hrtime(true) - $start) / 1e9, memory_get_peak_usage() - $before];
+    };
+
+    [$byTwo, $secondsByTwo, $growthByTwo] = $send(2);
+    [$byThree, $secondsByThree, $growthByThree] = $send(3);
+
+    expect($byTwo['query'][0])->toBe(200)
+        ->and($byTwo['form'][0])->toBe(200)
+        ->and($byTwo['json'])->toBe([422, ['field' => ['The field field must be a number.']]])
+        ->and($byThree['query'][0])->toBe(422)
+        ->and($byThree['query'][1]['errors'])->toBe(['field' => ['The field field must be a multiple of 3.']])
+        ->and($byThree['form'][0])->toBe(422)
+        ->and($byThree['form'][1]['errors'])->toBe(['field' => ['The field field must be a multiple of 3.']])
+        ->and($byThree['json'])->toBe([422, ['field' => ['The field field must be a number.', 'The field field must be a multiple of 3.']]])
+        ->and($secondsByTwo)->toBeLessThan(0.5)
+        ->and($secondsByThree)->toBeLessThan(0.5)
+        ->and($growthByTwo)->toBeLessThan(16 * 1024 * 1024)
+        ->and($growthByThree)->toBeLessThan(16 * 1024 * 1024);
+})->with([
+    'an exponent in the hundreds of millions' => '1e200000000',
+    'an exponent PHP cannot hold' => '1e99999999999999999999',
+]);
 
 // The generated file imports the class and writes the divisor as text, and the answer is `multiple_of`'s own message.
 it('answers the emitted request with the message of multiple_of', function (): void {

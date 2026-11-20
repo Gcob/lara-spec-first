@@ -8,10 +8,10 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Validator as LaravelValidator;
 
 /*
- * The rule a generated request puts on a field with `multipleOf`. Laravel's own `multiple_of` throws on a number PHP
- * cannot hold (a JSON `1e400` is read as `INF`, and a text exponent past 64 bits cannot be read at all), so this one
- * refuses it, and answers every other value as `multiple_of` does. Run through a real validator, with Laravel's own
- * rule as the reference, since "answers as `multiple_of` does" is the whole claim.
+ * The rule a generated request puts on a field with `multipleOf`. It decides from the number's digits and exponent,
+ * where Laravel's `multiple_of` writes out every digit an exponent stands for, and it refuses a number PHP cannot hold
+ * (a JSON `1e400` is read as `INF`). Every other value gets `multiple_of`'s answer, so it is run through a real
+ * validator with Laravel's own rule as the reference: "answers as `multiple_of` does" is the claim a seeded loop pins.
  *
  * @see docs/guide/code-generation/request-validation.md — "Every constraint maps or reports"
  */
@@ -59,9 +59,54 @@ function multipleOfRows(array $values, array $divisors, array $typeRulesTried = 
     }
 }
 
+/**
+ * Runs `$judge` with brick/math's pure-PHP calculator, which an app without the `gmp` and `bcmath` extensions runs (the
+ * official `php` images ship neither), whatever extension this machine has. The calculator's class lives in
+ * `Brick\Math\Internal\Calculator` before brick/math 0.14 and in `CalculatorRegistry` after, and the names are text so
+ * static analysis, which sees only one of them, does not flag the other.
+ *
+ * @template T
+ *
+ * @param  Closure(): T  $judge
+ * @return T
+ */
+function withNativeCalculator(Closure $judge): mixed
+{
+    $registry = class_exists('Brick\Math\Internal\CalculatorRegistry')
+        ? 'Brick\Math\Internal\CalculatorRegistry'
+        : 'Brick\Math\Internal\Calculator';
+    $native = 'Brick\Math\Internal\Calculator\NativeCalculator';
+
+    $registry::set(new $native);
+
+    try {
+        return $judge();
+    } finally {
+        $registry::set(null);
+    }
+}
+
+/**
+ * What `$value` gets from `numeric` beside the rule for `$divisor`: the validator, the seconds it took and the bytes
+ * the peak grew by.
+ *
+ * @return array{LaravelValidator, float, int}
+ */
+function judgeMeasured(mixed $value, string $divisor): array
+{
+    memory_reset_peak_usage();
+    $before = memory_get_usage();
+    $start = hrtime(true);
+
+    $validator = validatorForMultipleOf($value, ['numeric'], new MultipleOf($divisor));
+    $validator->fails();
+
+    return [$validator, (hrtime(true) - $start) / 1e9, memory_get_peak_usage() - $before];
+}
+
 // A number PHP cannot hold has lost its value once read, so it is refused whatever the divisor. Laravel's `multiple_of`
-// throws a `MathException` on each of these, and a `NAN` or an `INF` would also reach PHP's string casts. The type
-// rule beside it keeps its own message. `NAN` is not tried beside `integer`: Laravel's own `integer` turns PHP 8.5's
+// throws a `MathException` on `INF`, and a `NAN` or an `INF` would also reach PHP's string casts. The type rule beside
+// it keeps its own message. `NAN` is not tried beside `integer`: Laravel's own `integer` turns PHP 8.5's
 // `filter_var(NAN)` warning into an exception whatever this rule does.
 it('refuses a number PHP cannot hold, with the message of multiple_of', function (mixed $value, string $divisor, array $typeRules): void {
     $validator = validatorForMultipleOf($value, $typeRules, new MultipleOf($divisor));
@@ -74,8 +119,6 @@ it('refuses a number PHP cannot hold, with the message of multiple_of', function
     yield from multipleOfRows([
         'INF' => INF,
         '-INF' => -INF,
-        'a text exponent past 64 bits' => '1e99999999999999999999',
-        'a negative text exponent past 64 bits' => '1e-99999999999999999999',
     ], ['0.5', '2']);
 
     yield from multipleOfRows(['NAN' => NAN], ['0.5', '2'], [[], ['numeric'], ['numeric:strict']]);
@@ -164,4 +207,235 @@ it('refuses an infinite value of a map judged by UndeclaredKeys', function (): v
 
 it('keeps the divisor it was built with', function (): void {
     expect((new MultipleOf('0.25'))->divisor)->toBe('0.25');
+});
+
+// Laravel's `multiple_of` writes out every digit an exponent stands for: `1e50000000` takes over 2 seconds and 100 MB,
+// and `1e80000000` exhausts a 128 MB limit, a fatal that no `catch` turns into a `422`. The rule reads the digits and
+// the exponent, so each row costs milliseconds and a few bytes, and the answer is the exact one: `10^n` is a multiple
+// of 2, and of `0.25` once `n` is 2, whatever `n` is, and never of 3 or 7. A text whose exponent PHP cannot hold is
+// judged like any other (it passes by 2), where Laravel's rule throws.
+it('judges a text number with a huge exponent exactly, in milliseconds', function (string $value, string $divisor, bool $passes): void {
+    [$validator, $seconds, $growth] = judgeMeasured($value, $divisor);
+
+    expect($validator->passes())->toBe($passes)
+        ->and($passes ? [] : $validator->failed()['field'])->toBe($passes ? [] : ['MultipleOf' => [$divisor]])
+        ->and($seconds)->toBeLessThan(0.5)
+        ->and($growth)->toBeLessThan(16 * 1024 * 1024);
+})->with(function (): Generator {
+    $rows = [
+        ['1e200000000', '2', true], ['1e200000000', '3', false], ['1e200000000', '0.25', true], ['1e200000000', '1.0E+20', true],
+        ['1e50000000', '3', false], ['1e80000000', '3', false], ['-1e200000000', '2', true], [' 1E+200000000 ', '2', true],
+        ['1e-200000000', '2', false], ['1e-200000000', '1.0E-300', false],
+        ['9e9223372036854775807', '3', true], ['9e9223372036854775807', '7', false],
+        ['1e99999999999999999999', '2', true], ['1e99999999999999999999', '0.5', true], ['1e99999999999999999999', '3', false],
+        ['1e-99999999999999999999', '0.5', false],
+        ['1e'.str_repeat('9', 100000), '2', true],
+        ['0e999999999999', '7', true], ['0e5', '0', false], ['20e-1', '2', true],
+    ];
+
+    foreach ($rows as [$value, $divisor, $passes]) {
+        yield (strlen($value) > 40 ? 'a 100000-digit exponent' : $value).' by '.$divisor => [$value, $divisor, $passes];
+    }
+});
+
+// A long decimal with no exponent at all: brick/math divides by a divisor that no longer fits an `int` by repeated
+// subtraction when it runs on its pure-PHP calculator, so Laravel's rule takes 3.6 to 7.5 s on an 8 KB decimal there
+// (with the `gmp` or `bcmath` extension it takes milliseconds). Each row runs on the machine's calculator and on the
+// native one, since the claim is the same on both: time that grows with the text's length.
+it('judges a long number in time that grows with its length, whatever calculator brick/math has', function (string $value, string $divisor, bool $passes): void {
+    foreach ([false, true] as $native) {
+        $judge = fn (): array => judgeMeasured($value, $divisor);
+        [$validator, $seconds] = $native ? withNativeCalculator($judge) : $judge();
+
+        expect($validator->passes())->toBe($passes)
+            ->and($seconds)->toBeLessThan(0.5);
+    }
+})->with([
+    '8000 digits and 25 decimals by 2' => [str_repeat('3', 8000).'.'.str_repeat('3', 25), '2', false],
+    '8000 digits and 25 decimals by 0.25' => [str_repeat('3', 8000).'.'.str_repeat('3', 25), '0.25', false],
+    '10000 digits by 7' => [str_repeat('2', 10000), '7', false],
+    '100000 digits by 2' => [str_repeat('2', 100000), '2', true],
+    '100000 digits by 0.25' => [str_repeat('3', 100000), '0.25', true],
+    '100000 digits by a divisor of 17 digits' => [str_repeat('2', 100000), '0.12345678901234568', false],
+]);
+
+// A divisor of more than 17 digits does not fit the integer arithmetic, and only a divisor someone wrote by hand gets
+// there (a generated one is a float's text), so it goes through brick/math and answers as `multiple_of` does.
+it('answers as multiple_of does for a divisor of more than 17 digits', function (string $value, string $divisor, bool $passes): void {
+    $ours = validatorForMultipleOf($value, ['numeric'], new MultipleOf($divisor));
+    $reference = validatorForMultipleOf($value, ['numeric'], 'multiple_of:'.$divisor);
+
+    expect($ours->passes())->toBe($passes)
+        ->and($ours->errors()->toArray())->toBe($reference->errors()->toArray())
+        ->and($ours->failed())->toBe($reference->failed());
+})->with([
+    'a multiple of an integer' => ['2469135780246913578024690', '1234567890123456789012345', true],
+    'not a multiple of an integer' => ['1234567890123456789012346', '1234567890123456789012345', false],
+    'a multiple of a decimal' => ['0.3703703670370370367', '0.1234567890123456789', true],
+]);
+
+// `is_numeric()` accepts a form feed around a number and brick/math does not, so Laravel's rule throws on the text. It
+// is refused, as it always was: a text the reader cannot take is no number, whatever `numeric` says of it.
+it('refuses a text that PHP takes for a number and brick/math cannot read', function (string $value): void {
+    $validator = validatorForMultipleOf($value, ['numeric'], new MultipleOf('2'));
+
+    expect($validator->fails())->toBeTrue()
+        ->and($validator->errors()->get('field'))->toBe(['The field field must be a multiple of 2.']);
+})->with([
+    'a form feed before the digits' => "\f4",
+    'a form feed after the digits' => "4\f",
+]);
+
+// 17 digits is the widest divisor the integer arithmetic takes, one digit of the number at a time: the remainder
+// reaches the divisor's own size, so a wider chunk overflows an `int` into a float and gives a wrong answer. The
+// values sit right at the edge: multiples of 99999999999999999 and the number just after one.
+it('answers as multiple_of does for a divisor of 17 digits', function (string $value, bool $passes): void {
+    $ours = validatorForMultipleOf($value, ['numeric'], new MultipleOf('99999999999999999'));
+    $reference = validatorForMultipleOf($value, ['numeric'], 'multiple_of:99999999999999999');
+
+    expect($ours->passes())->toBe($passes)
+        ->and($ours->errors()->toArray())->toBe($reference->errors()->toArray());
+})->with([
+    'three times it' => ['299999999999999997', true],
+    'a multiple whose remainder passes 9.2e16 midway' => ['19299999999999999807', true],
+    'one more than it' => ['19299999999999999808', false],
+    'one more than three times it' => ['299999999999999998', false],
+    'a number of 340 nines' => [str_repeat('9', 340), true],
+    'a number of 340 nines then a seven' => [str_repeat('9', 340).'7', false],
+]);
+
+// A JSON float reaches the rule as a PHP float, and what the contract judges is the double PHP read, by its shortest
+// exact text: `0.30000000000000004` (`0.1 + 0.2` from a JS client) is no multiple of `0.01`. A cast with `(string)` writes
+// 14 significant digits and calls it `0.3`, which passes, and an app with `precision=17` would write `0.1` as
+// `0.10000000000000001` and refuse it by `0.1`: the answer must not depend on a server setting.
+it('judges a float by its shortest exact text, whatever the precision setting is', function (float $value, string $divisor, bool $passes): void {
+    $judge = fn (): bool => validatorForMultipleOf($value, ['numeric:strict'], new MultipleOf($divisor))->passes();
+
+    $before = ini_get('precision');
+
+    try {
+        $answers = [];
+
+        foreach (['14', '-1', '17', '5'] as $precision) {
+            ini_set('precision', $precision);
+            $answers[$precision] = $judge();
+        }
+    } finally {
+        ini_set('precision', (string) $before);
+    }
+
+    expect($answers)->toBe(['14' => $passes, '-1' => $passes, '17' => $passes, '5' => $passes]);
+})->with([
+    '0.1 + 0.2 by 0.01' => [0.30000000000000004, '0.01', false],
+    '10.000000000000002 by 1' => [10.000000000000002, '1', false],
+    '19.990000000000002 by 0.01' => [19.990000000000002, '0.01', false],
+    '1.00000000000001 by 1' => [1.00000000000001, '1', false],
+    '0.1 by 0.1' => [0.1, '0.1', true],
+    '0.3 by 0.01' => [0.3, '0.01', true],
+    '4.5 by 0.5' => [4.5, '0.5', true],
+    '4.5 by 2' => [4.5, '2', false],
+    '1.2 by 0.1' => [1.2, '0.1', true],
+    '1.2 by 0.5' => [1.2, '0.5', false],
+    '1e308 by 2' => [1e308, '2', true],
+    '1e308 by 3' => [1e308, '3', false],
+    '1e25 by 5' => [1e25, '5', true],
+    '-0.0 by 2' => [-0.0, '2', true],
+    '-6.0 by 2' => [-6.0, '2', true],
+    'a float that needs 17 digits, by the text it reads back from' => [1.2345678901234568, '1.2345678901234567', true],
+]);
+
+// `(string)` is exactly where `multiple_of` and this rule part: on a float whose shortest text has more than 14 digits
+// Laravel's rule says what `precision` says, so the seeded loop below leaves such floats out and this row pins them.
+it('departs from multiple_of on a float whose shortest text has more than 14 digits', function (): void {
+    $ours = validatorForMultipleOf(0.30000000000000004, ['numeric:strict'], new MultipleOf('0.01'));
+    $reference = validatorForMultipleOf(0.30000000000000004, ['numeric:strict'], 'multiple_of:0.01');
+
+    expect($ours->passes())->toBeFalse()
+        ->and($ours->failed()['field'])->toBe(['MultipleOf' => ['0.01']])
+        ->and($reference->passes())->toBeTrue();
+});
+
+// Past the exponent the rule can read (a quadrillion), two exponents that differ look equal, and "equal" would pass a
+// value that is not a multiple. Only a divisor someone wrote by hand reaches it (a float's text has a small exponent),
+// but `MultipleOf` is public, and such a divisor was always refused (Laravel's rule throws on it): never a wrong pass.
+// It is the divisor's exponent as written that counts, from a bound well under the value's clamp: the divisor's digits
+// (`0.1e...`, `10e-...`) shift it back, and a value whose own digits shift it (`1000e-...`) would otherwise reach a
+// divisor just under the clamp. Refusing a value that is a multiple (`0.001e1000000000000000005` by `1e999999999999999`)
+// is the safe side: never looser than the contract.
+it('refuses a value judged by a divisor whose exponent is past what it can read', function (string $value, string $divisor): void {
+    $validator = validatorForMultipleOf($value, ['numeric'], new MultipleOf($divisor));
+
+    expect($validator->fails())->toBeTrue()
+        ->and($validator->failed()['field'])->toBe(['MultipleOf' => [$divisor]]);
+})->with([
+    'both exponents past it, the divisor larger' => ['1e88888888888888888888', '1e99999999999999999999'],
+    'both exponents just past it, the divisor larger' => ['1e1000000000000000', '1e1000000000000001'],
+    'both negative exponents past it, the divisor larger' => ['1e-99999999999999999999', '1e-88888888888888888888'],
+    'a decimal divisor whose written exponent is past it, shifted back under it by its digits' => ['1e88888888888888888888', '0.1e99999999999999999999'],
+    'a decimal divisor just past it, the value past it too' => ['1e1000000000000000000', '0.1e1000000000000000005'],
+    'a divisor with a trailing zero whose negative exponent is past it, the value just under' => ['1e-999999999999999', '10e-99999999999999999999'],
+    'a divisor with a trailing zero whose negative exponent is just past it' => ['1e-999999999999999', '10e-1000000000000000'],
+    'a value past the clamp from its own side, shifted by its digits, by a divisor just under the clamp' => ['1000e-1000000000000000000', '1e-999999999999998'],
+    'a value past the clamp on the positive side, by a divisor just under the clamp' => ['0.001e1000000000000000005', '1e999999999999999'],
+    'a divisor at the lower bound' => ['1e100000000000000', '1e100000000000000'],
+    'a divisor at the lower bound, negative' => ['1e-100000000000000', '1e-100000000000000'],
+]);
+
+// Below that bound a divisor is judged exactly, even against a value whose exponent is past the clamp: the clamp and the
+// bound sit far enough apart that no digit text can bring the value's exponent across the divisor's.
+it('judges a value past the clamp by a divisor under the bound', function (string $value, string $divisor, bool $passes): void {
+    expect(validatorForMultipleOf($value, ['numeric'], new MultipleOf($divisor))->passes())->toBe($passes);
+})->with([
+    'a huge positive exponent, a multiple' => ['1e1000000000000000000', '1e99999999999999', true],
+    'a huge positive exponent, by a smaller power' => ['1e99999999999999999999', '1e-99999999999999', true],
+    'a huge negative exponent, no multiple' => ['1e-1000000000000000000', '1e-99999999999999', false],
+    'a huge negative exponent shifted by its digits, no multiple' => ['1000e-1000000000000000000', '1e-99999999999999', false],
+    'a divisor just under the bound against itself' => ['1e99999999999999', '1e99999999999999', true],
+    'a negative divisor just under the bound against itself' => ['1e-99999999999999', '1e-99999999999999', true],
+]);
+
+// The reference for "answers as `multiple_of` does" is Laravel's own rule, run on a seeded set of numbers (signs,
+// leading and trailing zeros, points, exponents, whitespace) and on the texts that are almost numbers, by divisors of
+// every shape. One loop: a dataset of 12,000 rows would cost more in bookkeeping than the checks do. It collects the
+// pairs that differ, so a failure names them. It skips the pairs where Laravel throws (the texts whose exponent PHP
+// cannot hold), which the first test judges.
+it('answers as multiple_of does on a seeded set of numbers', function (): void {
+    mt_srand(214);
+
+    $values = ['', '1e', '.', '5.', '.5', '1.e3', "\f4", "4\f", "7\n", ' 7 ', '0x1A', '1_000', '--4', '+-4', '0e999999', '20e-1', '200e-2', '4e00001',
+        '1e400', '-0', '+0.0', '00012', '1E3', '1e+3', 'abc', 4, 4.5, -6, 0, 0.0, 1.2, 1e308, PHP_INT_MAX, true, false, null, []];
+
+    for ($i = 0; $i < 1000; $i++) {
+        $values[] = ['', '-', '+'][mt_rand(0, 2)]
+            .mt_rand(0, 10 ** mt_rand(0, 6))
+            .(mt_rand(0, 1) ? '.'.mt_rand(0, 99999).str_repeat('0', mt_rand(0, 2)) : '')
+            .(mt_rand(0, 1) ? ['e', 'E'][mt_rand(0, 1)].['', '+', '-'][mt_rand(0, 2)].mt_rand(0, 40) : '');
+    }
+
+    // Floats whose shortest text has 14 digits or fewer, where `(string)` and the shortest text agree. A float with more
+    // digits is the one place the rule departs on purpose, and has its own test.
+    for ($i = 0; $i < 200; $i++) {
+        $values[] = mt_rand(-99999, 99999) / [1, 10, 100, 1000][mt_rand(0, 3)];
+    }
+
+    $mismatches = [];
+
+    foreach ($values as $value) {
+        foreach (['2', '0.25', '0.1', '3', '7', '5', '0.001', '1.0E+20', '1.5E-7', '12.5', '0', '0.0625'] as $divisor) {
+            $ours = validatorForMultipleOf($value, ['numeric'], new MultipleOf($divisor));
+
+            try {
+                $reference = validatorForMultipleOf($value, ['numeric'], 'multiple_of:'.$divisor);
+                $same = $ours->errors()->toArray() === $reference->errors()->toArray() && $ours->failed() === $reference->failed();
+            } catch (Throwable) {
+                continue;
+            }
+
+            if (! $same) {
+                $mismatches[] = json_encode($value).' by '.$divisor;
+            }
+        }
+    }
+
+    expect($mismatches)->toBe([]);
 });
