@@ -409,6 +409,22 @@ it('exits 0 for a standard reading the request accepts', function (): void {
     }
 });
 
+// A `readOnly` property that is required and the optional fields of a `PUT` are said in the generated file and lose no
+// constraint: the build has no warning for them, and the doctor has nothing to report.
+it('exits 0 for a contract whose findings lose no constraint', function (): void {
+    [$exit, $report] = doctorJson('informational-findings.yaml');
+
+    expect($exit)->toBe(0)
+        ->and(doctorSupportFindings($report, 'partial'))->toBe([]);
+
+    foreach (extractFixture('informational-findings.yaml') as $operation) {
+        $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+
+        expect($set->findings)->not->toBe([])
+            ->and($set->leavesUnenforced())->toBeFalse();
+    }
+});
+
 // `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not
 // read as a file is left out of the rules, and that is a package limit it names: a keyword the matrix rates as honored
 // in general. Its own section is "Parameters, bodies, responses", not "Schemas". The type OpenAPI gives a part anyway

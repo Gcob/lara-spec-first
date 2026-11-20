@@ -27,7 +27,10 @@ final readonly class RuleSet
      *                                                                                         writes the fields: the
      *                                                                                         body's first, then the
      *                                                                                         query parameters
-     * @param  list<string>  $findings  what the build read and did not act on, one line each
+     * @param  list<string>  $findings  what the build read and did not act on, one line each. Each one is exactly one
+     *                                  of four kinds: a gap (it has an entry in `$unenforced`), a request stricter than
+     *                                  the contract (`$stricter`), information (`$information`) or a fault in the
+     *                                  document (`$documentFaults`)
      * @param  list<string>|null  $closedKeys  the body's top-level property names when its schema forbids any other,
      *                                         and null when it does not. A root has no field for `array:` to sit on, so
      *                                         the emitter turns these into an `after()` check
@@ -58,7 +61,9 @@ final readonly class RuleSet
      *                                                   enforces nothing for, by the fields it was left unenforced on.
      *                                                   Data where `findings` is prose, so a report can group, count
      *                                                   and gate on it without reading a sentence, and narrower on
-     *                                                   purpose: a finding that is only information has no entry here
+     *                                                   purpose: only a gap has an entry here, and every gap has at
+     *                                                   least one, so a request is left unenforced exactly when this is
+     *                                                   not empty (or a document fault is written)
      * @param  list<string>  $documentFaults  what the document writes that is wrong and nothing was read from (an
      *                                        `encoding` entry for a part the body does not declare, a `contentType`
      *                                        that is not a string): findings too, and data besides so the doctor can
@@ -144,24 +149,13 @@ final readonly class RuleSet
     ) {}
 
     /**
-     * Whether the build read something and enforced nothing for it: a finding that is not one of the request being
-     * stricter than the contract, and not one that only informs.
+     * Whether the build read something and enforced nothing for it: a gap, which always has an entry, or a fault in the
+     * document. The same two records `spec:doctor` reports from, so the build counts a request exactly when the doctor
+     * reports it.
      */
     public function leavesUnenforced(): bool
     {
-        $left = $this->findings;
-
-        // Why: one entry per sentence, not every finding with that text. A label is a rule key, so two fields can write
-        // the same sentence, one as information and one as a gap, and the gap must still count.
-        foreach ([...$this->stricter, ...$this->information] as $sentence) {
-            $at = array_search($sentence, $left, true);
-
-            if ($at !== false) {
-                unset($left[$at]);
-            }
-        }
-
-        return $left !== [];
+        return $this->unenforced !== [] || $this->documentFaults !== [];
     }
 
     /**
