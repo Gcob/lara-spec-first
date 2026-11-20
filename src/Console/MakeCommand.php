@@ -205,7 +205,7 @@ final class MakeCommand extends Command
         array $document,
         RuleSetOptions $options,
     ): BuildPlan {
-        return (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), $lookup, $options))->plan($document);
+        return (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), $options, $lookup))->plan($document);
     }
 
     /**

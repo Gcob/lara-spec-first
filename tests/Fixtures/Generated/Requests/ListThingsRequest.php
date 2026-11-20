@@ -31,6 +31,14 @@ use Illuminate\Foundation\Http\FormRequest;
  *     does.
  *   - Every constraint the contract states is in the rule set above. Nothing was read and left
  *     unenforced.
+ *   - `filter[ids]` is an array inside a `deepObject` query parameter, read as a comma list
+ *     (`?filter[ids]=1,2`) or a list written with brackets, since `query.deep_object_arrays` is
+ *     `comma`: an item cannot hold a comma. Set it to `brackets` or `any` if your clients write it
+ *     otherwise.
+ *   - `meta[*]` is an array inside a `deepObject` query parameter, read as a comma list
+ *     (`?meta[key]=1,2`) or a list written with brackets, since `query.deep_object_arrays` is
+ *     `comma`: an item cannot hold a comma. Set it to `brackets` or `any` if your clients write it
+ *     otherwise.
  *
  * Navigation
  *

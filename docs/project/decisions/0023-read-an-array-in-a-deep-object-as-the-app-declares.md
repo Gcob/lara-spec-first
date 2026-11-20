@@ -36,7 +36,8 @@ tags: [decisions, code-generation, openapi]
 >   `0.2.0` let through, as the CHANGELOG says.
 
 **Status:** Accepted · **Cards:** [#139](https://github.com/Gcob/lara-spec-first/issues/139),
-[#218](https://github.com/Gcob/lara-spec-first/issues/218)
+[#218](https://github.com/Gcob/lara-spec-first/issues/218) · **Pull request:**
+[#238](https://github.com/Gcob/lara-spec-first/pull/238)
 
 ## Context
 
@@ -91,8 +92,11 @@ walked under `<key>.*`, and `uniqueItems` goes through the same rule as anywhere
 
 - **A plain string where the list belongs is refused**: `?filter[ids]=1` and `?filter[ids]=1,2` answer `422` on
   `filter.ids`, and so do indexes with a gap, since `list` is what a client that writes brackets sends.
-- **Nothing is said about how the array is written.** The rules say `array` and `list`, and the guide says what a plain
-  string gets, so the generated file carries no finding for the convention.
+- **The generated file names the reading, as information.** One line per array says how it is read and which key changes
+  it (`query.deep_object_arrays`), under `brackets` and under `comma`, since the default is the package's pick and a
+  client that writes the other form meets a refusal no keyword of the contract explains. It counts for nothing: the
+  build warning and the doctor's exit code do not move, since the line states a reading the application declares and no
+  constraint is lost.
 - **An item is labeled the way a client writes it**: `filter[ids][]`, with the bracket inside the backticks, in every
   finding about an item, and `filter[rows][][a]` for a property of an item. Only the query string reads so: a form
   body's item keeps `` `tags`[] ``.
@@ -157,11 +161,12 @@ warning.
 
 **Under `brackets`, a required array that may be empty is accepted left out.** An empty list has no bracketed form, so a
 client with nothing to send sends no `ids`, and `required_array_keys:ids` would refuse a request the schema accepts. The
-parent does not ask for the name, the generated file says so as information that loses no constraint, and a required
-`filter` whose only required property is that array is accepted left out, as a `deepObject` that requires nothing a
-client sends is. It applies to the query string under `brackets` and to an array with no `minItems` or a `minItems` of
-`0`. With a `minItems` of `1` or more the list can be written, so the name stays required, and it does under `comma`,
-where `?filter[ids]=` writes `[]`, and under `any`. A JSON body writes `[]`, and a form body keeps the rule it has.
+parent does not ask for the name (nor does a `dependentRequired` that names it), the generated file says so as
+information that loses no constraint, and a required `filter` whose only required property is that array is accepted
+left out, as a `deepObject` that requires nothing a client sends is. It applies to the query string under `brackets` and
+to an array with no `minItems` or a `minItems` of `0`. With a `minItems` of `1` or more the list can be written, so the
+name stays required, and it does under `comma`, where `?filter[ids]=` writes `[]`, and under `any`. A JSON body writes
+`[]`, and a form body keeps the rule it has.
 
 ## What of ADR 0022 still holds
 

@@ -49,7 +49,7 @@ final readonly class RoutingOutcomeCheck
     /**
      * @param  list<Operation>  $operations
      */
-    public static function check(array $operations, string $namespace, string $specPath, RuleSetOptions $options = new RuleSetOptions): RoutingOutcomeResult
+    public static function check(array $operations, string $namespace, string $specPath, RuleSetOptions $options): RoutingOutcomeResult
     {
         // Trimmed once and used everywhere below, including in the route
         // target this section prints: a `generated.namespace` written with a
@@ -58,7 +58,7 @@ final readonly class RoutingOutcomeCheck
         $namespace = rtrim($namespace, '\\');
 
         try {
-            $plan = (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), options: $options))
+            $plan = (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), $options))
                 ->plan($operations);
         } catch (SpecException $fault) {
             // Not a construct the document describes wrongly, and not a

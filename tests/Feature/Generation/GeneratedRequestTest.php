@@ -198,7 +198,7 @@ function answerForBuiltRules(Schema $body, array|string $payload, bool $bodyRequ
         path: PathTemplate::fromString('/_generated/built'),
         operationId: 'built',
         requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), $bodyRequired),
-    ))->rules;
+    ), new RuleSetOptions)->rules;
 
     $rules = frameworkRules($built);
 
@@ -873,7 +873,7 @@ it('applies the value rule to a key the map requires without declaring it', func
             path: PathTemplate::fromString('/_generated/built'),
             operationId: 'built',
             requestBody: new RequestBody(['application/json' => $body], true),
-        ))->findings))->not->toContain('without declaring');
+        ), new RuleSetOptions)->findings))->not->toContain('without declaring');
 })->with([
     'the key absent' => [[], 422, ['a']],
     'the key of the wrong type' => [['a' => 'x'], 422, ['a']],
@@ -1026,7 +1026,7 @@ it('refuses a date-time with a trailing newline', function (): void {
         requestBody: new RequestBody(['application/json' => oneField(
             new Schema(types: [SchemaType::String], format: 'date-time'),
         )], true),
-    ))->rules;
+    ), new RuleSetOptions)->rules;
 
     expect(validator(['field' => "2026-09-20T14:03:11Z\n"], $rules)->passes())->toBeFalse()
         ->and(validator(['field' => '2026-09-20T14:03:11Z'], $rules)->passes())->toBeTrue();
@@ -1263,7 +1263,7 @@ it('anchors a pattern the way ECMA-262 does', function (string $value, bool $pas
         requestBody: new RequestBody(['application/json' => oneField(
             new Schema(types: [SchemaType::String], pattern: '^[a-z]+$'),
         )], true),
-    ))->rules;
+    ), new RuleSetOptions)->rules;
 
     expect(validator(['field' => $value], $rules)->passes())->toBe($passes);
 })->with([
@@ -1332,7 +1332,7 @@ it('accepts an array query parameter in the serializations OpenAPI writes', func
             new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])),
             required: true,
         )],
-    ))->rules;
+    ), new RuleSetOptions)->rules;
 
     Route::get('/_generated/tags', fn (Request $request) => response()->json($request->validate($rules)));
 
@@ -1360,7 +1360,7 @@ it('accepts a required object query parameter sent the default way', function ()
             new Schema(types: [SchemaType::Object], properties: ['status' => new Schema(types: [SchemaType::String])]),
             required: true,
         )],
-    ))->rules;
+    ), new RuleSetOptions)->rules;
 
     Route::get('/_generated/filter', fn (Request $request) => response()->json($request->validate($rules)));
 
@@ -1456,7 +1456,7 @@ function responseForUpload(Schema $body, array $files, array $fields = [], array
         path: PathTemplate::fromString('/_generated/upload'),
         operationId: 'upload',
         requestBody: new RequestBody(array_fill_keys($mediaTypes, $body), $bodyRequired, $encoding),
-    ))->rules;
+    ), new RuleSetOptions)->rules;
 
     $rules = frameworkRules($built);
 
@@ -2253,6 +2253,50 @@ it('accepts a required array that may be empty left out under brackets', functio
     'the whole parameter left out' => ['', 200, []],
     'the array sent as a comma list' => ['?filter[ids]=1,2', 422, null],
 ]);
+
+// `dependentRequired` asks for a name once its trigger is sent, and a dependent array that may be empty has no bracketed
+// form either: `{a: 1, ids: []}` is a request the schema accepts, and `?filter[a]=1` is the only way to write it.
+it('accepts a dependent array that may be empty left out under brackets', function (?int $minItems, string $query, int $status): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listDependentEmptyable',
+        queryParameters: [new QueryParameter('filter', new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'a' => new Schema(types: [SchemaType::Integer]),
+                'ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]), minItems: $minItems),
+            ],
+            dependentRequired: ['a' => ['ids']],
+        ), style: 'deepObject', explode: false)],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', $query)[0])->toBe($status);
+})->with([
+    'no minItems, the array left out' => [null, '?filter[a]=1', 200],
+    'no minItems, the array sent' => [null, '?filter[a]=1&filter[ids][]=2', 200],
+    'no minItems, the trigger left out' => [null, '?filter[ids][]=2', 200],
+    'minItems 1, the array left out' => [1, '?filter[a]=1', 422],
+    'minItems 1, the array sent' => [1, '?filter[a]=1&filter[ids][]=2', 200],
+]);
+
+it('keeps a dependent array that may be empty required in a JSON body', function (): void {
+    $class = emittedRequestClass(postWithFormSchema('application/json', new Schema(
+        types: [SchemaType::Object],
+        properties: ['filter' => new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'a' => new Schema(types: [SchemaType::Integer]),
+                'ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer])),
+            ],
+            dependentRequired: ['a' => ['ids']],
+        )],
+    )));
+
+    expect(sendThroughEmitted($class, 'POST', json: ['filter' => ['a' => 1]])[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'POST', json: ['filter' => ['a' => 1, 'ids' => []]])[0])->toBe(200);
+});
 
 it('keeps a required array that cannot be empty required under brackets', function (): void {
     $class = emittedRequestClass(new Operation(

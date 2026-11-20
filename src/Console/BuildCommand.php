@@ -103,7 +103,7 @@ final class BuildCommand extends Command
         // Named from the project root rather than absolutely: a generated file
         // may end up committed, and a machine's path in a repository is a diff
         // nobody made.
-        $plan = (new BuildPlanner($generated, ProjectRelativePath::from($specPath), $lookup, $options))
+        $plan = (new BuildPlanner($generated, ProjectRelativePath::from($specPath), $options, $lookup))
             ->plan($operations);
 
         $configured = $config->get(GeneratedRoutesLocator::SETTING);

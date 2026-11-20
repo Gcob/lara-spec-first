@@ -221,7 +221,7 @@ final readonly class FormRequestEmitter
             );
         }
 
-        if ($set->commaLists !== []) {
+        if ($set->usesCommaLists()) {
             $constants .= sprintf(
                 "    /**\n     * The arrays of the query string a client writes as one comma-separated string, by the steps of their key: `*` is\n"
                     ."     * every key at its step, and `spared` names, by step, the keys a `*` leaves alone, which the contract declares\n"

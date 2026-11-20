@@ -33,11 +33,13 @@ tags: [versions, conventions, planning]
   as a list, with its items, `minItems`, `maxItems` and `uniqueItems`, and refuses a plain string. `comma`
   (`?filter[ids]=1,2`) has the generated request split the string in `prepareForValidation()` before it validates, then
   checks the same, judges an empty item (`?filter[ids]=1,,2`) as `null`, as a bracketed empty item is, and still accepts
-  a list written with brackets. Under `brackets`, a required array whose schema accepts `[]` may be left out, since an
-  empty list has no bracketed form. `any` checks only that the array is there, with a finding, as before the key
-  existed. `spec:build` reads it, so a change takes another build, and `spec:doctor` reads it too, so it reports the
-  generated requests as drifted until that build. Any other value stops `spec:build`, `spec:make` and `spec:doctor` with
-  a message that names the key. The reasoning is in
+  a list written with brackets. Under `brackets`, a required array whose schema accepts `[]` may be left out, and so may
+  one a `dependentRequired` makes required, since an empty list has no bracketed form. Under `brackets` and `comma`, the
+  generated request says in one line of information per array how it is read and which key changes it; nothing is
+  counted, so the doctor's exit code does not move. `any` checks only that the array is there, with a finding, as before
+  the key existed. `spec:build` reads it, so a change takes another build, and `spec:doctor` reads it too, so it reports
+  the generated requests as drifted until that build. Any other value stops `spec:build`, `spec:make` and `spec:doctor`
+  with a message that names the key. The reasoning is in
   [ADR 0023](./docs/project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md). This ships
   [#218](https://github.com/Gcob/lara-spec-first/issues/218).
 - **`spec:build` names a custom controller whose `routeAction` no longer fits the parent it regenerated.** When the

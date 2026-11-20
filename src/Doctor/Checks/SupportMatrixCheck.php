@@ -204,7 +204,7 @@ final readonly class SupportMatrixCheck
      * @param  RuleSetOptions  $options  the configuration's reading of the input, which the rule sets are built with
      * @return list<Finding>
      */
-    public static function schemas(array $operations, ?ResponsePlan $responses, RuleSetOptions $options = new RuleSetOptions): array
+    public static function schemas(array $operations, ?ResponsePlan $responses, RuleSetOptions $options): array
     {
         $findings = [];
 
@@ -231,7 +231,7 @@ final readonly class SupportMatrixCheck
      * @param  list<Operation>  $operations
      * @return list<Finding>
      */
-    public static function requestSchemas(array $operations, RuleSetOptions $options = new RuleSetOptions): array
+    public static function requestSchemas(array $operations, RuleSetOptions $options): array
     {
         return self::schemas($operations, null, $options);
     }

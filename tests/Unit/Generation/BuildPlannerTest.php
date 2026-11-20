@@ -16,6 +16,7 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnroutablePathException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
 use Gcob\LaraSpecFirst\Generation\GeneratedFile;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 
 /*
@@ -69,7 +70,7 @@ function writtenController(): string
 
 function planner(): BuildPlanner
 {
-    return new BuildPlanner('App\\Http\\Generated', 'openapi.yaml');
+    return new BuildPlanner('App\\Http\\Generated', 'openapi.yaml', new RuleSetOptions);
 }
 
 /**

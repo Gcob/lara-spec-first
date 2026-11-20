@@ -178,7 +178,7 @@ final readonly class RuleSetBuilder
      * @throws ConflictingInputException the body and a query parameter naming one field, two media types over two
      *                                   schemas, or an `allOf` whose branches disagree
      */
-    public static function for(Operation $operation, RuleSetOptions $options = new RuleSetOptions): RuleSet
+    public static function for(Operation $operation, RuleSetOptions $options): RuleSet
     {
         $walk = new RuleWalk($operation->label(), $options);
         $set = self::build($operation, $walk);
@@ -1426,6 +1426,24 @@ final readonly class RuleSetBuilder
         ?string $parentLabel = null,
     ): void {
         $dependents = self::dependents($schema, $walk, $prefix);
+
+        // Why: a dependent array that may be empty has no bracketed form either, so a client with nothing to send
+        // cannot satisfy `present_with` for it, and the contract accepts that client.
+        foreach (array_keys($dependents) as $name) {
+            $name = (string) $name;
+
+            if (
+                self::unescapableKey($name) === null
+                && self::unsentRequiredName($name, $schema, $walk, $parentLabel ?? '`'.rtrim($prefix, '.').'`') === 'emptyList'
+            ) {
+                $walk->information(self::emptyListFinding(
+                    self::bracketLabel($walk, $parentLabel, $name) ?? '`'.$prefix.$name.'`',
+                    'required by `dependentRequired`',
+                ));
+                unset($dependents[$name]);
+            }
+        }
+
         $closed = $schema->additionalProperties === false;
 
         foreach ($schema->properties as $name => $property) {
@@ -1817,6 +1835,13 @@ final readonly class RuleSetBuilder
                     // body's list is not part of this reading.
                     if ($walk->textSource === 'query string' && $walk->options->deepObjectArrays === DeepObjectArrays::Comma) {
                         $walk->commaLists[] = $key;
+                    }
+
+                    // Why: the reading is the package's default, so a client that writes the array the other way is refused
+                    // by a rule no keyword of the contract explains. An array that is the item of another one is read
+                    // with the array it belongs to.
+                    if ($walk->textSource === 'query string' && ! str_ends_with($label, '[]`')) {
+                        $walk->information(self::arrayReadingFinding($label, $walk->options->deepObjectArrays));
                     }
 
                     // `list` beside `array`, because Laravel's `array` passes for
@@ -2321,16 +2346,43 @@ final readonly class RuleSetBuilder
         return $merged->soleType() === SchemaType::Array && ($merged->minItems ?? 0) === 0;
     }
 
-    private static function emptyListFinding(string $label): string
+    private static function emptyListFinding(string $label, string $required = 'required'): string
     {
         return sprintf(
-            '%s is required and its schema accepts an empty list, so the request accepts it left out. A client writes a '
+            '%1$s is %2$s and its schema accepts an empty list, so the request accepts it left out. A client writes a '
                 .'list with brackets, and an empty one has no form there (PHP\'s `http_build_query()` writes nothing for it, '
-                .'and `?%s[]=` is one empty item), so asking for the name would refuse a client with nothing to send. When '
+                .'and `?%3$s[]=` is one empty item), so asking for the name would refuse a client with nothing to send. When '
                 .'it is sent, it is judged as any list is.',
             $label,
+            $required,
             trim($label, '`'),
         );
+    }
+
+    /**
+     * The line that names how an array inside a `deepObject` is read and the key that changes it. Information, so it
+     * counts for nothing: it states a reading the application declares, and no constraint is lost.
+     */
+    private static function arrayReadingFinding(string $label, DeepObjectArrays $reading): string
+    {
+        // A map's wildcard stands for any key the client writes.
+        $query = str_replace('[*]', '[key]', trim($label, '`'));
+
+        return $reading === DeepObjectArrays::Comma
+            ? sprintf(
+                '%1$s is an array inside a `deepObject` query parameter, read as a comma list (`?%2$s=1,2`) or a list written '
+                    .'with brackets, since `query.deep_object_arrays` is `comma`: an item cannot hold a comma. Set it to '
+                    .'`brackets` or `any` if your clients write it otherwise.',
+                $label,
+                $query,
+            )
+            : sprintf(
+                '%1$s is an array inside a `deepObject` query parameter, read as a list written with brackets (`?%2$s[]=1`), '
+                    .'since `query.deep_object_arrays` is `brackets`: `?%2$s=1,2` is refused. Set it to `comma` or `any` if '
+                    .'your clients write it otherwise.',
+                $label,
+                $query,
+            );
     }
 
     /**
