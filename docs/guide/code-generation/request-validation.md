@@ -208,14 +208,11 @@ integer with a `minimum`, `?page[size]=abc` and `?page[size]=0` answer 422 on `p
 `page[number]`, once.
 
 **A `deepObject` query parameter is validated as the nested array PHP parses.** `?page[size]=10&page[number]=2` arrives
-as `page => [size => '10', number => '2']`, which is the shape the schema describes, so the parameter goes through the
-same path as the nested object of a form body: each property gets the rules its type would get anywhere else under
-`page.size` and `page.number`, `page` gets `array` and `required_array_keys` for what the schema requires, and
-`validated()` holds the value nested and as the text a query string sends. It is read whatever `explode` says: the
-parser gives `false` to a document that writes `style: deepObject` alone, and OpenAPI 3.2.0 says that for this style the
-field "has no effect" ([ADR 0022](../../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md) holds the
-reasoning, and what it turned down). The generated rules look like this, for a required `page` with an integer `size`
-that is a multiple of 5 and a closed object:
+as `page => [size => '10', number => '2']`, so the parameter goes through the same path as the nested object of a form
+body: each property gets the rules its type gets anywhere else, under `page.size` and `page.number`, and `validated()`
+holds the value nested and as the text a query string sends. It is read whatever `explode` says, and
+[ADR 0022](../../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md) holds the reasoning and what it
+turned down. For a required `page` with an integer `size` that is a multiple of 5 and a closed object:
 
 ```php
 'page' => ['present', 'array:size,number', 'required_array_keys:size'],
@@ -223,23 +220,19 @@ that is a multiple of 5 and a closed object:
 'page.number' => ['sometimes', 'integer'],
 ```
 
-- **The object is closed by its own schema**, unlike the names above: `additionalProperties: false` gives
-  `array:size,number`, so `?page[size]=10&page[evil]=1` answers 422 on `page`. An open object accepts any other key, and
-  a map (`additionalProperties` with a schema) judges every value under `labels.*`.
-- **A nested object reads its brackets** (`filter[created][gte]`), as PHP delivers it and as `http_build_query`, `qs`
-  and Rails write it, so it is validated under `filter.created.gte` with no finding.
-- **An array inside a `deepObject` is checked at its presence only.** OpenAPI says the representation of an array or
-  object property is not defined, and clients write an array more than one way (`filter[ids][]=1`, `filter[ids]=1,2`),
-  so any rule about its shape or its items would refuse a request the contract allows. The key is `sometimes`, or asked
-  for by the parent when the schema requires it, and the generated file says which array is not checked. A configuration
-  key that says how clients write it is tracked in [#218](https://github.com/Gcob/lara-spec-first/issues/218).
-- **Every finding names the property the way a client writes it** (`filter[active]`, not the rule key `filter.active`),
-  and the code a boolean's finding hands over reads the key PHP delivers it under.
-- **A property whose name holds a bracket gets no rule and a finding.** PHP delivers `a[b]` as `a[b`, a key no rule can
-  name, so the property is left out rather than refused on every request. A closed object that declares one gets `array`
-  instead of `array:`, since `array:` would refuse the key PHP delivers.
+- **The object is closed by its own schema:** `additionalProperties: false` gives `array:size,number`, so
+  `?page[size]=10&page[evil]=1` answers 422 on `page`. An open object accepts any other key, and a map judges every
+  value under `labels.*`.
+- **A nested object reads its brackets** (`filter[created][gte]`), validated under `filter.created.gte` with no finding.
+- **An array inside a `deepObject` is checked at its presence only**, because OpenAPI does not define how one is
+  written. A configuration key that says how clients write it is tracked in
+  [#218](https://github.com/Gcob/lara-spec-first/issues/218).
+- **A required `deepObject` that requires no property is accepted left out**, since an empty object cannot be written in
+  a query string. One that requires a property is asked for with `present`.
+- **Every finding names the property the way a client writes it** (`filter[active]`, not `filter.active`).
+- **A property whose name holds a bracket gets no rule and a finding**, since PHP delivers `a[b]` as `a[b`.
 - **A `deepObject` that shares its key with another query name keeps the `sometimes` and its finding**: `page` beside
-  `page[size]` would be judged by one key, and the build does not choose which half of the contract to enforce.
+  `page[size]` would be judged by one key.
 
 **There is no rule on the head, because a query string is not closed.** An undeclared key is ignored on any `query`
 parameter, so `page[evil]=1` beside an optional `page[size]`, or `page=abc`, is an undeclared key that passes and that

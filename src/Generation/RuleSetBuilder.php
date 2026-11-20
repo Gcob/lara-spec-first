@@ -350,6 +350,18 @@ final readonly class RuleSetBuilder
                 // name another parameter nests under (`page` beside `page[size]`) keeps the fallback below, since the
                 // two would be judged by one key.
                 if ($style === 'deepObject' && $plan['shapedBy'] === []) {
+                    // Why: an empty object can't be written in a query string, so a client with nothing to filter leaves
+                    // the parameter out. Only a required property gives it something to send, so only then is the name asked for.
+                    if ($parameter->required && $merged->required === []) {
+                        $presence = 'sometimes';
+                        $walk->information(sprintf(
+                            '`%s` is a required `deepObject` query parameter that requires no property, so the request '
+                            .'accepts it left out: an empty object cannot be written in a query string, and the schema '
+                            .'accepts `{}`.',
+                            $parameter->name,
+                        ));
+                    }
+
                     self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
 
                     continue;

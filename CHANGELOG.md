@@ -398,12 +398,13 @@ tags: [versions, conventions, planning]
   `validated()` holds the value nested and as text. It holds whatever `explode` says: the parser reads `false` into a
   document that writes `style: deepObject` alone, and OpenAPI 3.2.0 gives the field no effect for this style. A request
   that answered `200` and now answers `422` is one the contract refuses: a value of the wrong type or out of bounds, an
-  undeclared key of a closed object, a required parameter or property left out. An array inside it is checked at its
-  presence only, with a finding, until a configuration key says how clients write it
-  ([#218](https://github.com/Gcob/lara-spec-first/issues/218)), and a property whose name holds a bracket, or a
-  `deepObject` that shares its key with another query name, keeps a finding. Every finding names a property the way a
-  client writes it (`filter[active]`), where it named the dotted rule key. This is a breaking change: send the value the
-  contract describes, or loosen the contract. It closes the `0.2.0` `Known limits` item for
+  undeclared key of a closed object, a required property left out, or a required parameter that requires a property. A
+  required `deepObject` that requires no property is accepted left out, since an empty object cannot be written in a
+  query string. An array inside it is checked at its presence only, with a finding, until a configuration key says how
+  clients write it ([#218](https://github.com/Gcob/lara-spec-first/issues/218)), and a property whose name holds a
+  bracket, or a `deepObject` that shares its key with another query name, keeps a finding. Every finding names a
+  property the way a client writes it (`filter[active]`), where it named the dotted rule key. This is a breaking change:
+  send the value the contract describes, or loosen the contract. It closes the `0.2.0` `Known limits` item for
   [#139](https://github.com/Gcob/lara-spec-first/issues/139), and the reasoning is in
   [ADR 0022](./docs/project/decisions/0022-read-a-deep-object-query-by-its-brackets.md).
 - **`spec:doctor`'s exit code moves for a `query` parameter, in three directions.** From `0` to `2`: a keyword inside a

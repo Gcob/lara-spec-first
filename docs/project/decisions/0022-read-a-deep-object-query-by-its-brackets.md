@@ -26,6 +26,8 @@ tags: [decisions, code-generation, openapi]
 >   presence only, with a finding, until a configuration key (`query.deep_object_arrays`,
 >   [#218](https://github.com/Gcob/lara-spec-first/issues/218)) says how clients write one. Every client writes a nested
 >   object the same way and an array in several, so the package reads the first and the app declares the second.
+> - A required `deepObject` that requires no property is accepted left out, since an empty object cannot be written in a
+>   query string.
 > - Every finding names a property the way a client writes it (`filter[active]`). A property whose name holds a bracket
 >   gets no rule and a finding, a `deepObject` that shares its key with another query name keeps its fallback, and a map
 >   beside a bracketed property leaves its undeclared keys unchecked.
@@ -35,7 +37,8 @@ tags: [decisions, code-generation, openapi]
 >   refuses and moves `spec:doctor`'s exit code, as the CHANGELOG says.
 
 **Status:** Accepted · **Cards:** [#110](https://github.com/Gcob/lara-spec-first/issues/110),
-[#139](https://github.com/Gcob/lara-spec-first/issues/139)
+[#139](https://github.com/Gcob/lara-spec-first/issues/139) · **Pull request:**
+[#228](https://github.com/Gcob/lara-spec-first/pull/228)
 
 ## Context
 
@@ -53,8 +56,10 @@ A document writes how an object is sent with `style` and `explode`, and OpenAPI'
 - OpenAPI 3.1.1 says, under `explode`: "Note that despite `false` being the default for `deepObject`, the combination of
   `false` with `deepObject` is undefined." OpenAPI 3.2.0 says: "For other types of parameters, or when `style` is
   `"deepObject"`, this field has no effect."
-- Both say, under `deepObject`: "The representation of array or object properties is not defined." That is the whole of
-  what the specification says about a value nested inside one.
+- Under `deepObject`, 3.1.1 says: "The representation of array or object properties is not defined." OpenAPI 3.2.0 says:
+  "The representation of array or object properties is not defined (but see Extending Support for Querystring Formats
+  for alternatives)." It points to another way to write one, and neither version says how a value nested inside a
+  `deepObject` is written by default.
 
 The package did not carry `style` and `explode` at all: `QueryParameter` held a name, a schema and `required`.
 
@@ -87,6 +92,13 @@ an integer `size` that is a multiple of 5 and a closed object, are:
   gives `array:size,number`, so `?page[size]=10&page[evil]=1` answers `422` on `page`. An open object accepts any other
   key, and a map (`additionalProperties` with a schema) judges every value it does not declare.
 - **A map's values are labeled `meta[*]`**, the way a client would write a key it does not know.
+
+**A required `deepObject` that requires no property is accepted left out.** An empty object cannot be written in a query
+string (`?page[size]=` is a `size` with no value, not an empty `page`), so a client with nothing to send omits the
+parameter, and `present` would answer `422` to a request the schema accepts, since the schema accepts `{}`. The name
+gets `sometimes` and the generated file says why, as information that loses no constraint, so the doctor does not count
+it. A required `deepObject` with a required property keeps `present`: the client has that property to send. This reads
+an empty object the way the package reads the empty form of a required form body.
 
 **A nested object reads its brackets, with no finding.** `filter[created][gte]` is validated under `filter.created.gte`,
 and the object `filter.created` gets `array`, or `array:<keys>` when it is closed. Every client that nests an object

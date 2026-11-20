@@ -1994,7 +1994,8 @@ it('validates the query names PHP rewrites under the key PHP delivers', function
 });
 
 /**
- * A `GET` whose only query parameters are one deepObject `page`, a deepObject `filter` and a deepObject `meta`.
+ * A `GET` whose only query parameters are a required deepObject `page` that requires `size`, and a required deepObject
+ * `filter` that requires nothing.
  */
 function listWithDeepObjects(bool $explode): Operation
 {
@@ -2021,7 +2022,7 @@ function listWithDeepObjects(bool $explode): Operation
                 ]),
                 'active' => new Schema(types: [SchemaType::Boolean]),
                 'ids' => new Schema(types: [SchemaType::Array], items: $integer, minItems: 1, maxItems: 3, uniqueItems: true),
-            ]), style: 'deepObject', explode: $explode),
+            ]), required: true, style: 'deepObject', explode: $explode),
         ],
     );
 }
@@ -2045,6 +2046,8 @@ it('validates a deepObject query parameter under the keys PHP delivers', functio
         'a key the closed object does not declare' => ['?page[size]=10&page[evil]=1', 422],
         'a string where the object belongs' => ['?page=5', 422],
         'no page at all' => ['?filter[active]=true', 422],
+        // An empty object can't be written in a query string, so a client with nothing to filter leaves `filter` out.
+        'a required filter that requires no property, left out' => ['?page[size]=10', 200],
         'a nested object' => ['?page[size]=10&filter[created][gte]=2020-01-01', 200],
         'a nested property of the wrong format' => ['?page[size]=10&filter[created][gte]=yesterday', 422],
         'a string where a nested object belongs' => ['?page[size]=10&filter[created]=x', 422],

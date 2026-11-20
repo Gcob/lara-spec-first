@@ -693,6 +693,13 @@ it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, i
     ],
 ]);
 
+// The note about a required deepObject accepted left out is information: it loses no constraint, so the doctor stays quiet.
+it('does not count a required deepObject accepted when left out', function (): void {
+    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
+        new QueryParameter('filter', supportMatrixObject(['next' => new Schema(types: [SchemaType::String])]), required: true, style: 'deepObject', explode: false),
+    ])]))->toBe([]);
+});
+
 // The value schema is walked like any child, so a keyword nothing reads that it writes is `Ignored` at its own position.
 // Beside declared properties the request validates the values, so the map is not `Partial`: a declared name the guard
 // cannot spare keeps it.

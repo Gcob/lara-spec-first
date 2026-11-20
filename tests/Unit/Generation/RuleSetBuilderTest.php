@@ -1026,6 +1026,16 @@ it('builds the rules of a deepObject query parameter', function (
             ['filter'],
             false,
         ],
+        // Not `present`: an empty object can't be written in a query string, so a client with nothing to filter leaves the
+        // parameter out, and `present` would refuse the `{}` the schema accepts.
+        'a required object that requires no property' => [
+            objectSchema(['size' => new Schema(types: [SchemaType::Integer])]),
+            true,
+            'filter',
+            ['filter' => ['sometimes', 'array'], 'filter.size' => ['sometimes', 'integer']],
+            ['filter'],
+            false,
+        ],
         'a nested object' => [
             objectSchema(['created' => objectSchema(['gte' => new Schema(types: [SchemaType::String], format: 'date')])]),
             false,
@@ -1070,6 +1080,32 @@ it('builds the rules of a deepObject query parameter', function (
         }
     }
 });
+
+// A required deepObject asks for its presence only when a property is required, since that is the one case where the client has
+// something to send. Otherwise the request accepts it left out, and the generated file says why.
+it('accepts a required deepObject parameter left out when the schema requires no property', function (bool $explode): void {
+    $set = deepObjectRuleSet(objectSchema(['size' => new Schema(types: [SchemaType::Integer])]), $explode, 'filter', true);
+
+    expect($set->rules['filter'][0])->toBe('sometimes')
+        ->and($set->information)->toHaveCount(1)
+        ->and($set->information[0])->toContain('`filter`')
+        ->and($set->information[0])->toContain('left out')
+        ->and($set->information[0])->toContain('empty object')
+        ->and(array_intersect($set->information, $set->findings))->toBe($set->information)
+        ->and($set->unenforced)->toBe([]);
+})->with([true, false]);
+
+it('asks for a required deepObject parameter when the schema requires a property', function (bool $explode): void {
+    $set = deepObjectRuleSet(
+        objectSchema(['size' => new Schema(types: [SchemaType::Integer])], required: ['size']),
+        $explode,
+        'filter',
+        true,
+    );
+
+    expect($set->rules['filter'][0])->toBe('present')
+        ->and($set->information)->toBe([]);
+})->with([true, false]);
 
 // A deepObject that shares its key with another query name is not read, as before: one key would hold both values, so
 // the build keeps its finding rather than choosing which half of the contract to enforce.
@@ -1140,7 +1176,7 @@ it('labels a deepObject\'s properties the way a client writes them', function (
 // The same label reaches every place the builder names a property for the information channel, and the `unenforced`
 // record the doctor reads, so no sentence about a deepObject names a dotted rule key.
 it('labels the information about a deepObject the way a client writes it', function (Schema $schema, string $label): void {
-    $set = deepObjectRuleSet($schema, false, 'page', true);
+    $set = deepObjectRuleSet($schema, false, 'page');
 
     expect($set->information)->toHaveCount(1)
         ->and($set->information[0])->toContain($label)
@@ -1228,7 +1264,7 @@ it('holds an array inside a deepObject at its presence', function (
     string $label,
     bool $explode,
 ): void {
-    $set = deepObjectRuleSet($schema, $explode, 'filter', true);
+    $set = deepObjectRuleSet($schema, $explode, 'filter');
 
     expect($set->rules)->toEqual($rules)
         ->and($set->unenforced)->toBe([])
@@ -1246,32 +1282,32 @@ it('holds an array inside a deepObject at its presence', function (
                 properties: ['ids' => $array($integers, 1, 3, true)],
                 required: ['ids'],
             ),
-            ['filter' => ['present', 'array', 'required_array_keys:ids'], 'filter.ids' => ['sometimes']],
+            ['filter' => ['sometimes', 'array', 'required_array_keys:ids'], 'filter.ids' => ['sometimes']],
             '`filter[ids]`',
         ],
         'a nested one' => [
             objectSchema(['created' => objectSchema(['ids' => $array($integers, 1)])]),
-            ['filter' => ['present', 'array'], 'filter.created' => ['sometimes', 'array'], 'filter.created.ids' => ['sometimes']],
+            ['filter' => ['sometimes', 'array'], 'filter.created' => ['sometimes', 'array'], 'filter.created.ids' => ['sometimes']],
             '`filter[created][ids]`',
         ],
         'an array of objects' => [
             objectSchema(['rows' => $array(objectSchema(['a' => $integers], ['a']))]),
-            ['filter' => ['present', 'array'], 'filter.rows' => ['sometimes']],
+            ['filter' => ['sometimes', 'array'], 'filter.rows' => ['sometimes']],
             '`filter[rows]`',
         ],
         'a boolean array' => [
             objectSchema(['flags' => $array(new Schema(types: [SchemaType::Boolean]), unique: true)]),
-            ['filter' => ['present', 'array'], 'filter.flags' => ['sometimes']],
+            ['filter' => ['sometimes', 'array'], 'filter.flags' => ['sometimes']],
             '`filter[flags]`',
         ],
         'the value of a map' => [
             new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $array($integers, max: 2)),
-            ['filter' => ['present', 'array'], 'filter.*' => []],
+            ['filter' => ['sometimes', 'array'], 'filter.*' => []],
             '`filter[*]`',
         ],
         'the value of a map beside a property' => [
             new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: $array($integers)),
-            ['filter' => ['present', 'array'], 'filter.id' => ['sometimes', 'string'], 'filter.*' => []],
+            ['filter' => ['sometimes', 'array'], 'filter.id' => ['sometimes', 'string'], 'filter.*' => []],
             '`filter[*]`',
         ],
     ];
