@@ -838,8 +838,118 @@ it('enforces only the presence of an array or object query parameter', function 
     ));
 
     expect($set->rules)->toBe(['tag' => ['present']])
-        ->and(implode('', $set->findings))->toContain('serialization is not read');
+        ->and(implode('', $set->findings))->toContain('?tag=a&tag=b');
 })->with([SchemaType::Array]);
+
+// What a parameter is sent as decides what the request can check, so the finding says which serialization it read:
+// the reader of the generated file learns why a value is not checked, and from which keyword of the document.
+it('names the serialization of a query parameter it does not validate', function (
+    SchemaType $type,
+    string $style,
+    bool $explode,
+    bool $required,
+    array $rules,
+    string $words,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter(
+            'tag',
+            new Schema(types: [$type], items: new Schema(types: [SchemaType::String])),
+            required: $required,
+            style: $style,
+            explode: $explode,
+        )],
+    ));
+
+    expect($set->rules)->toBe(['tag' => $rules])
+        ->and($set->findings)->toHaveCount(1)
+        ->and($set->findings[0])->toContain('`tag` is a `query` parameter typed `'.$type->value.'`')
+        ->and($set->findings[0])->toContain($words)
+        ->and($set->documentFaults)->toBe([]);
+})->with([
+    'an array, form and exploded' => [SchemaType::Array, 'form', true, true, ['present'], '?tag=a&tag=b'],
+    'an array, form and not exploded' => [SchemaType::Array, 'form', false, true, ['present'], 'one string'],
+    'an array, space delimited' => [SchemaType::Array, 'spaceDelimited', false, true, ['present'], 'one string'],
+    'an array, pipe delimited' => [SchemaType::Array, 'pipeDelimited', false, true, ['present'], 'one string'],
+    'an array, deepObject' => [SchemaType::Array, 'deepObject', false, true, ['present'], '`deepObject`'],
+    'an object, form and exploded' => [SchemaType::Object, 'form', true, true, ['sometimes'], 'one key per property'],
+    'an object, form and not exploded, required' => [SchemaType::Object, 'form', false, true, ['present'], 'one string'],
+    'an object, form and not exploded, optional' => [SchemaType::Object, 'form', false, false, ['sometimes'], 'one string'],
+    'an object, pipe delimited' => [SchemaType::Object, 'pipeDelimited', false, true, ['sometimes'], '`pipeDelimited`'],
+    'an object, space delimited' => [SchemaType::Object, 'spaceDelimited', false, true, ['sometimes'], '`spaceDelimited`'],
+]);
+
+// A style or an `explode` the document got wrong is not guessed at. It is a fault in the document, reported in the
+// generated file and to the doctor, and the parameter is read as if it were not written: a style OpenAPI does not
+// define is read as no style, and an `explode` that is not a boolean as the style's default.
+it('reports a malformed style or explode as a fault in the document', function (
+    Schema $schema,
+    mixed $style,
+    mixed $explode,
+    bool $required,
+    string $name,
+    array $rules,
+    string $fault,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter($name, $schema, required: $required, style: $style, explode: $explode)],
+    ));
+
+    expect($set->rules)->toBe($rules)
+        ->and($set->documentFaults)->toHaveCount(1)
+        ->and($set->documentFaults[0])->toContain($fault)
+        ->and($set->documentFaults[0])->toContain('that is a fault in the document')
+        ->and($set->findings)->toContain($set->documentFaults[0]);
+})->with(function (): Generator {
+    $object = new Schema(types: [SchemaType::Object]);
+    $array = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String]));
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    yield 'a number as the style of an object' => [$object, 5, false, false, 'filter', ['filter' => ['sometimes']], '`filter` writes a `style` of `5`'];
+    yield 'an unknown style on an object' => [$object, 'bogus', false, false, 'filter', ['filter' => ['sometimes']], '`filter` writes a `style` of `bogus`'];
+    yield 'a number as the style of an array' => [$array, 5, false, true, 'tag', ['tag' => ['present']], '`tag` writes a `style` of `5`'];
+    yield 'an unknown style on an array' => [$array, 'bogus', false, true, 'tag', ['tag' => ['present']], '`tag` writes a `style` of `bogus`'];
+    yield 'a number as the style of an integer' => [$integer, 5, false, true, 'limit', ['limit' => ['required', 'integer']], '`limit` writes a `style` of `5`'];
+    yield 'an unknown style on an integer' => [$integer, 'bogus', false, true, 'limit', ['limit' => ['required', 'integer']], '`limit` writes a `style` of `bogus`'];
+    // A style no query takes (`simple` is a path and header style) is as wrong as one nobody defined.
+    yield 'a style of another location' => [$object, 'simple', false, false, 'filter', ['filter' => ['sometimes']], '`filter` writes a `style` of `simple`'];
+    // A required object sent as one string is asked for, but only under a style OpenAPI defines: a malformed one never is.
+    yield 'an unknown style on a required object' => [$object, 'bogus', false, true, 'filter', ['filter' => ['sometimes']], '`filter` writes a `style` of `bogus`'];
+    yield 'a text explode on a required object' => [$object, 'form', 'yes', true, 'filter', ['filter' => ['sometimes']], '`filter` writes an `explode` of `yes`'];
+    // The fault is about the document, so a name no rule is keyed by still gets it, beside its own finding.
+    yield 'a name with no key' => [$integer, 5, false, false, 'ids[]', [], '`ids[]` writes a `style` of `5`'];
+});
+
+// A name that has no key is left without a rule and says so; the fault is the document's, and comes with it.
+it('keeps the finding of a query name with no key beside the fault of its style', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('ids[]', new Schema(types: [SchemaType::Integer]), style: 5, explode: false)],
+    ));
+
+    expect($set->rules)->toBe([])
+        ->and($set->findings)->toHaveCount(2)
+        ->and($set->documentFaults)->toHaveCount(1);
+});
+
+// A style OpenAPI defines for a query and a boolean `explode` are never a fault, whatever they are combined with.
+it('reports no fault for a style and an explode OpenAPI defines', function (string $style, bool $explode): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: $style, explode: $explode)],
+    ));
+
+    expect($set->documentFaults)->toBe([]);
+})->with([
+    ['form', true],
+    ['form', false],
+    ['spaceDelimited', false],
+    ['pipeDelimited', false],
+    ['deepObject', true],
+    ['deepObject', false],
+]);
 
 // The default `form` style with `explode` sends an object as one key per
 // property, `?status=a`, and never the parameter's own name, so even its
@@ -852,6 +962,395 @@ it('enforces nothing about an object query parameter, not even its presence', fu
 
     expect($set->rules)->toBe(['filter' => ['sometimes']])
         ->and(implode('', $set->findings))->toContain('not even its presence');
+});
+
+/**
+ * The rule set of one query parameter written with `style: deepObject`.
+ *
+ * @param  list<QueryParameter>  $others  parameters written beside it
+ */
+function deepObjectRuleSet(Schema $schema, bool $explode, string $name = 'filter', bool $required = false, array $others = []): RuleSet
+{
+    return RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        query: [new QueryParameter($name, $schema, required: $required, style: 'deepObject', explode: $explode), ...$others],
+    ));
+}
+
+// A deepObject is read the way PHP parses its brackets, so each property is judged under the key PHP delivers it as,
+// as the nested object of a form body is. `explode` says nothing about it: OpenAPI 3.2.0 gives it no effect for this
+// style, and the parser reads `explode: false` into a document that never wrote it.
+it('builds the rules of a deepObject query parameter', function (
+    Schema $schema,
+    bool $required,
+    string $name,
+    array $rules,
+    array $queryKeys,
+    bool $multipleOf,
+    bool $explode,
+): void {
+    $set = deepObjectRuleSet($schema, $explode, $name, $required);
+
+    expect($set->rules)->toEqual($rules)
+        ->and($set->queryKeys)->toBe($queryKeys)
+        ->and($set->usesMultipleOf())->toBe($multipleOf)
+        ->and($set->unenforced)->toBe([]);
+})->with(function (): Generator {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $rows = [
+        'a required closed object' => [
+            new Schema(
+                types: [SchemaType::Object],
+                properties: [
+                    'size' => new Schema(types: [SchemaType::Integer], minimum: 1.0, multipleOf: 5.0),
+                    'number' => $integer,
+                ],
+                required: ['size'],
+                additionalProperties: false,
+            ),
+            true,
+            'page',
+            [
+                'page' => ['present', 'array:size,number', 'required_array_keys:size'],
+                'page.size' => ['sometimes', 'integer', 'min:1', new MultipleOf('5')],
+                'page.number' => ['sometimes', 'integer'],
+            ],
+            ['page'],
+            true,
+        ],
+        'an optional open object' => [
+            new Schema(types: [SchemaType::Object]),
+            false,
+            'filter',
+            ['filter' => ['sometimes', 'array']],
+            ['filter'],
+            false,
+        ],
+        // Not `present`: an empty object can't be written in a query string, so a client with nothing to filter leaves the
+        // parameter out, and `present` would refuse the `{}` the schema accepts.
+        'a required object that requires no property' => [
+            objectSchema(['size' => new Schema(types: [SchemaType::Integer])]),
+            true,
+            'filter',
+            ['filter' => ['sometimes', 'array'], 'filter.size' => ['sometimes', 'integer']],
+            ['filter'],
+            false,
+        ],
+        'a nested object' => [
+            objectSchema(['created' => objectSchema(['gte' => new Schema(types: [SchemaType::String], format: 'date')])]),
+            false,
+            'filter',
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.created' => ['sometimes', 'array'],
+                'filter.created.gte' => ['sometimes', 'string', 'date_format:Y-m-d'],
+            ],
+            ['filter'],
+            false,
+        ],
+        'a map' => [
+            new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer),
+            false,
+            'labels',
+            ['labels' => ['sometimes', 'array'], 'labels.*' => ['integer']],
+            ['labels'],
+            false,
+        ],
+        'a property named with a dot' => [
+            objectSchema(['a.b' => $integer]),
+            false,
+            'filter',
+            ['filter' => ['sometimes', 'array'], 'filter.a\.b' => ['sometimes', 'integer']],
+            ['filter'],
+            false,
+        ],
+        'a name PHP rewrites' => [
+            objectSchema(['size' => $integer]),
+            false,
+            'user.filter',
+            ['user_filter' => ['sometimes', 'array'], 'user_filter.size' => ['sometimes', 'integer']],
+            ['user_filter'],
+            false,
+        ],
+    ];
+
+    foreach ([true, false] as $explode) {
+        foreach ($rows as $row => $values) {
+            yield $row.($explode ? ', exploded' : ', not exploded') => [...$values, $explode];
+        }
+    }
+});
+
+// A required deepObject asks for its presence only when a property is required, since that is the one case where the client has
+// something to send. Otherwise the request accepts it left out, and the generated file says why.
+it('accepts a required deepObject parameter left out when the schema requires no property', function (bool $explode): void {
+    $set = deepObjectRuleSet(objectSchema(['size' => new Schema(types: [SchemaType::Integer])]), $explode, 'filter', true);
+
+    expect($set->rules['filter'][0])->toBe('sometimes')
+        ->and($set->information)->toHaveCount(1)
+        ->and($set->information[0])->toContain('`filter`')
+        ->and($set->information[0])->toContain('left out')
+        ->and($set->information[0])->toContain('empty object')
+        ->and(array_intersect($set->information, $set->findings))->toBe($set->information)
+        ->and($set->unenforced)->toBe([]);
+})->with([true, false]);
+
+it('asks for a required deepObject parameter when the schema requires a property', function (bool $explode): void {
+    $set = deepObjectRuleSet(
+        objectSchema(['size' => new Schema(types: [SchemaType::Integer])], required: ['size']),
+        $explode,
+        'filter',
+        true,
+    );
+
+    expect($set->rules['filter'][0])->toBe('present')
+        ->and($set->information)->toBe([]);
+})->with([true, false]);
+
+// A required name the client cannot send gives it nothing to put in the query string: a `readOnly` property is left out of a
+// request, and PHP never delivers a name with brackets under its own name. Such a name does not ask for the parameter either.
+it('accepts a required deepObject parameter left out when no required property is one a client sends', function (Schema $schema): void {
+    $set = deepObjectRuleSet($schema, false, 'filter', true);
+
+    expect($set->rules['filter'][0])->toBe('sometimes')
+        ->and(implode("\n", $set->information))->toContain('`filter` is a required `deepObject` query parameter that requires no property a client sends')
+        ->and(implode("\n", $set->information))->toContain('accepts it left out');
+})->with([
+    'a readOnly one' => [objectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id'])],
+    'one with brackets' => [objectSchema(['a[b]' => new Schema(types: [SchemaType::String])], ['a[b]'])],
+    'a readOnly one and one with brackets' => [objectSchema([
+        'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+        'a[b]' => new Schema(types: [SchemaType::String]),
+    ], ['id', 'a[b]'])],
+]);
+
+it('asks for a required deepObject parameter when one required property is one a client sends', function (): void {
+    $set = deepObjectRuleSet(
+        objectSchema([
+            'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+            'a[b]' => new Schema(types: [SchemaType::String]),
+            'size' => new Schema(types: [SchemaType::Integer]),
+        ], ['id', 'a[b]', 'size']),
+        false,
+        'filter',
+        true,
+    );
+
+    expect($set->rules['filter'])->toBe(['present', 'array', 'required_array_keys:size'])
+        ->and(implode("\n", $set->information))->not->toContain('accepts it left out');
+});
+
+// A deepObject that shares its key with another query name is not read, as before: one key would hold both values, so
+// the build keeps its finding rather than choosing which half of the contract to enforce.
+it('keeps today\'s handling for a deepObject parameter that shares its key', function (): void {
+    $size = new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer], minimum: 1.0));
+    $set = deepObjectRuleSet(objectSchema(['size' => new Schema(types: [SchemaType::Integer])]), false, 'page', true, [$size]);
+
+    expect($set->rules)->toBe(['page' => ['sometimes'], 'page.size' => ['sometimes', 'integer', 'min:1']])
+        ->and($set->findings)->toHaveCount(1)
+        ->and($set->findings[0])->toContain('`page` is a `query` parameter typed `object`')
+        ->and($set->findings[0])->toContain('`page[size]`')
+        ->and($set->findings[0])->toContain('not even its presence');
+
+    $appended = deepObjectRuleSet(objectSchema(['size' => new Schema(types: [SchemaType::Integer])]), false, 'ids[]');
+
+    expect($appended->rules)->toBe([])
+        ->and(implode('', $appended->findings))->toContain('PHP appends to');
+
+    expect(fn () => RuleSetBuilder::for(operationWithInput(
+        method: 'get',
+        content: ['application/json' => objectSchema(['page' => new Schema(types: [SchemaType::String])])],
+        query: [new QueryParameter('page', objectSchema(['size' => new Schema(types: [SchemaType::Integer])]), style: 'deepObject', explode: false)],
+    )))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
+});
+
+// The label of a finding is what the client sends: `filter[active]`, not the `filter.active` rule key. The code a boolean's
+// finding hands over reads the key PHP delivers, which a dotted label would rewrite to `filter_active`.
+it('labels a deepObject\'s properties the way a client writes them', function (
+    Schema $schema,
+    string $name,
+    string $label,
+    ?string $read,
+): void {
+    $set = deepObjectRuleSet($schema, false, $name);
+
+    expect(implode("\n", $set->findings))->toContain($label);
+
+    if ($read !== null) {
+        expect(implode("\n", $set->findings))->toContain($read);
+    }
+})->with(function (): Generator {
+    yield 'a boolean' => [
+        objectSchema(['active' => new Schema(types: [SchemaType::Boolean])]),
+        'filter',
+        '`filter[active]` is a boolean read from a query string',
+        "\\Illuminate\\Support\\Arr::has(\$request->query->all(), 'filter.active')",
+    ];
+    yield 'a boolean under a name PHP rewrites' => [
+        objectSchema(['active' => new Schema(types: [SchemaType::Boolean])]),
+        'user.filter',
+        '`user.filter[active]` is a boolean read from a query string',
+        "Arr::has(\$request->query->all(), 'user_filter.active')",
+    ];
+    yield 'a nested boolean' => [
+        objectSchema(['inner' => objectSchema(['active' => new Schema(types: [SchemaType::Boolean])])]),
+        'filter',
+        '`filter[inner][active]` is a boolean read from a query string',
+        "Arr::has(\$request->query->all(), 'filter.inner.active')",
+    ];
+    yield 'a keyword nothing enforces' => [
+        objectSchema(['next' => new Schema(types: [SchemaType::String], format: 'uri-reference')]),
+        'filter',
+        '`filter[next]`',
+        null,
+    ];
+});
+
+// The same label reaches every place the builder names a property for the information channel, and the `unenforced`
+// record the doctor reads, so no sentence about a deepObject names a dotted rule key.
+it('labels the information about a deepObject the way a client writes it', function (Schema $schema, string $label): void {
+    $set = deepObjectRuleSet($schema, false, 'page');
+
+    expect($set->information)->toHaveCount(1)
+        ->and($set->information[0])->toContain($label)
+        ->and($set->information[0])->not->toContain('page.')
+        ->and(array_intersect($set->information, $set->findings))->toBe($set->information);
+})->with(function (): Generator {
+    yield 'a required readOnly property' => [
+        new Schema(types: [SchemaType::Object], properties: ['ro' => new Schema(types: [SchemaType::String], readOnly: true)], required: ['ro']),
+        '`page[ro]`',
+    ];
+    yield 'a required readOnly property of a nested object' => [
+        objectSchema(['inner' => new Schema(types: [SchemaType::Object], properties: ['ro' => new Schema(types: [SchemaType::String], readOnly: true)], required: ['ro'])]),
+        '`page[inner][ro]`',
+    ];
+    yield 'an untyped property' => [
+        objectSchema(['any' => new Schema]),
+        '`page[any]`',
+    ];
+    // A deepObject asks for a required name through the parent's `required_array_keys`, so this is the one way a name it
+    // does not declare reaches the information channel: `dependentRequired` makes it required beside a name it sends.
+    yield 'a nested object whose dependentRequired names a property it does not declare' => [
+        objectSchema(['inner' => new Schema(types: [SchemaType::Object], properties: ['a' => new Schema(types: [SchemaType::String])], dependentRequired: ['a' => ['gone']])]),
+        '`page[inner]`',
+    ];
+    yield 'a required readOnly property of a map value' => [
+        new Schema(
+            types: [SchemaType::Object],
+            additionalPropertiesSchema: new Schema(types: [SchemaType::Object], properties: ['ro' => new Schema(types: [SchemaType::String], readOnly: true)], required: ['ro']),
+        ),
+        '`page[*][ro]`',
+    ];
+});
+
+// PHP never delivers a name with brackets under its own name (`a[b]` arrives as `a[b`), so no rule can find it: it gets
+// none, says so, and records nothing in `unenforced`.
+it('reports a bracketed property name inside a deepObject', function (bool $closed): void {
+    $set = deepObjectRuleSet(
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['a[b]' => new Schema(types: [SchemaType::String]), 'ok' => new Schema(types: [SchemaType::String])],
+            required: ['a[b]'],
+            additionalProperties: $closed ? false : null,
+        ),
+        false,
+    );
+
+    expect($set->rules)->toBe([
+        'filter' => ['sometimes', 'array'],
+        'filter.ok' => ['sometimes', 'string'],
+    ])
+        ->and($set->findings)->toHaveCount(1)
+        ->and($set->findings[0])->toContain('`filter[a[b]]`')
+        ->and($set->findings[0])->toContain('PHP delivers')
+        ->and($set->findings[0])->not->toContain('forbids undeclared keys')
+        ->and(str_contains($set->findings[0], 'undeclared keys are not refused'))->toBe($closed)
+        ->and($set->unenforced)->toBe([]);
+})->with([
+    'an open object' => [false],
+    'a closed object' => [true],
+]);
+
+// The guard that spares a map's declared names compares them with the keys PHP delivers, and PHP delivers `a[b]` as `a[b`.
+// It cannot spare a name it will never see, so the map's values stay reported rather than refusing a key the contract declares.
+it('leaves the values of a deepObject map unvalidated beside a bracketed property name', function (): void {
+    $set = deepObjectRuleSet(
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['a[b]' => new Schema(types: [SchemaType::Integer])],
+            additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
+        ),
+        false,
+    );
+
+    expect($set->rules)->toBe(['filter' => ['sometimes', 'array']])
+        ->and($set->unenforced)->toBe(['additionalProperties' => ['`filter`']])
+        ->and(implode("\n", $set->findings))->toContain('`filter[a[b]]`')
+        ->and(implode("\n", $set->findings))->toContain('cannot tell apart from an undeclared key');
+});
+
+// An array inside a deepObject is held at its presence: how a client writes one (`filter[ids][]=1`, `filter[ids]=1,2`) is
+// not defined, so no rule about its shape or its items is written, and the finding says what is not checked.
+it('holds an array inside a deepObject at its presence', function (
+    Schema $schema,
+    array $rules,
+    string $label,
+    bool $explode,
+): void {
+    // `filter` is required exactly when the schema requires a property: a required array keeps `required_array_keys` under `present`.
+    $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== []);
+
+    expect($set->rules)->toEqual($rules)
+        ->and($set->unenforced)->toBe([])
+        ->and($set->information)->toBe([])
+        ->and($set->findings)->toHaveCount(1)
+        ->and($set->findings[0])->toContain($label.' is an array inside a `deepObject`')
+        ->and($set->findings[0])->toContain('checked only for its presence, when it is required');
+})->with(function (): Generator {
+    $integers = new Schema(types: [SchemaType::Integer]);
+    $array = static fn (Schema $items, ?int $min = null, ?int $max = null, bool $unique = false): Schema => new Schema(types: [SchemaType::Array], items: $items, minItems: $min, maxItems: $max, uniqueItems: $unique);
+    $rows = [
+        'a property that filter requires' => [
+            new Schema(
+                types: [SchemaType::Object],
+                properties: ['ids' => $array($integers, 1, 3, true)],
+                required: ['ids'],
+            ),
+            ['filter' => ['present', 'array', 'required_array_keys:ids'], 'filter.ids' => ['sometimes']],
+            '`filter[ids]`',
+        ],
+        'a nested one' => [
+            objectSchema(['created' => objectSchema(['ids' => $array($integers, 1)])]),
+            ['filter' => ['sometimes', 'array'], 'filter.created' => ['sometimes', 'array'], 'filter.created.ids' => ['sometimes']],
+            '`filter[created][ids]`',
+        ],
+        'an array of objects' => [
+            objectSchema(['rows' => $array(objectSchema(['a' => $integers], ['a']))]),
+            ['filter' => ['sometimes', 'array'], 'filter.rows' => ['sometimes']],
+            '`filter[rows]`',
+        ],
+        'a boolean array' => [
+            objectSchema(['flags' => $array(new Schema(types: [SchemaType::Boolean]), unique: true)]),
+            ['filter' => ['sometimes', 'array'], 'filter.flags' => ['sometimes']],
+            '`filter[flags]`',
+        ],
+        'the value of a map' => [
+            new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $array($integers, max: 2)),
+            ['filter' => ['sometimes', 'array'], 'filter.*' => []],
+            '`filter[*]`',
+        ],
+        'the value of a map beside a property' => [
+            new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: $array($integers)),
+            ['filter' => ['sometimes', 'array'], 'filter.id' => ['sometimes', 'string'], 'filter.*' => []],
+            '`filter[*]`',
+        ],
+    ];
+
+    foreach ([true, false] as $explode) {
+        foreach ($rows as $row => $values) {
+            yield $row.($explode ? ', exploded' : ', not exploded') => [...$values, $explode];
+        }
+    }
 });
 
 it('merges the body and the query into one rule set, body first', function (): void {
@@ -4241,7 +4740,7 @@ it('lists every field one keyword is unenforced on, once each, in the order they
 
 // The sentence a reader opens the generated file for is not the data the doctor
 // gates on. A body over two media types, a closed body a form cannot close and a
-// `query` array whose serialization is not read are all worth a line and none is
+// `query` array that is only checked for its presence are all worth a line and none is
 // a keyword the contract wrote that nothing enforces.
 it('records nothing for a finding that is information rather than an unenforced keyword', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(

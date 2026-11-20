@@ -94,6 +94,19 @@ paths:
                 # generated request accepts it, and says in its findings that
                 # `validated('drafts')` holds the string as sent.
                 - { name: drafts, in: query, schema: { type: boolean } }
+                # An object written with `style: deepObject`: `?range[from]=2026-01-01&range[to]=2026-02-01`.
+                # PHP delivers it nested, so the request validates `range.from` and `range.to`, and the schema
+                # closes the object: `range[until]` answers 422. `explode` changes nothing for this style.
+                - name: range
+                  in: query
+                  style: deepObject
+                  explode: true
+                  schema:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                          from: { type: string, format: date }
+                          to: { type: string, format: date }
                 # Read and never turned into a rule: what a missing credential
                 # deserves is a 401 and a rule set answers with a 422. The
                 # doctor counts it and exits non-zero until you acknowledge it.

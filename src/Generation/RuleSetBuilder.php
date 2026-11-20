@@ -108,6 +108,11 @@ final readonly class RuleSetBuilder
     ];
 
     /**
+     * The styles OpenAPI defines for an `in: query` parameter.
+     */
+    private const QUERY_STYLES = ['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'];
+
+    /**
      * Every keyword a rule could come from, by the property that carries it.
      *
      * The list is closed and checked per field against what the walk actually acted on, which is what makes a finding a
@@ -296,6 +301,9 @@ final readonly class RuleSetBuilder
                 }
             }
 
+            // Before the no-key skip: a fault is about the document, not about the rule the name does or does not get.
+            [$style, $explode] = self::querySerialization($walk, $parameter);
+
             if ($plan['key'] === null) {
                 self::leaveFieldUnenforced($walk, '`'.$parameter->name.'`', $parameter->schema, $parameter->required);
 
@@ -311,18 +319,15 @@ final readonly class RuleSetBuilder
             $presence = $parameter->required ? self::requiredRule($parameter->schema) : 'sometimes';
             $merged = AllOfMerger::merge($parameter->schema, $operation->label(), '`'.$parameter->name.'`');
 
-            // A query string is not JSON. OpenAPI's default serialization of
-            // an array is `?tag=a&tag=b`, of which PHP keeps only the last, and
-            // `explode: false` sends `?tag=a,b` as one string. `style` and
-            // `explode` are not read, so the value reaching the validator is
-            // not the shape the schema describes, and every rule about that
-            // shape would refuse a valid request. An array's own name is always
-            // sent, so its presence is enforced and the rest reported.
+            // A query string is not JSON. What reaches the validator is the value PHP parsed, and the parameter's
+            // `style` and `explode` say how the client wrote it, so an array or an object is not the shape the schema
+            // describes, and every rule about that shape would refuse a valid request. Neither gets a `field()` call.
             //
-            // An object's is not: the default `form` style with `explode` sends
-            // one key per property — `?status=a` — and the parameter's name
-            // never appears, so even presence would refuse a valid request.
-            // It is `sometimes` whatever its `required` flag, and said so.
+            // An array's own name is always sent, so its presence is enforced and the rest reported. An object's is
+            // not: `form` with `explode: true` sends one key per property (`?status=a`) and never the name, so even
+            // presence would refuse a valid request, and it is `sometimes` whatever its `required` flag. Sent as one
+            // string (`form` with `explode: false`) its name is there, so it gets its presence like an array. A style
+            // the document wrote wrong is read as no style, which is the first of these cases.
             if ($merged->soleType() === SchemaType::Array) {
                 if (self::holdsValueSchema($merged)) {
                     $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
@@ -330,25 +335,49 @@ final readonly class RuleSetBuilder
 
                 $walk->rules[$key] = [$presence];
                 $walk->findings[] = sprintf(
-                    '`%s` is a `query` parameter typed `array`. Its `style` and `explode` serialization is '
-                        .'not read, and PHP does not parse it into that shape, so only its presence is enforced.',
+                    '`%s` is a `query` parameter typed `array`. %s, so only its presence is enforced.',
                     $parameter->name,
+                    self::unreadArray($parameter->name, $style, $explode),
                 );
 
                 continue;
             }
 
             if ($merged->soleType() === SchemaType::Object) {
+                // `deepObject` sends one key per property under the parameter's own name (`?page[size]=10`), which is
+                // what PHP parses into the nested array `field()` judges, so it is read whatever `explode` says: the
+                // parser gives `false` to a document that never wrote it, and OpenAPI 3.2.0 gives it no effect here. A
+                // name another parameter nests under (`page` beside `page[size]`) keeps the fallback below, since the
+                // two would be judged by one key.
+                if ($style === 'deepObject' && $plan['shapedBy'] === []) {
+                    // Why: an empty object can't be written in a query string, so a client with nothing to filter leaves
+                    // the parameter out. Only a required property it sends gives it something to write, so only then is the name asked for.
+                    if ($parameter->required && ! self::requiresSentProperty($merged, $walk, '`'.$parameter->name.'`')) {
+                        $presence = 'sometimes';
+                        $walk->information(sprintf(
+                            '`%s` is a required `deepObject` query parameter that requires no property a client sends, so the request '
+                            .'accepts it left out: an empty object cannot be written in a query string, and the schema '
+                            .'accepts `{}`.',
+                            $parameter->name,
+                        ));
+                    }
+
+                    self::field($walk, $key, '`'.$parameter->name.'`', $parameter->schema, $presence);
+
+                    continue;
+                }
+
                 if (self::holdsValueSchema($merged)) {
                     $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
                 }
 
-                $walk->rules[$key] = ['sometimes'];
+                $sentOwnName = $style === 'form' && ! $explode;
+
+                $walk->rules[$key] = [$sentOwnName ? $presence : 'sometimes'];
                 $walk->findings[] = sprintf(
-                    '`%s` is a `query` parameter typed `object`. Its default serialization sends one key per '
-                        .'property and never its own name, and `style` and `explode` are not read, so nothing '
-                        .'about it is enforced, not even its presence.',
+                    '`%s` is a `query` parameter typed `object`. %s',
                     $parameter->name,
+                    self::unreadObject($parameter->name, $style, $explode, $plan['shapedBy']),
                 );
 
                 continue;
@@ -556,7 +585,11 @@ final readonly class RuleSetBuilder
         $rewritten = [];
 
         foreach (array_map('strval', array_keys($schema->properties)) as $name) {
-            if (str_contains($name, '*') || (str_contains($name, '.') && (! $root || ! $walk->formBody))) {
+            if (
+                str_contains($name, '*')
+                || (str_contains($name, '.') && (! $root || ! $walk->formBody))
+                || ($walk->textSource === 'query string' && self::holdsBracket($name))
+            ) {
                 return self::cannotSpare($walk, $label, sprintf(
                     '%s declares `%s`, which Laravel cannot tell apart from an undeclared key, so the values of its other '
                         .'keys are not validated.',
@@ -667,15 +700,17 @@ final readonly class RuleSetBuilder
      *
      * @param  string  $prefix  the rule key of the object followed by a dot, or the empty string for the root
      * @param  list<string>  $spared  the declared names, as strings: a declared `"2024"` is an integer as an array key
+     * @param  string|null  $parentLabel  how the object is labeled, so a value of a map read from the query string is
+     *                                    labeled as a client writes it (`meta[*]`)
      *
      * @throws ConflictingInputException
      */
-    private static function mapValues(RuleWalk $walk, string $prefix, Schema $value, array $spared = []): void
+    private static function mapValues(RuleWalk $walk, string $prefix, Schema $value, array $spared = [], ?string $parentLabel = null): void
     {
         $key = $prefix.'*';
         $walk->mapKeys[$key] = true;
 
-        self::field($walk, $key, '`'.$key.'`', $value, '');
+        self::field($walk, $key, self::bracketLabel($walk, $parentLabel, '*') ?? '`'.$key.'`', $value, '');
 
         if ($spared === []) {
             return;
@@ -1336,6 +1371,9 @@ final readonly class RuleSetBuilder
      * @param  bool  $valuesJudged  whether a wildcard below the object judges every key it has: a name it requires
      *                              without declaring then has its value checked, and the finding that says nothing
      *                              about the value is not written
+     * @param  string|null  $parentLabel  how the object is labeled, which a property of an object read from the query
+     *                                    string takes as its own (`filter[active]`): the name a client writes, not the
+     *                                    dotted rule key
      *
      * @throws ConflictingInputException
      */
@@ -1346,22 +1384,31 @@ final readonly class RuleSetBuilder
         callable $presence,
         array $contentTypes = [],
         bool $valuesJudged = false,
+        ?string $parentLabel = null,
     ): void {
         $dependents = self::dependents($schema, $walk, $prefix);
+        $closed = $schema->additionalProperties === false;
 
         foreach ($schema->properties as $name => $property) {
             $name = (string) $name;
+            $childLabel = self::bracketLabel($walk, $parentLabel, $name) ?? '`'.$prefix.$name.'`';
             $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
                 self::leaveFieldUnenforced(
                     $walk,
-                    '`'.$prefix.$name.'`',
+                    $childLabel,
                     $property,
                     in_array($name, $schema->required, true),
                     isset($dependents[$name]),
                 );
+
+                continue;
+            }
+
+            if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
+                $walk->findings[] = self::bracketedNameFinding($childLabel, $closed);
 
                 continue;
             }
@@ -1389,10 +1436,10 @@ final readonly class RuleSetBuilder
             // A required body that may be `null` asks through its siblings, so a lone required property is `sometimes`
             // and still gets the finding a required body writes for a `readOnly` one.
             $askedBySiblings = self::askedBySiblings($walk, $schema, $prefix, $name);
-            $readOnly = ($asked !== 'sometimes' || $askedBySiblings) && self::isReadOnly($property, $walk, '`'.$prefix.$name.'`');
+            $readOnly = ($asked !== 'sometimes' || $askedBySiblings) && self::isReadOnly($property, $walk, $childLabel);
 
             if ($readOnly) {
-                $walk->information(self::readOnlyFinding('`'.$prefix.$name.'`'));
+                $walk->information(self::readOnlyFinding($childLabel));
                 $asked = 'sometimes';
             }
 
@@ -1406,7 +1453,7 @@ final readonly class RuleSetBuilder
             // `present`, which let `""` through already.
             $filled = $askedBySiblings && ! $readOnly && self::requiredRule($property) === 'required';
 
-            self::field($walk, self::fieldKey($name, $walk, $prefix), '`'.$prefix.$name.'`', $property, $asked, $contentTypes[$name] ?? null, $filled);
+            self::field($walk, self::fieldKey($name, $walk, $prefix), $childLabel, $property, $asked, $contentTypes[$name] ?? null, $filled);
         }
 
         // A name the contract requires, or makes required by
@@ -1422,17 +1469,24 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
+            $childLabel = self::bracketLabel($walk, $parentLabel, $name) ?? '`'.$prefix.$name.'`';
             $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
                 $walk->findings[] = $unescapable;
                 self::leaveFieldUnenforced(
                     $walk,
-                    '`'.$prefix.$name.'`',
+                    $childLabel,
                     new Schema,
                     in_array($name, $schema->required, true),
                     isset($dependents[$name]),
                 );
+
+                continue;
+            }
+
+            if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
+                $walk->findings[] = self::bracketedNameFinding($childLabel, $closed);
 
                 continue;
             }
@@ -1472,11 +1526,50 @@ final readonly class RuleSetBuilder
             $walk->information(sprintf(
                 '%s requires %s without declaring %s under `properties`, so the request asks for the '
                     .'key and says nothing about the value.',
-                $prefix === '' ? 'The body' : '`'.rtrim($prefix, '.').'`',
+                $prefix === '' ? 'The body' : ($walk->textSource === 'query string' && $parentLabel !== null ? $parentLabel : '`'.rtrim($prefix, '.').'`'),
                 self::list($undeclared),
                 count($undeclared) === 1 ? 'it' : 'them',
             ));
         }
+    }
+
+    /**
+     * How a property of an object read from the query string is labeled: the name a client writes (`filter[active]`),
+     * which is what every finding about it should say, and not the dotted rule key it is validated under. Null outside
+     * the query string, where the rule key is the name.
+     */
+    private static function bracketLabel(RuleWalk $walk, ?string $parentLabel, string $name): ?string
+    {
+        return $walk->textSource === 'query string' && $parentLabel !== null
+            ? rtrim($parentLabel, '`').'['.$name.']`'
+            : null;
+    }
+
+    /**
+     * Whether a property name holds a bracket, which PHP reads as structure in a query string: `a[b]` is delivered as
+     * `a[b`, under no key a rule can name.
+     */
+    private static function holdsBracket(string $name): bool
+    {
+        return strpbrk($name, '[]') !== false;
+    }
+
+    /**
+     * The finding for a property of an object read from the query string whose name holds a bracket. It has no rule,
+     * and its presence is not asked for, so nothing a client sends is refused for it.
+     */
+    private static function bracketedNameFinding(string $label, bool $closed): string
+    {
+        return sprintf(
+            '%s is a property of a `query` parameter whose name holds a bracket. PHP delivers a name like that under '
+                .'another key, so no rule can find it: it gets none, and neither its value nor its presence is '
+                .'enforced.%s',
+            $label,
+            $closed
+                ? ' The object writes `additionalProperties: false`, but `array:` would refuse the key PHP delivers it '
+                    .'under, so undeclared keys are not refused.'
+                : '',
+        );
     }
 
     /**
@@ -1663,6 +1756,20 @@ final readonly class RuleSetBuilder
                     }
                     break;
                 case SchemaType::Array:
+                    // An array is only ever reached below a `deepObject` here, and how a client writes one inside it is
+                    // not defined (`filter[ids][]=1`, `filter[ids]=1,2`): any rule about its shape or its items would
+                    // refuse a request the contract allows. Only its presence is checked, and the finding says so.
+                    if ($walk->textSource === 'query string') {
+                        array_push($handled, 'minItems', 'maxItems', 'items', 'uniqueItems');
+                        $walk->findings[] = sprintf(
+                            '%1$s is an array inside a `deepObject` query parameter. OpenAPI does not define how a client writes '
+                                .'one (`?%2$s[]=1` and `?%2$s=1,2` are both written), so it is checked only for its presence, when it is required.',
+                            $label,
+                            trim($label, '`'),
+                        );
+                        break;
+                    }
+
                     // `list` beside `array`, because Laravel's `array` passes for
                     // an associative one, and a JSON array is a list.
                     array_push($rules, 'array', 'list');
@@ -1677,6 +1784,7 @@ final readonly class RuleSetBuilder
                     // not declare.
                     $declared = array_map('strval', array_keys($schema->properties));
                     $structural = array_values(array_filter($declared, self::breaksKeyList(...)));
+                    $bracketed = $walk->textSource === 'query string' && array_filter($declared, self::holdsBracket(...)) !== [];
 
                     if ($schema->additionalProperties === false && $structural !== []) {
                         // `array:` names keys as a comma list compared against
@@ -1690,7 +1798,7 @@ final readonly class RuleSetBuilder
                             self::list($structural),
                         );
                     } else {
-                        $rules[] = $schema->additionalProperties === false ? 'array:'.implode(',', $declared) : 'array';
+                        $rules[] = $schema->additionalProperties === false && ! $bracketed ? 'array:'.implode(',', $declared) : 'array';
                     }
 
                     // JSON Schema's `required` asks for keys, and so does
@@ -1716,8 +1824,16 @@ final readonly class RuleSetBuilder
                             continue;
                         }
 
-                        if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
-                            $walk->information(self::readOnlyFinding(rtrim($label, '`').'.'.$name.'`'));
+                        $unsent = self::unsentRequiredName($name, $schema, $walk, $label);
+
+                        // Its finding is written with its property's, and a key PHP never delivers under its own name would
+                        // refuse every request.
+                        if ($unsent === 'bracketed') {
+                            continue;
+                        }
+
+                        if ($unsent === 'readOnly') {
+                            $walk->information(self::readOnlyFinding(self::bracketLabel($walk, $label, $name) ?? rtrim($label, '`').'.'.$name.'`'));
 
                             continue;
                         }
@@ -1814,11 +1930,12 @@ final readonly class RuleSetBuilder
                 $schema,
                 static fn (string $name, Schema $property): string => 'sometimes',
                 valuesJudged: $judged,
+                parentLabel: $label,
             );
 
             if ($judged) {
                 assert($value instanceof Schema);
-                self::mapValues($walk, $key.'.', $value, $spared);
+                self::mapValues($walk, $key.'.', $value, $spared, $label);
             }
         }
 
@@ -2097,6 +2214,44 @@ final readonly class RuleSetBuilder
         $more = count($keys) - 1;
 
         return sprintf('`%s`%s', $keys[0], $more > 0 ? sprintf(' and %d more', $more) : '');
+    }
+
+    /**
+     * Why a required name is one a client does not send, or null when it does: a `readOnly` property is left out of a
+     * request, and in a query string PHP never delivers a name with brackets under its own name.
+     *
+     * @return 'bracketed'|'readOnly'|null
+     *
+     * @throws ConflictingInputException
+     */
+    private static function unsentRequiredName(string $name, Schema $object, RuleWalk $walk, string $label): ?string
+    {
+        if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
+            return 'bracketed';
+        }
+
+        if (isset($object->properties[$name]) && self::isReadOnly($object->properties[$name], $walk, $label)) {
+            return 'readOnly';
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether an object requires a property a client sends. `required` names the keys of a request, so a name no client
+     * sends gives it nothing to put in one.
+     *
+     * @throws ConflictingInputException
+     */
+    private static function requiresSentProperty(Schema $object, RuleWalk $walk, string $label): bool
+    {
+        foreach ($object->required as $name) {
+            if (self::unsentRequiredName((string) $name, $object, $walk, $label) === null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -3552,7 +3707,7 @@ final readonly class RuleSetBuilder
      * step by step, and a name PHP appends to claims the path above its appended step. No finding: it has its rules. A
      * plain name is still refused beside a body key, whether or not it loses its rule.
      *
-     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, ruledBelow: bool, findings: list<string>}>
+     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, shapedBy: list<string>, ruledBelow: bool, findings: list<string>}>
      */
     private static function planQueryNames(Operation $operation, RuleWalk $walk): array
     {
@@ -3634,7 +3789,7 @@ final readonly class RuleSetBuilder
                         self::pathKey($mine),
                     );
                 } elseif (self::isBelow($claim, $mine) || ($otherAppends && $mine === $claim)) {
-                    $shaped[$index] = true;
+                    $shaped[$index][] = $operation->queryParameters[$other]->name;
                 }
             }
         }
@@ -3645,6 +3800,7 @@ final readonly class RuleSetBuilder
                 'head' => $heads[$index],
                 'plain' => isset($plain[$index]),
                 'shaped' => $keys[$index] !== null && isset($shaped[$index]),
+                'shapedBy' => $keys[$index] !== null ? $shaped[$index] ?? [] : [],
                 'ruledBelow' => self::ruledBelow($index, $claims, $candidates, $keys),
                 'findings' => $findings[$index],
             ],
@@ -3803,6 +3959,106 @@ final readonly class RuleSetBuilder
         $last = array_pop($items);
 
         return implode(', ', $items).' and '.$last;
+    }
+
+    /**
+     * How a query parameter is sent, as the build reads it, with a fault recorded for what the document wrote wrong.
+     *
+     * A style OpenAPI does not define for a query is read as no style (null), and an `explode` that is not a boolean as
+     * the style's own default: nothing is guessed from either, and the fault says so. The contract carries the values
+     * as written for exactly this reason.
+     *
+     * @return array{0: string|null, 1: bool}
+     */
+    private static function querySerialization(RuleWalk $walk, QueryParameter $parameter): array
+    {
+        $style = is_string($parameter->style) && in_array($parameter->style, self::QUERY_STYLES, true)
+            ? $parameter->style
+            : null;
+
+        if ($style === null) {
+            $walk->fault(sprintf(
+                '`%s` writes a `style` of `%s`, which is not a style OpenAPI defines for a `query` parameter: that is '
+                    .'a fault in the document, and nothing is read from it.',
+                $parameter->name,
+                self::writtenValue($parameter->style),
+            ));
+        }
+
+        if (is_bool($parameter->explode)) {
+            return [$style, $parameter->explode];
+        }
+
+        $walk->fault(sprintf(
+            '`%s` writes an `explode` of `%s`, which is not a boolean: that is a fault in the document, and nothing is '
+                .'read from it.',
+            $parameter->name,
+            self::writtenValue($parameter->explode),
+        ));
+
+        return [$style, $style === 'form' || $style === null];
+    }
+
+    /**
+     * A value as the document wrote it, for a sentence about what is wrong with it.
+     */
+    private static function writtenValue(mixed $value): string
+    {
+        return is_string($value) ? $value : (json_encode($value) ?: get_debug_type($value));
+    }
+
+    /**
+     * Why an array query parameter is checked at its presence only, by how it is sent.
+     */
+    private static function unreadArray(string $name, ?string $style, bool $explode): string
+    {
+        return match (true) {
+            $style === null => 'Its `style` is not one OpenAPI defines for a `query` parameter, so how it is sent is not known',
+            $style === 'deepObject' => 'Its `style` is `deepObject`, which OpenAPI defines for an object and leaves undefined for an array',
+            $style === 'form' && $explode => sprintf(
+                'Its `form` style with `explode: true` sends it as `?%1$s=a&%1$s=b`, of which PHP keeps only the last value',
+                $name,
+            ),
+            $style === 'form' => sprintf(
+                'Its `form` style with `explode: false` sends it as one string (`?%s=a,b`), which the request does not split',
+                $name,
+            ),
+            default => sprintf('Its `%s` style sends it as one string, which the request does not split', $style),
+        };
+    }
+
+    /**
+     * What an object query parameter gets, by how it is sent: the sentence after the opening of its finding.
+     *
+     * @param  list<string>  $sharedWith  the names another `query` parameter nests under it, for a `deepObject` that
+     *                                    would be judged by a key they share
+     */
+    private static function unreadObject(string $name, ?string $style, bool $explode, array $sharedWith = []): string
+    {
+        return match (true) {
+            $style === null => 'Its `style` is not one OpenAPI defines for a `query` parameter, so how it is sent is not '
+                .'known and nothing about it is enforced, not even its presence.',
+            $style === 'form' && ! $explode => sprintf(
+                'Its `form` style with `explode: false` sends it as one string (`?%s=R,100,G,200`), which the request '
+                    .'does not split, so only its presence is enforced.',
+                $name,
+            ),
+            $style === 'form' => 'Its `form` style with `explode: true` sends one key per property and never its own name, '
+                .'so nothing about it is enforced, not even its presence.',
+            $style === 'deepObject' => sprintf(
+                'Its `deepObject` style sends one key per property under its own name (`?%1$s[a]=1`), but %2$s PHP '
+                    .'delivers under the same key, so a rule for `%1$s` would judge %3$s as well. Nothing about it is '
+                    .'enforced, not even its presence.',
+                $name,
+                self::enumerate(array_map(static fn (string $other): string => '`'.$other.'` is a `query` parameter', $sharedWith)),
+                count($sharedWith) === 1 ? 'its value' : 'their values',
+            ),
+            default => sprintf(
+                'Its `%s` style is defined for an array in OpenAPI 3.0, and how it sends an object is not read, so '
+                    .'nothing about it is enforced, not even its presence.',
+                $style,
+            ),
+        };
     }
 
     /**

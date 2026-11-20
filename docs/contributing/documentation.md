@@ -973,6 +973,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0019-judge-a-json-integer-by-its-value.md`](../project/decisions/0019-judge-a-json-integer-by-its-value.md)
     - [`0020-check-multipleof-through-the-package.md`](../project/decisions/0020-check-multipleof-through-the-package.md)
     - [`0021-judge-multipleof-from-the-digits.md`](../project/decisions/0021-judge-multipleof-from-the-digits.md)
+    - [`0022-read-a-deep-object-query-by-its-brackets.md`](../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

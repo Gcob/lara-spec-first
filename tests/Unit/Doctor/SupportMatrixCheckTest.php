@@ -636,6 +636,70 @@ it('keeps reporting an additionalProperties schema where no rule set reads the s
     ];
 });
 
+// A `style` or an `explode` the document got wrong is the author's to fix, so the doctor reports it as a fault in the
+// document, which exits `1`: before the contract carried them, nothing reported it and the exit code was `0`.
+it('reports a malformed style or explode of a query parameter as a fault in the document', function (mixed $style, mixed $explode, string $written): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
+        new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: $style, explode: $explode),
+    ])]);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->class)->toBe(FindingClass::DocumentFault)
+        ->and($findings[0]->message)->toContain($written)
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(1);
+})->with([
+    'a number as the style' => [5, false, '`filter` writes a `style` of `5`'],
+    'an unknown style' => ['bogus', false, '`filter` writes a `style` of `bogus`'],
+    'a text explode' => ['form', 'yes', '`filter` writes an `explode` of `yes`'],
+]);
+
+it('reports nothing for a query parameter written with a style and an explode OpenAPI defines', function (): void {
+    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
+        new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: 'form', explode: false),
+    ])]))->toBe([]);
+});
+
+// A deepObject is validated now, so the doctor's answer moves with the rule set it reads, with no code of its own: a keyword
+// inside it that no rule enforces is named (it was silent), a map whose values are judged is not (it was reported), and an
+// array it holds at its presence adds nothing, since the finding in the generated file already says so.
+it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, int $exitCode, ?string $named): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
+        new QueryParameter('filter', $schema, style: 'deepObject', explode: false),
+    ])]);
+
+    expect(supportMatrixReport($findings)->exitCode())->toBe($exitCode)
+        ->and($findings)->toHaveCount($named === null ? 0 : 1);
+
+    if ($named !== null) {
+        expect($findings[0]->level)->toBe(SupportLevel::Partial)
+            ->and($findings[0]->message)->toContain($named)
+            ->and($findings[0]->message)->toContain('`filter[next]`');
+    }
+})->with([
+    'a property no rule enforces' => [
+        supportMatrixObject(['next' => new Schema(types: [SchemaType::String], format: 'uri-reference')]),
+        2,
+        '`format`',
+    ],
+    'a map whose values are judged' => [
+        new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String])),
+        0,
+        null,
+    ],
+    'an array held at its presence' => [
+        supportMatrixObject(['ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]), minItems: 1, maxItems: 3, uniqueItems: true)]),
+        0,
+        null,
+    ],
+]);
+
+// The note about a required deepObject accepted left out is information: it loses no constraint, so the doctor stays quiet.
+it('does not count a required deepObject accepted when left out', function (): void {
+    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
+        new QueryParameter('filter', supportMatrixObject(['next' => new Schema(types: [SchemaType::String])]), required: true, style: 'deepObject', explode: false),
+    ])]))->toBe([]);
+});
+
 // The value schema is walked like any child, so a keyword nothing reads that it writes is `Ignored` at its own position.
 // Beside declared properties the request validates the values, so the map is not `Partial`: a declared name the guard
 // cannot spare keeps it.

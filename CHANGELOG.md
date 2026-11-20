@@ -384,6 +384,37 @@ tags: [versions, conventions, planning]
   `integer` until `spec:build` runs again. The reasoning is in
   [ADR 0019](./docs/project/decisions/0019-judge-a-json-integer-by-its-value.md), which supersedes ADR 0016, and this
   ships [#196](https://github.com/Gcob/lara-spec-first/issues/196).
+- **A required object `query` parameter written with `form` and `explode: false` now asks for its key, and the findings
+  of the array and object parameters that stay unchecked name the serialization they read.** `?color=R,100,G,200` is how
+  such an object is sent, under its own name, so it gets the presence rule an array gets (`?color=` still passes, and
+  what the object holds is not checked). The generated file now says what each serialization sends where it said that
+  `style` and `explode` are not read: `?tag=a&tag=b` for a default array, one string for `explode: false` and the
+  delimited styles, one key per property for a default object. A scalar keeps its rules whatever its style. This is a
+  breaking change: a request that leaves out such a required key now answers `422`. Send the key, or loosen the
+  contract.
+- **An object `query` parameter written with `style: deepObject` is now validated, where it was reported and never
+  checked.** `?page[size]=10` is judged under `page.size` and a nested object under its brackets
+  (`?filter[created][gte]=2020-01-01`), the object is closed when its schema says `additionalProperties: false`, and
+  `validated()` holds the value nested and as text. It holds whatever `explode` says: the parser reads `false` into a
+  document that writes `style: deepObject` alone, and OpenAPI 3.2.0 gives the field no effect for this style. A request
+  that answered `200` and now answers `422` is one the contract refuses: a value of the wrong type or out of bounds, an
+  undeclared key of a closed object, a required property left out, or a required parameter that requires a property. A
+  required `deepObject` that requires no property a client sends is accepted left out, since an empty object cannot be
+  written in a query string. An array inside it is checked at its presence only, with a finding, until a configuration
+  key says how clients write it ([#218](https://github.com/Gcob/lara-spec-first/issues/218)), and a property whose name
+  holds a bracket, or a `deepObject` that shares its key with another query name, keeps a finding. Every finding names a
+  property the way a client writes it (`filter[active]`), where it named the dotted rule key. This is a breaking change:
+  send the value the contract describes, or loosen the contract. It closes the `0.2.0` `Known limits` item for
+  [#139](https://github.com/Gcob/lara-spec-first/issues/139), and the reasoning is in
+  [ADR 0022](./docs/project/decisions/0022-read-a-deep-object-query-by-its-brackets.md).
+- **`spec:doctor`'s exit code moves for a `query` parameter, in three directions.** From `0` to `2`: a keyword inside a
+  `deepObject` that no rule enforces (a property's `format: uri-reference`) is now named, where the whole object was
+  silent. From `2` to `0`: a `deepObject` map's `additionalProperties`, which the request validates now, is no longer
+  named. From `0` to `1`: a `style` that is not one of the four OpenAPI defines for a `query` (`form`, `spaceDelimited`,
+  `pipeDelimited`, `deepObject`), or an `explode` that is not a boolean, is now a fault in the document. It was read by
+  nothing and reported nowhere: the contract carries both as written, the generated file says what is wrong, and the
+  parameter is read as if the keyword were not written. This is a breaking change: every move on the exit-code axis is
+  major, so a CI step that expected the old code will see the new one.
 
 ### Fixed
 

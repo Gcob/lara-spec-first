@@ -588,3 +588,64 @@ it('cuts a recursion that closes through additionalProperties', function (string
         ->and($inner?->recursesTo)->toBe('#/components/schemas/Node')
         ->and($inner?->additionalPropertiesSchema)->toBeNull();
 })->with(['3.0.3', '3.1.0']);
+
+/**
+ * The query parameters of a document whose `GET /things` writes the given parameter keywords, written to a temporary
+ * file because `style` and `explode` are the only keys that change between the cases.
+ *
+ * @param  array<string, mixed>  $keywords  what is written beside the parameter's `name` and `in`
+ * @return list<QueryParameter>
+ */
+function extractQueryParameterWith(array $keywords, string $version): array
+{
+    $document = [
+        'openapi' => $version,
+        'info' => ['title' => 'Fixture API', 'version' => '1.0.0'],
+        'paths' => ['/things' => ['get' => [
+            'operationId' => 'listThings',
+            'parameters' => [['name' => 'filter', 'in' => 'query', 'schema' => ['type' => 'object']] + $keywords],
+            'responses' => ['200' => ['description' => 'OK']],
+        ]]],
+    ];
+
+    $path = sys_get_temp_dir().'/lsf-query-style-'.bin2hex(random_bytes(6)).'.yaml';
+    file_put_contents($path, Yaml::dump($document, 12));
+
+    try {
+        return extractDocumentAt($path)[0]->queryParameters;
+    } finally {
+        unlink($path);
+    }
+}
+
+// The parser resolves OpenAPI's defaults (`form` and `explode: true`), and `style: deepObject` written alone comes back
+// with `explode: false`. A value the document got wrong is kept as written: judging it is the builder's, so that it is
+// reported rather than quietly replaced by a default.
+it('carries the style and explode of a query parameter', function (
+    string $version,
+    array $written,
+    mixed $style,
+    mixed $explode,
+): void {
+    $parameter = extractQueryParameterWith($written, $version)[0];
+
+    expect($parameter->style)->toBe($style)
+        ->and($parameter->explode)->toBe($explode);
+})->with(function (): Generator {
+    $rows = [
+        'nothing' => [[], 'form', true],
+        'deepObject alone' => [['style' => 'deepObject'], 'deepObject', false],
+        'deepObject, explode true' => [['style' => 'deepObject', 'explode' => true], 'deepObject', true],
+        'explode false' => [['explode' => false], 'form', false],
+        'pipeDelimited' => [['style' => 'pipeDelimited'], 'pipeDelimited', false],
+        'a style that is a number' => [['style' => 5], 5, false],
+        'an unknown style' => [['style' => 'bogus'], 'bogus', false],
+        'a text explode' => [['style' => 'spaceDelimited', 'explode' => 'yes'], 'spaceDelimited', 'yes'],
+    ];
+
+    foreach (['3.0.3', '3.1.0'] as $version) {
+        foreach ($rows as $name => [$written, $style, $explode]) {
+            yield "{$name}, {$version}" => [$version, $written, $style, $explode];
+        }
+    }
+});
