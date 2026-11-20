@@ -24,7 +24,8 @@ tags: [decisions, code-generation, openapi, compatibility]
 > - Turned down: keeping Laravel's own rule and adding a finding, which answered `422` to every client that followed the
 >   contract, and letting a looser rule through when a card names it.
 
-**Status:** Accepted · **Cards:** [#35](https://github.com/Gcob/lara-spec-first/issues/35) (the rule) and
+**Status:** Superseded by [ADR 0024](./0024-hold-rules-and-report-every-gap.md) · **Cards:**
+[#35](https://github.com/Gcob/lara-spec-first/issues/35) (the rule) and
 [#162](https://github.com/Gcob/lara-spec-first/issues/162) (the list of gaps) · **Pull requests:**
 [#105](https://github.com/Gcob/lara-spec-first/pull/105) (the rule) and
 [#172](https://github.com/Gcob/lara-spec-first/pull/172) (the list of gaps)

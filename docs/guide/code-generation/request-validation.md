@@ -47,8 +47,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 > - A constraint Laravel has no rule for is reported by name, never dropped and never approximated by a looser one. A
 >   rule is never stricter than the contract either, unless matching it exactly would be far too complex in Laravel, and
 >   then the generated file says so in a finding.
->   [The reasoning, and the places the code falls short](../../project/decisions/0006-hold-rules-to-the-contract.md), is
->   an ADR.
+>   [The reasoning, and the places the code falls short](../../project/decisions/0024-hold-rules-and-report-every-gap.md),
+>   is an ADR.
 > - `routeAction` receives the generated request as its first parameter, which is what makes Laravel run it at all, and
 >   hands the controller the typed DTO it built.
 
@@ -87,7 +87,7 @@ validates.
 
 **Everything in the right-hand column is named, per field, in the generated file's own `Findings` block**, which is the
 half that makes an incomplete rule set honest rather than misleading. A stricter rule is a named exception, a looser one
-is a gap listed in [the ADR](../../project/decisions/0006-hold-rules-to-the-contract.md), and nothing is dropped in
+is a gap listed in [the ADR](../../project/decisions/0024-hold-rules-and-report-every-gap.md), and nothing is dropped in
 silence: that is [the principle](#every-constraint-maps-or-reports) the rest of this page is about, and it is what makes
 each pass safe to ship on its own.
 
@@ -880,7 +880,7 @@ count as one of [the file's own findings](./generated-file-anatomy.md#every-gene
 **A keyword becomes the Laravel rule that means the same thing, or it becomes a report.** A generated rule is never
 looser than the contract, and never stricter either, in these words from the maintainer: _never stricter than the
 contract when it is not way too complicated to integrate in Laravel_. The reasoning, and the alternatives turned down,
-are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
+are in [ADR 0024](../../project/decisions/0024-hold-rules-and-report-every-gap.md).
 
 - **Never looser: accepting a payload the contract refuses.** The rule has no exception. Where the code falls short of
   it today, the gap has its card or its stated limit, for example a JSON client's `"42"` in a body that is JSON and a
