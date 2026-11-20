@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Run the demo for one minor release against a brand-new Laravel app.
-# Usage: demo/run.sh <minor> [<branch>]     (`demo/run.sh 0.2`, `demo/run.sh 0.3 release/0.3.0`)
+# Usage: demo/run.sh <minor> [<branch>] [--keep]
+#        (`demo/run.sh 0.2`, `demo/run.sh 0.3 release/0.3.0`, `demo/run.sh 0.2 --keep`)
 #
 # Step 6 of "Before the tag" in docs/contributing/releasing.md. It replaces the
 # smoke test that used to be there, and keeps its four checks as the first
@@ -12,7 +13,8 @@
 # the code a developer writes on top of what the package generates (`app/` and
 # `database/`), the Laravel version it was written for (`laravel-version`), the
 # exit code `spec:doctor` gives its contract (`doctor-exit`), and Hurl scenarios.
-# What it does, in a temporary directory it deletes on exit:
+# What it does, in a temporary directory it deletes on exit (or, with `--keep`,
+# in `demo/<minor>/.app/`, which stays after the run):
 #
 #   1. creates a fresh Laravel app, pinned to the folder's `laravel-version`;
 #   2. requires this package: `<minor>.*` from Packagist, or the archive of
@@ -42,9 +44,13 @@
 # Exit codes: 0 when the doctor's code matches and every scenario file passes,
 # 1 when a check failed (the doctor's or Hurl's output is printed), 2 when it
 # could not get as far as checking. Nothing is left behind, so it can be run
-# again at once. The `php`, `composer`, `curl`, `git`, `tar` and `hurl` commands
-# must be on the PATH, and the machine needs the network for Packagist. `just
-# demo` runs this file in a container where they all are.
+# again at once, unless `--keep` is given: then the app stays in
+# `demo/<minor>/.app/` (ignored by git), pass or fail, to read what the package
+# generated or why a scenario failed. The next `--keep` run replaces it, after
+# its arguments, tools and branch are checked, so a run that stops there leaves
+# the old one alone. The `php`, `composer`, `curl`, `git`, `tar` and `hurl`
+# commands must be on the PATH, and the machine needs the network for Packagist.
+# `just demo` runs this file in a container where they all are.
 
 set -euo pipefail
 
@@ -59,11 +65,14 @@ if [ -n "${DEMO_GIT_DIR:-}" ]; then
 fi
 
 WORK=""
+APP=""
 SERVER_PID=""
 FAILED=0
+KEEP=0
+REPLACED=0
 
 usage() {
-    echo "Usage: demo/run.sh <minor> [<branch>]" >&2
+    echo "Usage: demo/run.sh <minor> [<branch>] [--keep]" >&2
     exit 2
 }
 
@@ -74,6 +83,11 @@ cleanup() {
     fi
     if [ -n "$WORK" ] && [ -d "$WORK" ]; then
         rm -rf "$WORK"
+    fi
+    # Only an app this run built: an early stop leaves the previous one alone, and
+    # must not claim it. A failing `composer create-project` can leave no folder.
+    if [ "$REPLACED" = 1 ] && [ -d "$APP" ]; then
+        echo "The app is kept in demo/$MINOR/.app/"
     fi
 }
 trap cleanup EXIT
@@ -107,6 +121,19 @@ scenario() {
         FAILED=$((FAILED + 1))
     fi
 }
+
+# A flag is read anywhere, like scripts/release-prep.sh reads `--dry-run`. A git
+# branch cannot be named `--keep`, so a flag never hides a branch.
+positional=()
+for argument in "$@"; do
+    case "$argument" in
+        --keep) KEEP=1 ;;
+        -*) usage ;;
+        *) positional+=("$argument") ;;
+    esac
+done
+# `${positional[@]+...}`: macOS's bash 3.2 fails on an empty array under `set -u`.
+set -- ${positional[@]+"${positional[@]}"}
 
 [ $# -ge 1 ] && [ $# -le 2 ] && [ -n "$1" ] || usage
 MINOR="$1"
@@ -151,7 +178,15 @@ EXPECTED_DOCTOR="$(tr -d '[:space:]' <"$FOLDER/doctor-exit")"
 echo "PHP $(php -r 'echo PHP_VERSION;'), Hurl $(hurl --version | awk 'NR == 1 { print $2 }')"
 
 WORK="$(mktemp -d)"
-APP="$WORK/app"
+if [ "$KEEP" = 1 ]; then
+    # Only now, after every check that can stop the run, so an early stop leaves
+    # the previous app in place. `composer create-project` wants an empty target.
+    APP="$FOLDER/.app"
+    rm -rf "$APP"
+    REPLACED=1
+else
+    APP="$WORK/app"
+fi
 
 echo "Demo $MINOR${BRANCH:+ on $BRANCH}, in a fresh Laravel app"
 
@@ -253,7 +288,7 @@ PORT="$(php -r '$s = stream_socket_server("tcp://127.0.0.1:0"); echo parse_url(s
 # inside `public`.
 cd public
 php -d opcache.enable=0 -S "127.0.0.1:$PORT" \
-    ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php >"$WORK/serve.log" 2>&1 &
+    ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php >"$APP/storage/logs/serve.log" 2>&1 &
 SERVER_PID=$!
 cd ..
 
@@ -267,7 +302,7 @@ for _ in $(seq 1 60); do
     sleep 0.5
 done
 if [ "$ready" != 1 ]; then
-    cat "$WORK/serve.log" >&2
+    cat "$APP/storage/logs/serve.log" >&2
     die "the server did not answer on port $PORT"
 fi
 

@@ -249,8 +249,9 @@ clean:
 
 # `demo` runs on the host and wraps a script, which runs `composer demo` in the container, like `format-md` runs
 # Prettier. The script exists because git needs help to read a linked worktree from inside the container (see its
-# header). Native: `composer demo -- 0.2`, or `demo/run.sh 0.2`, which is what CI runs.
+# header). Native: `composer demo -- 0.2`, or `demo/run.sh 0.2`, which is what CI runs. `--keep` keeps the app in
+# `demo/<minor>/.app/` (git ignores it): `run.sh` reads it anywhere among its arguments, so the recipe passes it on.
 
-# Run the demo for a minor release in a fresh Laravel app: `just demo 0.2`, or `just demo 0.3 my-branch`.
-demo minor branch="":
-    ./scripts/demo-in-docker.sh {{minor}} {{branch}}
+# Run the demo for a minor release in a fresh Laravel app: `just demo 0.2`, `just demo 0.2 --keep` to keep the app.
+demo minor branch="" *flags:
+    ./scripts/demo-in-docker.sh {{minor}} {{branch}} {{flags}}
