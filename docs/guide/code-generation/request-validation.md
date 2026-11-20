@@ -1100,7 +1100,11 @@ it, which stops refusing undeclared keys). A field that states none of that lose
 finding is information, and so is an empty bracketed property of an open `deepObject`. `required` on a `readOnly`
 property is not recorded, dropped or not: the request does what the contract says there, since `required` takes effect
 on the response only, so the generated file says it in a finding, which the build does not count in its warning, and the
-doctor has nothing to report. Nor is the `required` of a top-level name of a `PATCH` body, which asks for none. The
+doctor has nothing to report. Nor is the `required` of a top-level name of a `PATCH` body, which asks for none. Every
+finding of a rule set is exactly one of four kinds, and the record says which: a gap, which always has an entry (a
+keyword and the field it was left unenforced on), a finding that says the request is stricter than the contract,
+information, or a fault in the document. The build counts a request in its warning when its rule set holds a gap or a
+fault, and the doctor reports those same entries, so a request the build counts is always one the doctor reports. The
 `Ignored` keywords are not in a rule set at all, since nothing reads them, and the reading collects them with their
 position instead. See [the doctor's Support findings](../doctor.md#what-it-checks).
 

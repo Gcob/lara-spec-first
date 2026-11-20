@@ -6563,3 +6563,111 @@ it('keeps presence and a finding for a field that two allOf branches point back 
         ->toContain('`part` points back at `#/components/schemas/Left` and `#/components/schemas/Right`')
         ->toContain('nothing below it is validated');
 });
+
+// The build and the doctor read one record. A request counts in the build warning exactly when its rule set holds a gap
+// with an entry the doctor reports (or a document fault), and the findings left once one occurrence of each stricter,
+// information and fault sentence is taken out say the same thing: a finding with no entry and no kind is a request the
+// build counts and the doctor cannot name.
+it('counts a request in the build warning exactly when the doctor reports a gap', function (Operation $operation, bool $gap, ?RuleSetOptions $options = null): void {
+    $set = RuleSetBuilder::for($operation, $options ?? new RuleSetOptions);
+    $left = $set->findings;
+
+    // One occurrence per entry, not every finding with that text: a gap and a piece of information can read the same.
+    foreach ([...$set->stricter, ...$set->information, ...$set->documentFaults] as $sentence) {
+        $at = array_search($sentence, $left, true);
+
+        if ($at !== false) {
+            unset($left[$at]);
+        }
+    }
+
+    expect($set->leavesUnenforced())->toBe($gap)
+        ->and($set->unenforced !== [] || $set->documentFaults !== [])->toBe($gap)
+        ->and($left === [])->toBe($set->unenforced === []);
+})->with(function (): array {
+    $string = new Schema(types: [SchemaType::String]);
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $boolean = new Schema(types: [SchemaType::Boolean]);
+    $avatar = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $json = static fn (Schema $schema, string $method = 'post'): Operation => operationWithInput(method: $method, content: ['application/json' => $schema]);
+    $deepObject = static fn (Schema $schema): Operation => operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('filter', $schema, style: 'deepObject', explode: true)],
+    );
+    $required = static fn (Schema $schema): Operation => operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('filter', $schema, required: true, style: 'deepObject', explode: true)],
+    );
+    $closed = static fn (array $properties, array $required = []): Schema => new Schema(
+        types: [SchemaType::Object],
+        properties: $properties,
+        required: array_values($required),
+        additionalProperties: false,
+    );
+    $ids = deepObjectArray($integer, min: 1, max: 3, unique: true);
+
+    $rows = [
+        // Gaps: a keyword or a type the request leaves unchecked, each with its entry.
+        'an untyped enum stays a gap' => [$json(objectSchema(['level' => new Schema(enum: [1, 2, 3])])), true],
+        'two media types with a file part' => [operationWithInput(
+            content: [
+                'application/json' => objectSchema(['avatar' => $avatar]),
+                'multipart/form-data' => objectSchema(['avatar' => $avatar]),
+            ],
+        ), true],
+        'an undeclared required name beside an unsparable value schema' => [$json(new Schema(
+            types: [SchemaType::Object],
+            properties: ['a.b' => $integer],
+            required: ['c'],
+            additionalPropertiesSchema: $integer,
+        )), true],
+        'a sentence that is information on another field' => [$json(objectSchema([
+            'address.id' => new Schema,
+            'address' => objectSchema(['id' => new Schema(enum: [1, 2])]),
+        ])), true],
+        'a reading line beside a gap' => [$deepObject(objectSchema([
+            'ids' => deepObjectArray($integer),
+            'next' => new Schema(types: [SchemaType::String], format: 'uri-reference'),
+        ])), true],
+        'an array held under any' => [$deepObject(objectSchema(['ids' => $ids])), true, new RuleSetOptions(DeepObjectArrays::Any)],
+        'a bracketed property of a closed deepObject' => [$deepObject($closed(['a[b]' => $integer])), true],
+        'an empty bracketed property of a closed deepObject' => [$deepObject($closed(['e[f]' => new Schema])), true],
+        'an unread media type' => [operationWithInput(content: ['application/xml' => objectSchema(['a' => $string])]), true],
+        'a body that is not an object' => [$json($string), true],
+        'a query array no rule set reads' => [operationWithInput(
+            method: 'get',
+            query: [new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: $string), style: 'form', explode: false)],
+        ), true],
+        // Information and stricter: said in the generated file, and counted by neither the build nor the doctor.
+        'a boolean item of a deepObject list' => [$deepObject(objectSchema(['flags' => deepObjectArray($boolean)])), false],
+        'a dropped field that states nothing' => [operationWithInput(
+            content: ['application/x-www-form-urlencoded' => objectSchema(['[x]' => new Schema])],
+            bodyRequired: false,
+        ), false],
+        'an empty bracketed property of an open deepObject' => [$deepObject(objectSchema(['e[f]' => new Schema])), false],
+        'a text boolean' => [operationWithInput(method: 'get', query: [new QueryParameter('notify', $boolean)]), false],
+        'a PATCH' => [$json(objectSchema(['a' => $string], ['a']), 'patch'), false],
+        'an empty form' => [operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['a' => $string])]), false],
+        'a text enum' => [operationWithInput(method: 'get', query: [new QueryParameter('mode', new Schema(enum: [1, 2, 3]))]), false],
+        'a required deepObject left out' => [$required(objectSchema(['a' => $integer])), false],
+        'an empty list left out' => [$required(objectSchema(['ids' => deepObjectArray($integer)], ['ids'])), false],
+        'a PUT' => [$json(objectSchema(['a' => $string, 'b' => $string], ['a']), 'put'), false],
+        'a readOnly property that is required' => [$json(objectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id'])), false],
+        'the untyped root' => [$json(new Schema(properties: ['name' => $string])), false],
+        'a depth cut' => [$json(recursiveAddress(maxDepth: 2)), false],
+        // The body is no object, and it states nothing a request could leave unchecked: a field the rule set drops that
+        // states nothing loses nothing, whether it is a name or the body itself.
+        'an optional body that states nothing' => [operationWithInput(content: ['application/json' => new Schema], bodyRequired: false), false],
+        'a required body that states nothing' => [operationWithInput(content: ['application/json' => new Schema]), true],
+    ];
+
+    // Every operation of the fixtures that hold a gap, and of those that hold a standard reading: each is a request
+    // the build and the doctor must agree on.
+    foreach ([['doctor-unreported-gaps.yaml', true], ['doctor-standard-readings.yaml', false], ['informational-findings.yaml', false]] as [$fixture, $gap]) {
+        foreach (extractFixture($fixture) as $operation) {
+            $rows[$fixture.' '.$operation->operationId] = [$operation, $gap];
+        }
+    }
+
+    return $rows;
+});
