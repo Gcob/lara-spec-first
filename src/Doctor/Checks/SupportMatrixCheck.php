@@ -57,6 +57,7 @@ final readonly class SupportMatrixCheck
      */
     private const UNENFORCED_SECTIONS = [
         'encoding' => 'Parameters, bodies, responses',
+        'content' => 'Parameters, bodies, responses',
     ];
 
     /**
@@ -179,10 +180,11 @@ final readonly class SupportMatrixCheck
      * the message names the rest. A keyword written in the request and in a response of one operation is still one
      * finding, listing every position with the request's first, and saying what each direction does with it. A
      * `Partial` keyword has no position the contract states beyond the field it is written on, so its message lists the
-     * fields and its pointer is the operation's, as {@see self::missingOperationId()}'s is. Its level is `Partial` for
-     * all of them, which is the level of the gap rather than of the keyword: the matrix rates `enum` as honored, and an
-     * `enum` on an object is a field it was not read for. Taking each keyword's level from the matrix would need the
-     * matrix in code, and nothing but this report would read it, so the message says it instead.
+     * fields and its pointer is the operation's, as {@see self::missingOperationId()}'s is. A media type the package
+     * does not read is the one that is not a keyword: it is named on the media type, in its own sentence. Its level is
+     * `Partial` for all of them, which is the level of the gap rather than of the keyword: the matrix rates `enum` as
+     * honored, and an `enum` on an object is a field it was not read for. Taking each keyword's level from the matrix
+     * would need the matrix in code, and nothing but this report would read it, so the message says it instead.
      *
      * **The body and the `query` parameters, and the JSON schemas of each response that got a DTO.** A status with no
      * DTO is left out: its schema is not read into any type, so a keyword in it is not one a DTO leaves behind. The
@@ -332,18 +334,28 @@ final readonly class SupportMatrixCheck
                 self::SECTION,
                 SupportLevel::Partial,
                 DocumentPointer::forOperation($operation),
-                sprintf(
-                    '%s writes %s where the generated request does not enforce it, or enforces only part of it: %s. '.
-                    'The support matrix may rate `%s` as honored in general, and on these fields the rules leave it out '.
-                    'or hold only part of it: the findings in the generated file say which. See '.
-                    'docs/guide/openapi-support.md, "%s". This is a fact about this package, not a defect '.
-                    'in your contract.',
-                    $operation->label(),
-                    self::UNENFORCED_NAMES[$keyword] ?? '`'.$keyword.'`',
-                    implode(', ', $fields),
-                    $keyword,
-                    self::UNENFORCED_SECTIONS[$keyword] ?? 'Schemas',
-                ),
+                $keyword === 'content'
+                    ? sprintf(
+                        '%s declares a media type this package does not read: %s. Nothing in the generated request '.
+                        'comes from it, so a client that sends it is not checked against the schema. See '.
+                        'docs/guide/openapi-support.md, "%s". This is a fact about this package, not a defect '.
+                        'in your contract.',
+                        $operation->label(),
+                        implode(', ', $fields),
+                        self::UNENFORCED_SECTIONS[$keyword],
+                    )
+                    : sprintf(
+                        '%s writes %s where the generated request does not enforce it, or enforces only part of it: %s. '.
+                        'The support matrix may rate `%s` as honored in general, and on these fields the rules leave it out '.
+                        'or hold only part of it: the findings in the generated file say which. See '.
+                        'docs/guide/openapi-support.md, "%s". This is a fact about this package, not a defect '.
+                        'in your contract.',
+                        $operation->label(),
+                        self::UNENFORCED_NAMES[$keyword] ?? '`'.$keyword.'`',
+                        implode(', ', $fields),
+                        $keyword,
+                        self::UNENFORCED_SECTIONS[$keyword] ?? 'Schemas',
+                    ),
             );
         }
 

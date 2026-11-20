@@ -498,11 +498,15 @@ it('reads an allOf branch, a nested object and a query parameter', function (): 
 
 // A body in a media type this package does not read produces no rule, so a
 // keyword in it is not one that goes unenforced: the media type itself is what
-// the generated request says it did not read.
-it('ignores a media type the rule set does not read', function (): void {
-    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest([
+// the generated request says it did not read, and the one thing the doctor names.
+it('names the media type, and not a keyword in it, when the rule set does not read it', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest([
         'application/xml' => supportMatrixObject(ignored: ['oneOf' => '#/xml/oneOf']),
-    ])], new RuleSetOptions))->toBe([]);
+    ])], new RuleSetOptions);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->message)->toContain('`application/xml`')
+        ->and($findings[0]->message)->not->toContain('oneOf');
 });
 
 it('is silent about an operation whose request writes no ignored keyword', function (): void {
@@ -640,6 +644,42 @@ it('reports every gap a generated request counts as Partial', function (array $c
         [new QueryParameter('mode', new Schema(enum: [true]))],
         ['enum' => '`mode`'],
     ];
+    yield 'a body root that is not an object' => [
+        ['application/json' => new Schema(types: [SchemaType::Array], items: $string, maxItems: 3)],
+        [],
+        ['required' => 'The body itself', 'type' => 'The body itself', 'maxItems' => 'The body itself', 'items' => 'The body itself'],
+    ];
+    yield 'a query array the request reads in part' => [
+        [],
+        [new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: $string))],
+        ['type' => '`tags`', 'items' => '`tags`'],
+    ];
+    yield 'a closed deepObject around a bracketed property' => [
+        [],
+        [new QueryParameter('filter', new Schema(
+            types: [SchemaType::Object],
+            properties: ['a[b]' => $integer],
+            additionalProperties: false,
+        ), style: 'deepObject', explode: true)],
+        ['additionalProperties' => '`filter`', 'type' => '`filter[a[b]]`'],
+    ];
+});
+
+// A media type the package does not read is named by the doctor on the media type itself, in the section of the matrix
+// that rates bodies, and not as a keyword of a schema.
+it('names a media type the rule set does not read', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest([
+        'application/json' => supportMatrixObject(['a' => new Schema(types: [SchemaType::String])]),
+        'application/xml' => supportMatrixObject(['a' => new Schema(types: [SchemaType::String])]),
+    ])], new RuleSetOptions);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($findings[0]->level)->toBe(SupportLevel::Partial)
+        ->and($findings[0]->message)->toContain('post /things declares a media type this package does not read: `application/xml`')
+        ->and($findings[0]->message)->toContain('docs/guide/openapi-support.md, "Parameters, bodies, responses"')
+        ->and($findings[0]->message)->not->toContain('on these fields')
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
 });
 
 // The matrix rates `enum` as honored, and a `const` is read as a one-value `enum`: the sentence says both, so a reader
@@ -672,7 +712,7 @@ it('does not report what a generated file only mentions', function (): void {
     expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest([
         'application/json' => supportMatrixObject(['a' => new Schema(types: [SchemaType::String])]),
         'multipart/form-data' => supportMatrixObject(['a' => new Schema(types: [SchemaType::String])]),
-    ], [new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])))])], new RuleSetOptions))
+    ])], new RuleSetOptions))
         ->toBe([]);
 });
 
@@ -720,30 +760,35 @@ it('gates the exit code as a package limit, never as a document fault', function
 
 // The doctor reported a schema under `additionalProperties` as `Ignored` before the contract carried it. Where the build
 // derives no rule from the schema at all, it is still a finding, now `Partial`, and the exit code stays `2`.
-it('keeps reporting an additionalProperties schema where no rule set reads the schema', function (array $content, array $query, string $site): void {
+it('keeps reporting an additionalProperties schema where no rule set reads the schema', function (array $content, array $query, string $site, int $count): void {
     assert(array_is_list($query));
 
     $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest($content, $query)], new RuleSetOptions);
+    $named = array_values(array_filter($findings, static fn (Finding $finding): bool => str_contains($finding->message, 'writes `additionalProperties`')));
 
-    expect($findings)->toHaveCount(1)
-        ->and($findings[0]->class)->toBe(FindingClass::PackageLimit)
-        ->and($findings[0]->level)->toBe(SupportLevel::Partial)
-        ->and($findings[0]->message)->toContain('`additionalProperties`')
-        ->and($findings[0]->message)->toContain($site)
+    // The rest of the field is named beside it, one finding per keyword: what a root that is not an object, or a query
+    // parameter the request does not read, states besides.
+    expect($findings)->toHaveCount($count)
+        ->and($named)->toHaveCount(1)
+        ->and($named[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($named[0]->level)->toBe(SupportLevel::Partial)
+        ->and($named[0]->message)->toContain($site)
         ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
 })->with(function (): Generator {
     $value = new Schema(types: [SchemaType::Integer]);
 
-    yield 'a typeless body' => [['application/json' => new Schema(additionalPropertiesSchema: $value)], [], 'The body'];
+    yield 'a typeless body' => [['application/json' => new Schema(additionalPropertiesSchema: $value)], [], 'The body itself', 2];
     yield 'an array body of maps' => [
         ['application/json' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value))],
         [],
-        'The body',
+        'The body itself',
+        4,
     ];
     yield 'a query parameter typed object' => [
         [],
         [new QueryParameter('filter', new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String])))],
         '`filter`',
+        2,
     ];
 });
 
@@ -754,9 +799,13 @@ it('reports a malformed style or explode of a query parameter as a fault in the 
         new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: $style, explode: $explode),
     ])], new RuleSetOptions);
 
-    expect($findings)->toHaveCount(1)
-        ->and($findings[0]->class)->toBe(FindingClass::DocumentFault)
-        ->and($findings[0]->message)->toContain($written)
+    // A style the document wrote wrong is read as no style, so the object is one the request does not read whole: the
+    // doctor names its `type` beside the fault, and the fault still decides the exit code.
+    $faults = array_values(array_filter($findings, static fn (Finding $finding): bool => $finding->class === FindingClass::DocumentFault));
+
+    expect($findings)->toHaveCount(2)
+        ->and($faults)->toHaveCount(1)
+        ->and($faults[0]->message)->toContain($written)
         ->and(supportMatrixReport($findings)->exitCode())->toBe(1);
 })->with([
     'a number as the style' => [5, false, '`filter` writes a `style` of `5`'],
@@ -764,24 +813,27 @@ it('reports a malformed style or explode of a query parameter as a fault in the 
     'a text explode' => ['form', 'yes', '`filter` writes an `explode` of `yes`'],
 ]);
 
-it('reports nothing for a query parameter written with a style and an explode OpenAPI defines', function (): void {
-    expect(SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
+it('reports no fault for a query parameter written with a style and an explode OpenAPI defines', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
         new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: 'form', explode: false),
-    ])], new RuleSetOptions))->toBe([]);
+    ])], new RuleSetOptions);
+
+    // The object sent as one string is a package limit the doctor names, and not the document's fault.
+    expect(array_map(static fn (Finding $finding): FindingClass => $finding->class, $findings))->toBe([FindingClass::PackageLimit]);
 });
 
 // A deepObject is validated now, so the doctor's answer moves with the rule set it reads, with no code of its own: a keyword
 // inside it that no rule enforces is named (it was silent), a map whose values are judged is not (it was reported). An
-// array inside it follows `query.deep_object_arrays`: held at its presence under `any`, where the finding in the generated
-// file says so and the doctor adds nothing, and checked by its brackets otherwise, where a keyword no rule enforces inside
-// an item, or `uniqueItems` on objects, is named as it is anywhere else.
-it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, DeepObjectArrays $reading, int $exitCode, ?string $named, ?string $at): void {
+// array inside it follows `query.deep_object_arrays`: held at its presence under `any`, where the doctor names the array
+// and each keyword it states, and checked by its brackets otherwise, where a keyword no rule enforces inside an item, or
+// `uniqueItems` on objects, is named as it is anywhere else.
+it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, DeepObjectArrays $reading, int $exitCode, ?string $named, ?string $at, int $count): void {
     $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
         new QueryParameter('filter', $schema, style: 'deepObject', explode: false),
     ])], new RuleSetOptions($reading));
 
     expect(supportMatrixReport($findings)->exitCode())->toBe($exitCode)
-        ->and($findings)->toHaveCount($named === null ? 0 : 1);
+        ->and($findings)->toHaveCount($count);
 
     if ($named !== null) {
         expect($findings[0]->level)->toBe(SupportLevel::Partial)
@@ -799,6 +851,7 @@ it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, D
         2,
         '`format`',
         '`filter[next]`',
+        1,
     ];
     yield 'a map whose values are judged' => [
         new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String])),
@@ -806,13 +859,16 @@ it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, D
         0,
         null,
         null,
+        0,
     ];
+    // One finding per keyword it states (the array and its four): the doctor names what nothing checks.
     yield 'an array held at its presence' => [
         supportMatrixObject(['ids' => new Schema(types: [SchemaType::Array], items: $integers, minItems: 1, maxItems: 3, uniqueItems: true)]),
         DeepObjectArrays::Any,
-        0,
-        null,
-        null,
+        2,
+        '`type`',
+        '`filter[ids]`',
+        5,
     ];
     yield 'integers with bounds and unique items, by brackets' => [
         supportMatrixObject(['ids' => new Schema(types: [SchemaType::Array], items: $integers, minItems: 1, maxItems: 3, uniqueItems: true)]),
@@ -820,11 +876,12 @@ it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, D
         0,
         null,
         null,
+        0,
     ];
-    yield 'objects with unique items, by brackets' => [supportMatrixObject(['rows' => $objects]), DeepObjectArrays::Brackets, 2, '`uniqueItems`', '`filter[rows]`'];
-    yield 'objects with unique items, held at their presence' => [supportMatrixObject(['rows' => $objects]), DeepObjectArrays::Any, 0, null, null];
-    yield 'strings with a format, by brackets' => [supportMatrixObject(['links' => $links]), DeepObjectArrays::Brackets, 2, '`format`', '`filter[links][]`'];
-    yield 'strings with a format, held at their presence' => [supportMatrixObject(['links' => $links]), DeepObjectArrays::Any, 0, null, null];
+    yield 'objects with unique items, by brackets' => [supportMatrixObject(['rows' => $objects]), DeepObjectArrays::Brackets, 2, '`uniqueItems`', '`filter[rows]`', 1];
+    yield 'objects with unique items, held at their presence' => [supportMatrixObject(['rows' => $objects]), DeepObjectArrays::Any, 2, '`type`', '`filter[rows]`', 3];
+    yield 'strings with a format, by brackets' => [supportMatrixObject(['links' => $links]), DeepObjectArrays::Brackets, 2, '`format`', '`filter[links][]`', 1];
+    yield 'strings with a format, held at their presence' => [supportMatrixObject(['links' => $links]), DeepObjectArrays::Any, 2, '`type`', '`filter[links]`', 2];
 });
 
 // The note about a required deepObject accepted left out is information: it loses no constraint, so the doctor stays quiet.

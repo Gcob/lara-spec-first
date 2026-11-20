@@ -69,8 +69,10 @@ final class RuleWalk
      * say what a reader of the file would otherwise not see: a body key a `query` parameter shadows, a name a form
      * rewrites, a `readOnly` field that is required, two media types over one schema, the optional fields of a `PUT`, a
      * required name no `properties` declares, an untyped field that states nothing else, a boolean read as text (a
-     * query parameter, a form field, or an item of a boolean list in the query string) and an untyped `enum` of numbers
-     * or strings read as text. Nothing is unenforced by them, so the build does not count them.
+     * query parameter, a form field, or an item of a boolean list in the query string), an untyped `enum` of numbers or
+     * strings read as text, a `PATCH` whose required list is read as empty, a required form body that accepts an empty
+     * form, and an empty bracketed property of an open `deepObject`. Nothing is unenforced by them, so the build does
+     * not count them.
      *
      * @var list<string>
      */
