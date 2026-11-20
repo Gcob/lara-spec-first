@@ -284,7 +284,18 @@ final readonly class RuleSetBuilder
         foreach ($operation->queryParameters as $index => $parameter) {
             $plan = $plans[$index];
 
-            array_push($walk->findings, ...$plan['findings']);
+            // A name's sentence is information when none of the names it is about states anything, and a gap with
+            // the entries of those that do: a sentence about two names is not a gap for one of them alone.
+            foreach ($plan['findings'] as $finding) {
+                $entries = [];
+
+                foreach ($finding['names'] as $at) {
+                    $named = $operation->queryParameters[$at];
+                    $entries['`'.$named->name.'`'] = self::droppedKeywords($named->schema, $named->required);
+                }
+
+                self::dropFields($walk, $finding['text'], $entries);
+            }
 
             // A plain name is refused where a rewritten one only keeps its finding (the plan above): the name is
             // the contract's own key, so the build would be choosing which half of the contract to enforce. Before
@@ -311,7 +322,9 @@ final readonly class RuleSetBuilder
             [$style, $explode] = self::querySerialization($walk, $parameter);
 
             if ($plan['key'] === null) {
-                self::leaveFieldUnenforced($walk, '`'.$parameter->name.'`', $parameter->schema, $parameter->required);
+                // Its sentence was written above. A name that has none of its own (the second of two names under one
+                // key) still leaves what it states unenforced.
+                self::leaveDropped($walk, '`'.$parameter->name.'`', self::droppedKeywords($parameter->schema, $parameter->required));
 
                 continue;
             }
@@ -870,6 +883,7 @@ final readonly class RuleSetBuilder
         $walk->requiredRoot = $body->required;
         $walk->nullableRequiredBody = $body->required && $walk->jsonRoot && $walk->nullableRoot
             && $operation->method !== HttpMethod::Patch;
+        $walk->patchBody = $operation->method === HttpMethod::Patch;
         $walk->rootKey = self::rootKey($schema, $operation);
 
         $walk->bodyNames = self::declaredNames($schema);
@@ -1425,7 +1439,7 @@ final readonly class RuleSetBuilder
         bool $valuesJudged = false,
         ?string $parentLabel = null,
     ): void {
-        $dependents = self::dependents($schema, $walk, $prefix);
+        $dependents = self::dependents($schema, $walk, $prefix, $parentLabel);
 
         // Why: a dependent array that may be empty has no bracketed form either, so a client with nothing to send
         // cannot satisfy `present_with` for it, and the contract accepts that client.
@@ -1452,14 +1466,11 @@ final readonly class RuleSetBuilder
             $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
-                $walk->findings[] = $unescapable;
-                self::leaveFieldUnenforced(
-                    $walk,
-                    $childLabel,
+                self::dropFields($walk, $unescapable, [$childLabel => self::droppedKeywords(
                     $property,
-                    in_array($name, $schema->required, true),
+                    self::askedWhenDropped($walk, $property, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
                     isset($dependents[$name]),
-                );
+                )]);
 
                 continue;
             }
@@ -1530,14 +1541,11 @@ final readonly class RuleSetBuilder
             $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
-                $walk->findings[] = $unescapable;
-                self::leaveFieldUnenforced(
-                    $walk,
-                    $childLabel,
+                self::dropFields($walk, $unescapable, [$childLabel => self::droppedKeywords(
                     new Schema,
-                    in_array($name, $schema->required, true),
+                    self::askedWhenDropped($walk, new Schema, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
                     isset($dependents[$name]),
-                );
+                )]);
 
                 continue;
             }
@@ -1635,30 +1643,37 @@ final readonly class RuleSetBuilder
      *
      * @return array<string, list<string>> a dependent name => trigger rule keys
      */
-    private static function dependents(Schema $schema, RuleWalk $walk, string $prefix): array
+    private static function dependents(Schema $schema, RuleWalk $walk, string $prefix, ?string $parentLabel = null): array
     {
         $dependents = [];
 
         foreach ($schema->dependentRequired as $trigger => $names) {
             $trigger = (string) $trigger;
             $unescapable = self::unescapableKey($trigger);
-
-            if ($unescapable !== null) {
-                $walk->findings[] = $unescapable;
-
-                continue;
-            }
-
-            $keys = self::triggerKeys($trigger, $walk, $prefix);
+            $keys = $unescapable === null ? self::triggerKeys($trigger, $walk, $prefix) : [];
 
             if ($keys === []) {
-                // The name itself was reported when the names were planned: this says what it costs.
-                $walk->findings[] = sprintf(
+                // What the dependents lose when no rule holds the trigger: the dependency, which nothing asks for.
+                $lost = [];
+
+                foreach ($names as $name) {
+                    $lost[self::bracketLabel($walk, $parentLabel, (string) $name) ?? '`'.$prefix.$name.'`'] = ['dependentRequired'];
+                }
+
+                // The name itself was reported when the names were planned, or is reported by the walk of the
+                // properties below, which writes the `*` sentence for a name `properties` or `required` declares. A `*`
+                // trigger nothing declares has no other place to say it.
+                if ($unescapable !== null && ! self::declaresName($schema, $trigger)) {
+                    self::dropFields($walk, $unescapable, $lost);
+                }
+
+                // This says what it costs.
+                self::dropFields($walk, sprintf(
                     '`%s` would make %s required, but it has no rule, so %s not asked for through it.',
                     $trigger,
                     self::list(array_map('strval', $names)),
                     count($names) === 1 ? 'that is' : 'those are',
-                );
+                ), $lost);
 
                 continue;
             }
@@ -1684,6 +1699,25 @@ final readonly class RuleSetBuilder
         }
 
         return $dependents;
+    }
+
+    /**
+     * Whether the walk of an object's names reaches this one: it is a property, or a name the object requires or makes
+     * required, and so gets the finding for a name it drops.
+     */
+    private static function declaresName(Schema $schema, string $name): bool
+    {
+        if (isset($schema->properties[$name]) || in_array($name, $schema->required, true)) {
+            return true;
+        }
+
+        foreach ($schema->dependentRequired as $names) {
+            if (in_array($name, array_map('strval', $names), true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -3110,34 +3144,88 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * The keywords of a field the rule set drops whole, as data for the doctor.
+     * Write the finding of a field, or of several, the rule set drops whole, and record what each states that nothing
+     * enforces.
      *
-     * A field with no rule key (a `query` name PHP appends to or delivers under no name, a `*` Laravel reads as a
-     * wildcard) gets a finding of its own that says so, and none of what the contract states about it is enforced: not
-     * its presence, and not any keyword a rule could have come from. Those are the same unenforced keywords as any
-     * other, so they are named the same way.
+     * A field with no rule key (a `query` name PHP appends to, a `*` Laravel reads as a wildcard, a form name PHP
+     * delivers under no name or under another's) gets a finding that says so, and none of what the contract states
+     * about it is enforced: not its presence, not its type, and not any keyword a rule could have come from. Those are
+     * the same unenforced keywords as any other, so they are named the same way, with what
+     * {@see self::droppedKeywords()} says for each field.
      *
-     * @param  bool  $required  whether the contract asks for the field
-     * @param  bool  $dependent  whether `dependentRequired` asks for it
+     * Why information when there is nothing to name: a field that states no type, no keyword and no presence loses
+     * nothing by having no rule, and the sentence only tells a reader of the file where the field went.
+     *
+     * @param  array<string, list<string>>  $entries  the keywords each field the sentence is about leaves unenforced,
+     *                                                by the field's label
      */
-    private static function leaveFieldUnenforced(
-        RuleWalk $walk,
-        string $label,
-        Schema $schema,
-        bool $required,
-        bool $dependent = false,
-    ): void {
+    private static function dropFields(RuleWalk $walk, string $finding, array $entries): void
+    {
+        $named = array_filter($entries, static fn (array $keywords): bool => $keywords !== []);
+
+        if ($named === []) {
+            $walk->information($finding);
+
+            return;
+        }
+
+        $walk->findings[] = $finding;
+
+        foreach ($named as $label => $keywords) {
+            self::leaveDropped($walk, (string) $label, $keywords);
+        }
+    }
+
+    /**
+     * Record what a field the rule set drops leaves unenforced, for a field whose finding is written elsewhere.
+     *
+     * @param  list<string>  $keywords
+     */
+    private static function leaveDropped(RuleWalk $walk, string $label, array $keywords): void
+    {
+        foreach ($keywords as $keyword) {
+            $walk->leaveUnenforced($keyword, $label);
+        }
+    }
+
+    /**
+     * What a field the rule set drops states and nothing enforces: as the field would be read if it were kept, its
+     * presence, the `dependentRequired` that asks for it, its type, then every keyword a rule could have come from.
+     *
+     * @param  bool  $required  whether the rule set would have asked for the field, which the caller decides: never for
+     *                          a `readOnly` property or a top-level name of a `PATCH`, as for a field it keeps
+     * @param  bool  $dependent  whether `dependentRequired` asks for it
+     * @return list<string>
+     */
+    private static function droppedKeywords(Schema $schema, bool $required, bool $dependent = false): array
+    {
+        $keywords = [];
+
         if ($required) {
-            $walk->leaveUnenforced('required', $label);
+            $keywords[] = 'required';
         }
 
         if ($dependent) {
-            $walk->leaveUnenforced('dependentRequired', $label);
+            $keywords[] = 'dependentRequired';
         }
 
-        foreach (self::statedKeywords($schema, []) as $keyword) {
-            $walk->leaveUnenforced($keyword, $label);
+        if ($schema->types !== []) {
+            $keywords[] = 'type';
         }
+
+        return array_values(array_unique([...$keywords, ...self::statedKeywords($schema, [])]));
+    }
+
+    /**
+     * Whether the contract asks for a property the rule set drops, read as a field the rule set keeps is: not a
+     * `readOnly` property, which only a response has to carry, and not a top-level name of a `PATCH`, whose body is a
+     * partial update.
+     *
+     * @throws ConflictingInputException
+     */
+    private static function askedWhenDropped(RuleWalk $walk, Schema $property, string $label, bool $required, bool $topLevel): bool
+    {
+        return $required && ! ($topLevel && $walk->patchBody) && ! self::isReadOnly($property, $walk, $label);
     }
 
     /**
@@ -3160,6 +3248,7 @@ final readonly class RuleSetBuilder
             static fn (string $keyword): string => match ($keyword) {
                 'isFilePart' => $schema->contentMediaType === null ? 'format' : 'contentMediaType',
                 'additionalPropertiesSchema' => 'additionalProperties',
+                'recursesTo' => '$ref',
                 default => $keyword,
             },
             $stated,
@@ -3452,6 +3541,23 @@ final readonly class RuleSetBuilder
             }
         }
 
+        // What each name leaves unenforced once no rule is emitted for it, as the field would be read if it kept its rule.
+        $dropped = static function (array $members) use ($schema, $walk, $dependent): array {
+            $entries = [];
+
+            foreach ($members as $member) {
+                $property = $schema->properties[$member] ?? new Schema;
+                $label = '`'.$member.'`';
+                $entries[$label] = self::droppedKeywords(
+                    $property,
+                    self::askedWhenDropped($walk, $property, $label, in_array($member, $schema->required, true), true),
+                    in_array($member, $dependent, true),
+                );
+            }
+
+            return $entries;
+        };
+
         $declared = array_values(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required, ...$dependedOn]));
         $names = array_values(array_filter(
             $declared,
@@ -3507,11 +3613,11 @@ final readonly class RuleSetBuilder
             if ($key === null) {
                 $walk->unchecked[$name] = 'PHP delivers nothing under that name';
                 $walk->withheld[$name] = true;
-                $walk->findings[] = sprintf(
+                self::dropFields($walk, sprintf(
                     '`%s` is a property of a form body that PHP delivers under no name, so no rule is emitted for it, and '
                         .'neither its type nor its presence is enforced.',
                     $name,
-                );
+                ), $dropped([$name]));
 
                 continue;
             }
@@ -3550,13 +3656,13 @@ final readonly class RuleSetBuilder
 
             self::withhold($members, $walk, $collided);
 
-            $walk->findings[] = sprintf(
+            self::dropFields($walk, sprintf(
                 '%s reach Laravel under one name, `%s`, which a form delivers them as, so no rule can tell them apart. '
                     .'None is emitted for them, and neither their type nor their presence is enforced, nor do they '
                     .'take part in `required_with` or `dependentRequired`.',
                 self::list($members),
                 $key,
-            );
+            ), $dropped($members));
         }
 
         $shaped = [];
@@ -3565,7 +3671,7 @@ final readonly class RuleSetBuilder
             // Beside JSON, a name PHP rewrites is sent under one key by a JSON client and another by a form client, so no
             // one shape check holds both.
             if ($walk->mixedBody && self::phpRewrites($other)) {
-                $walk->findings[] = sprintf(
+                self::dropFields($walk, sprintf(
                     '`%1$s` is delivered by a form as `%2$s`, below the key `%3$s` that `%4$s` uses, and `%4$s` is a name PHP '
                         .'rewrites: a JSON client sends `%4$s` under that key and a form client as `%3$s`, so no one shape check '
                         .'holds both. None is emitted for either, and neither their type nor their presence is enforced, nor do '
@@ -3574,7 +3680,7 @@ final readonly class RuleSetBuilder
                     $key,
                     $head,
                     $other,
-                );
+                ), $dropped([$name, $other]));
 
                 self::withhold([$name, $other], $walk, $collided);
 
@@ -3584,7 +3690,7 @@ final readonly class RuleSetBuilder
             $type = self::arrayOrObject($schema, $other, $walk);
 
             if ($type !== null) {
-                $walk->findings[] = sprintf(
+                self::dropFields($walk, sprintf(
                     '`%1$s` is delivered by a form as `%2$s`, below the key `%3$s` that `%4$s` uses. `%4$s` is typed `%5$s`, so its '
                         .'own value may be an array, and no rule can tell their values apart. None is emitted for either, and '
                         .'neither their type nor their presence is enforced, nor do they take part in `required_with` or '
@@ -3594,7 +3700,7 @@ final readonly class RuleSetBuilder
                     $head,
                     $other,
                     $type,
-                );
+                ), $dropped([$name, $other]));
 
                 self::withhold([$name, $other], $walk, $collided);
 
@@ -3674,7 +3780,7 @@ final readonly class RuleSetBuilder
                     : ' when '.self::enumerate(array_map(static fn (string $trigger): string => '`'.$trigger.'`', array_values(array_unique($triggers[$name])))).' is sent';
 
                 $walk->unchecked[$name] = 'the body is also JSON, and one rule set cannot hold both the name the contract writes and the one PHP gives it';
-                $walk->findings[] = sprintf(
+                self::dropFields($walk, sprintf(
                     '`%1$s` is a property of a body that is JSON and a form at once. Its rule keeps the name the contract '
                         .'writes, which a JSON client sends. A form client sends it as `%1$s`, which PHP delivers %2$s, '
                         .'so its value is not checked there.%3$s',
@@ -3686,7 +3792,7 @@ final readonly class RuleSetBuilder
                             .'and `rules()` does not branch on the media type, so a JSON body that '
                             .($when === '' ? 'leaves it out' : 'sends the trigger and leaves it out').' is accepted, which the contract refuses.'
                         : '',
-                );
+                ), $dropped([$name]));
 
                 if ($path !== null) {
                     $walk->deliveredKeys[$name] = self::pathKey($path);
@@ -3911,7 +4017,10 @@ final readonly class RuleSetBuilder
      * step by step, and a name PHP appends to claims the path above its appended step. No finding: it has its rules. A
      * plain name is still refused beside a body key, whether or not it loses its rule.
      *
-     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, shapedBy: list<string>, ruledBelow: bool, findings: list<string>}>
+     * A finding carries the index of each name it is about: the sentence about two names is written on the first of
+     * them, and says as much about the second.
+     *
+     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, shapedBy: list<string>, ruledBelow: bool, findings: list<array{text: string, names: list<int>}>}>
      */
     private static function planQueryNames(Operation $operation, RuleWalk $walk): array
     {
@@ -3939,7 +4048,7 @@ final readonly class RuleSetBuilder
             }
 
             if ($finding !== null) {
-                $findings[$index][] = $finding;
+                $findings[$index][] = ['text' => $finding, 'names' => [$index]];
 
                 if (($appended ?? $path) !== null) {
                     $claims[$index] = $appended ?? $path;
@@ -3953,7 +4062,7 @@ final readonly class RuleSetBuilder
                 $plain[$index] = true;
                 $candidates[] = $index;
             } elseif (in_array($path[0], $walk->bodyKeys, true)) {
-                $findings[$index][] = self::queryNameUnderBodyKey($name, $path[0]);
+                $findings[$index][] = ['text' => self::queryNameUnderBodyKey($name, $path[0]), 'names' => [$index]];
             } else {
                 $keys[$index] = self::pathKey($path);
                 $heads[$index] = $path[0];
@@ -3978,20 +4087,26 @@ final readonly class RuleSetBuilder
 
                     // Two candidates share one finding, written on the first of them.
                     if ($other > $index || ! in_array($other, $candidates, true)) {
-                        $findings[$index][] = self::queryNamesShareKey(
-                            $operation->queryParameters[$index]->name,
-                            $operation->queryParameters[$other]->name,
-                            self::pathKey($mine),
-                        );
+                        $findings[$index][] = [
+                            'text' => self::queryNamesShareKey(
+                                $operation->queryParameters[$index]->name,
+                                $operation->queryParameters[$other]->name,
+                                self::pathKey($mine),
+                            ),
+                            'names' => [$index, $other],
+                        ];
                     }
                 } elseif ($otherAppends && self::isBelow($mine, $claim)) {
                     $keys[$index] = null;
-                    $findings[$index][] = self::queryNameBelowAppend(
-                        $operation->queryParameters[$index]->name,
-                        $operation->queryParameters[$other]->name,
-                        self::pathKey($claim),
-                        self::pathKey($mine),
-                    );
+                    $findings[$index][] = [
+                        'text' => self::queryNameBelowAppend(
+                            $operation->queryParameters[$index]->name,
+                            $operation->queryParameters[$other]->name,
+                            self::pathKey($claim),
+                            self::pathKey($mine),
+                        ),
+                        'names' => [$index, $other],
+                    ];
                 } elseif (self::isBelow($claim, $mine) || ($otherAppends && $mine === $claim)) {
                     $shaped[$index][] = $operation->queryParameters[$other]->name;
                 }

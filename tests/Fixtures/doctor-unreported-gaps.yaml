@@ -1,0 +1,57 @@
+# Each operation holds one gap the generated file used to name alone: the request drops a field whole, and
+# `spec:doctor` reports what the field states, one finding per keyword and per operation.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /nowhere:
+    post:
+      operationId: postNowhere
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                '[x]':
+                  type: integer
+      responses:
+        '200':
+          description: OK
+  /collision:
+    post:
+      operationId: postCollision
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                a.b:
+                  type: string
+                a_b:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /trigger:
+    post:
+      operationId: postTrigger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+              dependentRequired:
+                'a*b':
+                  - email
+      responses:
+        '200':
+          description: OK

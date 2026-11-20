@@ -320,8 +320,9 @@ final readonly class SupportMatrixCheck
                 SupportLevel::Partial,
                 DocumentPointer::forOperation($operation),
                 sprintf(
-                    '%s writes `%s` where the generated request enforces nothing for it: %s. The support matrix '.
-                    'may rate `%s` as honored in general, and on these fields it is left out of the rules. See '.
+                    '%s writes `%s` where the generated request does not enforce it, or enforces only part of it: %s. '.
+                    'The support matrix may rate `%s` as honored in general, and on these fields the rules leave it out '.
+                    'or hold only part of it: the findings in the generated file say which. See '.
                     'docs/guide/openapi-support.md, "%s". This is a fact about this package, not a defect '.
                     'in your contract.',
                     $operation->label(),

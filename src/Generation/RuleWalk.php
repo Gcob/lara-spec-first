@@ -194,6 +194,12 @@ final class RuleWalk
     public bool $nullableRequiredBody = false;
 
     /**
+     * Whether the body is the one of a `PATCH`, which is a partial update: the rules ask for none of its top-level
+     * names, so a top-level name the walk drops has no `required` to leave unenforced.
+     */
+    public bool $patchBody = false;
+
+    /**
      * The key the request's failures about the body itself are answered on.
      */
     public string $rootKey = 'body';

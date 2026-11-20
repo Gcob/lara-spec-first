@@ -557,6 +557,65 @@ it('says the fields leave the keyword out, never that the package reads part of 
         ->and($findings[0]->message)->not->toContain('reads part of it');
 });
 
+// A field the rule set drops whole is a field of the contract the request does not enforce, so the doctor names what
+// it states, one finding per keyword, and says the request may hold part of it as well as none of it.
+it('reports every gap a generated request counts as Partial', function (array $content, array $query, array $expected): void {
+    assert(array_is_list($query));
+
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest($content, $query)], new RuleSetOptions);
+
+    expect($findings)->toHaveCount(count($expected))
+        ->and(array_map(static fn (Finding $finding): ?SupportLevel => $finding->level, $findings))->each->toBe(SupportLevel::Partial)
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
+
+    foreach (array_keys($expected) as $at => $keyword) {
+        expect($findings[$at]->class)->toBe(FindingClass::PackageLimit)
+            ->and($findings[$at]->pointer)->toBe('#/paths/~1things/post')
+            ->and($findings[$at]->message)->toContain('post /things writes `'.$keyword.'` where the generated request does not enforce it, or enforces only part of it: '.$expected[$keyword])
+            ->and($findings[$at]->message)->toContain('on these fields')
+            ->and($findings[$at]->message)->toContain('the findings in the generated file say which');
+    }
+})->with(function (): Generator {
+    $form = 'application/x-www-form-urlencoded';
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $string = new Schema(types: [SchemaType::String]);
+
+    yield 'a form name PHP delivers nowhere' => [
+        [$form => supportMatrixObject(['[x]' => $integer])],
+        [],
+        ['type' => '`[x]`'],
+    ];
+    yield 'two form names PHP delivers as one' => [
+        [$form => supportMatrixObject(['a.b' => $string, 'a_b' => $string])],
+        [],
+        ['type' => '`a.b`, `a_b`'],
+    ];
+    yield 'a star name' => [
+        ['application/json' => supportMatrixObject(['a*b' => $string])],
+        [],
+        ['type' => '`a*b`'],
+    ];
+    yield 'a dropped trigger' => [
+        ['application/json' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['email' => $string],
+            dependentRequired: ['a*b' => ['email']],
+        )],
+        [],
+        ['dependentRequired' => '`email`'],
+    ];
+    yield 'a query name PHP appends to' => [
+        [],
+        [new QueryParameter('ids[]', $integer, required: true)],
+        ['required' => '`ids[]`', 'type' => '`ids[]`'],
+    ];
+    yield 'a recursion no field names, held by a star' => [
+        ['application/json' => supportMatrixObject(['a*b' => Schema::recursion('#/components/schemas/Node', 'Node')])],
+        [],
+        ['$ref' => '`a*b`'],
+    ];
+});
+
 // The informational lines of a generated file's findings must never gate the
 // doctor: two media types over one schema is worth saying and wrong to fail on.
 it('does not report what a generated file only mentions', function (): void {
@@ -778,12 +837,13 @@ it('gives a map the request validates no additionalProperties finding, and a cle
 // The values of a map the build cannot validate are still a finding and still exit `2`: a declared name the guard cannot
 // spare (a dot Laravel replaces, a `*`, a form name nested in another, a name a body that is JSON and a form reads two
 // ways), and the one undeclared key a form delivers under a declared name's key.
-it('keeps reporting the values of a map the request leaves unvalidated', function (array $content, array $query): void {
+it('keeps reporting the values of a map the request leaves unvalidated', function (array $content, array $query, int $count = 1): void {
     assert(array_is_list($query));
 
     $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest($content, $query)], new RuleSetOptions);
 
-    expect($findings)->toHaveCount(1)
+    // A declared name the rule set drops whole also leaves its type unenforced, and that is a finding of its own.
+    expect($findings)->toHaveCount($count)
         ->and($findings[0]->level)->toBe(SupportLevel::Partial)
         ->and($findings[0]->message)->toContain('`additionalProperties`')
         ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
@@ -792,11 +852,12 @@ it('keeps reporting the values of a map the request leaves unvalidated', functio
     $beside = static fn (string $declared): Schema => new Schema(types: [SchemaType::Object], properties: [$declared => $value], additionalPropertiesSchema: $value);
 
     yield 'beside a declared name holding a dot' => [['application/json' => $beside('a.b')], []];
-    yield 'beside a declared name holding a star' => [['application/json' => $beside('x*y')], []];
+    yield 'beside a declared name holding a star' => [['application/json' => $beside('x*y')], [], 2];
     yield 'beside a form name nested in another' => [['application/x-www-form-urlencoded' => $beside('page[size]')], []];
     yield 'beside a name a JSON and form body reads two ways' => [
         ['application/json' => $beside('user.name'), 'application/x-www-form-urlencoded' => $beside('user.name')],
         [],
+        2,
     ];
     // Spared under `user_name`, and an undeclared key that arrives under it is judged by the declared name's rules only.
     yield 'beside a form name PHP delivers under another one' => [['application/x-www-form-urlencoded' => $beside('user.name')], []];

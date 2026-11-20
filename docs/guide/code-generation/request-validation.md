@@ -1062,11 +1062,10 @@ escaped; what the parent cannot say about it — that it is required, or that no
 generated file's findings.
 
 **A constraint that maps to nothing is named per operation by `spec:doctor`**, and by the generated file's own findings
-for the reader who is already looking at the class. A few are still prose only (a form field PHP delivers under another
-field's key, some `dependentRequired` entries, a JSON client's `"42"` on an integer of a body that is JSON and a form,
-the rest listed in [#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the doctor stays silent on them for
-now. Neither is a fallback for the other: one runs in CI before anything is generated, and the other answers "why is
-this field not enforced" at the moment somebody asks it.
+for the reader who is already looking at the class. A few are still prose only (a JSON client's `"42"` on an integer of
+a body that is JSON and a form, the rest listed in [#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the
+doctor stays silent on them for now. Neither is a fallback for the other: one runs in CI before anything is generated,
+and the other answers "why is this field not enforced" at the moment somebody asks it.
 
 **The doctor reads data, and the generated file reads prose.** A rule set keeps its findings as sentences, and some of
 them are only worth saying: two media types over one schema, a rule stricter than the contract in one case. Gating an
@@ -1074,12 +1073,16 @@ exit code on those would fail a pipeline over a remark. So the builder also reco
 and the fields it was left unenforced on, for the four ways a keyword it reads comes out that way: a `format` no rule
 means the same as, a `pattern` across the ECMA-262 / PCRE boundary, a `contentMediaType` no rule can match, and a
 keyword stated where nothing reads it. A field the rule set drops whole is the same thing at larger scale: a query name
-PHP appends to or delivers under no name, two that arrive under one key or one that shares its key with the body, and a
-body key with a `*` Laravel reads as a wildcard, get no rule key at all, so its `required` and every keyword it states
-are recorded for it, under the field's name. `required` on a `readOnly` property is not one of them: the request does
-what the contract says there, since `required` takes effect on the response only, so the generated file says it in a
-finding, which the build does not count in its warning, and the doctor has nothing to report. The `Ignored` keywords are
-not in a rule set at all, since nothing reads them, and the reading collects them with their position instead. See
+PHP appends to or delivers under no name, two that arrive under one key or one that shares its key with the body, a form
+name PHP delivers under no name or under another's, and a body key with a `*` Laravel reads as a wildcard, get no rule
+key at all, so what they state is recorded for them as it is for a field the rule set keeps, under the field's name: its
+`type`, its `required` and every keyword it states, and the `dependentRequired` that asks for it. A `dependentRequired`
+trigger that has no rule is recorded the same way, on each name it no longer asks for. A field that states none of that
+loses nothing by having no rule, so its finding is information. `required` on a `readOnly` property is not recorded,
+dropped or not: the request does what the contract says there, since `required` takes effect on the response only, so
+the generated file says it in a finding, which the build does not count in its warning, and the doctor has nothing to
+report. Nor is the `required` of a top-level name of a `PATCH` body, which asks for none. The `Ignored` keywords are not
+in a rule set at all, since nothing reads them, and the reading collects them with their position instead. See
 [the doctor's Support findings](../doctor.md#what-it-checks).
 
 ### A JSON body keeps its types
