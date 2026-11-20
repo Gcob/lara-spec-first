@@ -974,6 +974,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0020-check-multipleof-through-the-package.md`](../project/decisions/0020-check-multipleof-through-the-package.md)
     - [`0021-judge-multipleof-from-the-digits.md`](../project/decisions/0021-judge-multipleof-from-the-digits.md)
     - [`0022-read-a-deep-object-query-by-its-brackets.md`](../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md)
+    - [`0023-read-an-array-in-a-deep-object-as-the-app-declares.md`](../project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

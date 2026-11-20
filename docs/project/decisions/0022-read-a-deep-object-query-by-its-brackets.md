@@ -36,9 +36,9 @@ tags: [decisions, code-generation, openapi]
 > - This settles what [ADR 0002](./0002-judge-plain-query-names-by-shape.md) left open. It breaks requests the contract
 >   refuses and moves `spec:doctor`'s exit code, as the CHANGELOG says.
 
-**Status:** Accepted · **Cards:** [#110](https://github.com/Gcob/lara-spec-first/issues/110),
-[#139](https://github.com/Gcob/lara-spec-first/issues/139) · **Pull request:**
-[#228](https://github.com/Gcob/lara-spec-first/pull/228)
+**Status:** Superseded by [ADR 0023](./0023-read-an-array-in-a-deep-object-as-the-app-declares.md) · **Cards:**
+[#110](https://github.com/Gcob/lara-spec-first/issues/110), [#139](https://github.com/Gcob/lara-spec-first/issues/139) ·
+**Pull request:** [#228](https://github.com/Gcob/lara-spec-first/pull/228)
 
 ## Context
 

@@ -211,8 +211,10 @@ integer with a `minimum`, `?page[size]=abc` and `?page[size]=0` answer 422 on `p
 as `page => [size => '10', number => '2']`, so the parameter goes through the same path as the nested object of a form
 body: each property gets the rules its type gets anywhere else, under `page.size` and `page.number`, and `validated()`
 holds the value nested and as the text a query string sends. It is read whatever `explode` says, and
-[ADR 0022](../../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md) holds the reasoning and what it
-turned down. For a required `page` with an integer `size` that is a multiple of 5 and a closed object:
+[ADR 0023](../../project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md) holds the reasoning and
+what it turned down, and restates what of
+[ADR 0022](../../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md) still holds. For a required `page`
+with an integer `size` that is a multiple of 5 and a closed object:
 
 ```php
 'page' => ['present', 'array:size,number', 'required_array_keys:size'],

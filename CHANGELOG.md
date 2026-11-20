@@ -37,7 +37,9 @@ tags: [versions, conventions, planning]
   empty list has no bracketed form. `any` checks only that the array is there, with a finding, as before the key
   existed. `spec:build` reads it, so a change takes another build, and `spec:doctor` reads it too, so it reports the
   generated requests as drifted until that build. Any other value stops `spec:build`, `spec:make` and `spec:doctor` with
-  a message that names the key. This ships [#218](https://github.com/Gcob/lara-spec-first/issues/218).
+  a message that names the key. The reasoning is in
+  [ADR 0023](./docs/project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md). This ships
+  [#218](https://github.com/Gcob/lara-spec-first/issues/218).
 - **`spec:build` names a custom controller whose `routeAction` no longer fits the parent it regenerated.** When the
   contract gains or loses a request or a path parameter, a child that still declares the old list is a class PHP refuses
   to load at its first request. The build now prints one header and one line per such child, with the signature to paste
@@ -418,7 +420,8 @@ tags: [versions, conventions, planning]
   (`filter[active]`), where it named the dotted rule key. This is a breaking change: send the value the contract
   describes, loosen the contract, or set `query.deep_object_arrays` to the way your clients write an array. It closes
   the `0.2.0` `Known limits` item for [#139](https://github.com/Gcob/lara-spec-first/issues/139), and the reasoning is
-  in [ADR 0022](./docs/project/decisions/0022-read-a-deep-object-query-by-its-brackets.md).
+  in [ADR 0022](./docs/project/decisions/0022-read-a-deep-object-query-by-its-brackets.md) for the object and
+  [ADR 0023](./docs/project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md) for the array.
 - **`spec:doctor`'s exit code moves for a `query` parameter, in three directions.** From `0` to `2`: a keyword inside a
   `deepObject` that no rule enforces (a property's `format: uri-reference`, an item's too inside an array the key
   checks) is now named, where the whole object was silent. From `2` to `0`: a `deepObject` map's `additionalProperties`,
