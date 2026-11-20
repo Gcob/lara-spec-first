@@ -2098,6 +2098,39 @@ it('asks for a required property whose value is a held array', function (): void
         ->and(sendThroughEmitted($class, 'GET', '?filter[ids]=1,2')[0])->toBe(200);
 });
 
+// A required name the client cannot send (`readOnly`, or one with brackets) gives it nothing to put in the query string, so
+// `filter` may be left out. A required name it can send still asks for the parameter.
+it('accepts a required deepObject left out when no required property is one a client sends', function (string $query, int $status): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listReadOnlyFilter',
+        queryParameters: [
+            new QueryParameter('filter', new Schema(
+                types: [SchemaType::Object],
+                properties: [
+                    'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+                    'a[b]' => new Schema(types: [SchemaType::String]),
+                    'name' => new Schema(types: [SchemaType::String]),
+                ],
+                required: ['id', 'a[b]'],
+            ), required: true, style: 'deepObject', explode: false),
+            new QueryParameter('page', new Schema(
+                types: [SchemaType::Object],
+                properties: ['size' => new Schema(types: [SchemaType::Integer])],
+                required: ['size'],
+            ), required: true, style: 'deepObject', explode: false),
+        ],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', $query)[0])->toBe($status);
+})->with([
+    'filter left out' => ['?page[size]=10', 200],
+    'filter sent' => ['?page[size]=10&filter[name]=x', 200],
+    'page left out, which requires a property a client sends' => ['?filter[name]=x', 422],
+]);
+
 // A map of arrays keeps its `meta.*` key, written with no rule: Laravel drops the values of an undeclared key from
 // `validated()` otherwise, and the request would answer 200 with the array lost. Declared properties and the map's values
 // reach `validated()` together, through the `UndeclaredKeys` guard that spares the declared names.

@@ -1107,6 +1107,39 @@ it('asks for a required deepObject parameter when the schema requires a property
         ->and($set->information)->toBe([]);
 })->with([true, false]);
 
+// A required name the client cannot send gives it nothing to put in the query string: a `readOnly` property is left out of a
+// request, and PHP never delivers a name with brackets under its own name. Such a name does not ask for the parameter either.
+it('accepts a required deepObject parameter left out when no required property is one a client sends', function (Schema $schema): void {
+    $set = deepObjectRuleSet($schema, false, 'filter', true);
+
+    expect($set->rules['filter'][0])->toBe('sometimes')
+        ->and(implode("\n", $set->information))->toContain('`filter` is a required `deepObject` query parameter that requires no property a client sends')
+        ->and(implode("\n", $set->information))->toContain('accepts it left out');
+})->with([
+    'a readOnly one' => [objectSchema(['id' => new Schema(types: [SchemaType::Integer], readOnly: true)], ['id'])],
+    'one with brackets' => [objectSchema(['a[b]' => new Schema(types: [SchemaType::String])], ['a[b]'])],
+    'a readOnly one and one with brackets' => [objectSchema([
+        'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+        'a[b]' => new Schema(types: [SchemaType::String]),
+    ], ['id', 'a[b]'])],
+]);
+
+it('asks for a required deepObject parameter when one required property is one a client sends', function (): void {
+    $set = deepObjectRuleSet(
+        objectSchema([
+            'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
+            'a[b]' => new Schema(types: [SchemaType::String]),
+            'size' => new Schema(types: [SchemaType::Integer]),
+        ], ['id', 'a[b]', 'size']),
+        false,
+        'filter',
+        true,
+    );
+
+    expect($set->rules['filter'])->toBe(['present', 'array', 'required_array_keys:size'])
+        ->and(implode("\n", $set->information))->not->toContain('accepts it left out');
+});
+
 // A deepObject that shares its key with another query name is not read, as before: one key would hold both values, so
 // the build keeps its finding rather than choosing which half of the contract to enforce.
 it('keeps today\'s handling for a deepObject parameter that shares its key', function (): void {
@@ -1264,14 +1297,15 @@ it('holds an array inside a deepObject at its presence', function (
     string $label,
     bool $explode,
 ): void {
-    $set = deepObjectRuleSet($schema, $explode, 'filter');
+    // `filter` is required exactly when the schema requires a property: a required array keeps `required_array_keys` under `present`.
+    $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== []);
 
     expect($set->rules)->toEqual($rules)
         ->and($set->unenforced)->toBe([])
         ->and($set->information)->toBe([])
         ->and($set->findings)->toHaveCount(1)
         ->and($set->findings[0])->toContain($label.' is an array inside a `deepObject`')
-        ->and($set->findings[0])->toContain('only its presence is checked');
+        ->and($set->findings[0])->toContain('checked only for its presence, when it is required');
 })->with(function (): Generator {
     $integers = new Schema(types: [SchemaType::Integer]);
     $array = static fn (Schema $items, ?int $min = null, ?int $max = null, bool $unique = false): Schema => new Schema(types: [SchemaType::Array], items: $items, minItems: $min, maxItems: $max, uniqueItems: $unique);
@@ -1282,7 +1316,7 @@ it('holds an array inside a deepObject at its presence', function (
                 properties: ['ids' => $array($integers, 1, 3, true)],
                 required: ['ids'],
             ),
-            ['filter' => ['sometimes', 'array', 'required_array_keys:ids'], 'filter.ids' => ['sometimes']],
+            ['filter' => ['present', 'array', 'required_array_keys:ids'], 'filter.ids' => ['sometimes']],
             '`filter[ids]`',
         ],
         'a nested one' => [

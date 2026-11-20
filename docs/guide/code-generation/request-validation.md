@@ -227,8 +227,9 @@ turned down. For a required `page` with an integer `size` that is a multiple of 
 - **An array inside a `deepObject` is checked at its presence only**, because OpenAPI does not define how one is
   written. A configuration key that says how clients write it is tracked in
   [#218](https://github.com/Gcob/lara-spec-first/issues/218).
-- **A required `deepObject` that requires no property is accepted left out**, since an empty object cannot be written in
-  a query string. One that requires a property is asked for with `present`.
+- **A required `deepObject` that requires no property a client sends is accepted left out**, since an empty object
+  cannot be written in a query string. A `readOnly` property, or one named with a bracket, is not one a client sends.
+  One that requires a property a client sends is asked for with `present`.
 - **Every finding names the property the way a client writes it** (`filter[active]`, not `filter.active`).
 - **A property whose name holds a bracket gets no rule and a finding**, since PHP delivers `a[b]` as `a[b`.
 - **A `deepObject` that shares its key with another query name keeps the `sometimes` and its finding**: `page` beside

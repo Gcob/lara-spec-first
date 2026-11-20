@@ -351,11 +351,11 @@ final readonly class RuleSetBuilder
                 // two would be judged by one key.
                 if ($style === 'deepObject' && $plan['shapedBy'] === []) {
                     // Why: an empty object can't be written in a query string, so a client with nothing to filter leaves
-                    // the parameter out. Only a required property gives it something to send, so only then is the name asked for.
-                    if ($parameter->required && $merged->required === []) {
+                    // the parameter out. Only a required property it sends gives it something to write, so only then is the name asked for.
+                    if ($parameter->required && ! self::requiresSentProperty($merged, $walk, '`'.$parameter->name.'`')) {
                         $presence = 'sometimes';
                         $walk->information(sprintf(
-                            '`%s` is a required `deepObject` query parameter that requires no property, so the request '
+                            '`%s` is a required `deepObject` query parameter that requires no property a client sends, so the request '
                             .'accepts it left out: an empty object cannot be written in a query string, and the schema '
                             .'accepts `{}`.',
                             $parameter->name,
@@ -1763,7 +1763,7 @@ final readonly class RuleSetBuilder
                         array_push($handled, 'minItems', 'maxItems', 'items', 'uniqueItems');
                         $walk->findings[] = sprintf(
                             '%1$s is an array inside a `deepObject` query parameter. OpenAPI does not define how a client writes '
-                                .'one (`?%2$s[]=1` and `?%2$s=1,2` are both written), so only its presence is checked.',
+                                .'one (`?%2$s[]=1` and `?%2$s=1,2` are both written), so it is checked only for its presence, when it is required.',
                             $label,
                             trim($label, '`'),
                         );
@@ -1824,13 +1824,15 @@ final readonly class RuleSetBuilder
                             continue;
                         }
 
+                        $unsent = self::unsentRequiredName($name, $schema, $walk, $label);
+
                         // Its finding is written with its property's, and a key PHP never delivers under its own name would
                         // refuse every request.
-                        if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
+                        if ($unsent === 'bracketed') {
                             continue;
                         }
 
-                        if (isset($schema->properties[$name]) && self::isReadOnly($schema->properties[$name], $walk, $label)) {
+                        if ($unsent === 'readOnly') {
                             $walk->information(self::readOnlyFinding(self::bracketLabel($walk, $label, $name) ?? rtrim($label, '`').'.'.$name.'`'));
 
                             continue;
@@ -2212,6 +2214,44 @@ final readonly class RuleSetBuilder
         $more = count($keys) - 1;
 
         return sprintf('`%s`%s', $keys[0], $more > 0 ? sprintf(' and %d more', $more) : '');
+    }
+
+    /**
+     * Why a required name is one a client does not send, or null when it does: a `readOnly` property is left out of a
+     * request, and in a query string PHP never delivers a name with brackets under its own name.
+     *
+     * @return 'bracketed'|'readOnly'|null
+     *
+     * @throws ConflictingInputException
+     */
+    private static function unsentRequiredName(string $name, Schema $object, RuleWalk $walk, string $label): ?string
+    {
+        if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
+            return 'bracketed';
+        }
+
+        if (isset($object->properties[$name]) && self::isReadOnly($object->properties[$name], $walk, $label)) {
+            return 'readOnly';
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether an object requires a property a client sends. `required` names the keys of a request, so a name no client
+     * sends gives it nothing to put in one.
+     *
+     * @throws ConflictingInputException
+     */
+    private static function requiresSentProperty(Schema $object, RuleWalk $walk, string $label): bool
+    {
+        foreach ($object->required as $name) {
+            if (self::unsentRequiredName((string) $name, $object, $walk, $label) === null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
