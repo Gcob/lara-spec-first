@@ -404,7 +404,8 @@ tags: [versions, conventions, planning]
   `deepObject` that shares its key with another query name, keeps a finding. Every finding names a property the way a
   client writes it (`filter[active]`), where it named the dotted rule key. This is a breaking change: send the value the
   contract describes, or loosen the contract. It closes the `0.2.0` `Known limits` item for
-  [#139](https://github.com/Gcob/lara-spec-first/issues/139).
+  [#139](https://github.com/Gcob/lara-spec-first/issues/139), and the reasoning is in
+  [ADR 0022](./docs/project/decisions/0022-read-a-deep-object-query-by-its-brackets.md).
 - **`spec:doctor`'s exit code moves for a `query` parameter, in three directions.** From `0` to `2`: a keyword inside a
   `deepObject` that no rule enforces (a property's `format: uri-reference`) is now named, where the whole object was
   silent. From `2` to `0`: a `deepObject` map's `additionalProperties`, which the request validates now, is no longer

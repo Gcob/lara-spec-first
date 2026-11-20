@@ -213,8 +213,9 @@ same path as the nested object of a form body: each property gets the rules its 
 `page.size` and `page.number`, `page` gets `array` and `required_array_keys` for what the schema requires, and
 `validated()` holds the value nested and as the text a query string sends. It is read whatever `explode` says: the
 parser gives `false` to a document that writes `style: deepObject` alone, and OpenAPI 3.2.0 says that for this style the
-field "has no effect". The generated rules look like this, for a required `page` with an integer `size` that is a
-multiple of 5 and a closed object:
+field "has no effect" ([ADR 0022](../../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md) holds the
+reasoning, and what it turned down). The generated rules look like this, for a required `page` with an integer `size`
+that is a multiple of 5 and a closed object:
 
 ```php
 'page' => ['present', 'array:size,number', 'required_array_keys:size'],
