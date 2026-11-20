@@ -2569,7 +2569,7 @@ it('reads an empty value schema beside declared properties as an open object', f
 // Laravel replaces a `.` in a data key with a private placeholder and has no name for a `*`, so a declared name holding
 // one cannot be told from an undeclared key by name: the values keep the report, each reason in its own words, the
 // doctor's data names the keyword, and no value rule is written.
-it('keeps reporting the values of a map beside a declared name the guard cannot spare', function (string $where, array $media, array $properties, string $sentence): void {
+it('keeps reporting the values of a map beside a declared name the guard cannot spare', function (string $where, array $media, array $properties, string $sentence, ?string $dropped = null): void {
     assert(array_is_list($media));
     $map = new Schema(types: [SchemaType::Object], properties: $properties, additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]));
     $nested = $where === 'nested';
@@ -2579,7 +2579,8 @@ it('keeps reporting the values of a map beside a declared name the guard cannot 
 
     expect(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'other keys are not validated'))))
         ->toBe([str_replace('{body}', $nested ? '`meta`' : 'The body', $sentence)])
-        ->and($set->unenforced)->toBe(['additionalProperties' => [$label]])
+        // A name the rule set drops whole also leaves its type unenforced.
+        ->and($set->unenforced)->toBe(['additionalProperties' => [$label], ...($dropped === null ? [] : ['type' => ['`'.($nested ? 'meta.' : '').$dropped.'`']])])
         ->and($set->undeclaredKeys)->toBe([])
         ->and(array_key_exists($nested ? 'meta.*' : '*', $set->rules))->toBeFalse()
         ->and(implode("\n", $set->findings))->not->toContain('states `additionalProperties`');
@@ -2591,8 +2592,8 @@ it('keeps reporting the values of a map beside a declared name the guard cannot 
 
     yield 'a dotted name, JSON, at the root' => ['root', $json, ['a.b' => $string], $dotted];
     yield 'a dotted name, JSON, nested' => ['nested', $json, ['a.b' => $string], $dotted];
-    yield 'a name holding a star, at the root' => ['root', $json, ['x*y' => $string], $star];
-    yield 'a name holding a star, nested' => ['nested', $json, ['x*y' => $string], $star];
+    yield 'a name holding a star, at the root' => ['root', $json, ['x*y' => $string], $star, 'x*y'];
+    yield 'a name holding a star, nested' => ['nested', $json, ['x*y' => $string], $star, 'x*y'];
     // A form keeps the dot of a name inside brackets, and Laravel replaces it there.
     yield 'a dotted name nested in a form body' => ['nested', ['application/x-www-form-urlencoded'], ['a.b' => $string], $dotted];
     yield 'a name PHP delivers inside another, its head undeclared' => ['root', ['application/x-www-form-urlencoded'], ['page[size]' => $string],
@@ -2600,7 +2601,7 @@ it('keeps reporting the values of a map beside a declared name the guard cannot 
     yield 'a name PHP delivers inside another, its head declared too' => ['root', ['multipart/form-data'], ['page' => $string, 'page[size]' => $string],
         'A form delivers `page[size]` inside `page`, and the guard can only spare `page` whole, so an undeclared key under it (`page[evil]`) would not be judged, and the values of this body\'s other keys are not validated.'];
     yield 'a name a JSON and form body reads two ways' => ['root', ['application/json', 'application/x-www-form-urlencoded'], ['user.name' => $string],
-        '`user.name` arrives as `user.name` from a JSON client and as `user_name` from a form client, and one rule set can\'t spare both, so the values of this body\'s other keys are not validated.'];
+        '`user.name` arrives as `user.name` from a JSON client and as `user_name` from a form client, and one rule set can\'t spare both, so the values of this body\'s other keys are not validated.', 'user.name'];
 });
 
 // A form-only root's name PHP delivers under one other name is spared under that name, so every other key is judged. An
@@ -2630,8 +2631,12 @@ it('spares a declared name no form delivers by the name a JSON client sends it u
     $map = new Schema(types: [SchemaType::Object], properties: [$name => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
     $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $map)), new RuleSetOptions);
 
+    // A form client's value under a name PHP rewrites or drops is not checked, whichever way the JSON client is spared.
     expect(array_values($set->undeclaredKeys)[0] ?? [])->toBe($spared === [] ? [] : [0 => $spared])
-        ->and($set->unenforced)->toBe($spared === [] ? ['additionalProperties' => ['The body itself']] : []);
+        ->and($set->unenforced)->toBe([
+            ...($spared === [] ? ['additionalProperties' => ['The body itself']] : []),
+            ...(count($media) > 1 ? ['type' => ['`'.$name.'`']] : []),
+        ]);
 })->with([
     'JSON and a form' => ['[x]', ['application/json', 'application/x-www-form-urlencoded'], ['[x]']],
     'JSON only' => ['[x]', ['application/json'], ['[x]']],
@@ -2783,8 +2788,8 @@ it('keeps the findings that lose no constraint out of the unenforced warning', f
 
 // A finding that loses no constraint is said in the file and stays out of the build warning. Each row has that one
 // finding and nothing else, so the request is not counted.
-it('writes each finding that loses no constraint as information', function (Operation $operation, string $finding): void {
-    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+it('writes each finding that loses no constraint as information', function (Operation $operation, string $finding, ?RuleSetOptions $options = null): void {
+    $set = RuleSetBuilder::for($operation, $options ?? new RuleSetOptions);
     $named = array_values(array_filter($set->findings, static fn (string $line): bool => str_contains($line, $finding)));
 
     expect($named)->toHaveCount(1)
@@ -2794,9 +2799,14 @@ it('writes each finding that loses no constraint as information', function (Oper
 })->with(function (): array {
     $string = new Schema(types: [SchemaType::String]);
     $readOnlyId = new Schema(types: [SchemaType::Integer], readOnly: true);
+    $boolean = new Schema(types: [SchemaType::Boolean]);
     $json = static fn (Schema $schema, string $method = 'post'): Operation => operationWithInput(
         method: $method,
         content: ['application/json' => $schema],
+    );
+    $deepObject = static fn (Schema $schema): Operation => operationWithInput(
+        method: 'get',
+        query: [new QueryParameter('filter', $schema, style: 'deepObject', explode: true)],
     );
 
     return [
@@ -2851,8 +2861,53 @@ it('writes each finding that loses no constraint as information', function (Oper
             $json(objectSchema(['any' => new Schema(ignored: ['$defs' => '#/paths/~1things/post/requestBody', '$anchor' => '#/paths/~1things/post/requestBody'])])),
             '`any` states no type',
         ],
+        // A client of a query string or a form writes a boolean as `1` or `0`, and a number as the text of its digits:
+        // what the rule accepts is what such a client sends.
+        'a query boolean' => [
+            operationWithInput(method: 'get', query: [new QueryParameter('notify', $boolean)]),
+            '`notify` is a boolean read from a query string',
+        ],
+        'a form boolean' => [
+            operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['flag' => $boolean])], bodyRequired: false),
+            '`flag` is a boolean read from a form body',
+        ],
+        'a boolean item of a deepObject list' => [
+            $deepObject(objectSchema(['flags' => deepObjectArray($boolean)])),
+            '`filter[flags][]` is a boolean read from a query string',
+        ],
+        'a boolean item of a deepObject list read as a comma list' => [
+            $deepObject(objectSchema(['flags' => deepObjectArray($boolean)])),
+            '`filter[flags][]` is a boolean read from a query string',
+            new RuleSetOptions(DeepObjectArrays::Comma),
+        ],
+        'an untyped enum of integers in a query' => [
+            operationWithInput(method: 'get', query: [new QueryParameter('mode', new Schema(enum: [1, 2, 3]))]),
+            '`mode` states no type',
+        ],
+        'an untyped const in a form body' => [
+            operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['mode' => new Schema(enum: [5])])], bodyRequired: false),
+            '`mode` states no type',
+        ],
+        'an untyped enum of numbers and strings in a query' => [
+            operationWithInput(method: 'get', query: [new QueryParameter('mode', new Schema(enum: [1, 'a', 2.5]))]),
+            '`mode` states no type',
+        ],
     ];
 });
+
+// The list of booleans of a deepObject says how a client writes it, and its item says what the rule accepts for one.
+// Both are information, under either reading of an array there.
+it('says a boolean item of a deepObject list as information beside the reading of the list', function (DeepObjectArrays $reading): void {
+    $set = deepObjectRuleSet(objectSchema(['flags' => deepObjectArray(new Schema(types: [SchemaType::Boolean]))]), false, options: new RuleSetOptions($reading));
+
+    expect($set->findings)->toHaveCount(2)
+        ->and($set->information)->toBe($set->findings)
+        ->and($set->unenforced)->toBe([])
+        ->and($set->leavesUnenforced())->toBeFalse();
+})->with([
+    'brackets' => DeepObjectArrays::Brackets,
+    'comma' => DeepObjectArrays::Comma,
+]);
 
 // The look-alikes of the findings above lose something, so they keep counting. These are controls: each reads like
 // information and is not.
@@ -3790,7 +3845,7 @@ it('keeps reporting a query name PHP appends to or delivers under no name', func
 
     expect($set->rules)->toBe(['limit' => ['sometimes', 'integer']])
         ->and($set->queryKeys)->toBe(['limit'])
-        ->and($set->unenforced)->toBe(['required' => ['`'.$name.'`']])
+        ->and($set->unenforced)->toBe(['required' => ['`'.$name.'`'], 'type' => ['`'.$name.'`']])
         ->and(implode("\n", $set->findings))->toContain('`'.$name.'`')
         ->and(implode("\n", $set->findings))->toContain($reason);
 })->with([
@@ -3822,7 +3877,7 @@ it('keeps reporting a query name delivered under a key the body arrives under', 
 
     expect($set->rules)->toEqual($alone->rules)
         ->and($set->queryKeys)->toBe([])
-        ->and($set->unenforced)->toBe(['required' => ['`'.$name.'`']])
+        ->and($set->unenforced)->toBe(['required' => ['`'.$name.'`'], 'type' => ['`'.$name.'`']])
         ->and(implode("\n", $set->findings))->toContain('`'.$name.'` is a `query` parameter that PHP delivers under `'.$key.'`, a key the body arrives under too');
 })->with([
     'a JSON body property' => [['application/json' => objectSchema(['page' => new Schema(types: [SchemaType::Integer])])], 'page[size]', 'page'],
@@ -4117,7 +4172,7 @@ it('reads a boolean of a JSON body as a boolean and nothing looser', function ()
 // One rule set cannot read the text a form carries and still refuse a string in JSON, so a body that is both lets a
 // JSON client's text through, and the file says per field what it gets through. A number and a boolean keep the loose
 // rule; an integer judges a JSON number by its value and only accepts the text. These are prose findings, not "stricter
-// than the contract": they are gaps, so they count in the build warning, and they leave nothing for the doctor to report.
+// than the contract": they are gaps, so they count in the build warning, and the doctor names the field's type.
 it('says what a body that is JSON and a form lets through', function (SchemaType $type, array $rules, string $finding, string $mediaType): void {
     $schema = objectSchema(['field' => new Schema(types: [$type])]);
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, $mediaType => $schema]), new RuleSetOptions);
@@ -4127,7 +4182,7 @@ it('says what a body that is JSON and a form lets through', function (SchemaType
     expect($set->rules['field'])->toEqual(['sometimes', ...$rules])
         ->and($named)->toBe([$finding])
         ->and($set->stricter)->toBe([])
-        ->and($set->unenforced)->toBe([]);
+        ->and($set->unenforced)->toBe(['type' => ['`field`']]);
 })->with([
     'an integer' => [
         SchemaType::Integer,
@@ -5169,7 +5224,7 @@ it('names the keyword and the field for each way a read keyword is left unenforc
     'a query parameter PHP appends to' => [
         [],
         [new QueryParameter('ids[]', new Schema(types: [SchemaType::Integer], minimum: 1.0, maximum: 100.0), required: true)],
-        ['required' => ['`ids[]`'], 'minimum' => ['`ids[]`'], 'maximum' => ['`ids[]`']],
+        ['required' => ['`ids[]`'], 'type' => ['`ids[]`'], 'minimum' => ['`ids[]`'], 'maximum' => ['`ids[]`']],
     ],
     'a bracketed query parameter, now enforced' => [
         [],
@@ -5179,17 +5234,17 @@ it('names the keyword and the field for each way a read keyword is left unenforc
     'a query parameter whose name carries a star' => [
         [],
         [new QueryParameter('a*b', new Schema(types: [SchemaType::String], pattern: '^a'), required: true)],
-        ['required' => ['`a*b`'], 'pattern' => ['`a*b`']],
+        ['required' => ['`a*b`'], 'type' => ['`a*b`'], 'pattern' => ['`a*b`']],
     ],
     'a body property whose key carries a star' => [
         ['application/json' => objectSchema(['a*b' => new Schema(types: [SchemaType::String], maxLength: 3)], ['a*b'])],
         [],
-        ['required' => ['`a*b`'], 'maxLength' => ['`a*b`']],
+        ['required' => ['`a*b`'], 'type' => ['`a*b`'], 'maxLength' => ['`a*b`']],
     ],
     'a nested body property whose key carries a star, and is not required' => [
         ['application/json' => objectSchema(['user' => objectSchema(['a*b' => new Schema(types: [SchemaType::Integer], minimum: 2.0)])])],
         [],
-        ['minimum' => ['`user.a*b`']],
+        ['type' => ['`user.a*b`'], 'minimum' => ['`user.a*b`']],
     ],
     'a required body key with no property, and a star' => [
         ['application/json' => objectSchema([], ['a*b'])],
@@ -5268,6 +5323,307 @@ it('records nothing for a finding that is information rather than an unenforced 
 
     expect($set->findings)->not->toBe([])
         ->and($set->unenforced)->toBe([]);
+});
+
+// A field the rule set drops whole (a `*` name, a name PHP delivers under no key or under another's, a `query` name no
+// rule key can hold) is still a field the contract describes. The doctor names what it states the way it names it for a
+// field the rule set keeps, and a field that states nothing loses nothing, so its finding is information.
+it('records what a field the rule set drops states, as a kept field would', function (Operation $operation, array $expected): void {
+    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+
+    expect($set->unenforced)->toBe($expected)
+        ->and($set->leavesUnenforced())->toBe($expected !== []);
+})->with(function (): array {
+    $form = 'application/x-www-form-urlencoded';
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $string = new Schema(types: [SchemaType::String]);
+    $both = static fn (Schema $schema): array => ['application/json' => $schema, $form => $schema];
+
+    return [
+        'a form name PHP delivers nowhere, integer and required' => [
+            operationWithInput(content: [$form => objectSchema(['[x]' => $integer], ['[x]'])]),
+            ['required' => ['`[x]`'], 'type' => ['`[x]`']],
+        ],
+        'a form name PHP delivers nowhere, stating nothing' => [
+            operationWithInput(content: [$form => objectSchema(['[x]' => new Schema])], bodyRequired: false),
+            [],
+        ],
+        'two form names PHP delivers as one' => [
+            operationWithInput(content: [$form => objectSchema(['a.b' => $string, 'a_b' => $string])], bodyRequired: false),
+            ['type' => ['`a.b`', '`a_b`']],
+        ],
+        'two form names PHP delivers as one, stating nothing' => [
+            operationWithInput(content: [$form => objectSchema(['a.b' => new Schema, 'a_b' => new Schema])], bodyRequired: false),
+            [],
+        ],
+        'a name PHP rewrites in a body that is JSON and a form, required' => [
+            operationWithInput(content: $both(objectSchema(['a.b' => $string], ['a.b']))),
+            ['required' => ['`a.b`'], 'type' => ['`a.b`']],
+        ],
+        'a name PHP rewrites in a body that is JSON and a form, stating nothing' => [
+            operationWithInput(content: $both(objectSchema(['a.b' => new Schema])), bodyRequired: false),
+            [],
+        ],
+        'an object and the name PHP delivers below it' => [
+            operationWithInput(content: [$form => objectSchema([
+                'page' => new Schema(types: [SchemaType::Object]),
+                'page[size]' => $integer,
+            ])], bodyRequired: false),
+            ['type' => ['`page[size]`', '`page`']],
+        ],
+        'a star name typed string' => [
+            operationWithInput(content: ['application/json' => objectSchema(['a*b' => $string])]),
+            ['type' => ['`a*b`']],
+        ],
+        'a star name that states nothing' => [
+            operationWithInput(content: ['application/json' => objectSchema(['a*b' => new Schema])]),
+            [],
+        ],
+        'a star name required and readOnly' => [
+            operationWithInput(content: ['application/json' => objectSchema(['a*b' => new Schema(types: [SchemaType::String], readOnly: true)], ['a*b'])]),
+            ['type' => ['`a*b`']],
+        ],
+        'a star name required in a PATCH body records no required' => [
+            operationWithInput(method: 'patch', content: ['application/json' => objectSchema(['a*b' => $string], ['a*b'])]),
+            ['type' => ['`a*b`']],
+        ],
+        'a star name required below the root of a PATCH body' => [
+            operationWithInput(method: 'patch', content: ['application/json' => objectSchema([
+                'user' => objectSchema(['a*b' => $string], ['a*b']),
+            ])]),
+            ['required' => ['`user.a*b`'], 'type' => ['`user.a*b`']],
+        ],
+        'a star name that is a recursion marker' => [
+            operationWithInput(content: ['application/json' => objectSchema(['a*b' => Schema::recursion('#/components/schemas/Node', 'Node')])]),
+            ['$ref' => ['`a*b`']],
+        ],
+        'a required name no property declares, with a star' => [
+            operationWithInput(content: ['application/json' => objectSchema([], ['a*b'])]),
+            ['required' => ['`a*b`']],
+        ],
+        'a query name PHP appends to' => [
+            operationWithInput(method: 'get', query: [new QueryParameter('ids[]', $integer, required: true)]),
+            ['required' => ['`ids[]`'], 'type' => ['`ids[]`']],
+        ],
+        'a query name PHP appends to, stating nothing' => [
+            operationWithInput(method: 'get', query: [new QueryParameter('ids[]', new Schema)]),
+            [],
+        ],
+        'two query names under one key, stating nothing' => [
+            operationWithInput(method: 'get', query: [new QueryParameter('a.b', new Schema), new QueryParameter('a_b', new Schema)]),
+            [],
+        ],
+        'two query names under one key, one of them typed' => [
+            operationWithInput(method: 'get', query: [new QueryParameter('a.b', new Schema), new QueryParameter('a_b', $string)]),
+            ['type' => ['`a_b`']],
+        ],
+        'a query name that is required, stating nothing else' => [
+            operationWithInput(method: 'get', query: [new QueryParameter('ids[]', new Schema, required: true)]),
+            ['required' => ['`ids[]`']],
+        ],
+    ];
+});
+
+// What the request never asks for of a field it keeps, it never asks for of one it drops: a `readOnly` property is a
+// promise about responses, and a `PATCH` body is a partial update. A dropped name that only those make required has
+// nothing left to report.
+it('records no required for a dropped name nothing asks for', function (string $method, Schema $property): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: ['application/json' => objectSchema(['a*b' => $property], ['a*b'])],
+    ), new RuleSetOptions);
+
+    expect($set->unenforced)->toBe([]);
+})->with([
+    'a readOnly name' => ['post', new Schema(readOnly: true)],
+    'a top-level name of a PATCH body' => ['patch', new Schema],
+]);
+
+// The sentence of a dropped field that states nothing is information: it says what a reader of the file would not
+// otherwise see, and counts for neither the build nor the doctor.
+it('writes the finding of a field the rule set drops that states nothing as information', function (Operation $operation, string $finding): void {
+    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+    $named = array_values(array_filter($set->findings, static fn (string $line): bool => str_contains($line, $finding)));
+
+    expect($named)->toHaveCount(1)
+        ->and(array_values(array_intersect($named, $set->information)))->toBe($named)
+        ->and($set->unenforced)->toBe([])
+        ->and($set->leavesUnenforced())->toBeFalse();
+})->with([
+    'a form name PHP delivers nowhere' => [
+        operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['[x]' => new Schema])], bodyRequired: false),
+        '`[x]` is a property of a form body that PHP delivers under no name',
+    ],
+    'a star name' => [
+        operationWithInput(content: ['application/json' => objectSchema(['a*b' => new Schema])]),
+        '`a*b` carries a `*`',
+    ],
+    'a query name PHP appends to' => [
+        operationWithInput(method: 'get', query: [new QueryParameter('ids[]', new Schema)]),
+        '`ids[]` is a `query` parameter whose name PHP appends to',
+    ],
+]);
+
+// A trigger that has no rule loses what it asked for: the dependent is never asked for through it. The doctor names the
+// dependency on the dependent, and the one sentence that says it is not repeated by the sentence about the name.
+it('records the dependentRequired a dropped trigger no longer asks for', function (Operation $operation, array $expected, string $trigger): void {
+    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+
+    expect($set->unenforced)->toBe($expected)
+        ->and(substr_count(implode("\n", $set->findings), '`'.$trigger.'` would make `email` required'))->toBe(1)
+        ->and(substr_count(implode("\n", $set->findings), 'carries a `*`'))->toBe(str_contains($trigger, '*') ? 1 : 0);
+})->with(function (): array {
+    $string = new Schema(types: [SchemaType::String]);
+
+    return [
+        'a star trigger that is also a property' => [
+            operationWithInput(content: ['application/json' => new Schema(
+                types: [SchemaType::Object],
+                properties: ['a*b' => $string, 'email' => $string],
+                dependentRequired: ['a*b' => ['email']],
+            )]),
+            ['dependentRequired' => ['`email`'], 'type' => ['`a*b`']],
+            'a*b',
+        ],
+        'a star trigger no property declares' => [
+            operationWithInput(content: ['application/json' => new Schema(
+                types: [SchemaType::Object],
+                properties: ['email' => $string],
+                dependentRequired: ['a*b' => ['email']],
+            )]),
+            ['dependentRequired' => ['`email`']],
+            'a*b',
+        ],
+        'a form name PHP delivers nowhere as the trigger' => [
+            operationWithInput(content: ['application/x-www-form-urlencoded' => new Schema(
+                types: [SchemaType::Object],
+                properties: ['[x]' => $string, 'email' => $string],
+                dependentRequired: ['[x]' => ['email']],
+            )], bodyRequired: false),
+            ['type' => ['`[x]`'], 'dependentRequired' => ['`email`']],
+            '[x]',
+        ],
+    ];
+});
+
+// A key Laravel cannot name in a rule, and a type no single rule says, are constraints the contract writes that the
+// request does not enforce: the doctor names each one, on the field it is written on.
+it('records the keys and types no Laravel rule can hold', function (Operation $operation, array $expected): void {
+    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+
+    expect($set->unenforced)->toBe($expected)
+        ->and($set->leavesUnenforced())->toBe($expected !== []);
+})->with(function (): array {
+    $form = 'application/x-www-form-urlencoded';
+    $string = new Schema(types: [SchemaType::String]);
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $json = static fn (Schema $schema, string $method = 'post'): Operation => operationWithInput(
+        method: $method,
+        content: ['application/json' => $schema],
+    );
+    $field = static fn (Schema $schema): Operation => $json(objectSchema(['field' => $schema]));
+    $both = static fn (Schema $schema): Operation => operationWithInput(content: [
+        'application/json' => $schema,
+        $form => $schema,
+    ]);
+    $query = static fn (Schema $schema): Operation => operationWithInput(method: 'get', query: [new QueryParameter('mode', $schema)]);
+
+    return [
+        'a required name required_array_keys cannot hold' => [
+            $json(objectSchema(['o' => objectSchema(['a.b' => $string], ['a.b'])])),
+            ['required' => ['`o.a.b`']],
+        ],
+        'a closed object declaring a name with a dot' => [
+            $json(objectSchema(['o' => new Schema(types: [SchemaType::Object], properties: ['a.b' => $string], additionalProperties: false)])),
+            ['additionalProperties' => ['`o`']],
+        ],
+        'a closed form body accepting the key a rewritten name is delivered at' => [
+            operationWithInput(content: [$form => new Schema(
+                types: [SchemaType::Object],
+                properties: ['user.name' => $string, 'plain' => $string],
+                additionalProperties: false,
+            )], bodyRequired: false),
+            ['additionalProperties' => ['The body itself']],
+        ],
+        'more than one type' => [
+            $field(new Schema(types: [SchemaType::String, SchemaType::Integer])),
+            ['type' => ['`field`']],
+        ],
+        'type null alone' => [
+            $field(new Schema(types: [SchemaType::Null])),
+            ['type' => ['`field`']],
+        ],
+        'an untyped enum of integers' => [
+            $field(new Schema(enum: [1, 2, 3])),
+            ['enum' => ['`field`']],
+        ],
+        'an untyped boolean enum' => [
+            $field(new Schema(enum: [true])),
+            ['enum' => ['`field`']],
+        ],
+        'an untyped const' => [
+            $field(new Schema(enum: [5])),
+            ['enum' => ['`field`']],
+        ],
+        'an untyped enum through allOf' => [
+            $field(new Schema(allOf: [new Schema(enum: [1, 2, 3])])),
+            ['enum' => ['`field`']],
+        ],
+        'an untyped field writing oneOf' => [
+            $field(new Schema(ignored: ['oneOf' => '#/paths/~1things/post/requestBody'])),
+            ['oneOf' => ['`field`']],
+        ],
+        'an untyped field writing oneOf in an allOf branch' => [
+            $field(new Schema(allOf: [new Schema(ignored: ['oneOf' => '#/paths/~1things/post/requestBody'])])),
+            ['oneOf' => ['`field`']],
+        ],
+        'an untyped enum of booleans in a query' => [
+            $query(new Schema(enum: [true])),
+            ['enum' => ['`mode`']],
+        ],
+        'an untyped enum of integers beside a oneOf in a query' => [
+            $query(new Schema(enum: [1, 2], ignored: ['oneOf' => '#/paths/~1things/get'])),
+            ['enum' => ['`mode`'], 'oneOf' => ['`mode`']],
+        ],
+        'an integer of a body that is JSON and a form' => [
+            $both(objectSchema(['field' => $integer])),
+            ['type' => ['`field`']],
+        ],
+        'a number of a body that is JSON and a form' => [
+            $both(objectSchema(['field' => new Schema(types: [SchemaType::Number])])),
+            ['type' => ['`field`']],
+        ],
+        'a boolean of a body that is JSON and a form' => [
+            $both(objectSchema(['field' => new Schema(types: [SchemaType::Boolean])])),
+            ['type' => ['`field`']],
+        ],
+        'a name judged by shape in a body that is JSON and a form' => [
+            $both(objectSchema(['page' => $integer, 'page[size]' => $integer])),
+            ['type' => ['`page[size]`', '`page`']],
+        ],
+        'a recursion no named schema holds' => [
+            $json(objectSchema(['child' => Schema::recursion('#/components/schemas/Node', 'Node')])),
+            ['$ref' => ['`child`']],
+        ],
+        // The controls: what the request holds, or what the contract says nothing about.
+        'an integer of a JSON body' => [$field($integer), []],
+        'a nullable string' => [$field(new Schema(types: [SchemaType::String, SchemaType::Null])), []],
+        'an untyped field' => [$field(new Schema), []],
+        'an untyped field that is deprecated' => [$field(new Schema(ignored: ['deprecated' => '#/paths/~1things/post/requestBody'])), []],
+        'an untyped enum of strings' => [$field(new Schema(enum: ['a', 'b'])), []],
+    ];
+});
+
+// A name the walk writes under two sentences is still one entry per keyword and label.
+it('names the oneOf of an untyped field once, whichever way the request reads it', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
+        'field' => new Schema(
+            allOf: [new Schema(ignored: ['oneOf' => '#/a'])],
+            ignored: ['oneOf' => '#/b'],
+        ),
+    ])]), new RuleSetOptions);
+
+    expect($set->unenforced)->toBe(['oneOf' => ['`field`']]);
 });
 
 it('records nothing for a keyword that became a rule', function (): void {
