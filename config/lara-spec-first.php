@@ -160,6 +160,12 @@ return [
     | writes it), checked with its items and its bounds. A plain string where the
     | list belongs, `?filter[ids]=1,2`, answers 422.
     |
+    | `comma` is for clients that write the array as one string
+    | (`?filter[ids]=1,2`): the generated request splits it into the list before
+    | it validates, then checks the same as `brackets`, and still accepts a list
+    | written with brackets. An empty item (`1,,2`) is judged as `null`, like a
+    | bracketed empty item, and an item cannot hold a comma.
+    |
     | `any` checks only that the array is there, with a finding in the generated
     | request, as before this key existed.
     |

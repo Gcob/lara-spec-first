@@ -108,6 +108,13 @@ final readonly class RuleSet
      *                                                                   `UndeclaredKeys` around the rules, and the
      *                                                                   names are strings: a declared `"2024"` is an
      *                                                                   integer as an array key
+     * @param  list<array{steps: list<string>, spared?: array<int, list<string>>}>  $commaLists  the arrays a client
+     *                                                                                           writes as one
+     *                                                                                           comma-separated string,
+     *                                                                                           as the steps of their
+     *                                                                                           keys and the names a
+     *                                                                                           `*` step spares: what
+     *                                                                                           the request splits
      */
     public function __construct(
         public array $rules = [],
@@ -133,6 +140,7 @@ final readonly class RuleSet
         public array $scalarNames = [],
         public array $arrayKeys = [],
         public array $undeclaredKeys = [],
+        public array $commaLists = [],
     ) {}
 
     /**
@@ -237,6 +245,15 @@ final readonly class RuleSet
     public function usesUndeclaredKeys(): bool
     {
         return $this->undeclaredKeys !== [];
+    }
+
+    /**
+     * Whether the request splits a string into an array before it validates, so it writes `prepareForValidation()` and
+     * imports `CommaLists`.
+     */
+    public function usesCommaLists(): bool
+    {
+        return $this->commaLists !== [];
     }
 
     public function isEmpty(): bool

@@ -9,8 +9,10 @@ use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Generation\DeepObjectArrays;
 use Gcob\LaraSpecFirst\Generation\FormRequestEmitter;
 use Gcob\LaraSpecFirst\Generation\PlannedRequest;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Illuminate\Foundation\Http\FormRequest;
 use Symfony\Component\Process\Process;
 
@@ -35,9 +37,10 @@ function emittedRequest(
     string $namespace = 'App\\Http\\Generated',
     string $specPath = 'openapi.yaml',
     string $controllerShortName = 'CreateUserController',
+    RuleSetOptions $options = new RuleSetOptions,
 ): string {
     return (new FormRequestEmitter($namespace, $specPath))
-        ->emit(plannedRequests([$operation], $controllerShortName)['requests'][0])
+        ->emit(plannedRequests([$operation], $controllerShortName, $options)['requests'][0])
         ->contents;
 }
 
@@ -1134,4 +1137,81 @@ it('reproduces the PATCH golden file byte for byte', function (): void {
     expect($emitted)->toBe(file_get_contents(
         dirname(__DIR__, 2).'/Fixtures/Generated/Requests/UpdateUserRequest.php'
     ));
+});
+
+/**
+ * A `GET` with one deepObject `filter` holding a list of integers, and a `meta` map of lists beside a declared `id`.
+ */
+function deepObjectListsOperation(): Operation
+{
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listThings',
+        queryParameters: [
+            new QueryParameter('filter', new Schema(
+                types: [SchemaType::Object],
+                properties: ['ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]))],
+            ), style: 'deepObject', explode: true),
+            new QueryParameter('meta', new Schema(
+                types: [SchemaType::Object],
+                properties: ['id' => new Schema(types: [SchemaType::String])],
+                additionalPropertiesSchema: new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer])),
+            ), style: 'deepObject', explode: true),
+        ],
+    );
+}
+
+// The split is written in `prepareForValidation()`, Laravel's hook for preparing the input, and into the query string's
+// own bag: `merge()` would write the body's on a `POST`. Only a rule set that holds a comma list gets any of it, so a
+// request built under `brackets` or `any` is the file it was before the key existed.
+it('writes prepareForValidation for a comma list', function (): void {
+    $emitted = emittedRequest(deepObjectListsOperation(), options: new RuleSetOptions(DeepObjectArrays::Comma));
+
+    expect($emitted)
+        ->toContain('use Gcob\\LaraSpecFirst\\Validation\\CommaLists;')
+        ->toContain("    private const COMMA_LISTS = [\n        ['steps' => ['filter', 'ids']],\n        ['steps' => ['meta', '*'], 'spared' => [1 => ['id']]],\n    ];")
+        ->toContain("    protected function prepareForValidation(): void\n    {\n        \$this->query->replace(CommaLists::split(\$this->query->all(), self::COMMA_LISTS));\n    }");
+    expect($emitted)->not->toContain('->merge(');
+});
+
+it('writes nothing about a comma list when the reading is not comma', function (DeepObjectArrays $reading): void {
+    $emitted = emittedRequest(deepObjectListsOperation(), options: new RuleSetOptions($reading));
+
+    expect($emitted)->not->toContain('prepareForValidation');
+    expect($emitted)->not->toContain('COMMA_LISTS');
+    expect($emitted)->not->toContain('CommaLists');
+})->with([
+    'brackets' => [DeepObjectArrays::Brackets],
+    'any' => [DeepObjectArrays::Any],
+]);
+
+it('writes nothing about a comma list when no array sits inside a deepObject', function (): void {
+    $emitted = emittedRequest(goldenOperation(), options: new RuleSetOptions(DeepObjectArrays::Comma));
+
+    expect($emitted)->not->toContain('prepareForValidation');
+    expect($emitted)->not->toContain('CommaLists');
+});
+
+// The third golden: the same request under `comma`, a real class that Pint and Larastan judge as they judge a consumer's.
+it('reproduces the comma list golden file byte for byte', function (): void {
+    $emitted = (new FormRequestEmitter('Gcob\\LaraSpecFirst\\Tests\\Fixtures\\Generated', 'tests/Fixtures/comma-lists-golden.yaml'))
+        ->emit(plannedRequests(extractFixture('comma-lists-golden.yaml'), 'ListThingsController', new RuleSetOptions(DeepObjectArrays::Comma))['requests'][0])
+        ->contents;
+
+    expect($emitted)->toBe(file_get_contents(
+        dirname(__DIR__, 2).'/Fixtures/Generated/Requests/ListThingsRequest.php'
+    ));
+});
+
+it('emits a comma list golden file Pint has nothing to change in', function (): void {
+    $pint = new Process(
+        [PHP_BINARY, 'vendor/bin/pint', '--test', dirname(__DIR__, 2).'/Fixtures/Generated/Requests/ListThingsRequest.php'],
+        dirname(__DIR__, 3),
+    );
+
+    $pint->run();
+
+    expect($pint->getExitCode())->toBe(0, $pint->getOutput().$pint->getErrorOutput());
 });

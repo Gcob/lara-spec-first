@@ -21,6 +21,12 @@ enum DeepObjectArrays: string
     case Brackets = 'brackets';
 
     /**
+     * `?filter[ids]=1,2`: the generated request splits the string into the list before it validates, then checks the
+     * same as `brackets`, and a list written with brackets still passes.
+     */
+    case Comma = 'comma';
+
+    /**
      * No reading is declared: the array is checked for its presence only, and a finding says so.
      */
     case Any = 'any';

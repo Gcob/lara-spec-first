@@ -449,7 +449,37 @@ final readonly class RuleSetBuilder
             }
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys, self::commaLists($walk, $undeclaredKeys));
+    }
+
+    /**
+     * The arrays a client writes as one comma-separated string, as the steps of their keys and the names each wildcard
+     * step spares: the guard of a map's values is what spares a declared name beside them.
+     *
+     * @param  array<string, array<int, list<string>>>  $undeclaredKeys
+     * @return list<array{steps: list<string>, spared?: array<int, list<string>>}>
+     */
+    private static function commaLists(RuleWalk $walk, array $undeclaredKeys): array
+    {
+        $lists = [];
+
+        foreach ($walk->commaLists as $ruleKey) {
+            // The dots of a rule key that are not the escaped dot of a name.
+            $steps = array_map(
+                static fn (string $step): string => str_replace('\\.', '.', $step),
+                preg_split('/(?<!\\\\)\./', $ruleKey) ?: [$ruleKey],
+            );
+
+            $list = ['steps' => $steps];
+
+            if (isset($undeclaredKeys[$ruleKey])) {
+                $list['spared'] = $undeclaredKeys[$ruleKey];
+            }
+
+            $lists[] = $list;
+        }
+
+        return $lists;
     }
 
     /**
@@ -1780,6 +1810,13 @@ final readonly class RuleSetBuilder
                             trim($label, '`'),
                         );
                         break;
+                    }
+
+                    // Why: under `comma` the request splits the string a client wrote into the list the rules below judge, in
+                    // `prepareForValidation()`. Only the query string reads it so: a JSON body writes an array, and a form
+                    // body's list is not part of this reading.
+                    if ($walk->textSource === 'query string' && $walk->options->deepObjectArrays === DeepObjectArrays::Comma) {
+                        $walk->commaLists[] = $key;
                     }
 
                     // `list` beside `array`, because Laravel's `array` passes for

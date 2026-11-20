@@ -518,9 +518,55 @@ its clients write it, once, in `config/lara-spec-first.php`:
     writes brackets sends. An item is judged under its own key (`filter.ids.1`) and labeled the way a client writes it
     in every finding: `filter[links][]`, with the bracket inside the backticks.
 
+- **`comma`.** The array is one string, `?filter[ids]=1,2`. The generated request splits it into the list before it
+  validates, then checks it as `brackets` does: the same rules, the same items and bounds, and `?filter[ids]=1,x`
+  answers 422 on `filter.ids.1`. A list written with brackets still passes, so one rule covers both: a string where an
+  array belongs is a comma list.
+
 - **`any`.** No reading is declared, so the array is checked at its presence only, when it is required, and the
   generated file says so in a finding that names the key. Its items, its bounds and its uniqueness are not checked, and
   the finding counts in the build warning, since the contract states them.
+
+**`comma` splits in `prepareForValidation()`, into the query string's own bag.** Laravel calls it before it reads the
+data to validate, so the rules, `validated()` and the request a controller type-hints all see the list. The generated
+request writes the method only when the contract holds an array inside a `deepObject`, and imports `CommaLists` for it:
+
+```php
+private const COMMA_LISTS = [
+    ['steps' => ['filter', 'ids']],
+    ['steps' => ['meta', '*'], 'spared' => [1 => ['id']]],
+];
+
+protected function prepareForValidation(): void
+{
+    $this->query->replace(CommaLists::split($this->query->all(), self::COMMA_LISTS));
+}
+```
+
+- **What is split:** every array inside the `deepObject`, at any depth: a property, a nested one, the values of a map,
+  an array inside the objects of a list. A map's wildcard spares the names the map declares, so `?meta[id]=a,b` beside a
+  map of lists stays the string `"a,b"` when `id` is a string. A list of objects or of lists has no comma form: its
+  string splits into strings that its item rules refuse.
+- **What is not:** a value that is already an array, so a client that writes brackets keeps working, and anything
+  outside the `deepObject`. A JSON body and a form body are never split.
+- **Nothing is trimmed:** `?filter[ids]=1,%202` gives `['1', ' 2']`, which `integer` accepts and `validated()` holds as
+  sent, because OpenAPI writes no space after a comma.
+- **An empty value is the empty list.** `?filter[ids]=` gives `[]`, which is how a comma list writes one, so
+  `minItems: 1` refuses it and a schema without `minItems` accepts it.
+- **An empty item is judged as `null`,** the way the empty item of `?filter[ids][]=` is. `?filter[ids]=1,,2`, `1,` and
+  `,` answer 422 on the empty items, `?filter[tags]=ab,,cd` with `minLength: 2` answers 422 on `filter.tags.1`, and an
+  item type that allows `null` accepts it and `validated()` holds `null`. An item that is only spaces is one too.
+  Laravel skips a rule that is not implicit on a value that trims to the empty string, so left as `""` the item would
+  pass `integer`, which the contract refuses.
+- **An item cannot hold a comma.** PHP decodes `%2C` before the request sees the string, so a comma in a value and a
+  comma between two values cannot be told apart. That is the convention the application declared, not something left
+  unchecked, and no finding says it.
+- **The application's `request()` keeps the string as sent.** The split is in the query bag of the generated request,
+  which is what a controller type-hints, and in `validated()`: read the list there. `request()->query('filter')` is
+  `['ids' => '1,2']`.
+
+`Gcob\LaraSpecFirst\Validation\CommaLists` is public API, imported by the generated request, so its name is frozen with
+the rest of what a generated file names, and so is `split()`, which the file calls.
 
 **A required array that may be empty is accepted left out under `brackets`.** An empty list has no bracketed form: PHP's
 `http_build_query()` writes nothing for `['ids' => []]`, and `?filter[ids][]=` is one empty item, which `integer`
@@ -1379,7 +1425,10 @@ a decision rather than an obstacle:
 **The middleware row is the one worth checking against the framework**, since it is what a `prepareForValidation()`
 override would have done. Laravel resolves a controller method's typed parameters after the route's middleware stack has
 run, so a middleware calling `$request->merge()` changes what the generated request validates. A payload that needs
-trimming, casting or renaming before it can satisfy the contract is normalized there, in a class the project owns.
+trimming, casting or renaming before it can satisfy the contract is normalized there, in a class the project owns. The
+package writes a `prepareForValidation()` of its own in one case, an array inside a `deepObject` that
+`query.deep_object_arrays` says clients write as a comma list. It splits the string and nothing else, so everything else
+a project normalizes still goes through middleware.
 
 ## The payload arrives as a DTO
 

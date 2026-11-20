@@ -1438,6 +1438,82 @@ it('checks an array inside a deepObject by its brackets', function (
     }
 });
 
+// Under `comma`, the rules are `brackets`' own: the request splits the string into the list before it validates, and
+// the rule set says which keys it splits, by the steps of the key as the query string delivers it. A map's wildcard is
+// guarded by the declared names, as the map's own rules are, so a declared string beside it is never split.
+it('records the comma lists of a deepObject', function (Schema $schema, array $lists, string $name): void {
+    $set = deepObjectRuleSet($schema, false, $name, options: new RuleSetOptions(DeepObjectArrays::Comma));
+    $brackets = deepObjectRuleSet($schema, false, $name);
+
+    expect($set->commaLists)->toBe($lists)
+        ->and($set->rules)->toEqual($brackets->rules)
+        ->and($set->findings)->toBe($brackets->findings)
+        ->and($brackets->commaLists)->toBe([])
+        ->and(deepObjectRuleSet($schema, false, $name, options: new RuleSetOptions(DeepObjectArrays::Any))->commaLists)->toBe([]);
+})->with(function (): Generator {
+    $integers = new Schema(types: [SchemaType::Integer]);
+
+    yield 'a property' => [
+        objectSchema(['ids' => deepObjectArray($integers, 1, 3, true)], ['ids']),
+        [['steps' => ['filter', 'ids']]],
+        'filter',
+    ];
+    yield 'a nested one' => [
+        objectSchema(['created' => objectSchema(['ids' => deepObjectArray($integers)])]),
+        [['steps' => ['filter', 'created', 'ids']]],
+        'filter',
+    ];
+    yield 'the value of a map beside a declared property' => [
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['id' => new Schema(types: [SchemaType::String])],
+            additionalPropertiesSchema: deepObjectArray($integers),
+        ),
+        [['steps' => ['filter', '*'], 'spared' => [1 => ['id']]]],
+        'filter',
+    ];
+    yield 'the value of a map alone' => [
+        new Schema(types: [SchemaType::Object], additionalPropertiesSchema: deepObjectArray($integers, max: 2)),
+        [['steps' => ['filter', '*']]],
+        'filter',
+    ];
+    yield 'a list inside the objects of a list' => [
+        objectSchema(['rows' => deepObjectArray(objectSchema(['tags' => deepObjectArray(new Schema(types: [SchemaType::String]))]))]),
+        [['steps' => ['filter', 'rows']], ['steps' => ['filter', 'rows', '*', 'tags']]],
+        'filter',
+    ];
+    yield 'an array of arrays' => [
+        objectSchema(['m' => deepObjectArray(deepObjectArray($integers))]),
+        [['steps' => ['filter', 'm']], ['steps' => ['filter', 'm', '*']]],
+        'filter',
+    ];
+    yield 'a property named with a dot' => [
+        objectSchema(['a.b' => deepObjectArray($integers)]),
+        [['steps' => ['filter', 'a.b']]],
+        'filter',
+    ];
+    yield 'a parameter whose name PHP rewrites' => [
+        objectSchema(['ids' => deepObjectArray($integers)]),
+        [['steps' => ['user_filter', 'ids']]],
+        'user.filter',
+    ];
+});
+
+// The split is the query string's alone: a JSON body keeps its array, and a form body a list, as they are sent, so the
+// request has nothing to prepare for them.
+it('records no comma list for an array of a JSON body or of a form body', function (string $mediaType): void {
+    $integers = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: [$mediaType => objectSchema(['ids' => $integers, 'nested' => objectSchema(['ids' => $integers])])],
+    ), new RuleSetOptions(DeepObjectArrays::Comma));
+
+    expect($set->rules)->toHaveKey('ids.*')
+        ->and($set->commaLists)->toBe([]);
+})->with([
+    'application/json',
+    'application/x-www-form-urlencoded',
+]);
+
 // An item is labeled the way a client writes it, `filter[links][]`, with the bracket inside the backticks, in every
 // finding about it. A text boolean item hands over the read of the whole list, since `validated('filter.flags.0')` is the
 // first item only, and a deeper one says each value is the string as sent.
@@ -1503,6 +1579,11 @@ it('keeps the configured reading when the walk lowers its depth', function (Deep
     yield 'any' => [DeepObjectArrays::Any, ['filter.ids' => ['sometimes']], true];
     yield 'brackets' => [
         DeepObjectArrays::Brackets,
+        ['filter.ids' => ['sometimes', 'array', 'list', 'min:1'], 'filter.ids.*' => ['integer']],
+        false,
+    ];
+    yield 'comma' => [
+        DeepObjectArrays::Comma,
         ['filter.ids' => ['sometimes', 'array', 'list', 'min:1'], 'filter.ids.*' => ['integer']],
         false,
     ];

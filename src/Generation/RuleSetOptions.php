@@ -42,7 +42,7 @@ final readonly class RuleSetOptions
         $reading = is_string($value) ? DeepObjectArrays::tryFrom($value) : null;
 
         if ($reading === null) {
-            throw UnusableSettingException::setting(self::DEEP_OBJECT_ARRAYS, 'one of "brackets" or "any"');
+            throw UnusableSettingException::setting(self::DEEP_OBJECT_ARRAYS, 'one of "brackets", "comma" or "any"');
         }
 
         return new self($reading);

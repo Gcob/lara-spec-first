@@ -848,6 +848,9 @@ it('reads query.deep_object_arrays in spec:build and spec:doctor', function (str
     'built under brackets, read as brackets' => ['brackets', 'brackets', false],
     'built under brackets, changed to any and not rebuilt' => ['brackets', 'any', true],
     'built under any, changed to brackets and not rebuilt' => ['any', 'brackets', true],
+    'built under comma, read as comma' => ['comma', 'comma', false],
+    'built under comma, changed to brackets and not rebuilt' => ['comma', 'brackets', true],
+    'built under brackets, changed to comma and not rebuilt' => ['brackets', 'comma', true],
 ]);
 
 // A value no reading answers to stops the commands that read it, with the key in the message, like an unusable `spec.path`:

@@ -2272,6 +2272,139 @@ it('keeps a required array that cannot be empty required under brackets', functi
         ->and(sendThroughEmitted($class, 'GET', '?filter[ids][]=1')[0])->toBe(200);
 });
 
+/**
+ * A request whose query holds every shape of array inside a deepObject, and whose body, when it has one, is read from
+ * the media type given: `filter` (a bounded unique list of integers, a list of objects with a list of strings, an array
+ * of arrays, a list of strings of at least two characters, a list of nullable integers) and `meta` (a map of integer
+ * lists beside a declared string `id`).
+ */
+function commaListOperation(string $method = 'GET', ?string $mediaType = null): Operation
+{
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    return new Operation(
+        index: 0,
+        method: HttpMethod::from(strtolower($method)),
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listCommaLists',
+        requestBody: $mediaType === null ? null : new RequestBody([$mediaType => new Schema(
+            types: [SchemaType::Object],
+            properties: ['title' => new Schema(types: [SchemaType::String])],
+        )], false),
+        queryParameters: [
+            new QueryParameter('filter', new Schema(types: [SchemaType::Object], properties: [
+                'ids' => new Schema(types: [SchemaType::Array], items: $integer, minItems: 1, maxItems: 3, uniqueItems: true),
+                'rows' => new Schema(types: [SchemaType::Array], items: new Schema(
+                    types: [SchemaType::Object],
+                    properties: [
+                        'a' => $integer,
+                        'tags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])),
+                    ],
+                    required: ['a'],
+                )),
+                'm' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Array], items: $integer)),
+                'tags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String], minLength: 2)),
+                'nids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer, SchemaType::Null])),
+            ]), style: 'deepObject', explode: true),
+            new QueryParameter('meta', new Schema(
+                types: [SchemaType::Object],
+                properties: ['id' => new Schema(types: [SchemaType::String])],
+                additionalPropertiesSchema: new Schema(types: [SchemaType::Array], items: $integer),
+            ), style: 'deepObject', explode: true),
+        ],
+    );
+}
+
+// `comma`: a string where an array belongs is the list a client wrote with commas, split by the request before it
+// validates, and then judged by the rules `brackets` has. A list written with brackets still passes. An empty item is
+// judged as the empty item of `?filter[ids][]=` is, so `1,,2` is refused for the item and not accepted as `""`.
+it('validates an array inside a deepObject written as a comma list', function (string $query, int $status, array $errors): void {
+    $class = emittedRequestClass(commaListOperation(), new RuleSetOptions(DeepObjectArrays::Comma));
+
+    [$got, $body] = sendThroughEmitted($class, 'GET', $query);
+
+    expect($got)->toBe($status)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe($errors);
+})->with([
+    'two items' => ['?filter[ids]=1,2', 200, []],
+    'one item' => ['?filter[ids]=1', 200, []],
+    'an item that is no integer' => ['?filter[ids]=1,x', 422, ['filter.ids.1']],
+    'more items than maxItems' => ['?filter[ids]=1,2,3,4', 422, ['filter.ids']],
+    'the same item twice' => ['?filter[ids]=1,01', 422, ['filter.ids.0', 'filter.ids.1']],
+    'an empty value, below minItems' => ['?filter[ids]=', 422, ['filter.ids']],
+    'a list written with brackets' => ['?filter[ids][]=1&filter[ids][]=2', 200, []],
+    'a list written with brackets, with an item that is wrong' => ['?filter[ids][]=1&filter[ids][]=x', 422, ['filter.ids.1']],
+    'a list written with brackets, holding a comma' => ['?filter[ids][0]=1,2', 422, ['filter.ids.0']],
+    'the list of an object of a list' => ['?filter[rows][0][a]=1&filter[rows][0][tags]=p,q', 200, []],
+    'a list of objects written as a string' => ['?filter[rows]=1,2', 422, ['filter.rows.0', 'filter.rows.1']],
+    'a map beside a declared string' => ['?meta[id]=a,b&meta[n]=1,2', 200, []],
+    'a value of a map that is wrong' => ['?meta[id]=a&meta[n]=1,x', 422, ['meta.n.1']],
+    'an array of arrays, each written as a string' => ['?filter[m][0]=1,2&filter[m][1]=3', 200, []],
+    'an array of arrays, written as one string' => ['?filter[m]=1,2', 422, ['filter.m.0', 'filter.m.1']],
+    'an empty item in the middle' => ['?filter[ids]=1,,2', 422, ['filter.ids.1']],
+    'an empty item at the end' => ['?filter[ids]=1,', 422, ['filter.ids.1']],
+    'a comma alone' => ['?filter[ids]=,', 422, ['filter.ids.0', 'filter.ids.1']],
+    'an empty item that is a string below minLength' => ['?filter[tags]=ab,,cd', 422, ['filter.tags.1']],
+    'an item of a space below minLength' => ['?filter[tags]=ab,%20', 422, ['filter.tags.1']],
+    'an empty item where the item may be null' => ['?filter[nids]=1,,2', 200, []],
+]);
+
+it('answers an array inside a deepObject written as a comma list, split and as text', function (): void {
+    $class = emittedRequestClass(commaListOperation(), new RuleSetOptions(DeepObjectArrays::Comma));
+
+    expect(sendThroughEmitted($class, 'GET', '?filter[ids]=1,2&filter[m][0]=3,4&filter[m][1]=5&filter[nids]=6,,7&meta[id]=a,b&meta[n]=8,9'))
+        ->toEqual([200, [
+            'filter' => ['ids' => ['1', '2'], 'm' => [['3', '4'], ['5']], 'nids' => ['6', null, '7']],
+            'meta' => ['id' => 'a,b', 'n' => ['8', '9']],
+        ]]);
+});
+
+// An empty list is how a comma list writes it (`?filter[ids]=`), and the rules judge `[]` as they judge it from a body.
+it('reads an empty comma list as an empty list', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listCommaEmpty',
+        queryParameters: [new QueryParameter('filter', new Schema(
+            types: [SchemaType::Object],
+            properties: ['ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]))],
+        ), style: 'deepObject', explode: true)],
+    ), new RuleSetOptions(DeepObjectArrays::Comma));
+
+    expect(sendThroughEmitted($class, 'GET', '?filter[ids]='))->toEqual([200, ['filter' => ['ids' => []]]]);
+});
+
+// `prepareForValidation()` writes the query string's own bag, so the request the controller type-hints holds the list,
+// and the application's `request()` keeps the string as sent.
+it('hands the controller the split list and keeps the string as sent in the application request', function (): void {
+    $class = emittedRequestClass(commaListOperation(), new RuleSetOptions(DeepObjectArrays::Comma));
+
+    Route::get('/_generated/emitted-query', fn () => response()->json([
+        'typed' => app($class)->query('filter'),
+        'sent' => request()->query('filter'),
+    ]));
+
+    $response = app(HttpKernel::class)->handle(Request::create('/_generated/emitted-query?filter[ids]=1,2', 'GET', [], [], [], ['HTTP_ACCEPT' => 'application/json']));
+
+    expect(json_decode((string) $response->getContent(), true))
+        ->toBe(['typed' => ['ids' => ['1', '2']], 'sent' => ['ids' => '1,2']]);
+});
+
+// The split is written into the query bag whatever the verb and the body: `merge()` would write the body's on a `POST`,
+// and the string the rules read would stay a string.
+it('validates a comma list in the query string of a request that has a body', function (?string $mediaType, ?array $json, array $parameters): void {
+    $class = emittedRequestClass(commaListOperation('POST', $mediaType), new RuleSetOptions(DeepObjectArrays::Comma));
+
+    expect(sendThroughEmitted($class, 'POST', '?filter[ids]=1,2', $json, $parameters))
+        ->toEqual([200, ['filter' => ['ids' => ['1', '2']]] + ($json ?? $parameters)])
+        ->and(sendThroughEmitted($class, 'POST', '?filter[ids]=1,x', $json, $parameters)[0])->toBe(422);
+})->with([
+    'no body' => [null, null, []],
+    'a JSON body' => ['application/json', ['title' => 'a'], []],
+    'a form body' => ['application/x-www-form-urlencoded', null, ['title' => 'a']],
+]);
+
 // The values of a map written beside declared properties go through the guard that spares the declared names, so a value is
 // judged by the map's schema and a declared name keeps its own.
 it('judges the values of a deepObject map beside a declared property', function (string $query, int $status, ?string $field): void {
