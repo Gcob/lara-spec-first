@@ -228,6 +228,23 @@ final class RuleWalk
     public array $bodyKeys = [];
 
     /**
+     * The top-level names the body's schema writes, as written: each property, each `required` name and both sides of a
+     * `dependentRequired`. A plain `query` parameter of one of these names is refused, whether or not the name has a
+     * rule of its own. Empty for a body that is not read as an object.
+     *
+     * @var list<string>
+     */
+    public array $bodyNames = [];
+
+    /**
+     * The names of `bodyNames` that are declared under `properties`, which a refusal words differently from a name the
+     * body only requires.
+     *
+     * @var list<string>
+     */
+    public array $bodyProperties = [];
+
+    /**
      * The top-level names whose value the request cannot check when a form sends it, by the reason, worded to follow
      * "the request cannot check it in a form body: ". A name here has no rule and no presence rule.
      *

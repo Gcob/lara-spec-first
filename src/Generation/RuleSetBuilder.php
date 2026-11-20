@@ -286,18 +286,22 @@ final readonly class RuleSetBuilder
 
             // A plain name is refused where a rewritten one only keeps its finding (the plan above): the name is
             // the contract's own key, so the build would be choosing which half of the contract to enforce. Before
-            // the skip below, so that a plain name the overlap leaves without a rule is refused all the same.
+            // the skip below, so that a plain name the overlap leaves without a rule is refused all the same. A name
+            // the body writes counts whether or not it has a rule of its own: one that only `required` names, in a body
+            // that may be absent or `null`, in a form or in a `PATCH`, is read from the query string all the same.
             if ($plan['plain']) {
-                $plainKey = self::ruleKey($parameter->name);
-
                 if (isset($walk->formHeads[$parameter->name])) {
                     $bodyName = $walk->formHeads[$parameter->name][0];
 
                     throw ConflictingInputException::deliveredFieldDeclaredTwice($operation->label(), $bodyName, $parameter->name);
                 }
 
-                if (isset($walk->rules[$plainKey])) {
-                    throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
+                if (in_array($parameter->name, $walk->bodyNames, true)) {
+                    throw ConflictingInputException::fieldDeclaredTwice(
+                        $operation->label(),
+                        $parameter->name,
+                        in_array($parameter->name, $walk->bodyProperties, true),
+                    );
                 }
             }
 
@@ -836,7 +840,10 @@ final readonly class RuleSetBuilder
             && $operation->method !== HttpMethod::Patch;
         $walk->rootKey = self::rootKey($schema, $operation);
 
-        foreach (self::declaredNames($schema) as $name) {
+        $walk->bodyNames = self::declaredNames($schema);
+        $walk->bodyProperties = array_map('strval', array_keys($schema->properties));
+
+        foreach ($walk->bodyNames as $name) {
             $walk->bodyKeys[] = $name;
 
             if ($walk->formBody && ($delivered = self::deliveredName($name)) !== null) {

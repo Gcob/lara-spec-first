@@ -534,12 +534,22 @@ cannot disagree about what the body is.
 **A field named by both the request body and a query parameter is refused, naming the field and both positions.** Not a
 precedence rule, because there is no reading under which one of them is right.
 
-The reason is in the rule set rather than in the request.
+The reason is in the rule set, and in what the request does with a name it cannot give two meanings.
 [A key has one source](#each-field-is-read-from-where-the-contract-put-it) now, but `rules()` holds one entry per name
 and `validated()` one value per name, so a body property and a query parameter of one name would still be two constraint
-sets competing for one key, and the build would be choosing which half of the contract to enforce. It refuses instead,
-the same shape as
+sets competing for one key. A name the body only requires has no rule to compete with, but the request still reads it
+from the query string, so the query string would fill, or hide, what the body's contract asks for. Either way the build
+would be choosing which half of the contract to enforce. It refuses instead, the same shape as
 [two `x-controller` values reducing to one parent](../controllers.md#the-contract-decides-what-is-customizable).
+
+**A name counts when the body's schema writes it, whether or not it has a rule of its own.** That is a name under
+`properties`, a name in `required` that `properties` does not declare, and either side of a `dependentRequired`. A body
+that is optional or may be `null`, a form body, and a `PATCH` (whose required list is read as partial by default) leave
+such a name without a rule, and a `query` parameter of that name is refused all the same: the request reads that key
+from the query string and drops the body's copy, so the query string would fill, or hide, a name the body's contract
+asks for. That holds for a body read as an object: an array body, or a typeless one that names no `properties`, is not
+read as one and still builds. A key the schema does not name, an open map's, is not refused: it is
+[read from the query string](#one-rule-set-body-and-query), with its finding.
 
 **The name that counts is the one Laravel reads, so a form body's delivered name is compared too.** A body read as a
 form delivers `user.name` as `user_name` and `page[size]` below `page`, so a `query` parameter named `user_name`, or
@@ -550,7 +560,7 @@ parameter, which is the key a form delivers it under. A body that is JSON only k
 **A rewritten `query` name under a key the body arrives under is not refused.** `page[size]` beside a body property
 `page` would be the same shape of collision, but no rule is emitted for it, so the build is not choosing which half of
 the contract to enforce: it keeps its finding, as [any name PHP rewrites](#one-rule-set-body-and-query) can. A plain
-name is refused because it would have a rule.
+name is refused because the body writes it.
 
 **Path-item parameters merge with the operation's, and the operation wins on a name they share.** That is OpenAPI's own
 rule, not one this package invents, and it is a merge rather than a collision.
@@ -1421,9 +1431,10 @@ body's keys and the `query` string's, and the DTO is the body's. Findings are wr
 and the key Laravel drops, after them):
 
 - **A map key named like a `query` parameter** is read from the query string, never from the body, so a body key of that
-  name is left out of `validated()` and of the DTO. The finding names the key the value arrives under (`page` for a
-  parameter written `page[size]`). A root that declares properties beside a value schema writes the same finding, since
-  its undeclared keys are the map's.
+  name is left out of `validated()` and of the DTO. A key the map names in `required` is
+  [refused](#a-name-declared-twice-is-refused) instead, since the schema writes it. The finding names the key the value
+  arrives under (`page` for a parameter written `page[size]`). A root that declares properties beside a value schema
+  writes the same finding, since its undeclared keys are the map's.
 - **A key a form delivers under another name** (`a.b` and `a b` as `a_b`) is validated and carried under the rewritten
   name, since the body declares no key to say which one the client meant. A JSON body keeps every key as sent.
 

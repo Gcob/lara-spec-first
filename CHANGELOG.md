@@ -415,6 +415,20 @@ tags: [versions, conventions, planning]
   nothing and reported nowhere: the contract carries both as written, the generated file says what is wrong, and the
   parameter is read as if the keyword were not written. This is a breaking change: every move on the exit-code axis is
   major, so a CI step that expected the old code will see the new one.
+- **The build refuses a `query` parameter named like any top-level name the body's schema writes, where it refused only
+  a name that had a rule.** A name the body writes without a rule of its own slipped through: a name in `required` that
+  `properties` does not declare, in a body that is optional, that may be `null`, that is read as a form, or that a
+  `PATCH` sends (whose required list is read as partial by default), a name an `allOf` branch requires, and a
+  `dependentRequired` name `properties` does not declare. The request reads such a key from the query string and drops
+  the body's copy, so the query string could fill, or hide, a key the body's contract states. `spec:build` and
+  `spec:make` now stop with a message that names the body's name and says the request drops the body's copy, and
+  `spec:doctor` reports it under `Routing outcome`. Its exit code can rise from `0` to `2`, and from `1` to `2` when the
+  contract also had a document fault the refused rule set carried (the doctor leaves that fault out of the report while
+  the build refuses the operation). A body key the schema does not name (an open map's) is still read from the query
+  string, with its finding. Only a body read as an object counts: an array body, or a typeless one that names no
+  `properties`, still builds. This is a breaking change: a contract that built is refused, and every move on the
+  exit-code axis is major, so a green CI step can turn red. Rename the `query` parameter or the body's name. This ships
+  [#158](https://github.com/Gcob/lara-spec-first/issues/158).
 
 ### Fixed
 

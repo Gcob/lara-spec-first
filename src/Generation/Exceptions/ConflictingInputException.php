@@ -29,22 +29,27 @@ final class ConflictingInputException extends InvalidArgumentException implement
     }
 
     /**
-     * One name declared by both the body and a query parameter.
+     * One name the body's schema writes (a property, a `required` name or a `dependentRequired` name) and a `query`
+     * parameter.
      *
-     * The reason is in the framework rather than in the contract. `Request::all()` is the input source unioned with the
-     * query string and the input source wins, so the two arrive as one value with the query string's copy dropped in
-     * silence. One key cannot carry two constraint sets either.
+     * The reason is in the contract rather than in the framework. The generated request reads a `query` key from the
+     * query string and drops the body's copy of it, so the two arrive as one value, and one rule key cannot carry two
+     * sets of constraints. A name the body only requires is not a property, and the message says which it is.
+     *
+     * @param  bool  $property  whether the body declares the name under `properties`, rather than only requiring it
      */
-    public static function fieldDeclaredTwice(string $identity, string $field): self
+    public static function fieldDeclaredTwice(string $identity, string $field, bool $property = true): self
     {
         return new self(sprintf(
-            'The operation "%s" declares "%s" both as a property of its request body and as a '.
-            '`query` parameter. Laravel unions the query string into the input source and the '.
-            'input source wins, so the two would arrive as one value with the query parameter '.
-            'dropped in silence, and one rule key cannot carry both sets of constraints. Rename '.
-            'one of them.',
+            'The operation "%s" declares "%s" %s. The generated request reads that key from the query string and '.
+            'drops the body\'s copy, so the two would arrive as one value, and one rule key cannot carry both sets of '.
+            'constraints. Rename one of them.',
             $identity,
-            $field
+            $field,
+            $property
+                ? 'both as a property of its request body and as a `query` parameter'
+                : 'as a `query` parameter, and its request body writes the same name without declaring a property of '.
+                    'that name (in `required`, in `dependentRequired` or in an `allOf` branch)'
         ));
     }
 

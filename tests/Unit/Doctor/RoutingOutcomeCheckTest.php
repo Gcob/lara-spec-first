@@ -2,10 +2,17 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Contract\EncodingDefaults;
 use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Contract\PathTemplate;
+use Gcob\LaraSpecFirst\Contract\QueryParameter;
+use Gcob\LaraSpecFirst\Contract\RequestBody;
+use Gcob\LaraSpecFirst\Contract\Schema;
+use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Doctor\Checks\RoutingOutcomeCheck;
+use Gcob\LaraSpecFirst\Doctor\Checks\SupportMatrixCheck;
+use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 
 // Named distinctly from ControllerNameTest's own `operation()` helper: Pest's
@@ -148,4 +155,53 @@ it('turns a plan the builder refuses into a package limit finding, with no route
         ->and($result->findings)->toHaveCount(1)
         ->and($result->findings[0]->class)->toBe(FindingClass::PackageLimit)
         ->and($result->findings[0]->section)->toBe('Routing outcome');
+});
+
+// A build refusal is a package limit under `Routing outcome`, and a package limit with no document fault is exit 2
+// (doctor.md). Nothing reported this contract before: its body asks for `token` without declaring it, so the doctor
+// could exit 0.
+it('reports a query parameter named like a name the body writes without a rule of its own as a package limit', function (): void {
+    $operation = new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'doThing',
+        requestBody: new RequestBody(['application/json' => new Schema(types: [SchemaType::Object], required: ['token'])], false, [], new EncodingDefaults),
+        queryParameters: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    );
+
+    $result = RoutingOutcomeCheck::check([$operation], 'App\\Http\\Generated', '/app/openapi.yaml');
+
+    expect($result->plan)->toBeNull()
+        ->and($result->routes)->toBe([])
+        ->and($result->findings)->toHaveCount(1)
+        ->and($result->findings[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($result->findings[0]->section)->toBe('Routing outcome')
+        ->and($result->findings[0]->message)->toContain('its request body writes the same name without declaring a property of that name');
+});
+
+// A refused rule set is dropped whole, with the document faults it carried, so a contract that exited 1 for a fault
+// in its `encoding` now exits 2 for the refusal. The fault is not lost from the document, only from this report.
+it('moves the exit code from 1 to 2 for a name the body writes beside a fault the refused rule set carried', function (): void {
+    $form = 'application/x-www-form-urlencoded';
+    $exitCode = function (string $queryName) use ($form): int {
+        $operation = new Operation(
+            index: 0,
+            method: HttpMethod::Post,
+            path: PathTemplate::fromString('/things'),
+            operationId: 'doThing',
+            requestBody: new RequestBody([$form => new Schema(types: [SchemaType::Object], required: ['token'])], false, [$form => ['avatar' => 'image/png']], new EncodingDefaults),
+            queryParameters: [new QueryParameter($queryName, new Schema(types: [SchemaType::String]))],
+        );
+
+        $findings = [
+            ...SupportMatrixCheck::schemas([$operation], null),
+            ...RoutingOutcomeCheck::check([$operation], 'App\\Http\\Generated', '/app/openapi.yaml')->findings,
+        ];
+
+        return (new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', null, [], $findings))->exitCode();
+    };
+
+    expect($exitCode('other'))->toBe(1)
+        ->and($exitCode('token'))->toBe(2);
 });
