@@ -60,6 +60,14 @@ final readonly class SupportMatrixCheck
     ];
 
     /**
+     * How a keyword a rule set left unenforced is written in the sentence, when its bare name would send a reader
+     * looking for a keyword that is not in their file: a 3.1 `const` arrives as a one-value `enum`.
+     */
+    private const UNENFORCED_NAMES = [
+        'enum' => '`enum` (or a `const`, read as a one-value `enum`)',
+    ];
+
+    /**
      * The keywords the doctor names in a response schema: the ones that change the type of a value and that a response
      * DTO cannot say.
      *
@@ -314,19 +322,24 @@ final readonly class SupportMatrixCheck
         }
 
         foreach ($ruleSet->unenforced ?? [] as $keyword => $fields) {
+            // Why: the keyword is one line per operation (above), and a field that leaves it unenforced is not a second.
+            if (isset($request[$keyword])) {
+                continue;
+            }
+
             $findings[] = new Finding(
                 FindingClass::PackageLimit,
                 self::SECTION,
                 SupportLevel::Partial,
                 DocumentPointer::forOperation($operation),
                 sprintf(
-                    '%s writes `%s` where the generated request does not enforce it, or enforces only part of it: %s. '.
+                    '%s writes %s where the generated request does not enforce it, or enforces only part of it: %s. '.
                     'The support matrix may rate `%s` as honored in general, and on these fields the rules leave it out '.
                     'or hold only part of it: the findings in the generated file say which. See '.
                     'docs/guide/openapi-support.md, "%s". This is a fact about this package, not a defect '.
                     'in your contract.',
                     $operation->label(),
-                    $keyword,
+                    self::UNENFORCED_NAMES[$keyword] ?? '`'.$keyword.'`',
                     implode(', ', $fields),
                     $keyword,
                     self::UNENFORCED_SECTIONS[$keyword] ?? 'Schemas',

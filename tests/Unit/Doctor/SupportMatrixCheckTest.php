@@ -571,7 +571,8 @@ it('reports every gap a generated request counts as Partial', function (array $c
     foreach (array_keys($expected) as $at => $keyword) {
         expect($findings[$at]->class)->toBe(FindingClass::PackageLimit)
             ->and($findings[$at]->pointer)->toBe('#/paths/~1things/post')
-            ->and($findings[$at]->message)->toContain('post /things writes `'.$keyword.'` where the generated request does not enforce it, or enforces only part of it: '.$expected[$keyword])
+            ->and($findings[$at]->message)->toContain('post /things writes `'.$keyword.'`')
+            ->and($findings[$at]->message)->toContain('where the generated request does not enforce it, or enforces only part of it: '.$expected[$keyword])
             ->and($findings[$at]->message)->toContain('on these fields')
             ->and($findings[$at]->message)->toContain('the findings in the generated file say which');
     }
@@ -614,6 +615,55 @@ it('reports every gap a generated request counts as Partial', function (array $c
         [],
         ['$ref' => '`a*b`'],
     ];
+    yield 'a field with more than one type' => [
+        ['application/json' => supportMatrixObject(['field' => new Schema(types: [SchemaType::String, SchemaType::Integer])])],
+        [],
+        ['type' => '`field`'],
+    ];
+    yield 'an untyped enum of integers' => [
+        ['application/json' => supportMatrixObject(['field' => new Schema(enum: [1, 2, 3])])],
+        [],
+        ['enum' => '`field`'],
+    ];
+    yield 'an integer of a body that is JSON and a form' => [
+        ['application/json' => supportMatrixObject(['field' => $integer]), $form => supportMatrixObject(['field' => $integer])],
+        [],
+        ['type' => '`field`'],
+    ];
+    yield 'a closed object declaring a name with a dot' => [
+        ['application/json' => supportMatrixObject(['o' => new Schema(types: [SchemaType::Object], properties: ['a.b' => $string], additionalProperties: false)])],
+        [],
+        ['additionalProperties' => '`o`'],
+    ];
+    yield 'an untyped enum of booleans in a query' => [
+        [],
+        [new QueryParameter('mode', new Schema(enum: [true]))],
+        ['enum' => '`mode`'],
+    ];
+});
+
+// The matrix rates `enum` as honored, and a `const` is read as a one-value `enum`: the sentence says both, so a reader
+// who wrote a `const` finds it.
+it('says a const is read as a one-value enum when it names an enum', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(
+        ['application/json' => supportMatrixObject(['field' => new Schema(enum: [5])])],
+    )], new RuleSetOptions);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->message)->toContain('post /things writes `enum` (or a `const`, read as a one-value `enum`) where the generated request does not enforce it');
+});
+
+// A keyword the doctor already names as `Ignored` is one line per operation, so the field that leaves it unenforced is
+// not a second one.
+it('reports a keyword once when it is Ignored and left unenforced', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(
+        ['application/json' => supportMatrixObject(['field' => new Schema(ignored: ['oneOf' => '#/field/oneOf'])])],
+    )], new RuleSetOptions);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->level)->toBe(SupportLevel::Ignored)
+        ->and($findings[0]->message)->toContain('post /things writes `oneOf` at #/field/oneOf')
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
 });
 
 // The informational lines of a generated file's findings must never gate the

@@ -1,0 +1,63 @@
+# Each operation holds a standard HTTP or form reading: what a client of a query string or a form sends for a boolean
+# and for a number written as text. The generated request accepts it, and the generated file says so as information, so
+# `spec:doctor` has nothing to report and exits 0.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /query-boolean:
+    get:
+      operationId: getQueryBoolean
+      parameters:
+        - name: notify
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: OK
+  /form-boolean:
+    post:
+      operationId: postFormBoolean
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                subscribe:
+                  type: boolean
+      responses:
+        '200':
+          description: OK
+  /query-enum:
+    get:
+      operationId: getQueryEnum
+      parameters:
+        - name: level
+          in: query
+          schema:
+            enum: [1, 2, 3]
+      responses:
+        '200':
+          description: OK
+  /flags:
+    get:
+      operationId: getFlags
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              flags:
+                type: array
+                items:
+                  type: boolean
+      responses:
+        '200':
+          description: OK

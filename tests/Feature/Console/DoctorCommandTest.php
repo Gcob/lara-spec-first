@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Contracts\Console\Kernel;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -361,13 +363,34 @@ it('exits 2 for a gap the generated file used to name alone', function (): void 
     $partial = doctorSupportFindings($report, 'partial');
 
     expect($exit)->toBe(2)
-        ->and($partial)->toHaveCount(3)
+        ->and($partial)->toHaveCount(5)
         ->and($partial[0]['message'])->toContain('post /nowhere writes `type`')
         ->and($partial[0]['message'])->toContain('`[x]`')
         ->and($partial[1]['message'])->toContain('post /collision writes `type`')
         ->and($partial[1]['message'])->toContain('`a.b`, `a_b`')
         ->and($partial[2]['message'])->toContain('post /trigger writes `dependentRequired`')
-        ->and($partial[2]['message'])->toContain('`email`');
+        ->and($partial[2]['message'])->toContain('`email`')
+        ->and($partial[3]['message'])->toContain('post /untyped-enum writes `enum` (or a `const`, read as a one-value `enum`)')
+        ->and($partial[3]['message'])->toContain('`level`')
+        ->and($partial[4]['message'])->toContain('post /dotted writes `additionalProperties`')
+        ->and($partial[4]['message'])->toContain('`options`');
+});
+
+// What a client of a query string or a form sends for a boolean, and for a number written as text, is what the generated
+// request accepts. The generated file says so as information, and neither the build warning nor the doctor counts it.
+it('exits 0 for a standard reading the request accepts', function (): void {
+    [$exit, $report] = doctorJson('doctor-standard-readings.yaml');
+
+    expect($exit)->toBe(0)
+        ->and(doctorSupportFindings($report, 'partial'))->toBe([]);
+
+    $operations = extractFixture('doctor-standard-readings.yaml');
+
+    expect($operations)->toHaveCount(4);
+
+    foreach ($operations as $operation) {
+        expect(RuleSetBuilder::for($operation, new RuleSetOptions)->leavesUnenforced())->toBeFalse();
+    }
 });
 
 // `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not

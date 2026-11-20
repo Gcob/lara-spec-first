@@ -876,9 +876,9 @@ are in [ADR 0006](../../project/decisions/0006-hold-rules-to-the-contract.md).
 
 - **Never looser: accepting a payload the contract refuses.** The rule has no exception. Where the code falls short of
   it today, the gap has its card or its stated limit, for example a JSON client's `"42"` in a body that is JSON and a
-  form ([#133](https://github.com/Gcob/lara-spec-first/issues/133)), a text boolean's `"1"` and `"0"`, a blank string
-  once `ConvertEmptyStringsToNull` is removed ([#157](https://github.com/Gcob/lara-spec-first/issues/157)), `pattern`'s
-  `.`, and `format: email` ([#167](https://github.com/Gcob/lara-spec-first/issues/167)).
+  form ([#133](https://github.com/Gcob/lara-spec-first/issues/133)), a blank string once `ConvertEmptyStringsToNull` is
+  removed ([#157](https://github.com/Gcob/lara-spec-first/issues/157)), `pattern`'s `.`, and `format: email`
+  ([#167](https://github.com/Gcob/lara-spec-first/issues/167)).
 - **Never stricter: refusing a payload the contract accepts.** Every generated client then gets a 422 for something it
   was allowed to send, and nobody reading the contract can see why.
 - **The one exception: when matching the contract exactly would be far too complex to integrate in Laravel, a stricter
@@ -937,7 +937,8 @@ things come with it:
   `has()` reads the body too, where an open body carrying a `notify` key would make an unsent parameter read as `false`.
 - **`"1"` and `"0"` are accepted although the contract writes `true` and `false`.** It is the maintainer's decision,
   kept because the four spellings are what a client of a query string or a form already sends, and the finding on the
-  field says it accepts the two more.
+  field says it accepts the two more. That finding is information: neither `spec:build`'s warning nor `spec:doctor`
+  counts it, an item of a boolean list inside a `deepObject` included.
 - **A body that is JSON and a form at once keeps `boolean`.** One rule set cannot accept the form's text and still
   refuse `null`, so a form client's `"true"` is refused there, and a JSON client's `"1"` and `1` get through. The
   field's finding says both. The first is the exception [the principle](#every-constraint-maps-or-reports) allows when
@@ -1062,10 +1063,10 @@ escaped; what the parent cannot say about it — that it is required, or that no
 generated file's findings.
 
 **A constraint that maps to nothing is named per operation by `spec:doctor`**, and by the generated file's own findings
-for the reader who is already looking at the class. A few are still prose only (a JSON client's `"42"` on an integer of
-a body that is JSON and a form, the rest listed in [#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the
-doctor stays silent on them for now. Neither is a fallback for the other: one runs in CI before anything is generated,
-and the other answers "why is this field not enforced" at the moment somebody asks it.
+for the reader who is already looking at the class. A few are still prose only (the ones listed in
+[#119](https://github.com/Gcob/lara-spec-first/issues/119)), so the doctor stays silent on them for now. Neither is a
+fallback for the other: one runs in CI before anything is generated, and the other answers "why is this field not
+enforced" at the moment somebody asks it.
 
 **The doctor reads data, and the generated file reads prose.** A rule set keeps its findings as sentences, and some of
 them are only worth saying: two media types over one schema, a rule stricter than the contract in one case. Gating an
@@ -1077,13 +1078,17 @@ PHP appends to or delivers under no name, two that arrive under one key or one t
 name PHP delivers under no name or under another's, and a body key with a `*` Laravel reads as a wildcard, get no rule
 key at all, so what they state is recorded for them as it is for a field the rule set keeps, under the field's name: its
 `type`, its `required` and every keyword it states, and the `dependentRequired` that asks for it. A `dependentRequired`
-trigger that has no rule is recorded the same way, on each name it no longer asks for. A field that states none of that
-loses nothing by having no rule, so its finding is information. `required` on a `readOnly` property is not recorded,
-dropped or not: the request does what the contract says there, since `required` takes effect on the response only, so
-the generated file says it in a finding, which the build does not count in its warning, and the doctor has nothing to
-report. Nor is the `required` of a top-level name of a `PATCH` body, which asks for none. The `Ignored` keywords are not
-in a rule set at all, since nothing reads them, and the reading collects them with their position instead. See
-[the doctor's Support findings](../doctor.md#what-it-checks).
+trigger that has no rule is recorded the same way, on each name it no longer asks for. What no Laravel rule can hold is
+recorded on the field that states it: a required name `required_array_keys` cannot carry, the closed object around a
+name `array:` cannot carry, a field of more than one type or typed only `null`, an `enum` or a keyword the package does
+not read on a field that states no type, the `type` of an integer, a number or a boolean in a body that is JSON and a
+form, a name judged by shape in such a body, and a recursion through a schema with no name. A field that states none of
+that loses nothing by having no rule, so its finding is information. `required` on a `readOnly` property is not
+recorded, dropped or not: the request does what the contract says there, since `required` takes effect on the response
+only, so the generated file says it in a finding, which the build does not count in its warning, and the doctor has
+nothing to report. Nor is the `required` of a top-level name of a `PATCH` body, which asks for none. The `Ignored`
+keywords are not in a rule set at all, since nothing reads them, and the reading collects them with their position
+instead. See [the doctor's Support findings](../doctor.md#what-it-checks).
 
 ### A JSON body keeps its types
 
@@ -1120,12 +1125,17 @@ nothing else gets the `:strict` form of its rule, or `WholeNumber` for an intege
   request accepts as the schema says and whose stored value the controller keeps; a name the body requires without
   declaring it, where the contract says nothing about the value; and a field that states no type and nothing else
   (`{}`), or only an annotation (`default`, `deprecated`, `$defs`, `$anchor`), which accepts any value in the contract
-  and in the request. Its look-alikes still count: a body that is also multipart with a file part (a file is refused
-  there as a string), a `PATCH` whose required list is read as empty, a required name beside a value schema the guard
-  cannot spare, and a field with no type that writes an `enum`, a `const` or a keyword the package does not read
-  (`oneOf`, on the field, through a `$ref` or in an `allOf` branch), that is typed only `null`, or that declares more
-  than one type. A sentence counts once per field: the same words said as information on one field and as a gap on
-  another (`address.id` beside the `id` of `address`) leave the gap counted. An untyped `enum` of numbers counts because
+  and in the request. A boolean read as text is information too, whether it is a `query` parameter, a form field or an
+  item of a boolean list in a `deepObject`: `"1"` and `"0"` are what a client of a query string or a form sends for a
+  boolean. So is a field with no type whose only keyword is an `enum` (or a `const`) of numbers and strings, in a query
+  string or a body that is a form alone: `Rule::in()` compares as text, so it accepts exactly the texts a client of
+  those writes for its values. Its look-alikes still count: a body that is also multipart with a file part (a file is
+  refused there as a string), a `PATCH` whose required list is read as empty, a required name beside a value schema the
+  guard cannot spare, and a field with no type that writes an `enum` (or a `const`) in a body that is JSON or holding a
+  boolean or a `null`, or a keyword the package does not read (`oneOf`, on the field, through a `$ref` or in an `allOf`
+  branch), that is typed only `null`, or that declares more than one type. `spec:doctor` names each one of those. A
+  sentence counts once per field: the same words said as information on one field and as a gap on another (`address.id`
+  beside the `id` of `address`) leave the gap counted. An untyped `enum` of numbers in a JSON body counts because
   `Rule::in()` compares as text, so it accepts `"1"` and `true` for `1`.
 - **A query parameter and a form or multipart field keep the loose rules**, since every value a client on the contract
   sends there is text. A client that sends JSON to an operation that declares only a form is off-contract: its body is
@@ -1140,8 +1150,8 @@ nothing else gets the `:strict` form of its rule, or `WholeNumber` for an intege
   passes), and passes the text Laravel's `integer` passes, so a form client's `42` and `+42` get through as before and
   `1.0` does not. A value that is no number at all (`"abc"`, `true`, and the `null` an empty form field becomes) reads
   "must be a number" beside "must be an integer". The generated file says what still gets through in one finding per
-  field, and `spec:doctor` stays silent on it, like the other prose-only cases.
-  [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the runtime branch that would refuse them.
+  field, and `spec:doctor` names the field's `type`. [#133](https://github.com/Gcob/lara-spec-first/issues/133) is the
+  runtime branch that would refuse them.
 - **The package requires `^12.55 || ^13.0`, and no generated rule needs anything newer than its floor.** The `strict`
   parameter a generated rule uses exists from 12.21 on `numeric` and `boolean`. CI installs and tests both floors
   exactly, Laravel 12.55.0 and 13.0.0, as [the stack](../../project/stack.md) says.

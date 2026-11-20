@@ -55,3 +55,37 @@ paths:
       responses:
         '200':
           description: OK
+  /untyped-enum:
+    post:
+      operationId: postUntypedEnum
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                level:
+                  enum: [1, 2, 3]
+      responses:
+        '200':
+          description: OK
+  /dotted:
+    post:
+      operationId: postDotted
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                options:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    a.b:
+                      type: string
+      responses:
+        '200':
+          description: OK

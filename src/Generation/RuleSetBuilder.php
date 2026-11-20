@@ -1161,6 +1161,7 @@ final readonly class RuleSetBuilder
                 )),
                 self::list(array_values(array_unique($accepted))),
             );
+            $walk->leaveUnenforced('additionalProperties', 'The body itself');
         }
 
         return array_values(array_unique($closed));
@@ -1820,6 +1821,7 @@ final readonly class RuleSetBuilder
                                 .'client\'s `"42"` gets through, though the contract refuses it.',
                             $label,
                         );
+                        $walk->leaveUnenforced('type', $label);
                     }
                     break;
                 case SchemaType::Number:
@@ -1828,6 +1830,7 @@ final readonly class RuleSetBuilder
 
                     if ($walk->mixedBody) {
                         $walk->findings[] = self::mixedBodyFinding($label, 'a number', 'numeric', '`"1.5"` gets through, though the contract refuses it.');
+                        $walk->leaveUnenforced('type', $label);
                     }
                     break;
                 case SchemaType::Boolean:
@@ -1843,6 +1846,7 @@ final readonly class RuleSetBuilder
                                 'boolean',
                                 '`"1"` and `1` get through, though the contract refuses them, and a form\'s `"true"` is refused, though the contract accepts it.',
                             );
+                            $walk->leaveUnenforced('type', $label);
                         }
                     }
                     break;
@@ -1905,6 +1909,7 @@ final readonly class RuleSetBuilder
                             $label,
                             self::list($structural),
                         );
+                        $walk->leaveUnenforced('additionalProperties', $label);
                     } else {
                         $rules[] = $schema->additionalProperties === false && ! $bracketed ? 'array:'.implode(',', $declared) : 'array';
                     }
@@ -1922,12 +1927,15 @@ final readonly class RuleSetBuilder
                             // The rule's parameters are comma-separated and the
                             // data's keys are split on dots before it runs, so
                             // either character makes this name match nothing.
-                            $walk->findings[] = sprintf(
+                            $named = self::bracketLabel($walk, $label, $name) ?? rtrim($label, '`').'.'.$name.'`';
+                            $property = $schema->properties[$name] ?? new Schema;
+
+                            self::dropFields($walk, sprintf(
                                 '%s requires `%s`, which Laravel cannot name in `required_array_keys`, so its '
                                     .'presence is not enforced.',
                                 $label,
                                 $name,
-                            );
+                            ), [$named => self::askedWhenDropped($walk, $property, $named, true, false) ? ['required'] : []]);
 
                             continue;
                         }
@@ -1989,10 +1997,14 @@ final readonly class RuleSetBuilder
                         // Why: a field that states no type and nothing else accepts any value, in the contract and in the
                         // request. A keyword it writes besides that constrains a value (an `enum`, a `oneOf`) is one the
                         // rule set does not carry. An annotation (`default`, `deprecated`) constrains nothing.
-                        if ($unmapped === 'states no type' && $schema->types === [] && ! self::writesAKeyword($written)) {
+                        $untyped = $schema->types === [];
+                        $keywords = $untyped ? self::writtenKeywords($written) : ['type'];
+
+                        if ($untyped && ($keywords === [] || self::isTextEnumeration($schema, $keywords, $walk))) {
                             $walk->information($message);
                         } else {
                             $walk->findings[] = $message;
+                            self::leaveDropped($walk, $label, $keywords);
                         }
                     }
             }
@@ -2167,6 +2179,7 @@ final readonly class RuleSetBuilder
                     $site->allOf,
                 )]),
             );
+            $walk->leaveUnenforced('$ref', $label);
 
             return;
         }
@@ -2460,8 +2473,8 @@ final readonly class RuleSetBuilder
     /**
      * What a body that is JSON and a form says of a number or a boolean field: it keeps the loose rule, and the
      * sentence names what a JSON client gets through. (An integer says it on its own: it has a rule that judges a JSON
-     * number exactly.) A gap rather than a stricter rule, so it counts in the build warning, and it leaves nothing
-     * unenforced for the doctor to report.
+     * number exactly.) A gap rather than a stricter rule, so it counts in the build warning, and the caller records the
+     * field's `type` as left unenforced, which the doctor reports.
      */
     private static function mixedBodyFinding(string $label, string $noun, string $rule, string $effect): string
     {
@@ -2487,6 +2500,10 @@ final readonly class RuleSetBuilder
      *
      * An enumeration of booleans is read as every spelling of its values, since `Rule::in([true])` would accept `1` and
      * refuse `true`.
+     *
+     * **Both sentences are information.** `"1"` and `"0"` are what a client of a query string or a form sends for a
+     * boolean, so the request accepts what that client writes and loses no constraint: neither the build's warning nor
+     * the doctor counts it. The sentence is for the reader of the file, who finds the string `validated()` holds.
      *
      * @param  list<string>  $handled
      */
@@ -2534,7 +2551,7 @@ final readonly class RuleSetBuilder
                 ? self::deliveredPath(substr($bare, 0, -2))
                 : null;
 
-            $walk->findings[] = self::textBooleanItemFinding($label, $tooMany, $quote($words), $list);
+            $walk->information(self::textBooleanItemFinding($label, $tooMany, $quote($words), $list));
 
             return new InRule($spellings);
         }
@@ -2554,7 +2571,7 @@ final readonly class RuleSetBuilder
             $read = sprintf('%s ? filter_var($request->validated(\'%s\'), FILTER_VALIDATE_BOOL) : null', $sent, $key);
         }
 
-        $walk->findings[] = $walk->textSource === 'query string'
+        $walk->information($walk->textSource === 'query string'
             ? sprintf(
                 '%1$s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
                     .'Laravel\'s `boolean` refuses it. It accepts %3$s.%2$s '
@@ -2573,7 +2590,7 @@ final readonly class RuleSetBuilder
                 $label,
                 $tooMany,
                 $quote($words),
-            );
+            ));
 
         return new InRule($spellings);
     }
@@ -3278,28 +3295,43 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether a written schema, or any `allOf` branch of it, states a value constraint besides its type: an `enum` (a
-     * `const` is a one-value enum), or a keyword the package does not read that constrains a value. `default`,
+     * The value constraints a written schema, or any `allOf` branch of it, states besides its type: an `enum` (a
+     * `const` is a one-value enum), and each keyword the package does not read that constrains a value. `default`,
      * `deprecated`, `$defs` and `$anchor` are the ones that do not: they annotate or name, and accept every value.
      *
      * Read on the written schema, never the merged one: the merge drops a branch's ignored keywords. An `enum` counts
      * because `Rule::in()` compares `(string) $value`, so an untyped `[1, 2, 3]` accepts `"1"` and `true`.
+     *
+     * @return list<string>
      */
-    private static function writesAKeyword(Schema $written): bool
+    private static function writtenKeywords(Schema $written): array
     {
-        $constraints = array_diff_key($written->ignored, array_flip(['default', 'deprecated', '$defs', '$anchor']));
-
-        if ($constraints !== [] || $written->enum !== null) {
-            return true;
-        }
+        $keywords = $written->enum === null ? [] : ['enum'];
+        array_push($keywords, ...array_keys(array_diff_key($written->ignored, array_flip(['default', 'deprecated', '$defs', '$anchor']))));
 
         foreach ($written->allOf as $branch) {
-            if (self::writesAKeyword($branch)) {
-                return true;
-            }
+            array_push($keywords, ...self::writtenKeywords($branch));
         }
 
-        return false;
+        return array_values(array_unique($keywords));
+    }
+
+    /**
+     * Whether an untyped field is read from text, and writes nothing but an `enum` (or a `const`) of numbers and
+     * strings.
+     *
+     * Why: `Rule::in()` compares `(string) $value` and refuses an array, so it accepts exactly the texts of its values,
+     * which is how a query string or a form writes a number. It is a standard reading, as a text boolean's `"1"` is. In
+     * a JSON body `"1"` and `true` pass for `1`, and a boolean or a `null` among the values has no text of its own.
+     *
+     * @param  list<string>  $keywords  what {@see self::writtenKeywords()} found on the written schema
+     */
+    private static function isTextEnumeration(Schema $merged, array $keywords, RuleWalk $walk): bool
+    {
+        return $walk->textSource !== null
+            && $keywords === ['enum']
+            && $merged->enum !== null
+            && array_filter($merged->enum, static fn (mixed $value): bool => ! is_int($value) && ! is_float($value) && ! is_string($value)) === [];
     }
 
     /**
@@ -3887,6 +3919,7 @@ final readonly class RuleSetBuilder
                         .'contract refuses.',
                     $name,
                 );
+                $walk->leaveUnenforced('type', '`'.$name.'`');
             }
 
             // Why: the array a form builds for the names below stands in for the name, so a form can send the body
