@@ -12,6 +12,7 @@ use Gcob\LaraSpecFirst\Generation\BuildPlanner;
 use Gcob\LaraSpecFirst\Generation\CustomControllerLookup;
 use Gcob\LaraSpecFirst\Generation\OperationSelector;
 use Gcob\LaraSpecFirst\Generation\ProjectRelativePath;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Scaffolding\CustomControllerName;
 use Gcob\LaraSpecFirst\Scaffolding\CustomControllerScaffold;
@@ -90,6 +91,7 @@ final class MakeCommand extends Command
         }
 
         $namespace = rtrim($this->requiredString($config, 'lara-spec-first.generated.namespace'), '\\');
+        $options = RuleSetOptions::fromConfiguration($config);
 
         // One lookup for the build plan, the scaffold planner and the writer, so all
         // three ask existence through the same loaders.
@@ -110,9 +112,9 @@ final class MakeCommand extends Command
         if ($form === 'operation' && ($selected[0] ?? null) !== null && $selected[0]->controller === null) {
             // Before the offer rather than after the edit: a document the build
             // would refuse is never touched.
-            $this->assertBuildable($namespace, $specPath, $lookup, $document);
+            $this->assertBuildable($namespace, $specPath, $lookup, $document, $options);
 
-            if (! $this->offerTheExtension($config, $remote, $specPath, $selected[0], $namespace, $lookup, $document)) {
+            if (! $this->offerTheExtension($config, $remote, $specPath, $selected[0], $namespace, $lookup, $document, $options)) {
                 return self::FAILURE;
             }
 
@@ -127,7 +129,7 @@ final class MakeCommand extends Command
 
         // Before anything is listed, asked or written, on the document as it now is. The plan is kept: it is
         // where each child learns what its parent's `routeAction` returns.
-        $build = $this->assertBuildable($namespace, $specPath, $lookup, $document);
+        $build = $this->assertBuildable($namespace, $specPath, $lookup, $document, $options);
 
         $planner = new ScaffoldPlanner($namespace, $lookup);
         $planned = $planner->plan($selected, $build);
@@ -192,6 +194,7 @@ final class MakeCommand extends Command
      * this document rather than from a second planning.
      *
      * @param  list<Operation>  $document  every operation, in the order the document writes them
+     * @param  RuleSetOptions  $options  read from the configuration once, as the build reads it
      *
      * @throws SpecException whatever {@see BuildPlanner::plan()} refuses
      */
@@ -200,8 +203,9 @@ final class MakeCommand extends Command
         string $specPath,
         CustomControllerLookup $lookup,
         array $document,
+        RuleSetOptions $options,
     ): BuildPlan {
-        return (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), $lookup))->plan($document);
+        return (new BuildPlanner($namespace, ProjectRelativePath::from($specPath), $options, $lookup))->plan($document);
     }
 
     /**
@@ -249,6 +253,7 @@ final class MakeCommand extends Command
      * every keystroke after a failed submit. A refusal ends the command: there is no loop to ask again.
      *
      * @param  list<Operation>  $document  every operation, as read before the offer
+     * @param  RuleSetOptions  $options  read from the configuration once, as the build reads it
      * @return bool whether the document now carries the extension
      *
      * @throws SpecException whatever the build would refuse for the name that was typed
@@ -261,6 +266,7 @@ final class MakeCommand extends Command
         string $namespace,
         CustomControllerLookup $lookup,
         array $document,
+        RuleSetOptions $options,
     ): bool {
         $name = new CustomControllerName(
             $this->requiredString($config, 'lara-spec-first.make.controllers'),
@@ -376,7 +382,7 @@ final class MakeCommand extends Command
                 ? $other->withController($chosen)
                 : $other,
             $document,
-        ));
+        ), $options);
 
         (new ExtensionInsertion($remote))->insert($specPath, $operation, $location, $chosen);
 

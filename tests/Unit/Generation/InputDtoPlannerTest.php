@@ -19,6 +19,7 @@ use Gcob\LaraSpecFirst\Generation\PlannedInputDto;
 use Gcob\LaraSpecFirst\Generation\PlannedRequest;
 use Gcob\LaraSpecFirst\Generation\RequestName;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 
 /*
  * What the planner decides about an input DTO: its name, which operation reads
@@ -65,7 +66,7 @@ function planDtos(array $operations): InputDtoPlan
         $name = RequestName::for($operation);
         assert($name !== null);
 
-        return new PlannedRequest($operation, $name, RuleSetBuilder::for($operation), 'Controller');
+        return new PlannedRequest($operation, $name, RuleSetBuilder::for($operation, new RuleSetOptions), 'Controller');
     }, $operations);
 
     return (new InputDtoPlanner)->plan($requests);

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,7 +35,7 @@ function loadDeclaredArrays(): void
         return;
     }
 
-    $plan = (new BuildPlanner(DECLARED_ARRAYS_NAMESPACE, 'tests/Fixtures/declared-arrays.yaml'))
+    $plan = (new BuildPlanner(DECLARED_ARRAYS_NAMESPACE, 'tests/Fixtures/declared-arrays.yaml', new RuleSetOptions))
         ->plan(extractFixture('declared-arrays.yaml'));
 
     $directory = sys_get_temp_dir().'/lara-spec-first-declared-arrays-'.bin2hex(random_bytes(4));

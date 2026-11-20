@@ -16,6 +16,7 @@ use Gcob\LaraSpecFirst\Generation\PlannedController;
 use Gcob\LaraSpecFirst\Generation\ProjectRelativePath;
 use Gcob\LaraSpecFirst\Generation\RouteActionOverride;
 use Gcob\LaraSpecFirst\Generation\RouteActionSignature;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
 use Illuminate\Console\Command;
@@ -82,6 +83,7 @@ final class BuildCommand extends Command
         }
 
         $namespace = $this->requiredString($config, 'lara-spec-first.generated.namespace');
+        $options = RuleSetOptions::fromConfiguration($config);
 
         $operations = $this->operationsOrFail($specPath, $remote, (bool) $this->option('update-refs'));
 
@@ -101,7 +103,7 @@ final class BuildCommand extends Command
         // Named from the project root rather than absolutely: a generated file
         // may end up committed, and a machine's path in a repository is a diff
         // nobody made.
-        $plan = (new BuildPlanner($generated, ProjectRelativePath::from($specPath), $lookup))
+        $plan = (new BuildPlanner($generated, ProjectRelativePath::from($specPath), $options, $lookup))
             ->plan($operations);
 
         $configured = $config->get(GeneratedRoutesLocator::SETTING);

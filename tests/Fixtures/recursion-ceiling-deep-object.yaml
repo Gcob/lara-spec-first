@@ -1,0 +1,43 @@
+# A body whose recursive schema does not fit the ceiling at the depth it states, beside a deepObject query parameter that
+# holds an array. The walk is run again at lower depths, and each run has to read the array the way the first one did.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /trees:
+    post:
+      operationId: createTree
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              ids:
+                type: array
+                items: { type: integer }
+                minItems: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tree'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Tree:
+      type: object
+      x-max-depth: 20
+      properties:
+        value:
+          type: string
+        left:
+          $ref: '#/components/schemas/Tree'
+        right:
+          $ref: '#/components/schemas/Tree'

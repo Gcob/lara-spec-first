@@ -1,0 +1,40 @@
+# One operation whose query holds an array inside a deepObject, written for the emitter rather than for the reader: the
+# golden file under tests/Fixtures/Generated/Requests is what this contract produces when `query.deep_object_arrays` is
+# `comma`, so Larastan reads the `prepareForValidation()` and the constant a consumer's application would get.
+#
+# `ids` is a plain list, and `meta` is a map of lists beside a declared string `id`, which the split has to spare.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      operationId: listThings
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              ids:
+                type: array
+                items: { type: integer }
+                minItems: 1
+                maxItems: 3
+            required: [ids]
+        - name: meta
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              id: { type: string }
+            additionalProperties:
+              type: array
+              items: { type: integer }
+      responses:
+        '200': { description: Things }

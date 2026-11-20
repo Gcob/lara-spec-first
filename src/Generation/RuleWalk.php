@@ -85,6 +85,14 @@ final class RuleWalk
     public array $undeclaredKeys = [];
 
     /**
+     * The rule keys of the arrays a client writes as one comma-separated string, in the order they were met: see
+     * {@see RuleSet::$commaLists}, which holds them as the steps the request splits.
+     *
+     * @var list<string>
+     */
+    public array $commaLists = [];
+
+    /**
      * Whether the body's value schema is judged at the root, under `*`: the build adds the keys the `query` parameters
      * arrive under to the names the root's guard spares, once the parameters are planned.
      */
@@ -468,8 +476,11 @@ final class RuleWalk
 
     /**
      * @param  string  $identity  the operation's label, for a refusal's message
+     * @param  RuleSetOptions  $options  what the configuration changes about the rules, the same for every walk of one
+     *                                   operation
      */
     public function __construct(
         public readonly string $identity,
+        public readonly RuleSetOptions $options = new RuleSetOptions,
     ) {}
 }

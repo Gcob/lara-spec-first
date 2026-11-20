@@ -10,10 +10,12 @@ use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Generation\DeepObjectArrays;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
 use Gcob\LaraSpecFirst\Validation\MultipleOf;
@@ -82,7 +84,7 @@ function rulesFor(array $properties, array $required = [], string $method = 'pos
     return RuleSetBuilder::for(operationWithInput(
         method: $method,
         content: ['application/json' => objectSchema($properties, $required)],
-    ))->rules;
+    ), new RuleSetOptions)->rules;
 }
 
 // --- The four types this pass maps, and the one rule each becomes ---
@@ -117,13 +119,13 @@ it('keeps the loose scalar rules for a query parameter and a form field', functi
             new QueryParameter('limit', $scalars['count']),
             new QueryParameter('scale', $scalars['ratio']),
         ],
-    ))->rules;
+    ), new RuleSetOptions)->rules;
     $form = RuleSetBuilder::for(operationWithInput(
         content: ['application/x-www-form-urlencoded' => objectSchema($scalars)],
-    ))->rules;
+    ), new RuleSetOptions)->rules;
     $multipart = RuleSetBuilder::for(operationWithInput(
         content: ['multipart/form-data' => objectSchema($scalars)],
-    ))->rules;
+    ), new RuleSetOptions)->rules;
 
     expect($queried['limit'])->toBe(['sometimes', 'integer'])
         ->and($queried['scale'])->toBe(['sometimes', 'numeric'])
@@ -139,7 +141,7 @@ it('reads every level of a JSON body as strict', function (): void {
         'a' => objectSchema(['b' => new Schema(types: [SchemaType::Integer])]),
         'items' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Number])),
         'flags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Boolean])),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->rules['a.b'])->toEqual(['sometimes', new WholeNumber, 'numeric'])
         ->and($set->rules['items.*'])->toBe(['numeric:strict'])
@@ -150,7 +152,7 @@ it('reads every level of a JSON body as strict', function (): void {
 // about a float, for any bound. The one exception is an enumeration value of 1e14 or more sent as a float, which
 // `Rule::in` compares as text and refuses (the guide states it), so its row asserts the missing finding, not the answer.
 it('says nothing about a float for a JSON integer', function (array $properties): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema($properties)]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema($properties)]), new RuleSetOptions);
 
     expect($set->findings)->toBe([])
         ->and($set->stricter)->toBe([]);
@@ -167,7 +169,7 @@ it('says nothing about a float for a JSON integer', function (array $properties)
 it('keeps a rule named numeric beside the whole number, whatever bounds the integer has', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
         'n' => new Schema(types: [SchemaType::Integer], minimum: 5.0, maximum: 100.0, multipleOf: 5.0),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->rules['n'])->toEqual(['sometimes', new WholeNumber, 'numeric', 'min:5', 'max:100', new MultipleOf('5')])
         ->and($set->usesWholeNumber())->toBeTrue()
@@ -185,7 +187,7 @@ it('writes the package rule for multipleOf on every field', function (array $med
         'a list element' => [objectSchema(['xs' => new Schema(types: [SchemaType::Array], items: $field)]), 'xs.*'],
         'a map value' => [objectSchema(['meta' => new Schema(types: [SchemaType::Object], properties: ['id' => $field], additionalPropertiesSchema: $field)]), 'meta.*'],
     ][$where];
-    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($mediaTypes, $body)));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($mediaTypes, $body)), new RuleSetOptions);
 
     expect($set->rules[$key])->toContainEqual(new MultipleOf('2'))
         ->and(array_filter($set->rules[$key], static fn (mixed $rule): bool => is_string($rule) && str_starts_with($rule, 'multiple_of')))->toBe([])
@@ -205,7 +207,7 @@ it('writes the package rule for multipleOf on a query parameter', function (Sche
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('limit', new Schema(types: [$type], multipleOf: 2.0))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['limit'])->toEqual(['sometimes', $type === SchemaType::Integer ? 'integer' : 'numeric', new MultipleOf('2')])
         ->and($set->usesMultipleOf())->toBeTrue();
@@ -214,7 +216,7 @@ it('writes the package rule for multipleOf on a query parameter', function (Sche
 // A form name beside the names PHP nests under it is judged behind a shape check, and its rule list is the same list.
 it('writes the package rule for multipleOf on a form name judged by shape', function (string $mediaType): void {
     $integer = new Schema(types: [SchemaType::Integer], multipleOf: 2.0);
-    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(['page' => $integer, 'page[size]' => $integer])]));
+    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(['page' => $integer, 'page[size]' => $integer])]), new RuleSetOptions);
 
     expect($set->whenNotArray)->toHaveKey('page')
         ->and($set->rules['page'])->toContainEqual(new MultipleOf('2'))
@@ -225,8 +227,8 @@ it('writes the package rule for multipleOf on a form name judged by shape', func
 // The divisor is the text `multiple_of:` held: a whole float without its `.0`, a fraction as PHP prints it.
 it('gives the package rule the divisor multiple_of had', function (float $divisor, string $text): void {
     $field = new Schema(types: [SchemaType::Number], multipleOf: $divisor);
-    $body = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]));
-    $query = RuleSetBuilder::for(operationWithInput(method: 'get', query: [new QueryParameter('field', $field)]));
+    $body = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]), new RuleSetOptions);
+    $query = RuleSetBuilder::for(operationWithInput(method: 'get', query: [new QueryParameter('field', $field)]), new RuleSetOptions);
 
     expect($body->rules['field'])->toEqual(['sometimes', 'numeric:strict', new MultipleOf($text)])
         ->and($query->rules['field'])->toEqual(['sometimes', 'numeric', new MultipleOf($text)]);
@@ -246,7 +248,7 @@ it('says nothing new about multipleOf', function (): void {
     $bodyOf = static fn (Schema $field): RuleSet => RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['field' => $field]), 'application/x-www-form-urlencoded' => objectSchema(['field' => $field])],
         query: [new QueryParameter('q', $field)],
-    ));
+    ), new RuleSetOptions);
     $without = $bodyOf($plain);
     $with = $bodyOf($multiple);
 
@@ -260,7 +262,7 @@ it('says nothing new about multipleOf', function (): void {
 // form carries: the value's PHP type tells them apart. `numeric` still goes beside it, and the bounds follow it.
 it('judges an integer of a body that is JSON and a form by its exact value, accepting its text', function (string $mediaType, Closure $schema, array $rules, string $key): void {
     $body = $schema();
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body, $mediaType => $body]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body, $mediaType => $body]), new RuleSetOptions);
 
     expect($set->rules[$key])->toEqual($rules)
         ->and($set->usesWholeNumber())->toBeTrue();
@@ -295,8 +297,8 @@ it('judges an integer of a body that is JSON and a form by its exact value, acce
 
 it('says nothing about a float for an integer a form or a query string carries', function (): void {
     $integer = new Schema(types: [SchemaType::Integer]);
-    $form = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['one' => $integer])]));
-    $query = RuleSetBuilder::for(operationWithInput(method: 'get', query: [new QueryParameter('limit', $integer)]));
+    $form = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['one' => $integer])]), new RuleSetOptions);
+    $query = RuleSetBuilder::for(operationWithInput(method: 'get', query: [new QueryParameter('limit', $integer)]), new RuleSetOptions);
 
     expect($form->rules['one'])->toBe(['sometimes', 'integer'])
         ->and($query->rules['limit'])->toBe(['sometimes', 'integer'])
@@ -397,7 +399,7 @@ it('does not require a lone property when the whole body may be absent', functio
             ['name'],
         )],
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
 
     // One required property has no sibling to name, and Laravel cannot tell an absent body from an empty
     // one: the request reads the raw JSON itself, so the finding is gone and the key is listed.
@@ -413,7 +415,7 @@ it('says nothing about an absent body that declares one optional property', func
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['name' => new Schema(types: [SchemaType::String])])],
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['name' => ['sometimes', 'string']])
         ->and(implode('', $set->findings))->not->toContain('may be absent entirely')
@@ -427,7 +429,7 @@ it('says that an empty form is not read as an absent body when the body is requi
     $set = RuleSetBuilder::for(operationWithInput(
         content: array_fill_keys($media, objectSchema(['q' => new Schema(types: [SchemaType::String])])),
         bodyRequired: $required,
-    ));
+    ), new RuleSetOptions);
 
     expect(str_contains(implode("\n", $set->findings), 'a form with a `Content-Type` and no field'))->toBe($says);
 })->with([
@@ -450,7 +452,7 @@ it('drops the empty-form finding when a required field already refuses an empty 
     $set = RuleSetBuilder::for(operationWithInput(
         method: $method,
         content: array_fill_keys($media, $body),
-    ));
+    ), new RuleSetOptions);
 
     expect(str_contains(implode("\n", $set->findings), 'a form with a `Content-Type` and no field'))->toBe($says);
 })->with([
@@ -523,7 +525,7 @@ it('says that an optional form body requiring two properties accepts a form with
             ['a', 'b'],
         )],
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->toContain('from a form that sends none of the body\'s keys, since both leave every key out of the data, so the form is accepted, which the contract refuses');
 });
@@ -542,7 +544,7 @@ it('says what an optional body lets through only when it is read as a form', fun
             array_values($required),
         )),
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
     $findings = implode("\n", $set->findings);
 
     expect(str_contains($findings, 'may be absent entirely'))->toBe($says !== null)
@@ -574,7 +576,7 @@ it('lists the keys an optional JSON body requires once it is sent', function (
         method: $method,
         content: array_fill_keys($media, $body),
         bodyRequired: $bodyRequired,
-    ));
+    ), new RuleSetOptions);
 
     expect($set->requiredOnceSent)->toBe($expected);
 })->with([
@@ -674,7 +676,7 @@ it('asks a nullable body\'s required keys through each other', function (
     array $once,
     array $says,
 ): void {
-    $set = RuleSetBuilder::for(operationWithInput(method: $method, content: array_fill_keys($media, $body)));
+    $set = RuleSetBuilder::for(operationWithInput(method: $method, content: array_fill_keys($media, $body)), new RuleSetOptions);
 
     foreach ($asked as $key => $rule) {
         expect($set->rules[$key][0] ?? null)->toBe($rule);
@@ -752,7 +754,7 @@ it('drops the empty-form finding when a nullable required body checks its requir
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $body,
         'application/x-www-form-urlencoded' => $body,
-    ]));
+    ]), new RuleSetOptions);
 
     expect(str_contains(implode("\n", $set->findings), 'a form with a `Content-Type` and no field'))->toBe($says);
 })->with([
@@ -778,7 +780,7 @@ it('adds filled to a required scalar of a nullable required body only', function
         properties: ['n' => $property, 'other' => new Schema(types: [SchemaType::String])],
         required: ['n'],
     );
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body], bodyRequired: $bodyRequired));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body], bodyRequired: $bodyRequired), new RuleSetOptions);
 
     expect(in_array('filled', $set->rules['n'], true))->toBe($filled);
 })->with([
@@ -800,7 +802,7 @@ it('keys a query parameter by its own name and its own required flag', function 
             new QueryParameter('page', new Schema(types: [SchemaType::Integer])),
             new QueryParameter('tenant', new Schema(types: [SchemaType::String]), required: true),
         ],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'page' => ['sometimes', 'integer'],
@@ -820,7 +822,7 @@ it('leaves a required query parameter required on a PATCH', function (): void {
             ['name'],
         )],
         query: [new QueryParameter('dryRun', new Schema(types: [SchemaType::Boolean]), required: true)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toEqual([
         'name' => ['sometimes', 'string'],
@@ -835,7 +837,7 @@ it('enforces only the presence of an array or object query parameter', function 
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('tag', new Schema(types: [$type], items: new Schema(types: [SchemaType::String])), required: true)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['tag' => ['present']])
         ->and(implode('', $set->findings))->toContain('?tag=a&tag=b');
@@ -860,7 +862,7 @@ it('names the serialization of a query parameter it does not validate', function
             style: $style,
             explode: $explode,
         )],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['tag' => $rules])
         ->and($set->findings)->toHaveCount(1)
@@ -895,7 +897,7 @@ it('reports a malformed style or explode as a fault in the document', function (
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter($name, $schema, required: $required, style: $style, explode: $explode)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe($rules)
         ->and($set->documentFaults)->toHaveCount(1)
@@ -927,7 +929,7 @@ it('keeps the finding of a query name with no key beside the fault of its style'
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('ids[]', new Schema(types: [SchemaType::Integer]), style: 5, explode: false)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe([])
         ->and($set->findings)->toHaveCount(2)
@@ -939,7 +941,7 @@ it('reports no fault for a style and an explode OpenAPI defines', function (stri
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('filter', new Schema(types: [SchemaType::Object]), style: $style, explode: $explode)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->documentFaults)->toBe([]);
 })->with([
@@ -958,7 +960,7 @@ it('enforces nothing about an object query parameter, not even its presence', fu
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('filter', new Schema(types: [SchemaType::Object]), required: true)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['filter' => ['sometimes']])
         ->and(implode('', $set->findings))->toContain('not even its presence');
@@ -969,12 +971,12 @@ it('enforces nothing about an object query parameter, not even its presence', fu
  *
  * @param  list<QueryParameter>  $others  parameters written beside it
  */
-function deepObjectRuleSet(Schema $schema, bool $explode, string $name = 'filter', bool $required = false, array $others = []): RuleSet
+function deepObjectRuleSet(Schema $schema, bool $explode, string $name = 'filter', bool $required = false, array $others = [], ?RuleSetOptions $options = null): RuleSet
 {
     return RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter($name, $schema, required: $required, style: 'deepObject', explode: $explode), ...$others],
-    ));
+    ), $options ?? new RuleSetOptions);
 }
 
 // A deepObject is read the way PHP parses its brackets, so each property is judged under the key PHP delivers it as,
@@ -1161,7 +1163,7 @@ it('keeps today\'s handling for a deepObject parameter that shares its key', fun
         method: 'get',
         content: ['application/json' => objectSchema(['page' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter('page', objectSchema(['size' => new Schema(types: [SchemaType::Integer])]), style: 'deepObject', explode: false)],
-    )))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
+    ), new RuleSetOptions))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
 });
 
 // The label of a finding is what the client sends: `filter[active]`, not the `filter.active` rule key. The code a boolean's
@@ -1289,8 +1291,9 @@ it('leaves the values of a deepObject map unvalidated beside a bracketed propert
         ->and(implode("\n", $set->findings))->toContain('cannot tell apart from an undeclared key');
 });
 
-// An array inside a deepObject is held at its presence: how a client writes one (`filter[ids][]=1`, `filter[ids]=1,2`) is
-// not defined, so no rule about its shape or its items is written, and the finding says what is not checked.
+// Under `any`, an array inside a deepObject is held at its presence: no reading of how a client writes one
+// (`filter[ids][]=1`, `filter[ids]=1,2`) is declared, so no rule about its shape or its items is written, and the finding
+// says what is not checked and which key would say it.
 it('holds an array inside a deepObject at its presence', function (
     Schema $schema,
     array $rules,
@@ -1298,14 +1301,15 @@ it('holds an array inside a deepObject at its presence', function (
     bool $explode,
 ): void {
     // `filter` is required exactly when the schema requires a property: a required array keeps `required_array_keys` under `present`.
-    $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== []);
+    $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== [], options: new RuleSetOptions(DeepObjectArrays::Any));
 
     expect($set->rules)->toEqual($rules)
         ->and($set->unenforced)->toBe([])
         ->and($set->information)->toBe([])
         ->and($set->findings)->toHaveCount(1)
         ->and($set->findings[0])->toContain($label.' is an array inside a `deepObject`')
-        ->and($set->findings[0])->toContain('checked only for its presence, when it is required');
+        ->and($set->findings[0])->toContain('checked only for its presence, when it is required')
+        ->and($set->findings[0])->toContain('`query.deep_object_arrays` is `any`');
 })->with(function (): Generator {
     $integers = new Schema(types: [SchemaType::Integer]);
     $array = static fn (Schema $items, ?int $min = null, ?int $max = null, bool $unique = false): Schema => new Schema(types: [SchemaType::Array], items: $items, minItems: $min, maxItems: $max, uniqueItems: $unique);
@@ -1353,11 +1357,404 @@ it('holds an array inside a deepObject at its presence', function (
     }
 });
 
+/**
+ * An array of the schema, for the rows of the tests below.
+ */
+function deepObjectArray(Schema $items, ?int $min = null, ?int $max = null, bool $unique = false): Schema
+{
+    return new Schema(types: [SchemaType::Array], items: $items, minItems: $min, maxItems: $max, uniqueItems: $unique);
+}
+
+// The default reading, `brackets`: an array inside a deepObject is a list a client writes with brackets
+// (`filter[ids][]=1`, `filter[ids][0]=1`), so it is checked as one, with its bounds and its items. A string where the list
+// belongs is refused by `array`, and the generated file says so in one line of information per array, which counts for
+// nothing: no finding, nothing unenforced.
+it('checks an array inside a deepObject by its brackets', function (
+    Schema $schema,
+    array $rules,
+    array $arrays,
+    bool $explode,
+): void {
+    $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== []);
+
+    expect($set->rules)->toEqual($rules)
+        ->and($set->findings)->toBe($set->information)
+        ->and($set->information)->toHaveCount(count($arrays))
+        ->and($set->unenforced)->toBe([]);
+
+    foreach ($arrays as $position => $label) {
+        expect($set->information[$position])->toStartWith($label.' is an array inside a `deepObject` query parameter, read as a list written with brackets');
+    }
+})->with(function (): Generator {
+    $integers = new Schema(types: [SchemaType::Integer]);
+    $rows = [
+        'a property that filter requires, with its bounds and unique items' => [
+            new Schema(
+                types: [SchemaType::Object],
+                properties: ['ids' => deepObjectArray($integers, 1, 3, true)],
+                required: ['ids'],
+            ),
+            [
+                'filter' => ['present', 'array', 'required_array_keys:ids'],
+                'filter.ids' => ['sometimes', 'array', 'list', 'min:1', 'max:3'],
+                'filter.ids.*' => ['integer', 'distinct'],
+            ],
+            ['`filter[ids]`'],
+        ],
+        'a nested one' => [
+            objectSchema(['created' => objectSchema(['ids' => deepObjectArray($integers, 1)])]),
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.created' => ['sometimes', 'array'],
+                'filter.created.ids' => ['sometimes', 'array', 'list', 'min:1'],
+                'filter.created.ids.*' => ['integer'],
+            ],
+            ['`filter[created][ids]`'],
+        ],
+        'an array of objects' => [
+            objectSchema(['rows' => deepObjectArray(objectSchema(['a' => $integers], ['a']))]),
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.rows' => ['sometimes', 'array', 'list'],
+                'filter.rows.*' => ['array', 'required_array_keys:a'],
+                'filter.rows.*.a' => ['sometimes', 'integer'],
+            ],
+            ['`filter[rows]`'],
+        ],
+        'the value of a map' => [
+            new Schema(types: [SchemaType::Object], additionalPropertiesSchema: deepObjectArray($integers, max: 2)),
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.*' => ['array', 'list', 'max:2'],
+                'filter.*.*' => ['integer'],
+            ],
+            ['`filter[*]`'],
+        ],
+        'an array of arrays' => [
+            objectSchema(['m' => deepObjectArray(deepObjectArray($integers))]),
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.m' => ['sometimes', 'array', 'list'],
+                'filter.m.*' => ['array', 'list'],
+                'filter.m.*.*' => ['integer'],
+            ],
+            ['`filter[m]`'],
+        ],
+    ];
+
+    foreach ([true, false] as $explode) {
+        foreach ($rows as $row => $values) {
+            yield $row.($explode ? ', exploded' : ', not exploded') => [...$values, $explode];
+        }
+    }
+});
+
+// The reading is the package's default, so the generated file names it with the key that changes it: a client that writes
+// `?filter[ids]=1,2` is refused by the default, and nothing in the contract explains it. The line is information, so it
+// counts for nothing, and `any` already names the key in its finding.
+it('names the reading of an array inside a deepObject and the key that changes it', function (
+    DeepObjectArrays $reading,
+    string $line,
+): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids]), false, options: new RuleSetOptions($reading));
+
+    expect($set->information)->toBe([$line])
+        ->and($set->findings)->toBe([$line]);
+})->with([
+    'brackets' => [
+        DeepObjectArrays::Brackets,
+        '`filter[ids]` is an array inside a `deepObject` query parameter, read as a list written with brackets '
+            .'(`?filter[ids][]=1`), since `query.deep_object_arrays` is `brackets`: `?filter[ids]=1,2` is refused. '
+            .'Set it to `comma` or `any` if your clients write it otherwise.',
+    ],
+    'comma' => [
+        DeepObjectArrays::Comma,
+        '`filter[ids]` is an array inside a `deepObject` query parameter, read as a comma list (`?filter[ids]=1,2`) '
+            .'or a list written with brackets, since `query.deep_object_arrays` is `comma`: an item cannot hold a comma. '
+            .'Set it to `brackets` or `any` if your clients write it otherwise.',
+    ],
+]);
+
+it('says nothing more about an array inside a deepObject when the reading is any', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids]), false, options: new RuleSetOptions(DeepObjectArrays::Any));
+
+    expect($set->information)->toBe([])
+        ->and($set->findings)->toHaveCount(1)
+        ->and($set->findings[0])->toContain('`query.deep_object_arrays` is `any`');
+});
+
+it('names no reading for an array of a JSON body or of a form body', function (): void {
+    $tags = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $json = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['tags' => $tags])]), new RuleSetOptions);
+    $form = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['tags' => $tags])]), new RuleSetOptions);
+
+    expect($json->information)->toBe([])
+        ->and($form->information)->toBe([]);
+});
+
+// Under `comma`, the rules are `brackets`' own: the request splits the string into the list before it validates, and
+// the rule set says which keys it splits, by the steps of the key as the query string delivers it. A map's wildcard is
+// guarded by the declared names, as the map's own rules are, so a declared string beside it is never split.
+it('records the comma lists of a deepObject', function (Schema $schema, array $lists, string $name): void {
+    $set = deepObjectRuleSet($schema, false, $name, options: new RuleSetOptions(DeepObjectArrays::Comma));
+    $brackets = deepObjectRuleSet($schema, false, $name);
+
+    expect($set->commaLists)->toBe($lists)
+        ->and($set->rules)->toEqual($brackets->rules)
+        ->and(array_values(array_filter($set->findings, fn (string $line): bool => ! str_contains($line, 'is an array inside a `deepObject`'))))
+        ->toBe(array_values(array_filter($brackets->findings, fn (string $line): bool => ! str_contains($line, 'is an array inside a `deepObject`'))))
+        ->and($brackets->commaLists)->toBe([])
+        ->and(deepObjectRuleSet($schema, false, $name, options: new RuleSetOptions(DeepObjectArrays::Any))->commaLists)->toBe([]);
+})->with(function (): Generator {
+    $integers = new Schema(types: [SchemaType::Integer]);
+
+    yield 'a property' => [
+        objectSchema(['ids' => deepObjectArray($integers, 1, 3, true)], ['ids']),
+        [['steps' => ['filter', 'ids']]],
+        'filter',
+    ];
+    yield 'a nested one' => [
+        objectSchema(['created' => objectSchema(['ids' => deepObjectArray($integers)])]),
+        [['steps' => ['filter', 'created', 'ids']]],
+        'filter',
+    ];
+    yield 'the value of a map beside a declared property' => [
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['id' => new Schema(types: [SchemaType::String])],
+            additionalPropertiesSchema: deepObjectArray($integers),
+        ),
+        [['steps' => ['filter', '*'], 'spared' => [1 => ['id']]]],
+        'filter',
+    ];
+    yield 'the value of a map alone' => [
+        new Schema(types: [SchemaType::Object], additionalPropertiesSchema: deepObjectArray($integers, max: 2)),
+        [['steps' => ['filter', '*']]],
+        'filter',
+    ];
+    yield 'a list inside the objects of a list' => [
+        objectSchema(['rows' => deepObjectArray(objectSchema(['tags' => deepObjectArray(new Schema(types: [SchemaType::String]))]))]),
+        [['steps' => ['filter', 'rows']], ['steps' => ['filter', 'rows', '*', 'tags']]],
+        'filter',
+    ];
+    yield 'an array of arrays' => [
+        objectSchema(['m' => deepObjectArray(deepObjectArray($integers))]),
+        [['steps' => ['filter', 'm']], ['steps' => ['filter', 'm', '*']]],
+        'filter',
+    ];
+    yield 'a property named with a dot' => [
+        objectSchema(['a.b' => deepObjectArray($integers)]),
+        [['steps' => ['filter', 'a.b']]],
+        'filter',
+    ];
+    yield 'a parameter whose name PHP rewrites' => [
+        objectSchema(['ids' => deepObjectArray($integers)]),
+        [['steps' => ['user_filter', 'ids']]],
+        'user.filter',
+    ];
+});
+
+// The split is the query string's alone: a JSON body keeps its array, and a form body a list, as they are sent, so the
+// request has nothing to prepare for them.
+it('records no comma list for an array of a JSON body or of a form body', function (string $mediaType): void {
+    $integers = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: [$mediaType => objectSchema(['ids' => $integers, 'nested' => objectSchema(['ids' => $integers])])],
+    ), new RuleSetOptions(DeepObjectArrays::Comma));
+
+    expect($set->rules)->toHaveKey('ids.*')
+        ->and($set->commaLists)->toBe([]);
+})->with([
+    'application/json',
+    'application/x-www-form-urlencoded',
+]);
+
+// An item is labeled the way a client writes it, `filter[links][]`, with the bracket inside the backticks, in every
+// finding about it. A text boolean item hands over the read of the whole list, since `validated('filter.flags.0')` is the
+// first item only, and a deeper one says each value is the string as sent.
+it('labels an item of an array inside a deepObject the way a client writes it', function (): void {
+    $links = deepObjectRuleSet(
+        objectSchema(['links' => deepObjectArray(new Schema(types: [SchemaType::String], format: 'uri-reference'))]),
+        false,
+    );
+    $flags = deepObjectRuleSet(objectSchema(['flags' => deepObjectArray(new Schema(types: [SchemaType::Boolean]))]), false);
+
+    expect($links->unenforced)->toBe(['format' => ['`filter[links][]`']])
+        ->and($flags->findings)->toHaveCount(2)
+        ->and($flags->findings[1])->toStartWith('`filter[flags][]` is a boolean read from a query string')
+        ->and($flags->findings[1])->toContain("`validated('filter.flags')` holds the strings as sent")
+        ->and($flags->findings[1])->toContain('`array_map(static fn (mixed $value): bool => filter_var($value, FILTER_VALIDATE_BOOL), (array) $request->validated(\'filter.flags\', []))`')
+        ->and($flags->findings[1])->not->toContain('filter.flags.0');
+});
+
+it('says each value of a boolean item deeper than a plain list is the string as sent', function (Schema $schema, string $label): void {
+    $set = deepObjectRuleSet($schema, false);
+
+    expect($set->findings)->toHaveCount(2)
+        ->and($set->findings[1])->toStartWith($label.' is a boolean read from a query string')
+        ->and($set->findings[1])->toContain('read each value with `filter_var($value, FILTER_VALIDATE_BOOL)`')
+        ->and($set->findings[1])->not->toContain('$request->validated(');
+})->with(function (): Generator {
+    $boolean = new Schema(types: [SchemaType::Boolean]);
+
+    yield 'a property of the objects of a list' => [
+        objectSchema(['rows' => deepObjectArray(objectSchema(['on' => $boolean]))]),
+        '`filter[rows][][on]`',
+    ];
+    yield 'a map of boolean lists' => [
+        new Schema(types: [SchemaType::Object], additionalPropertiesSchema: deepObjectArray($boolean)),
+        '`filter[*][]`',
+    ];
+    yield 'a list of boolean lists' => [
+        objectSchema(['m' => deepObjectArray(deepObjectArray($boolean))]),
+        '`filter[m][][]`',
+    ];
+});
+
+// The item label is the query string's own. A form body keeps its label, and its finding.
+it('keeps the label of a list of booleans in a form body', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/x-www-form-urlencoded' => objectSchema(['tags' => deepObjectArray(new Schema(types: [SchemaType::Boolean]))])],
+    ), new RuleSetOptions);
+
+    expect(implode("\n", $set->findings))->toContain('`tags`[] is a boolean read from a form body');
+});
+
+// A walk that passes the ceiling is run again at lower depths, and every run has to read the array as the first did.
+it('keeps the configured reading when the walk lowers its depth', function (DeepObjectArrays $reading, array $ids, bool $held): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-deep-object.yaml', 'createTree'), new RuleSetOptions($reading));
+    $findings = implode("\n", $set->findings);
+
+    expect($set->rules['left.left.left.left.left.left.left'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['left.left.left.left.left.left.left.left'])->toBe(['missing'])
+        ->and(array_intersect_key($set->rules, array_flip(['filter.ids', 'filter.ids.*'])))->toBe($ids)
+        ->and(str_contains($findings, 'since `query.deep_object_arrays` is `any`'))->toBe($held)
+        ->and($findings)->toContain('ceiling');
+})->with(function (): Generator {
+    yield 'any' => [DeepObjectArrays::Any, ['filter.ids' => ['sometimes']], true];
+    yield 'brackets' => [
+        DeepObjectArrays::Brackets,
+        ['filter.ids' => ['sometimes', 'array', 'list', 'min:1'], 'filter.ids.*' => ['integer']],
+        false,
+    ];
+    yield 'comma' => [
+        DeepObjectArrays::Comma,
+        ['filter.ids' => ['sometimes', 'array', 'list', 'min:1'], 'filter.ids.*' => ['integer']],
+        false,
+    ];
+});
+
+// An empty list has no form with brackets: PHP's `http_build_query()` writes nothing for it, and `filter[ids][]=` is one
+// empty item. So a required array whose schema accepts `[]` is accepted left out in a deepObject, as a required object that
+// requires nothing a client sends is. `minItems` of 1 or more is a list that can be written, so it stays required. Only the
+// query string reads it so: a body writes `[]`, and a form body keeps its own rule.
+it('accepts a required array that may be empty left out under brackets', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids, 'a' => new Schema(types: [SchemaType::String])], ['ids']), false);
+
+    expect($set->rules['filter'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['filter.ids'])->toBe(['sometimes', 'array', 'list'])
+        ->and($set->findings)->toBe($set->information)
+        ->and($set->unenforced)->toBe([])
+        ->and($set->information)->toHaveCount(2)
+        ->and($set->information[0])->toStartWith('`filter[ids]` is required and its schema accepts an empty list')
+        ->and($set->information[0])->toContain('`http_build_query()` writes nothing for it')
+        ->and($set->information[1])->toStartWith('`filter[ids]` is an array inside a `deepObject` query parameter');
+});
+
+// `dependentRequired` makes a name required once its trigger is sent, so the same empty list is the same case: a client with
+// `{a: 1, ids: []}` can only send `?filter[a]=1`. A list that must hold an item stays asked for, and so does one under `any`
+// or `comma`, which can write it empty.
+it('accepts a dependent array that may be empty left out under brackets', function (
+    ?int $minItems,
+    DeepObjectArrays $reading,
+    array $idsRules,
+    int $information,
+): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]), minItems: $minItems);
+    $filter = new Schema(
+        types: [SchemaType::Object],
+        properties: ['a' => new Schema(types: [SchemaType::Integer]), 'ids' => $ids],
+        dependentRequired: ['a' => ['ids']],
+    );
+    $set = deepObjectRuleSet($filter, false, options: new RuleSetOptions($reading));
+
+    expect($set->rules['filter.ids'])->toBe($idsRules)
+        ->and(array_values(array_filter($set->information, fn (string $line): bool => str_contains($line, 'accepts an empty list'))))->toHaveCount($information);
+})->with([
+    'no minItems, brackets' => [null, DeepObjectArrays::Brackets, ['sometimes', 'array', 'list'], 1],
+    'minItems 0, brackets' => [0, DeepObjectArrays::Brackets, ['sometimes', 'array', 'list', 'min:0'], 1],
+    'minItems 1, brackets' => [1, DeepObjectArrays::Brackets, ['present_with:filter.a', 'array', 'list', 'min:1'], 0],
+    'no minItems, comma' => [null, DeepObjectArrays::Comma, ['present_with:filter.a', 'array', 'list'], 0],
+    'no minItems, any' => [null, DeepObjectArrays::Any, ['present_with:filter.a'], 0],
+]);
+
+it('keeps a dependent array that may be empty required outside the query string', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $filter = new Schema(
+        types: [SchemaType::Object],
+        properties: ['a' => new Schema(types: [SchemaType::Integer]), 'ids' => $ids],
+        dependentRequired: ['a' => ['ids']],
+    );
+    $json = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['filter' => $filter])]), new RuleSetOptions);
+
+    expect($json->rules['filter.ids'])->toBe(['present_with:filter.a', 'array', 'list'])
+        ->and($json->information)->toBe([]);
+});
+
+it('keeps a required array that cannot be empty required under brackets', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]), minItems: 1);
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids], ['ids']), false, required: true);
+
+    expect($set->rules['filter'])->toBe(['present', 'array', 'required_array_keys:ids'])
+        ->and(implode("\n", $set->information))->not->toContain('accepts an empty list');
+});
+
+it('keeps a required array that may be empty required when the reading is any', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids], ['ids']), false, required: true, options: new RuleSetOptions(DeepObjectArrays::Any));
+
+    expect($set->rules['filter'])->toBe(['present', 'array', 'required_array_keys:ids'])
+        ->and($set->information)->toBe([]);
+});
+
+// The parameter itself is the same case one level up, as for a required object that requires nothing a client sends: a
+// required `filter` whose only required property is an array that may be empty requires nothing a client can write, so it
+// may be left out, and the note says why.
+it('accepts a required deepObject whose only required property is an array that may be empty', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids], ['ids']), false, required: true);
+
+    expect($set->rules['filter'])->toBe(['sometimes', 'array'])
+        ->and($set->information)->toHaveCount(3)
+        ->and($set->information[0])->toContain('`filter` is a required `deepObject` query parameter that requires no property a client sends')
+        ->and($set->information[1])->toStartWith('`filter[ids]` is required and its schema accepts an empty list')
+        ->and($set->information[2])->toStartWith('`filter[ids]` is an array inside a `deepObject` query parameter');
+});
+
+// The control rows: the same required, possibly empty array in a JSON body and in a form body keeps the rule it has, since
+// a JSON body writes `[]` and a form body's reading is its own.
+it('keeps required_array_keys for an array that may be empty outside the query string', function (): void {
+    $tags = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $nested = objectSchema(['o' => objectSchema(['tags' => $tags], ['tags'])], ['o']);
+    $json = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested]), new RuleSetOptions);
+    $form = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => $nested]), new RuleSetOptions);
+    $root = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['tags' => $tags], ['tags'])]), new RuleSetOptions);
+
+    expect($json->rules['o'])->toBe(['present', 'array', 'required_array_keys:tags'])
+        ->and($form->rules['o'])->toBe(['present', 'array', 'required_array_keys:tags'])
+        ->and($root->rules['tags'])->toBe(['present', 'array', 'list'])
+        ->and($json->information)->toBe([])
+        ->and($form->information)->toBe([]);
+});
+
 it('merges the body and the query into one rule set, body first', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['email' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter('notify', new Schema(types: [SchemaType::Boolean]))],
-    ));
+    ), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe(['email', 'notify']);
 });
@@ -1373,7 +1770,7 @@ it('names the query parameters that have a rule', function (): void {
             new QueryParameter('filter', new Schema(types: [SchemaType::Object])),
             new QueryParameter('page*', new Schema(types: [SchemaType::Integer])),
         ],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->queryKeys)->toBe(['notify', 'tag', 'filter']);
 });
@@ -1381,7 +1778,7 @@ it('names the query parameters that have a rule', function (): void {
 it('names no query parameter for an operation that declares none', function (): void {
     expect(RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['email' => new Schema(types: [SchemaType::String])])],
-    ))->queryKeys)->toBe([]);
+    ), new RuleSetOptions)->queryKeys)->toBe([]);
 });
 
 // --- What is refused rather than guessed at ---
@@ -1390,7 +1787,7 @@ it('refuses a name declared by both the body and a query parameter', function ()
     expect(fn () => RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['page' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    )))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
+    ), new RuleSetOptions))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
 });
 
 // The generated request reads a `query` key from the query string and drops the body's copy, so that is what the message
@@ -1399,7 +1796,7 @@ it('says the request drops the body\'s copy of a name declared by both', functio
     expect(fn () => RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['page' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    )))->toThrow(ConflictingInputException::class, 'reads that key from the query string and drops the body\'s copy');
+    ), new RuleSetOptions))->toThrow(ConflictingInputException::class, 'reads that key from the query string and drops the body\'s copy');
 });
 
 // `validationData()` reads a `query` key from the query string and drops it from the body, so a name the body writes
@@ -1407,12 +1804,12 @@ it('says the request drops the body\'s copy of a name declared by both', functio
 // would be choosing which half of the contract to enforce. Such a name is not always a property, so the message says
 // what the body does write, and what the request does with the two copies.
 it('refuses a query parameter that shares its name with a name the body writes, with a rule of its own or without', function (Closure $operation): void {
-    expect(fn () => RuleSetBuilder::for($operation()))->toThrow(
+    expect(fn () => RuleSetBuilder::for($operation(), new RuleSetOptions))->toThrow(
         ConflictingInputException::class,
         'declares "token" as a `query` parameter, and its request body writes the same name without declaring a property of that name',
     );
 
-    expect(fn () => RuleSetBuilder::for($operation()))->toThrow(
+    expect(fn () => RuleSetBuilder::for($operation(), new RuleSetOptions))->toThrow(
         ConflictingInputException::class,
         'reads that key from the query string and drops the body\'s copy',
     );
@@ -1479,14 +1876,14 @@ it('still builds a query parameter named like a key an open map body does not wr
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => new Schema(types: [SchemaType::Object])],
         query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->queryKeys)->toBe(['token'])
         ->and(implode("\n", $set->information))->toContain('A body key named `token` is not');
 });
 
 it('still builds a query parameter named like a key the body does not write', function (Closure $operation): void {
-    expect(RuleSetBuilder::for($operation())->queryKeys)->toBe(['token']);
+    expect(RuleSetBuilder::for($operation(), new RuleSetOptions)->queryKeys)->toBe(['token']);
 })->with([
     'a name the body nests below another one' => [fn (): Operation => operationWithInput(
         content: ['application/json' => objectSchema(['address' => new Schema(types: [SchemaType::Object], required: ['token'])])],
@@ -1506,7 +1903,7 @@ it('still builds a query parameter named like a key the body does not write, whe
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['page[size]' => new Schema(types: [SchemaType::Integer])])],
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->queryKeys)->toBe(['page']);
 });
@@ -1518,7 +1915,7 @@ it('answers on a root key no query parameter has either', function (string $name
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['title' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter($name, new Schema(types: [SchemaType::String]), required: true)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rootKey)->toBe($rootKey);
 })->with([
@@ -1535,7 +1932,7 @@ it('refuses a query parameter named like the key a form delivers a body name und
     $build = fn () => RuleSetBuilder::for(operationWithInput(
         content: array_fill_keys($media, $schema),
         query: [new QueryParameter($query, new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
 
     expect($build)->toThrow(ConflictingInputException::class, sprintf(
         'declares "%s" as a property of its request body, which a form delivers under the key "%s", and "%s" as a `query` parameter',
@@ -1553,7 +1950,7 @@ it('leaves a dotted body name beside a query parameter alone when the body is JS
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['user.name' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter('user_name', new Schema(types: [SchemaType::String]))],
-    ));
+    ), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe(['user\\.name', 'user_name']);
 });
@@ -1562,7 +1959,7 @@ it('refuses two read media types describing two different shapes', function (): 
     expect(fn () => RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
         'multipart/form-data' => objectSchema(['b' => new Schema(types: [SchemaType::String])]),
-    ])))->toThrow(ConflictingInputException::class, 'cannot hold two rule sets');
+    ]), new RuleSetOptions))->toThrow(ConflictingInputException::class, 'cannot hold two rule sets');
 });
 
 // The comparison is strict: `==` called `null` and `0`, `null` and `false`, `[0]` and `[false]` equal, so a
@@ -1571,7 +1968,7 @@ it('refuses two read media types whose shapes differ only by a value loose equal
     expect(fn () => RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => objectSchema(['a' => $one]),
         'multipart/form-data' => objectSchema(['a' => $other]),
-    ])))->toThrow(ConflictingInputException::class, 'cannot hold two rule sets');
+    ]), new RuleSetOptions))->toThrow(ConflictingInputException::class, 'cannot hold two rule sets');
 })->with([
     'minimum: 0 on one side' => [
         new Schema(types: [SchemaType::Integer], minimum: 0),
@@ -1598,7 +1995,7 @@ it('accepts two read media types describing one shape', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
         'multipart/form-data' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
-    ]));
+    ]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['a' => ['sometimes', 'string']])
         ->and(implode('', $set->findings))->toContain('over one schema');
@@ -1615,7 +2012,7 @@ it('accepts two read media types whose shapes differ only in where an ignored ke
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $at('json'),
         'multipart/form-data' => $at('multipart'),
-    ]));
+    ]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['a' => ['sometimes', 'string']]);
 });
@@ -1626,7 +2023,7 @@ it('reports a media type it does not read rather than refusing it', function ():
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/xml' => objectSchema(['a' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['page' => ['sometimes', 'integer']])
         ->and(implode('', $set->findings))->toContain('`application/xml`, which this package does not read');
@@ -1767,7 +2164,7 @@ it('keys the element rules of an array under field.*', function (): void {
 // `"01"` are two strings, so those keep the strict comparison. A form's boolean has two (`"true"` and `"1"`), a gap
 // the guide states.
 it('compares the numbers of a unique list by value', function (string $mediaType, SchemaType $type, array $element): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(['xs' => uniqueListOf($type)])]));
+    $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(['xs' => uniqueListOf($type)])]), new RuleSetOptions);
 
     expect($set->rules['xs.*'])->toEqual($element)
         ->and(implode('', $set->findings))->not->toContain('uniqueItems');
@@ -1785,7 +2182,7 @@ it('writes no element rule for the unique list of a query parameter', function (
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('ids', uniqueListOf(SchemaType::Integer), required: true)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['ids' => ['present']]);
 });
@@ -1844,7 +2241,7 @@ it('reads dependentRequired as a presence that follows its trigger', function ()
             'postcode' => new Schema(types: [SchemaType::String]),
         ],
         dependentRequired: ['card' => ['postcode', 'billing']],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'card' => ['sometimes', 'string'],
@@ -1862,7 +2259,7 @@ it('makes an optional body all or none', function (): void {
             'code' => new Schema(types: [SchemaType::Integer]),
         ], ['street', 'city', 'code'])],
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toEqual([
         'street' => ['present_with:city,code', 'string'],
@@ -1877,7 +2274,7 @@ it('merges allOf into one rule set', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(allOf: [
         objectSchema(['name' => new Schema(types: [SchemaType::String], maxLength: 50)], ['name']),
         objectSchema(['name' => new Schema(maxLength: 20), 'age' => new Schema(types: [SchemaType::Integer])]),
-    ])]));
+    ])]), new RuleSetOptions);
 
     // The tighter bound wins, and the required list accumulates.
     expect($set->rules)->toEqual([
@@ -1889,7 +2286,7 @@ it('merges allOf into one rule set', function (): void {
 it('refuses allOf branches that cannot be said as one', function (Schema $first, Schema $second, string $what): void {
     expect(fn () => RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => objectSchema(['field' => new Schema(allOf: [$first, $second])]),
-    ])))->toThrow(ConflictingInputException::class, $what);
+    ]), new RuleSetOptions))->toThrow(ConflictingInputException::class, $what);
 })->with([
     'two types' => [new Schema(types: [SchemaType::String]), new Schema(types: [SchemaType::Integer]), 'one branch is `string`'],
     'two enumerations' => [new Schema(enum: ['a']), new Schema(enum: ['b']), 'share no value'],
@@ -1908,7 +2305,7 @@ it('keeps a nested allOf when two branches declare the same property', function 
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(allOf: [
         objectSchema(['code' => new Schema(types: [SchemaType::String])]),
         objectSchema(['code' => new Schema(allOf: [new Schema(maxLength: 3)])]),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->rules['code'])->toBe(['sometimes', 'string', 'max:3']);
 });
@@ -1917,7 +2314,7 @@ it('keeps a nested allOf when two branches declare the same property', function 
 it('merges integer and number into integer', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
         'n' => new Schema(allOf: [new Schema(types: [SchemaType::Number]), new Schema(types: [SchemaType::Integer])]),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->rules['n'])->toEqual(['sometimes', new WholeNumber, 'numeric']);
 });
@@ -1930,7 +2327,7 @@ it('reports a nested key name Laravel cannot list', function (string $name): voi
         properties: [$name => new Schema(types: [SchemaType::String])],
         required: [$name],
         additionalProperties: false,
-    )])]));
+    )])]), new RuleSetOptions);
 
     expect($set->rules['n'])->toBe(['sometimes', 'array'])
         ->and(implode('', $set->findings))->toContain('cannot name in `required_array_keys`')
@@ -1942,7 +2339,7 @@ it('reports a nested key name Laravel cannot list', function (string $name): voi
 it('reports an enumeration of null alone', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
         'field' => new Schema(enum: [null]),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect(implode('', $set->findings))->toContain('`field` states `enum`');
 });
@@ -1950,7 +2347,7 @@ it('reports an enumeration of null alone', function (): void {
 // `distinct` compares across the whole outer list under a wildcard, and never
 // compares object or array elements themselves, so both shapes are reported.
 it('reports uniqueItems where distinct would not mean it', function (Schema $field): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]), new RuleSetOptions);
 
     expect(json_encode($set->rules))->not->toContain('distinct')
         ->and(implode('', $set->findings))->toContain('`uniqueItems`');
@@ -1986,18 +2383,18 @@ it('closes the root to the keys it declares', function (): void {
         types: [SchemaType::Object],
         properties: ['a' => new Schema(types: [SchemaType::String])],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->closedKeys)->toBe(['a']);
 });
 
 it('leaves the root open when it does not close itself', function (): void {
-    expect(RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([])]))->closedKeys)
+    expect(RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([])]), new RuleSetOptions)->closedKeys)
         ->toBeNull();
 });
 
 it('reports what no Laravel rule means the same as', function (Schema $field, string $reason): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(['field' => $field])]), new RuleSetOptions);
 
     expect(implode('', $set->findings))->toContain($reason);
 })->with([
@@ -2020,7 +2417,7 @@ it('says nothing about a nested object that allows undeclared fields', function 
         content: ['application/json' => objectSchema([
             'field' => new Schema(types: [SchemaType::Object], additionalProperties: true),
         ])],
-    ));
+    ), new RuleSetOptions);
 
     expect(implode('', $set->findings))->not->toContain('additionalProperties');
 });
@@ -2030,7 +2427,7 @@ it('says nothing about a nested object that allows undeclared fields', function 
 // validator): the guard is recorded for every rule key written under the wildcard, with the step of the map's `*`.
 it('judges a map\'s values beside declared properties, and spares the declared keys', function (bool $nested): void {
     $map = new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]), new RuleSetOptions);
     $wildcard = $nested ? 'meta.*' : '*';
 
     expect($set->rules[$nested ? 'meta.id' : 'id'])->toEqual(['sometimes', new WholeNumber, 'numeric'])
@@ -2043,7 +2440,7 @@ it('judges a map\'s values beside declared properties, and spares the declared k
 // Every rule key written under the wildcard is guarded, so a value's own children never reach a declared key either; a
 // value that is a map itself adds its own step to the same guard, and the step counts unescaped dots only.
 it('guards every rule key under the wildcard of a map beside declared properties', function (Schema $body, array $expected): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $body]), new RuleSetOptions);
 
     expect($set->undeclaredKeys)->toBe($expected);
 })->with(function (): Generator {
@@ -2093,7 +2490,7 @@ it('guards every rule key under the wildcard of a map beside declared properties
 it('leaves an additionalProperties schema unenforced where no sweep reads the schema', function (array $content, array $query, string $label): void {
     assert(array_is_list($query));
 
-    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query));
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query), new RuleSetOptions);
 
     expect($set->unenforced)->toBe(['additionalProperties' => [$label]]);
 })->with(function (): Generator {
@@ -2126,7 +2523,7 @@ it('leaves an additionalProperties schema unenforced where no sweep reads the sc
 // wildcard that keeps every key in `validated()` asks nothing of the value.
 it('reads an empty additionalProperties schema as an open object', function (Schema $value, bool $nested): void {
     $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $value);
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]), new RuleSetOptions);
 
     expect($set->rules)->toBe($nested ? ['meta' => ['sometimes', 'array']] : ['*' => ['sometimes']])
         ->and($set->findings)->toBe([])
@@ -2152,7 +2549,7 @@ it('keeps asking for a required name the properties do not declare, and judges i
         required: ['x'],
         additionalPropertiesSchema: new Schema(types: [SchemaType::String]),
     );
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $map]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $map]), new RuleSetOptions);
 
     expect($set->rules['x'])->toBe(['present'])
         ->and($set->undeclaredKeys)->toBe(['*' => [0 => ['id']]])
@@ -2161,7 +2558,7 @@ it('keeps asking for a required name the properties do not declare, and judges i
 
 it('reads an empty value schema beside declared properties as an open object', function (bool $nested): void {
     $map = new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::Integer])], additionalPropertiesSchema: new Schema);
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested ? objectSchema(['meta' => $map]) : $map]), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe($nested ? ['meta', 'meta.id'] : ['id'])
         ->and($set->undeclaredKeys)->toBe([])
@@ -2177,7 +2574,7 @@ it('keeps reporting the values of a map beside a declared name the guard cannot 
     $map = new Schema(types: [SchemaType::Object], properties: $properties, additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]));
     $nested = $where === 'nested';
     $content = array_fill_keys($media, $nested ? objectSchema(['meta' => $map]) : $map);
-    $set = RuleSetBuilder::for(operationWithInput(content: $content));
+    $set = RuleSetBuilder::for(operationWithInput(content: $content), new RuleSetOptions);
     $label = $nested ? '`meta`' : 'The body itself';
 
     expect(array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'other keys are not validated'))))
@@ -2215,7 +2612,7 @@ it('spares the name a form delivers a declared name as, and says an undeclared k
         properties: ['user.name' => new Schema(types: [SchemaType::String])],
         additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
     );
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => $map]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => $map]), new RuleSetOptions);
     $stated = 'A form delivers `user.name` as `user_name`, so an undeclared `user_name` is judged by `user.name`\'s rules, not by the value schema.';
 
     expect($set->undeclaredKeys)->toBe(['*' => [0 => ['user_name']]])
@@ -2231,7 +2628,7 @@ it('spares the name a form delivers a declared name as, and says an undeclared k
 it('spares a declared name no form delivers by the name a JSON client sends it under', function (string $name, array $media, array $spared): void {
     assert(array_is_list($media));
     $map = new Schema(types: [SchemaType::Object], properties: [$name => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
-    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $map)));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $map)), new RuleSetOptions);
 
     expect(array_values($set->undeclaredKeys)[0] ?? [])->toBe($spared === [] ? [] : [0 => $spared])
         ->and($set->unenforced)->toBe($spared === [] ? ['additionalProperties' => ['The body itself']] : []);
@@ -2244,7 +2641,7 @@ it('spares a declared name no form delivers by the name a JSON client sends it u
 
 it('says why a declared name no form delivers cannot be spared when it holds a dot', function (): void {
     $map = new Schema(types: [SchemaType::Object], properties: ['[x.y]' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
-    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys(['application/json', 'application/x-www-form-urlencoded'], $map)));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys(['application/json', 'application/x-www-form-urlencoded'], $map)), new RuleSetOptions);
 
     expect($set->findings)->toContain('The body declares `[x.y]`, which Laravel cannot tell apart from an undeclared key, so the values of its other keys are not validated.');
 });
@@ -2254,7 +2651,7 @@ it('says why a declared name no form delivers cannot be spared when it holds a d
 it('says an undeclared key a form rewrites is judged under its new name beside declared properties', function (array $media, int $informs): void {
     assert(array_is_list($media));
     $map = new Schema(types: [SchemaType::Object], properties: ['id' => new Schema(types: [SchemaType::String])], additionalPropertiesSchema: new Schema(types: [SchemaType::String]));
-    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $map)));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $map)), new RuleSetOptions);
     $named = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'PHP rewrites')));
 
     expect($named)->toHaveCount($informs)
@@ -2274,7 +2671,7 @@ it('judges the values of a root map beside query parameters, sparing the keys th
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => new Schema(types: [SchemaType::Object], properties: $properties, additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]))],
         query: $query,
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toEqual($rules)
         ->and($set->undeclaredKeys)->toBe(['*' => [0 => $spared]])
@@ -2314,11 +2711,11 @@ it('judges the values of a root map beside query parameters, sparing the keys th
 // one keeps `'*' => ['sometimes']`, which asks nothing of any value.
 it('keeps the plain wildcard where nothing is spared, and asks nothing of an open object beside a query parameter', function (): void {
     $integer = new Schema(types: [SchemaType::Integer]);
-    $alone = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer)]));
+    $alone = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer)]), new RuleSetOptions);
     $open = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => new Schema(types: [SchemaType::Object])],
         query: [new QueryParameter('page', $integer)],
-    ));
+    ), new RuleSetOptions);
 
     expect($alone->rules)->toEqual(['*' => [new WholeNumber, 'numeric']])
         ->and($alone->undeclaredKeys)->toBe([])
@@ -2331,7 +2728,7 @@ it('does not guard a nested map beside a query parameter', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['meta' => new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]))])],
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['meta.*'])->toEqual([new WholeNumber, 'numeric'])
         ->and($set->undeclaredKeys)->toBe([]);
@@ -2342,7 +2739,7 @@ it('does not guard a nested map beside a query parameter', function (): void {
 it('says a form delivers a map key PHP rewrites under its rewritten name', function (array $mediaTypes, int $findings): void {
     assert(array_is_list($mediaTypes));
     $content = array_fill_keys($mediaTypes, new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::Integer])));
-    $set = RuleSetBuilder::for(operationWithInput(content: $content));
+    $set = RuleSetBuilder::for(operationWithInput(content: $content), new RuleSetOptions);
 
     $named = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'PHP rewrites')));
 
@@ -2361,7 +2758,7 @@ it('says a form delivers a map key PHP rewrites under its rewritten name', funct
 // unenforced: a body that is `{type: object}` states nothing the rule set fails to carry, and has no finding at all.
 it('keeps the findings that lose no constraint out of the unenforced warning', function (array $content, array $query, bool $informs, bool $unenforced): void {
     assert(array_is_list($query));
-    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query));
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query), new RuleSetOptions);
 
     expect($set->leavesUnenforced())->toBe($unenforced)
         ->and($set->findings !== [])->toBe($informs || $unenforced);
@@ -2387,7 +2784,7 @@ it('keeps the findings that lose no constraint out of the unenforced warning', f
 // A finding that loses no constraint is said in the file and stays out of the build warning. Each row has that one
 // finding and nothing else, so the request is not counted.
 it('writes each finding that loses no constraint as information', function (Operation $operation, string $finding): void {
-    $set = RuleSetBuilder::for($operation);
+    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
     $named = array_values(array_filter($set->findings, static fn (string $line): bool => str_contains($line, $finding)));
 
     expect($named)->toHaveCount(1)
@@ -2460,7 +2857,7 @@ it('writes each finding that loses no constraint as information', function (Oper
 // The look-alikes of the findings above lose something, so they keep counting. These are controls: each reads like
 // information and is not.
 it('still counts a gap whose finding reads like information', function (Operation $operation, string $finding): void {
-    $set = RuleSetBuilder::for($operation);
+    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
     $named = array_values(array_filter($set->findings, static fn (string $line): bool => str_contains($line, $finding)));
 
     expect($named)->toHaveCount(1)
@@ -2550,7 +2947,7 @@ it('still counts a gap whose finding reads like information', function (Operatio
 it('still counts the bound of a field that states no type', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
         'field' => new Schema(minLength: 3),
-    ])]));
+    ])]), new RuleSetOptions);
     $counted = array_values(array_diff($set->findings, $set->information, $set->stricter));
 
     expect($set->information)->toHaveCount(1)
@@ -2566,7 +2963,7 @@ it('still counts a gap whose sentence is information on another field', function
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
         'address.id' => new Schema,
         'address' => objectSchema(['id' => $nested]),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->information)->toHaveCount(1)
         ->and(array_count_values($set->findings)[$set->information[0]])->toBe(2)
@@ -2585,7 +2982,7 @@ it('still counts a gap whose finding reads like information, beside a value sche
         properties: ['a.b' => $integer],
         required: ['c'],
         additionalPropertiesSchema: $integer,
-    )]));
+    )]), new RuleSetOptions);
     $counted = array_values(array_diff($set->findings, $set->information, $set->stricter));
 
     expect($set->leavesUnenforced())->toBeTrue()
@@ -2599,7 +2996,7 @@ it('says nothing about the keys of a body that is closed and declares no propert
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => new Schema(types: [SchemaType::Object], additionalProperties: false)],
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['page' => ['sometimes', 'integer']])
         ->and($set->findings)->toBe([])
@@ -2617,7 +3014,7 @@ it('says a map key named like a query parameter is read from the query string', 
             additionalPropertiesSchema: new Schema(types: [SchemaType::String]),
         )],
         query: [new QueryParameter($parameter, new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
     $named = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'read from the query string')));
 
     // Information: the key is dropped from the body before it is validated, so no constraint is lost.
@@ -2635,7 +3032,7 @@ it('says nothing about a query key for an object body that declares its properti
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['name' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->not->toContain('read from the query string');
 });
@@ -2652,7 +3049,7 @@ it('says an empty map passes at the cut of a recursion', function (): void {
         additionalPropertiesSchema: Schema::recursion($position, 'Node'),
     );
 
-    $finding = implode("\n", RuleSetBuilder::for(operationWithInput(content: ['application/json' => $selfMap]))->findings);
+    $finding = implode("\n", RuleSetBuilder::for(operationWithInput(content: ['application/json' => $selfMap]), new RuleSetOptions)->findings);
 
     expect($finding)->toContain('An empty map of `Node` passes')
         ->and($finding)->not->toContain('An empty list');
@@ -2664,7 +3061,7 @@ it('keeps the loose scalar rules for the values of a form map', function (string
     $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => new Schema(
         types: [SchemaType::Object],
         additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toEqual(['*' => $rules]);
 })->with([
@@ -2676,7 +3073,7 @@ it('keeps the loose scalar rules for the values of a form map', function (string
 it('says why a field got no type rule at all', function (Schema $schema, string $reason): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => objectSchema(['field' => $schema])],
-    ));
+    ), new RuleSetOptions);
 
     expect(implode('', $set->findings))->toContain($reason);
 })->with([
@@ -2689,7 +3086,7 @@ it('names a keyword written on the body itself', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
         types: [SchemaType::Object],
         enum: [['a' => 1]],
-    )]));
+    )]), new RuleSetOptions);
 
     expect(implode('', $set->findings))->toContain('The body itself states `enum`');
 });
@@ -2704,7 +3101,7 @@ it('requires a key the schema requires without declaring it', function (): void 
             ['title' => new Schema(types: [SchemaType::String])],
             ['title', 'ghost'],
         )],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'title' => ['present', 'string'],
@@ -2722,7 +3119,7 @@ it('reports a field name Laravel would read as a wildcard', function (): void {
             'plain' => new Schema(types: [SchemaType::String]),
         ])],
         query: [new QueryParameter('page*', new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe(['plain'])
         ->and(implode('', $set->findings))->toContain('`a*b` carries a `*`')
@@ -2735,7 +3132,7 @@ it('reports an undeclared required name Laravel would read as a wildcard', funct
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['plain' => new Schema(types: [SchemaType::String])],
         ['plain', 'a*b'],
-    )]));
+    )]), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe(['plain'])
         ->and(implode('', $set->findings))->toContain('`a*b` carries a `*`')
@@ -2748,7 +3145,7 @@ it('says the rule set is complete when it is', function (): void {
             ['name' => new Schema(types: [SchemaType::String])],
             ['name'],
         )],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->findings)->toBe([]);
 });
@@ -2765,7 +3162,7 @@ it('names update() on a PUT whose schema leaves a property optional', function (
             ],
             ['title'],
         )],
-    ));
+    ), new RuleSetOptions);
 
     expect(implode('', $set->findings))->toContain('Override `update()`')
         ->and(implode('', $set->findings))->toContain('`subtitle`');
@@ -2782,7 +3179,7 @@ it('escapes a dot in a property name', function (): void {
 it('reports a body whose own schema is not an object', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => new Schema(types: [SchemaType::String])],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe([])
         ->and(implode('', $set->findings))->toContain('is not an object');
@@ -2804,7 +3201,7 @@ function filePartRules(Schema $part, bool $required = true, array $mediaTypes = 
     $set = RuleSetBuilder::for(operationWithInput(
         method: $method,
         content: array_fill_keys($mediaTypes, objectSchema(['avatar' => $part], $required ? ['avatar'] : [])),
-    ));
+    ), new RuleSetOptions);
 
     return [$set->rules, implode("\n", $set->findings)];
 }
@@ -2825,7 +3222,7 @@ it('asks for a required file part of an optional body with present_with naming t
             'alt' => new Schema(types: [SchemaType::String]),
         ], ['avatar', 'caption'])],
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'avatar' => ['present_with:caption,alt', 'file'],
@@ -2853,7 +3250,7 @@ it('does not read a query parameter as a file in a multipart operation', functio
     $set = RuleSetBuilder::for(operationWithInput(
         content: ['multipart/form-data' => objectSchema(['a' => new Schema(types: [SchemaType::String])])],
         query: [new QueryParameter('f', new Schema(types: [SchemaType::String], isFilePart: true))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['f'])->toBe(['sometimes', 'string']);
 });
@@ -2905,7 +3302,7 @@ it('narrows a file part from encoding', function (
     $set = RuleSetBuilder::for(operationWithInput(
         content: array_fill_keys($mediaTypes, objectSchema($properties)),
         encoding: ['multipart/form-data' => $encoding, 'application/x-www-form-urlencoded' => $formEncoding ?? $encoding],
-    ));
+    ), new RuleSetOptions);
     $findings = implode("\n", $set->findings);
 
     expect($set->rules)->toBe($rules)
@@ -3065,7 +3462,7 @@ function encodingReportedWith(?EncodingDefaults $table, array $properties, array
         content: array_fill_keys($mediaTypes, objectSchema($properties)),
         encoding: ['multipart/form-data' => $encoding, 'application/x-www-form-urlencoded' => $encoding],
         encodingDefaults: $table,
-    ));
+    ), new RuleSetOptions);
 
     $part = array_key_first($encoding);
 
@@ -3250,7 +3647,7 @@ it('asks for no presence on a readOnly property the schema requires', function (
             'name' => new Schema(types: [SchemaType::String]),
         ],
         ['id', 'name'],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toEqual([
         'id' => ['sometimes', new WholeNumber, 'numeric'],
@@ -3264,7 +3661,7 @@ it('keeps the other rules of a readOnly property, and still reads its allOf', fu
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['id' => new Schema(allOf: [new Schema(types: [SchemaType::String], minLength: 3, readOnly: true)])],
         ['id'],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['id' => ['sometimes', 'string', 'min:3']]);
 });
@@ -3279,7 +3676,7 @@ it('asks a nested object for no readOnly key', function (): void {
             ],
             required: ['id', 'city'],
         )],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules['address'])->toBe(['sometimes', 'array', 'required_array_keys:city'])
         ->and(implode("\n", $set->findings))->toContain('`address.id` is `readOnly` and required');
@@ -3293,7 +3690,7 @@ it('does not make a readOnly property required through dependentRequired either'
             'id' => new Schema(types: [SchemaType::Integer], readOnly: true),
         ],
         dependentRequired: ['card' => ['id']],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules['id'])->toEqual(['sometimes', new WholeNumber, 'numeric']);
 });
@@ -3301,7 +3698,7 @@ it('does not make a readOnly property required through dependentRequired either'
 it('says nothing about a readOnly property that is not required', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['id' => new Schema(types: [SchemaType::Integer], readOnly: true)],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toEqual(['id' => ['sometimes', new WholeNumber, 'numeric']])
         ->and($set->findings)->toBe([]);
@@ -3314,7 +3711,7 @@ it('keys a query name PHP rewrites by the key PHP delivers', function (string $n
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter($name, $schema, required: true)],
-    ));
+    ), new RuleSetOptions);
 
     // `toEqual`: a boolean's rule holds an `InRule`, which `toBe` compares by identity.
     expect($set->rules)->toEqual($rules)
@@ -3353,7 +3750,7 @@ it('reads each query key once however many rewritten names share it', function (
             new QueryParameter('page[number]', new Schema(types: [SchemaType::Integer])),
             new QueryParameter('limit', new Schema(types: [SchemaType::Integer])),
         ],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->queryKeys)->toBe(['page', 'limit'])
         ->and($set->rules)->toBe([
@@ -3372,7 +3769,7 @@ it('keeps the rule of rewritten query names that are not on one path', function 
             new QueryParameter('filter[a]', new Schema(types: [SchemaType::Integer])),
             new QueryParameter('filter[ab][c]', new Schema(types: [SchemaType::Integer])),
         ],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['filter.a' => ['sometimes', 'integer'], 'filter.ab.c' => ['sometimes', 'integer']])
         ->and($set->queryKeys)->toBe(['filter'])
@@ -3389,7 +3786,7 @@ it('keeps reporting a query name PHP appends to or delivers under no name', func
             new QueryParameter($name, new Schema(types: [SchemaType::Integer]), required: true),
             new QueryParameter('limit', new Schema(types: [SchemaType::Integer])),
         ],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['limit' => ['sometimes', 'integer']])
         ->and($set->queryKeys)->toBe(['limit'])
@@ -3409,7 +3806,7 @@ it('keeps a star in a bracketed query name out of the rule keys', function (): v
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('page[*]', new Schema(types: [SchemaType::Integer]), required: true)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe([])
         ->and(implode("\n", $set->findings))->not->toContain('page.*');
@@ -3420,8 +3817,8 @@ it('keeps a star in a bracketed query name out of the rule keys', function (): v
 // what they were: this is a finding, not the refusal a plain name gets.
 it('keeps reporting a query name delivered under a key the body arrives under', function (array $content, string $name, string $key): void {
     $query = new QueryParameter($name, new Schema(types: [SchemaType::Integer]), required: true);
-    $alone = RuleSetBuilder::for(operationWithInput(content: $content));
-    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: [$query]));
+    $alone = RuleSetBuilder::for(operationWithInput(content: $content), new RuleSetOptions);
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: [$query]), new RuleSetOptions);
 
     expect($set->rules)->toEqual($alone->rules)
         ->and($set->queryKeys)->toBe([])
@@ -3443,7 +3840,7 @@ it('gives no rule to a rewritten query name that overlaps another query name', f
             static fn (string $name): QueryParameter => new QueryParameter($name, new Schema(types: [SchemaType::Integer]), required: true),
             $names,
         )),
-    ));
+    ), new RuleSetOptions);
     $lost = array_map(
         static fn (string $name): string => '`'.$name.'`',
         $names,
@@ -3470,7 +3867,7 @@ it('gives no rule to either of two query names PHP delivers under one key', func
             static fn (string $name): QueryParameter => new QueryParameter($name, new Schema(types: [SchemaType::Integer]), required: true),
             [...$names, 'limit'],
         )),
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(array_fill_keys([...$rules, 'limit'], ['required', 'integer']))
         ->and($set->whenNotArray)->toBe([])
@@ -3491,7 +3888,7 @@ it('keeps a plain query name behind a shape check beside the names PHP nests und
             static fn (string $name): QueryParameter => new QueryParameter($name, new Schema(types: [SchemaType::Integer], minimum: 1.0), required: true),
             $names,
         )),
-    ));
+    ), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe($rules)
         ->and($set->whenNotArray)->toBe($shaped)
@@ -3518,7 +3915,7 @@ it('drops the array beside a plain query name only when no name below it has a r
             static fn (string $name): QueryParameter => new QueryParameter($name, new Schema(types: [SchemaType::Integer])),
             $names,
         )),
-    ));
+    ), new RuleSetOptions);
 
     expect($set->dropsArray)->toBe($dropped);
 })->with([
@@ -3540,7 +3937,7 @@ it('leaves a query name typed array without a shape check', function (): void {
             new QueryParameter('filter[ids]', new Schema(types: [SchemaType::Array]), required: true),
             new QueryParameter('filter[ids][0]', new Schema(types: [SchemaType::Integer]), required: true),
         ],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['filter.ids' => ['present'], 'filter.ids.0' => ['required', 'integer']])
         ->and($set->whenNotArray)->toBe([]);
@@ -3555,7 +3952,7 @@ it('refuses a plain query name beside a body key before it gives the name no rul
             new QueryParameter('page', new Schema(types: [SchemaType::Integer])),
             new QueryParameter('page[size]', new Schema(types: [SchemaType::Integer])),
         ],
-    ));
+    ), new RuleSetOptions);
 
     expect($build)->toThrow(ConflictingInputException::class, 'both as a property of its request body');
 });
@@ -3595,7 +3992,7 @@ it('reads a body that names properties and no type as an object', function (): v
         properties: ['name' => new Schema(types: [SchemaType::String])],
         required: ['name'],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['name' => ['present', 'string']])
         ->and($set->closedKeys)->toBe(['name'])
@@ -3607,7 +4004,7 @@ it('reads a body that names properties and no type as an object', function (): v
 it('says a body with properties and no type refuses a body that is not an object', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
         properties: ['name' => new Schema(types: [SchemaType::String])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->toContain('names `properties` and no `type`, so it is read as an object')
         ->and(implode("\n", $set->findings))->toContain('stricter than the contract');
@@ -3617,7 +4014,7 @@ it('says a body with properties and no type refuses a body that is not an object
 it('says nothing about a non-object root of a body with properties and no type that is only a form', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         properties: ['name' => new Schema(types: [SchemaType::String])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->not->toContain('no `type`')
         ->and($set->jsonRoot)->toBeFalse();
@@ -3626,11 +4023,11 @@ it('says nothing about a non-object root of a body with properties and no type t
 it('has the request check the root of an object body read as JSON', function (): void {
     $typed = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['name' => new Schema(types: [SchemaType::String])],
-    )]));
+    )]), new RuleSetOptions);
     $both = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => objectSchema(['name' => new Schema(types: [SchemaType::String])]),
         'multipart/form-data' => objectSchema(['name' => new Schema(types: [SchemaType::String])]),
-    ]));
+    ]), new RuleSetOptions);
 
     expect($typed->jsonRoot)->toBeTrue()
         ->and($typed->nullableRoot)->toBeFalse()
@@ -3640,13 +4037,13 @@ it('has the request check the root of an object body read as JSON', function ():
 it('says nothing of the kind when the body states type: object', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['name' => new Schema(types: [SchemaType::String])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->not->toContain('no `type`');
 });
 
 it('still reports a body that states no type and no properties', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(required: ['name'])]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(required: ['name'])]), new RuleSetOptions);
 
     expect($set->rules)->toBe([])
         ->and(implode('', $set->findings))->toContain('is not an object');
@@ -3665,7 +4062,7 @@ it('explains a file part that sits inside a nested object, an array or an allOf'
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'multipart/form-data' => $schema,
         'application/json' => $schema,
-    ]));
+    ]), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->toContain('A part the schema marks as a file');
 })->with([
@@ -3684,7 +4081,7 @@ it('reads a boolean query parameter as the spellings a query string can carry', 
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('notify', new Schema(types: [SchemaType::Boolean]), required: true)],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toEqual(['notify' => ['required', new InRule(['true', 'false', '1', '0'])]])
         ->and(implode("\n", $set->findings))->toContain('`notify` is a boolean read from a query string')
@@ -3701,7 +4098,7 @@ it('reads a boolean query parameter as the spellings a query string can carry', 
 it('reads a boolean field of a form or multipart body the same way', function (string $mediaType): void {
     $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(
         ['active' => new Schema(types: [SchemaType::Boolean, SchemaType::Null])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules['active'])->toEqual(['sometimes', 'nullable', new InRule(['true', 'false', '1', '0'])])
         ->and(implode("\n", $set->findings))->toContain('`active` is a boolean read from a form body')
@@ -3711,7 +4108,7 @@ it('reads a boolean field of a form or multipart body the same way', function (s
 it('reads a boolean of a JSON body as a boolean and nothing looser', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['active' => new Schema(types: [SchemaType::Boolean])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules['active'])->toBe(['sometimes', 'boolean:strict'])
         ->and($set->findings)->toBe([]);
@@ -3723,7 +4120,7 @@ it('reads a boolean of a JSON body as a boolean and nothing looser', function ()
 // than the contract": they are gaps, so they count in the build warning, and they leave nothing for the doctor to report.
 it('says what a body that is JSON and a form lets through', function (SchemaType $type, array $rules, string $finding, string $mediaType): void {
     $schema = objectSchema(['field' => new Schema(types: [$type])]);
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, $mediaType => $schema]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, $mediaType => $schema]), new RuleSetOptions);
 
     $named = array_values(array_filter($set->findings, static fn (string $text): bool => str_starts_with($text, '`field` is a')));
 
@@ -3759,7 +4156,7 @@ it('reads the booleans of an enumeration as every spelling of them', function ()
     $set = RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter('on', new Schema(types: [SchemaType::Boolean], enum: [true]))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['on'])->toEqual(['sometimes', new InRule(['true', '1'])]);
 });
@@ -3778,7 +4175,7 @@ it('says that mimetypes refuses a file named like PHP, and only when it emits mi
 
 it('says it once for a request with several typed file parts', function (): void {
     $png = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
-    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(['a' => $png, 'b' => $png])]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(['a' => $png, 'b' => $png])]), new RuleSetOptions);
 
     expect(substr_count(implode("\n", $set->findings), 'stricter than the contract'))->toBe(1);
 });
@@ -3800,7 +4197,7 @@ it('keys the rules of a top-level body name PHP rewrites by the name a form deli
             'address' => objectSchema(['a.b' => new Schema(types: [SchemaType::String])]),
         ],
         ['user.name', 'a b', 'plain'],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'user_name' => ['present', 'string'],
@@ -3819,7 +4216,7 @@ it('keys the rules of a top-level body name PHP rewrites by the name a form deli
 it('escapes a dot a delivered path keeps below the top level', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['address[a.b]' => new Schema(types: [SchemaType::String])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['address.a\.b' => ['sometimes', 'string']])
         ->and($set->formPaths)->toBe(['address[a.b]' => ['address', 'a.b']]);
@@ -3829,7 +4226,7 @@ it('keeps the rule for a dotted name in a JSON body', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema(
         ['user.name' => new Schema(types: [SchemaType::String])],
         ['user.name'],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['user\.name' => ['present', 'string']])
         ->and($set->formPaths)->toBe([])
@@ -3844,7 +4241,7 @@ it('keeps the type of the JSON name when the body is also a form, and says where
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'application/x-www-form-urlencoded' => $schema,
-    ]));
+    ]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['user\.name' => ['sometimes', 'string']])
         ->and($set->formPaths)->toBe([])
@@ -3863,7 +4260,7 @@ it('names a delivered path in the finding of a mixed body', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]));
+    ]), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->toContain('A form client sends it as `page[size]`, which PHP delivers as `page.size`')
         ->and($set->rules)->toEqual(['page[size]' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric']]);
@@ -3875,7 +4272,7 @@ it('gives no rule to names PHP delivers as one key, and names both', function (a
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         [...array_fill_keys($names, new Schema(types: [SchemaType::String])), 'plain' => new Schema(types: [SchemaType::String])],
         array_values($names),
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['plain' => ['sometimes', 'string']])
         ->and(array_keys($set->uncheckedNames))->toBe($names)
@@ -3893,7 +4290,7 @@ it('keeps a bracketed name delivered below a declared top-level name, and the na
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page' => new Schema(types: [SchemaType::String]), 'page[size]' => new Schema(types: [SchemaType::Integer]), 'plain' => new Schema(types: [SchemaType::String])],
         ['plain'],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['page' => ['sometimes', 'string'], 'page.size' => ['sometimes', 'integer'], 'plain' => ['present', 'string']])
         ->and($set->whenNotArray)->toBe(['page' => ['page']])
@@ -3911,7 +4308,7 @@ it('keeps a bracketed name delivered below a declared top-level name, and the na
 it('keeps a plain form name behind a shape check beside the names a form nests under it', function (string $mediaType, array $names, array $rules, array $shaped, array $formPaths): void {
     $set = RuleSetBuilder::for(operationWithInput(content: [$mediaType => objectSchema(
         array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer], minimum: 1.0), array_flip($names)),
-    )]));
+    )]), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe($rules)
         ->and($set->whenNotArray)->toBe($shaped)
@@ -3940,7 +4337,7 @@ it('keeps a plain form name behind a shape check beside the names a form nests u
 it('drops the array beside a plain form name only when no name below it has a rule', function (array $names, array $dropped): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($names)),
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->dropsArray)->toBe($dropped);
 })->with([
@@ -3963,11 +4360,11 @@ it('does not let a wildcard name shape a plain name outside a body read only as 
     $mixed = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]));
+    ]), new RuleSetOptions);
     $beside = RuleSetBuilder::for(operationWithInput(
         content: ['multipart/form-data' => objectSchema(['page[*]' => new Schema(types: [SchemaType::Integer])])],
         query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
-    ));
+    ), new RuleSetOptions);
 
     expect($mixed->rules)->toEqual(['page' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric']])
         ->and($mixed->whenNotArray)->toBe([])
@@ -3980,7 +4377,7 @@ it('does not let a wildcard name shape a plain name outside a body read only as 
 // a 422 turned into a 200. What the rule still refuses, `page=2&page[*]=5` (PHP keeps the later name, so `page` arrives
 // as an array), is stricter than the contract, and the file says so.
 it('keeps the rule of a plain form name whose presence is asked for beside a wildcard name, and says it is stricter', function (Schema $schema, array $rules): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => $schema]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => $schema]), new RuleSetOptions);
 
     expect($set->rules)->toBe($rules)
         ->and($set->whenNotArray)->toBe([])
@@ -4010,7 +4407,7 @@ it('keeps the rule of a required plain form name beside a wildcard name in a bod
             ['page'],
         )],
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['page'])->toBe(['present_with:other', 'integer'])
         ->and($set->whenNotArray)->toBe([])
@@ -4027,7 +4424,7 @@ it('shapes a plain form name the schema requires beside a wildcard name in a PAT
             ['page' => new Schema(types: [SchemaType::Integer]), 'other' => new Schema(types: [SchemaType::String]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
             ['page'],
         )],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules)->toBe(['page' => ['sometimes', 'integer'], 'other' => ['sometimes', 'string']])
         ->and($set->whenNotArray)->toBe(['page' => ['page']])
@@ -4044,7 +4441,7 @@ it('keeps the rule of a plain form name a dependentRequired asks for beside a wi
             properties: ['page' => new Schema(types: [SchemaType::Integer]), 'other' => new Schema(types: [SchemaType::String]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
             dependentRequired: ['other' => ['page']],
         )],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['page'])->toBe(['present_with:other', 'integer'])
         ->and($set->whenNotArray)->toBe([])
@@ -4059,7 +4456,7 @@ it('does not say an array stands in for a name a PATCH does not require', functi
             ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
             ['page'],
         )],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['page'])->toBe(['sometimes', 'integer'])
         ->and($set->uncheckedNames)->toBe([]);
@@ -4071,7 +4468,7 @@ it('gives no rule to a name typed array or object beside a name below it', funct
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema([
         'page' => new Schema(types: [$type]),
         'page[size]' => new Schema(types: [SchemaType::Integer]),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->rules)->toBe([])
         ->and($set->whenNotArray)->toBe([])
@@ -4088,7 +4485,7 @@ it('keeps the rule of a name below two names that arrive under one key, and give
         'user.name' => new Schema(types: [SchemaType::String]),
         'user_name' => new Schema(types: [SchemaType::String]),
         'user_name[x]' => new Schema(types: [SchemaType::Integer]),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['user_name.x' => ['sometimes', 'integer']])
         ->and($set->whenNotArray)->toBe([])
@@ -4105,10 +4502,10 @@ it('says a required plain form name is stood in for by the names nested under it
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
         ['page'],
-    )]));
+    )]), new RuleSetOptions);
     $optional = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules['page'])->toBe(['required', 'integer'])
         ->and(array_keys($set->uncheckedNames))->toBe(['page'])
@@ -4127,7 +4524,7 @@ it('names the delivered key of the name below a shaped one in an optional body',
             ['page', 'page[size]'],
         )],
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['page'])->toBe(['present_with:page.size,other', 'integer'])
         ->and($set->rules['page.size'])->toBe(['present_with:page,other', 'integer']);
@@ -4145,7 +4542,7 @@ it('keeps the dependency a shaped name triggers and says it is stricter than the
             'other' => new Schema(types: [SchemaType::String]),
         ],
         dependentRequired: [$trigger => ['other']],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules['other'])->toBe(['present_with:'.$key, 'string'])
         ->and($set->stricter)->toHaveCount(1)
@@ -4168,7 +4565,7 @@ it('judges a plain name by shape beside the name a form nests under it in a body
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         $form => $schema,
-    ]));
+    ]), new RuleSetOptions);
 
     expect($set->rules)->toEqual([
         'page' => ['sometimes', new WholeNumber(acceptsText: true), 'numeric'],
@@ -4196,7 +4593,7 @@ it('counts the array a JSON client sends under a shaped name as a gap in a body 
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]));
+    ]), new RuleSetOptions);
     $gaps = array_values(array_filter(
         $set->findings,
         static fn (string $finding): bool => str_contains($finding, '{"page": [1]}'),
@@ -4219,11 +4616,11 @@ it('keeps the presence of a required shaped name in a body that is JSON and a fo
     $required = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]));
+    ]), new RuleSetOptions);
     $optional = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ], bodyRequired: false));
+    ], bodyRequired: false), new RuleSetOptions);
 
     expect($required->rules['page'])->toEqual(['required', new WholeNumber(acceptsText: true), 'numeric'])
         ->and($required->requiredOnceSent)->toBe([])
@@ -4241,7 +4638,7 @@ it('keeps the collision of a typed or rewritten name above a nested name in a bo
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]));
+    ]), new RuleSetOptions);
 
     expect($set->rules)->toBe([])
         ->and($set->whenNotArray)->toBe([])
@@ -4267,7 +4664,7 @@ it('gives two names that reach Laravel under one key no rule when the body is al
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]));
+    ]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['plain' => ['sometimes', 'string']])
         ->and(array_keys($set->uncheckedNames))->toEqual(['user.name', 'user_name'])
@@ -4289,7 +4686,7 @@ it('keeps the dependency a shaped name triggers in a body that is JSON and a for
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]));
+    ]), new RuleSetOptions);
 
     expect($set->rules['other'])->toBe(['present_with:page', 'string'])
         ->and($set->stricter)->toHaveCount(1)
@@ -4300,7 +4697,7 @@ it('keeps the dependency a shaped name triggers in a body that is JSON and a for
 it('lets two bracketed names share the top-level key they are delivered below', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page[size]' => new Schema(types: [SchemaType::Integer]), 'page[number]' => new Schema(types: [SchemaType::Integer])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['page.size' => ['sometimes', 'integer'], 'page.number' => ['sometimes', 'integer']]);
 });
@@ -4308,7 +4705,7 @@ it('lets two bracketed names share the top-level key they are delivered below', 
 it('keeps the rule of a name PHP does not rewrite beside one it does', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['user.name' => new Schema(types: [SchemaType::String]), 'user_id' => new Schema(types: [SchemaType::Integer])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['user_name' => ['sometimes', 'string'], 'user_id' => ['sometimes', 'integer']]);
 });
@@ -4323,7 +4720,7 @@ it('names the delivered key of a sibling an optional body waits on', function (a
     $set = RuleSetBuilder::for(operationWithInput(
         content: array_fill_keys($media, $schema),
         bodyRequired: false,
-    ));
+    ), new RuleSetOptions);
 
     expect($set->rules['plain'])->toBe([$expected, 'string']);
 })->with([
@@ -4338,7 +4735,7 @@ it('names the delivered key of a dependentRequired trigger', function (array $me
         properties: ['user.name' => new Schema(types: [SchemaType::String]), 'email' => new Schema(types: [SchemaType::String])],
         dependentRequired: ['user.name' => ['email']],
     );
-    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $schema)));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $schema)), new RuleSetOptions);
 
     expect($set->rules['email'])->toBe([$expected, 'string']);
 })->with([
@@ -4358,7 +4755,7 @@ it('says once which dependency a trigger without a rule loses', function (): voi
             'email' => new Schema(types: [SchemaType::String]),
         ],
         dependentRequired: ['a b' => ['email']],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules['email'])->toBe(['sometimes', 'string'])
         ->and(substr_count(implode("\n", $set->findings), 'would make `email` required'))->toBe(1)
@@ -4381,7 +4778,7 @@ it('words what a mixed body loses for a required name and for a dependent one', 
     $findings = implode("\n", RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]))->findings);
+    ]), new RuleSetOptions)->findings);
 
     expect($findings)->toContain('The contract requires it, and a presence rule')
         ->and($findings)->toContain('The contract requires it when `trigger` is sent, and a presence rule')
@@ -4400,7 +4797,7 @@ it('closes the head of a bracketed name in a closed form body', function (): voi
             'q' => new Schema(types: [SchemaType::String]),
         ],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules['page'])->toBe(['sometimes', 'array:size,number'])
         ->and($set->closedKeys)->toBe(['page', 'q'])
@@ -4414,7 +4811,7 @@ it('closes every level above a name bracketed more than once', function (array $
         types: [SchemaType::Object],
         properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($properties)),
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     foreach ($expected as $key => $rule) {
         expect($set->rules[$key] ?? null)->toBe($rule);
@@ -4438,7 +4835,7 @@ it('leaves open a level whose key array: cannot name, and says so', function ():
         types: [SchemaType::Object],
         properties: ['filter[a,b][gte]' => new Schema(types: [SchemaType::Integer])],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->not->toHaveKey('filter')
         ->and(implode("\n", $set->findings))->toContain('so the key check accepts `filter`');
@@ -4451,7 +4848,7 @@ it('does not say a closed body accepts a key it declares, when two names collide
         types: [SchemaType::Object],
         properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::String]), array_flip($properties)),
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->not->toContain('closed to its declared names')
         ->and(implode("\n", $set->findings))->toContain($finding);
@@ -4467,7 +4864,7 @@ it('closes the level a shaped name is delivered at through its array branch in a
         types: [SchemaType::Object],
         properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['page' => ['sometimes', 'integer'], 'page.size' => ['sometimes', 'integer']])
         ->and($set->whenNotArray)->toBe(['page' => ['page']])
@@ -4484,7 +4881,7 @@ it('leaves the array branch of a shaped name open when a key below it holds a co
         types: [SchemaType::Object],
         properties: ['page' => new Schema(types: [SchemaType::Integer]), 'page[a,b]' => new Schema(types: [SchemaType::Integer])],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->whenNotArray)->toBe(['page' => ['page']])
         ->and($set->arrayKeys)->toBe([])
@@ -4502,7 +4899,7 @@ it('leaves the level a star name is delivered below a shaped name open, and says
             'page[*]' => new Schema(types: [SchemaType::Integer]),
         ],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->whenNotArray)->toBe(['page' => ['page']])
         ->and($set->arrayKeys)->toBe([])
@@ -4518,8 +4915,8 @@ it('keeps the plain rule of a name beside only a star name in a closed body, wit
         types: [SchemaType::Object],
         properties: $properties,
         additionalProperties: false,
-    )]));
-    $open = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(types: [SchemaType::Object], properties: $properties)]));
+    )]), new RuleSetOptions);
+    $open = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(types: [SchemaType::Object], properties: $properties)]), new RuleSetOptions);
 
     expect($closed->rules)->toBe(['page' => ['sometimes', 'integer']])
         ->and($closed->whenNotArray)->toBe([])
@@ -4541,7 +4938,7 @@ it('says the array of withheld names stands in for a required shaped name', func
             'page[x][y]' => new Schema(types: [SchemaType::Integer]),
         ],
         required: ['page'],
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->uncheckedNames['page'])->toContain('stands in for it')
         ->and($set->dropsArray)->toBe(['page']);
@@ -4550,7 +4947,7 @@ it('says the array of withheld names stands in for a required shaped name', func
 it('leaves the head of a bracketed name open when the body is open', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema(
         ['page[size]' => new Schema(types: [SchemaType::Integer])],
-    )]));
+    )]), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe(['page.size']);
 });
@@ -4563,7 +4960,7 @@ it('judges a bracketed name below another bracketed name, whatever the depth', f
         types: [SchemaType::Object],
         properties: array_map(static fn (): Schema => new Schema(types: [SchemaType::Integer]), array_flip($names)),
         additionalProperties: $closed ? false : null,
-    )]));
+    )]), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe($kept)
         ->and($set->uncheckedNames)->toBe([])
@@ -4592,7 +4989,7 @@ it('keeps the literal rule keys of names below one another in a body that is JSO
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'application/json' => $schema,
         'multipart/form-data' => $schema,
-    ]));
+    ]), new RuleSetOptions);
 
     expect($set->rules)->toEqual([
         'filter[a]' => ['sometimes', 'string'],
@@ -4615,7 +5012,7 @@ it('closes every level above a shaped name, the level it is delivered at through
             array_flip(['filter[a]', 'filter[a][b]', 'filter[c]']),
         ),
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     // `toEqual`: the closing rule is written after the rules of the names themselves.
     expect($set->rules)->toEqual([
@@ -4638,7 +5035,7 @@ it('leaves the level of a shaped name open when the name below it is appended to
         types: [SchemaType::Object],
         properties: ['ids' => new Schema(types: [SchemaType::Integer]), 'ids[]' => new Schema(types: [SchemaType::Integer])],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->whenNotArray)->toBe(['ids' => ['ids']])
         ->and($set->arrayKeys)->toBe([])
@@ -4653,7 +5050,7 @@ it('closes the levels above two names delivered under one bracketed key', functi
             array_flip(['a.b[c]', 'a_b[c]']),
         ),
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($set->rules)->toEqual(['a_b' => ['sometimes', 'array:c']])
         ->and($set->closedKeys)->toBe(['a_b'])
@@ -4669,7 +5066,7 @@ it('says what a closed form body accepts that the contract does not', function (
         properties: ['user.name' => new Schema(types: [SchemaType::String]), 'plain' => new Schema(types: [SchemaType::String])],
         additionalProperties: false,
     );
-    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $schema)));
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($media, $schema)), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))
         ->toContain('The body is closed to its declared names, but a form delivers `user.name` as `user_name`')
@@ -4684,7 +5081,7 @@ it('says nothing of a closed body whose names PHP leaves alone', function (): vo
         types: [SchemaType::Object],
         properties: ['plain' => new Schema(types: [SchemaType::String])],
         additionalProperties: false,
-    )]));
+    )]), new RuleSetOptions);
 
     expect(implode("\n", $set->findings))->not->toContain('closed to its declared names');
 });
@@ -4696,9 +5093,9 @@ it('closes a form body to the name PHP gives a key, and a mixed body to both', f
         additionalProperties: false,
     );
 
-    expect(RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => $schema]))->closedKeys)
+    expect(RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => $schema]), new RuleSetOptions)->closedKeys)
         ->toBe(['user_name', 'plain'])
-        ->and(RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, 'multipart/form-data' => $schema]))->closedKeys)
+        ->and(RuleSetBuilder::for(operationWithInput(content: ['application/json' => $schema, 'multipart/form-data' => $schema]), new RuleSetOptions)->closedKeys)
         ->toBe(['user.name', 'user_name', 'plain']);
 });
 
@@ -4717,7 +5114,7 @@ it('names the keyword and the field for each way a read keyword is left unenforc
 ): void {
     assert(array_is_list($query));
 
-    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query));
+    $set = RuleSetBuilder::for(operationWithInput(content: $content, query: $query), new RuleSetOptions);
 
     expect($set->unenforced)->toBe($expected);
 })->with([
@@ -4851,7 +5248,7 @@ it('lists every field one keyword is unenforced on, once each, in the order they
         'website' => new Schema(types: [SchemaType::String], format: 'uri'),
         'tags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String], format: 'uri')),
         'age' => new Schema(types: [SchemaType::Integer], minimum: 1.0),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->unenforced)->toBe(['format' => ['`website`', '`tags`[]']]);
 });
@@ -4867,7 +5264,7 @@ it('records nothing for a finding that is information rather than an unenforced 
             'multipart/form-data' => objectSchema(['a' => new Schema(types: [SchemaType::String])]),
         ],
         query: [new QueryParameter('tags', new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])))],
-    ));
+    ), new RuleSetOptions);
 
     expect($set->findings)->not->toBe([])
         ->and($set->unenforced)->toBe([]);
@@ -4876,7 +5273,7 @@ it('records nothing for a finding that is information rather than an unenforced 
 it('records nothing for a keyword that became a rule', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
         'email' => new Schema(types: [SchemaType::String], format: 'email', pattern: '^[a-z]+$', maxLength: 10),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect($set->unenforced)->toBe([]);
 });
@@ -4908,7 +5305,7 @@ function recursiveAddress(?int $maxDepth = null, bool $parentRequired = false, b
 }
 
 it('validates a recursion down to the depth the schema states and refuses what is below', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 2)]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 2)]), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'city' => ['sometimes', 'string'],
@@ -4921,7 +5318,7 @@ it('validates a recursion down to the depth the schema states and refuses what i
 });
 
 it('reads three levels when the schema states no depth', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe([
         'city',
@@ -4937,7 +5334,7 @@ it('reads three levels when the schema states no depth', function (): void {
 });
 
 it('refuses the recursive field itself when the schema states a depth of zero', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 0)]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 0)]), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'city' => ['sometimes', 'string'],
@@ -4954,14 +5351,14 @@ it('keeps the presence a required recursive field asks for beside the cut', func
     $requiredAtOnce = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 0,
         parentRequired: true,
-    )]));
+    )]), new RuleSetOptions);
     $optionalAtOnce = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 0,
-    )]));
+    )]), new RuleSetOptions);
     $requiredBelow = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 1,
         parentRequired: true,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($requiredAtOnce->rules['parent'])->toBe(['present', 'missing'])
         ->and($optionalAtOnce->rules['parent'])->toBe(['missing'])
@@ -4977,12 +5374,12 @@ it('lets a nullable recursive field be null at the cut and nothing else', functi
     $optional = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 1,
         nullable: true,
-    )]));
+    )]), new RuleSetOptions);
     $required = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 0,
         parentRequired: true,
         nullable: true,
-    )]));
+    )]), new RuleSetOptions);
 
     expect($optional->rules['parent.parent'])->toEqual(['sometimes', new NullOrAbsent])
         ->and($required->rules['parent'])->toEqual(['present_with:city', new NullOrAbsent]);
@@ -5002,7 +5399,7 @@ it('reads the rule at a list element cut as the rule alone', function (): void {
         source: '#/components/schemas/Node',
     );
 
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]), new RuleSetOptions);
 
     expect($set->rules['children.*.children.*'])->toEqual([new NullOrAbsent]);
 });
@@ -5021,7 +5418,7 @@ it('unrolls a recursion through a list element', function (): void {
         source: '#/components/schemas/Node',
     );
 
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'children' => ['sometimes', 'array', 'list'],
@@ -5052,8 +5449,8 @@ it('reads the limit at a marker from the schema it points to', function (): void
     $authorMarker = Schema::recursion('#/components/schemas/Author', 'Author');
     $bookMarker = Schema::recursion('#/components/schemas/Book', 'Book');
 
-    $fromAuthor = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $author($book($authorMarker))]));
-    $fromBook = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $book($author($bookMarker))]));
+    $fromAuthor = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $author($book($authorMarker))]), new RuleSetOptions);
+    $fromBook = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $book($author($bookMarker))]), new RuleSetOptions);
 
     expect(array_keys($fromAuthor->rules))->toBe([
         'books',
@@ -5097,7 +5494,7 @@ it('takes the depth from the component and not from a branch of its allOf', func
         source: '#/components/schemas/Node',
     );
 
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe(['id', 'next', 'next.id', 'next.next'])
         ->and($set->rules['next.next'])->toBe(['missing']);
@@ -5106,7 +5503,7 @@ it('takes the depth from the component and not from a branch of its allOf', func
 // The cut refuses something the contract allows, which the principle permits when the
 // generated file says so, and names the lever.
 it('says in one finding that a deeper payload is refused and names x-max-depth as the lever', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 2)]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 2)]), new RuleSetOptions);
     $findings = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, '`x-max-depth`')));
 
     expect($findings)->toHaveCount(1)
@@ -5130,7 +5527,7 @@ it('names the findings that say the request is stricter than the contract', func
         ->and($set->leavesUnenforced())->toBe($leavesUnenforced);
 })->with(function (): array {
     $png = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
-    $stricter = static fn (array $content): RuleSet => RuleSetBuilder::for(operationWithInput(content: $content));
+    $stricter = static fn (array $content): RuleSet => RuleSetBuilder::for(operationWithInput(content: $content), new RuleSetOptions);
 
     return [
         'the untyped root' => [
@@ -5142,13 +5539,13 @@ it('names the findings that say the request is stricter than the contract', func
         'mimetypes' => [RuleSetBuilder::for(operationWithInput(
             content: ['multipart/form-data' => objectSchema(['avatar' => $png])],
             bodyRequired: false,
-        )), false],
-        'nothing below it is validated' => [RuleSetBuilder::for(fixtureOperation('recursion-allof-two-markers.yaml', 'createThing')), true],
+        ), new RuleSetOptions), false],
+        'nothing below it is validated' => [RuleSetBuilder::for(fixtureOperation('recursion-allof-two-markers.yaml', 'createThing'), new RuleSetOptions), true],
     ];
 });
 
 it('says the depth is the default when the schema states none', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]), new RuleSetOptions);
     $finding = implode("\n", $set->findings);
 
     expect($finding)->toContain('states no `x-max-depth`')
@@ -5159,7 +5556,7 @@ it('says the depth is the default when the schema states none', function (): voi
 it('says nothing about a recursion it never had to cut', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => objectSchema([
         'address' => new Schema(types: [SchemaType::Object]),
-    ])]));
+    ])]), new RuleSetOptions);
 
     expect(implode('', $set->findings))->not->toContain('x-max-depth');
 });
@@ -5176,7 +5573,7 @@ it('counts the fields it refuses once, in the finding, however many the recursio
         source: '#/components/schemas/Tree',
     );
 
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $tree]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $tree]), new RuleSetOptions);
     $cut = array_keys(array_filter($set->rules, static fn (array $rules): bool => in_array('missing', $rules, true)));
 
     expect($cut)->toBe([
@@ -5194,7 +5591,7 @@ it('counts the fields it refuses once, in the finding, however many the recursio
 // The doctor gates on keywords the contract wrote that nothing enforces. `x-max-depth` is read
 // and acted on, and the cut is a rule: there is nothing for the doctor to name.
 it('leaves the doctor nothing to report for a recursion it cut', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress()]), new RuleSetOptions);
 
     expect($set->unenforced)->toBe([]);
 });
@@ -5207,7 +5604,7 @@ it('keeps presence and a finding for a recursion through a schema it cannot name
         properties: ['next' => Schema::recursion('#/paths/~1things/post/requestBody/content/application~1json/schema')],
     );
 
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $inline]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $inline]), new RuleSetOptions);
 
     expect($set->rules)->toBe(['next' => ['sometimes']])
         ->and(implode('', $set->findings))->toContain('points back at');
@@ -5219,7 +5616,7 @@ it('keeps presence and a finding for a recursion through a schema it cannot name
 it('unrolls a recursion read from a document', function (string $fixture, array $keys): void {
     $operation = extractFixture($fixture)[0];
 
-    expect(array_keys(RuleSetBuilder::for($operation)->rules))->toBe($keys);
+    expect(array_keys(RuleSetBuilder::for($operation, new RuleSetOptions)->rules))->toBe($keys);
 })->with([
     'a schema in the document, no depth stated' => ['recursive-schema-in-body.yaml', [
         'name', 'children', 'children.*',
@@ -5262,7 +5659,7 @@ function fixtureOperation(string $fixture, string $operationId): Operation
 }
 
 it('keeps what a wrapper around a recursive component states at the wrapper level', function (string $fixture): void {
-    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createCategory'));
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createCategory'), new RuleSetOptions);
 
     expect($set->rules['name'])->toBe(['present', 'string'])
         ->and($set->rules['children.*'])->toBe(['array'])
@@ -5279,7 +5676,7 @@ it('keeps what a wrapper around a recursive component states at the wrapper leve
 // so it carries that schema's name and source, and what decides is the ancestor the walk holds. The rules are the ones
 // the walk wrote before the DTO side asked the same question: `main` at the commit that merged the request side.
 it('unrolls a recursion behind a mixin', function (): void {
-    $set = RuleSetBuilder::for(fixtureOperation('recursion-mixin.yaml', 'createNode'));
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-mixin.yaml', 'createNode'), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'label' => ['sometimes', 'string'],
@@ -5314,7 +5711,7 @@ it('says a marker unrolls when the walk holds its ancestor and the site has no m
 });
 
 it('applies what is written beside a marker at every level the marker is crossed at', function (string $fixture): void {
-    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNode'));
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNode'), new RuleSetOptions);
 
     expect($set->rules)->toBe([
         'label' => ['sometimes', 'string'],
@@ -5330,7 +5727,7 @@ it('applies what is written beside a marker at every level the marker is crossed
 ]);
 
 it('unrolls a recursive component a named allOf includes', function (string $fixture): void {
-    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNamedCategory'));
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createNamedCategory'), new RuleSetOptions);
 
     expect($set->rules['children.*'])->toBe(['array'])
         ->and($set->rules['children.*.children.*.children.*.children.*'])->toBe(['missing'])
@@ -5342,7 +5739,7 @@ it('unrolls a recursive component a named allOf includes', function (string $fix
 ]);
 
 it('unrolls a recursive component wrapped on a field, and keeps the wrapper to the wrapped level', function (string $fixture): void {
-    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createTree'));
+    $set = RuleSetBuilder::for(fixtureOperation($fixture, 'createTree'), new RuleSetOptions);
 
     expect($set->rules['root'])->toBe(['sometimes', 'array', 'required_array_keys:extra'])
         ->and($set->rules['root.next'])->toBe(['sometimes', 'array'])
@@ -5356,7 +5753,7 @@ it('unrolls a recursive component wrapped on a field, and keeps the wrapper to t
 // A depth written in the component's own inline branch is the component's: the finding must not tell its author the
 // schema states none, and the included component's own depth (9) must not be the one used.
 it('reads an x-max-depth written in a component\'s own inline allOf branch', function (): void {
-    $set = RuleSetBuilder::for(fixtureOperation('recursion-depth-in-allof-branch.yaml', 'createNode'));
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-depth-in-allof-branch.yaml', 'createNode'), new RuleSetOptions);
 
     expect(array_keys($set->rules))->toBe(['id', 'next', 'next.id', 'next.next'])
         ->and($set->rules['next.next'])->toBe(['missing'])
@@ -5370,7 +5767,7 @@ it('says null passes below the depth only when the schema is nullable', function
     $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(
         maxDepth: 2,
         nullable: $nullable,
-    )]));
+    )]), new RuleSetOptions);
     $finding = implode("\n", $set->findings);
 
     expect($finding)->toContain($says)
@@ -5396,14 +5793,14 @@ it('says an empty list of the recursive schema passes at the cut', function (): 
         source: '#/components/schemas/Node',
     );
 
-    $finding = implode("\n", RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]))->findings);
+    $finding = implode("\n", RuleSetBuilder::for(operationWithInput(content: ['application/json' => $node]), new RuleSetOptions)->findings);
 
     expect($finding)->toContain('An empty list of `Node` passes')
         ->and($finding)->not->toContain('`[]` answer 422');
 });
 
 it('says one level, not 1 levels', function (): void {
-    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 1)]));
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => recursiveAddress(maxDepth: 1)]), new RuleSetOptions);
     $finding = implode("\n", $set->findings);
 
     expect($finding)->toContain('1 level deep')
@@ -5419,7 +5816,7 @@ it('says one level, not 1 levels', function (): void {
 // The root's `left` and `right` are crossing 0, so the unrolled keys are `2 * T(0) = 6 * 2^N - 4`: 764 at N = 7, which
 // fits 1,000, and 1,532 at N = 8, which does not. The rule set is those and the root's `value`: 765.
 it('lowers the depth evenly until the rules fit the ceiling, and says so', function (): void {
-    $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'));
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'), new RuleSetOptions);
     $cut = array_keys(array_filter($set->rules, static fn (array $rules): bool => $rules === ['missing']));
     $findings = array_values(array_filter($set->findings, static fn (string $finding): bool => str_contains($finding, 'ceiling')));
 
@@ -5439,7 +5836,7 @@ it('lowers the depth evenly until the rules fit the ceiling, and says so', funct
 });
 
 it('leaves no branch with its presence rule alone once the depth is lowered', function (): void {
-    $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'));
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-binary-tree-deep.yaml', 'createTree'), new RuleSetOptions);
     $presenceOnly = array_filter($set->rules, static fn (array $rules): bool => $rules === ['sometimes']);
 
     expect($presenceOnly)->toBe([])
@@ -5449,7 +5846,7 @@ it('leaves no branch with its presence rule alone once the depth is lowered', fu
 // The depth is lowered for the operation, as one cap on every recursive schema: a schema whose own depth is under it
 // keeps it, and says nothing about a ceiling.
 it('lowers only the schemas that are deeper than the depth that fits', function (): void {
-    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-two-schemas.yaml', 'createThing'));
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-two-schemas.yaml', 'createThing'), new RuleSetOptions);
     $about = static fn (string $schema): string => implode("\n", array_filter(
         $set->findings,
         static fn (string $finding): bool => str_starts_with($finding, '`'.$schema.'` recurses'),
@@ -5470,7 +5867,7 @@ it('lowers only the schemas that are deeper than the depth that fits', function 
 // one with the most keys, the tree, is lowered to 7: 764 + 17 = 781 fits, and the chain keeps 8. The four keys the
 // two roots hold without recursing are not unrolled, so the rule set is 785.
 it('lowers the heavier of two tied schemas first, and only as far as the rules need', function (): void {
-    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-tie.yaml', 'createThing'));
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-tie.yaml', 'createThing'), new RuleSetOptions);
     $about = static fn (string $schema): string => implode("\n", array_filter(
         $set->findings,
         static fn (string $finding): bool => str_starts_with($finding, '`'.$schema.'` recurses'),
@@ -5489,7 +5886,7 @@ it('lowers the heavier of two tied schemas first, and only as far as the rules n
 // key, three scalars and `and` and `or`, then crosses three markers, so the root's 5 keys and three crossings of 105
 // make 320, which is under the ceiling and so unrolled in full.
 it('unrolls the default depth of a search filter in full, under the ceiling', function (): void {
-    $set = RuleSetBuilder::for(fixtureOperation('recursion-filter.yaml', 'search'));
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-filter.yaml', 'search'), new RuleSetOptions);
 
     expect(count($set->rules))->toBe(320)
         ->toBeLessThan(RuleSetBuilder::MAX_UNROLLED_KEYS)
@@ -5500,7 +5897,7 @@ it('unrolls the default depth of a search filter in full, under the ceiling', fu
 // satisfy both, and a rule set that unrolled one of them would silently drop the other. It keeps the presence rule it
 // always had and the finding that nothing below it is validated, naming both.
 it('keeps presence and a finding for a field that two allOf branches point back from', function (): void {
-    $set = RuleSetBuilder::for(fixtureOperation('recursion-allof-two-markers.yaml', 'createThing'));
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-allof-two-markers.yaml', 'createThing'), new RuleSetOptions);
 
     expect($set->rules)->toEqual([
         'part' => ['sometimes'],

@@ -1054,3 +1054,13 @@ it('leaves an existing file alone even when told yes', function (): void {
 
     expect(file_get_contents(scaffoldRoot().'/Http/Controllers/UserController.php'))->toBe('<?php // mine');
 });
+
+// The build `spec:make` ends with reads the key too, so a value it cannot use stops the command before it writes anything.
+it('reads query.deep_object_arrays in spec:make', function (): void {
+    config()->set('lara-spec-first.query.deep_object_arrays', 'bracket');
+
+    $output = make(['operation' => 'showUser'], 1);
+
+    expect($output)->toContain('lara-spec-first.query.deep_object_arrays')
+        ->and(scaffoldedFiles())->toBe([]);
+});

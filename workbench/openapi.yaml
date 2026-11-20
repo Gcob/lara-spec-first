@@ -107,6 +107,21 @@ paths:
                       properties:
                           from: { type: string, format: date }
                           to: { type: string, format: date }
+                # An array inside a `deepObject`: OpenAPI does not say how a client writes one, so the app does,
+                # in `query.deep_object_arrays`, and the Workbench keeps the default, `brackets`.
+                # `?tagged[ids][]=1&tagged[ids][]=2` passes, and `?tagged[ids]=1,2` answers 422 unless the key is
+                # `comma`. The items and `maxItems` are checked, `tagged[ids][]=0` included.
+                - name: tagged
+                  in: query
+                  style: deepObject
+                  explode: true
+                  schema:
+                      type: object
+                      properties:
+                          ids:
+                              type: array
+                              items: { type: integer, minimum: 1 }
+                              maxItems: 20
                 # Read and never turned into a rule: what a missing credential
                 # deserves is a 401 and a rule set answers with a 422. The
                 # doctor counts it and exits non-zero until you acknowledge it.

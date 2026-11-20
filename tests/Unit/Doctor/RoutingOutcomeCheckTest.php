@@ -14,6 +14,7 @@ use Gcob\LaraSpecFirst\Doctor\Checks\RoutingOutcomeCheck;
 use Gcob\LaraSpecFirst\Doctor\Checks\SupportMatrixCheck;
 use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 
 // Named distinctly from ControllerNameTest's own `operation()` helper: Pest's
 // test files are not namespaced, so two files declaring the same global
@@ -27,7 +28,7 @@ it('plans the routes exactly as spec:build would, in document order', function (
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
         doctorOperation(1, HttpMethod::Post, '/posts', 'createPost'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->findings)->toBe([])
         ->and($result->routes)->toHaveCount(2)
@@ -44,7 +45,7 @@ it('flags an earlier templated path that shadows a later literal one', function 
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
         doctorOperation(1, HttpMethod::Get, '/users/me', 'showCurrentUser'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->findings)->toHaveCount(1)
         ->and($result->findings[0]->class)->toBe(FindingClass::DocumentFault)
@@ -60,7 +61,7 @@ it('does not flag a literal path registered before the template that would have 
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/me', 'showCurrentUser'),
         doctorOperation(1, HttpMethod::Get, '/users/{id}', 'showUser'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->findings)->toBe([]);
 });
@@ -72,7 +73,7 @@ it('does not flag a longer templated path the earlier one could never match', fu
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
         doctorOperation(1, HttpMethod::Get, '/users/{id}/posts', 'listUserPosts'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->findings)->toBe([]);
 });
@@ -86,7 +87,7 @@ it('flags an earlier catch-all template that shadows a later templated path', fu
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/{owner}/{repo}', 'showRepository'),
         doctorOperation(1, HttpMethod::Get, '/users/{id}', 'showUser'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->findings)->toHaveCount(1)
         ->and($result->findings[0]->class)->toBe(FindingClass::DocumentFault)
@@ -102,7 +103,7 @@ it('does not flag a later template the earlier one only partly overlaps', functi
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
         doctorOperation(1, HttpMethod::Get, '/{owner}/{repo}', 'showRepository'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->findings)->toBe([]);
 });
@@ -114,7 +115,7 @@ it('points at the operation that will never be reached', function (): void {
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
         doctorOperation(1, HttpMethod::Get, '/users/me', 'showCurrentUser'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->findings[0]->pointer)->toBe('#/paths/~1users~1me/get');
 });
@@ -124,7 +125,7 @@ it('points at the operation that will never be reached', function (): void {
 it('prints a route target with no doubled separator when the namespace is written with a trailing backslash', function (): void {
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
-    ], 'App\\Http\\Generated\\', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated\\', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->routes[0]->target)->toBe('App\\Http\\Generated\\Controllers\\ShowUserController')
         ->and($result->routes[0]->target)->not->toContain('\\\\');
@@ -134,7 +135,7 @@ it('does not flag a template and a literal that share no method', function (): v
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
         doctorOperation(1, HttpMethod::Post, '/users/me', 'updateCurrentUser'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->findings)->toBe([]);
 });
@@ -148,7 +149,7 @@ it('turns a plan the builder refuses into a package limit finding, with no route
     $result = RoutingOutcomeCheck::check([
         doctorOperation(0, HttpMethod::Get, '/users/{id}', 'showUser'),
         doctorOperation(1, HttpMethod::Get, '/accounts/{id}', 'showUser'),
-    ], 'App\\Http\\Generated', '/app/openapi.yaml');
+    ], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->plan)->toBeNull()
         ->and($result->routes)->toBe([])
@@ -170,7 +171,7 @@ it('reports a query parameter named like a name the body writes without a rule o
         queryParameters: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
     );
 
-    $result = RoutingOutcomeCheck::check([$operation], 'App\\Http\\Generated', '/app/openapi.yaml');
+    $result = RoutingOutcomeCheck::check([$operation], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions);
 
     expect($result->plan)->toBeNull()
         ->and($result->routes)->toBe([])
@@ -195,8 +196,8 @@ it('moves the exit code from 1 to 2 for a name the body writes beside a fault th
         );
 
         $findings = [
-            ...SupportMatrixCheck::schemas([$operation], null),
-            ...RoutingOutcomeCheck::check([$operation], 'App\\Http\\Generated', '/app/openapi.yaml')->findings,
+            ...SupportMatrixCheck::schemas([$operation], null, new RuleSetOptions),
+            ...RoutingOutcomeCheck::check([$operation], 'App\\Http\\Generated', '/app/openapi.yaml', new RuleSetOptions)->findings,
         ];
 
         return (new DiagnosticReport('openapi.yaml', true, [], 'openapi-external-refs', null, [], $findings))->exitCode();

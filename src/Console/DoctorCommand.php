@@ -23,6 +23,7 @@ use Gcob\LaraSpecFirst\Doctor\RouteOutcome;
 use Gcob\LaraSpecFirst\Doctor\SectionNote;
 use Gcob\LaraSpecFirst\Exceptions\SpecException;
 use Gcob\LaraSpecFirst\Generation\BuildPlan;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
@@ -82,6 +83,11 @@ final class DoctorCommand extends Command
 
     private function diagnose(Repository $config, RemoteReferenceGuard $remote): DiagnosticReport
     {
+        // Read here, inside `handle()`'s `try`, and not in `routingOutcome()`, whose `try` turns a refused setting into
+        // a finding: a value the build refuses is an error here too, since the support findings below would describe a
+        // reading the build never makes. Drift compares the tree with what a build would write, so the doctor reads
+        // the key as the build does.
+        $options = RuleSetOptions::fromConfiguration($config);
         $specPath = $this->specPath($config);
         $outcome = $this->readContract($specPath, $remote);
 
@@ -95,14 +101,14 @@ final class DoctorCommand extends Command
 
         // Before the findings that read the responses, so they take the plan the build would make rather than plan the
         // responses a second time. Their findings still sit where the request's did, so the order of the report holds.
-        $routing = $this->routingOutcome($config, $outcome, $specPath);
+        $routing = $this->routingOutcome($config, $outcome, $specPath, $options);
 
         $findings = [
             ...DocumentValidityCheck::check($outcome),
             ...ReferencesCheck::check($outcome),
             ...SupportMatrixCheck::rejected($outcome),
             ...SupportMatrixCheck::missingOperationId($outcome->operations),
-            ...SupportMatrixCheck::schemas($outcome->operations, $routing['plan']?->responses),
+            ...SupportMatrixCheck::schemas($outcome->operations, $routing['plan']?->responses, $options),
             ...SupportMatrixCheck::unreadParameters($outcome->document),
             ...SecurityCheck::check($outcome->operations),
             ...LifecycleCheck::check($outcome->operations, $now),
@@ -244,7 +250,7 @@ final class DoctorCommand extends Command
      *
      * @return array{routes: list<RouteOutcome>, findings: list<Finding>, notes: array<string, SectionNote>, plan: ?BuildPlan}
      */
-    private function routingOutcome(Repository $config, ReadOutcome $read, string $specPath): array
+    private function routingOutcome(Repository $config, ReadOutcome $read, string $specPath, RuleSetOptions $options): array
     {
         try {
             $namespace = $this->requiredString($config, 'lara-spec-first.generated.namespace');
@@ -264,7 +270,7 @@ final class DoctorCommand extends Command
             ];
         }
 
-        $outcome = RoutingOutcomeCheck::check($read->operations, $namespace, $specPath);
+        $outcome = RoutingOutcomeCheck::check($read->operations, $namespace, $specPath, $options);
 
         if (! $read->isClean()) {
             return [

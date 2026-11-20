@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Gcob\LaraSpecFirst\Generation\BuildPlanner;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
@@ -60,7 +61,7 @@ function analyseResponseReader(bool $withoutNickname): array
         mkdir($tree.'/generated/Data', 0777, true);
         file_put_contents($tree.'/openapi.yaml', Yaml::dump($contract, 10, 2));
 
-        $plan = (new BuildPlanner('App\\Http\\Generated', 'openapi.yaml'))->plan(extractDocumentAt($tree.'/openapi.yaml'));
+        $plan = (new BuildPlanner('App\\Http\\Generated', 'openapi.yaml', new RuleSetOptions))->plan(extractDocumentAt($tree.'/openapi.yaml'));
 
         foreach ($plan->files as $file) {
             if (str_starts_with($file->relativePath, 'Data/')) {

@@ -20,6 +20,7 @@ use Gcob\LaraSpecFirst\Generation\ResponseDtoPlanner;
 use Gcob\LaraSpecFirst\Generation\ResponsePlan;
 use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Generation\UntypedResponseCause;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
@@ -200,9 +201,10 @@ final readonly class SupportMatrixCheck
      *
      * @param  list<Operation>  $operations
      * @param  ResponsePlan|null  $responses  what the build made of the responses, null when there is no build plan
+     * @param  RuleSetOptions  $options  the configuration's reading of the input, which the rule sets are built with
      * @return list<Finding>
      */
-    public static function schemas(array $operations, ?ResponsePlan $responses): array
+    public static function schemas(array $operations, ?ResponsePlan $responses, RuleSetOptions $options): array
     {
         $findings = [];
 
@@ -213,6 +215,7 @@ final readonly class SupportMatrixCheck
                     $operation,
                     $responses === null ? [] : self::responseKeywords($operation, $responses),
                     $responses === null ? [] : self::untypedValues($operation, $responses),
+                    $options,
                 ),
             );
         }
@@ -228,9 +231,9 @@ final readonly class SupportMatrixCheck
      * @param  list<Operation>  $operations
      * @return list<Finding>
      */
-    public static function requestSchemas(array $operations): array
+    public static function requestSchemas(array $operations, RuleSetOptions $options): array
     {
-        return self::schemas($operations, null);
+        return self::schemas($operations, null, $options);
     }
 
     /**
@@ -238,7 +241,7 @@ final readonly class SupportMatrixCheck
      * @param  list<Finding>  $untyped  what the DTOs of its responses type `mixed`, which goes after the rest
      * @return list<Finding>
      */
-    private static function operationFindings(Operation $operation, array $responseKeywords, array $untyped): array
+    private static function operationFindings(Operation $operation, array $responseKeywords, array $untyped, RuleSetOptions $options): array
     {
         $findings = [];
         $request = self::ignoredKeywords($operation);
@@ -296,7 +299,7 @@ final readonly class SupportMatrixCheck
             );
         }
 
-        $ruleSet = self::ruleSet($operation);
+        $ruleSet = self::ruleSet($operation, $options);
 
         // A fault in the document the rule set could read nothing from, and so is looser than the contract for:
         // the author's to fix, which is what separates it from the package limits around it.
@@ -548,10 +551,10 @@ final readonly class SupportMatrixCheck
      * The operation's rule set, or null when it cannot be built: its conflict is `Routing outcome`'s to report, and
      * what a rule set would have said is left out rather than guessed.
      */
-    private static function ruleSet(Operation $operation): ?RuleSet
+    private static function ruleSet(Operation $operation, RuleSetOptions $options): ?RuleSet
     {
         try {
-            return RuleSetBuilder::for($operation);
+            return RuleSetBuilder::for($operation, $options);
         } catch (ConflictingInputException) {
             return null;
         }

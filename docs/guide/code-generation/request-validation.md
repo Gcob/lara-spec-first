@@ -211,8 +211,10 @@ integer with a `minimum`, `?page[size]=abc` and `?page[size]=0` answer 422 on `p
 as `page => [size => '10', number => '2']`, so the parameter goes through the same path as the nested object of a form
 body: each property gets the rules its type gets anywhere else, under `page.size` and `page.number`, and `validated()`
 holds the value nested and as the text a query string sends. It is read whatever `explode` says, and
-[ADR 0022](../../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md) holds the reasoning and what it
-turned down. For a required `page` with an integer `size` that is a multiple of 5 and a closed object:
+[ADR 0023](../../project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md) holds the reasoning and
+what it turned down, and restates what of
+[ADR 0022](../../project/decisions/0022-read-a-deep-object-query-by-its-brackets.md) still holds. For a required `page`
+with an integer `size` that is a multiple of 5 and a closed object:
 
 ```php
 'page' => ['present', 'array:size,number', 'required_array_keys:size'],
@@ -224,12 +226,12 @@ turned down. For a required `page` with an integer `size` that is a multiple of 
   `?page[size]=10&page[evil]=1` answers 422 on `page`. An open object accepts any other key, and a map judges every
   value under `labels.*`.
 - **A nested object reads its brackets** (`filter[created][gte]`), validated under `filter.created.gte` with no finding.
-- **An array inside a `deepObject` is checked at its presence only**, because OpenAPI does not define how one is
-  written. A configuration key that says how clients write it is tracked in
-  [#218](https://github.com/Gcob/lara-spec-first/issues/218).
+- **An array inside a `deepObject` is read the way `query.deep_object_arrays` says**, because OpenAPI does not define
+  how one is written: [Arrays inside a deepObject](#arrays-inside-a-deepobject).
 - **A required `deepObject` that requires no property a client sends is accepted left out**, since an empty object
-  cannot be written in a query string. A `readOnly` property, or one named with a bracket, is not one a client sends.
-  One that requires a property a client sends is asked for with `present`.
+  cannot be written in a query string. A `readOnly` property, or one named with a bracket, is not one a client sends,
+  nor, under `brackets`, an array that may be empty, which has no bracketed form. One that requires a property a client
+  sends is asked for with `present`.
 - **Every finding names the property the way a client writes it** (`filter[active]`, not `filter.active`).
 - **A property whose name holds a bracket gets no rule and a finding**, since PHP delivers `a[b]` as `a[b`.
 - **A `deepObject` that shares its key with another query name keeps the `sometimes` and its finding**: `page` beside
@@ -490,6 +492,108 @@ own.
 **Any other media type is reported rather than guessed at.** A body declaring `application/xml` is a contract this
 package does not serve, and a `format: byte` string inside a JSON body is
 [a string nothing decodes](../uploads.md#a-base64-part-is-a-string).
+
+### Arrays inside a deepObject
+
+**OpenAPI does not define how a client writes an array inside a `deepObject`**: `?filter[ids][]=1&filter[ids][]=2` and
+`?filter[ids]=1,2` are both written, and a rule about the shape of one refuses the other. So the application says how
+its clients write it, once, in `config/lara-spec-first.php`:
+
+```php
+'query' => [
+    'deep_object_arrays' => 'brackets',
+],
+```
+
+- **`brackets`, the default.** The array is a list written with brackets, `?filter[ids][]=1&filter[ids][]=2`, or
+  `?filter[ids][0]=1&filter[ids][1]=2` as PHP's `http_build_query()` writes it. It is checked as a list, with its items,
+  `minItems`, `maxItems` and `uniqueItems`. The generated file names the reading and the key that changes it in one line
+  of information per array, which counts for nothing. For `ids` an array of integers with `minItems: 1`, `maxItems: 3`
+  and `uniqueItems: true`:
+
+    ```php
+    'filter.ids' => ['sometimes', 'array', 'list', 'min:1', 'max:3'],
+    'filter.ids.*' => ['integer', 'distinct'],
+    ```
+
+    **A plain string where the list belongs is refused.** `?filter[ids]=1` and `?filter[ids]=1,2` answer 422 on
+    `filter.ids`, and so do indexes with a gap (`filter[ids][0]=1&filter[ids][2]=3`), since `list` is what a client that
+    writes brackets sends. An item is judged under its own key (`filter.ids.1`) and labeled the way a client writes it
+    in every finding: `filter[links][]`, with the bracket inside the backticks.
+
+- **`comma`.** The array is one string, `?filter[ids]=1,2`. The generated request splits it into the list before it
+  validates, then checks it as `brackets` does: the same rules, the same items and bounds, and `?filter[ids]=1,x`
+  answers 422 on `filter.ids.1`. A list written with brackets still passes, so one rule covers both: a string where an
+  array belongs is a comma list. The generated file says so in one line of information per array, since an item cannot
+  hold a comma.
+
+- **`any`.** No reading is declared, so the array is checked at its presence only, when it is required, and the
+  generated file says so in a finding that names the key. Its items, its bounds and its uniqueness are not checked, and
+  the finding counts in the build warning, since the contract states them.
+
+**`comma` splits in `prepareForValidation()`, into the query string's own bag.** Laravel calls it before it reads the
+data to validate, so the rules, `validated()` and the request a controller type-hints all see the list. The generated
+request writes the method only when the contract holds an array inside a `deepObject`, and imports `CommaLists` for it:
+
+```php
+private const COMMA_LISTS = [
+    ['steps' => ['filter', 'ids']],
+    ['steps' => ['meta', '*'], 'spared' => [1 => ['id']]],
+];
+
+protected function prepareForValidation(): void
+{
+    $this->query->replace(CommaLists::split($this->query->all(), self::COMMA_LISTS));
+}
+```
+
+- **What is split:** every array inside the `deepObject`, at any depth: a property, a nested one, the values of a map,
+  an array inside the objects of a list. A map's wildcard spares the names the map declares, so `?meta[id]=a,b` beside a
+  map of lists stays the string `"a,b"` when `id` is a string. A list of objects or of lists has no comma form: its
+  string splits into strings that its item rules refuse.
+- **What is not:** a value that is already an array, so a client that writes brackets keeps working, and anything
+  outside the `deepObject`. A JSON body and a form body are never split.
+- **Nothing is trimmed:** `?filter[ids]=1,%202` gives `['1', ' 2']`, which `integer` accepts and `validated()` holds as
+  sent, because OpenAPI writes no space after a comma.
+- **An empty value is the empty list.** `?filter[ids]=` gives `[]`, which is how a comma list writes one, so
+  `minItems: 1` refuses it and a schema without `minItems` accepts it.
+- **An empty item is judged as `null`,** the way the empty item of `?filter[ids][]=` is. `?filter[ids]=1,,2`, `1,` and
+  `,` answer 422 on the empty items, `?filter[tags]=ab,,cd` with `minLength: 2` answers 422 on `filter.tags.1`, and an
+  item type that allows `null` accepts it and `validated()` holds `null`. An item that is only spaces is one too.
+  Laravel skips a rule that is not implicit on a value that trims to the empty string, so left as `""` the item would
+  pass `integer`, which the contract refuses.
+- **An item cannot hold a comma.** PHP decodes `%2C` before the request sees the string, so a comma in a value and a
+  comma between two values cannot be told apart. That is the convention the application declared, not something left
+  unchecked, and no finding says it.
+- **The application's `request()` keeps the string as sent.** The split is in the query bag of the generated request,
+  which is what a controller type-hints, and in `validated()`: read the list there. `request()->query('filter')` is
+  `['ids' => '1,2']`.
+
+`Gcob\LaraSpecFirst\Validation\CommaLists` is public API, imported by the generated request, so its name is frozen with
+the rest of what a generated file names, and so is `split()`, which the file calls.
+
+**A required array that may be empty is accepted left out under `brackets`.** An empty list has no bracketed form: PHP's
+`http_build_query()` writes nothing for `['ids' => []]`, and `?filter[ids][]=` is one empty item, which `integer`
+refuses. A client with an empty list therefore sends no `ids`, and asking for the name would refuse it. The parameter
+does not get `required_array_keys:ids` for it, and a required `filter` whose only required property is that array is
+accepted left out, as a `deepObject` that requires nothing a client sends is. The same holds for an array that a
+`dependentRequired` makes required: `?filter[a]=1` is accepted for `dependentRequired: {a: [ids]}`, and the array that
+may be empty is not asked for. The generated file says so as information. With `minItems: 1` or more, the list can be
+written, so the name stays required, and so does it under `any`. A JSON body writes `[]` and a form body keeps its own
+rule: only the query string is read this way.
+
+**A boolean item is text, so the finding hands over a read of the whole list.** `validated('filter.flags')` holds the
+strings as sent (`"true"`, `"1"`), and `"false"` is a truthy string in PHP, so the finding gives the call that turns
+each one into a `bool`:
+`array_map(static fn (mixed $value): bool => filter_var($value, FILTER_VALIDATE_BOOL), (array) $request->validated('filter.flags', []))`.
+Deeper than a plain list (a property of the objects of a list, a list of lists, a map's list) there is no single key to
+read, so it says to read each value with `filter_var()`. A unique list of booleans keeps `distinct:strict`, which calls
+`"true"` and `"1"` two elements, as a form list does ([#197](https://github.com/Gcob/lara-spec-first/issues/197)).
+
+**`spec:build` reads the key, and so does `spec:doctor`.** A change takes another `spec:build`: the doctor compares the
+generated requests with what a build would write now, so it reports them as drifted until then. A value that is none of
+the readings stops `spec:build`, `spec:make` and `spec:doctor` with a message that names the key, and a missing or
+`null` value is the default.
 
 ### Each field is read from where the contract put it
 
@@ -893,17 +997,17 @@ Which `format` values are honored at all is [the matrix](../openapi-support.md#a
 
 **Arrays and objects, where a rule is keyed rather than named:**
 
-| Schema                           | Laravel rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `items`                          | The element rules, under `field.*`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `minItems`, `maxItems`           | `min`, `max` on the array itself                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `uniqueItems: true`              | `distinct` on `field.*` for integer or number elements, since JSON Schema compares numbers by value (`1` and `1.0` are one element, and so are `1` and `+1` in a form), and `distinct:strict` for string or boolean ones, when the elements are a typed scalar that may not be null, in an array that is not itself an element. Two numbers PHP compares as the same float count as one, past float precision (2^53 for an integer): `9007199254740993` and `9007199254740992.0`, or `0.1` and `0.10000000000000000001` in a form. The generated file does not report that limit. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through A form list of booleans keeps `distinct:strict`, which calls `"true"` and `"1"` two elements ([#197](https://github.com/Gcob/lara-spec-first/issues/197)). |
-| `properties`                     | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `additionalProperties: false`    | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `additionalProperties: <schema>` | Each value of an undeclared key, under `*` at the root or `field.*` nested: [a map's values](#a-maps-values-are-validated-one-by-one)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `required` on a nested object    | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `dependentRequired`              | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `allOf`                          | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Schema                           | Laravel rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                          | The element rules, under `field.*`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `minItems`, `maxItems`           | `min`, `max` on the array itself                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `uniqueItems: true`              | `distinct` on `field.*` for integer or number elements, since JSON Schema compares numbers by value (`1` and `1.0` are one element, and so are `1` and `+1` in a form), and `distinct:strict` for string or boolean ones, when the elements are a typed scalar that may not be null, in an array that is not itself an element. Two numbers PHP compares as the same float count as one, past float precision (2^53 for an integer): `9007199254740993` and `9007199254740992.0`, or `0.1` and `0.10000000000000000001` in a form. The generated file does not report that limit. Reported otherwise: under a wildcard `distinct` compares across the whole outer list, it never compares object or array elements, and it lets two nulls through A form list of booleans, or one inside a `deepObject` read by its brackets or split from a comma list, keeps `distinct:strict`, which calls `"true"` and `"1"` two elements ([#197](https://github.com/Gcob/lara-spec-first/issues/197)). |
+| `properties`                     | One key per property, `field.child`, recursively                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `additionalProperties: false`    | `array:` on a nested object's field, naming its declared keys                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `additionalProperties: <schema>` | Each value of an undeclared key, under `*` at the root or `field.*` nested: [a map's values](#a-maps-values-are-validated-one-by-one)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `required` on a nested object    | `required_array_keys:` on the object itself, so a nullable object may still be `null`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `dependentRequired`              | `present_with:` naming the properties that trigger it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `allOf`                          | Its branches merged into one schema first; two that cannot be said as one are refused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 **A nested object is validated as an array, keyed with dots.** One rule key per property, however deep the schema goes,
 which is Laravel's own notation for nested input and what `validated()` hands back:
@@ -1327,7 +1431,10 @@ a decision rather than an obstacle:
 **The middleware row is the one worth checking against the framework**, since it is what a `prepareForValidation()`
 override would have done. Laravel resolves a controller method's typed parameters after the route's middleware stack has
 run, so a middleware calling `$request->merge()` changes what the generated request validates. A payload that needs
-trimming, casting or renaming before it can satisfy the contract is normalized there, in a class the project owns.
+trimming, casting or renaming before it can satisfy the contract is normalized there, in a class the project owns. The
+package writes a `prepareForValidation()` of its own in one case, an array inside a `deepObject` that
+`query.deep_object_arrays` says clients write as a comma list. It splits the string and nothing else, so everything else
+a project normalizes still goes through middleware.
 
 ## The payload arrives as a DTO
 

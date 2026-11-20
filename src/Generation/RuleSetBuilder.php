@@ -173,12 +173,14 @@ final readonly class RuleSetBuilder
     public const int MAX_UNROLLED_KEYS = 1000;
 
     /**
+     * @param  RuleSetOptions  $options  what the application's configuration says about how its clients write input
+     *
      * @throws ConflictingInputException the body and a query parameter naming one field, two media types over two
      *                                   schemas, or an `allOf` whose branches disagree
      */
-    public static function for(Operation $operation): RuleSet
+    public static function for(Operation $operation, RuleSetOptions $options): RuleSet
     {
-        $walk = new RuleWalk($operation->label());
+        $walk = new RuleWalk($operation->label(), $options);
         $set = self::build($operation, $walk);
 
         if (! $walk->exceeded) {
@@ -197,7 +199,7 @@ final readonly class RuleSetBuilder
 
         while ($low <= $high) {
             $cap = intdiv($low + $high, 2);
-            $attempt = new RuleWalk($operation->label());
+            $attempt = new RuleWalk($operation->label(), $options);
             $attempt->depthCap = $cap;
             $built = self::build($operation, $attempt);
 
@@ -212,7 +214,7 @@ final readonly class RuleSetBuilder
         }
 
         if ($best === null || $bestWalk === null) {
-            $none = new RuleWalk($operation->label());
+            $none = new RuleWalk($operation->label(), $options);
             $none->depthCap = 0;
 
             return self::build($operation, $none);
@@ -228,7 +230,7 @@ final readonly class RuleSetBuilder
 
         foreach ($tied as $position) {
             $lowered[$position] = $bestCap;
-            $attempt = new RuleWalk($operation->label());
+            $attempt = new RuleWalk($operation->label(), $options);
             $attempt->depthCap = $bestCap + 1;
             $attempt->caps = $lowered;
             $built = self::build($operation, $attempt);
@@ -447,7 +449,37 @@ final readonly class RuleSetBuilder
             }
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys);
+        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys, self::commaLists($walk, $undeclaredKeys));
+    }
+
+    /**
+     * The arrays a client writes as one comma-separated string, as the steps of their keys and the names each wildcard
+     * step spares: the guard of a map's values is what spares a declared name beside them.
+     *
+     * @param  array<string, array<int, list<string>>>  $undeclaredKeys
+     * @return list<array{steps: list<string>, spared?: array<int, list<string>>}>
+     */
+    private static function commaLists(RuleWalk $walk, array $undeclaredKeys): array
+    {
+        $lists = [];
+
+        foreach ($walk->commaLists as $ruleKey) {
+            // The dots of a rule key that are not the escaped dot of a name.
+            $steps = array_map(
+                static fn (string $step): string => str_replace('\\.', '.', $step),
+                preg_split('/(?<!\\\\)\./', $ruleKey) ?: [$ruleKey],
+            );
+
+            $list = ['steps' => $steps];
+
+            if (isset($undeclaredKeys[$ruleKey])) {
+                $list['spared'] = $undeclaredKeys[$ruleKey];
+            }
+
+            $lists[] = $list;
+        }
+
+        return $lists;
     }
 
     /**
@@ -1394,6 +1426,24 @@ final readonly class RuleSetBuilder
         ?string $parentLabel = null,
     ): void {
         $dependents = self::dependents($schema, $walk, $prefix);
+
+        // Why: a dependent array that may be empty has no bracketed form either, so a client with nothing to send
+        // cannot satisfy `present_with` for it, and the contract accepts that client.
+        foreach (array_keys($dependents) as $name) {
+            $name = (string) $name;
+
+            if (
+                self::unescapableKey($name) === null
+                && self::unsentRequiredName($name, $schema, $walk, $parentLabel ?? '`'.rtrim($prefix, '.').'`') === 'emptyList'
+            ) {
+                $walk->information(self::emptyListFinding(
+                    self::bracketLabel($walk, $parentLabel, $name) ?? '`'.$prefix.$name.'`',
+                    'required by `dependentRequired`',
+                ));
+                unset($dependents[$name]);
+            }
+        }
+
         $closed = $schema->additionalProperties === false;
 
         foreach ($schema->properties as $name => $property) {
@@ -1764,17 +1814,34 @@ final readonly class RuleSetBuilder
                     break;
                 case SchemaType::Array:
                     // An array is only ever reached below a `deepObject` here, and how a client writes one inside it is
-                    // not defined (`filter[ids][]=1`, `filter[ids]=1,2`): any rule about its shape or its items would
-                    // refuse a request the contract allows. Only its presence is checked, and the finding says so.
-                    if ($walk->textSource === 'query string') {
+                    // not defined (`filter[ids][]=1`, `filter[ids]=1,2`). The application says how its clients do in
+                    // `query.deep_object_arrays`, and `brackets` is read by the body path below. With no reading
+                    // declared (`any`), any rule about its shape or its items would refuse a request the contract allows:
+                    // only its presence is checked, and the finding says so.
+                    if ($walk->textSource === 'query string' && $walk->options->deepObjectArrays === DeepObjectArrays::Any) {
                         array_push($handled, 'minItems', 'maxItems', 'items', 'uniqueItems');
                         $walk->findings[] = sprintf(
                             '%1$s is an array inside a `deepObject` query parameter. OpenAPI does not define how a client writes '
-                                .'one (`?%2$s[]=1` and `?%2$s=1,2` are both written), so it is checked only for its presence, when it is required.',
+                                .'one (`?%2$s[]=1` and `?%2$s=1,2` are both written), so it is checked only for its presence, when it is required, '
+                                .'since `query.deep_object_arrays` is `any`.',
                             $label,
                             trim($label, '`'),
                         );
                         break;
+                    }
+
+                    // Why: under `comma` the request splits the string a client wrote into the list the rules below judge, in
+                    // `prepareForValidation()`. Only the query string reads it so: a JSON body writes an array, and a form
+                    // body's list is not part of this reading.
+                    if ($walk->textSource === 'query string' && $walk->options->deepObjectArrays === DeepObjectArrays::Comma) {
+                        $walk->commaLists[] = $key;
+                    }
+
+                    // Why: the reading is the package's default, so a client that writes the array the other way is refused
+                    // by a rule no keyword of the contract explains. An array that is the item of another one is read
+                    // with the array it belongs to.
+                    if ($walk->textSource === 'query string' && ! str_ends_with($label, '[]`')) {
+                        $walk->information(self::arrayReadingFinding($label, $walk->options->deepObjectArrays));
                     }
 
                     // `list` beside `array`, because Laravel's `array` passes for
@@ -1841,6 +1908,12 @@ final readonly class RuleSetBuilder
 
                         if ($unsent === 'readOnly') {
                             $walk->information(self::readOnlyFinding(self::bracketLabel($walk, $label, $name) ?? rtrim($label, '`').'.'.$name.'`'));
+
+                            continue;
+                        }
+
+                        if ($unsent === 'emptyList') {
+                            $walk->information(self::emptyListFinding(self::bracketLabel($walk, $label, $name) ?? rtrim($label, '`').'.'.$name.'`'));
 
                             continue;
                         }
@@ -1914,7 +1987,11 @@ final readonly class RuleSetBuilder
 
         if ($children === 'items') {
             if ($schema->items !== null) {
-                self::field($walk, $key.'.*', $label.'[]', $schema->items, '', $contentType);
+                // Why: an item of a list read from the query string is written `filter[ids][]`, with the bracket inside
+                // the backticks, as every property below it is labeled (`filter[ids][][a]`).
+                $itemLabel = $walk->textSource === 'query string' ? rtrim($label, '`').'[]`' : $label.'[]';
+
+                self::field($walk, $key.'.*', $itemLabel, $schema->items, '', $contentType);
             }
 
             if ($schema->uniqueItems) {
@@ -2225,9 +2302,13 @@ final readonly class RuleSetBuilder
 
     /**
      * Why a required name is one a client does not send, or null when it does: a `readOnly` property is left out of a
-     * request, and in a query string PHP never delivers a name with brackets under its own name.
+     * request, in a query string PHP never delivers a name with brackets under its own name, and written with brackets
+     * an array that may be empty has no form at all, so a client with an empty one sends nothing.
      *
-     * @return 'bracketed'|'readOnly'|null
+     * The last reason is the query string's and `brackets`' only. A JSON body writes `[]`, and `comma` writes an empty
+     * list as `?filter[ids]=`, so there the name is one a client sends.
+     *
+     * @return 'bracketed'|'readOnly'|'emptyList'|null
      *
      * @throws ConflictingInputException
      */
@@ -2241,7 +2322,67 @@ final readonly class RuleSetBuilder
             return 'readOnly';
         }
 
+        if (
+            $walk->textSource === 'query string'
+            && $walk->options->deepObjectArrays === DeepObjectArrays::Brackets
+            && isset($object->properties[$name])
+            && self::mayBeEmptyList($object->properties[$name], $walk, $label)
+        ) {
+            return 'emptyList';
+        }
+
         return null;
+    }
+
+    /**
+     * Whether a property is an array the schema allows to be empty, once its `allOf` is folded.
+     *
+     * @throws ConflictingInputException
+     */
+    private static function mayBeEmptyList(Schema $property, RuleWalk $walk, string $label): bool
+    {
+        $merged = AllOfMerger::merge($property, $walk->identity, $label);
+
+        return $merged->soleType() === SchemaType::Array && ($merged->minItems ?? 0) === 0;
+    }
+
+    private static function emptyListFinding(string $label, string $required = 'required'): string
+    {
+        return sprintf(
+            '%1$s is %2$s and its schema accepts an empty list, so the request accepts it left out. A client writes a '
+                .'list with brackets, and an empty one has no form there (PHP\'s `http_build_query()` writes nothing for it, '
+                .'and `?%3$s[]=` is one empty item), so asking for the name would refuse a client with nothing to send. When '
+                .'it is sent, it is judged as any list is.',
+            $label,
+            $required,
+            trim($label, '`'),
+        );
+    }
+
+    /**
+     * The line that names how an array inside a `deepObject` is read and the key that changes it. Information, so it
+     * counts for nothing: it states a reading the application declares, and no constraint is lost.
+     */
+    private static function arrayReadingFinding(string $label, DeepObjectArrays $reading): string
+    {
+        // A map's wildcard stands for any key the client writes.
+        $query = str_replace('[*]', '[key]', trim($label, '`'));
+
+        return $reading === DeepObjectArrays::Comma
+            ? sprintf(
+                '%1$s is an array inside a `deepObject` query parameter, read as a comma list (`?%2$s=1,2`) or a list written '
+                    .'with brackets, since `query.deep_object_arrays` is `comma`: an item cannot hold a comma. Set it to '
+                    .'`brackets` or `any` if your clients write it otherwise.',
+                $label,
+                $query,
+            )
+            : sprintf(
+                '%1$s is an array inside a `deepObject` query parameter, read as a list written with brackets (`?%2$s[]=1`), '
+                    .'since `query.deep_object_arrays` is `brackets`: `?%2$s=1,2` is refused. Set it to `comma` or `any` if '
+                    .'your clients write it otherwise.',
+                $label,
+                $query,
+            );
     }
 
     /**
@@ -2349,7 +2490,22 @@ final readonly class RuleSetBuilder
         // `filter[active]`), asked of the query bag: the request's own `has()` reads the body too. A nested key needs
         // `Arr::has()`, since `query->has()` takes a head only. A step that holds a dot (`filter[a.b]`) is no dotted
         // key at all, so the read goes by the list of steps, out of `validated()`, which holds it nested under that dot.
-        $delivered = self::deliveredPath(trim($label, '`')) ?? [trim($label, '`')];
+        $bare = trim($label, '`');
+
+        // An item of a list is no key of its own: `validated('filter.flags.0')` is the first item. A plain list
+        // (`filter[flags][]`) is read whole, and anything deeper (an item of an object in a list, a list of lists, a
+        // map's list, where `validated('filter.*')` reads nothing) has no single key to read, so each value is.
+        if ($walk->textSource === 'query string' && str_contains($bare, '[]')) {
+            $list = substr_count($bare, '[]') === 1 && str_ends_with($bare, '[]') && ! str_contains($bare, '[*]')
+                ? self::deliveredPath(substr($bare, 0, -2))
+                : null;
+
+            $walk->findings[] = self::textBooleanItemFinding($label, $tooMany, $quote($words), $list);
+
+            return new InRule($spellings);
+        }
+
+        $delivered = self::deliveredPath($bare) ?? [$bare];
         $key = self::pathKey($delivered);
 
         if (array_filter($delivered, static fn (string $step): bool => str_contains($step, '.')) !== []) {
@@ -2386,6 +2542,47 @@ final readonly class RuleSetBuilder
             );
 
         return new InRule($spellings);
+    }
+
+    /**
+     * The finding for a boolean item of a list read from the query string: where the list is read from, or that each
+     * value is read on its own.
+     *
+     * @param  list<string>|null  $list  the steps PHP delivers the list under, or null when it has no key to read as
+     *                                   one
+     */
+    private static function textBooleanItemFinding(string $label, string $tooMany, string $words, ?array $list): string
+    {
+        $head = sprintf(
+            '%1$s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
+                .'Laravel\'s `boolean` refuses it. It accepts %3$s.%2$s',
+            $label,
+            $tooMany,
+            $words,
+        );
+
+        if ($list === null) {
+            return $head.' Each value is the string as sent, and `"false"` is a truthy string in PHP: read each value '
+                .'with `filter_var($value, FILTER_VALIDATE_BOOL)`.';
+        }
+
+        if (array_filter($list, static fn (string $step): bool => str_contains($step, '.')) !== []) {
+            $steps = implode(', ', array_map(static fn (string $step): string => var_export($step, true), $list));
+            $holds = sprintf('data_get($request->validated(), [%s])', $steps);
+            $values = sprintf('(array) data_get($request->validated(), [%s], [])', $steps);
+        } else {
+            $holds = sprintf('validated(\'%s\')', self::pathKey($list));
+            $values = sprintf('(array) $request->validated(\'%s\', [])', self::pathKey($list));
+        }
+
+        return sprintf(
+            '%s `%s` holds the strings as sent, and `"false"` is a truthy string in PHP: read the list with '
+                .'`array_map(static fn (mixed $value): bool => filter_var($value, FILTER_VALIDATE_BOOL), %s)`, which is '
+                .'empty when none was sent.',
+            $head,
+            $holds,
+            $values,
+        );
     }
 
     /**

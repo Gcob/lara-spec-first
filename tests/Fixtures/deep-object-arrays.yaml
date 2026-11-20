@@ -1,0 +1,25 @@
+# One operation whose query holds an array inside a deepObject: what `query.deep_object_arrays` changes in the generated
+# request, and so in the drift the doctor reports against a build.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      operationId: listThings
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              ids:
+                type: array
+                items: { type: integer }
+                minItems: 1
+      responses:
+        '200':
+          description: Things

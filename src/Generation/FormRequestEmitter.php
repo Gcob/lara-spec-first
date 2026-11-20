@@ -7,6 +7,7 @@ namespace Gcob\LaraSpecFirst\Generation;
 use Gcob\LaraSpecFirst\Contract\DocumentPointer;
 use Gcob\LaraSpecFirst\Contract\Operation;
 use Gcob\LaraSpecFirst\Routing\GeneratedRoutesLocator;
+use Gcob\LaraSpecFirst\Validation\CommaLists;
 use Gcob\LaraSpecFirst\Validation\MultipleOf;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
 use Gcob\LaraSpecFirst\Validation\UndeclaredKeys;
@@ -92,7 +93,7 @@ final readonly class FormRequestEmitter
                 }
 
             {$this->rulesMethod($planned->rules)}
-            {$this->validationData($planned->rules)}{$this->dto($planned)}{$this->after($planned->rules)}}
+            {$this->validationData($planned->rules)}{$this->prepareForValidation($planned->rules)}{$this->dto($planned)}{$this->after($planned->rules)}}
 
             PHP,
         );
@@ -122,6 +123,10 @@ final readonly class FormRequestEmitter
 
         if ($set->usesNullOrAbsent()) {
             $imports[] = $this->import(NullOrAbsent::class);
+        }
+
+        if ($set->usesCommaLists()) {
+            $imports[] = $this->import(CommaLists::class);
         }
 
         if ($set->usesUndeclaredKeys()) {
@@ -213,6 +218,22 @@ final readonly class FormRequestEmitter
                 "    /**\n     * The keys the contract's `query` parameters arrive under, the only ones read from the query string.\n     */\n"
                     ."    private const QUERY_KEYS = [%s];\n\n",
                 implode(', ', array_map($this->literal(...), $set->queryKeys)),
+            );
+        }
+
+        if ($set->usesCommaLists()) {
+            $constants .= sprintf(
+                "    /**\n     * The arrays of the query string a client writes as one comma-separated string, by the steps of their key: `*` is\n"
+                    ."     * every key at its step, and `spared` names, by step, the keys a `*` leaves alone, which the contract declares\n"
+                    ."     * with a type of their own.\n     */\n"
+                    ."    private const COMMA_LISTS = [\n%s\n    ];\n\n",
+                implode("\n", array_map(
+                    fn (array $list): string => '        ['.implode(', ', array_filter([
+                        "'steps' => [".implode(', ', array_map($this->literal(...), $list['steps'])).']',
+                        isset($list['spared']) ? "'spared' => ".$this->sparedNames($list['spared']) : null,
+                    ])).'],',
+                    $set->commaLists,
+                )),
             );
         }
 
@@ -719,6 +740,54 @@ final readonly class FormRequestEmitter
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * `prepareForValidation()`, for a request that has an array a client writes as one comma-separated string, or
+     * nothing.
+     *
+     * **It writes the query string's own bag, with `replace()`, never `merge()`**: `merge()` writes the bag the request
+     * reads its input from, which on a `POST` is the body's, and the string the rules read from the query string would
+     * stay a string. Laravel calls it before `validationData()`, so the rules, `validated()` and the request a
+     * controller type-hints all see the list, and the application's own `request()` keeps what was sent.
+     *
+     * @see docs/guide/code-generation/request-validation.md — "Arrays inside a deepObject"
+     */
+    private function prepareForValidation(RuleSet $set): string
+    {
+        if (! $set->usesCommaLists()) {
+            return '';
+        }
+
+        return <<<'PHP'
+
+            /**
+             * Splits an array a client wrote as one comma-separated string (`?filter[ids]=1,2`) into the list the rules judge,
+             * because `query.deep_object_arrays` is `comma`. An empty value is the empty list and an empty item is `null`, as
+             * `?filter[ids][]=` is; a list written with brackets is left as sent. An item cannot hold a comma, since PHP
+             * decodes `%2C` before the request sees it. The controller's request and `validated()` hold the list, and
+             * `request()` keeps the string as sent.
+             */
+            protected function prepareForValidation(): void
+            {
+                $this->query->replace(CommaLists::split($this->query->all(), self::COMMA_LISTS));
+            }
+
+        PHP;
+    }
+
+    /**
+     * The names a wildcard step spares, by step, as a literal.
+     *
+     * @param  array<int, list<string>>  $steps
+     */
+    private function sparedNames(array $steps): string
+    {
+        return '['.implode(', ', array_map(
+            fn (int $step, array $names): string => $step.' => ['.implode(', ', array_map($this->literal(...), $names)).']',
+            array_keys($steps),
+            $steps,
+        )).']';
     }
 
     /**

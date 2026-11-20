@@ -16,6 +16,7 @@ use Gcob\LaraSpecFirst\Generation\PlannedInputDto;
 use Gcob\LaraSpecFirst\Generation\PlannedRequest;
 use Gcob\LaraSpecFirst\Generation\RequestName;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\InvalidDocumentException;
 use Gcob\LaraSpecFirst\Parsing\Exceptions\RejectedConstructException;
 use Gcob\LaraSpecFirst\Parsing\Guards\RemoteReferenceGuard;
@@ -162,7 +163,7 @@ it('honors a constraint written beside a $ref at 3.1', function (
 it('adds the ceiling written beside a $ref to the rules of the field', function (): void {
     $operations = readSiblingField(['$ref' => '#/components/schemas/Code', 'maxLength' => 3]);
 
-    expect(RuleSetBuilder::for($operations[0])->rules['field'])->toBe(['sometimes', 'string', 'max:3']);
+    expect(RuleSetBuilder::for($operations[0], new RuleSetOptions)->rules['field'])->toBe(['sometimes', 'string', 'max:3']);
 });
 
 // Class two: 3.0 says everything beside a `$ref` is ignored, and the package says it the same way.
@@ -303,7 +304,7 @@ it('refuses a sibling that contradicts the referenced schema the way allOf does'
 ): void {
     $operations = readSiblingField(['$ref' => '#/components/schemas/Target', ...$siblings], ['Target' => $target]);
 
-    expect(fn () => RuleSetBuilder::for($operations[0]))
+    expect(fn () => RuleSetBuilder::for($operations[0], new RuleSetOptions))
         ->toThrow(ConflictingInputException::class, 'beside a `$ref`');
 })->with([
     'a closed object over a declared property' => [
@@ -420,7 +421,7 @@ it('reads siblings beside a $ref in a query parameter schema', function (): void
     ]]], SIBLING_CODE);
 
     expect($outcome->faults)->toBe([])
-        ->and(RuleSetBuilder::for($outcome->operations[0])->rules['code'])->toBe(['sometimes', 'string', 'max:3']);
+        ->and(RuleSetBuilder::for($outcome->operations[0], new RuleSetOptions)->rules['code'])->toBe(['sometimes', 'string', 'max:3']);
 });
 
 // Class ten: a marker is a `$ref` too. A constraint beside the one that closes a cycle holds at every level the cycle
@@ -439,7 +440,7 @@ it('carries a constraint beside a recursion marker to every level, as the allOf 
 
         expect($outcome->faults)->toBe([]);
 
-        return RuleSetBuilder::for($outcome->operations[0])->rules;
+        return RuleSetBuilder::for($outcome->operations[0], new RuleSetOptions)->rules;
     };
 
     $beside = $rules(['$ref' => '#/components/schemas/Node', 'required' => ['label']]);
@@ -520,12 +521,12 @@ it('carries an additionalProperties schema written beside a $ref, its $ref follo
     }
 
     $ignored = array_filter(
-        SupportMatrixCheck::requestSchemas($operations),
+        SupportMatrixCheck::requestSchemas($operations, new RuleSetOptions),
         static fn (Finding $finding): bool => $finding->level === SupportLevel::Ignored,
     );
 
     $unenforced = array_filter(
-        SupportMatrixCheck::requestSchemas($operations),
+        SupportMatrixCheck::requestSchemas($operations, new RuleSetOptions),
         static fn (Finding $finding): bool => $finding->level === SupportLevel::Partial
             && str_contains($finding->message, 'writes `additionalProperties` where the generated request enforces nothing'),
     );
@@ -809,7 +810,7 @@ it('resolves a $ref two levels down inside a target built from the raw document'
     $owner = siblingMerged(siblingFieldOf($operations))->properties['owner'];
 
     expect($owner->properties['address']->properties['city']->maxLength)->toBe(9)
-        ->and(RuleSetBuilder::for($operations[0])->rules['field.owner.address.city'])
+        ->and(RuleSetBuilder::for($operations[0], new RuleSetOptions)->rules['field.owner.address.city'])
         ->toBe(['sometimes', 'string', 'max:9']);
 });
 
@@ -903,7 +904,7 @@ it('keeps the parser\'s enum where the raw document can\'t reach the node', func
     }
 
     $in = array_values(array_filter(
-        RuleSetBuilder::for($outcome->operations[0])->rules['field'],
+        RuleSetBuilder::for($outcome->operations[0], new RuleSetOptions)->rules['field'],
         static fn (mixed $rule): bool => $rule instanceof InRule,
     ));
 
@@ -925,7 +926,7 @@ function siblingDtoClasses(array $operations): array
     assert($name !== null);
 
     $plan = (new InputDtoPlanner)->plan([
-        new PlannedRequest($operations[0], $name, RuleSetBuilder::for($operations[0]), 'Controller'),
+        new PlannedRequest($operations[0], $name, RuleSetBuilder::for($operations[0], new RuleSetOptions), 'Controller'),
     ]);
     $classes = [];
 
@@ -975,9 +976,9 @@ it('cuts a recursion that closes on an outer hop with the outer hop\'s keywords,
         'B' => ['allOf' => [['$ref' => '#/components/schemas/Node'], ['properties' => ['next' => ['$ref' => '#/components/schemas/A']]]]],
         ...$node,
     ]);
-    $rules = RuleSetBuilder::for($beside[0])->rules;
+    $rules = RuleSetBuilder::for($beside[0], new RuleSetOptions)->rules;
 
-    expect($rules)->toEqual(RuleSetBuilder::for($spelled[0])->rules)
+    expect($rules)->toEqual(RuleSetBuilder::for($spelled[0], new RuleSetOptions)->rules)
         ->and($rules['next'])->toContain($keyword)
         ->and($rules)->toHaveKey('next.next.label')
         ->and(siblingDtoClasses($beside))->toEqual(siblingDtoClasses($spelled))
@@ -1038,8 +1039,8 @@ it('names the wrapper of a $ref whose allOf sibling adds a property, and unrolls
         ['properties' => ['next' => ['$ref' => '#/components/schemas/Alias']]],
     ]]);
 
-    expect(RuleSetBuilder::for($beside[0])->rules)->toEqual(RuleSetBuilder::for($spelled[0])->rules)
-        ->and(RuleSetBuilder::for($beside[0])->rules)->toHaveKey('next.next.id')
+    expect(RuleSetBuilder::for($beside[0], new RuleSetOptions)->rules)->toEqual(RuleSetBuilder::for($spelled[0], new RuleSetOptions)->rules)
+        ->and(RuleSetBuilder::for($beside[0], new RuleSetOptions)->rules)->toHaveKey('next.next.id')
         ->and(siblingFieldOfBody($beside)->name)->toBe('Alias')
         ->and(siblingDtoClasses($beside))->toEqual(siblingDtoClasses($spelled));
 });

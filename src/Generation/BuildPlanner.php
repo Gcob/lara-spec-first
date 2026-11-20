@@ -27,6 +27,8 @@ final readonly class BuildPlanner
     private CustomControllerLookup $lookup;
 
     /**
+     * @param  RuleSetOptions  $options  what the application's configuration says about how its clients write input,
+     *                                   read by the command that builds the plan
      * @param  CustomControllerLookup|null  $lookup  how the plan learns whether a custom controller has been written
      *                                               yet; the running application's autoloader by default, and
      *                                               injectable so a test can state the answer instead of arranging a
@@ -35,6 +37,7 @@ final readonly class BuildPlanner
     public function __construct(
         private string $namespace,
         private string $specPath,
+        private RuleSetOptions $options,
         ?CustomControllerLookup $lookup = null,
     ) {
         $this->lookup = $lookup ?? CustomControllerLookup::fromAutoloader();
@@ -108,7 +111,7 @@ final readonly class BuildPlanner
                 $requests[] = new PlannedRequest(
                     $operation,
                     $request,
-                    RuleSetBuilder::for($operation),
+                    RuleSetBuilder::for($operation, $this->options),
                     $name->shortName,
                 );
             }
