@@ -604,6 +604,7 @@ function writeBuiltDoctorTree(): void
 
 afterAll(function (): void {
     exec('rm -rf '.escapeshellarg(builtDoctorTree()));
+    exec('rm -rf '.escapeshellarg(deepObjectArraysTree()));
 });
 
 // One real fault used to become one real fault plus one false line per
@@ -806,4 +807,69 @@ it('reports no lifecycle outcome at all when there was no document to read one f
     $decoded = json_decode($output->fetch(), true);
 
     expect($decoded['lifecycle'])->toBeNull();
+});
+
+// --- The key that says how a client writes an array inside a deepObject ---
+
+function deepObjectArraysTree(): string
+{
+    static $tree = null;
+
+    return $tree ??= base_path('app/LsfDoctorDeepObject'.bin2hex(random_bytes(6)));
+}
+
+/**
+ * The generated tree of `deep-object-arrays.yaml`, written by the real build under the given reading.
+ */
+function buildDeepObjectArrays(string $reading): void
+{
+    exec('rm -rf '.escapeshellarg(deepObjectArraysTree()));
+
+    config()->set('lara-spec-first.spec.path', specFixturePath('deep-object-arrays.yaml'));
+    config()->set(GeneratedRoutesLocator::SETTING, deepObjectArraysTree());
+    config()->set('lara-spec-first.generated.namespace', 'App\\'.basename(deepObjectArraysTree()));
+    config()->set('lara-spec-first.query.deep_object_arrays', $reading);
+
+    expect(app(Kernel::class)->call('spec:build', [], new BufferedOutput))->toBe(0);
+}
+
+// Drift compares the tree on disk with what a build would write, so a doctor that read another value than the build did
+// would call every request drifted, and one that did not read the key at all could never see a change to it.
+it('reads query.deep_object_arrays in spec:build and spec:doctor', function (string $built, string $doctored, bool $drifted): void {
+    buildDeepObjectArrays($built);
+    config()->set('lara-spec-first.query.deep_object_arrays', $doctored);
+
+    [, $text] = doctor();
+
+    expect(str_contains($text, 'has drifted'))->toBe($drifted)
+        ->and(str_contains($text, 'ListThingsRequest'))->toBe($drifted);
+})->with([
+    'built under any, read as any' => ['any', 'any', false],
+    'built under brackets, read as brackets' => ['brackets', 'brackets', false],
+    'built under brackets, changed to any and not rebuilt' => ['brackets', 'any', true],
+    'built under any, changed to brackets and not rebuilt' => ['any', 'brackets', true],
+]);
+
+// A value no reading answers to stops the commands that read it, with the key in the message, like an unusable `spec.path`:
+// the doctor's support findings would describe a reading the build refuses to make.
+it('reads query.deep_object_arrays in spec:build and spec:doctor, and stops both on a value it cannot use', function (): void {
+    buildDeepObjectArrays('brackets');
+    config()->set('lara-spec-first.query.deep_object_arrays', 'bracket');
+
+    $build = new BufferedOutput;
+    $text = new BufferedOutput;
+    $json = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $build))->toBe(1)
+        ->and($build->fetch())->toContain('lara-spec-first.query.deep_object_arrays')
+        ->and(app(Kernel::class)->call('spec:doctor', [], $text))->toBe(1)
+        ->and($text->fetch())->toContain('lara-spec-first.query.deep_object_arrays');
+
+    expect(app(Kernel::class)->call('spec:doctor', ['--json' => true], $json))->toBe(1);
+
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode($json->fetch(), true);
+
+    expect(array_keys($decoded))->toBe(['error'])
+        ->and($decoded['error'])->toContain('lara-spec-first.query.deep_object_arrays');
 });

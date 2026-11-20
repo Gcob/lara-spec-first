@@ -31,11 +31,14 @@ final readonly class BuildPlanner
      *                                               yet; the running application's autoloader by default, and
      *                                               injectable so a test can state the answer instead of arranging a
      *                                               file
+     * @param  RuleSetOptions  $options  what the application's configuration says about how its clients write input,
+     *                                   read by the command that builds the plan
      */
     public function __construct(
         private string $namespace,
         private string $specPath,
         ?CustomControllerLookup $lookup = null,
+        private RuleSetOptions $options = new RuleSetOptions,
     ) {
         $this->lookup = $lookup ?? CustomControllerLookup::fromAutoloader();
     }
@@ -108,7 +111,7 @@ final readonly class BuildPlanner
                 $requests[] = new PlannedRequest(
                     $operation,
                     $request,
-                    RuleSetBuilder::for($operation),
+                    RuleSetBuilder::for($operation, $this->options),
                     $name->shortName,
                 );
             }

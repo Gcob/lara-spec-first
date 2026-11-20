@@ -10,10 +10,12 @@ use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Generation\DeepObjectArrays;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
 use Gcob\LaraSpecFirst\Validation\MultipleOf;
@@ -969,12 +971,12 @@ it('enforces nothing about an object query parameter, not even its presence', fu
  *
  * @param  list<QueryParameter>  $others  parameters written beside it
  */
-function deepObjectRuleSet(Schema $schema, bool $explode, string $name = 'filter', bool $required = false, array $others = []): RuleSet
+function deepObjectRuleSet(Schema $schema, bool $explode, string $name = 'filter', bool $required = false, array $others = [], ?RuleSetOptions $options = null): RuleSet
 {
     return RuleSetBuilder::for(operationWithInput(
         method: 'get',
         query: [new QueryParameter($name, $schema, required: $required, style: 'deepObject', explode: $explode), ...$others],
-    ));
+    ), $options ?? new RuleSetOptions);
 }
 
 // A deepObject is read the way PHP parses its brackets, so each property is judged under the key PHP delivers it as,
@@ -1289,8 +1291,9 @@ it('leaves the values of a deepObject map unvalidated beside a bracketed propert
         ->and(implode("\n", $set->findings))->toContain('cannot tell apart from an undeclared key');
 });
 
-// An array inside a deepObject is held at its presence: how a client writes one (`filter[ids][]=1`, `filter[ids]=1,2`) is
-// not defined, so no rule about its shape or its items is written, and the finding says what is not checked.
+// Under `any`, an array inside a deepObject is held at its presence: no reading of how a client writes one
+// (`filter[ids][]=1`, `filter[ids]=1,2`) is declared, so no rule about its shape or its items is written, and the finding
+// says what is not checked and which key would say it.
 it('holds an array inside a deepObject at its presence', function (
     Schema $schema,
     array $rules,
@@ -1298,14 +1301,15 @@ it('holds an array inside a deepObject at its presence', function (
     bool $explode,
 ): void {
     // `filter` is required exactly when the schema requires a property: a required array keeps `required_array_keys` under `present`.
-    $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== []);
+    $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== [], options: new RuleSetOptions(DeepObjectArrays::Any));
 
     expect($set->rules)->toEqual($rules)
         ->and($set->unenforced)->toBe([])
         ->and($set->information)->toBe([])
         ->and($set->findings)->toHaveCount(1)
         ->and($set->findings[0])->toContain($label.' is an array inside a `deepObject`')
-        ->and($set->findings[0])->toContain('checked only for its presence, when it is required');
+        ->and($set->findings[0])->toContain('checked only for its presence, when it is required')
+        ->and($set->findings[0])->toContain('`query.deep_object_arrays` is `any`');
 })->with(function (): Generator {
     $integers = new Schema(types: [SchemaType::Integer]);
     $array = static fn (Schema $items, ?int $min = null, ?int $max = null, bool $unique = false): Schema => new Schema(types: [SchemaType::Array], items: $items, minItems: $min, maxItems: $max, uniqueItems: $unique);
@@ -1351,6 +1355,219 @@ it('holds an array inside a deepObject at its presence', function (
             yield $row.($explode ? ', exploded' : ', not exploded') => [...$values, $explode];
         }
     }
+});
+
+/**
+ * An array of the schema, for the rows of the tests below.
+ */
+function deepObjectArray(Schema $items, ?int $min = null, ?int $max = null, bool $unique = false): Schema
+{
+    return new Schema(types: [SchemaType::Array], items: $items, minItems: $min, maxItems: $max, uniqueItems: $unique);
+}
+
+// The default reading, `brackets`: an array inside a deepObject is a list a client writes with brackets
+// (`filter[ids][]=1`, `filter[ids][0]=1`), so it is checked as one, with its bounds and its items. A string where the list
+// belongs is refused by `array`, and nothing is left unsaid: no finding, nothing unenforced.
+it('checks an array inside a deepObject by its brackets', function (
+    Schema $schema,
+    array $rules,
+    bool $explode,
+): void {
+    $set = deepObjectRuleSet($schema, $explode, 'filter', $schema->required !== []);
+
+    expect($set->rules)->toEqual($rules)
+        ->and($set->findings)->toBe([])
+        ->and($set->information)->toBe([])
+        ->and($set->unenforced)->toBe([]);
+})->with(function (): Generator {
+    $integers = new Schema(types: [SchemaType::Integer]);
+    $rows = [
+        'a property that filter requires, with its bounds and unique items' => [
+            new Schema(
+                types: [SchemaType::Object],
+                properties: ['ids' => deepObjectArray($integers, 1, 3, true)],
+                required: ['ids'],
+            ),
+            [
+                'filter' => ['present', 'array', 'required_array_keys:ids'],
+                'filter.ids' => ['sometimes', 'array', 'list', 'min:1', 'max:3'],
+                'filter.ids.*' => ['integer', 'distinct'],
+            ],
+        ],
+        'a nested one' => [
+            objectSchema(['created' => objectSchema(['ids' => deepObjectArray($integers, 1)])]),
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.created' => ['sometimes', 'array'],
+                'filter.created.ids' => ['sometimes', 'array', 'list', 'min:1'],
+                'filter.created.ids.*' => ['integer'],
+            ],
+        ],
+        'an array of objects' => [
+            objectSchema(['rows' => deepObjectArray(objectSchema(['a' => $integers], ['a']))]),
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.rows' => ['sometimes', 'array', 'list'],
+                'filter.rows.*' => ['array', 'required_array_keys:a'],
+                'filter.rows.*.a' => ['sometimes', 'integer'],
+            ],
+        ],
+        'the value of a map' => [
+            new Schema(types: [SchemaType::Object], additionalPropertiesSchema: deepObjectArray($integers, max: 2)),
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.*' => ['array', 'list', 'max:2'],
+                'filter.*.*' => ['integer'],
+            ],
+        ],
+        'an array of arrays' => [
+            objectSchema(['m' => deepObjectArray(deepObjectArray($integers))]),
+            [
+                'filter' => ['sometimes', 'array'],
+                'filter.m' => ['sometimes', 'array', 'list'],
+                'filter.m.*' => ['array', 'list'],
+                'filter.m.*.*' => ['integer'],
+            ],
+        ],
+    ];
+
+    foreach ([true, false] as $explode) {
+        foreach ($rows as $row => $values) {
+            yield $row.($explode ? ', exploded' : ', not exploded') => [...$values, $explode];
+        }
+    }
+});
+
+// An item is labeled the way a client writes it, `filter[links][]`, with the bracket inside the backticks, in every
+// finding about it. A text boolean item hands over the read of the whole list, since `validated('filter.flags.0')` is the
+// first item only, and a deeper one says each value is the string as sent.
+it('labels an item of an array inside a deepObject the way a client writes it', function (): void {
+    $links = deepObjectRuleSet(
+        objectSchema(['links' => deepObjectArray(new Schema(types: [SchemaType::String], format: 'uri-reference'))]),
+        false,
+    );
+    $flags = deepObjectRuleSet(objectSchema(['flags' => deepObjectArray(new Schema(types: [SchemaType::Boolean]))]), false);
+
+    expect($links->unenforced)->toBe(['format' => ['`filter[links][]`']])
+        ->and($flags->findings)->toHaveCount(1)
+        ->and($flags->findings[0])->toStartWith('`filter[flags][]` is a boolean read from a query string')
+        ->and($flags->findings[0])->toContain("`validated('filter.flags')` holds the strings as sent")
+        ->and($flags->findings[0])->toContain('`array_map(static fn (mixed $value): bool => filter_var($value, FILTER_VALIDATE_BOOL), (array) $request->validated(\'filter.flags\', []))`')
+        ->and($flags->findings[0])->not->toContain('filter.flags.0');
+});
+
+it('says each value of a boolean item deeper than a plain list is the string as sent', function (Schema $schema, string $label): void {
+    $set = deepObjectRuleSet($schema, false);
+
+    expect($set->findings)->toHaveCount(1)
+        ->and($set->findings[0])->toStartWith($label.' is a boolean read from a query string')
+        ->and($set->findings[0])->toContain('read each value with `filter_var($value, FILTER_VALIDATE_BOOL)`')
+        ->and($set->findings[0])->not->toContain('$request->validated(');
+})->with(function (): Generator {
+    $boolean = new Schema(types: [SchemaType::Boolean]);
+
+    yield 'a property of the objects of a list' => [
+        objectSchema(['rows' => deepObjectArray(objectSchema(['on' => $boolean]))]),
+        '`filter[rows][][on]`',
+    ];
+    yield 'a map of boolean lists' => [
+        new Schema(types: [SchemaType::Object], additionalPropertiesSchema: deepObjectArray($boolean)),
+        '`filter[*][]`',
+    ];
+    yield 'a list of boolean lists' => [
+        objectSchema(['m' => deepObjectArray(deepObjectArray($boolean))]),
+        '`filter[m][][]`',
+    ];
+});
+
+// The item label is the query string's own. A form body keeps its label, and its finding.
+it('keeps the label of a list of booleans in a form body', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/x-www-form-urlencoded' => objectSchema(['tags' => deepObjectArray(new Schema(types: [SchemaType::Boolean]))])],
+    ));
+
+    expect(implode("\n", $set->findings))->toContain('`tags`[] is a boolean read from a form body');
+});
+
+// A walk that passes the ceiling is run again at lower depths, and every run has to read the array as the first did.
+it('keeps the configured reading when the walk lowers its depth', function (DeepObjectArrays $reading, array $ids, bool $held): void {
+    $set = RuleSetBuilder::for(fixtureOperation('recursion-ceiling-deep-object.yaml', 'createTree'), new RuleSetOptions($reading));
+    $findings = implode("\n", $set->findings);
+
+    expect($set->rules['left.left.left.left.left.left.left'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['left.left.left.left.left.left.left.left'])->toBe(['missing'])
+        ->and(array_intersect_key($set->rules, array_flip(['filter.ids', 'filter.ids.*'])))->toBe($ids)
+        ->and(str_contains($findings, 'is an array inside a `deepObject`'))->toBe($held)
+        ->and($findings)->toContain('ceiling');
+})->with(function (): Generator {
+    yield 'any' => [DeepObjectArrays::Any, ['filter.ids' => ['sometimes']], true];
+    yield 'brackets' => [
+        DeepObjectArrays::Brackets,
+        ['filter.ids' => ['sometimes', 'array', 'list', 'min:1'], 'filter.ids.*' => ['integer']],
+        false,
+    ];
+});
+
+// An empty list has no form with brackets: PHP's `http_build_query()` writes nothing for it, and `filter[ids][]=` is one
+// empty item. So a required array whose schema accepts `[]` is accepted left out in a deepObject, as a required object that
+// requires nothing a client sends is. `minItems` of 1 or more is a list that can be written, so it stays required. Only the
+// query string reads it so: a body writes `[]`, and a form body keeps its own rule.
+it('accepts a required array that may be empty left out under brackets', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids, 'a' => new Schema(types: [SchemaType::String])], ['ids']), false);
+
+    expect($set->rules['filter'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['filter.ids'])->toBe(['sometimes', 'array', 'list'])
+        ->and($set->findings)->toBe($set->information)
+        ->and($set->unenforced)->toBe([])
+        ->and($set->information)->toHaveCount(1)
+        ->and($set->information[0])->toStartWith('`filter[ids]` is required and its schema accepts an empty list')
+        ->and($set->information[0])->toContain('`http_build_query()` writes nothing for it');
+});
+
+it('keeps a required array that cannot be empty required under brackets', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]), minItems: 1);
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids], ['ids']), false, required: true);
+
+    expect($set->rules['filter'])->toBe(['present', 'array', 'required_array_keys:ids'])
+        ->and($set->information)->toBe([]);
+});
+
+it('keeps a required array that may be empty required when the reading is any', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids], ['ids']), false, required: true, options: new RuleSetOptions(DeepObjectArrays::Any));
+
+    expect($set->rules['filter'])->toBe(['present', 'array', 'required_array_keys:ids'])
+        ->and($set->information)->toBe([]);
+});
+
+// The parameter itself is the same case one level up, as for a required object that requires nothing a client sends: a
+// required `filter` whose only required property is an array that may be empty requires nothing a client can write, so it
+// may be left out, and the note says why.
+it('accepts a required deepObject whose only required property is an array that may be empty', function (): void {
+    $ids = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $set = deepObjectRuleSet(objectSchema(['ids' => $ids], ['ids']), false, required: true);
+
+    expect($set->rules['filter'])->toBe(['sometimes', 'array'])
+        ->and($set->information)->toHaveCount(2)
+        ->and($set->information[0])->toContain('`filter` is a required `deepObject` query parameter that requires no property a client sends')
+        ->and($set->information[1])->toStartWith('`filter[ids]` is required and its schema accepts an empty list');
+});
+
+// The control rows: the same required, possibly empty array in a JSON body and in a form body keeps the rule it has, since
+// a JSON body writes `[]` and a form body's reading is its own.
+it('keeps required_array_keys for an array that may be empty outside the query string', function (): void {
+    $tags = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]));
+    $nested = objectSchema(['o' => objectSchema(['tags' => $tags], ['tags'])], ['o']);
+    $json = RuleSetBuilder::for(operationWithInput(content: ['application/json' => $nested]));
+    $form = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => $nested]));
+    $root = RuleSetBuilder::for(operationWithInput(content: ['application/x-www-form-urlencoded' => objectSchema(['tags' => $tags], ['tags'])]));
+
+    expect($json->rules['o'])->toBe(['present', 'array', 'required_array_keys:tags'])
+        ->and($form->rules['o'])->toBe(['present', 'array', 'required_array_keys:tags'])
+        ->and($root->rules['tags'])->toBe(['present', 'array', 'list'])
+        ->and($json->information)->toBe([])
+        ->and($form->information)->toBe([]);
 });
 
 it('merges the body and the query into one rule set, body first', function (): void {

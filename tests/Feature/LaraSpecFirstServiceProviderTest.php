@@ -155,3 +155,9 @@ it('defaults a rate limit mapping to a single unnamed window', function (): void
         'reset' => 'RateLimit-Reset',
     ]);
 });
+
+// Read by `spec:build`, `spec:make` and `spec:doctor`, so its default is behavior: an application that never published the
+// key still reads an array inside a deepObject by its brackets.
+it('defaults query.deep_object_arrays to brackets', function (): void {
+    expect(config('lara-spec-first.query.deep_object_arrays'))->toBe('brackets');
+});

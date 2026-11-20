@@ -148,6 +148,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | The query string — DONE
+    |--------------------------------------------------------------------------
+    |
+    | How a client writes an array inside a `deepObject` query parameter, which
+    | OpenAPI leaves undefined: `?filter[ids][]=1&filter[ids][]=2`, or
+    | `?filter[ids]=1,2`. Your clients know, so you say.
+    |
+    | `brackets` is the default: the array is a list written with brackets
+    | (`filter[ids][]=1`, or `filter[ids][0]=1` as PHP's `http_build_query()`
+    | writes it), checked with its items and its bounds. A plain string where the
+    | list belongs, `?filter[ids]=1,2`, answers 422.
+    |
+    | `any` checks only that the array is there, with a finding in the generated
+    | request, as before this key existed.
+    |
+    | Read by `spec:build`, `spec:make` and `spec:doctor`. A change takes another
+    | `spec:build`, and the doctor reports the generated requests as drifted until
+    | then. Any other value stops all three with a message that names the key.
+    |
+    | See docs/guide/code-generation/request-validation.md — "Arrays inside a
+    | deepObject".
+    |
+    */
+
+    'query' => [
+        'deep_object_arrays' => 'brackets',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Where your own overrides are looked for — TODO (phase 2, #40)
     |--------------------------------------------------------------------------
     |

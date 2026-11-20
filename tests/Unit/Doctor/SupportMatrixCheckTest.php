@@ -17,7 +17,9 @@ use Gcob\LaraSpecFirst\Doctor\DiagnosticReport;
 use Gcob\LaraSpecFirst\Doctor\Finding;
 use Gcob\LaraSpecFirst\Doctor\FindingClass;
 use Gcob\LaraSpecFirst\Doctor\SupportLevel;
+use Gcob\LaraSpecFirst\Generation\DeepObjectArrays;
 use Gcob\LaraSpecFirst\Generation\ResponseDtoPlanner;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
@@ -660,12 +662,14 @@ it('reports nothing for a query parameter written with a style and an explode Op
 });
 
 // A deepObject is validated now, so the doctor's answer moves with the rule set it reads, with no code of its own: a keyword
-// inside it that no rule enforces is named (it was silent), a map whose values are judged is not (it was reported), and an
-// array it holds at its presence adds nothing, since the finding in the generated file already says so.
-it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, int $exitCode, ?string $named): void {
+// inside it that no rule enforces is named (it was silent), a map whose values are judged is not (it was reported). An
+// array inside it follows `query.deep_object_arrays`: held at its presence under `any`, where the finding in the generated
+// file says so and the doctor adds nothing, and checked by its brackets otherwise, where a keyword no rule enforces inside
+// an item, or `uniqueItems` on objects, is named as it is anywhere else.
+it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, DeepObjectArrays $reading, int $exitCode, ?string $named, ?string $at): void {
     $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(query: [
         new QueryParameter('filter', $schema, style: 'deepObject', explode: false),
-    ])]);
+    ])], new RuleSetOptions($reading));
 
     expect(supportMatrixReport($findings)->exitCode())->toBe($exitCode)
         ->and($findings)->toHaveCount($named === null ? 0 : 1);
@@ -673,25 +677,46 @@ it('moves the doctor\'s exit code for a deepObject', function (Schema $schema, i
     if ($named !== null) {
         expect($findings[0]->level)->toBe(SupportLevel::Partial)
             ->and($findings[0]->message)->toContain($named)
-            ->and($findings[0]->message)->toContain('`filter[next]`');
+            ->and($findings[0]->message)->toContain((string) $at);
     }
-})->with([
-    'a property no rule enforces' => [
+})->with(function (): Generator {
+    $integers = new Schema(types: [SchemaType::Integer]);
+    $objects = new Schema(types: [SchemaType::Array], items: supportMatrixObject(['a' => $integers]), uniqueItems: true);
+    $links = new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String], format: 'uri-reference'));
+
+    yield 'a property no rule enforces' => [
         supportMatrixObject(['next' => new Schema(types: [SchemaType::String], format: 'uri-reference')]),
+        DeepObjectArrays::Brackets,
         2,
         '`format`',
-    ],
-    'a map whose values are judged' => [
+        '`filter[next]`',
+    ];
+    yield 'a map whose values are judged' => [
         new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema(types: [SchemaType::String])),
+        DeepObjectArrays::Brackets,
         0,
         null,
-    ],
-    'an array held at its presence' => [
-        supportMatrixObject(['ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]), minItems: 1, maxItems: 3, uniqueItems: true)]),
+        null,
+    ];
+    yield 'an array held at its presence' => [
+        supportMatrixObject(['ids' => new Schema(types: [SchemaType::Array], items: $integers, minItems: 1, maxItems: 3, uniqueItems: true)]),
+        DeepObjectArrays::Any,
         0,
         null,
-    ],
-]);
+        null,
+    ];
+    yield 'integers with bounds and unique items, by brackets' => [
+        supportMatrixObject(['ids' => new Schema(types: [SchemaType::Array], items: $integers, minItems: 1, maxItems: 3, uniqueItems: true)]),
+        DeepObjectArrays::Brackets,
+        0,
+        null,
+        null,
+    ];
+    yield 'objects with unique items, by brackets' => [supportMatrixObject(['rows' => $objects]), DeepObjectArrays::Brackets, 2, '`uniqueItems`', '`filter[rows]`'];
+    yield 'objects with unique items, held at their presence' => [supportMatrixObject(['rows' => $objects]), DeepObjectArrays::Any, 0, null, null];
+    yield 'strings with a format, by brackets' => [supportMatrixObject(['links' => $links]), DeepObjectArrays::Brackets, 2, '`format`', '`filter[links][]`'];
+    yield 'strings with a format, held at their presence' => [supportMatrixObject(['links' => $links]), DeepObjectArrays::Any, 0, null, null];
+});
 
 // The note about a required deepObject accepted left out is information: it loses no constraint, so the doctor stays quiet.
 it('does not count a required deepObject accepted when left out', function (): void {

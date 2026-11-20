@@ -14,6 +14,7 @@ use Gcob\LaraSpecFirst\Generation\InputDtoPlanner;
 use Gcob\LaraSpecFirst\Generation\PlannedRequest;
 use Gcob\LaraSpecFirst\Generation\RequestName;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
 use Gcob\LaraSpecFirst\Parsing\SpecDocumentReader;
 use Gcob\LaraSpecFirst\Tests\TestCase;
@@ -131,9 +132,10 @@ function goldenOperation(): Operation
  * operation with nothing to validate has no request and is left out, as it is in a build.
  *
  * @param  list<Operation>  $operations
+ * @param  RuleSetOptions  $options  what the configuration says; the defaults when a test does not care
  * @return array{requests: list<PlannedRequest>, plan: InputDtoPlan}
  */
-function plannedRequests(array $operations, string $controllerShortName = 'Controller'): array
+function plannedRequests(array $operations, string $controllerShortName = 'Controller', RuleSetOptions $options = new RuleSetOptions): array
 {
     $requests = [];
 
@@ -141,7 +143,7 @@ function plannedRequests(array $operations, string $controllerShortName = 'Contr
         $name = RequestName::for($operation);
 
         if ($name !== null) {
-            $requests[] = new PlannedRequest($operation, $name, RuleSetBuilder::for($operation), $controllerShortName);
+            $requests[] = new PlannedRequest($operation, $name, RuleSetBuilder::for($operation, $options), $controllerShortName);
         }
     }
 

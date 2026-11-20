@@ -468,8 +468,11 @@ final class RuleWalk
 
     /**
      * @param  string  $identity  the operation's label, for a refusal's message
+     * @param  RuleSetOptions  $options  what the configuration changes about the rules, the same for every walk of one
+     *                                   operation
      */
     public function __construct(
         public readonly string $identity,
+        public readonly RuleSetOptions $options = new RuleSetOptions,
     ) {}
 }

@@ -27,6 +27,15 @@ tags: [versions, conventions, planning]
 
 ### Added
 
+- **`query.deep_object_arrays` says how a client writes an array inside a `deepObject` query parameter.** OpenAPI leaves
+  it undefined, so the app declares it in `config/lara-spec-first.php`. `brackets`, the default
+  (`?filter[ids][]=1&filter[ids][]=2`, or `filter[ids][0]=1` as PHP's `http_build_query()` writes it), checks the array
+  as a list, with its items, `minItems`, `maxItems` and `uniqueItems`, and refuses a plain string. Under `brackets`, a
+  required array whose schema accepts `[]` may be left out, since an empty list has no bracketed form. `any` checks only
+  that the array is there, with a finding, as before the key existed. `spec:build` reads it, so a change takes another
+  build, and `spec:doctor` reads it too, so it reports the generated requests as drifted until that build. Any other
+  value stops `spec:build`, `spec:make` and `spec:doctor` with a message that names the key. This ships
+  [#218](https://github.com/Gcob/lara-spec-first/issues/218).
 - **`spec:build` names a custom controller whose `routeAction` no longer fits the parent it regenerated.** When the
   contract gains or loses a request or a path parameter, a child that still declares the old list is a class PHP refuses
   to load at its first request. The build now prints one header and one line per such child, with the signature to paste
@@ -400,21 +409,23 @@ tags: [versions, conventions, planning]
   that answered `200` and now answers `422` is one the contract refuses: a value of the wrong type or out of bounds, an
   undeclared key of a closed object, a required property left out, or a required parameter that requires a property. A
   required `deepObject` that requires no property a client sends is accepted left out, since an empty object cannot be
-  written in a query string. An array inside it is checked at its presence only, with a finding, until a configuration
-  key says how clients write it ([#218](https://github.com/Gcob/lara-spec-first/issues/218)), and a property whose name
-  holds a bracket, or a `deepObject` that shares its key with another query name, keeps a finding. Every finding names a
-  property the way a client writes it (`filter[active]`), where it named the dotted rule key. This is a breaking change:
-  send the value the contract describes, or loosen the contract. It closes the `0.2.0` `Known limits` item for
-  [#139](https://github.com/Gcob/lara-spec-first/issues/139), and the reasoning is in
+  written in a query string. An array inside it is checked the way `query.deep_object_arrays` says (see `Added`): by
+  default as a list written with brackets, so `?filter[ids]=1,2` and `?filter[ids]=1`, which `0.2.0` let through, now
+  answer `422` unless the key is `any`. A property whose name holds a bracket, or a `deepObject` that shares its key
+  with another query name, keeps a finding. Every finding names a property the way a client writes it
+  (`filter[active]`), where it named the dotted rule key. This is a breaking change: send the value the contract
+  describes, loosen the contract, or set `query.deep_object_arrays` to `any`. It closes the `0.2.0` `Known limits` item
+  for [#139](https://github.com/Gcob/lara-spec-first/issues/139), and the reasoning is in
   [ADR 0022](./docs/project/decisions/0022-read-a-deep-object-query-by-its-brackets.md).
 - **`spec:doctor`'s exit code moves for a `query` parameter, in three directions.** From `0` to `2`: a keyword inside a
-  `deepObject` that no rule enforces (a property's `format: uri-reference`) is now named, where the whole object was
-  silent. From `2` to `0`: a `deepObject` map's `additionalProperties`, which the request validates now, is no longer
-  named. From `0` to `1`: a `style` that is not one of the four OpenAPI defines for a `query` (`form`, `spaceDelimited`,
-  `pipeDelimited`, `deepObject`), or an `explode` that is not a boolean, is now a fault in the document. It was read by
-  nothing and reported nowhere: the contract carries both as written, the generated file says what is wrong, and the
-  parameter is read as if the keyword were not written. This is a breaking change: every move on the exit-code axis is
-  major, so a CI step that expected the old code will see the new one.
+  `deepObject` that no rule enforces (a property's `format: uri-reference`, an item's too inside an array the key
+  checks) is now named, where the whole object was silent. From `2` to `0`: a `deepObject` map's `additionalProperties`,
+  which the request validates now, is no longer named. From `0` to `1`: a `style` that is not one of the four OpenAPI
+  defines for a `query` (`form`, `spaceDelimited`, `pipeDelimited`, `deepObject`), or an `explode` that is not a
+  boolean, is now a fault in the document. It was read by nothing and reported nowhere: the contract carries both as
+  written, the generated file says what is wrong, and the parameter is read as if the keyword were not written. This is
+  a breaking change: every move on the exit-code axis is major, so a CI step that expected the old code will see the new
+  one.
 - **The build refuses a `query` parameter named like any top-level name the body's schema writes, where it refused only
   a name that had a rule.** A name the body writes without a rule of its own slipped through: a name in `required` that
   `properties` does not declare, in a body that is optional, that may be `null`, that is read as a form, or that a

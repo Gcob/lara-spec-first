@@ -9,10 +9,12 @@ use Gcob\LaraSpecFirst\Contract\QueryParameter;
 use Gcob\LaraSpecFirst\Contract\RequestBody;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Contract\SchemaType;
+use Gcob\LaraSpecFirst\Generation\DeepObjectArrays;
 use Gcob\LaraSpecFirst\Generation\FormRequestEmitter;
 use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\InRule;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
+use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
 use Gcob\LaraSpecFirst\Validation\MultipleOf;
 use Gcob\LaraSpecFirst\Validation\NullOrAbsent;
@@ -1656,14 +1658,15 @@ it('keeps a base64 string a string', function (): void {
  * Emitted rather than copied, so the class under test is what a build writes. Each call gets a namespace of its own,
  * since a class cannot be declared twice.
  *
+ * @param  RuleSetOptions  $options  what the configuration says; the defaults when a test does not care
  * @return class-string<FormRequest>
  */
-function emittedRequestClass(Operation $operation): string
+function emittedRequestClass(Operation $operation, RuleSetOptions $options = new RuleSetOptions): string
 {
     static $count = 0;
 
     $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Emitted\\Run'.++$count;
-    $planned = plannedRequests([$operation])['requests'][0];
+    $planned = plannedRequests([$operation], options: $options)['requests'][0];
     $path = (string) tempnam(sys_get_temp_dir(), 'lsf-request-');
 
     file_put_contents($path, (new FormRequestEmitter($namespace, 'tests/emitted.yaml'))->emit($planned)->contents);
@@ -1671,7 +1674,7 @@ function emittedRequestClass(Operation $operation): string
     unlink($path);
 
     // `dto()` names a class the build writes beside the request, so it has to exist.
-    foreach (plannedRequests([$operation])['plan']->dtos as $dto) {
+    foreach (plannedRequests([$operation], options: $options)['plan']->dtos as $dto) {
         file_put_contents($path, (new InputDtoEmitter($namespace, 'tests/emitted.yaml'))->emit($dto)->contents);
         require $path;
         unlink($path);
@@ -2053,10 +2056,6 @@ it('validates a deepObject query parameter under the keys PHP delivers', functio
         'a string where a nested object belongs' => ['?page[size]=10&filter[created]=x', 422],
         'a boolean written true' => ['?page[size]=10&filter[active]=true', 200],
         'a boolean written yes' => ['?page[size]=10&filter[active]=yes', 422],
-        // The array inside is held at its presence: how a client writes it is not defined, so none of these is refused.
-        'an array written with brackets' => ['?page[size]=10&filter[ids][]=1&filter[ids][]=2', 200],
-        'an array holding a word' => ['?page[size]=10&filter[ids][0]=x', 200],
-        'an array written as one string' => ['?page[size]=10&filter[ids]=1,2', 200],
     ];
 
     foreach ([true, false] as $explode) {
@@ -2076,8 +2075,8 @@ it('answers a deepObject query parameter with the values nested and as text', fu
         ]]);
 });
 
-// A required name the array is held under is still asked for: the parent's `required_array_keys` does it, so holding the
-// array's shape does not hold its presence.
+// Under `any`, a required name the array is held under is still asked for: the parent's `required_array_keys` does it, so
+// holding the array's shape does not hold its presence.
 it('asks for a required property whose value is a held array', function (): void {
     $class = emittedRequestClass(new Operation(
         index: 0,
@@ -2092,7 +2091,7 @@ it('asks for a required property whose value is a held array', function (): void
             ],
             required: ['ids'],
         ), style: 'deepObject', explode: false)],
-    ));
+    ), new RuleSetOptions(DeepObjectArrays::Any));
 
     expect(sendThroughEmitted($class, 'GET', '?filter[a]=1')[0])->toBe(422)
         ->and(sendThroughEmitted($class, 'GET', '?filter[ids]=1,2')[0])->toBe(200);
@@ -2145,12 +2144,132 @@ it('keeps the values of a deepObject map of arrays in the validated data', funct
             properties: ['id' => new Schema(types: [SchemaType::String])],
             additionalPropertiesSchema: new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])),
         ), style: 'deepObject', explode: false)],
-    ));
+    ), new RuleSetOptions(DeepObjectArrays::Any));
 
     expect(sendThroughEmitted($class, 'GET', '?meta[id]=a&meta[n][]=x'))
         ->toEqual([200, ['meta' => ['id' => 'a', 'n' => ['x']]]])
         ->and(sendThroughEmitted($class, 'GET', '?meta[id]=a&meta[n]=x,y'))
         ->toEqual([200, ['meta' => ['id' => 'a', 'n' => 'x,y']]]);
+});
+
+/**
+ * A `GET` with two deepObject query parameters that hold an array: `filter` (a list of integers, a list of objects and
+ * a unique list of booleans) and `meta` (a map of integer lists beside a declared string `id`).
+ */
+function listWithDeepObjectArrays(bool $explode): Operation
+{
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listDeepObjectArrays',
+        queryParameters: [
+            new QueryParameter('filter', new Schema(types: [SchemaType::Object], properties: [
+                'ids' => new Schema(types: [SchemaType::Array], items: $integer, minItems: 1, maxItems: 3, uniqueItems: true),
+                'rows' => new Schema(types: [SchemaType::Array], items: new Schema(
+                    types: [SchemaType::Object],
+                    properties: ['a' => $integer],
+                    required: ['a'],
+                )),
+                'flags' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Boolean]), uniqueItems: true),
+            ]), style: 'deepObject', explode: $explode),
+            new QueryParameter('meta', new Schema(
+                types: [SchemaType::Object],
+                properties: ['id' => new Schema(types: [SchemaType::String])],
+                additionalPropertiesSchema: new Schema(types: [SchemaType::Array], items: $integer),
+            ), style: 'deepObject', explode: $explode),
+        ],
+    );
+}
+
+// The default reading, `brackets`: an array inside a deepObject is a list a client writes with brackets, so each item is
+// judged under its own key and a plain string where the list belongs is refused. `filter[ids][0]=1` is how PHP's own
+// `http_build_query()` writes a list.
+it('validates an array inside a deepObject written with brackets', function (string $query, int $status, array $errors): void {
+    $class = emittedRequestClass(listWithDeepObjectArrays(false));
+
+    [$got, $body] = sendThroughEmitted($class, 'GET', $query);
+
+    expect($got)->toBe($status)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe($errors);
+})->with([
+    'a list written with empty brackets' => ['?filter[ids][]=1&filter[ids][]=2', 200, []],
+    'a list written with indexed brackets, as PHP writes it' => ['?filter[ids][0]=1&filter[ids][1]=2', 200, []],
+    'an item that is no integer' => ['?filter[ids][]=1&filter[ids][]=x', 422, ['filter.ids.1']],
+    'a plain string' => ['?filter[ids]=1', 422, ['filter.ids']],
+    'a comma list' => ['?filter[ids]=1,2', 422, ['filter.ids']],
+    'a gap in the indexes' => ['?filter[ids][0]=1&filter[ids][2]=3', 422, ['filter.ids']],
+    'a key that is no index' => ['?filter[ids][a]=1', 422, ['filter.ids']],
+    'more items than maxItems' => ['?filter[ids][]=1&filter[ids][]=2&filter[ids][]=3&filter[ids][]=4', 422, ['filter.ids']],
+    'the same item twice' => ['?filter[ids][]=1&filter[ids][]=1', 422, ['filter.ids.0', 'filter.ids.1']],
+    'an empty item' => ['?filter[ids][]=', 422, ['filter.ids.0']],
+    'an object of a list of objects that is wrong' => ['?filter[rows][0][a]=1&filter[rows][1][a]=x', 422, ['filter.rows.1.a']],
+    'an object of a list of objects that is right' => ['?filter[rows][][a]=1&filter[rows][][a]=2', 200, []],
+    // The two spellings of `true` pass `distinct:strict`, which compares the text: a known gap of a unique list of
+    // booleans, a form's too, pinned so that its fix shows here.
+    'a unique list of booleans written twice, in two spellings' => ['?filter[flags][]=true&filter[flags][]=1', 200, []],
+    'a map of lists beside a declared name' => ['?meta[id]=a&meta[n][]=1', 200, []],
+    'an item of a map of lists that is no integer' => ['?meta[id]=a&meta[n][]=x', 422, ['meta.n.0']],
+    'a map value that is a comma list' => ['?meta[id]=a&meta[n]=1,2', 422, ['meta.n']],
+]);
+
+it('answers an array inside a deepObject written with brackets, nested and as text', function (): void {
+    $class = emittedRequestClass(listWithDeepObjectArrays(true));
+
+    expect(sendThroughEmitted($class, 'GET', '?filter[ids][]=1&filter[ids][]=2&meta[id]=a&meta[n][]=3'))
+        ->toEqual([200, ['filter' => ['ids' => ['1', '2']], 'meta' => ['id' => 'a', 'n' => ['3']]]]);
+});
+
+// An empty list has no form with brackets, so a required array that may be empty is accepted left out, as a required
+// object that requires nothing a client sends is. `minItems` of 1 keeps it required (next test).
+it('accepts a required array that may be empty left out under brackets', function (string $query, int $status, ?array $validated): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listRequiredEmptyable',
+        queryParameters: [new QueryParameter('filter', new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer])),
+                'a' => new Schema(types: [SchemaType::String]),
+            ],
+            required: ['ids'],
+        ), required: true, style: 'deepObject', explode: false)],
+    ));
+
+    [$got, $body] = sendThroughEmitted($class, 'GET', $query);
+
+    expect($got)->toBe($status);
+
+    if ($validated !== null) {
+        expect($body)->toEqual($validated);
+    }
+})->with([
+    'the array left out' => ['?filter[a]=1', 200, ['filter' => ['a' => '1']]],
+    'the array sent' => ['?filter[ids][]=1', 200, ['filter' => ['ids' => ['1']]]],
+    'the whole parameter left out' => ['', 200, []],
+    'the array sent as a comma list' => ['?filter[ids]=1,2', 422, null],
+]);
+
+it('keeps a required array that cannot be empty required under brackets', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listRequiredIds',
+        queryParameters: [new QueryParameter('filter', new Schema(
+            types: [SchemaType::Object],
+            properties: ['ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer]), minItems: 1)],
+            required: ['ids'],
+        ), required: true, style: 'deepObject', explode: false)],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', '')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?filter[x]=1')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?filter[ids][]=1')[0])->toBe(200);
 });
 
 // The values of a map written beside declared properties go through the guard that spares the declared names, so a value is
