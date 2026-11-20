@@ -237,6 +237,14 @@ final class RuleWalk
     public array $bodyNames = [];
 
     /**
+     * The names of `bodyNames` that are declared under `properties`, which a refusal words differently from a name the
+     * body only requires.
+     *
+     * @var list<string>
+     */
+    public array $bodyProperties = [];
+
+    /**
      * The top-level names whose value the request cannot check when a form sends it, by the reason, worded to follow
      * "the request cannot check it in a form body: ". A name here has no rule and no presence rule.
      *

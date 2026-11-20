@@ -534,11 +534,12 @@ cannot disagree about what the body is.
 **A field named by both the request body and a query parameter is refused, naming the field and both positions.** Not a
 precedence rule, because there is no reading under which one of them is right.
 
-The reason is in the rule set rather than in the request.
+The reason is in the rule set, and in what the request does with a name it cannot give two meanings.
 [A key has one source](#each-field-is-read-from-where-the-contract-put-it) now, but `rules()` holds one entry per name
 and `validated()` one value per name, so a body property and a query parameter of one name would still be two constraint
-sets competing for one key, and the build would be choosing which half of the contract to enforce. It refuses instead,
-the same shape as
+sets competing for one key. A name the body only requires has no rule to compete with, but the request still reads it
+from the query string, so the query string would fill, or hide, what the body's contract asks for. Either way the build
+would be choosing which half of the contract to enforce. It refuses instead, the same shape as
 [two `x-controller` values reducing to one parent](../controllers.md#the-contract-decides-what-is-customizable).
 
 **A name counts when the body's schema writes it, whether or not it has a rule of its own.** That is a name under
@@ -546,7 +547,8 @@ the same shape as
 that is optional or may be `null`, a form body, and a `PATCH` (whose required list is read as partial by default) leave
 such a name without a rule, and a `query` parameter of that name is refused all the same: the request reads that key
 from the query string and drops the body's copy, so the query string would fill, or hide, a name the body's contract
-asks for. A key the schema does not name, an open map's, is not refused: it is
+asks for. That holds for a body read as an object: an array body, or a typeless one that names no `properties`, is not
+read as one and still builds. A key the schema does not name, an open map's, is not refused: it is
 [read from the query string](#one-rule-set-body-and-query), with its finding.
 
 **The name that counts is the one Laravel reads, so a form body's delivered name is compared too.** A body read as a

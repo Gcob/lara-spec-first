@@ -297,7 +297,11 @@ final readonly class RuleSetBuilder
                 }
 
                 if (in_array($parameter->name, $walk->bodyNames, true)) {
-                    throw ConflictingInputException::fieldDeclaredTwice($operation->label(), $parameter->name);
+                    throw ConflictingInputException::fieldDeclaredTwice(
+                        $operation->label(),
+                        $parameter->name,
+                        in_array($parameter->name, $walk->bodyProperties, true),
+                    );
                 }
             }
 
@@ -837,6 +841,7 @@ final readonly class RuleSetBuilder
         $walk->rootKey = self::rootKey($schema, $operation);
 
         $walk->bodyNames = self::declaredNames($schema);
+        $walk->bodyProperties = array_map('strval', array_keys($schema->properties));
 
         foreach ($walk->bodyNames as $name) {
             $walk->bodyKeys[] = $name;

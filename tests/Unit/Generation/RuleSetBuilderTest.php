@@ -1393,15 +1393,28 @@ it('refuses a name declared by both the body and a query parameter', function ()
     )))->toThrow(ConflictingInputException::class, 'both as a property of its request body');
 });
 
+// The generated request reads a `query` key from the query string and drops the body's copy, so that is what the message
+// says the request does, not that the query parameter is the one dropped.
+it('says the request drops the body\'s copy of a name declared by both', function (): void {
+    expect(fn () => RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['page' => new Schema(types: [SchemaType::String])])],
+        query: [new QueryParameter('page', new Schema(types: [SchemaType::Integer]))],
+    )))->toThrow(ConflictingInputException::class, 'reads that key from the query string and drops the body\'s copy');
+});
+
 // `validationData()` reads a `query` key from the query string and drops it from the body, so a name the body writes
 // and a `query` parameter of that name are one key whether or not the body's name got a rule of its own. The build
-// would be choosing which half of the contract to enforce, so the message is a declared property's, to the word.
+// would be choosing which half of the contract to enforce. Such a name is not always a property, so the message says
+// what the body does write, and what the request does with the two copies.
 it('refuses a query parameter that shares its name with a name the body writes, with a rule of its own or without', function (Closure $operation): void {
-    $operation = $operation();
-
-    expect(fn () => RuleSetBuilder::for($operation))->toThrow(
+    expect(fn () => RuleSetBuilder::for($operation()))->toThrow(
         ConflictingInputException::class,
-        ConflictingInputException::fieldDeclaredTwice($operation->label(), 'token')->getMessage(),
+        'declares "token" as a `query` parameter, and its request body writes the same name without declaring a property of that name',
+    );
+
+    expect(fn () => RuleSetBuilder::for($operation()))->toThrow(
+        ConflictingInputException::class,
+        'reads that key from the query string and drops the body\'s copy',
     );
 })->with([
     'an optional JSON body that requires it without declaring it' => [fn (): Operation => operationWithInput(
@@ -1462,24 +1475,31 @@ it('refuses a query parameter that shares its name with a name the body writes, 
 // The refusal reads the names the schema writes at the top, as written. A key the body does not write (an open map's),
 // a name nested below another, a JSON property that happens to carry brackets, and a body that is not an object leave
 // the query string's key alone, as before.
-it('still builds a query parameter named like a key the body does not write', function (Closure $operation, string $information): void {
-    $set = RuleSetBuilder::for($operation());
-
-    expect($set->queryKeys)->toBe(['token'])
-        ->and(implode("\n", $set->information))->toContain($information);
-})->with([
-    'an open map body that names no key' => [fn (): Operation => operationWithInput(
+it('still builds a query parameter named like a key an open map body does not write, with its finding', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
         content: ['application/json' => new Schema(types: [SchemaType::Object])],
         query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
-    ), 'A body key named `token` is not'],
+    ));
+
+    expect($set->queryKeys)->toBe(['token'])
+        ->and(implode("\n", $set->information))->toContain('A body key named `token` is not');
+});
+
+it('still builds a query parameter named like a key the body does not write', function (Closure $operation): void {
+    expect(RuleSetBuilder::for($operation())->queryKeys)->toBe(['token']);
+})->with([
     'a name the body nests below another one' => [fn (): Operation => operationWithInput(
         content: ['application/json' => objectSchema(['address' => new Schema(types: [SchemaType::Object], required: ['token'])])],
         query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
-    ), ''],
+    )],
     'a body whose root is not an object' => [fn (): Operation => operationWithInput(
         content: ['application/json' => new Schema(types: [SchemaType::Array], required: ['token'])],
         query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
-    ), ''],
+    )],
+    'a typeless body that names no properties' => [fn (): Operation => operationWithInput(
+        content: ['application/json' => new Schema(required: ['token'])],
+        query: [new QueryParameter('token', new Schema(types: [SchemaType::String]))],
+    )],
 ]);
 
 it('still builds a query parameter named like a key the body does not write, when a JSON property is written with brackets', function (): void {
