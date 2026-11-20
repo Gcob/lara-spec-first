@@ -1993,6 +1993,155 @@ it('validates the query names PHP rewrites under the key PHP delivers', function
         ->toEqual([200, ['page' => ['size' => '3'], 'user_name' => 'ada']]);
 });
 
+/**
+ * A `GET` whose only query parameters are one deepObject `page`, a deepObject `filter` and a deepObject `meta`.
+ */
+function listWithDeepObjects(bool $explode): Operation
+{
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    return new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listDeepObjects',
+        queryParameters: [
+            new QueryParameter('page', new Schema(
+                types: [SchemaType::Object],
+                properties: [
+                    'size' => new Schema(types: [SchemaType::Integer], minimum: 1.0, multipleOf: 5.0),
+                    'number' => $integer,
+                ],
+                required: ['size'],
+                additionalProperties: false,
+            ), required: true, style: 'deepObject', explode: $explode),
+            new QueryParameter('filter', new Schema(types: [SchemaType::Object], properties: [
+                'created' => new Schema(types: [SchemaType::Object], properties: [
+                    'gte' => new Schema(types: [SchemaType::String], format: 'date'),
+                ]),
+                'active' => new Schema(types: [SchemaType::Boolean]),
+                'ids' => new Schema(types: [SchemaType::Array], items: $integer, minItems: 1, maxItems: 3, uniqueItems: true),
+            ]), style: 'deepObject', explode: $explode),
+        ],
+    );
+}
+
+// A deepObject is validated the way PHP parses its brackets, with `explode` saying nothing: each value is judged under the
+// key PHP delivers it as, answers on `page.size`, and reaches `validated()` nested and as the string a query string sends.
+it('validates a deepObject query parameter under the keys PHP delivers', function (bool $explode, string $query, int $status): void {
+    $class = emittedRequestClass(listWithDeepObjects($explode));
+
+    expect(sendThroughEmitted($class, 'GET', $query)[0])->toBe($status);
+})->with(function (): Generator {
+    $rows = [
+        'one value of each' => ['?page[size]=10&page[number]=2', 200],
+        'a size under its minimum' => ['?page[size]=0', 422],
+        'a size that is not a multiple' => ['?page[size]=7', 422],
+        'a size that is no number' => ['?page[size]=abc', 422],
+        // `integer` refuses it, and `MultipleOf` never sees it: never a 500, whichever of the two the value reaches.
+        'a size of 10^20 written as an exponent' => ['?page[size]=1e99999999999999999999', 422],
+        'a size with an exponent no float holds' => ['?page[size]=1e80000000', 422],
+        'a required size left out' => ['?page[number]=2', 422],
+        'a key the closed object does not declare' => ['?page[size]=10&page[evil]=1', 422],
+        'a string where the object belongs' => ['?page=5', 422],
+        'no page at all' => ['?filter[active]=true', 422],
+        'a nested object' => ['?page[size]=10&filter[created][gte]=2020-01-01', 200],
+        'a nested property of the wrong format' => ['?page[size]=10&filter[created][gte]=yesterday', 422],
+        'a string where a nested object belongs' => ['?page[size]=10&filter[created]=x', 422],
+        'a boolean written true' => ['?page[size]=10&filter[active]=true', 200],
+        'a boolean written yes' => ['?page[size]=10&filter[active]=yes', 422],
+        // The array inside is held at its presence: how a client writes it is not defined, so none of these is refused.
+        'an array written with brackets' => ['?page[size]=10&filter[ids][]=1&filter[ids][]=2', 200],
+        'an array holding a word' => ['?page[size]=10&filter[ids][0]=x', 200],
+        'an array written as one string' => ['?page[size]=10&filter[ids]=1,2', 200],
+    ];
+
+    foreach ([true, false] as $explode) {
+        foreach ($rows as $row => [$query, $status]) {
+            yield $row.($explode ? ', exploded' : ', not exploded') => [$explode, $query, $status];
+        }
+    }
+});
+
+it('answers a deepObject query parameter with the values nested and as text', function (): void {
+    $class = emittedRequestClass(listWithDeepObjects(false));
+
+    expect(sendThroughEmitted($class, 'GET', '?page[size]=10&page[number]=2&filter[created][gte]=2020-01-01&filter[active]=true'))
+        ->toEqual([200, [
+            'page' => ['size' => '10', 'number' => '2'],
+            'filter' => ['created' => ['gte' => '2020-01-01'], 'active' => 'true'],
+        ]]);
+});
+
+// A required name the array is held under is still asked for: the parent's `required_array_keys` does it, so holding the
+// array's shape does not hold its presence.
+it('asks for a required property whose value is a held array', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listRequiredIds',
+        queryParameters: [new QueryParameter('filter', new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer])),
+                'a' => new Schema(types: [SchemaType::String]),
+            ],
+            required: ['ids'],
+        ), style: 'deepObject', explode: false)],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', '?filter[a]=1')[0])->toBe(422)
+        ->and(sendThroughEmitted($class, 'GET', '?filter[ids]=1,2')[0])->toBe(200);
+});
+
+// A map of arrays keeps its `meta.*` key, written with no rule: Laravel drops the values of an undeclared key from
+// `validated()` otherwise, and the request would answer 200 with the array lost. Declared properties and the map's values
+// reach `validated()` together, through the `UndeclaredKeys` guard that spares the declared names.
+it('keeps the values of a deepObject map of arrays in the validated data', function (): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listMeta',
+        queryParameters: [new QueryParameter('meta', new Schema(
+            types: [SchemaType::Object],
+            properties: ['id' => new Schema(types: [SchemaType::String])],
+            additionalPropertiesSchema: new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::String])),
+        ), style: 'deepObject', explode: false)],
+    ));
+
+    expect(sendThroughEmitted($class, 'GET', '?meta[id]=a&meta[n][]=x'))
+        ->toEqual([200, ['meta' => ['id' => 'a', 'n' => ['x']]]])
+        ->and(sendThroughEmitted($class, 'GET', '?meta[id]=a&meta[n]=x,y'))
+        ->toEqual([200, ['meta' => ['id' => 'a', 'n' => 'x,y']]]);
+});
+
+// The values of a map written beside declared properties go through the guard that spares the declared names, so a value is
+// judged by the map's schema and a declared name keeps its own.
+it('judges the values of a deepObject map beside a declared property', function (string $query, int $status, ?string $field): void {
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Get,
+        path: PathTemplate::fromString('/things'),
+        operationId: 'listMetaNumbers',
+        queryParameters: [new QueryParameter('meta', new Schema(
+            types: [SchemaType::Object],
+            properties: ['id' => new Schema(types: [SchemaType::String])],
+            additionalPropertiesSchema: new Schema(types: [SchemaType::Integer]),
+        ), style: 'deepObject', explode: false)],
+    ));
+
+    [$got, $body] = sendThroughEmitted($class, 'GET', $query);
+
+    expect($got)->toBe($status)
+        ->and(array_keys((array) ($body['errors'] ?? [])))->toBe($field === null ? [] : [$field]);
+})->with([
+    'a declared name that is no integer' => ['?meta[id]=a&meta[n]=5', 200, null],
+    'a declared name alone' => ['?meta[id]=abc', 200, null],
+    'a value that is not' => ['?meta[id]=a&meta[n]=x', 422, 'meta.n'],
+]);
+
 // `?page[size]=3` reaches Laravel as `page => [size => 3]` and `?ids[]=1` as `ids => [1]`, so a rule for the plain name
 // meets an array it was never written for. It judges the value only when it is not one, so each nested name is
 // accepted sent alone, and the plain name's own rules still hold (next test).

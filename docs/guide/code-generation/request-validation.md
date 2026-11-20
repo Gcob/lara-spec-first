@@ -176,9 +176,9 @@ statement about the resource's representation, and a query parameter is not part
 as required on a `PATCH` as it is on a `PUT`.
 
 **An array query parameter gets its presence rule and nothing else, and an object query parameter gets nothing, unless
-it is sent as one string.** A query string is not JSON, and what a client sends depends on the parameter's `style` and
-`explode`, so the value reaching the validator is not the shape the schema describes, and every rule about that shape
-would refuse a valid request. The generated file says which serialization it read:
+it is sent as one string or written with `deepObject`.** A query string is not JSON, and what a client sends depends on
+the parameter's `style` and `explode`, so the value reaching the validator is not the shape the schema describes, and
+every rule about that shape would refuse a valid request. The generated file says which serialization it read:
 
 | Type   | Written                                                         | A client sends                                            | The request checks                                 |
 | ------ | --------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------- |
@@ -187,7 +187,8 @@ would refuse a valid request. The generated file says which serialization it rea
 | array  | `deepObject`                                                    | what OpenAPI leaves undefined for an array                | its presence                                       |
 | object | `form` with `explode: true` (the default)                       | one key per property, `?status=a`, and never its own name | nothing: `sometimes`, whatever its `required` flag |
 | object | `form` with `explode: false`                                    | one string under its own name, `?color=R,100,G,200`       | its presence, `present` when it is required        |
-| object | `spaceDelimited`, `pipeDelimited`, `deepObject`                 | what this package does not read for an object             | nothing: `sometimes`, whatever its `required` flag |
+| object | `spaceDelimited`, `pipeDelimited`                               | what this package does not read for an object             | nothing: `sometimes`, whatever its `required` flag |
+| object | `deepObject`                                                    | one key per property under its own name, `?page[size]=10` | everything its schema says, below                  |
 
 A scalar keeps its rules whatever its style, since OpenAPI defines only `form` for a primitive. **A `style` OpenAPI does
 not define for a `query` parameter (anything but `form`, `spaceDelimited`, `pipeDelimited` and `deepObject`), or an
@@ -205,6 +206,39 @@ integer with a `minimum`, `?page[size]=abc` and `?page[size]=0` answer 422 on `p
 `page[size]` out answers 422 too. `validated()` holds the value nested and as the string a query string sends:
 `['page' => ['size' => '3']]`. **`QUERY_KEYS` holds the key each parameter arrives under**, `page` for `page[size]` and
 `page[number]`, once.
+
+**A `deepObject` query parameter is validated as the nested array PHP parses.** `?page[size]=10&page[number]=2` arrives
+as `page => [size => '10', number => '2']`, which is the shape the schema describes, so the parameter goes through the
+same path as the nested object of a form body: each property gets the rules its type would get anywhere else under
+`page.size` and `page.number`, `page` gets `array` and `required_array_keys` for what the schema requires, and
+`validated()` holds the value nested and as the text a query string sends. It is read whatever `explode` says: the
+parser gives `false` to a document that writes `style: deepObject` alone, and OpenAPI 3.2.0 says that for this style the
+field "has no effect". The generated rules look like this, for a required `page` with an integer `size` that is a
+multiple of 5 and a closed object:
+
+```php
+'page' => ['present', 'array:size,number', 'required_array_keys:size'],
+'page.size' => ['sometimes', 'integer', 'min:1', new MultipleOf('5')],
+'page.number' => ['sometimes', 'integer'],
+```
+
+- **The object is closed by its own schema**, unlike the names above: `additionalProperties: false` gives
+  `array:size,number`, so `?page[size]=10&page[evil]=1` answers 422 on `page`. An open object accepts any other key, and
+  a map (`additionalProperties` with a schema) judges every value under `labels.*`.
+- **A nested object reads its brackets** (`filter[created][gte]`), as PHP delivers it and as `http_build_query`, `qs`
+  and Rails write it, so it is validated under `filter.created.gte` with no finding.
+- **An array inside a `deepObject` is checked at its presence only.** OpenAPI says the representation of an array or
+  object property is not defined, and clients write an array more than one way (`filter[ids][]=1`, `filter[ids]=1,2`),
+  so any rule about its shape or its items would refuse a request the contract allows. The key is `sometimes`, or asked
+  for by the parent when the schema requires it, and the generated file says which array is not checked. A configuration
+  key that says how clients write it is tracked in [#218](https://github.com/Gcob/lara-spec-first/issues/218).
+- **Every finding names the property the way a client writes it** (`filter[active]`, not the rule key `filter.active`),
+  and the code a boolean's finding hands over reads the key PHP delivers it under.
+- **A property whose name holds a bracket gets no rule and a finding.** PHP delivers `a[b]` as `a[b`, a key no rule can
+  name, so the property is left out rather than refused on every request. A closed object that declares one gets `array`
+  instead of `array:`, since `array:` would refuse the key PHP delivers.
+- **A `deepObject` that shares its key with another query name keeps the `sometimes` and its finding**: `page` beside
+  `page[size]` would be judged by one key, and the build does not choose which half of the contract to enforce.
 
 **There is no rule on the head, because a query string is not closed.** An undeclared key is ignored on any `query`
 parameter, so `page[evil]=1` beside an optional `page[size]`, or `page=abc`, is an undeclared key that passes and that
