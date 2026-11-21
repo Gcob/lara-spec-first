@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Gcob\LaraSpecFirst\Generation;
 
 use Gcob\LaraSpecFirst\Contract\DocumentPointer;
-use Gcob\LaraSpecFirst\Contract\HttpMethod;
 use Gcob\LaraSpecFirst\Contract\Schema;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
@@ -24,7 +23,7 @@ use Gcob\LaraSpecFirst\Generation\Exceptions\UnusableNameException;
  *
  * **Two types per body, always.** The full one and the `Partial`, even when they are identical, because a class that
  * exists only under a condition is a class a developer has to check for before importing. Only the body's root has a
- * partial: a nested object inside a `PATCH` stays complete.
+ * partial: a nested object inside a partial update (a `PATCH`, or a merge patch) stays complete.
  *
  * **Built before it is written.** One planner per build, so that a refusal costs nothing: no file exists yet when two
  * schemas turn out to share a name.
@@ -182,7 +181,7 @@ final class InputDtoPlanner extends DtoPlanner
             return null;
         }
 
-        $mediaTypes = array_values(array_intersect($body->mediaTypes(), RuleSetBuilder::READ_MEDIA_TYPES));
+        $mediaTypes = RuleSetBuilder::readMediaTypes($body);
         $inline = DocumentPointer::forOperation($operation).'/requestBody/content/'
             .DocumentPointer::escape($mediaTypes[0] ?? '').'/schema';
 
@@ -236,9 +235,9 @@ final class InputDtoPlanner extends DtoPlanner
         $full = $this->register($base.'InputDto', false, $written, $merged, $position, $base, $origin, $naming, $named, $unchecked);
         $partial = $this->register($base.'PartialInputDto', true, $written, $merged, $position, $base, $origin, $naming, $named, $unchecked);
 
-        // The `PATCH` reads the partial type, and so does a body that may be
-        // absent entirely: there every property may be missing.
-        $reads = $operation->method === HttpMethod::Patch || ! $body->required ? $partial : $full;
+        // A partial update reads the partial type (the rule set decides which body is one, so the rules and the DTO
+        // answer the same question), and so does a body that may be absent entirely: there every property may be missing.
+        $reads = $request->rules->partialBody || ! $body->required ? $partial : $full;
 
         $this->readers[$reads][] = $this->identity;
         $this->requests[$reads][] = $request->name->shortName;

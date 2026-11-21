@@ -198,6 +198,26 @@ it('reads the type each method\'s rule set describes', function (string $method,
     'a body that may be absent' => ['post', false, 'DoThingPartialInputDto'],
 ]);
 
+// A JSON merge patch is a partial document by its media type, so the rules let `{}` through on any method and the full
+// type's `from()` would read a name that is absent.
+it('reads the partial type for a merge patch on every method', function (string $method): void {
+    $plan = planDtos([dtoOperation('doThing', ['application/merge-patch+json' => dtoSchema(['a' => dtoString()], ['a'])], $method)]);
+
+    expect($plan->readBy[$method.' /things'])->toBe('DoThingPartialInputDto');
+})->with(['post' => 'post', 'put' => 'put', 'patch' => 'patch']);
+
+// A merge patch over another schema than the JSON one is left unread, so the DTO is the JSON schema's and its position
+// is where that schema is written.
+it('points a merge patch of another schema beside JSON at the JSON schema', function (): void {
+    $plan = planDtos([dtoOperation('doThing', [
+        'application/merge-patch+json' => dtoSchema(['other' => dtoString()]),
+        'application/json' => dtoSchema(['a' => dtoString()], ['a']),
+    ], 'patch')]);
+
+    expect(dtoNamed($plan, 'DoThingPartialInputDto')->position)->toBe('#/paths/~1things/patch/requestBody/content/application~1json/schema')
+        ->and(array_map(static fn ($property): string => $property->name, dtoNamed($plan, 'DoThingPartialInputDto')->properties))->toBe(['a']);
+});
+
 it('lists no reader for the partial type nobody reads', function (): void {
     $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(['a' => dtoString()])])]);
 

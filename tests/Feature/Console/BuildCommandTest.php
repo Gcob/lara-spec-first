@@ -274,6 +274,17 @@ it('warns about a body declared only in a media type it does not read', function
         ->and(is_dir(buildTree().'/Requests'))->toBeFalse();
 });
 
+// The warning tells a reader what to add to serve the body, so it names every media type that is read: a `PATCH` body
+// is most naturally a merge patch.
+it('names application/merge-patch+json in the warning about a body declared only in a media type it does not read', function (): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath('unread-body.yaml'));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+
+    expect($output->fetch())->toContain('`application/merge-patch+json`');
+});
+
 // Scenarios: PUT requires the full body / PATCH makes the same fields optional,
 // over one schema, in one build — which is the only way the two can be compared
 // for anything other than the emitter's own arithmetic.

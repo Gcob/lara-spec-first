@@ -677,7 +677,7 @@ the escape hatch, working exactly as intended.
 
 **`PUT` and `PATCH` share `update()`.** The difference is what the request must carry, not what the controller does, so
 it lives in the generated `FormRequest`, where
-[`PATCH` empties the schema's required list](./code-generation/request-validation.md#patch-empties-the-required-list)
+[a partial update (`PATCH`) empties the schema's required list](./code-generation/request-validation.md#a-partial-update-empties-the-required-list)
 and `PUT` reads it as written. One honest caveat, because it is a real semantic gap most APIs ignore: strict `PUT`
 replaces the resource, so an absent field should return to its default, and `$model->update($data->toArray())` does not
 do that. **[Nothing fills it](./code-generation/request-validation.md#an-absent-field-gets-no-default)**, and the DTO

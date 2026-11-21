@@ -26,7 +26,8 @@ use JsonSerializable;
  *   - Class name taken from the schema `NewUser`, written at `#/components/schemas/NewUser`. Every
  *     operation reaching that schema shares this type.
  *   - The partial type: every property is `Optional`, and `toArray()` leaves out the ones the
- *     client did not send. A `PATCH` reads it, and so does a body that may be absent entirely.
+ *     client did not send. A partial update reads it, and so does a body that may be absent
+ *     entirely.
  *   - Read by `patch /users/{id}`.
  *   - `user-id` is not a PHP identifier, so it is read into `$user_id`. `from()` and `toArray()`
  *     keep the key as written.

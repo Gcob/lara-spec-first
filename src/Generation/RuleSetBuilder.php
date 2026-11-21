@@ -95,10 +95,17 @@ final readonly class RuleSetBuilder
         .'tell it from a body whose every field is optional, and accepts it unless a required property refuses it.';
 
     /**
+     * The JSON merge patch media type (RFC 7396): a JSON body whose document is partial by what the media type says,
+     * whatever the method.
+     */
+    public const MERGE_PATCH = 'application/merge-patch+json';
+
+    /**
      * The media types a generated rule set covers.
      *
-     * All three arrive through `all()`, so one rule set covers them and the order here is only the order a tie is
-     * broken in. What changes between them is whether a part can be a file, which is `uploads.md`'s subject.
+     * All four arrive through `all()`, so one rule set covers them and the order here is only the order a tie is broken
+     * in. What changes between them is whether a part can be a file, which is `uploads.md`'s subject. Which of them a
+     * given body is read as is {@see self::readMediaTypes()}'s to say.
      *
      * @see docs/guide/code-generation/request-validation.md — "One rule set, body and query"
      */
@@ -106,7 +113,13 @@ final readonly class RuleSetBuilder
         'application/json',
         self::MULTIPART,
         'application/x-www-form-urlencoded',
+        self::MERGE_PATCH,
     ];
+
+    /**
+     * The read media types that carry a JSON body: the others are forms.
+     */
+    private const JSON_MEDIA_TYPES = ['application/json', self::MERGE_PATCH];
 
     /**
      * The styles OpenAPI defines for an `in: query` parameter.
@@ -252,20 +265,24 @@ final readonly class RuleSetBuilder
     private static function build(Operation $operation, RuleWalk $walk): RuleSet
     {
         $body = self::bodySchema($operation, $walk);
-        $walk->multipart = $operation->requestBody !== null
-            && array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES)) === [self::MULTIPART];
+        $read = $operation->requestBody === null ? [] : self::readMediaTypes($operation->requestBody);
+        $walk->multipart = $read === [self::MULTIPART];
         if ($operation->requestBody !== null) {
             $walk->encodingDefaults = $operation->requestBody->encodingDefaults;
         }
         $closedKeys = null;
 
-        $read = $operation->requestBody === null
-            ? []
-            : array_values(array_intersect($operation->requestBody->mediaTypes(), self::READ_MEDIA_TYPES));
-        $walk->textSource = $read !== [] && ! in_array('application/json', $read, true) ? 'form body' : null;
-        $walk->mixedBody = count($read) > 1 && in_array('application/json', $read, true);
-        $walk->formBody = array_diff($read, ['application/json']) !== [];
-        $walk->jsonBody = in_array('application/json', $read, true);
+        $json = array_intersect($read, self::JSON_MEDIA_TYPES) !== [];
+        $walk->jsonBody = $json;
+        $walk->formBody = array_diff($read, self::JSON_MEDIA_TYPES) !== [];
+        $walk->mixedBody = $walk->jsonBody && $walk->formBody;
+        $walk->textSource = $read !== [] && ! $json ? 'form body' : null;
+        $walk->mergePatch = in_array(self::MERGE_PATCH, $read, true);
+        $walk->mergePatchAlone = $read === [self::MERGE_PATCH];
+        // Why: decided once, before the body is walked, because the rules and the input DTO must answer the same
+        // question. A merge patch read alone is a partial document by its media type. Beside another read type that
+        // type decides (one rule set cannot read the list two ways), and the method does: a `PATCH` is partial.
+        $walk->partialBody = $read !== [] && ($walk->mergePatchAlone || $operation->method === HttpMethod::Patch);
 
         if ($body !== null) {
             $closedKeys = self::bodyRules($operation, $body, $walk);
@@ -471,7 +488,7 @@ final readonly class RuleSetBuilder
             }
         }
 
-        return new RuleSet($walk->rules, $walk->findings(), $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforcedEntries(), $walk->faultFindings(), $walk->stricterFindings(), $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->informationFindings(), $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys, self::commaLists($walk, $undeclaredKeys));
+        return new RuleSet($walk->rules, $walk->findings(), $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforcedEntries(), $walk->faultFindings(), $walk->stricterFindings(), $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->informationFindings(), $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys, self::commaLists($walk, $undeclaredKeys), $walk->partialBody);
     }
 
     /**
@@ -505,6 +522,98 @@ final readonly class RuleSetBuilder
     }
 
     /**
+     * The media types of a body a rule set is built from, in the order the document declares them.
+     *
+     * **The one place that decides which declared types are read.** It is the declared types the package reads
+     * ({@see self::READ_MEDIA_TYPES}), except a merge patch declared over another schema than the type beside it: the
+     * rules come from one schema, and refusing the build would turn away a contract `main` built with one counted gap,
+     * so the merge patch stays unread and is reported like any other media type the rules do not come from.
+     *
+     * @return list<string>
+     *
+     * @internal Public so the DTO planner and the doctor read the schema the rules were built from.
+     */
+    public static function readMediaTypes(RequestBody $body): array
+    {
+        $read = array_values(array_intersect($body->mediaTypes(), self::READ_MEDIA_TYPES));
+
+        if (! in_array(self::MERGE_PATCH, $read, true)) {
+            return $read;
+        }
+
+        $others = array_values(array_diff($read, [self::MERGE_PATCH]));
+
+        if ($others === [] || $body->content[self::MERGE_PATCH]->sameShapeAs($body->content[$others[0]])) {
+            return $read;
+        }
+
+        return $others;
+    }
+
+    /**
+     * What a client of a media type the package does not read meets, beside the ones it reads: the clause the generated
+     * file and the doctor both say.
+     *
+     * Another media type's body is no JSON body or form, so the rules judge it on an empty body. A `+json` type is the
+     * exception: Laravel reads every `+json` type as JSON, so the body is the real content, held to the rules of the
+     * JSON type beside it (a body that is not an object answers `422`), or to the form's when only a form is read.
+     *
+     * @param  list<string>  $unread  the unread media types the clause is about, all of one kind
+     * @param  list<string>  $read  the media types the rule set reads, which is not empty
+     * @param  string  $contract  how the clause names the contract: "the contract" in the generated file, "your
+     *                            contract" in the doctor
+     * @param  bool  $named  whether a clause about another media type names it (the doctor does when it says two kinds
+     *                       in one sentence), where `it` is the one the sentence before already named
+     *
+     * @internal Public so the doctor says what the generated file says.
+     */
+    public static function unreadConsequence(array $unread, array $read, string $contract, bool $named): string
+    {
+        $json = array_values(array_intersect($read, self::JSON_MEDIA_TYPES));
+
+        if (! self::isJsonSuffixed($unread[0] ?? '')) {
+            return sprintf(
+                'a client that sends %s is judged by the rules of %s on an empty body: a field the schema requires '
+                    .'answers `422`, though %s accepts the request',
+                $named ? self::list($unread) : 'it',
+                self::list($read),
+                $contract,
+            );
+        }
+
+        if ($json === []) {
+            return sprintf(
+                'a client that sends %s is read as JSON, since Laravel reads every `+json` type as JSON, and is judged '
+                    .'by the rules of %s on its real JSON content: an object is held to those rules, though %s accepts '
+                    .'the request',
+                self::list($unread),
+                self::list($read),
+                $contract,
+            );
+        }
+
+        return sprintf(
+            'a client that sends %s is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by '
+                .'the rules of %s on its real content: a body that is not a JSON object%s answers `422`, and an object is '
+                .'held to those rules, though %s accepts the request',
+            self::list($unread),
+            self::list($json),
+            in_array('application/json-patch+json', $unread, true) ? ' (a JSON Patch is a list)' : '',
+            $contract,
+        );
+    }
+
+    /**
+     * Whether Laravel reads a body of this media type as JSON by its suffix.
+     *
+     * @internal Public so the doctor splits the unread types as the generated file does.
+     */
+    public static function isJsonSuffixed(string $mediaType): bool
+    {
+        return str_ends_with($mediaType, '+json');
+    }
+
+    /**
      * The one schema the rule set is built from, or null when the body states none this package reads.
      *
      * @throws ConflictingInputException
@@ -517,34 +626,35 @@ final readonly class RuleSetBuilder
             return null;
         }
 
-        $unread = array_values(array_diff($body->mediaTypes(), self::READ_MEDIA_TYPES));
+        $readTypes = self::readMediaTypes($body);
+        $unread = array_values(array_diff($body->mediaTypes(), $readTypes));
 
         if ($unread !== []) {
             // Reported rather than refused: a body declaring `application/xml`
             // is a contract this package does not serve, and refusing the whole
             // build over it would turn away an operation whose other half is
             // perfectly readable.
-            $readTypes = array_values(array_intersect($body->mediaTypes(), self::READ_MEDIA_TYPES));
+            $unreadJson = array_values(array_filter($unread, self::isJsonSuffixed(...)));
+            $unreadOther = array_values(array_diff($unread, $unreadJson));
 
-            // Why: the generated request reads the JSON body or the form, and a body in another media type leaves
-            // both empty, so the rules of the media types it reads judge it on an empty body.
-            $walk->unenforced(sprintf(
-                'The body declares %s, which this package does not read. Nothing in the rule set '
-                    .'comes from it.%s',
-                self::list($unread),
-                $readTypes === [] ? '' : sprintf(
-                    ' A client that sends it is judged by the rules of %s on an empty body: a field the schema '
-                        .'requires answers `422`, though the contract accepts the request.',
-                    self::list($readTypes),
-                ),
-            ), ['content' => array_map(static fn (string $mediaType): string => '`'.$mediaType.'`', $unread)]);
+            // Why: the generated request reads the JSON body or the form, so a body in another media type leaves both
+            // empty and the rules of the media types it reads judge it on an empty body. A `+json` type is read as JSON
+            // by Laravel, and so is judged on its real content: the two kinds are two sentences.
+            foreach ([$unreadOther, $unreadJson] as $kind) {
+                if ($kind === []) {
+                    continue;
+                }
+
+                $walk->unenforced(sprintf(
+                    'The body declares %s, which this package does not read. Nothing in the rule set '
+                        .'comes from it.%s',
+                    self::list($kind),
+                    $readTypes === [] ? '' : ' '.ucfirst(self::unreadConsequence($kind, $readTypes, 'the contract', false)).'.',
+                ), ['content' => array_map(static fn (string $mediaType): string => '`'.$mediaType.'`', $kind)]);
+            }
         }
 
-        $read = array_filter(
-            $body->content,
-            static fn (string $mediaType): bool => in_array($mediaType, self::READ_MEDIA_TYPES, true),
-            ARRAY_FILTER_USE_KEY,
-        );
+        $read = array_intersect_key($body->content, array_flip($readTypes));
 
         if ($read === []) {
             return null;
@@ -898,8 +1008,7 @@ final readonly class RuleSetBuilder
         $walk->nullableRoot = $schema->isNullable();
         $walk->requiredRoot = $body->required;
         $walk->nullableRequiredBody = $body->required && $walk->jsonRoot && $walk->nullableRoot
-            && $operation->method !== HttpMethod::Patch;
-        $walk->patchBody = $operation->method === HttpMethod::Patch;
+            && ! $walk->partialBody;
         $walk->rootKey = self::rootKey($schema, $operation);
 
         $walk->bodyNames = self::declaredNames($schema);
@@ -945,7 +1054,7 @@ final readonly class RuleSetBuilder
             ],
         );
 
-        self::planFormNames($schema, $walk, $operation->method === HttpMethod::Patch);
+        self::planFormNames($schema, $walk, $walk->partialBody);
         $walk->requiredOnceSent = self::requiredOnceSent($operation, $schema, $body, $walk);
 
         $outside = self::enter($walk, $written, $schema, 'the body');
@@ -1430,8 +1539,8 @@ final readonly class RuleSetBuilder
      * How each of the root's properties is asked for, which is where the method and the body's own `required` flag
      * meet.
      *
-     * - A `PATCH` is a partial update, so the schema's list describes a representation the client is not sending all
-     *   of: every property is `sometimes`.
+     * - A partial body (a `PATCH`, or a merge patch) is a partial update, so the schema's list describes a
+     *   representation the client is not sending all of: every property is `sometimes`.
      * - An optional body may be absent entirely, and a body whose root allows `null` may be `null`, which reaches the
      *   rules as `[]`: a plain presence rule would refuse either, which the contract allows. What the contract means is
      *   "a body or none" (or "`null` or a body"), and `*_with` naming every other key the body may carry says exactly
@@ -1444,7 +1553,7 @@ final readonly class RuleSetBuilder
      */
     private static function rootPresence(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): callable
     {
-        if ($operation->method === HttpMethod::Patch) {
+        if ($walk->partialBody) {
             return static fn (string $name, Schema $property): string => 'sometimes';
         }
 
@@ -1500,10 +1609,10 @@ final readonly class RuleSetBuilder
      * **A rule cannot see `{}`**: every key is out of the data, so `present_with` asks for nothing. The request reads
      * the raw content instead, and this is what it reads: each required name, with the rule it would get in a required
      * body that cannot be `null` (`present` for a name `properties` does not declare). Only a body read as JSON gets
-     * one, and not a `PATCH`, which asks for nothing, nor a required body that cannot be `null`, whose rules already
-     * refuse `{}`. Left out are the names the rules leave out for their own reason, whose findings stay true: a `*`
-     * name, a `readOnly` property, and a name a form client sends under another key (withheld, or unchecked, which a
-     * JSON client would otherwise be refused for).
+     * one, and not a partial body, which asks for nothing, nor a required body that cannot be `null`, whose rules
+     * already refuse `{}`. Left out are the names the rules leave out for their own reason, whose findings stay true: a
+     * `*` name, a `readOnly` property, and a name a form client sends under another key (withheld, or unchecked, which
+     * a JSON client would otherwise be refused for).
      *
      * @return array<string, string>
      *
@@ -1511,7 +1620,7 @@ final readonly class RuleSetBuilder
      */
     private static function requiredOnceSent(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): array
     {
-        if (($body->required && ! $walk->nullableRequiredBody) || ! $walk->jsonBody || $operation->method === HttpMethod::Patch) {
+        if (($body->required && ! $walk->nullableRequiredBody) || ! $walk->jsonBody || $walk->partialBody) {
             return [];
         }
 
@@ -2109,6 +2218,22 @@ final readonly class RuleSetBuilder
 
                     if ($requiredKeys !== []) {
                         $rules[] = 'required_array_keys:'.implode(',', $requiredKeys);
+
+                        // Why: RFC 7396 merges a nested object into the stored one, so a client may send it without a
+                        // name the schema requires, and one rule set keeps the list. An array replaces its items whole,
+                        // so an object in one is a complete value and has nothing to merge.
+                        if ($walk->mergePatch && $walk->partialBody && $walk->underItems === 0 && $walk->textSource !== 'query string') {
+                            $walk->unenforced(sprintf(
+                                'A JSON merge patch (RFC 7396) merges %s into the stored object, so a client may send it '
+                                    .'without %s; the request still asks for them, which is stricter than the contract. '
+                                    .'A nested object of a merge patch is read in full.',
+                                $label,
+                                self::list($requiredKeys),
+                            ), ['required' => array_map(
+                                static fn (string $name): string => self::bracketLabel($walk, $label, $name) ?? rtrim($label, '`').'.'.$name.'`',
+                                $requiredKeys,
+                            )]);
+                        }
                     }
                     array_push($handled, 'properties', 'required', 'dependentRequired', 'additionalProperties');
 
@@ -2178,7 +2303,9 @@ final readonly class RuleSetBuilder
                 // the backticks, as every property below it is labeled (`filter[ids][][a]`).
                 $itemLabel = $walk->textSource === 'query string' ? rtrim($label, '`').'[]`' : $label.'[]';
 
+                $walk->underItems++;
                 self::field($walk, $key.'.*', $itemLabel, $schema->items, '', $contentType);
+                $walk->underItems--;
             }
 
             if ($schema->uniqueItems) {
@@ -3262,7 +3389,7 @@ final readonly class RuleSetBuilder
      * boolean cannot be `""` or `[]` — because there the two say the same thing and `required` is what a reader expects
      * to see.
      *
-     * @see docs/guide/code-generation/request-validation.md — "PATCH empties the required list"
+     * @see docs/guide/code-generation/request-validation.md — "A partial update empties the required list"
      */
     private static function requiredRule(Schema $schema): string
     {
@@ -3374,7 +3501,7 @@ final readonly class RuleSetBuilder
      * presence, the `dependentRequired` that asks for it, its type, then every keyword a rule could have come from.
      *
      * @param  bool  $required  whether the rule set would have asked for the field, which the caller decides: never for
-     *                          a `readOnly` property or a top-level name of a `PATCH`, as for a field it keeps
+     *                          a `readOnly` property or a top-level name of a partial body, as for a field it keeps
      * @param  bool  $dependent  whether `dependentRequired` asks for it
      * @return list<string>
      */
@@ -3399,24 +3526,24 @@ final readonly class RuleSetBuilder
 
     /**
      * Whether the contract asks for a property the rule set drops, read as a field the rule set keeps is: not a
-     * `readOnly` property, which only a response has to carry, and not a top-level name of a `PATCH`, whose body is a
-     * partial update.
+     * `readOnly` property, which only a response has to carry, and not a top-level name of a partial body (a `PATCH`,
+     * or a merge patch), which is a partial update.
      */
     private static function askedWhenDropped(RuleWalk $walk, Schema $property, bool $required, bool $topLevel): bool
     {
-        return $required && ! ($topLevel && $walk->patchBody) && ! self::statesReadOnly($property);
+        return $required && ! ($topLevel && $walk->partialBody) && ! self::statesReadOnly($property);
     }
 
     /**
      * Whether `dependentRequired` asks for a property the rule set drops, read as a kept trigger would ask: the
-     * dependent is not `readOnly`, and not one the object already asks for (a top-level name of a `PATCH` is not asked
-     * for, so the dependency still is).
+     * dependent is not `readOnly`, and not one the object already asks for (a top-level name of a partial body is not
+     * asked for, so the dependency still is).
      */
     private static function askedByDependency(RuleWalk $walk, Schema $property, bool $required, bool $topLevel, bool $dependent): bool
     {
         return $dependent
             && ! self::statesReadOnly($property)
-            && ! ($required && ! ($topLevel && $walk->patchBody));
+            && ! ($required && ! ($topLevel && $walk->partialBody));
     }
 
     /**
@@ -3577,14 +3704,21 @@ final readonly class RuleSetBuilder
             $walk->information(self::EMPTY_FORM_FINDING);
         }
 
-        if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
-            // Why: a partial update is what `PATCH` means (RFC 5789), so the sentence says what the request reads and
-            // loses no constraint.
-            $walk->information(sprintf(
-                'A `PATCH` is a partial update, so the schema\'s required list (%s) is read as '
-                    .'empty here. Every property is `sometimes`.',
-                self::list($schema->required),
-            ));
+        if ($walk->partialBody && $schema->required !== []) {
+            // Why: a partial update is what `PATCH` means (RFC 5789) and what a JSON merge patch is (RFC 7396), so the
+            // sentence says what the request reads and loses no constraint. Beside another media type, that one decides.
+            $walk->information($walk->mergePatchAlone
+                ? sprintf(
+                    'The body is a JSON merge patch (`%s`, RFC 7396), so the schema\'s required list (%s) is read as '
+                        .'empty here. Every top-level property is `sometimes`.',
+                    self::MERGE_PATCH,
+                    self::list($schema->required),
+                )
+                : sprintf(
+                    'A `PATCH` is a partial update, so the schema\'s required list (%s) is read as '
+                        .'empty here. Every property is `sometimes`.',
+                    self::list($schema->required),
+                ));
         } elseif (! $body->required && $schema->required !== [] && $walk->formBody) {
             // Why: a JSON body is not named here, since the request reads its raw content and refuses `{}` itself.
             // A form is the one it cannot read that way: its fields need not show in the content.
@@ -3603,7 +3737,21 @@ final readonly class RuleSetBuilder
             ), ['required' => array_map(static fn (string $name): string => '`'.$name.'`', $schema->required)]);
         }
 
-        if ($operation->method === HttpMethod::Put) {
+        if ($walk->mergePatch && ! $walk->mergePatchAlone && ! $walk->partialBody && $schema->required !== []) {
+            // Why: one rule set reads the list one way, so the media type that reads it as written decides, and a merge
+            // patch that leaves a required name out is refused, though RFC 7396 lets it.
+            $walk->unenforced(sprintf(
+                'A JSON merge patch (RFC 7396) may leave out any property, but this body is also read as %s, which reads '
+                    .'the schema\'s required list as written here, and one rule set cannot read the list two ways. A merge '
+                    .'patch that leaves out %s answers `422`, which is stricter than the contract.',
+                self::list(array_values(array_diff(self::readMediaTypes($body), [self::MERGE_PATCH]))),
+                self::list($schema->required),
+            ), ['required' => array_map(static fn (string $name): string => '`'.$name.'`', $schema->required)]);
+        }
+
+        // Why: a merge patch is not a replacement, so the sentence about a field the client omitted keeping its stored
+        // value, and overriding `update()` for replacement semantics, would say the opposite of what the body is.
+        if ($operation->method === HttpMethod::Put && ! $walk->partialBody) {
             $optional = array_values(array_diff(array_map('strval', array_keys($schema->properties)), $schema->required));
 
             if ($optional !== []) {
@@ -3742,8 +3890,8 @@ final readonly class RuleSetBuilder
      * beside `filter[a][b]` at any depth, `ids` beside `ids[]`): its rules judge the value only when it is not an
      * array, which is what the nested names are ({@see self::recordShapes()}), and each nested name keeps its own. A
      * `*` name has no rule but claims its path, so it shapes the name above it unless the contract asks for that name
-     * (a `PATCH` asks for none through `required`) or the body is closed (the level could not be closed, since the key
-     * check cannot name a `*` key), whose rule then keeps its form and says it is stricter. A name typed `array` or
+     * (a partial body asks for none through `required`) or the body is closed (the level could not be closed, since the
+     * key check cannot name a `*` key), whose rule then keeps its form and says it is stricter. A name typed `array` or
      * `object` may be an array itself, so it keeps the collision: no rule for it or the name below it. **A body that is
      * JSON as well shapes a top-level name PHP leaves alone** the same way, with the array dropped, since no name below
      * it has a rule there; a name PHP rewrites keeps the collision, as a JSON client sends it under one key and a form
@@ -3754,7 +3902,7 @@ final readonly class RuleSetBuilder
      * keys without refusing one of the clients. A presence rule is left out for the same reason, and a finding says
      * where the form value arrives.
      */
-    private static function planFormNames(Schema $schema, RuleWalk $walk, bool $patch): void
+    private static function planFormNames(Schema $schema, RuleWalk $walk, bool $partial): void
     {
         if (! $walk->formBody) {
             return;
@@ -3961,7 +4109,7 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
-            $asked = (! $patch && in_array($upper, $schema->required, true)) || in_array($upper, $dependent, true);
+            $asked = (! $partial && in_array($upper, $schema->required, true)) || in_array($upper, $dependent, true);
 
             // Why: a closed body refuses `page[evil]`, and the key check of the level a shaped `page` holds cannot name the
             // `*` key (Laravel hides it behind a placeholder), so that level would stay open and accept what the contract
@@ -4031,7 +4179,7 @@ final readonly class RuleSetBuilder
                 }
             }
 
-            self::recordShaped($schema, $shaped, $collided, $walk, $patch);
+            self::recordShaped($schema, $shaped, $collided, $walk, $partial);
 
             return;
         }
@@ -4045,7 +4193,7 @@ final readonly class RuleSetBuilder
             $walk->deliveredKeys[$name] = self::pathKey($paths[$name]);
         }
 
-        self::recordShaped($schema, $shaped, $collided, $walk, $patch);
+        self::recordShaped($schema, $shaped, $collided, $walk, $partial);
 
         // The key two names deliver under one holds no rule, so only the array a form builds for a name below it can
         // reach it, and `dto()` would hand that array to a property typed for a scalar.
@@ -4094,7 +4242,7 @@ final readonly class RuleSetBuilder
      * @param  array<string, true>  $shaped
      * @param  array<string, true>  $collided
      */
-    private static function recordShaped(Schema $schema, array $shaped, array $collided, RuleWalk $walk, bool $patch): void
+    private static function recordShaped(Schema $schema, array $shaped, array $collided, RuleWalk $walk, bool $partial): void
     {
         foreach (array_keys($shaped) as $name) {
             $name = (string) $name;
@@ -4122,8 +4270,8 @@ final readonly class RuleSetBuilder
             }
 
             // Why: the array a form builds for the names below stands in for the name, so a form can send the body
-            // without it, and the payload cannot promise it. A `PATCH` asks for no presence, so nothing stands in.
-            if (! $patch && in_array($name, $schema->required, true)) {
+            // without it, and the payload cannot promise it. A partial body asks for no presence, so nothing stands in.
+            if (! $partial && in_array($name, $schema->required, true)) {
                 $walk->standIn[$name] = $walk->mixedBody
                     ? 'whether it was sent, since an array under it, which a form builds for the names nested under it or a JSON '
                         .'client sends, stands in for it'

@@ -181,8 +181,8 @@ final class BuildCommand extends Command
         if ($plan->unreadBodies !== []) {
             $this->components->warn(sprintf(
                 '%d operation(s) declare a body only in media types this package does not read, so '
-                    .'nothing validates it. Add `application/json`, `multipart/form-data` or '
-                    .'`application/x-www-form-urlencoded` to serve it.',
+                    .'nothing validates it. Add `application/json`, `application/merge-patch+json`, '
+                    .'`multipart/form-data` or `application/x-www-form-urlencoded` to serve it.',
                 count($plan->unreadBodies),
             ));
 

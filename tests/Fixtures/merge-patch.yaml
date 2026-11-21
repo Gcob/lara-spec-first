@@ -1,0 +1,70 @@
+# A JSON merge patch (RFC 7396) is a partial document, so the request reads it as one and every top-level property is
+# optional. Each operation here is read in full, with nothing left unenforced: a merge patch alone on a `PATCH`, one
+# on a `POST`, and a `PATCH` that declares JSON and a merge patch over one schema.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /people/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      operationId: patchPerson
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                age: { type: integer }
+              required: [name]
+      responses:
+        '200': { description: OK }
+  /notes:
+    post:
+      operationId: createNote
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                body: { type: string }
+              required: [title]
+      responses:
+        '201': { description: Created }
+  /tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      operationId: patchTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Task'
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/Task'
+      responses:
+        '200': { description: OK }
+components:
+  schemas:
+    Task:
+      type: object
+      properties:
+        done: { type: boolean }
+        label: { type: string }
+      required: [done]

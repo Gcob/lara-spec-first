@@ -2100,6 +2100,211 @@ it('reports a media type it does not read rather than refusing it', function ():
         ->and(implode('', $set->findings))->toContain('`application/xml`, which this package does not read');
 });
 
+// --- A JSON merge patch (RFC 7396) is a partial document, whatever the method ---
+
+/**
+ * The required-list sentence a merge patch read alone writes.
+ */
+const MERGE_PATCH_SENTENCE = 'The body is a JSON merge patch (`application/merge-patch+json`, RFC 7396), so the schema\'s required list';
+
+/**
+ * A body of two strings, `name` required, that a merge patch (and a JSON body) may carry.
+ */
+function namedBody(): Schema
+{
+    return objectSchema(
+        ['name' => new Schema(types: [SchemaType::String]), 'age' => new Schema(types: [SchemaType::Integer])],
+        ['name'],
+    );
+}
+
+it('reads the required list of a merge patch as empty, on every method', function (string $method): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: ['application/merge-patch+json' => namedBody()],
+    ), new RuleSetOptions);
+
+    expect($set->rules)->toEqual([
+        'name' => ['sometimes', 'string'],
+        'age' => ['sometimes', new WholeNumber, 'numeric'],
+    ])
+        ->and(implode(' ', $set->information))->toContain(MERGE_PATCH_SENTENCE.' (`name`) is read as empty here')
+        ->and($set->unenforced)->not->toHaveKey('content')
+        ->and($set->leavesUnenforced())->toBeFalse()
+        ->and($set->partialBody)->toBeTrue()
+        ->and(implode(' ', $set->findings))->not->toContain('A `PUT` whose schema')
+        ->and(implode(' ', $set->findings))->not->toContain('A `PATCH` is a partial update');
+})->with(['patch' => 'patch', 'put' => 'put', 'post' => 'post']);
+
+it('reads a merge patch beside application/json as one partial JSON body on a PATCH', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: [
+            'application/json' => objectSchema(['done' => new Schema(types: [SchemaType::Boolean])], ['done']),
+            'application/merge-patch+json' => objectSchema(['done' => new Schema(types: [SchemaType::Boolean])], ['done']),
+        ],
+    ), new RuleSetOptions);
+    $information = implode(' ', $set->information);
+
+    expect($set->rules)->toBe(['done' => ['sometimes', 'boolean:strict']])
+        ->and($set->unenforced)->toBe([])
+        ->and($information)->toContain('The body declares `application/json` and `application/merge-patch+json` over one schema')
+        ->and($information)->toContain('A `PATCH` is a partial update')
+        ->and($information)->not->toContain('JSON merge patch')
+        ->and($set->partialBody)->toBeTrue();
+});
+
+it('counts a merge patch held to the list a POST reads as written beside application/json', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'post',
+        content: [
+            'application/json' => namedBody(),
+            'application/merge-patch+json' => namedBody(),
+        ],
+    ), new RuleSetOptions);
+    $gap = array_values(array_filter($set->findings, static fn (string $line): bool => str_contains($line, 'one rule set cannot read')));
+
+    expect($set->rules['name'])->toBe(['present', 'string'])
+        ->and($gap)->toHaveCount(1)
+        ->and($gap[0])->toContain('A JSON merge patch (RFC 7396) may leave out any property')
+        ->and($set->unenforced)->toBe(['required' => ['`name`']])
+        ->and($set->leavesUnenforced())->toBeTrue()
+        ->and($set->stricter)->toBe([])
+        ->and($set->partialBody)->toBeFalse();
+});
+
+it('counts a nested object a merge patch requires names of', function (
+    Schema $body,
+    array $unenforced,
+    string $method,
+    string $mediaType,
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(method: $method, content: [$mediaType => $body]), new RuleSetOptions);
+
+    expect($set->unenforced)->toBe($unenforced)
+        ->and($set->leavesUnenforced())->toBe($unenforced !== []);
+
+    if ($unenforced !== []) {
+        expect($set->rules['address'])->toContain('required_array_keys:city,street')
+            ->and(implode(' ', $set->findings))->toContain('merges `address` into the stored object')
+            ->and(implode(' ', $set->findings))->toContain('`city` and `street`');
+    }
+})->with(function (): array {
+    $text = new Schema(types: [SchemaType::String]);
+    $address = static fn (array $required): Schema => objectSchema(['city' => $text, 'street' => $text], array_values($required));
+
+    return [
+        'a nested object that requires names' => [
+            objectSchema(['address' => $address(['city', 'street'])]), ['required' => ['`address.city`', '`address.street`']], 'patch', 'application/merge-patch+json',
+        ],
+        'an object inside the items of an array' => [
+            objectSchema(['addresses' => new Schema(types: [SchemaType::Array], items: $address(['city']))]), [], 'patch', 'application/merge-patch+json',
+        ],
+        'an application/json PATCH' => [
+            objectSchema(['address' => $address(['city', 'street'])]), [], 'patch', 'application/json',
+        ],
+        'a nested object that requires nothing' => [
+            objectSchema(['address' => $address([])]), [], 'patch', 'application/merge-patch+json',
+        ],
+    ];
+});
+
+it('reads a merge patch beside a form as one rule set', function (): void {
+    $avatar = new Schema(types: [SchemaType::String], isFilePart: true);
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: [
+            'multipart/form-data' => objectSchema(['name' => new Schema(types: [SchemaType::String]), 'avatar' => $avatar], ['name']),
+            'application/merge-patch+json' => objectSchema(['name' => new Schema(types: [SchemaType::String]), 'avatar' => $avatar], ['name']),
+        ],
+    ), new RuleSetOptions);
+
+    expect($set->rules['name'])->toBe(['sometimes', 'string'])
+        ->and($set->rules['avatar'])->toBe(['sometimes', 'string'])
+        ->and($set->multipart)->toBeFalse()
+        ->and(implode(' ', $set->findings))->toContain('A part the schema marks as a file is then read as a string')
+        ->and($set->unenforced)->toHaveKey('format');
+});
+
+it('says a JSON Patch beside a merge patch is read as JSON on its real content', function (string $other, bool $says): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: [
+            'application/merge-patch+json' => namedBody(),
+            $other => namedBody(),
+        ],
+    ), new RuleSetOptions);
+    $findings = implode(' ', $set->findings);
+
+    expect($set->unenforced['content'])->toBe(['`'.$other.'`'])
+        ->and($findings)->toContain('The body declares `'.$other.'`, which this package does not read');
+
+    if ($says) {
+        expect($findings)->toContain('A client that sends `'.$other.'` is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `application/merge-patch+json` on its real content: a body that is not a JSON object (a JSON Patch is a list) answers `422`, and an object is held to those rules, though the contract accepts the request.')
+            ->and($findings)->not->toContain('on an empty body');
+    } else {
+        expect($findings)->toContain('judged by the rules of `application/merge-patch+json` on an empty body')
+            ->and($findings)->not->toContain('read as JSON');
+    }
+})->with([
+    'a JSON Patch' => ['application/json-patch+json', true],
+    'XML' => ['application/xml', false],
+]);
+
+it('reads the other media type and leaves a merge patch of another schema unread', function (
+    string $other,
+    string $sentence,
+): void {
+    $avatar = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'post',
+        content: [
+            $other => objectSchema(['title' => new Schema(types: [SchemaType::String]), 'avatar' => $avatar], ['title']),
+            'application/merge-patch+json' => objectSchema(['name' => new Schema(types: [SchemaType::String])]),
+        ],
+    ), new RuleSetOptions);
+    $findings = implode(' ', $set->findings);
+
+    expect(array_keys($set->rules))->toBe(['title', 'avatar'])
+        ->and($set->unenforced['content'])->toBe(['`application/merge-patch+json`'])
+        ->and($findings)->toContain($sentence)
+        ->and($findings)->not->toContain('on an empty body')
+        ->and($findings)->not->toContain('over one schema')
+        ->and($set->multipart)->toBe($other === 'multipart/form-data');
+
+    if ($other === 'multipart/form-data') {
+        expect($set->rules['avatar'])->toBe(['sometimes', 'file', 'mimetypes:image/png'])
+            ->and($findings)->not->toContain('A part the schema marks as a file is then read as a string');
+    }
+})->with([
+    'application/json' => [
+        'application/json',
+        'is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `application/json` on its real content: a body that is not a JSON object answers `422`',
+    ],
+    'a urlencoded form' => [
+        'application/x-www-form-urlencoded',
+        'is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `application/x-www-form-urlencoded` on its real JSON content: an object is held to those rules',
+    ],
+    'multipart/form-data' => [
+        'multipart/form-data',
+        'is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `multipart/form-data` on its real JSON content: an object is held to those rules',
+    ],
+]);
+
+it('reads a merge patch beside multipart over one schema with the file part as a string', function (): void {
+    $avatar = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $body = objectSchema(['avatar' => $avatar]);
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'post',
+        content: ['multipart/form-data' => $body, 'application/merge-patch+json' => $body],
+    ), new RuleSetOptions);
+
+    expect($set->rules['avatar'])->toBe(['sometimes', 'string'])
+        ->and($set->multipart)->toBeFalse()
+        ->and(implode(' ', $set->findings))->toContain('A part the schema marks as a file is then read as a string')
+        ->and($set->unenforced)->not->toHaveKey('content');
+});
+
 // --- Every constraint maps or reports: one case per row of the table ---
 
 /**

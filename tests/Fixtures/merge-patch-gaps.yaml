@@ -1,0 +1,91 @@
+# Each operation reads a merge patch in a way the request enforces more than the contract: one rule set cannot read the
+# required list two ways, a nested object keeps its list, a merge patch over another schema stays unread, and a JSON
+# Patch beside a merge patch is read as JSON. The doctor counts every one, so it exits 2.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Order'
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/Order'
+      responses:
+        '201': { description: Created }
+  /profiles:
+    patch:
+      operationId: patchProfile
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                address:
+                  type: object
+                  properties:
+                    city: { type: string }
+                    street: { type: string }
+                  required: [city, street]
+      responses:
+        '200': { description: OK }
+  /notes:
+    patch:
+      operationId: patchNote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+          application/merge-patch+json:
+            schema:
+              type: object
+              properties:
+                title:
+                  oneOf:
+                    - type: string
+                    - type: integer
+      responses:
+        '200': { description: OK }
+  /documents:
+    patch:
+      operationId: patchDocument
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+          application/json-patch+json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  op: { type: string }
+                  path: { type: string }
+      responses:
+        '200': { description: OK }
+components:
+  schemas:
+    Order:
+      type: object
+      properties:
+        reference: { type: string }
+        note: { type: string }
+      required: [reference]

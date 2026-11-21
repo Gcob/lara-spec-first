@@ -5099,3 +5099,67 @@ it('answers 422 to a map value too large for a double', function (): void {
     expect(errorsForRawJson($class, '{"a": 4, "b": 1e400}'))->toBe([422, ['b' => ['The b field must be a multiple of 2.']]])
         ->and(errorsForRawJson($class, '{"a": 4, "b": 6}')[0])->toBe(200);
 });
+
+/**
+ * An operation whose body is a person: `name` is required and not nullable, `age` is optional, and an `address` needs
+ * both of its keys.
+ *
+ * @param  list<string>  $mediaTypes  one schema, read by every media type
+ */
+function personBody(HttpMethod $method, array $mediaTypes): Operation
+{
+    $text = new Schema(types: [SchemaType::String]);
+
+    return new Operation(
+        index: 0,
+        method: $method,
+        path: PathTemplate::fromString('/people/{id}'),
+        operationId: 'changePerson',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'name' => $text,
+                'age' => new Schema(types: [SchemaType::Integer]),
+                'address' => new Schema(types: [SchemaType::Object], properties: ['city' => $text, 'street' => $text], required: ['city', 'street']),
+            ],
+            required: ['name'],
+        )), true),
+    );
+}
+
+// A merge patch is a partial document (RFC 7396): nothing is required of a top-level key, whatever the method, and a
+// value is judged when it is sent. The nested object keeps its list, which the doctor counts.
+it('answers a merge patch as a partial JSON body through the kernel', function (
+    HttpMethod $method,
+    array $mediaTypes,
+    string $contentType,
+    string $content,
+    int $status,
+    array $errorKeys,
+    ?array $dto,
+): void {
+    $class = emittedRequestClass(personBody($method, array_values($mediaTypes)));
+
+    expect(dtoForContentType($class, $contentType, $content))->toBe([$status, $errorKeys, $dto]);
+})->with(function (): array {
+    $patch = [HttpMethod::Patch, ['application/merge-patch+json'], 'application/merge-patch+json'];
+
+    return [
+        'an empty object' => [...$patch, '{}', 200, [], []],
+        'a value sent' => [...$patch, '{"name":"x"}', 200, [], ['name' => 'x']],
+        'a value the schema refuses' => [...$patch, '{"age":"x"}', 422, ['age'], null],
+        'null for a name that is not nullable' => [...$patch, '{"name":null}', 422, ['name'], null],
+        'no content, for a required body' => [...$patch, '', 422, ['body'], null],
+        'a POST with an empty object' => [HttpMethod::Post, ['application/merge-patch+json'], 'application/merge-patch+json', '{}', 200, [], []],
+        'a nested object without a name it requires' => [...$patch, '{"address":{"city":"x"}}', 422, ['address'], null],
+        'a JSON Patch beside a merge patch' => [
+            HttpMethod::Patch,
+            ['application/json-patch+json', 'application/merge-patch+json'],
+            'application/json-patch+json',
+            '[{"op":"remove","path":"/a"}]',
+            422,
+            ['body'],
+            null,
+        ],
+    ];
+});

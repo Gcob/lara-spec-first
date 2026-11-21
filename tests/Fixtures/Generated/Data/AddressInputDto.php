@@ -24,7 +24,7 @@ use JsonSerializable;
  *   - Class name taken from the schema `Address`, written at `#/components/schemas/Address`. Every
  *     operation reaching that schema shares this type.
  *   - No operation reads this type directly: it is the type of a property of another DTO, or the
- *     full type of a body that only a `PATCH` or an optional body sends.
+ *     full type of a body that only a partial update or an optional body sends.
  *
  * Navigation
  *

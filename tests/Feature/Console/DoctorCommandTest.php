@@ -425,6 +425,52 @@ it('exits 0 for a contract whose findings lose no constraint', function (): void
     }
 });
 
+// A merge patch is read, as a partial body, so the doctor no longer counts it as a media type nothing reads, and the
+// three readings of the fixture lose nothing.
+it('exits 0 for a merge patch it read as a partial body', function (): void {
+    [$exit, $report] = doctorJson('merge-patch.yaml');
+
+    expect($exit)->toBe(0)
+        ->and(doctorSupportFindings($report, 'partial'))->toBe([])
+        ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
+
+    $operations = extractFixture('merge-patch.yaml');
+
+    expect($operations)->toHaveCount(3);
+
+    foreach ($operations as $operation) {
+        expect(RuleSetBuilder::for($operation, new RuleSetOptions)->leavesUnenforced())->toBeFalse();
+    }
+});
+
+// One operation per merge patch reading the request holds to more than the contract, each counted with its keyword.
+it('exits 2 for each merge patch reading it counts', function (): void {
+    [$exit, $report] = doctorJson('merge-patch-gaps.yaml');
+
+    $partial = doctorSupportFindings($report, 'partial');
+    $messages = array_column($partial, 'message', 'pointer');
+
+    expect($exit)->toBe(2)
+        ->and($partial)->toHaveCount(4)
+        ->and($messages['#/paths/~1orders/post'])->toContain('post /orders writes `required`')
+        ->and($messages['#/paths/~1orders/post'])->toContain('`reference`')
+        ->and($messages['#/paths/~1profiles/patch'])->toContain('patch /profiles writes `required`')
+        ->and($messages['#/paths/~1profiles/patch'])->toContain('`address.city`')
+        ->and($messages['#/paths/~1profiles/patch'])->toContain('`address.street`')
+        ->and($messages['#/paths/~1notes/patch'])->toContain('patch /notes declares a media type this package does not read: `application/merge-patch+json`')
+        ->and($messages['#/paths/~1notes/patch'])->toContain('is read as JSON, since Laravel reads every `+json` type as JSON')
+        ->and($messages['#/paths/~1documents/patch'])->toContain('patch /documents declares a media type this package does not read: `application/json-patch+json`')
+        ->and($messages['#/paths/~1documents/patch'])->toContain('on its real content: a body that is not a JSON object (a JSON Patch is a list) answers `422`');
+
+    // The merge patch of `/notes` is over another schema and unread, so the `oneOf` it writes alone is not reported.
+    expect(doctorSupportFindings($report, 'ignored'))->toBe([])
+        ->and(json_encode($report['findings']))->not->toContain('oneOf');
+
+    foreach (extractFixture('merge-patch-gaps.yaml') as $operation) {
+        expect(RuleSetBuilder::for($operation, new RuleSetOptions)->leavesUnenforced())->toBeTrue();
+    }
+});
+
 // `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not
 // read as a file is left out of the rules, and that is a package limit it names: a keyword the matrix rates as honored
 // in general. Its own section is "Parameters, bodies, responses", not "Schemas". The type OpenAPI gives a part anyway
