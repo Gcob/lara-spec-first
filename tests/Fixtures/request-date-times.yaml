@@ -1,0 +1,82 @@
+# Every place a request body can hold a `date-time`, and a `date` beside them: a property, a nullable one, a nested
+# object, a list of objects, a list, a list whose items may be null, a map whose values may be null, and a body that is
+# a map of them. `GeneratedInputDtoTest` runs it through the generated request and DTO to see each one set to the app
+# timezone, and `date` left alone.
+openapi: 3.1.0
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /events:
+    post:
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+      responses:
+        '201':
+          description: Created
+  /schedules:
+    post:
+      operationId: createSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+                format: date-time
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Event:
+      type: object
+      required: [title, starts_at]
+      properties:
+        title:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+        closes_at:
+          type: [string, 'null']
+          format: date-time
+        day:
+          type: string
+          format: date
+        venue:
+          type: object
+          properties:
+            opens_at:
+              type: string
+              format: date-time
+        sessions:
+          type: array
+          items:
+            type: object
+            properties:
+              starts_at:
+                type: string
+                format: date-time
+        reminders:
+          type: array
+          items:
+            type: string
+            format: date-time
+        alarms:
+          type: array
+          items:
+            type: [string, 'null']
+            format: date-time
+        seen:
+          type: object
+          additionalProperties:
+            type: [string, 'null']
+            format: date-time
