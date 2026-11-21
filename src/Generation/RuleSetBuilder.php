@@ -1136,9 +1136,24 @@ final readonly class RuleSetBuilder
 
         $kept = [];
         $openForValue = [];
+        $dropped = [];
 
         foreach ($steps as $level => $below) {
             $level = (string) $level;
+
+            // Why: the array branch of a level ends in `exclude`, which removes the level from the data before a level
+            // below it is judged, so a rule written for that level would never run. The key check accepts what is sent
+            // there, and the finding below says so.
+            foreach ($dropped as $droppedLevel) {
+                if (str_starts_with($level, $droppedLevel.'.')) {
+                    foreach (array_keys($below) as $name) {
+                        $accepted[(string) $name] = $level;
+                    }
+
+                    continue 2;
+                }
+            }
+
             $keys = array_values(array_unique(array_values($below)));
 
             $commas = array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) !== [];
@@ -1173,7 +1188,9 @@ final readonly class RuleSetBuilder
 
                 $walk->arrayKeys[$level] = $keys;
 
-                if (! in_array($level, $walk->dropsArray, true)) {
+                if (in_array($level, $walk->dropsArray, true)) {
+                    $dropped[] = $level;
+                } else {
                     $kept[] = $level;
                 }
 

@@ -346,8 +346,9 @@ name:** `page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and
 as the contract refuses them, while `page=2` and `page[size]=3` still pass. A branch that drops the array holds the keys
 too, in front of the `exclude` (`['array:b', 'exclude']` for `filter[a]` beside an object `filter[a][b]` that has a name
 below it, so both are withheld), so `filter[a][evil]=1` is refused there too, where that level stayed open. So is
-`a[evil]=1` beside `a`, `a[c]` and `a[c]x`, whose branch is `['array:c', 'exclude']`. A key `array:` cannot name keeps
-`['array']`, and the generated file says the key check accepts it: a comma in a key, and the key of a `*` name
+`a[evil]=1` beside `a`, `a[c]` and `a[c]x`, whose branch is `['array:c', 'exclude']`; the level two below `a` (`a[b][c]`
+and `a[b][c]x`) is out of that branch's reach, so the file says the key check accepts it. A key `array:` cannot name
+keeps `['array']`, and the generated file says the key check accepts it: a comma in a key, and the key of a `*` name
 (`page[*]` beside `page[size]`), which Laravel hides behind a placeholder, so `array:size,*` would refuse the
 `page[*]=5` the contract declares. That level accepts `page[evil]=1` too. A comparison is step by step, so `filter[a]`
 is no ancestor of `filter[ab][c]`. **`dto()` reads the name only when it is not an array:** the request lists such names

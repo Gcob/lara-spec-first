@@ -157,8 +157,9 @@ tags: [versions, conventions, planning]
 - **A closed form body that declares two names under one bracketed key now refuses an undeclared key beside them, where
   it used to accept it.** PHP delivers `a[c]` and `a[c]x` both as `a.c` (it drops what follows a closing bracket), and
   the level above is now closed (`a` takes only `c`), where the key check accepted anything under `a`. A body that also
-  declares `a` itself closes it too, in the array branch of `a`'s shape check (`['array:c', 'exclude']`). A request that
-  sent `a[evil]=1` to such a body and got a `200` now gets a `422` to a client that asks for JSON (see
+  declares `a` itself closes it too, in the array branch of `a`'s shape check (`['array:c', 'exclude']`), but a level
+  two below `a` (`a[b][c]` beside `a[b][c]x`) stays open, which the generated file says. A request that sent `a[evil]=1`
+  to such a body and got a `200` now gets a `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   The shared key itself is still not checked, as the generated file says: `a[c]=abc` and `a[c][evil]=1` pass, and what
   was sent there is left out of `validated()`. A body that declares nothing else under `a` now gets `a` empty there

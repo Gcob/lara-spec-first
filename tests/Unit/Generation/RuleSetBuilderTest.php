@@ -5280,7 +5280,7 @@ it('holds the keys of names that collide below a declared name in its array bran
         ->and($beside->unenforced['additionalProperties'] ?? [])->toBe([]);
 });
 
-// A name D93 withholds below a declared name typed `array` or `object` leaves the level it is delivered at open, since the
+// A name the collision step withholds below a declared name typed `array` or `object` leaves the level it is delivered at open, since the
 // declared name keeps no shape check there. The closed body used to say nothing about it; it now says the key check
 // accepts that level, as it does for `ids` beside an integer `ids[]`, and the doctor counts the gap.
 it('says a closed form body accepts the key a name typed array or object is delivered at, below it', function (array $properties, string $finding): void {
@@ -5306,6 +5306,27 @@ it('says a closed form body accepts the key a name typed array or object is deli
         'a form delivers `x[b][c]` as `x.b`, so the key check accepts `x.b`',
     ],
 ]);
+
+// Why: the array branch of a declared `a` ends in `exclude`, which removes `a` from the data before a level below it is
+// judged, so a rule written for `a.b` would never run. The names below `a` are reported as what the key check accepts
+// instead of being given a rule that does nothing.
+it('says a closed form body accepts the level below a declared name whose array branch drops it', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'a' => new Schema(types: [SchemaType::Integer]),
+            'a[b][c]' => new Schema(types: [SchemaType::Integer]),
+            'a[b][c]x' => new Schema(types: [SchemaType::Integer]),
+        ],
+        additionalProperties: false,
+    )]), new RuleSetOptions);
+
+    expect($set->dropsArray)->toBe(['a'])
+        ->and($set->rules)->not->toHaveKey('a.b')
+        ->and($set->rules)->not->toHaveKey('a.b.c')
+        ->and(implode("\n", $set->findings))->toContain('so the key check accepts `a.b`')
+        ->and($set->unenforced['additionalProperties'])->toBe(['The body itself']);
+});
 
 // With every collided name untyped, nothing else is left unchecked once the level is closed and the shared key is
 // dropped, so the doctor has nothing to report where it used to report the key check.

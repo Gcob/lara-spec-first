@@ -3052,6 +3052,10 @@ it('refuses an undeclared key beside a declared name and the names that collide 
     'above a name typed object, an undeclared key' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['evil' => '1']], 422, ['x']],
     // TODO (#221): the key below `x[b]` is not judged yet, so this row answers 200 for what 0.2.0 refused.
     'above a name typed object, below it' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['evil' => '1']]], 200, []],
+    'two levels below a declared name, an undeclared key at the first' => ['a a[b][c] a[b][c]x', '', ['a' => ['evil' => '1']], 422, ['a']],
+    // TODO, a follow-up card not opened yet (rules that run below the `exclude` of a declared name's array branch): the
+    // level `a.b` is never judged there, so this row answers 200 for an undeclared key. The generated file now says so.
+    'two levels below a declared name, an undeclared key at the second' => ['a a[b][c] a[b][c]x', '', ['a' => ['b' => ['evil' => '1']]], 200, []],
 ]);
 
 // A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a
