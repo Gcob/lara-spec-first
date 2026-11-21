@@ -28,8 +28,9 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
 final class RuleWalk
 {
     /**
-     * The entry a merge patch's `required` is counted under when the request asks for names the merge patch may leave
-     * out, so it enforces more than the contract and a client answers `422` for a valid request. It is a keyword of its
+     * The entry a request is counted under when it asks for names the contract lets a client leave out, so it enforces
+     * more than the contract and a client answers `422` for a valid request: a merge patch's `required`, and what a
+     * form object requires or makes required when a form sends only the names nested under it. It is a keyword of its
      * own, and not `required`, because the doctor says the opposite about `required`: that the request leaves it out,
      * or holds only part of it.
      */
@@ -335,6 +336,46 @@ final class RuleWalk
      * @var array<string, string>
      */
     public array $standIn = [];
+
+    /**
+     * The names typed `object` that hold the names a form nests under them, in a body read only as a form: the object
+     * keeps its own rules, and the nested names keep theirs, since a form delivers an object only as an array.
+     *
+     * @var array<string, true>
+     */
+    public array $objectHolders = [];
+
+    /**
+     * The keys the names below an object are delivered at, by the rule key of the object: its own rule closes the level
+     * to them when the object is closed, and the closing loop leaves the level to it.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $keysBelow = [];
+
+    /**
+     * The rule keys of the objects in {@see self::$keysBelow} that write `additionalProperties: false`.
+     *
+     * @var array<string, true>
+     */
+    public array $closedObjects = [];
+
+    /**
+     * The names a form delivers at a key a closed object's `array:` cannot name (a `*` name, an appended name), by the
+     * rule key of the object. Its level stays open instead of closed.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $unnameableBelow = [];
+
+    /**
+     * The rule keys of the objects whose required keys the request asks for even when a form sends only the names
+     * nested under them, which the contract never sees: an object the contract does not require, or any in a partial
+     * body. The walk of the object counts the keys it asks for.
+     *
+     * @var array<string, true>
+     */
+    public array $objectsAskingKeys = [];
 
     /**
      * The keys of the validated data `dto()` reads only when their value is not an array: see

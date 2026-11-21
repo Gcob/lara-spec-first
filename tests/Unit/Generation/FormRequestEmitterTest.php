@@ -592,7 +592,7 @@ it('writes the declared keys before exclude in the array branch of a shaped form
             types: [SchemaType::Object],
             properties: [
                 'filter[a]' => new Schema(types: [SchemaType::Integer]),
-                'filter[a][b]' => new Schema(types: [SchemaType::Object]),
+                'filter[a][b]' => new Schema(types: [SchemaType::Array]),
                 'filter[a][b][c]' => new Schema(types: [SchemaType::Integer]),
             ],
             additionalProperties: false,

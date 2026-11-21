@@ -17,6 +17,7 @@ use Gcob\LaraSpecFirst\Generation\PatchReading;
 use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
+use Gcob\LaraSpecFirst\Generation\RuleWalk;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi30Strategy;
 use Gcob\LaraSpecFirst\Parsing\Version\OpenApi31Strategy;
 use Gcob\LaraSpecFirst\Validation\MultipleOf;
@@ -5053,9 +5054,10 @@ it('does not say an array stands in for a name a PATCH does not require', functi
         ->and($set->uncheckedNames)->toBe([]);
 });
 
-// An upper name typed `array` or `object` may be an array itself, so its value cannot be told from the one a form
-// builds for the name below it, and a `Rule::when()` on its shape would never run its rules. It keeps the collision.
-it('gives no rule to a name typed array or object beside a name below it', function (SchemaType $type): void {
+// An upper name typed `array` is an array itself, and its items arrive at the same level as the name below it, so its
+// value cannot be told from the one a form builds for the name below it, and a `Rule::when()` on its shape would never
+// run its rules. It keeps the collision.
+it('gives no rule to a name typed array beside a name below it', function (SchemaType $type): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => objectSchema([
         'page' => new Schema(types: [$type]),
         'page[size]' => new Schema(types: [SchemaType::Integer]),
@@ -5066,8 +5068,9 @@ it('gives no rule to a name typed array or object beside a name below it', funct
         ->and(array_keys($set->uncheckedNames))->toBe(['page[size]', 'page'])
         ->and(implode("\n", $set->findings))
         ->toContain('`page[size]` is delivered by a form as `page.size`, below the key `page` that `page` uses')
-        ->toContain('`page` is typed `'.$type->value.'`, so its own value may be an array, and no rule can tell their values apart');
-})->with([SchemaType::Array, SchemaType::Object]);
+        ->toContain('`page` is typed `'.$type->value.'`, and a form delivers its items at that same level (the first as `page.0`), '
+            .'so the rules for its items would judge `page[size]` as one of them, and no rule can tell an item from it. None is emitted for either');
+})->with([SchemaType::Array]);
 
 // Two names under the exact same key keep no rule. A name below them keeps its own, and their key is read by `dto()` only
 // when it is not an array.
@@ -5124,6 +5127,26 @@ it('names the delivered key of the name below a shaped one in an optional body',
 // `dependentRequired: {page: [other]}` gives `other` `present_with:page`, and a form that sends only `page[size]` delivers
 // an array under `page`, which `present_with` counts as `page` sent: `other` is asked for where the contract never sees
 // `page`. Stricter than the contract, and said so; dropping the dependency would let `page=2` pass without `other`.
+// A trigger the contract requires, or a dependent it already requires, makes the contract refuse that request too: nothing
+// is stricter there.
+it('does not call a shaped name\'s dependency stricter when the contract refuses the request too', function (array $required): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'page' => new Schema(types: [SchemaType::String]),
+            'page[b]' => new Schema(types: [SchemaType::String]),
+            'other' => new Schema(types: [SchemaType::String]),
+        ],
+        required: array_values($required),
+        dependentRequired: ['page' => ['other']],
+    )]), new RuleSetOptions);
+
+    expect($set->stricter)->toBe([]);
+})->with([
+    'a required trigger' => [['page']],
+    'a required dependent' => [['other']],
+]);
+
 it('keeps the dependency a shaped name triggers and says it is stricter than the contract', function (string $trigger, string $key): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
@@ -5237,7 +5260,13 @@ it('keeps the collision of a typed or rewritten name above a nested name in a bo
 })->with([
     'an upper name typed array' => [
         ['page' => new Schema(types: [SchemaType::Array]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
-        '`page` is typed `array`, so its own value may be an array',
+        '`page` is typed `array`, and a form delivers its items at that same level (the first as `page.0`), so the rules for its items '
+            .'would judge `page[size]` as one of them, and no rule can tell an item from it. None is emitted for either',
+    ],
+    'an upper name typed object' => [
+        ['page' => new Schema(types: [SchemaType::Object]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+        '`page` is typed `object` in a body that is JSON as well: a JSON client\'s `page` can hold a key `size` of its own, which a form '
+            .'client\'s `page[size]` arrives at too, so no rule can tell their values apart. None is emitted for either',
     ],
     'an upper name PHP rewrites' => [
         ['user.name' => new Schema(types: [SchemaType::String]), 'user_name[x]' => new Schema(types: [SchemaType::Integer])],
@@ -5522,13 +5551,13 @@ it('keeps the plain rule of a name beside only a star name in a closed body, wit
 });
 
 // A required name is stood in for by the array a form builds for the names nested under it, whether or not any of them
-// has a rule: `page[x]` is an object, so `page[x]` and `page[x][y]` are withheld, and `dto()` still has no `page`.
+// has a rule: `page[x]` is an array, so `page[x]` and `page[x][y]` are withheld, and `dto()` still has no `page`.
 it('says the array of withheld names stands in for a required shaped name', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
         properties: [
             'page' => new Schema(types: [SchemaType::Integer]),
-            'page[x]' => new Schema(types: [SchemaType::Object]),
+            'page[x]' => new Schema(types: [SchemaType::Array]),
             'page[x][y]' => new Schema(types: [SchemaType::Integer]),
         ],
         required: ['page'],
@@ -5714,10 +5743,10 @@ it('holds the keys of names that collide below a declared name in its array bran
         ->and($beside->unenforced['additionalProperties'] ?? [])->toBe([]);
 });
 
-// A name the collision step withholds below a declared name typed `array` or `object` leaves the level it is delivered at open, since the
-// declared name keeps no shape check there. The closed body used to say nothing about it; it now says the key check
+// A name the collision step withholds below a declared name typed `array` leaves the level it is delivered at open, since
+// the declared name keeps no shape check there. The closed body used to say nothing about it; it now says the key check
 // accepts that level, as it does for `ids` beside an integer `ids[]`, and the doctor counts the gap.
-it('says a closed form body accepts the key a name typed array or object is delivered at, below it', function (array $properties, string $finding): void {
+it('says a closed form body accepts the key a name typed array is delivered at, below it', function (array $properties, string $finding): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
         properties: $properties,
@@ -5727,19 +5756,285 @@ it('says a closed form body accepts the key a name typed array or object is deli
     expect(implode("\n", $set->findings))->toContain($finding)
         ->and($set->unenforced['additionalProperties'])->toBe(['The body itself']);
 })->with([
-    'a name typed object, a name below it' => [
-        ['p' => new Schema(types: [SchemaType::Object]), 'p[s]' => new Schema(types: [SchemaType::Integer])],
-        'a form delivers `p[s]` as `p`, so the key check accepts `p`',
-    ],
     'a name typed array, an appended name below it' => [
         ['ids' => new Schema(types: [SchemaType::Array], items: new Schema(types: [SchemaType::Integer])), 'ids[]' => new Schema(types: [SchemaType::Integer])],
         'a form delivers `ids[]` as `ids`, so the key check accepts `ids`',
     ],
-    'a declared name above a name typed object' => [
-        ['x' => new Schema(types: [SchemaType::Integer]), 'x[b]' => new Schema(types: [SchemaType::Object]), 'x[b][c]' => new Schema(types: [SchemaType::Integer])],
+    'a declared name above a name typed array' => [
+        ['x' => new Schema(types: [SchemaType::Integer]), 'x[b]' => new Schema(types: [SchemaType::Array]), 'x[b][c]' => new Schema(types: [SchemaType::Integer])],
         'a form delivers `x[b][c]` as `x.b`, so the key check accepts `x.b`',
     ],
 ]);
+
+// A form delivers an object only as an array, so a name typed `object` and the names a form nests under it are judged by
+// one array without contradiction: the object keeps the rules it has alone, and each nested name keeps the rule keyed by
+// the path PHP delivers it under. An open object's level is its own, so nothing is said about it.
+it('judges a name typed object and the names a form nests under it', function (array $properties, bool $closed, array $rules): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: $properties,
+        additionalProperties: $closed ? false : null,
+    )]), new RuleSetOptions);
+
+    expect($set->rules)->toBe($rules)
+        ->and($set->uncheckedNames)->toBe([])
+        ->and(implode("\n", $set->findings))->not->toContain('delivered by a form as');
+})->with(function (): array {
+    $object = new Schema(types: [SchemaType::Object]);
+    $integer = new Schema(types: [SchemaType::Integer]);
+
+    return [
+        'a nested object, closed body' => [
+            ['x[b]' => $object, 'x[b][c]' => $integer],
+            true,
+            ['x.b' => ['sometimes', 'array'], 'x.b.c' => ['sometimes', 'integer'], 'x' => ['sometimes', 'array:b']],
+        ],
+        'a nested object, open body' => [
+            ['x[b]' => $object, 'x[b][c]' => $integer],
+            false,
+            ['x.b' => ['sometimes', 'array'], 'x.b.c' => ['sometimes', 'integer']],
+        ],
+        'at the top level, closed body' => [
+            ['p' => $object, 'p[s]' => $integer],
+            true,
+            ['p' => ['sometimes', 'array'], 'p.s' => ['sometimes', 'integer']],
+        ],
+    ];
+});
+
+// A closed object takes its own properties and the keys the names below it are delivered at, in an open body as in a
+// closed one. Below a closed object, a key no rule judges (the shared key of a collided pair) is still left out.
+it('closes the level of a closed object to its properties and the keys of the names below it', function (bool $closedBody): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $closed = new Schema(types: [SchemaType::Object], properties: ['d' => $integer], additionalProperties: false);
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['x[b]' => $closed, 'x[b][c]' => $integer],
+        additionalProperties: $closedBody ? false : null,
+    )]), new RuleSetOptions);
+
+    expect($set->rules['x.b'])->toBe(['sometimes', 'array:d,c'])
+        ->and($set->rules['x.b.c'])->toBe(['sometimes', 'integer']);
+})->with(['an open body' => false, 'a closed body' => true]);
+
+// A `*` key and an appended key are keys the key check of a closed object cannot name (Laravel hides a `*` in a data key behind
+// a placeholder, and `array:0` refuses a second appended value), so its level stays open, in an open body as in a closed one,
+// and the finding says that undeclared keys are not refused.
+it('keeps the level of a closed object open when a name below it is a * name or appends', function (string $below, bool $closedBody): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'p' => new Schema(types: [SchemaType::Object], additionalProperties: false),
+            'p[s]' => $integer,
+            $below => $integer,
+        ],
+        additionalProperties: $closedBody ? false : null,
+    )]), new RuleSetOptions);
+
+    expect($set->rules['p'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['p.s'])->toBe(['sometimes', 'integer'])
+        ->and($set->unenforced['additionalProperties'])->toContain('`p`')
+        ->and(implode("\n", $set->findings))
+        ->toContain('`p` forbids undeclared keys, but a form delivers `'.$below.'` at a key of it that Laravel cannot name in `array:`');
+})->with([
+    'a * name' => 'p[*]',
+    'an appended name' => 'p[]',
+    'a name with a * inside a key' => 'p[a*b]',
+    'a * name below another key' => 'p[a][*]',
+])->with(['an open body' => false, 'a closed body' => true]);
+
+it('leaves out the shared key of a collided pair below a closed object in a closed body', function (): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'x[b]' => new Schema(types: [SchemaType::Object], properties: ['d' => $integer], additionalProperties: false),
+            'x[b][c]' => $integer,
+            'x[b][c]x' => $integer,
+        ],
+        additionalProperties: false,
+    )]), new RuleSetOptions);
+
+    expect($set->rules['x.b'])->toBe(['sometimes', 'array:d,c'])
+        ->and($set->rules['x.b.c'])->toBe(['exclude']);
+});
+
+// An object's level is its own rule's: the closing loop neither leaves it open for a value nor replaces the rule, so a
+// closed body says nothing more about it, and the name above it keeps only the key `b`.
+it('says nothing more about the level of a name typed object in a closed form body', function (): void {
+    $object = new Schema(types: [SchemaType::Object]);
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $built = static fn (array $properties): RuleSet => RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: $properties,
+        additionalProperties: false,
+    )]), new RuleSetOptions);
+
+    $top = $built(['p' => $object, 'p[s]' => $integer]);
+    $below = $built(['x' => $integer, 'x[b]' => $object, 'x[b][c]' => $integer]);
+
+    expect(implode("\n", $top->findings))->not->toContain('so the key check accepts')
+        ->and($top->unenforced['additionalProperties'] ?? [])->toBe([])
+        ->and(implode("\n", $below->findings))->not->toContain('so the key check accepts')
+        ->and($below->unenforced['additionalProperties'] ?? [])->toBe([])
+        ->and($below->arrayKeys)->toBe(['x' => ['b']])
+        ->and($below->dropsArray)->toBe([]);
+});
+
+// The array a form builds for the names nested under an object stands in for the object. A required object is satisfied
+// by the nested names alone, which a form needs (it cannot send an empty object), and the file says so. Two cases ask for
+// more than the contract: the names an object makes required, and the keys an optional object requires, when only the
+// nested names are sent. Both are counted, under the entry that says the request is stricter.
+it('says what the array of the names nested under an object stands in for, and where it asks for more', function (): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    /**
+     * @param  list<string>  $required
+     * @param  array<string, list<string>>  $dependentRequired
+     * @param  array<string, Schema>  $more
+     */
+    $built = static fn (Schema $object, array $required = [], array $dependentRequired = [], string $method = 'post', array $more = []): RuleSet => RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: ['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: ['x[b]' => $object, 'x[b][c]' => $integer, ...$more],
+            required: array_values($required),
+            dependentRequired: $dependentRequired,
+        )],
+    ), new RuleSetOptions);
+    $plain = new Schema(types: [SchemaType::Object]);
+    $requiring = new Schema(types: [SchemaType::Object], properties: ['d' => $integer], required: ['d']);
+
+    $required = $built($plain, required: ['x[b]']);
+
+    expect($required->uncheckedNames['x[b]'])->toContain('stands in for it')
+        ->and($required->rules['x.b'])->toBe(['present', 'array'])
+        ->and($required->unenforced)->toBe([]);
+
+    expect($built($plain, required: ['x[b]'], method: 'patch')->uncheckedNames)->not->toHaveKey('x[b]');
+
+    $trigger = $built($plain, dependentRequired: ['x[b]' => ['y']], more: ['y' => $integer]);
+
+    expect($trigger->unenforced)->toBe([RuleWalk::STRICTER_REQUIRED => ['`y`']])
+        ->and(implode("\n", $trigger->findings))->toContain('`x[b]` would make `y` required')
+        ->and(implode("\n", $trigger->findings))->toContain('leaving the dependency out would accept `x[b]` without `y`, which the contract refuses.')
+        ->and($trigger->stricter)->toBe([]);
+
+    // The contract refuses a request that leaves out a required object, or a dependent it already requires, so the
+    // dependency asks for nothing more there. A partial body asks for no presence, so its names count again.
+    expect($built($plain, required: ['x[b]'], dependentRequired: ['x[b]' => ['y']], more: ['y' => $integer])->unenforced)->toBe([])
+        ->and($built($plain, required: ['y'], dependentRequired: ['x[b]' => ['y']], more: ['y' => $integer])->unenforced)->toBe([])
+        ->and($built($plain, required: ['y'], dependentRequired: ['x[b]' => ['y', 'z']], more: ['y' => $integer, 'z' => $integer])->unenforced)
+        ->toBe([RuleWalk::STRICTER_REQUIRED => ['`z`']])
+        ->and($built($plain, required: ['x[b]', 'y'], dependentRequired: ['x[b]' => ['y']], method: 'patch', more: ['y' => $integer])->unenforced)
+        ->toBe([RuleWalk::STRICTER_REQUIRED => ['`y`']]);
+
+    $keys = $built($requiring);
+
+    expect($keys->unenforced)->toBe([RuleWalk::STRICTER_REQUIRED => ['`x[b].d`']])
+        ->and(implode("\n", $keys->findings))->toContain('`x[b]` requires `d`')
+        ->and($keys->leavesUnenforced())->toBeTrue();
+
+    // A required object is refused when it is left out whatever it holds, so what it requires is not stricter.
+    expect($built($requiring, required: ['x[b]'])->unenforced)->toBe([]);
+
+    // A partial body asks for no presence, so its object is optional and its required keys are asked for too.
+    expect($built($requiring, required: ['x[b]'], method: 'patch')->unenforced)->toBe([RuleWalk::STRICTER_REQUIRED => ['`x[b].d`']]);
+});
+
+// The gap names the keys `required_array_keys` asks for, which is not the whole `required` list: a key a rule cannot
+// name (a dot or a comma in it) or that a client never sends (`readOnly`) is not asked for, so it is no gap.
+it('counts only the keys an object requires that the request asks for', function (): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'x[b]' => new Schema(
+                types: [SchemaType::Object],
+                properties: ['d' => $integer, 'id' => new Schema(types: [SchemaType::Integer], readOnly: true), 'a.b' => $integer],
+                required: ['d', 'id', 'a.b'],
+            ),
+            'x[b][c]' => $integer,
+        ],
+    )]), new RuleSetOptions);
+
+    expect($set->unenforced[RuleWalk::STRICTER_REQUIRED])->toBe(['`x[b].d`']);
+});
+
+// An object that declares the key a nested name is delivered at gets the same array there as that name: two values at
+// one key, as for two collided names. A map's rule for every other key judges the nested name too. Both keep the
+// collision, as an `array` does. A map that allows any value judges nothing, so it is an open object.
+it('keeps the collision of a name typed object that declares the key a nested name enters it at, or judges every key as a map', function (): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $string = new Schema(types: [SchemaType::String]);
+    $built = static fn (Schema $object): RuleSet => RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['x[b]' => $object, 'x[b][c]' => $string],
+    )]), new RuleSetOptions);
+
+    $declares = $built(new Schema(types: [SchemaType::Object], properties: ['c' => $string]));
+
+    expect($declares->rules)->toBe([])
+        ->and(array_keys($declares->uncheckedNames))->toBe(['x[b][c]', 'x[b]'])
+        ->and(implode("\n", $declares->findings))
+        ->toContain('`x[b]` is typed `object` and declares `c` itself, which a form delivers at the same key as `x[b][c]`, so no rule can tell '
+            .'their values apart. None is emitted for either');
+
+    // A key only the object's own `dependentRequired` names is a claim of its own too: the nested name's rule would overwrite
+    // the `present_with` the object's walk writes for it.
+    $dependent = $built(new Schema(types: [SchemaType::Object], properties: ['d' => $integer], dependentRequired: ['d' => ['c']]));
+
+    expect($dependent->rules)->toBe([])
+        ->and(array_keys($dependent->uncheckedNames))->toBe(['x[b][c]', 'x[b]'])
+        ->and(implode("\n", $dependent->findings))
+        ->toContain('`x[b]` is typed `object` and declares `c` itself, which a form delivers at the same key as `x[b][c]`');
+
+    $map = $built(new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer));
+    $mapWithProperty = $built(new Schema(types: [SchemaType::Object], properties: ['d' => $integer], additionalPropertiesSchema: $integer));
+
+    foreach ([$map, $mapWithProperty] as $set) {
+        expect($set->rules)->toBe([])
+            ->and(array_keys($set->uncheckedNames))->toBe(['x[b][c]', 'x[b]'])
+            ->and($set->unenforced['type'])->toContain('`x[b]`', '`x[b][c]`')
+            ->and(implode("\n", $set->findings))
+            ->toContain('`x[b]` is typed `object` with a schema for every other key, and a form delivers `x[b][c]` among those keys, so the rule '
+                .'for them would judge `x[b][c]` as one of them, and no rule can tell its value from theirs. None is emitted for either');
+    }
+
+    $anyValue = $built(new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema));
+
+    expect($anyValue->rules)->toBe(['x.b' => ['sometimes', 'array'], 'x.b.c' => ['sometimes', 'string']]);
+});
+
+// An object inside a collided group stays withheld, and the name below it keeps its own rule, as a name below any
+// collided pair does. A required object that an array above withholds keeps the collision's reason, not the stand-in,
+// whichever order the names are declared in.
+it('keeps the rule of a name below an object that collides with another name, in any declaration order', function (): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $object = new Schema(types: [SchemaType::Object]);
+
+    $pair = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: ['x[b]' => $object, 'x[b]y' => $object, 'x[b][c]' => $integer],
+    )]), new RuleSetOptions);
+
+    expect($pair->rules['x.b.c'])->toBe(['sometimes', 'integer'])
+        ->and(array_keys($pair->uncheckedNames))->toBe(['x[b]', 'x[b]y']);
+
+    foreach ([['x[b][c]', 'x[b]', 'x'], ['x', 'x[b]', 'x[b][c]']] as $order) {
+        $types = ['x[b][c]' => $integer, 'x[b]' => $object, 'x' => new Schema(types: [SchemaType::Array])];
+        $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+            types: [SchemaType::Object],
+            properties: array_combine($order, array_map(static fn (string $name): Schema => $types[$name], $order)),
+            required: ['x[b]'],
+        )]), new RuleSetOptions);
+
+        expect($set->uncheckedNames['x[b]'])->toContain('another name in the body reaches Laravel under the same key')
+            ->and($set->uncheckedNames['x[b]'])->not->toContain('stands in for it')
+            ->and($set->unenforced['required'])->toContain('`x[b]`')
+            ->and($set->rules)->toBe([]);
+    }
+});
 
 // Why: the array branch of a declared `a` ends in `exclude`, which removes `a` from the data before a rule written after it
 // judges a level below it. Laravel judges the rules in the order they are written, so the key check of `a.b` is written
@@ -6043,12 +6338,28 @@ it('records what a field the rule set drops states, as a kept field would', func
             operationWithInput(content: $both(objectSchema(['a.b' => new Schema])), bodyRequired: false),
             [],
         ],
-        'an object and the name PHP delivers below it' => [
+        'an array and the name PHP delivers below it' => [
             operationWithInput(content: [$form => objectSchema([
-                'page' => new Schema(types: [SchemaType::Object]),
+                'page' => new Schema(types: [SchemaType::Array]),
                 'page[size]' => $integer,
             ])], bodyRequired: false),
             ['type' => ['`page[size]`', '`page`']],
+        ],
+        // The rule set keeps the field and asks for more than the contract does, so it is recorded as stricter.
+        'an optional object that requires a key, beside a name nested under it' => [
+            operationWithInput(content: [$form => objectSchema([
+                'x[b]' => new Schema(types: [SchemaType::Object], properties: ['d' => $integer], required: ['d']),
+                'x[b][c]' => $integer,
+            ])], bodyRequired: false),
+            ['stricterRequired' => ['`x[b].d`']],
+        ],
+        'an object that makes a name required, beside a name nested under it' => [
+            operationWithInput(content: [$form => new Schema(
+                types: [SchemaType::Object],
+                properties: ['x[b]' => new Schema(types: [SchemaType::Object]), 'x[b][c]' => $integer, 'y' => $integer],
+                dependentRequired: ['x[b]' => ['y']],
+            )], bodyRequired: false),
+            ['stricterRequired' => ['`y`']],
         ],
         'a star name typed string' => [
             operationWithInput(content: ['application/json' => objectSchema(['a*b' => $string])]),

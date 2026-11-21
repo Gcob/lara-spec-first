@@ -561,6 +561,56 @@ it('says the fields leave the keyword out, never that the package reads part of 
         ->and($findings[0]->message)->not->toContain('reads part of it');
 });
 
+// A counted stricter case is a request that asks for names the contract lets a client leave out, so a valid request
+// answers `422`: "does not enforce" would send a reader to a gap that is not one. Which clause says why depends on how
+// the operation reads its body. A merge patch may leave out any name, and a form that sends only the names nested under
+// an object delivers an array the object's own rules read as the object sent. A merge patch declared over another
+// schema than the form beside it is not read, so that operation is a form's.
+it('says a counted stricter case asks for names the contract lets a client leave out, for a merge patch and for a form object', function (array $content, string $opening, string $not): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest($content)], new RuleSetOptions);
+    $asks = array_values(array_filter($findings, static fn (Finding $finding): bool => str_contains($finding->message, ' asks for names ')));
+
+    expect($asks)->toHaveCount(1)
+        ->and($asks[0]->class)->toBe(FindingClass::PackageLimit)
+        ->and($asks[0]->level)->toBe(SupportLevel::Partial)
+        ->and($asks[0]->message)->toContain($opening)
+        ->and($asks[0]->message)->toContain('The request is stricter than the contract, not looser')
+        ->and($asks[0]->message)->not->toContain('does not enforce')
+        ->and($asks[0]->message)->not->toContain($not)
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
+})->with(function (): array {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $form = 'application/x-www-form-urlencoded';
+    $requiring = new Schema(types: [SchemaType::Object], properties: ['d' => $integer], required: ['d']);
+    $formBody = new Schema(types: [SchemaType::Object], properties: ['x[b]' => $requiring, 'x[b][c]' => $integer]);
+    $trigger = new Schema(
+        types: [SchemaType::Object],
+        properties: ['x[b]' => new Schema(types: [SchemaType::Object]), 'x[b][c]' => $integer, 'y' => $integer],
+        dependentRequired: ['x[b]' => ['y']],
+    );
+    $patch = new Schema(types: [SchemaType::Object], properties: [
+        'address' => new Schema(types: [SchemaType::Object], properties: ['city' => $integer], required: ['city']),
+    ]);
+
+    $formOpening = static fn (string $names): string => 'post /things asks for names a form may leave out when it sends only the names nested under an object: '.$names.'.';
+
+    return [
+        'a form object that requires a key' => [[$form => $formBody], $formOpening('`x[b].d`'), 'merge patch'],
+        'a form object that makes a name required' => [[$form => $trigger], $formOpening('`y`'), 'merge patch'],
+        'a merge patch' => [
+            ['application/merge-patch+json' => $patch],
+            'post /things asks for names a JSON merge patch (RFC 7396) may leave out: `address.city`.',
+            'a form may leave out',
+        ],
+        // Read as the form's: a merge patch declared over another schema is no part of the rules.
+        'a form beside a merge patch over another schema' => [
+            [$form => $formBody, 'application/merge-patch+json' => $patch],
+            $formOpening('`x[b].d`'),
+            'merge patch',
+        ],
+    ];
+});
+
 // A field the rule set drops whole is a field of the contract the request does not enforce, so the doctor names what
 // it states, one finding per keyword, and says the request may hold part of it as well as none of it.
 it('reports every gap a generated request counts as Partial', function (array $content, array $query, array $expected): void {
