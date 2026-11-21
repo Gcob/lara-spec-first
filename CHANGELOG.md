@@ -211,10 +211,12 @@ tags: [versions, conventions, planning]
   the object triggers and the required keys of an optional object are asked for when only the nested names are sent,
   which is stricter than the contract: the file says so, and `spec:doctor` counts them, with a line that says the
   request asks for names the contract lets a client leave out (the line it writes for a merge patch is unchanged). The
-  two names themselves are no longer reported as unchecked. An object that declares the key a nested name arrives at, a
-  map object (one whose `additionalProperties` is a schema), a name typed `array`, and an object in a body that is JSON
-  as well keep both names unchecked, with a finding that says why. This is a breaking change: send values the contract
-  describes, or loosen the contract. The reasoning is in
+  two names themselves are no longer reported as unchecked. A closed object beside a `*` name or an appended name
+  (`p[*]`, `p[]`) keeps its level open, since `array:` cannot name those keys, and its finding says undeclared keys are
+  not refused. An object that declares the key a nested name arrives at (in its properties, its `required` or its
+  `dependentRequired`), a map object (one whose `additionalProperties` is a schema), a name typed `array`, and an object
+  in a body that is JSON as well keep both names unchecked, with a finding that says why. This is a breaking change:
+  send values the contract describes, or loosen the contract. The reasoning is in
   [ADR 0027](./docs/project/decisions/0027-let-a-form-object-hold-the-names-below-it.md), and this ships
   [#221](https://github.com/Gcob/lara-spec-first/issues/221).
 - **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it

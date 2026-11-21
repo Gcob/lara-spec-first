@@ -1970,7 +1970,8 @@ final readonly class RuleSetBuilder
                 $walk->unenforced(sprintf(
                     '`%1$s` would make %2$s required, and a form that sends only the names nested under `%1$s` delivers an '
                         .'array under it, which `present_with` counts as `%1$s` sent: %2$s asked for although the contract '
-                        .'never sees `%1$s`. The request is stricter than the contract there.',
+                        .'never sees `%1$s`. The request is stricter than the contract there; leaving the dependency out would '
+                        .'accept `%1$s` without %2$s, which the contract refuses.',
                     $trigger,
                     self::list($asked),
                 ), [RuleWalk::STRICTER_REQUIRED => array_map(static fn (string $name): string => '`'.$name.'`', $asked)]);
@@ -2206,6 +2207,8 @@ final readonly class RuleSetBuilder
                     $structural = array_values(array_filter($declared, self::breaksKeyList(...)));
                     $bracketed = $walk->textSource === 'query string' && array_filter($declared, self::holdsBracket(...)) !== [];
 
+                    $unnameable = $walk->textSource !== 'query string' ? $walk->unnameableBelow[$key] ?? [] : [];
+
                     if ($schema->additionalProperties === false && $structural !== []) {
                         // `array:` names keys as a comma list compared against
                         // keys Laravel has already split on dots, so a name with
@@ -2216,6 +2219,14 @@ final readonly class RuleSetBuilder
                                 .'so undeclared keys are not refused.',
                             $label,
                             self::list($structural),
+                        ), ['additionalProperties' => [$label]]);
+                    } elseif ($schema->additionalProperties === false && $unnameable !== []) {
+                        $rules[] = 'array';
+                        $walk->unenforced(sprintf(
+                            '%s forbids undeclared keys, but a form delivers %s at a key of it that Laravel cannot name in `array:`, '
+                                .'so undeclared keys are not refused.',
+                            $label,
+                            self::list($unnameable),
                         ), ['additionalProperties' => [$label]]);
                     } else {
                         $rules[] = $schema->additionalProperties === false && ! $bracketed ? 'array:'.implode(',', $declared) : 'array';
@@ -4133,6 +4144,7 @@ final readonly class RuleSetBuilder
 
         $shaped = [];
         $holderKeys = [];
+        $unnameable = [];
 
         foreach ($overlaps as [$name, $other, $key, $head, $path, $prefix]) {
             // Beside JSON, a name PHP rewrites is sent under one key by a JSON client and another by a form client, so no
@@ -4171,7 +4183,7 @@ final readonly class RuleSetBuilder
                 }
 
                 $upper = AllOfMerger::merge($schema->properties[$other], $walk->identity, '`'.$other.'`');
-                $own = [...array_map('strval', array_keys($upper->properties)), ...$upper->required];
+                $own = self::declaredNames($upper);
                 $map = $upper->additionalPropertiesSchema !== null && ! self::allowsAnyValue($upper->additionalPropertiesSchema);
 
                 if (! $map && ! in_array($entered, $own, true)) {
@@ -4182,6 +4194,13 @@ final readonly class RuleSetBuilder
 
                     if (! in_array($entered, $walk->keysBelow[$objectKey] ?? [], true)) {
                         $walk->keysBelow[$objectKey][] = $entered;
+                    }
+
+                    // The key an appended name takes is the index PHP picks, which `array:` cannot name.
+                    $appendsAt = self::phpAppends($name);
+
+                    if ($appendsAt !== null && count($appendsAt) === count($prefix)) {
+                        $unnameable[$objectKey][] = $name;
                     }
 
                     if ($upper->additionalProperties === false) {
@@ -4248,6 +4267,29 @@ final readonly class RuleSetBuilder
         foreach ($holderKeys as $holder => $holderKey) {
             if (isset($collided[(string) $holder])) {
                 unset($walk->objectHolders[$holder], $walk->keysBelow[$holderKey], $walk->closedObjects[$holderKey]);
+
+                continue;
+            }
+
+            if (! isset($walk->closedObjects[$holderKey])) {
+                continue;
+            }
+
+            // Why: a closed object closes its level with `array:`, which cannot name the keys a `*` name or an appended name
+            // is delivered at (Laravel hides a `*` in a data key behind a placeholder, and `array:0` refuses a second
+            // appended value), so it would refuse a request the contract accepts. Its level stays open, and its rule says so.
+            $holderPath = $paths[(string) $holder];
+
+            foreach ($claimed as $claimedName => $claimedPath) {
+                if ($holderPath !== null && self::isBelow($claimedPath, $holderPath) && ($claimedPath[count($holderPath)] ?? null) === '*') {
+                    $unnameable[$holderKey][] = (string) $claimedName;
+                }
+            }
+
+            if (isset($unnameable[$holderKey])) {
+                $walk->unnameableBelow[$holderKey] = array_values(array_unique($unnameable[$holderKey]));
+
+                unset($walk->closedObjects[$holderKey]);
             }
         }
 

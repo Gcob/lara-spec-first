@@ -3114,6 +3114,7 @@ it('judges a name typed object and the names a form nests under it', function (
     $top = $body(['p' => $object, 'p[s]' => $integer]);
     $withD = new Schema(types: [SchemaType::Object], properties: ['d' => $integer], additionalProperties: false);
     $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer);
+    $closedAlone = new Schema(types: [SchemaType::Object], additionalProperties: false);
 
     yield 'the nested name, not a number' => [$nested, ['x' => ['b' => ['c' => 'abc']]], 422, ['x.b.c']];
     yield 'the object, not an array' => [$nested, ['x' => ['b' => 'abc']], 422, ['x.b']];
@@ -3181,6 +3182,29 @@ it('judges a name typed object and the names a form nests under it', function (
         ['x' => ['b' => ['c' => '5']]],
         422,
         ['y'],
+    ];
+    // A `dependentRequired` the object itself writes names the key the nested name enters it at, so the two keep the
+    // collision, as for a declared property: the object's own claim on `c` would otherwise be overwritten by the nested
+    // name's rule.
+    yield 'an object whose dependentRequired names the key a nested name enters, open body' => [
+        $body(['x[b]' => new Schema(types: [SchemaType::Object], properties: ['d' => $integer], dependentRequired: ['d' => ['c']]), 'x[b][c]' => $integer], closed: false),
+        ['x' => ['b' => ['c' => 'abc']]],
+        200,
+        [],
+    ];
+    // A `*` key and an appended key below a closed object are keys its key check cannot name (Laravel hides a `*` in a data key
+    // behind a placeholder, and `array:0` refuses a second appended value), so the level stays open as the contract's does.
+    yield 'a closed object beside a * name and a nested name, the * key' => [
+        $body(['p' => $closedAlone, 'p[s]' => $integer, 'p[*]' => $integer]),
+        ['p' => ['*' => '5']],
+        200,
+        [],
+    ];
+    yield 'a closed object beside an appended name, two values' => [
+        $body(['p' => $closedAlone, 'p[]' => $integer]),
+        ['p' => ['1', '2']],
+        200,
+        ['p' => ['1']],
     ];
     yield 'beside JSON, the collision stays' => [$top, ['p' => ['s' => 'abc']], 200, [], true];
     yield 'a map object keeps the collision, open body' => [

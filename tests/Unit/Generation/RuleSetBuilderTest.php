@@ -5817,6 +5817,28 @@ it('closes the level of a closed object to its properties and the keys of the na
         ->and($set->rules['x.b.c'])->toBe(['sometimes', 'integer']);
 })->with(['an open body' => false, 'a closed body' => true]);
 
+// A `*` key and an appended key are keys the key check of a closed object cannot name (Laravel hides a `*` in a data key behind
+// a placeholder, and `array:0` refuses a second appended value), so its level stays open, in an open body as in a closed one,
+// and the finding says that undeclared keys are not refused.
+it('keeps the level of a closed object open when a name below it is a * name or appends', function (string $below, bool $closedBody): void {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'p' => new Schema(types: [SchemaType::Object], additionalProperties: false),
+            'p[s]' => $integer,
+            $below => $integer,
+        ],
+        additionalProperties: $closedBody ? false : null,
+    )]), new RuleSetOptions);
+
+    expect($set->rules['p'])->toBe(['sometimes', 'array'])
+        ->and($set->rules['p.s'])->toBe(['sometimes', 'integer'])
+        ->and($set->unenforced['additionalProperties'])->toContain('`p`')
+        ->and(implode("\n", $set->findings))
+        ->toContain('`p` forbids undeclared keys, but a form delivers `'.$below.'` at a key of it that Laravel cannot name in `array:`');
+})->with(['a * name' => 'p[*]', 'an appended name' => 'p[]'])->with(['an open body' => false, 'a closed body' => true]);
+
 it('leaves out the shared key of a collided pair below a closed object in a closed body', function (): void {
     $integer = new Schema(types: [SchemaType::Integer]);
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
@@ -5890,6 +5912,7 @@ it('says what the array of the names nested under an object stands in for, and w
 
     expect($trigger->unenforced)->toBe([RuleWalk::STRICTER_REQUIRED => ['`y`']])
         ->and(implode("\n", $trigger->findings))->toContain('`x[b]` would make `y` required')
+        ->and(implode("\n", $trigger->findings))->toContain('leaving the dependency out would accept `x[b]` without `y`, which the contract refuses.')
         ->and($trigger->stricter)->toBe([]);
 
     // The contract refuses a request that leaves out a required object, or a dependent it already requires, so the
@@ -5951,6 +5974,15 @@ it('keeps the collision of a name typed object that declares the key a nested na
         ->and(implode("\n", $declares->findings))
         ->toContain('`x[b]` is typed `object` and declares `c` itself, which a form delivers at the same key as `x[b][c]`, so no rule can tell '
             .'their values apart. None is emitted for either');
+
+    // A key only the object's own `dependentRequired` names is a claim of its own too: the nested name's rule would overwrite
+    // the `present_with` the object's walk writes for it.
+    $dependent = $built(new Schema(types: [SchemaType::Object], properties: ['d' => $integer], dependentRequired: ['d' => ['c']]));
+
+    expect($dependent->rules)->toBe([])
+        ->and(array_keys($dependent->uncheckedNames))->toBe(['x[b][c]', 'x[b]'])
+        ->and(implode("\n", $dependent->findings))
+        ->toContain('`x[b]` is typed `object` and declares `c` itself, which a form delivers at the same key as `x[b][c]`');
 
     $map = $built(new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer));
     $mapWithProperty = $built(new Schema(types: [SchemaType::Object], properties: ['d' => $integer], additionalPropertiesSchema: $integer));

@@ -391,12 +391,14 @@ delivers it under:
 
 `x[b]=abc` and `x[b][c]=abc` answer 422, at any depth and at the top level (`p` beside `p[s]`). The object's level is
 its own: an open object accepts another key (`x[b][evil]=1` passes, as it does for `x[b]` alone), and a closed one takes
-its properties and the keys of the names below it (`['sometimes', 'array:d,c']`). The blind spot above holds here too: a
-required `x[b]` is satisfied by `x[b][c]=5` alone, since a form cannot send an empty object, and the file says so. Two
-cases are stricter than the contract, and the file says so and `spec:doctor` counts them: a `dependentRequired` that
-`x[b]` triggers, and the required keys of an optional `x[b]`, are asked for when only the nested names are sent. `dto()`
-hands an object with no properties the whole array, the nested names' keys included. A map object keeps the collision
-(below). The reasoning is in [ADR 0027](../../project/decisions/0027-let-a-form-object-hold-the-names-below-it.md).
+its properties and the keys of the names below it (`['sometimes', 'array:d,c']`), except beside a `*` name or an
+appended name (`x[b][*]`, `x[b][]`): `array:` cannot name those keys, so the level stays open and the file says
+undeclared keys are not refused. The blind spot above holds here too: a required `x[b]` is satisfied by `x[b][c]=5`
+alone, since a form cannot send an empty object, and the file says so. Two cases are stricter than the contract, and the
+file says so and `spec:doctor` counts them: a `dependentRequired` that `x[b]` triggers, and the required keys of an
+optional `x[b]`, are asked for when only the nested names are sent. `dto()` hands an object with no properties the whole
+array, the nested names' keys included. A map object keeps the collision (below). The reasoning is in
+[ADR 0027](../../project/decisions/0027-let-a-form-object-hold-the-names-below-it.md).
 
 **Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
 as one key, so the value of one is the value of the other and no rule can tell them apart. Neither gets a rule, none
@@ -407,10 +409,11 @@ this finding is reached. **A name typed `array` beside a name below it keeps no 
 at the same level (`ids[]=1` as `ids.0`, `x[b][]=1` as `x.b.0`), so the rules for its items would judge the name below
 as one of them. So does a map object (`additionalProperties` a schema), whose rule for every other key judges the name
 below the same way, a name typed `object` that declares the key a name below it arrives at (`x[b]` with a property `c`,
-beside `x[b][c]`), whose two values reach one key, and a name typed `object` in a body that is JSON as well, whose JSON
-client can send a key of the same name inside it. A name PHP rewrites above a name below it keeps no rule when the body
-is JSON as well: a JSON client sends it under one key and a form client under another, so no one shape check holds both,
-and the finding says so. A name PHP leaves alone is judged by shape in a body that is JSON as well (below).
+a required `c` or a `dependentRequired` that names it, beside `x[b][c]`), whose two values reach one key, and a name
+typed `object` in a body that is JSON as well, whose JSON client can send a key of the same name inside it. A name PHP
+rewrites above a name below it keeps no rule when the body is JSON as well: a JSON client sends it under one key and a
+form client under another, so no one shape check holds both, and the finding says so. A name PHP leaves alone is judged
+by shape in a body that is JSON as well (below).
 
 **A body that is JSON and a form judges a top-level name by shape too.** `page` beside `page[size]` keeps its rules
 behind `Rule::when()`, and they judge every scalar from either client: `page=abc` from a form and `{"page": "abc"}` from

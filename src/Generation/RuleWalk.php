@@ -361,6 +361,14 @@ final class RuleWalk
     public array $closedObjects = [];
 
     /**
+     * The names a form delivers at a key a closed object's `array:` cannot name (a `*` name, an appended name), by the
+     * rule key of the object. Its level stays open instead of closed.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $unnameableBelow = [];
+
+    /**
      * The rule keys of the objects whose required keys the request asks for even when a form sends only the names
      * nested under them, which the contract never sees: an object the contract does not require, or any in a partial
      * body. The walk of the object counts the keys it asks for.

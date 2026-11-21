@@ -75,9 +75,10 @@ simpler to read than "below the top only". The two names are no longer reported 
 - **A map object**, one whose `additionalProperties` is a schema that judges something (`{}` is an open object and is
   released). Its value rule judges every key of its level, the nested name's key included, so releasing it would refuse
   `x[b][c]=abc` beside a map of integers, with no finding.
-- **An object that declares the key a nested name arrives at** (`x[b]` with a property `c`, beside `x[b][c]`). The two
-  values reach one key (`x.b.c`), as two collided names do. Withholding only the property would mean cutting one child
-  out of an object's rules, which is not worth the complexity for a case this rare.
+- **An object that declares the key a nested name arrives at** (`x[b]` with a property `c`, a required `c` or a
+  `dependentRequired` that names `c`, beside `x[b][c]`). The two values reach one key (`x.b.c`), as two collided names
+  do. Withholding only the property would mean cutting one child out of an object's rules, which is not worth the
+  complexity for a case this rare.
 - **An object in a body that is JSON as well.** A JSON client's object can hold a key of the same name as the one a form
   delivers inside it (`{"p": {"s": "x"}}` beside `p[s]`), so no rule at `p.s` judges one without the other. This is
   [ADR 0012](./0012-judge-plain-form-names-by-shape.md)'s handling of a body that is JSON and a form, unchanged.
@@ -92,7 +93,9 @@ ends.
 - An open object leaves its level open, as the contract does: `x[b][evil]=1` passes, as it does for `x[b]` alone, and no
   finding is written, since it is not a gap.
 - A closed object (`additionalProperties: false`) takes its own properties and the keys the nested names enter it at
-  (`'x.b' => ['sometimes', 'array:d,c']`), in an open body as in a closed one.
+  (`'x.b' => ['sometimes', 'array:d,c']`), in an open body as in a closed one. Beside a `*` name or an appended name
+  (`p[*]`, `p[]`) its level stays open instead, since `array:` cannot name a `*` key (Laravel hides it behind a
+  placeholder) or refuses a second appended value, and the file says undeclared keys are not refused.
 - In a closed body, the loop that closes each level to its declared keys skips an object's level instead of leaving it
   open for a value or overwriting the object's rule. A closed object's level is still kept, so a key no rule judges
   below it (a collided pair) is left out of `validated()`.
