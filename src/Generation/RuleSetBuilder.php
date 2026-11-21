@@ -4141,6 +4141,8 @@ final readonly class RuleSetBuilder
             }
 
             $type = self::arrayOrObject($schema, $other, $walk);
+            $entered = $path[count($prefix)];
+            $reason = null;
 
             // Why: a form delivers an object only as an array, so in a body read only as a form the object's own rules and
             // the nested name's judge the same array without contradicting each other: the object keeps the rules it has
@@ -4155,7 +4157,6 @@ final readonly class RuleSetBuilder
                 }
 
                 $upper = AllOfMerger::merge($schema->properties[$other], $walk->identity, '`'.$other.'`');
-                $entered = $path[count($prefix)];
                 $own = [...array_map('strval', array_keys($upper->properties)), ...$upper->required];
                 $map = $upper->additionalPropertiesSchema !== null && ! self::allowsAnyValue($upper->additionalPropertiesSchema);
 
@@ -4175,19 +4176,49 @@ final readonly class RuleSetBuilder
 
                     continue;
                 }
+
+                $reason = $map
+                    ? sprintf(
+                        '`%1$s` is typed `object` with a schema for every other key, and a form delivers `%2$s` among those keys, so '
+                            .'the rule for them would judge `%2$s` as one of them, and no rule can tell its value from theirs.',
+                        $other,
+                        $name,
+                    )
+                    : sprintf(
+                        '`%1$s` is typed `object` and declares `%3$s` itself, which a form delivers at the same key as `%2$s`, so no '
+                            .'rule can tell their values apart.',
+                        $other,
+                        $name,
+                        $entered,
+                    );
+            } elseif ($type === SchemaType::Object->value) {
+                $reason = sprintf(
+                    '`%1$s` is typed `object` in a body that is JSON as well: a JSON client\'s `%1$s` can hold a key `%3$s` of its '
+                        .'own, which a form client\'s `%2$s` arrives at too, so no rule can tell their values apart.',
+                    $other,
+                    $name,
+                    $entered,
+                );
+            } elseif ($type !== null) {
+                $reason = sprintf(
+                    '`%1$s` is typed `array`, and a form delivers its items at that same level (the first as `%2$s.0`), so the rules '
+                        .'for its items would judge `%3$s` as one of them, and no rule can tell an item from it.',
+                    $other,
+                    $head,
+                    $name,
+                );
             }
 
-            if ($type !== null) {
+            if ($reason !== null) {
                 self::dropFields($walk, sprintf(
-                    '`%1$s` is delivered by a form as `%2$s`, below the key `%3$s` that `%4$s` uses. `%4$s` is typed `%5$s`, so its '
-                        .'own value may be an array, and no rule can tell their values apart. None is emitted for either, and '
+                    '`%1$s` is delivered by a form as `%2$s`, below the key `%3$s` that `%4$s` uses. %5$s None is emitted for either, and '
                         .'neither their type nor their presence is enforced, nor do they take part in `required_with` or '
                         .'`dependentRequired`.',
                     $name,
                     $key,
                     $head,
                     $other,
-                    $type,
+                    $reason,
                 ), $dropped([$name, $other]));
 
                 self::withhold([$name, $other], $walk, $collided);

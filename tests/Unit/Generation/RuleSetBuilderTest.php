@@ -5068,7 +5068,8 @@ it('gives no rule to a name typed array beside a name below it', function (Schem
         ->and(array_keys($set->uncheckedNames))->toBe(['page[size]', 'page'])
         ->and(implode("\n", $set->findings))
         ->toContain('`page[size]` is delivered by a form as `page.size`, below the key `page` that `page` uses')
-        ->toContain('`page` is typed `'.$type->value.'`, so its own value may be an array, and no rule can tell their values apart');
+        ->toContain('`page` is typed `'.$type->value.'`, and a form delivers its items at that same level (the first as `page.0`), '
+            .'so the rules for its items would judge `page[size]` as one of them, and no rule can tell an item from it. None is emitted for either');
 })->with([SchemaType::Array]);
 
 // Two names under the exact same key keep no rule. A name below them keeps its own, and their key is read by `dto()` only
@@ -5239,7 +5240,13 @@ it('keeps the collision of a typed or rewritten name above a nested name in a bo
 })->with([
     'an upper name typed array' => [
         ['page' => new Schema(types: [SchemaType::Array]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
-        '`page` is typed `array`, so its own value may be an array',
+        '`page` is typed `array`, and a form delivers its items at that same level (the first as `page.0`), so the rules for its items '
+            .'would judge `page[size]` as one of them, and no rule can tell an item from it. None is emitted for either',
+    ],
+    'an upper name typed object' => [
+        ['page' => new Schema(types: [SchemaType::Object]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+        '`page` is typed `object` in a body that is JSON as well: a JSON client\'s `page` can hold a key `size` of its own, which a form '
+            .'client\'s `page[size]` arrives at too, so no rule can tell their values apart. None is emitted for either',
     ],
     'an upper name PHP rewrites' => [
         ['user.name' => new Schema(types: [SchemaType::String]), 'user_name[x]' => new Schema(types: [SchemaType::Integer])],
@@ -5911,7 +5918,10 @@ it('keeps the collision of a name typed object that declares the key a nested na
     $declares = $built(new Schema(types: [SchemaType::Object], properties: ['c' => $string]));
 
     expect($declares->rules)->toBe([])
-        ->and(array_keys($declares->uncheckedNames))->toBe(['x[b][c]', 'x[b]']);
+        ->and(array_keys($declares->uncheckedNames))->toBe(['x[b][c]', 'x[b]'])
+        ->and(implode("\n", $declares->findings))
+        ->toContain('`x[b]` is typed `object` and declares `c` itself, which a form delivers at the same key as `x[b][c]`, so no rule can tell '
+            .'their values apart. None is emitted for either');
 
     $map = $built(new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer));
     $mapWithProperty = $built(new Schema(types: [SchemaType::Object], properties: ['d' => $integer], additionalPropertiesSchema: $integer));
@@ -5919,7 +5929,10 @@ it('keeps the collision of a name typed object that declares the key a nested na
     foreach ([$map, $mapWithProperty] as $set) {
         expect($set->rules)->toBe([])
             ->and(array_keys($set->uncheckedNames))->toBe(['x[b][c]', 'x[b]'])
-            ->and($set->unenforced['type'])->toContain('`x[b]`', '`x[b][c]`');
+            ->and($set->unenforced['type'])->toContain('`x[b]`', '`x[b][c]`')
+            ->and(implode("\n", $set->findings))
+            ->toContain('`x[b]` is typed `object` with a schema for every other key, and a form delivers `x[b][c]` among those keys, so the rule '
+                .'for them would judge `x[b][c]` as one of them, and no rule can tell its value from theirs. None is emitted for either');
     }
 
     $anyValue = $built(new Schema(types: [SchemaType::Object], additionalPropertiesSchema: new Schema));

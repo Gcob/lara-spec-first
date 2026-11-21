@@ -396,7 +396,7 @@ required `x[b]` is satisfied by `x[b][c]=5` alone, since a form cannot send an e
 cases are stricter than the contract, and the file says so and `spec:doctor` counts them: a `dependentRequired` that
 `x[b]` triggers, and the required keys of an optional `x[b]`, are asked for when only the nested names are sent. `dto()`
 hands an object with no properties the whole array, the nested names' keys included. A map object keeps the collision
-(below).
+(below). The reasoning is in [ADR 0027](../../project/decisions/0027-let-a-form-object-hold-the-names-below-it.md).
 
 **Two names a form delivers under one key get no rule, and one finding names them.** `user.name` and `user_name` arrive
 as one key, so the value of one is the value of the other and no rule can tell them apart. Neither gets a rule, none
@@ -1191,11 +1191,15 @@ property is not recorded, dropped or not: the request does what the contract say
 on the response only, so the generated file says it in a finding, which the build does not count in its warning, and the
 doctor has nothing to report. Nor is the `required` of a top-level name of a partial body (a `PATCH`, or a merge patch),
 which asks for none. Every finding of a rule set is exactly one of four kinds, and the record says which: a gap, which
-always has an entry (a keyword and the field it was left unenforced on), a finding that says the request is stricter
-than the contract, information, or a fault in the document. The build counts a request in its warning when its rule set
-holds a gap or a fault, and the doctor reports those same entries, so a request the build counts is always one the
-doctor reports. The `Ignored` keywords are not in a rule set at all, since nothing reads them, and the reading collects
-them with their position instead. See [the doctor's Support findings](../doctor.md#what-it-checks).
+always has an entry (a keyword and the field it applies to), information, a fault in the document, or a finding that
+says the request is stricter than the contract. A gap is usually a constraint the request leaves out; it is also a
+stricter reading that has no Laravel-level reason, such as the required names of a nested merge patch object or of an
+object a form only nests other names under, which the record keeps under `stricterRequired` so the doctor says the
+request asks for too much, not too little. A stricter finding whose reason is in Laravel (a recursion cut at its depth,
+for one) is not counted. The build counts a request in its warning when its rule set holds a gap or a fault, and the
+doctor reports those same entries, so a request the build counts is always one the doctor reports. The `Ignored`
+keywords are not in a rule set at all, since nothing reads them, and the reading collects them with their position
+instead. See [the doctor's Support findings](../doctor.md#what-it-checks).
 
 ### A JSON body keeps its types
 

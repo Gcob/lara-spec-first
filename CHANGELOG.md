@@ -214,7 +214,9 @@ tags: [versions, conventions, planning]
   two names themselves are no longer reported as unchecked. An object that declares the key a nested name arrives at, a
   map object (one whose `additionalProperties` is a schema), a name typed `array`, and an object in a body that is JSON
   as well keep both names unchecked, with a finding that says why. This is a breaking change: send values the contract
-  describes, or loosen the contract. This ships [#221](https://github.com/Gcob/lara-spec-first/issues/221).
+  describes, or loosen the contract. The reasoning is in
+  [ADR 0027](./docs/project/decisions/0027-let-a-form-object-hold-the-names-below-it.md), and this ships
+  [#221](https://github.com/Gcob/lara-spec-first/issues/221).
 - **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it
   used to accept it.** The body is closed to its declared names, but the level `page` is delivered at was left open for
   the value of `page` itself, so `page[evil]=1` and `page[size]=3&page[evil]=1` were accepted (the second kept only
