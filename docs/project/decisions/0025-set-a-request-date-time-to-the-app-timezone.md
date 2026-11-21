@@ -28,7 +28,7 @@ tags: [decisions, code-generation, laravel]
 >   `CarbonImmutable` from `toArray()`.
 
 **Status:** Accepted · **Card:** [#241](https://github.com/Gcob/lara-spec-first/issues/241) · **Pull request:**
-[#NNN](https://github.com/Gcob/lara-spec-first/pull/NNN)
+[#248](https://github.com/Gcob/lara-spec-first/pull/248)
 
 ## Context
 

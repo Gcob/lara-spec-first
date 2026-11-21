@@ -86,7 +86,7 @@ tags: [versions, conventions, planning]
 - **A request DTO's `date-time` is in the app timezone, and `toArray()` writes that same value.** `from()` sets each
   `date-time` to the app timezone at the same instant, wherever it sits: a property, a nested object, a list or a map.
   The app timezone is PHP's default, `date_default_timezone_get()`, which Laravel sets from `config('app.timezone')` at
-  boot, which Eloquent reads stored dates in, and which `now()` uses. `toArray()` writes the value the property holds,
+  boot. It is the one Eloquent reads stored dates in and `now()` uses. `toArray()` writes the value the property holds,
   so `Event::create($request->dto()->toArray())` stores the right instant through a `datetime` cast, which keeps a
   value's clock digits and drops its offset: `2026-12-01T19:00:00-05:00` was stored as `2026-12-01 19:00:00` in a UTC
   app, five hours off, and is now stored as `2026-12-02 00:00:00`. A `date`, a response DTO, and `query` and path

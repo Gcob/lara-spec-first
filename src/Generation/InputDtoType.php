@@ -54,11 +54,11 @@ final readonly class InputDtoType
 
     public const LIST = 'list';
 
-    /** What sets a request's `date-time` to the timezone PHP, and so Eloquent, reads stored dates in. */
-    private const APP_TIMEZONE = '->setTimezone(date_default_timezone_get())';
-
     /** A file part, which exists on the request side only. */
     public const FILE = 'file';
+
+    /** Moves a request's `date-time` to PHP's default timezone, the one Eloquent reads stored dates in. */
+    private const APP_TIMEZONE = '->setTimezone(date_default_timezone_get())';
 
     /**
      * @param  string  $kind  one of the constants above
