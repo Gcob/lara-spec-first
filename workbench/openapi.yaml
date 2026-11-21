@@ -156,9 +156,12 @@ paths:
     /posts/{postId}:
         # The `PATCH` half. A partial update is a statement about the
         # resource's representation, so the schema's required list is read as
-        # empty here and every property is `sometimes`. Diff the two generated
-        # files to see it, and read their Findings blocks for everything the
-        # schema states that no rule enforces yet.
+        # empty here and every property is `sometimes`. The key
+        # `requests.patch` decides it: `partial` (the default, and the
+        # Workbench's) reads it this way, and `as_written` holds a `PATCH` to
+        # the list. Diff the two generated files to see it, and read their
+        # Findings blocks for everything the schema states that no rule
+        # enforces yet.
         #
         # It also names a controller, so the generated parent is extendable and
         # `workbench/app/Http/Controllers/Posts/UpdatePostController.php` answers
@@ -178,6 +181,36 @@ paths:
                     application/json:
                         schema:
                             $ref: '#/components/schemas/NewPost'
+            responses:
+                '200': { description: Updated }
+
+    /posts/{postId}/author:
+        # A JSON merge patch (RFC 7396): the media type says the body is a
+        # partial document, so the required list is read as empty whatever
+        # `requests.patch` says, on any method. `name` is required in the
+        # schema and `{}` still passes; `{"name": 3}` answers 422. Read the
+        # generated request's Findings block for the sentence, and `dto()` for
+        # the partial type.
+        patch:
+            operationId: patchAuthor
+            summary: Change part of a post's author
+            tags: [Posts]
+            parameters:
+                - { name: postId, in: path, required: true, schema: { type: string } }
+            requestBody:
+                required: true
+                content:
+                    application/merge-patch+json:
+                        schema:
+                            type: object
+                            required: [name]
+                            properties:
+                                name:
+                                    type: string
+                                    maxLength: 80
+                                bio:
+                                    type: string
+                                    maxLength: 500
             responses:
                 '200': { description: Updated }
 

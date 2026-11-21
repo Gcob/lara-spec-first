@@ -700,6 +700,23 @@ it('says a body in an unread media type beside a read one is judged on an empty 
         ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
 });
 
+// Laravel reads every `+json` body as JSON, so a JSON Patch beside a merge patch is judged on its real content, never
+// on an empty body: a body that is not an object (a JSON Patch is a list) answers 422.
+it('says a JSON Patch beside a merge patch is read as JSON on its real content', function (): void {
+    $schema = new Schema(types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])], required: ['name']);
+
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest([
+        'application/merge-patch+json' => $schema,
+        'application/json-patch+json' => $schema,
+    ])], new RuleSetOptions);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->message)->toContain('declares a media type this package does not read: `application/json-patch+json`')
+        ->and($findings[0]->message)->toContain('a client that sends `application/json-patch+json` is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `application/merge-patch+json` on its real content: a body that is not a JSON object (a JSON Patch is a list) answers `422`, and an object is held to those rules, though your contract accepts the request.')
+        ->and($findings[0]->message)->not->toContain('on an empty body')
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
+});
+
 it('keeps saying a body in an unread media type alone is not checked', function (): void {
     $schema = new Schema(types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])], required: ['name']);
 

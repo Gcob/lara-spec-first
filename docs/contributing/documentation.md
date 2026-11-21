@@ -977,6 +977,7 @@ carries no descriptions, so there is nothing here that can fall out of date. It 
     - [`0023-read-an-array-in-a-deep-object-as-the-app-declares.md`](../project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md)
     - [`0024-hold-rules-and-report-every-gap.md`](../project/decisions/0024-hold-rules-and-report-every-gap.md)
     - [`0025-set-a-request-date-time-to-the-app-timezone.md`](../project/decisions/0025-set-a-request-date-time-to-the-app-timezone.md)
+    - [`0026-read-a-patch-body-by-its-media-type-then-the-app.md`](../project/decisions/0026-read-a-patch-body-by-its-media-type-then-the-app.md)
 - [`stack.md`](../project/stack.md)
 
 `docs/contributing/`, for `Contributors`:

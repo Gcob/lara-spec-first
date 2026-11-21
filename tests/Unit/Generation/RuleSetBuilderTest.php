@@ -13,6 +13,7 @@ use Gcob\LaraSpecFirst\Contract\SchemaType;
 use Gcob\LaraSpecFirst\Generation\DeepObjectArrays;
 use Gcob\LaraSpecFirst\Generation\Exceptions\ConflictingInputException;
 use Gcob\LaraSpecFirst\Generation\InRule;
+use Gcob\LaraSpecFirst\Generation\PatchReading;
 use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
@@ -2099,6 +2100,439 @@ it('reports a media type it does not read rather than refusing it', function ():
     expect($set->rules)->toBe(['page' => ['sometimes', 'integer']])
         ->and(implode('', $set->findings))->toContain('`application/xml`, which this package does not read');
 });
+
+// --- A JSON merge patch (RFC 7396) is a partial document, whatever the method ---
+
+/**
+ * The required-list sentence a merge patch read alone writes.
+ */
+const MERGE_PATCH_SENTENCE = 'The body is a JSON merge patch (`application/merge-patch+json`, RFC 7396), so the schema\'s required list';
+
+/**
+ * A body of two strings, `name` required, that a merge patch (and a JSON body) may carry.
+ */
+function namedBody(): Schema
+{
+    return objectSchema(
+        ['name' => new Schema(types: [SchemaType::String]), 'age' => new Schema(types: [SchemaType::Integer])],
+        ['name'],
+    );
+}
+
+it('reads the required list of a merge patch as empty, on every method', function (string $method): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: ['application/merge-patch+json' => namedBody()],
+    ), new RuleSetOptions);
+
+    expect($set->rules)->toEqual([
+        'name' => ['sometimes', 'string'],
+        'age' => ['sometimes', new WholeNumber, 'numeric'],
+    ])
+        ->and(implode(' ', $set->information))->toContain(MERGE_PATCH_SENTENCE.' (`name`) is read as empty here')
+        ->and($set->unenforced)->not->toHaveKey('content')
+        ->and($set->leavesUnenforced())->toBeFalse()
+        ->and($set->partialBody)->toBeTrue()
+        ->and(implode(' ', $set->findings))->not->toContain('A `PUT` whose schema')
+        ->and(implode(' ', $set->findings))->not->toContain('A `PATCH` is a partial update');
+})->with(['patch' => 'patch', 'put' => 'put', 'post' => 'post']);
+
+it('reads a merge patch beside application/json as one partial JSON body on a PATCH', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: [
+            'application/json' => objectSchema(['done' => new Schema(types: [SchemaType::Boolean])], ['done']),
+            'application/merge-patch+json' => objectSchema(['done' => new Schema(types: [SchemaType::Boolean])], ['done']),
+        ],
+    ), new RuleSetOptions);
+    $information = implode(' ', $set->information);
+
+    expect($set->rules)->toBe(['done' => ['sometimes', 'boolean:strict']])
+        ->and($set->unenforced)->toBe([])
+        ->and($information)->toContain('The body declares `application/json` and `application/merge-patch+json` over one schema')
+        ->and($information)->toContain('A `PATCH` is a partial update')
+        ->and($information)->not->toContain('JSON merge patch')
+        ->and($set->partialBody)->toBeTrue();
+});
+
+it('counts a merge patch held to the list a POST reads as written beside application/json', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'post',
+        content: [
+            'application/json' => namedBody(),
+            'application/merge-patch+json' => namedBody(),
+        ],
+    ), new RuleSetOptions);
+    $gap = array_values(array_filter($set->findings, static fn (string $line): bool => str_contains($line, 'one rule set cannot read')));
+
+    expect($set->rules['name'])->toBe(['present', 'string'])
+        ->and($gap)->toHaveCount(1)
+        ->and($gap[0])->toContain('A JSON merge patch (RFC 7396) may leave out any property')
+        ->and($set->unenforced)->toBe(['stricterRequired' => ['`name`']])
+        ->and($set->leavesUnenforced())->toBeTrue()
+        ->and($set->stricter)->toBe([])
+        ->and($set->partialBody)->toBeFalse();
+});
+
+// The names the finding lists are the ones the rules ask for: a `readOnly` name is never sent, so a merge patch is never
+// refused over it, and listing it would send a client looking for a `422` that cannot come.
+it('lists only the names the request asks of a merge patch held to the list as written', function (): void {
+    $body = objectSchema([
+        'id' => new Schema(types: [SchemaType::String], readOnly: true),
+        'name' => new Schema(types: [SchemaType::String]),
+        'title' => new Schema(types: [SchemaType::String]),
+    ], ['id', 'name', 'title']);
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'post',
+        content: ['application/json' => $body, 'application/merge-patch+json' => $body],
+    ), new RuleSetOptions);
+    $gap = implode(' ', array_filter($set->findings, static fn (string $line): bool => str_contains($line, 'one rule set cannot read')));
+
+    expect($set->rules['id'])->toBe(['sometimes', 'string'])
+        ->and($set->unenforced)->toBe(['stricterRequired' => ['`name`', '`title`']])
+        ->and($gap)->toContain('leaves out `name` and `title` answers `422`')
+        ->and($gap)->not->toContain('`id`');
+});
+
+it('counts a nested object a merge patch requires names of', function (
+    Schema $body,
+    array $unenforced,
+    string $method,
+    string $mediaType,
+    array $query = [],
+): void {
+    $set = RuleSetBuilder::for(operationWithInput(method: $method, content: [$mediaType => $body], query: array_values($query)), new RuleSetOptions);
+
+    expect($set->unenforced)->toBe($unenforced)
+        ->and($set->leavesUnenforced())->toBe($unenforced !== []);
+
+    if ($unenforced !== []) {
+        expect($set->rules['address'])->toContain('required_array_keys:city,street')
+            ->and(implode(' ', $set->findings))->toContain('merges `address` into the stored object')
+            ->and(implode(' ', $set->findings))->toContain('`city` and `street`');
+    }
+})->with(function (): array {
+    $text = new Schema(types: [SchemaType::String]);
+    $address = static fn (array $required): Schema => objectSchema(['city' => $text, 'street' => $text], array_values($required));
+
+    return [
+        'a nested object that requires names' => [
+            objectSchema(['address' => $address(['city', 'street'])]), ['stricterRequired' => ['`address.city`', '`address.street`']], 'patch', 'application/merge-patch+json',
+        ],
+        'an object inside the items of an array' => [
+            objectSchema(['addresses' => new Schema(types: [SchemaType::Array], items: $address(['city']))]), [], 'patch', 'application/merge-patch+json',
+        ],
+        'an application/json PATCH' => [
+            objectSchema(['address' => $address(['city', 'street'])]), [], 'patch', 'application/json',
+        ],
+        'a nested object that requires nothing' => [
+            objectSchema(['address' => $address([])]), [], 'patch', 'application/merge-patch+json',
+        ],
+        // A query string is never merged into anything: the merge patch is the body's media type only.
+        'a deepObject query parameter that requires names, beside a merge patch' => [
+            objectSchema(['name' => $text]), [], 'patch', 'application/merge-patch+json',
+            [new QueryParameter('filter', objectSchema(['range' => $address(['city', 'street'])], ['range']), required: true, style: 'deepObject', explode: true)],
+        ],
+    ];
+});
+
+it('reads a merge patch beside a form as one rule set', function (): void {
+    $avatar = new Schema(types: [SchemaType::String], isFilePart: true);
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: [
+            'multipart/form-data' => objectSchema(['name' => new Schema(types: [SchemaType::String]), 'avatar' => $avatar], ['name']),
+            'application/merge-patch+json' => objectSchema(['name' => new Schema(types: [SchemaType::String]), 'avatar' => $avatar], ['name']),
+        ],
+    ), new RuleSetOptions);
+
+    expect($set->rules['name'])->toBe(['sometimes', 'string'])
+        ->and($set->rules['avatar'])->toBe(['sometimes', 'string'])
+        ->and($set->multipart)->toBeFalse()
+        ->and(implode(' ', $set->findings))->toContain('A part the schema marks as a file is then read as a string')
+        ->and($set->unenforced)->toHaveKey('format');
+});
+
+it('says a JSON Patch beside a merge patch is read as JSON on its real content', function (string $other, bool $says): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: [
+            'application/merge-patch+json' => namedBody(),
+            $other => namedBody(),
+        ],
+    ), new RuleSetOptions);
+    $findings = implode(' ', $set->findings);
+
+    expect($set->unenforced['content'])->toBe(['`'.$other.'`'])
+        ->and($findings)->toContain('The body declares `'.$other.'`, which this package does not read');
+
+    if ($says) {
+        expect($findings)->toContain('A client that sends `'.$other.'` is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `application/merge-patch+json` on its real content: a body that is not a JSON object (a JSON Patch is a list) answers `422`, and an object is held to those rules, though the contract accepts the request.')
+            ->and($findings)->not->toContain('on an empty body');
+    } else {
+        expect($findings)->toContain('judged by the rules of `application/merge-patch+json` on an empty body')
+            ->and($findings)->not->toContain('read as JSON');
+    }
+})->with([
+    'a JSON Patch' => ['application/json-patch+json', true],
+    'XML' => ['application/xml', false],
+]);
+
+it('reads the other media type and leaves a merge patch of another schema unread', function (
+    string $other,
+    string $sentence,
+): void {
+    $avatar = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'post',
+        content: [
+            $other => objectSchema(['title' => new Schema(types: [SchemaType::String]), 'avatar' => $avatar], ['title']),
+            'application/merge-patch+json' => objectSchema(['name' => new Schema(types: [SchemaType::String])]),
+        ],
+    ), new RuleSetOptions);
+    $findings = implode(' ', $set->findings);
+
+    expect(array_keys($set->rules))->toBe(['title', 'avatar'])
+        ->and($set->unenforced['content'])->toBe(['`application/merge-patch+json`'])
+        ->and($findings)->toContain($sentence)
+        ->and($findings)->not->toContain('on an empty body')
+        ->and($findings)->not->toContain('over one schema')
+        ->and($set->multipart)->toBe($other === 'multipart/form-data');
+
+    if ($other === 'multipart/form-data') {
+        expect($set->rules['avatar'])->toBe(['sometimes', 'file', 'mimetypes:image/png'])
+            ->and($findings)->not->toContain('A part the schema marks as a file is then read as a string');
+    }
+})->with([
+    'application/json' => [
+        'application/json',
+        'is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `application/json` on its real content: a body that is not a JSON object answers `422`',
+    ],
+    'a urlencoded form' => [
+        'application/x-www-form-urlencoded',
+        'is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `application/x-www-form-urlencoded` on its real JSON content: an object is held to those rules',
+    ],
+    'multipart/form-data' => [
+        'multipart/form-data',
+        'is read as JSON, since Laravel reads every `+json` type as JSON, and is judged by the rules of `multipart/form-data` on its real JSON content: an object is held to those rules',
+    ],
+]);
+
+it('reads a merge patch beside multipart over one schema with the file part as a string', function (): void {
+    $avatar = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $body = objectSchema(['avatar' => $avatar]);
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'post',
+        content: ['multipart/form-data' => $body, 'application/merge-patch+json' => $body],
+    ), new RuleSetOptions);
+
+    expect($set->rules['avatar'])->toBe(['sometimes', 'string'])
+        ->and($set->multipart)->toBeFalse()
+        ->and(implode(' ', $set->findings))->toContain('A part the schema marks as a file is then read as a string')
+        ->and($set->unenforced)->not->toHaveKey('content');
+});
+
+// --- requests.patch: how a PATCH body's required list is read when its media type does not say ---
+
+/**
+ * The options of an application that set `requests.patch` to `as_written`.
+ */
+function asWritten(): RuleSetOptions
+{
+    return new RuleSetOptions(patchReading: PatchReading::AsWritten);
+}
+
+it('reads a PATCH as written under requests.patch as_written', function (): void {
+    $properties = [
+        'title' => new Schema(types: [SchemaType::String]),
+        'published' => new Schema(types: [SchemaType::Boolean]),
+        'note' => new Schema(types: [SchemaType::String]),
+    ];
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: ['application/json' => objectSchema($properties, ['title', 'published'])],
+    ), asWritten());
+
+    expect($set->rules)->toBe([
+        'title' => ['present', 'string'],
+        'published' => ['required', 'boolean:strict'],
+        'note' => ['sometimes', 'string'],
+    ])
+        ->and($set->partialBody)->toBeFalse()
+        ->and(implode(' ', $set->findings))->not->toContain('A `PATCH`')
+        ->and(implode(' ', $set->findings))->not->toContain('required list')
+        ->and($set->information)->toBe([])
+        ->and($set->leavesUnenforced())->toBeFalse();
+});
+
+it('reads an optional PATCH body through its siblings under requests.patch as_written', function (): void {
+    $body = objectSchema(
+        ['title' => new Schema(types: [SchemaType::String]), 'note' => new Schema(types: [SchemaType::String])],
+        ['title', 'note'],
+    );
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: ['application/json' => $body],
+        bodyRequired: false,
+    ), asWritten());
+
+    expect($set->rules)->toBe([
+        'title' => ['present_with:note', 'string'],
+        'note' => ['present_with:title', 'string'],
+    ])
+        ->and($set->requiredOnceSent)->toBe(['title' => 'present', 'note' => 'present']);
+});
+
+it('reads a required nullable JSON PATCH body through its required keys under requests.patch as_written', function (): void {
+    $body = nullableObjectSchema(
+        ['street' => new Schema(types: [SchemaType::String]), 'age' => new Schema(types: [SchemaType::Integer])],
+        ['street', 'age'],
+    );
+    $set = RuleSetBuilder::for(operationWithInput(method: 'patch', content: ['application/json' => $body]), asWritten());
+
+    expect($set->rules['street'])->toBe(['present_with:age', 'string'])
+        ->and($set->requiredOnceSent)->toBe(['street' => 'present', 'age' => 'required']);
+});
+
+it('asks the required names of a form PATCH under requests.patch as_written', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: ['multipart/form-data' => objectSchema(
+            ['page' => new Schema(types: [SchemaType::Integer]), 'other' => new Schema(types: [SchemaType::String]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
+            ['page'],
+        )],
+    ), asWritten());
+
+    expect($set->rules['page'])->toBe(['required', 'integer'])
+        ->and($set->whenNotArray)->toBe([])
+        ->and($set->stricter)->toHaveCount(1)
+        ->and($set->stricter[0])->toContain('The contract asks for `page`');
+});
+
+it('asks a file part of a PATCH under requests.patch as_written', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: ['multipart/form-data' => objectSchema(['avatar' => new Schema(types: [SchemaType::String], isFilePart: true)], ['avatar'])],
+    ), asWritten());
+
+    expect($set->rules['avatar'])->toBe(['required', 'file']);
+});
+
+it('keeps the empty-form sentence of a required form PATCH only where nothing asks a field under requests.patch as_written', function (PatchReading $reading, bool $says): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: ['multipart/form-data' => objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a'])],
+    ), new RuleSetOptions(patchReading: $reading));
+
+    expect(str_contains(implode("\n", $set->findings), 'a form with a `Content-Type` and no field'))->toBe($says);
+})->with([
+    'partial, every name is optional' => [PatchReading::Partial, true],
+    'as_written, a required name refuses the empty form' => [PatchReading::AsWritten, false],
+]);
+
+it('gives a PATCH under requests.patch as_written the rule set of a PUT', function (Closure $operation): void {
+    $patch = RuleSetBuilder::for($operation('patch'), asWritten());
+    $put = RuleSetBuilder::for($operation('put'), new RuleSetOptions);
+
+    expect($patch->rules)->toEqual($put->rules)
+        ->and($patch->requiredOnceSent)->toBe($put->requiredOnceSent)
+        ->and($patch->whenNotArray)->toBe($put->whenNotArray)
+        ->and($patch->dropsArray)->toBe($put->dropsArray)
+        ->and($patch->stricter)->toBe($put->stricter)
+        ->and($patch->unenforced)->toBe($put->unenforced)
+        ->and($patch->uncheckedNames)->toBe($put->uncheckedNames)
+        ->and($patch->partialBody)->toBeFalse();
+})->with(function (): array {
+    $text = new Schema(types: [SchemaType::String]);
+    $form = static fn (array $media, Schema $body, bool $required = true): Closure => static fn (string $method): Operation => operationWithInput(
+        method: $method,
+        content: array_fill_keys($media, $body),
+        bodyRequired: $required,
+    );
+
+    return [
+        'a nullable root with dotted names' => [$form(['application/json'], nullableAddressSchema())],
+        'a nullable root, JSON and a form' => [$form(['application/json', 'application/x-www-form-urlencoded'], nullableAddressSchema())],
+        'a required list beside an optional body' => [$form(['application/json'], objectSchema(['a' => $text, 'b' => $text], ['a', 'b']), false)],
+        'a name beside a wildcard name' => [$form(['multipart/form-data'], objectSchema(
+            ['page' => new Schema(types: [SchemaType::Integer]), 'page[*]' => new Schema(types: [SchemaType::Integer])],
+            ['page'],
+        ))],
+        'a name beside a name below it' => [$form(['multipart/form-data'], objectSchema(
+            ['page' => new Schema(types: [SchemaType::Integer]), 'page[size]' => new Schema(types: [SchemaType::Integer])],
+            ['page'],
+        ))],
+        'a name a dependentRequired asks for' => [$form(['multipart/form-data'], new Schema(
+            types: [SchemaType::Object],
+            properties: ['page' => new Schema(types: [SchemaType::Integer]), 'other' => $text, 'page[*]' => new Schema(types: [SchemaType::Integer])],
+            dependentRequired: ['other' => ['page']],
+        ))],
+        'a file part' => [$form(['multipart/form-data'], objectSchema(['avatar' => new Schema(types: [SchemaType::String], isFilePart: true)], ['avatar']))],
+        'a nested object that requires names' => [$form(['application/json'], objectSchema(
+            ['address' => objectSchema(['city' => $text], ['city'])],
+            ['address'],
+        ))],
+    ];
+});
+
+it('names requests.patch in the sentence of a partial PATCH', function (string $media): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: [$media => objectSchema(['a' => new Schema(types: [SchemaType::String]), 'b' => new Schema(types: [SchemaType::String])], ['a', 'b'])],
+    ), new RuleSetOptions);
+
+    expect(array_values(array_filter($set->information, static fn (string $line): bool => str_starts_with($line, 'A `PATCH`'))))->toBe([
+        'A `PATCH` is a partial update, so the schema\'s required list (`a` and `b`) is read as empty here. Every property is '
+            .'`sometimes`. `requests.patch` set to `as_written` reads it as written.',
+    ]);
+})->with([
+    'JSON' => ['application/json'],
+    'a form' => ['application/x-www-form-urlencoded'],
+]);
+
+it('keeps a merge patch partial whatever requests.patch says', function (string $method): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: ['application/merge-patch+json' => namedBody()],
+    ), asWritten());
+
+    expect($set->rules['name'])->toBe(['sometimes', 'string'])
+        ->and($set->partialBody)->toBeTrue()
+        ->and(implode(' ', $set->information))->toContain(MERGE_PATCH_SENTENCE.' (`name`) is read as empty here, whatever `requests.patch` says. Every top-level property is `sometimes`.')
+        ->and($set->unenforced)->not->toHaveKey('content')
+        ->and($set->leavesUnenforced())->toBeFalse();
+})->with(['patch' => 'patch', 'put' => 'put']);
+
+it('counts a merge patch held beside application/json to the list requests.patch as_written reads', function (PatchReading $reading, bool $counted): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'patch',
+        content: ['application/json' => namedBody(), 'application/merge-patch+json' => namedBody()],
+    ), new RuleSetOptions(patchReading: $reading));
+
+    expect($set->rules['name'])->toBe($counted ? ['present', 'string'] : ['sometimes', 'string'])
+        ->and($set->unenforced)->toBe($counted ? ['stricterRequired' => ['`name`']] : [])
+        ->and($set->leavesUnenforced())->toBe($counted)
+        ->and($set->stricter)->toBe([])
+        ->and($set->partialBody)->toBe(! $counted);
+})->with([
+    'partial lifts the gap' => [PatchReading::Partial, false],
+    'as_written counts it' => [PatchReading::AsWritten, true],
+]);
+
+it('reads a PUT and a POST the same under either requests.patch value', function (string $method, PatchReading $reading): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: $method,
+        content: ['application/json' => namedBody()],
+    ), new RuleSetOptions(patchReading: $reading));
+
+    expect($set->rules['name'])->toBe(['present', 'string'])
+        ->and($set->partialBody)->toBeFalse();
+})->with([
+    'a put, partial' => ['put', PatchReading::Partial],
+    'a put, as_written' => ['put', PatchReading::AsWritten],
+    'a post, partial' => ['post', PatchReading::Partial],
+    'a post, as_written' => ['post', PatchReading::AsWritten],
+]);
 
 // --- Every constraint maps or reports: one case per row of the table ---
 

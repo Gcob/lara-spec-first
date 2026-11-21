@@ -177,11 +177,11 @@ rule. **`text/*` keeps its rule too:** Laravel matches a wildcard on the first h
 list decides it, and a required file part is `required` where a required string is `present`: Laravel's `required` is
 the rule that means "a file was sent", and it refuses the empty slot a form submits with no file chosen. A nullable part
 keeps `present`. So
-[a `PATCH` empties that list](./code-generation/request-validation.md#patch-empties-the-required-list) for a file part
-exactly as it does for a string, and the DTO's third state is what carries "the client sent no avatar". Nullability
-stays the schema's own axis: a rule set that added `nullable` to every optional part would be
-[conflating the two](./code-generation/request-validation.md#a-patch-takes-the-partial-type) and accepting an explicit
-`null` the contract never allowed.
+[a partial update empties that list](./code-generation/request-validation.md#a-partial-update-empties-the-required-list)
+for a file part exactly as it does for a string, and the DTO's third state is what carries "the client sent no avatar".
+Nullability stays the schema's own axis: a rule set that added `nullable` to every optional part would be
+[conflating the two](./code-generation/request-validation.md#a-partial-update-takes-the-partial-type) and accepting an
+explicit `null` the contract never allowed.
 
 **`mimetypes:` and never `mimes:`, and the difference is what each one reads.** `mimetypes:image/png` inspects the
 file's actual media type; `mimes:png` matches an extension against a table Laravel keeps. OpenAPI states media types, so

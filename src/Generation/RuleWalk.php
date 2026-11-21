@@ -28,6 +28,14 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
 final class RuleWalk
 {
     /**
+     * The entry a merge patch's `required` is counted under when the request asks for names the merge patch may leave
+     * out, so it enforces more than the contract and a client answers `422` for a valid request. It is a keyword of its
+     * own, and not `required`, because the doctor says the opposite about `required`: that the request leaves it out,
+     * or holds only part of it.
+     */
+    public const STRICTER_REQUIRED = 'stricterRequired';
+
+    /**
      * @var array<string, list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>>
      */
     public array $rules = [];
@@ -83,9 +91,9 @@ final class RuleWalk
      * rewrites, a `readOnly` field that is required, two media types over one schema, the optional fields of a `PUT`, a
      * required name no `properties` declares, an untyped field that states nothing else, a boolean read as text (a
      * query parameter, a form field, or an item of a boolean list in the query string), an untyped `enum` of numbers or
-     * strings read as text, a `PATCH` whose required list is read as empty, a required form body that accepts an empty
-     * form, and an empty bracketed property of an open `deepObject`. Nothing is unenforced by them, so the build does
-     * not count them.
+     * strings read as text, a partial body (a `PATCH`, or a merge patch) whose required list is read as empty, a
+     * required form body that accepts an empty form, and an empty bracketed property of an open `deepObject`. Nothing
+     * is unenforced by them, so the build does not count them.
      *
      * @var list<string>
      */
@@ -213,17 +221,33 @@ final class RuleWalk
     public array $requiredOnceSent = [];
 
     /**
-     * Whether the body is required, is not a `PATCH`, is read as JSON and has a root that allows `null`: the one
+     * Whether the body is required, is not a partial body, is read as JSON and has a root that allows `null`: the one
      * required body whose required keys follow their siblings, like an optional body's, since `null` reaches the rules
      * as `[]`.
      */
     public bool $nullableRequiredBody = false;
 
     /**
-     * Whether the body is the one of a `PATCH`, which is a partial update: the rules ask for none of its top-level
+     * Whether the body is read as a partial update, a `PATCH` or a merge patch: the rules ask for none of its top-level
      * names, so a top-level name the walk drops has no `required` to leave unenforced.
      */
-    public bool $patchBody = false;
+    public bool $partialBody = false;
+
+    /**
+     * Whether a JSON merge patch (`application/merge-patch+json`) is among the media types the rule set reads.
+     */
+    public bool $mergePatch = false;
+
+    /**
+     * Whether the merge patch is the only media type the rule set reads: the one body that is partial by what its media
+     * type says, whatever the method.
+     */
+    public bool $mergePatchAlone = false;
+
+    /**
+     * How many arrays' items the walk is inside of: an object in one is a whole value, which a merge patch replaces.
+     */
+    public int $underItems = 0;
 
     /**
      * The key the request's failures about the body itself are answered on.

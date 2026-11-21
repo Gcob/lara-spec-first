@@ -184,6 +184,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Requests — DONE
+    |--------------------------------------------------------------------------
+    |
+    | How a `PATCH` body's required list is read, when its media type does not
+    | say: OpenAPI gives `PATCH` no meaning of its own, and RFC 5789 calls it a
+    | partial update.
+    |
+    | `partial` is the default: the schema's required list is read as empty,
+    | every property is `sometimes`, and `dto()` returns the partial type. A
+    | `PATCH` that leaves out a required field is accepted, and the generated
+    | request says so.
+    |
+    | `as_written` reads the list as written, like a `PUT`: a `PATCH` that leaves
+    | out a required field answers 422, and `dto()` returns the full type.
+    |
+    | It applies to `application/json` and to a form. A body sent as
+    | `application/merge-patch+json` (RFC 7396) is partial whatever it says, since
+    | that media type is the contract's own answer. `application/json-patch+json`
+    | is not read at all: its schema describes a list of operations.
+    |
+    | Read by `spec:build`, `spec:make` and `spec:doctor`. A change takes another
+    | `spec:build`, and the doctor reports the generated requests as drifted until
+    | then. Any other value stops all three with a message that names the key.
+    |
+    | See docs/guide/code-generation/request-validation.md — "A partial update
+    | empties the required list".
+    |
+    */
+
+    'requests' => [
+        'patch' => 'partial',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Where your own overrides are looked for — TODO (phase 2, #40)
     |--------------------------------------------------------------------------
     |

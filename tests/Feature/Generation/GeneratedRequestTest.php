@@ -13,6 +13,7 @@ use Gcob\LaraSpecFirst\Generation\DeepObjectArrays;
 use Gcob\LaraSpecFirst\Generation\FormRequestEmitter;
 use Gcob\LaraSpecFirst\Generation\InputDtoEmitter;
 use Gcob\LaraSpecFirst\Generation\InRule;
+use Gcob\LaraSpecFirst\Generation\PatchReading;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\CreateUserRequest;
@@ -5099,3 +5100,107 @@ it('answers 422 to a map value too large for a double', function (): void {
     expect(errorsForRawJson($class, '{"a": 4, "b": 1e400}'))->toBe([422, ['b' => ['The b field must be a multiple of 2.']]])
         ->and(errorsForRawJson($class, '{"a": 4, "b": 6}')[0])->toBe(200);
 });
+
+/**
+ * An operation whose body is a person: `name` is required and not nullable, `age` is optional, and an `address` needs
+ * both of its keys.
+ *
+ * @param  list<string>  $mediaTypes  one schema, read by every media type
+ */
+function personBody(HttpMethod $method, array $mediaTypes): Operation
+{
+    $text = new Schema(types: [SchemaType::String]);
+
+    return new Operation(
+        index: 0,
+        method: $method,
+        path: PathTemplate::fromString('/people/{id}'),
+        operationId: 'changePerson',
+        requestBody: new RequestBody(array_fill_keys($mediaTypes, new Schema(
+            types: [SchemaType::Object],
+            properties: [
+                'name' => $text,
+                'age' => new Schema(types: [SchemaType::Integer]),
+                'address' => new Schema(types: [SchemaType::Object], properties: ['city' => $text, 'street' => $text], required: ['city', 'street']),
+            ],
+            required: ['name'],
+        )), true),
+    );
+}
+
+// A merge patch is a partial document (RFC 7396): nothing is required of a top-level key, whatever the method, and a
+// value is judged when it is sent. The nested object keeps its list, which the doctor counts.
+it('answers a merge patch as a partial JSON body through the kernel', function (
+    HttpMethod $method,
+    array $mediaTypes,
+    string $contentType,
+    string $content,
+    int $status,
+    array $errorKeys,
+    ?array $dto,
+): void {
+    $class = emittedRequestClass(personBody($method, array_values($mediaTypes)));
+
+    expect(dtoForContentType($class, $contentType, $content))->toBe([$status, $errorKeys, $dto]);
+})->with(function (): array {
+    $patch = [HttpMethod::Patch, ['application/merge-patch+json'], 'application/merge-patch+json'];
+
+    return [
+        'an empty object' => [...$patch, '{}', 200, [], []],
+        'a value sent' => [...$patch, '{"name":"x"}', 200, [], ['name' => 'x']],
+        'a value the schema refuses' => [...$patch, '{"age":"x"}', 422, ['age'], null],
+        'null for a name that is not nullable' => [...$patch, '{"name":null}', 422, ['name'], null],
+        'no content, for a required body' => [...$patch, '', 422, ['body'], null],
+        'a POST with an empty object' => [HttpMethod::Post, ['application/merge-patch+json'], 'application/merge-patch+json', '{}', 200, [], []],
+        'a nested object without a name it requires' => [...$patch, '{"address":{"city":"x"}}', 422, ['address'], null],
+        'a JSON Patch beside a merge patch' => [
+            HttpMethod::Patch,
+            ['application/json-patch+json', 'application/merge-patch+json'],
+            'application/json-patch+json',
+            '[{"op":"remove","path":"/a"}]',
+            422,
+            ['body'],
+            null,
+        ],
+    ];
+});
+
+// `requests.patch` is the application's answer for a `PATCH` whose media type says nothing: `partial` is the default, and
+// `as_written` holds the body to the schema's required list, as a `PUT` is, with the full DTO type.
+it('answers a PATCH by the list requests.patch says through the kernel', function (
+    PatchReading $reading,
+    array $mediaTypes,
+    string $contentType,
+    string $content,
+    int $status,
+    array $errorKeys,
+    ?array $dto,
+): void {
+    $class = emittedRequestClass(personBody(HttpMethod::Patch, array_values($mediaTypes)), new RuleSetOptions(patchReading: $reading));
+
+    expect(dtoForContentType($class, $contentType, $content))->toBe([$status, $errorKeys, $dto]);
+})->with(function (): array {
+    $json = [['application/json'], 'application/json'];
+    $written = [PatchReading::AsWritten, ...$json];
+    $full = '{"name":"x","address":{"city":"a","street":"b"}}';
+
+    return [
+        'as_written, a body without the required name' => [...$written, '{"age":1}', 422, ['name'], null],
+        'as_written, an empty object' => [...$written, '{}', 422, ['name'], null],
+        'as_written, the required name sent' => [...$written, '{"name":"x"}', 200, [], ['name' => 'x']],
+        'as_written, the full body' => [...$written, $full, 200, [], ['name' => 'x', 'address' => ['city' => 'a', 'street' => 'b']]],
+        'as_written, no content, for a required body' => [...$written, '', 422, ['name', 'body'], null],
+        'partial, an empty object' => [PatchReading::Partial, ...$json, '{}', 200, [], []],
+        'partial, a body without the required name' => [PatchReading::Partial, ...$json, '{"age":1}', 200, [], ['age' => 1]],
+        'as_written, a merge patch stays partial' => [PatchReading::AsWritten, ['application/merge-patch+json'], 'application/merge-patch+json', '{}', 200, [], []],
+    ];
+});
+
+it('answers a form PATCH by the list requests.patch says through the kernel', function (PatchReading $reading, int $status): void {
+    $class = emittedRequestClass(personBody(HttpMethod::Patch, ['application/x-www-form-urlencoded']), new RuleSetOptions(patchReading: $reading));
+
+    expect(responseForContentType($class, 'application/x-www-form-urlencoded', 'age=1')->getStatusCode())->toBe($status);
+})->with([
+    'partial' => [PatchReading::Partial, 200],
+    'as_written' => [PatchReading::AsWritten, 422],
+]);

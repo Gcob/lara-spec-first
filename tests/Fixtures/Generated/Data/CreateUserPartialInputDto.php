@@ -24,7 +24,8 @@ use JsonSerializable;
  *   - Class name derived from the operation's request, `CreateUserRequest`, because the body is
  *     written inline and has no name of its own.
  *   - The partial type: every property is `Optional`, and `toArray()` leaves out the ones the
- *     client did not send. A `PATCH` reads it, and so does a body that may be absent entirely.
+ *     client did not send. A partial update reads it, and so does a body that may be absent
+ *     entirely.
  *   - No operation reads this type. It is generated beside the full one for every body, so that
  *     adding or removing a `required` property never creates or deletes a name somebody has
  *     already imported.
