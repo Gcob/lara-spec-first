@@ -67,10 +67,12 @@ A `PATCH` reads `required` as empty because a partial update is what the method 
 pipeline on what a client following HTTP does, and nothing in the contract is wrong.
 
 [ADR 0007](./0007-keep-json-scalars-strict.md) decided that a text boolean accepts the four spellings, and ADR 0006
-listed its `"1"` and `"0"` among the gaps where the request is looser. The decision stands and ADR 0007's status does
-not change. What moves is the class of that reading: it is a standard reading, so it is information and no longer a gap
-the build counts or the doctor reports. A field with no type whose `enum` or `const` holds numbers or strings, read from
-a query string or a form, is the same kind of reading: every value there is text, so `"1"` stands for `1`.
+listed its `"1"` and `"0"` among the gaps where the request is looser. [ADR 0016](./0016-keep-json-scalars-typed.md)
+replaced ADR 0007 and restates the rule, and [ADR 0019](./0019-judge-a-json-integer-by-its-value.md) keeps it, so the
+decision stands and no status changes. What moves is the class of that reading: it is a standard reading, so it is
+information and no longer a gap the build counts or the doctor reports. A field with no type whose `enum` or `const`
+holds numbers or strings, read from a query string or a form, is the same kind of reading: every value there is text, so
+`"1"` stands for `1`.
 
 ## Decision
 
@@ -95,8 +97,6 @@ decision somebody can read. The request is stricter, with a finding, in these ca
 - **A body with `properties` and no `type`** is read as an object, so a JSON root that is not one (the string `"Ada"` is
   valid against that schema) is refused. A root that may be an object or anything else has no field for a rule to sit
   on.
-- **In a body that is JSON and a form at once, a boolean keeps `boolean`**, so a form client's `"true"` is refused. The
-  finding on the field names that and what a JSON client gets through. One rule set cannot read both.
 
 A non-nullable string also refuses `""`, because Laravel's default `ConvertEmptyStringsToNull` middleware turns it into
 `null` before any rule runs. That is the framework's and not a rule of the package, so the guide states it once and no
@@ -157,7 +157,8 @@ The request is looser than the contract, and the doctor reports the first three:
 
 - **An integer, number or boolean of a body that is JSON and a form** keeps a loose rule, so a JSON client's `"42"`
   passes for an integer, `"1.5"` for a number, and `"1"` or `1` for a boolean. One rule set cannot read a form's text
-  and still refuse a string in JSON. A finding names the field and the doctor reports its `type`
+  and still refuse a string in JSON. A boolean keeps `boolean`, so it also refuses a form client's `"true"`. A finding
+  names the field and what each client gets, and the doctor reports its `type`
   ([ADR 0019](./0019-judge-a-json-integer-by-its-value.md) narrowed it to what remains). A runtime branch would close it
   ([#133](https://github.com/Gcob/lara-spec-first/issues/133)).
 - **A recursion through a schema with no name, or through a field that is two markers at once,** validates nothing below
@@ -241,9 +242,10 @@ is not. [ADR 0005](./0005-read-default-content-type-by-latest-patch.md) states i
 - **A generated file keeps its "Nothing was read and left unenforced" line** when it holds only stricter findings and
   information, and a request with only a text boolean, a partial `PATCH` or an empty form is no longer in the build
   warning. A request generated before keeps its older file until the next `spec:build`.
-- **A new finding picks its kind where it is written.** Writing it any other way does not compile, a gap with no entry
-  is refused, and the agreement test fails when a counted finding has nothing for the doctor to report. A reviewer
-  checks the kind, since a standard reading has to be told from a gap by the contract and not by how the finding reads.
+- **A new finding picks its kind where it is written.** The records are private, so writing it any other way is an
+  error, Larastan refuses a gap with no entry, and the agreement test fails when a counted finding has nothing for the
+  doctor to report. A reviewer checks the kind, since a standard reading has to be told from a gap by the contract and
+  not by how the finding reads.
 - **The doctor's `Partial` finding says what a keyword's row cannot.** The support matrix may rate a keyword as honored
   in general, and the finding says that on these fields the rules leave it out or hold only part of it, which the
   generated file's findings detail.
@@ -254,8 +256,10 @@ is not. [ADR 0005](./0005-read-default-content-type-by-latest-patch.md) states i
   [ADR 0022](./0022-read-a-deep-object-query-by-its-brackets.md) and
   [ADR 0023](./0023-read-an-array-in-a-deep-object-as-the-app-declares.md) stay as they were written, and what they say
   about the doctor is replaced by this record. ADR 0019 says the finding on a scalar of a body that is JSON and a form
-  is never `unenforced`, so the doctor stays silent: the doctor now reports that field's `type`. ADR 0007's text boolean
-  is still the rule, now read as information.
+  is never `unenforced`, so the doctor stays silent: the doctor now reports that field's `type`. The text boolean ADR
+  0016 restates is still the rule, now read as information. ADR 0006 lists a boolean of a body that is JSON and a form
+  among the stricter cases and counts it as a gap: here it is only a gap, under the looser rule, since the finding says
+  what each client gets and the doctor reports its `type`.
 - **What the decision leaves open** is [#133](https://github.com/Gcob/lara-spec-first/issues/133),
   [#146](https://github.com/Gcob/lara-spec-first/issues/146),
   [#157](https://github.com/Gcob/lara-spec-first/issues/157),

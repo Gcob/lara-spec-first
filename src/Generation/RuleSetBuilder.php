@@ -271,6 +271,14 @@ final readonly class RuleSetBuilder
             $closedKeys = self::bodyRules($operation, $body, $walk);
         }
 
+        if ($walk->fileBody !== null) {
+            [$at, $finding, $keywords] = $walk->fileBody;
+            // The parts the walk read recorded their own labels. A part it did not reach is still in the body, so the
+            // gap falls back to the body itself rather than go without an entry.
+            $recorded = array_intersect_key($walk->unenforcedEntries(), array_flip($keywords));
+            $walk->unenforced($finding, $recorded !== [] ? $recorded : array_fill_keys($keywords, ['The body itself']), $at);
+        }
+
         // A query string carries no file, so the parameters below are never read
         // as one, whatever the body is.
         $multipart = $walk->multipart;
@@ -469,8 +477,6 @@ final readonly class RuleSetBuilder
             }
         }
 
-        $walk->assertBacked();
-
         return new RuleSet($walk->rules, $walk->findings(), $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforcedEntries(), $walk->faultFindings(), $walk->stricterFindings(), $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->informationFindings(), $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys, self::commaLists($walk, $undeclaredKeys));
     }
 
@@ -549,11 +555,13 @@ final readonly class RuleSetBuilder
                 self::list(array_keys($read)),
             );
 
-            if (isset($read[self::MULTIPART]) && self::hasFilePart(reset($read))) {
-                // A gap: a multipart upload of a file meets `string` and is refused, so it loses a constraint. The part
-                // itself records which keyword, `format` or `contentMediaType`, when it is read.
-                $walk->unenforcedByItsFields($finding.' A part the schema marks as a file is then read as a string, because a '
-                    .'JSON or form-encoded body cannot carry one and no rule serves both.', ['format', 'contentMediaType']);
+            $fileKeywords = isset($read[self::MULTIPART]) ? self::filePartKeywords(reset($read)) : [];
+
+            if ($fileKeywords !== []) {
+                // A gap: a multipart upload of a file meets `string` and is refused, so it loses a constraint. Its
+                // entries are the parts' own, recorded when each is read, so the sentence is written after the walk.
+                $walk->fileBody = [$walk->findingCount(), $finding.' A part the schema marks as a file is then read as a string, because a '
+                    .'JSON or form-encoded body cannot carry one and no rule serves both.', $fileKeywords];
             } else {
                 $walk->information($finding);
             }
@@ -563,22 +571,25 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether a file part is written anywhere in a schema, a nested one and an `allOf` branch included. A recursion
+     * The keyword the contract wrote for each file part in a schema, a nested one and an `allOf` branch included:
+     * `contentMediaType` when the part states one, `format` otherwise. Empty when there is no file part. A recursion
      * marker has nothing under it, so it ends the walk.
+     *
+     * @return list<'contentMediaType'|'format'>
      */
-    private static function hasFilePart(Schema $schema): bool
+    private static function filePartKeywords(Schema $schema): array
     {
+        $keywords = [];
+
         if ($schema->isFilePart) {
-            return true;
+            $keywords[] = $schema->contentMediaType === null ? 'format' : 'contentMediaType';
         }
 
         foreach (self::children($schema) as $child) {
-            if (self::hasFilePart($child)) {
-                return true;
-            }
+            array_push($keywords, ...self::filePartKeywords($child));
         }
 
-        return false;
+        return array_values(array_unique($keywords));
     }
 
     /**

@@ -123,7 +123,7 @@ final class RuleWalk
      * {@see self::unenforced()} adds at least one, and nothing else is a gap, so the request is left unenforced exactly
      * when this is not empty (or a fault was written).
      *
-     * @var array<string, list<string>>
+     * @var array<string, non-empty-list<string>>
      */
     private array $unenforced = [];
 
@@ -137,11 +137,13 @@ final class RuleWalk
     private array $faults = [];
 
     /**
-     * The keywords of each gap written by {@see self::unenforcedByItsFields()}, for the check at the end of the walk.
+     * Where the sentence about the file parts of a body that is multipart and also JSON or a form goes in the findings,
+     * what it says, and the keywords the parts state: the entries of that gap are the parts' own, which the walk of the
+     * fields records, so the sentence is written once it has.
      *
-     * @var list<non-empty-list<string>>
+     * @var array{int, string, non-empty-list<string>}|null
      */
-    private array $backedBy = [];
+    public ?array $fileBody = null;
 
     /**
      * Whether `multipart/form-data` is the only media type the rule set is read from, which is the one body a part can
@@ -505,11 +507,19 @@ final class RuleWalk
     /**
      * Each keyword left unenforced, by the labels of the fields it was left unenforced on.
      *
-     * @return array<string, list<string>>
+     * @return array<string, non-empty-list<string>>
      */
     public function unenforcedEntries(): array
     {
         return $this->unenforced;
+    }
+
+    /**
+     * How many findings are written, which is where the next one goes.
+     */
+    public function findingCount(): int
+    {
+        return count($this->findings);
     }
 
     /**
@@ -521,38 +531,17 @@ final class RuleWalk
      * nothing) writes information instead.
      *
      * @param  non-empty-array<string, non-empty-list<string>>  $entries  the labels of the fields, by keyword
+     * @param  int|null  $at  where in the findings the sentence goes, from {@see self::findingCount()}, when its
+     *                        entries are known only after the sentence's place has passed; the end otherwise
      */
-    public function unenforced(string $finding, array $entries): void
+    public function unenforced(string $finding, array $entries, ?int $at = null): void
     {
-        $this->findings[] = $finding;
+        array_splice($this->findings, $at ?? count($this->findings), 0, [$finding]);
 
         foreach ($entries as $keyword => $labels) {
             foreach ($labels as $label) {
                 $this->leaveUnenforced($keyword, $label);
             }
-        }
-    }
-
-    /**
-     * Record a gap whose entries are recorded by the fields it is about, when the walk reads each one: the sentence
-     * comes first, so it sits where the reader expects it, and the fields come after. {@see self::assertBacked()}
-     * checks that one of them did.
-     *
-     * @param  non-empty-list<string>  $keywords  the keywords one of the fields it is about is left unenforced on
-     */
-    public function unenforcedByItsFields(string $finding, array $keywords): void
-    {
-        $this->findings[] = $finding;
-        $this->backedBy[] = $keywords;
-    }
-
-    /**
-     * Check that every gap written by {@see self::unenforcedByItsFields()} has an entry, once the walk is over.
-     */
-    public function assertBacked(): void
-    {
-        foreach ($this->backedBy as $keywords) {
-            assert(array_intersect_key(array_flip($keywords), $this->unenforced) !== [], 'A gap needs an entry the doctor reports.');
         }
     }
 

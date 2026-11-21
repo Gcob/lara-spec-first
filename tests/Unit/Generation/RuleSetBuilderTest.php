@@ -4174,6 +4174,31 @@ it('does not explain a file part the mixed body does not have', function (): voi
         ->and($findings)->not->toContain('A part the schema marks as a file');
 });
 
+// The sentence is a gap, so the doctor reports it too: it names the keyword the contract wrote for the file, and the
+// part it is on, whatever the second media type is.
+it('reports the part a mixed body reads as a string, on the keyword the contract wrote for the file', function (Schema $schema, array $mediaTypes, array $unenforced): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: array_fill_keys($mediaTypes, $schema)), new RuleSetOptions);
+    $named = array_values(array_filter($set->findings, static fn (string $line): bool => str_contains($line, 'A part the schema marks as a file')));
+
+    // The sentence stays first, ahead of the sentences of the fields it explains.
+    expect($named)->toHaveCount(1)
+        ->and($set->findings[0])->toBe($named[0])
+        ->and($set->unenforced)->toBe($unenforced)
+        ->and($set->leavesUnenforced())->toBeTrue();
+})->with(function (): array {
+    $binary = new Schema(types: [SchemaType::String], isFilePart: true);
+    $png = new Schema(types: [SchemaType::String], isFilePart: true, contentMediaType: 'image/png');
+    $json = ['multipart/form-data', 'application/json'];
+
+    return [
+        'binary beside JSON' => [objectSchema(['avatar' => $binary]), $json, ['format' => ['`avatar`']]],
+        'binary beside a form' => [objectSchema(['avatar' => $binary]), ['multipart/form-data', 'application/x-www-form-urlencoded'], ['format' => ['`avatar`']]],
+        'a media type beside JSON' => [objectSchema(['avatar' => $png]), $json, ['contentMediaType' => ['`avatar`']]],
+        'binary in an array' => [objectSchema(['docs' => new Schema(types: [SchemaType::Array], items: $binary)]), $json, ['format' => ['`docs`[]']]],
+        'binary in a nested object' => [objectSchema(['meta' => objectSchema(['doc' => $binary])]), $json, ['format' => ['`meta.doc`']]],
+    ];
+});
+
 it('explains a file part that sits inside a nested object, an array or an allOf', function (Schema $schema): void {
     $set = RuleSetBuilder::for(operationWithInput(content: [
         'multipart/form-data' => $schema,
