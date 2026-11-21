@@ -515,8 +515,10 @@ tags: [versions, conventions, planning]
   checked, and `spec:doctor` counted it. Beside `application/json` or a form over one schema, the other media type
   decides, and where it reads the list as written, so does the one rule set, and the build and the doctor count it. Over
   another schema than theirs, the merge patch stays unread and counted, as before. A nested object keeps its required
-  list, counted the same way. `application/json-patch+json` is still not read, and beside a merge patch it is now judged
-  as JSON on its real content, so a JSON Patch document answers `422`; the generated file and the doctor say so for any
+  list, counted the same way, and the doctor says what is true of both: the request asks for names a merge patch may
+  leave out, so it is stricter than the contract, not looser (the build's warning now reads "do not enforce as the
+  contract states it"). `application/json-patch+json` is still not read, and beside a merge patch it is now judged as
+  JSON on its real content, so a JSON Patch document answers `422`; the generated file and the doctor say so for any
   `+json` media type the package doesn't read beside one it reads, JSON or a form. This is a breaking change: the
   generated controller's `routeAction` gains the request parameter, so a custom controller of such an operation must
   take it; a client that sent a value the schema refuses, or a JSON Patch beside a merge patch, now gets a `422`; and

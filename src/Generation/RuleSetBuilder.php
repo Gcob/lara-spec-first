@@ -2231,7 +2231,7 @@ final readonly class RuleSetBuilder
                                     .'A nested object of a merge patch is read in full.',
                                 $label,
                                 self::list($requiredKeys),
-                            ), ['required' => array_map(
+                            ), [RuleWalk::STRICTER_REQUIRED => array_map(
                                 static fn (string $name): string => self::bracketLabel($walk, $label, $name) ?? rtrim($label, '`').'.'.$name.'`',
                                 $requiredKeys,
                             )]);
@@ -3740,7 +3740,17 @@ final readonly class RuleSetBuilder
             ), ['required' => array_map(static fn (string $name): string => '`'.$name.'`', $schema->required)]);
         }
 
-        if ($walk->mergePatch && ! $walk->mergePatchAlone && ! $walk->partialBody && $schema->required !== []) {
+        // Why: the names the rules ask for, as the nested case lists them: a `readOnly` name is never sent, so the rules ask
+        // nothing of it, and listing it would name a `422` no client can get.
+        $asked = $walk->mergePatch && ! $walk->mergePatchAlone && ! $walk->partialBody
+            ? array_values(array_filter(
+                array_map('strval', $schema->required),
+                static fn (string $name): bool => self::unescapableKey($name) === null
+                    && self::unsentRequiredName($name, $schema, $walk, 'the body') === null,
+            ))
+            : [];
+
+        if ($asked !== []) {
             // Why: one rule set reads the list one way, so the media type that reads it as written decides, and a merge
             // patch that leaves a required name out is refused, though RFC 7396 lets it.
             $walk->unenforced(sprintf(
@@ -3748,8 +3758,8 @@ final readonly class RuleSetBuilder
                     .'the schema\'s required list as written here, and one rule set cannot read the list two ways. A merge '
                     .'patch that leaves out %s answers `422`, which is stricter than the contract.',
                 self::list(array_values(array_diff(self::readMediaTypes($body), [self::MERGE_PATCH]))),
-                self::list($schema->required),
-            ), ['required' => array_map(static fn (string $name): string => '`'.$name.'`', $schema->required)]);
+                self::list($asked),
+            ), [RuleWalk::STRICTER_REQUIRED => array_map(static fn (string $name): string => '`'.$name.'`', $asked)]);
         }
 
         // Why: a merge patch is not a replacement, so the sentence about a field the client omitted keeping its stored

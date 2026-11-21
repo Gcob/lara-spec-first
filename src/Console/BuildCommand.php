@@ -198,7 +198,7 @@ final class BuildCommand extends Command
 
         if ($unenforced > 0) {
             $this->components->warn(sprintf(
-                '%d generated request(s) read a constraint they do not enforce. Each one names its own '
+                '%d generated request(s) read a constraint they do not enforce as the contract states it. Each one names its own '
                     .'in the Findings block of the file.',
                 $unenforced,
             ));

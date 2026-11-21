@@ -28,6 +28,14 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
 final class RuleWalk
 {
     /**
+     * The entry a merge patch's `required` is counted under when the request asks for names the merge patch may leave
+     * out, so it enforces more than the contract and a client answers `422` for a valid request. It is a keyword of its
+     * own, and not `required`, because the doctor says the opposite about `required`: that the request leaves it out,
+     * or holds only part of it.
+     */
+    public const STRICTER_REQUIRED = 'stricterRequired';
+
+    /**
      * @var array<string, list<string|InRule|MultipleOf|NullOrAbsent|WholeNumber>>
      */
     public array $rules = [];

@@ -121,8 +121,10 @@ required list two ways:
 - If it reads the list as written (a `POST` or a `PUT`, or a `PATCH` under `as_written`), the whole rule set does, and a
   merge patch that leaves a required name out answers `422`, though RFC 7396 lets it. That is a rule stricter than the
   contract for one of its clients, so it is counted and not left silent, as
-  [ADR 0024](./0024-hold-rules-and-report-every-gap.md) asks: a gap with a `required` entry on the names the schema
-  requires. The doctor exits `2` on it, and the remedy is to declare the merge patch alone, or, on a `PATCH`, to set
+  [ADR 0024](./0024-hold-rules-and-report-every-gap.md) asks: counted, with an entry on the names the rules ask for (a
+  `readOnly` name is never asked for). The entry is not `required`, since that one means the request leaves the keyword
+  out: the doctor says the request asks for names a merge patch may leave out, and is stricter than the contract, not
+  looser. The doctor exits `2` on it, and the remedy is to declare the merge patch alone, or, on a `PATCH`, to set
   `requests.patch` to `partial`.
 
 **Over another schema, the merge patch is not read.** If a merge patch is declared beside another read media type over a
@@ -136,10 +138,9 @@ none of them reads the keywords of a schema the rules did not come from. A file 
 nested object into the stored one, so `{"address": {"city": "Laval"}}` is valid, but the DTO has one type for a nested
 object and its `from()` reads each required key directly, so the rules alone cannot read it as partial. A nested object
 outside an array's items (an array is replaced whole, so an object in one is a complete value) keeps its
-`required_array_keys` and is a counted gap, with a `required` entry on its names. It is not counted for an
-`application/json` `PATCH`, where the nested list is the app's own reading, nor in the mixed case read as written, whose
-root gap already covers every list. [#254](https://github.com/Gcob/lara-spec-first/issues/254) reads these objects as
-partial.
+`required_array_keys` and is counted the same way, on its names. It is not counted for an `application/json` `PATCH`,
+where the nested list is the app's own reading, nor in the mixed case read as written, whose root gap already covers
+every list. [#254](https://github.com/Gcob/lara-spec-first/issues/254) reads these objects as partial.
 
 **JSON Patch stays an unread media type, reported and not refused.** Its schema describes a list of operations, and the
 package reads no body whose root is not an object, since a bare value or a list has no field for a rule. Reading it
@@ -181,7 +182,9 @@ file and the doctor say the same sentence, for any unread `+json` type.
   schema refuses now answers `422`, and `spec:doctor` exits `0` where it exited `2` for a flat merge patch. The
   CHANGELOG lists it as breaking. `requests.patch` breaks nothing, since its default is the previous reading.
 - **ADR 0024 is not edited.** Its line that a `PATCH` reads the required list as empty stays true for the default, and
-  the two new counted cases are gaps, which its rules already cover. This record adds the key and the media type to it.
+  its rule that a counted case is reported stays. The two new counted cases are the request being stricter than the
+  contract, kept visible under an entry of their own (`stricterRequired`), so the doctor does not say the request fails
+  to enforce `required`. This record adds the key and the media type to it.
 - **The partial DTO's findings name a partial update and no longer the method,** so a generated input DTO changes by
   that line on the next `spec:build`, under either reading.
 - **The generated request, the DTO and the doctor read the key together,** so a change to `requests.patch` takes another

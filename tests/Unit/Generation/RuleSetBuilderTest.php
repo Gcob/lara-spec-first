@@ -2168,10 +2168,30 @@ it('counts a merge patch held to the list a POST reads as written beside applica
     expect($set->rules['name'])->toBe(['present', 'string'])
         ->and($gap)->toHaveCount(1)
         ->and($gap[0])->toContain('A JSON merge patch (RFC 7396) may leave out any property')
-        ->and($set->unenforced)->toBe(['required' => ['`name`']])
+        ->and($set->unenforced)->toBe(['stricterRequired' => ['`name`']])
         ->and($set->leavesUnenforced())->toBeTrue()
         ->and($set->stricter)->toBe([])
         ->and($set->partialBody)->toBeFalse();
+});
+
+// The names the finding lists are the ones the rules ask for: a `readOnly` name is never sent, so a merge patch is never
+// refused over it, and listing it would send a client looking for a `422` that cannot come.
+it('lists only the names the request asks of a merge patch held to the list as written', function (): void {
+    $body = objectSchema([
+        'id' => new Schema(types: [SchemaType::String], readOnly: true),
+        'name' => new Schema(types: [SchemaType::String]),
+        'title' => new Schema(types: [SchemaType::String]),
+    ], ['id', 'name', 'title']);
+    $set = RuleSetBuilder::for(operationWithInput(
+        method: 'post',
+        content: ['application/json' => $body, 'application/merge-patch+json' => $body],
+    ), new RuleSetOptions);
+    $gap = implode(' ', array_filter($set->findings, static fn (string $line): bool => str_contains($line, 'one rule set cannot read')));
+
+    expect($set->rules['id'])->toBe(['sometimes', 'string'])
+        ->and($set->unenforced)->toBe(['stricterRequired' => ['`name`', '`title`']])
+        ->and($gap)->toContain('leaves out `name` and `title` answers `422`')
+        ->and($gap)->not->toContain('`id`');
 });
 
 it('counts a nested object a merge patch requires names of', function (
@@ -2197,7 +2217,7 @@ it('counts a nested object a merge patch requires names of', function (
 
     return [
         'a nested object that requires names' => [
-            objectSchema(['address' => $address(['city', 'street'])]), ['required' => ['`address.city`', '`address.street`']], 'patch', 'application/merge-patch+json',
+            objectSchema(['address' => $address(['city', 'street'])]), ['stricterRequired' => ['`address.city`', '`address.street`']], 'patch', 'application/merge-patch+json',
         ],
         'an object inside the items of an array' => [
             objectSchema(['addresses' => new Schema(types: [SchemaType::Array], items: $address(['city']))]), [], 'patch', 'application/merge-patch+json',
@@ -2490,7 +2510,7 @@ it('counts a merge patch held beside application/json to the list requests.patch
     ), new RuleSetOptions(patchReading: $reading));
 
     expect($set->rules['name'])->toBe($counted ? ['present', 'string'] : ['sometimes', 'string'])
-        ->and($set->unenforced)->toBe($counted ? ['required' => ['`name`']] : [])
+        ->and($set->unenforced)->toBe($counted ? ['stricterRequired' => ['`name`']] : [])
         ->and($set->leavesUnenforced())->toBe($counted)
         ->and($set->stricter)->toBe([])
         ->and($set->partialBody)->toBe(! $counted);

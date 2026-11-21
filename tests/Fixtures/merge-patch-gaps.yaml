@@ -1,6 +1,7 @@
 # Each operation reads a merge patch in a way the request enforces more than the contract: one rule set cannot read the
 # required list two ways, a nested object keeps its list, a merge patch over another schema stays unread, and a JSON
-# Patch beside a merge patch is read as JSON. The doctor counts every one, so it exits 2.
+# Patch beside a merge patch is read as JSON. The doctor counts every one, so it exits 2. The read-only `id` of the first
+# is never sent, so the finding does not name it. The `-3.0` file is the same contract under OpenAPI 3.0.
 openapi: 3.1.0
 info:
   title: Fixture API
@@ -86,6 +87,7 @@ components:
     Order:
       type: object
       properties:
+        id: { type: string, readOnly: true }
         reference: { type: string }
         note: { type: string }
-      required: [reference]
+      required: [id, reference]

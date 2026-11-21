@@ -354,6 +354,17 @@ it('still counts a request that leaves a constraint unenforced', function (): vo
         ->and($prose)->not->toContain('Nothing was read and left unenforced.');
 });
 
+// A request that asks for a name a merge patch may leave out enforces more than the contract, not less, so the warning
+// that counts it does not say the constraint is "not enforced" without saying as what.
+it('counts a merge patch the request holds to more than the contract in the warning, without calling it unenforced', function (string $fixture): void {
+    config()->set('lara-spec-first.spec.path', specFixturePath($fixture));
+
+    $output = new BufferedOutput;
+    app(Kernel::class)->call('spec:build', [], $output);
+
+    expect($output->fetch())->toContain('4 generated request(s) read a constraint they do not enforce as the contract states it');
+})->with(['merge-patch-gaps.yaml', 'merge-patch-gaps-3.0.yaml']);
+
 // Scenario: a removed operation is pruned. The tree writer deletes anything it
 // did not plan, and a request is a file like any other — asserted rather than
 // assumed, because "like any other" is exactly the claim a new output directory
