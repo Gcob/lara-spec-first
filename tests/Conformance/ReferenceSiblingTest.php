@@ -528,7 +528,7 @@ it('carries an additionalProperties schema written beside a $ref, its $ref follo
     $unenforced = array_filter(
         SupportMatrixCheck::requestSchemas($operations, new RuleSetOptions),
         static fn (Finding $finding): bool => $finding->level === SupportLevel::Partial
-            && str_contains($finding->message, 'writes `additionalProperties` where the generated request enforces nothing'),
+            && str_contains($finding->message, 'writes `additionalProperties` where the generated request does not enforce it'),
     );
 
     expect($field->ignored)->toBe([])

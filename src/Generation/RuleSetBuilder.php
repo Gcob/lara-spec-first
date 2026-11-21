@@ -24,7 +24,7 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
  * matches: accepting a payload the contract refuses is a wrong answer where a report is a missing one, and only the
  * second is recoverable. Nor is a rule emitted that is stricter than the contract, refusing what it accepts, unless
  * matching it exactly would be far too complex in Laravel, and then a finding says so. Where this class falls short of
- * the first rule today, the gap is listed with its card or stated limit in ADR 0006, never taken as an exception.
+ * the first rule today, the gap is listed with its card or stated limit in ADR 0024, never taken as an exception.
  *
  * **What it translates is the whole table** in request-validation.md: types, nullability and presence, the bounds on
  * strings, numbers and arrays, the `format` values Laravel has a rule of the same meaning for, enumerations, patterns
@@ -86,7 +86,8 @@ final readonly class RuleSetBuilder
 
     /**
      * What a body required and read as a form says when nothing in it refuses an empty form: written by
-     * {@see self::rootFindings()} before the walk, and taken out again when the walk finds a required key.
+     * {@see self::rootFindings()} before the walk, as information (an empty form is how a form writes `{}`), and taken
+     * out again, from the findings and from the information, when the walk finds a required key.
      */
     private const EMPTY_FORM_FINDING = 'The body is required and read as a form, so a form with a `Content-Type` and no field '
         .'(an empty `application/x-www-form-urlencoded` body, a `multipart/form-data` with no parts) is not '
@@ -270,6 +271,8 @@ final readonly class RuleSetBuilder
             $closedKeys = self::bodyRules($operation, $body, $walk);
         }
 
+        $walk->flushDeferredGap();
+
         // A query string carries no file, so the parameters below are never read
         // as one, whatever the body is.
         $multipart = $walk->multipart;
@@ -284,7 +287,18 @@ final readonly class RuleSetBuilder
         foreach ($operation->queryParameters as $index => $parameter) {
             $plan = $plans[$index];
 
-            array_push($walk->findings, ...$plan['findings']);
+            // A name's sentence is information when none of the names it is about states anything, and a gap with
+            // the entries of those that do: a sentence about two names is not a gap for one of them alone.
+            foreach ($plan['findings'] as $finding) {
+                $entries = [];
+
+                foreach ($finding['names'] as $at) {
+                    $named = $operation->queryParameters[$at];
+                    $entries['`'.$named->name.'`'] = self::droppedKeywords($named->schema, $named->required);
+                }
+
+                self::dropFields($walk, $finding['text'], $entries);
+            }
 
             // A plain name is refused where a rewritten one only keeps its finding (the plan above): the name is
             // the contract's own key, so the build would be choosing which half of the contract to enforce. Before
@@ -311,7 +325,9 @@ final readonly class RuleSetBuilder
             [$style, $explode] = self::querySerialization($walk, $parameter);
 
             if ($plan['key'] === null) {
-                self::leaveFieldUnenforced($walk, '`'.$parameter->name.'`', $parameter->schema, $parameter->required);
+                // Its sentence was written above. A name that has none of its own (the second of two names under one
+                // key) still leaves what it states unenforced.
+                self::leaveDropped($walk, '`'.$parameter->name.'`', self::droppedKeywords($parameter->schema, $parameter->required));
 
                 continue;
             }
@@ -335,16 +351,19 @@ final readonly class RuleSetBuilder
             // string (`form` with `explode: false`) its name is there, so it gets its presence like an array. A style
             // the document wrote wrong is read as no style, which is the first of these cases.
             if ($merged->soleType() === SchemaType::Array) {
+                // Its presence is enforced, so `required` is not named: its type and what it states are not.
+                $keywords = self::droppedKeywords($merged, false);
+
                 if (self::holdsValueSchema($merged)) {
-                    $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
+                    $keywords[] = 'additionalProperties';
                 }
 
                 $walk->rules[$key] = [$presence];
-                $walk->findings[] = sprintf(
+                $walk->unenforced(sprintf(
                     '`%s` is a `query` parameter typed `array`. %s, so only its presence is enforced.',
                     $parameter->name,
                     self::unreadArray($parameter->name, $style, $explode),
-                );
+                ), self::entriesOf(['`'.$parameter->name.'`' => $keywords]));
 
                 continue;
             }
@@ -373,18 +392,21 @@ final readonly class RuleSetBuilder
                     continue;
                 }
 
-                if (self::holdsValueSchema($merged)) {
-                    $walk->leaveUnenforced('additionalProperties', '`'.$parameter->name.'`');
-                }
-
                 $sentOwnName = $style === 'form' && ! $explode;
 
+                // Its own name is not sent as separate keys, so the presence of a required one is not enforced either.
+                $keywords = self::droppedKeywords($merged, $parameter->required && ! $sentOwnName);
+
+                if (self::holdsValueSchema($merged)) {
+                    $keywords[] = 'additionalProperties';
+                }
+
                 $walk->rules[$key] = [$sentOwnName ? $presence : 'sometimes'];
-                $walk->findings[] = sprintf(
+                $walk->unenforced(sprintf(
                     '`%s` is a `query` parameter typed `object`. %s',
                     $parameter->name,
                     self::unreadObject($parameter->name, $style, $explode, $plan['shapedBy']),
-                );
+                ), self::entriesOf(['`'.$parameter->name.'`' => $keywords]));
 
                 continue;
             }
@@ -449,7 +471,7 @@ final readonly class RuleSetBuilder
             }
         }
 
-        return new RuleSet($walk->rules, $walk->findings, $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforced, $walk->faults, $walk->stricter, $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->information, $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys, self::commaLists($walk, $undeclaredKeys));
+        return new RuleSet($walk->rules, $walk->findings(), $closedKeys, $body, $multipart, $queryKeys, $walk->jsonRoot, $walk->nullableRoot, $walk->formPaths, [...$walk->unchecked, ...$walk->standIn], $walk->requiredRoot, $walk->rootKey, $walk->unenforcedEntries(), $walk->faultFindings(), $walk->stricterFindings(), $walk->requiredOnceSent, $walk->whenNotArray, $walk->dropsArray, $walk->mapRoot, $walk->informationFindings(), $walk->scalarNames, $walk->arrayKeys, $undeclaredKeys, self::commaLists($walk, $undeclaredKeys));
     }
 
     /**
@@ -502,11 +524,20 @@ final readonly class RuleSetBuilder
             // is a contract this package does not serve, and refusing the whole
             // build over it would turn away an operation whose other half is
             // perfectly readable.
-            $walk->findings[] = sprintf(
+            $readTypes = array_values(array_intersect($body->mediaTypes(), self::READ_MEDIA_TYPES));
+
+            // Why: the generated request reads the JSON body or the form, and a body in another media type leaves
+            // both empty, so the rules of the media types it reads judge it on an empty body.
+            $walk->unenforced(sprintf(
                 'The body declares %s, which this package does not read. Nothing in the rule set '
-                    .'comes from it.',
+                    .'comes from it.%s',
                 self::list($unread),
-            );
+                $readTypes === [] ? '' : sprintf(
+                    ' A client that sends it is judged by the rules of %s on an empty body: a field the schema '
+                        .'requires answers `422`, though the contract accepts the request.',
+                    self::list($readTypes),
+                ),
+            ), ['content' => array_map(static fn (string $mediaType): string => '`'.$mediaType.'`', $unread)]);
         }
 
         $read = array_filter(
@@ -527,10 +558,13 @@ final readonly class RuleSetBuilder
                 self::list(array_keys($read)),
             );
 
-            if (isset($read[self::MULTIPART]) && self::hasFilePart(reset($read))) {
-                // A gap: a multipart upload of a file meets `string` and is refused, so it loses a constraint.
-                $walk->findings[] = $finding.' A part the schema marks as a file is then read as a string, because a '
-                    .'JSON or form-encoded body cannot carry one and no rule serves both.';
+            $fileKeywords = isset($read[self::MULTIPART]) ? self::filePartKeywords(reset($read)) : [];
+
+            if ($fileKeywords !== []) {
+                // A gap: a multipart upload of a file meets `string` and is refused, so it loses a constraint. Its
+                // entries are the parts' own, recorded when each is read, so the sentence is written after the walk.
+                $walk->deferGap($finding.' A part the schema marks as a file is then read as a string, because a '
+                    .'JSON or form-encoded body cannot carry one and no rule serves both.', $fileKeywords);
             } else {
                 $walk->information($finding);
             }
@@ -540,22 +574,25 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether a file part is written anywhere in a schema, a nested one and an `allOf` branch included. A recursion
+     * The keyword the contract wrote for each file part in a schema, a nested one and an `allOf` branch included:
+     * `contentMediaType` when the part states one, `format` otherwise. Empty when there is no file part. A recursion
      * marker has nothing under it, so it ends the walk.
+     *
+     * @return list<'contentMediaType'|'format'>
      */
-    private static function hasFilePart(Schema $schema): bool
+    private static function filePartKeywords(Schema $schema): array
     {
+        $keywords = [];
+
         if ($schema->isFilePart) {
-            return true;
+            $keywords[] = $schema->contentMediaType === null ? 'format' : 'contentMediaType';
         }
 
         foreach (self::children($schema) as $child) {
-            if (self::hasFilePart($child)) {
-                return true;
-            }
+            array_push($keywords, ...self::filePartKeywords($child));
         }
 
-        return false;
+        return array_values(array_unique($keywords));
     }
 
     /**
@@ -699,12 +736,11 @@ final readonly class RuleSetBuilder
         }
 
         foreach ($rewritten as $name => $delivered) {
-            $walk->findings[] = sprintf(
+            $walk->unenforced(sprintf(
                 'A form delivers `%s` as `%s`, so an undeclared `%2$s` is judged by `%1$s`\'s rules, not by the value schema.',
                 $name,
                 $delivered,
-            );
-            $walk->leaveUnenforced('additionalProperties', $label);
+            ), ['additionalProperties' => [$label]]);
         }
 
         return array_values(array_unique($spared));
@@ -717,8 +753,7 @@ final readonly class RuleSetBuilder
      */
     private static function cannotSpare(RuleWalk $walk, string $label, string $finding): null
     {
-        $walk->findings[] = $finding;
-        $walk->leaveUnenforced('additionalProperties', $label);
+        $walk->unenforced($finding, ['additionalProperties' => [$label]]);
 
         return null;
     }
@@ -851,15 +886,9 @@ final readonly class RuleSetBuilder
 
         $schema = AllOfMerger::merge($written, $operation->label(), 'the body');
 
-        foreach (self::rootFindings($operation, $schema, $body, $walk) as $finding) {
-            $walk->findings[] = $finding;
-        }
+        self::rootFindings($operation, $schema, $body, $walk);
 
         if (! self::isObjectBody($schema)) {
-            if (self::holdsValueSchema($schema)) {
-                $walk->leaveUnenforced('additionalProperties', 'The body');
-            }
-
             return null;
         }
 
@@ -870,6 +899,7 @@ final readonly class RuleSetBuilder
         $walk->requiredRoot = $body->required;
         $walk->nullableRequiredBody = $body->required && $walk->jsonRoot && $walk->nullableRoot
             && $operation->method !== HttpMethod::Patch;
+        $walk->patchBody = $operation->method === HttpMethod::Patch;
         $walk->rootKey = self::rootKey($schema, $operation);
 
         $walk->bodyNames = self::declaredNames($schema);
@@ -969,10 +999,7 @@ final readonly class RuleSetBuilder
         // empty form, and the map of a nullable required body, which the request checks as well, is built before it.
         // Taking the finding out afterwards leaves every other finding where it was.
         if ($walk->rootAsksPresence || ($walk->nullableRequiredBody && $walk->requiredOnceSent !== [])) {
-            $walk->findings = array_values(array_filter(
-                $walk->findings,
-                static fn (string $finding): bool => $finding !== self::EMPTY_FORM_FINDING,
-            ));
+            $walk->withdrawInformation(self::EMPTY_FORM_FINDING);
         }
 
         // The payload's root has no field for `array:` to sit on, so a closed
@@ -1137,7 +1164,7 @@ final readonly class RuleSetBuilder
         }
 
         if ($accepted !== []) {
-            $walk->findings[] = sprintf(
+            $walk->unenforced(sprintf(
                 'The body is closed to its declared names, but a form delivers %s, so the key check accepts %s, which '
                     .'a client can also send as a key the contract does not declare, and nothing tells the two apart.',
                 self::enumerate(array_map(
@@ -1146,7 +1173,7 @@ final readonly class RuleSetBuilder
                     $accepted,
                 )),
                 self::list(array_values(array_unique($accepted))),
-            );
+            ), ['additionalProperties' => ['The body itself']]);
         }
 
         return array_values(array_unique($closed));
@@ -1425,7 +1452,7 @@ final readonly class RuleSetBuilder
         bool $valuesJudged = false,
         ?string $parentLabel = null,
     ): void {
-        $dependents = self::dependents($schema, $walk, $prefix);
+        $dependents = self::dependents($schema, $walk, $prefix, $parentLabel);
 
         // Why: a dependent array that may be empty has no bracketed form either, so a client with nothing to send
         // cannot satisfy `present_with` for it, and the contract accepts that client.
@@ -1452,20 +1479,21 @@ final readonly class RuleSetBuilder
             $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
-                $walk->findings[] = $unescapable;
-                self::leaveFieldUnenforced(
-                    $walk,
-                    $childLabel,
+                self::dropFields($walk, $unescapable, [$childLabel => self::droppedKeywords(
                     $property,
-                    in_array($name, $schema->required, true),
-                    isset($dependents[$name]),
-                );
+                    self::askedWhenDropped($walk, $property, in_array($name, $schema->required, true), $prefix === ''),
+                    self::askedByDependency($walk, $property, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
+                )]);
 
                 continue;
             }
 
             if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
-                $walk->findings[] = self::bracketedNameFinding($childLabel, $closed);
+                self::dropFields($walk, self::bracketedNameFinding($childLabel, $closed), [$childLabel => self::droppedKeywords(
+                    $property,
+                    self::askedWhenDropped($walk, $property, in_array($name, $schema->required, true), $prefix === ''),
+                    self::askedByDependency($walk, $property, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
+                )], $closed ? $parentLabel ?? '`'.rtrim($prefix, '.').'`' : null);
 
                 continue;
             }
@@ -1530,20 +1558,21 @@ final readonly class RuleSetBuilder
             $unescapable = self::unescapableKey($name);
 
             if ($unescapable !== null) {
-                $walk->findings[] = $unescapable;
-                self::leaveFieldUnenforced(
-                    $walk,
-                    $childLabel,
+                self::dropFields($walk, $unescapable, [$childLabel => self::droppedKeywords(
                     new Schema,
-                    in_array($name, $schema->required, true),
-                    isset($dependents[$name]),
-                );
+                    self::askedWhenDropped($walk, new Schema, in_array($name, $schema->required, true), $prefix === ''),
+                    self::askedByDependency($walk, new Schema, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
+                )]);
 
                 continue;
             }
 
             if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
-                $walk->findings[] = self::bracketedNameFinding($childLabel, $closed);
+                self::dropFields($walk, self::bracketedNameFinding($childLabel, $closed), [$childLabel => self::droppedKeywords(
+                    new Schema,
+                    self::askedWhenDropped($walk, new Schema, in_array($name, $schema->required, true), $prefix === ''),
+                    self::askedByDependency($walk, new Schema, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
+                )], $closed ? $parentLabel ?? '`'.rtrim($prefix, '.').'`' : null);
 
                 continue;
             }
@@ -1613,7 +1642,9 @@ final readonly class RuleSetBuilder
 
     /**
      * The finding for a property of an object read from the query string whose name holds a bracket. It has no rule,
-     * and its presence is not asked for, so nothing a client sends is refused for it.
+     * and its presence is not asked for, so nothing a client sends is refused for it. Written by
+     * {@see self::dropFields()} with what the property states, and, for a closed object, the object's own
+     * `additionalProperties`.
      */
     private static function bracketedNameFinding(string $label, bool $closed): string
     {
@@ -1635,30 +1666,39 @@ final readonly class RuleSetBuilder
      *
      * @return array<string, list<string>> a dependent name => trigger rule keys
      */
-    private static function dependents(Schema $schema, RuleWalk $walk, string $prefix): array
+    private static function dependents(Schema $schema, RuleWalk $walk, string $prefix, ?string $parentLabel = null): array
     {
         $dependents = [];
 
         foreach ($schema->dependentRequired as $trigger => $names) {
             $trigger = (string) $trigger;
             $unescapable = self::unescapableKey($trigger);
-
-            if ($unescapable !== null) {
-                $walk->findings[] = $unescapable;
-
-                continue;
-            }
-
-            $keys = self::triggerKeys($trigger, $walk, $prefix);
+            $keys = $unescapable === null ? self::triggerKeys($trigger, $walk, $prefix) : [];
 
             if ($keys === []) {
-                // The name itself was reported when the names were planned: this says what it costs.
-                $walk->findings[] = sprintf(
+                // What the dependents lose when no rule holds the trigger: the dependency, which nothing asks for.
+                $lost = [];
+
+                foreach ($names as $name) {
+                    $name = (string) $name;
+                    $asked = self::askedByDependency($walk, $schema->properties[$name] ?? new Schema, in_array($name, $schema->required, true), $prefix === '', true);
+                    $lost[self::bracketLabel($walk, $parentLabel, $name) ?? '`'.$prefix.$name.'`'] = $asked ? ['dependentRequired'] : [];
+                }
+
+                // The name itself was reported when the names were planned, or is reported by the walk of the
+                // properties below, which writes the `*` sentence for a name `properties` or `required` declares, or
+                // that a trigger with a rule makes required. A `*` trigger nothing declares has no other place to say it.
+                if ($unescapable !== null && ! self::declaresName($schema, $trigger, $walk, $prefix)) {
+                    self::dropFields($walk, $unescapable, $lost);
+                }
+
+                // This says what it costs.
+                self::dropFields($walk, sprintf(
                     '`%s` would make %s required, but it has no rule, so %s not asked for through it.',
                     $trigger,
                     self::list(array_map('strval', $names)),
                     count($names) === 1 ? 'that is' : 'those are',
-                );
+                ), $lost);
 
                 continue;
             }
@@ -1684,6 +1724,29 @@ final readonly class RuleSetBuilder
         }
 
         return $dependents;
+    }
+
+    /**
+     * Whether the walk of an object's names reaches this one: it is a property, or a name the object requires, or a
+     * name a trigger that has a rule makes required, and so gets the finding for a name it drops.
+     */
+    private static function declaresName(Schema $schema, string $name, RuleWalk $walk, string $prefix): bool
+    {
+        if (isset($schema->properties[$name]) || in_array($name, $schema->required, true)) {
+            return true;
+        }
+
+        foreach ($schema->dependentRequired as $trigger => $names) {
+            if (
+                in_array($name, array_map('strval', $names), true)
+                && self::unescapableKey((string) $trigger) === null
+                && self::triggerKeys((string) $trigger, $walk, $prefix) !== []
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1780,12 +1843,12 @@ final readonly class RuleSetBuilder
                     self::numberRules($schema, $rules, $handled);
 
                     if ($walk->mixedBody) {
-                        $walk->findings[] = sprintf(
+                        $walk->unenforced(sprintf(
                             '%s is an integer in a body that is JSON and also a form. One rule set cannot read the text a form '
                                 .'carries and still refuse a string in JSON, so it accepts an integer written as text: a JSON '
                                 .'client\'s `"42"` gets through, though the contract refuses it.',
                             $label,
-                        );
+                        ), ['type' => [$label]]);
                     }
                     break;
                 case SchemaType::Number:
@@ -1793,7 +1856,7 @@ final readonly class RuleSetBuilder
                     self::numberRules($schema, $rules, $handled);
 
                     if ($walk->mixedBody) {
-                        $walk->findings[] = self::mixedBodyFinding($label, 'a number', 'numeric', '`"1.5"` gets through, though the contract refuses it.');
+                        $walk->unenforced(self::mixedBodyFinding($label, 'a number', 'numeric', '`"1.5"` gets through, though the contract refuses it.'), ['type' => [$label]]);
                     }
                     break;
                 case SchemaType::Boolean:
@@ -1803,12 +1866,12 @@ final readonly class RuleSetBuilder
                         $rules[] = $walk->strictJson() ? 'boolean:strict' : 'boolean';
 
                         if ($walk->mixedBody) {
-                            $walk->findings[] = self::mixedBodyFinding(
+                            $walk->unenforced(self::mixedBodyFinding(
                                 $label,
                                 'a boolean',
                                 'boolean',
                                 '`"1"` and `1` get through, though the contract refuses them, and a form\'s `"true"` is refused, though the contract accepts it.',
-                            );
+                            ), ['type' => [$label]]);
                         }
                     }
                     break;
@@ -1817,16 +1880,22 @@ final readonly class RuleSetBuilder
                     // not defined (`filter[ids][]=1`, `filter[ids]=1,2`). The application says how its clients do in
                     // `query.deep_object_arrays`, and `brackets` is read by the body path below. With no reading
                     // declared (`any`), any rule about its shape or its items would refuse a request the contract allows:
-                    // only its presence is checked, and the finding says so.
+                    // only its presence is checked, the finding says so, and the doctor names the array and each of
+                    // the four keywords it states.
                     if ($walk->textSource === 'query string' && $walk->options->deepObjectArrays === DeepObjectArrays::Any) {
                         array_push($handled, 'minItems', 'maxItems', 'items', 'uniqueItems');
-                        $walk->findings[] = sprintf(
+                        $keywords = ['type', ...array_values(array_filter(
+                            ['items', 'minItems', 'maxItems', 'uniqueItems'],
+                            static fn (string $keyword): bool => self::states($schema, $keyword),
+                        ))];
+                        $walk->unenforced(sprintf(
                             '%1$s is an array inside a `deepObject` query parameter. OpenAPI does not define how a client writes '
                                 .'one (`?%2$s[]=1` and `?%2$s=1,2` are both written), so it is checked only for its presence, when it is required, '
                                 .'since `query.deep_object_arrays` is `any`.',
                             $label,
                             trim($label, '`'),
-                        );
+                        ), self::entriesOf([$label => $keywords]));
+
                         break;
                     }
 
@@ -1865,12 +1934,12 @@ final readonly class RuleSetBuilder
                         // keys Laravel has already split on dots, so a name with
                         // either would refuse every valid payload.
                         $rules[] = 'array';
-                        $walk->findings[] = sprintf(
+                        $walk->unenforced(sprintf(
                             '%s forbids undeclared keys, but declares %s, which Laravel cannot name in `array:`, '
                                 .'so undeclared keys are not refused.',
                             $label,
                             self::list($structural),
-                        );
+                        ), ['additionalProperties' => [$label]]);
                     } else {
                         $rules[] = $schema->additionalProperties === false && ! $bracketed ? 'array:'.implode(',', $declared) : 'array';
                     }
@@ -1888,12 +1957,15 @@ final readonly class RuleSetBuilder
                             // The rule's parameters are comma-separated and the
                             // data's keys are split on dots before it runs, so
                             // either character makes this name match nothing.
-                            $walk->findings[] = sprintf(
+                            $named = self::bracketLabel($walk, $label, $name) ?? rtrim($label, '`').'.'.$name.'`';
+                            $property = $schema->properties[$name] ?? new Schema;
+
+                            self::dropFields($walk, sprintf(
                                 '%s requires `%s`, which Laravel cannot name in `required_array_keys`, so its '
                                     .'presence is not enforced.',
                                 $label,
                                 $name,
-                            );
+                            ), [$named => self::askedWhenDropped($walk, $property, true, false) ? ['required'] : []]);
 
                             continue;
                         }
@@ -1955,10 +2027,13 @@ final readonly class RuleSetBuilder
                         // Why: a field that states no type and nothing else accepts any value, in the contract and in the
                         // request. A keyword it writes besides that constrains a value (an `enum`, a `oneOf`) is one the
                         // rule set does not carry. An annotation (`default`, `deprecated`) constrains nothing.
-                        if ($unmapped === 'states no type' && $schema->types === [] && ! self::writesAKeyword($written)) {
+                        $untyped = $schema->types === [];
+                        $keywords = $untyped ? self::writtenKeywords($written) : ['type'];
+
+                        if ($untyped && ($keywords === [] || self::isTextEnumeration($schema, $keywords, $walk))) {
                             $walk->information($message);
                         } else {
-                            $walk->findings[] = $message;
+                            $walk->unenforced($message, self::entriesOf([$label => $keywords]));
                         }
                     }
             }
@@ -2124,7 +2199,7 @@ final readonly class RuleSetBuilder
             // A self-referential schema is a supported contract and an
             // infinite tree, and no rule set reaches an infinite depth.
             $walk->rules[$key] = $rules;
-            $walk->findings[] = sprintf(
+            $walk->unenforced(sprintf(
                 '%s points back at `%s`, so nothing below it is validated: no rule set reaches an '
                     .'infinite depth.',
                 $label,
@@ -2132,7 +2207,7 @@ final readonly class RuleSetBuilder
                     static fn (Schema $branch): string => (string) $branch->recursesTo,
                     $site->allOf,
                 )]),
-            );
+            ), ['$ref' => [$label]]);
 
             return;
         }
@@ -2426,8 +2501,8 @@ final readonly class RuleSetBuilder
     /**
      * What a body that is JSON and a form says of a number or a boolean field: it keeps the loose rule, and the
      * sentence names what a JSON client gets through. (An integer says it on its own: it has a rule that judges a JSON
-     * number exactly.) A gap rather than a stricter rule, so it counts in the build warning, and it leaves nothing
-     * unenforced for the doctor to report.
+     * number exactly.) A gap rather than a stricter rule, so it counts in the build warning, and the caller records the
+     * field's `type` as left unenforced, which the doctor reports.
      */
     private static function mixedBodyFinding(string $label, string $noun, string $rule, string $effect): string
     {
@@ -2453,6 +2528,10 @@ final readonly class RuleSetBuilder
      *
      * An enumeration of booleans is read as every spelling of its values, since `Rule::in([true])` would accept `1` and
      * refuse `true`.
+     *
+     * **Both sentences are information.** `"1"` and `"0"` are what a client of a query string or a form sends for a
+     * boolean, so the request accepts what that client writes and loses no constraint: neither the build's warning nor
+     * the doctor counts it. The sentence is for the reader of the file, who finds the string `validated()` holds.
      *
      * @param  list<string>  $handled
      */
@@ -2500,7 +2579,7 @@ final readonly class RuleSetBuilder
                 ? self::deliveredPath(substr($bare, 0, -2))
                 : null;
 
-            $walk->findings[] = self::textBooleanItemFinding($label, $tooMany, $quote($words), $list);
+            $walk->information(self::textBooleanItemFinding($label, $tooMany, $quote($words), $list));
 
             return new InRule($spellings);
         }
@@ -2520,7 +2599,7 @@ final readonly class RuleSetBuilder
             $read = sprintf('%s ? filter_var($request->validated(\'%s\'), FILTER_VALIDATE_BOOL) : null', $sent, $key);
         }
 
-        $walk->findings[] = $walk->textSource === 'query string'
+        $walk->information($walk->textSource === 'query string'
             ? sprintf(
                 '%1$s is a boolean read from a query string, where `?name=true` is how OpenAPI writes `true` and '
                     .'Laravel\'s `boolean` refuses it. It accepts %3$s.%2$s '
@@ -2539,7 +2618,7 @@ final readonly class RuleSetBuilder
                 $label,
                 $tooMany,
                 $quote($words),
-            );
+            ));
 
         return new InRule($spellings);
     }
@@ -2645,7 +2724,7 @@ final readonly class RuleSetBuilder
         if (array_intersect($types, ['application/octet-stream', '*/*']) !== []) {
             // Any bytes: nothing to match.
         } elseif ($sniffed !== []) {
-            $walk->findings[] = $encoded
+            $walk->unenforced($encoded
                 ? sprintf(
                     'The `encoding` of %s declares `contentType: %s`, and no `mimetypes` rule is emitted for it: Laravel '
                         .'reads the type libmagic sniffs from the content, which is never `%s` for a text file, so a rule '
@@ -2661,8 +2740,7 @@ final readonly class RuleSetBuilder
                         .'would refuse every real upload.',
                     $label,
                     $sniffed[0],
-                );
-            $walk->leaveUnenforced($encoded ? 'encoding' : 'contentMediaType', $label);
+                ), [$encoded ? 'encoding' : 'contentMediaType' => [$label]]);
         } elseif ($types !== []) {
             $rules[] = 'mimetypes:'.implode(',', $types);
             // The one stricter-than-the-contract case here, and the exception the principle
@@ -2741,7 +2819,7 @@ final readonly class RuleSetBuilder
             return;
         }
 
-        $walk->findings[] = sprintf(
+        $walk->unenforced(sprintf(
             'The `encoding` of %s declares `contentType: %s`, and no rule is emitted for it: only a file part of a '
                 .'multipart body is narrowed by it, and %s.',
             $label,
@@ -2755,8 +2833,7 @@ final readonly class RuleSetBuilder
                 $walk->jsonBody => 'the body is also JSON, which reads a file part as a string',
                 default => 'a form-encoded body is read as text',
             },
-        );
-        $walk->leaveUnenforced('encoding', $label);
+        ), ['encoding' => [$label]]);
     }
 
     /**
@@ -2852,12 +2929,11 @@ final readonly class RuleSetBuilder
             if ($format !== null) {
                 array_push($rules, ...$format);
             } elseif (! in_array($schema->format, self::ANNOTATION_FORMATS, true)) {
-                $walk->findings[] = sprintf(
+                $walk->unenforced(sprintf(
                     '%s declares `format: %s`, which no Laravel rule means the same as, so it is not enforced.',
                     $label,
                     $schema->format,
-                );
-                $walk->leaveUnenforced('format', $label);
+                ), ['format' => [$label]]);
             }
 
             $handled[] = 'format';
@@ -2869,12 +2945,11 @@ final readonly class RuleSetBuilder
             if ($translation->rule !== null) {
                 $rules[] = $translation->rule;
             } else {
-                $walk->findings[] = sprintf(
+                $walk->unenforced(sprintf(
                     '%s declares a `pattern` that %s, so it is not enforced rather than enforced differently.',
                     $label,
                     $translation->reason,
-                );
-                $walk->leaveUnenforced('pattern', $label);
+                ), ['pattern' => [$label]]);
             }
 
             $handled[] = 'pattern';
@@ -3102,42 +3177,154 @@ final readonly class RuleSetBuilder
             return;
         }
 
-        $walk->findings[] = sprintf('%s states %s, which nothing in this rule set enforces.', $label, self::list($keywords));
+        $walk->unenforced(
+            sprintf('%s states %s, which nothing in this rule set enforces.', $label, self::list($keywords)),
+            self::entriesOf([$label => $keywords]),
+        );
+    }
 
+    /**
+     * Write the finding of a field, or of several, the rule set drops whole, and record what each states that nothing
+     * enforces.
+     *
+     * A field with no rule key (a `query` name PHP appends to, a `*` Laravel reads as a wildcard, a form name PHP
+     * delivers under no name or under another's) gets a finding that says so, and none of what the contract states
+     * about it is enforced: not its presence, not its type, and not any keyword a rule could have come from. Those are
+     * the same unenforced keywords as any other, so they are named the same way, with what
+     * {@see self::droppedKeywords()} says for each field.
+     *
+     * Why information when there is nothing to name: a field that states no type, no keyword and no presence loses
+     * nothing by having no rule, and the sentence only tells a reader of the file where the field went.
+     *
+     * A field of a closed object that no rule can name also stops the object from refusing undeclared keys (`array:`
+     * would refuse the key PHP delivers the field under), which is the object's own loss: it is recorded first, on the
+     * object's label, and makes the sentence a gap whatever the field states.
+     *
+     * @param  array<string, list<string>>  $entries  the keywords each field the sentence is about leaves unenforced,
+     *                                                by the field's label
+     * @param  string|null  $closure  the label of the closed object around the field, when it is closed
+     */
+    private static function dropFields(RuleWalk $walk, string $finding, array $entries, ?string $closure = null): void
+    {
+        $named = array_filter($entries, static fn (array $keywords): bool => $keywords !== []);
+
+        if ($named === [] && $closure === null) {
+            $walk->information($finding);
+
+            return;
+        }
+
+        // The closure first, then each field: the order the entries were written in before one method wrote them.
+        $walk->unenforced($finding, self::entriesOf([
+            ...($closure === null ? [] : [$closure => ['additionalProperties']]),
+            ...$named,
+        ]));
+    }
+
+    /**
+     * Record what a field the rule set drops leaves unenforced, for a field whose finding is written elsewhere.
+     *
+     * @param  list<string>  $keywords
+     */
+    private static function leaveDropped(RuleWalk $walk, string $label, array $keywords): void
+    {
         foreach ($keywords as $keyword) {
             $walk->leaveUnenforced($keyword, $label);
         }
     }
 
     /**
-     * The keywords of a field the rule set drops whole, as data for the doctor.
+     * The entries of a gap, by keyword, from the keywords of each field it is about, by the field's label: what
+     * {@see RuleWalk::unenforced()} takes. The keywords come out in the order they were met, each field in its own.
      *
-     * A field with no rule key (a `query` name PHP appends to or delivers under no name, a `*` Laravel reads as a
-     * wildcard) gets a finding of its own that says so, and none of what the contract states about it is enforced: not
-     * its presence, and not any keyword a rule could have come from. Those are the same unenforced keywords as any
-     * other, so they are named the same way.
-     *
-     * @param  bool  $required  whether the contract asks for the field
-     * @param  bool  $dependent  whether `dependentRequired` asks for it
+     * @param  array<string, list<string>>  $byLabel
+     * @return non-empty-array<string, non-empty-list<string>>
      */
-    private static function leaveFieldUnenforced(
-        RuleWalk $walk,
-        string $label,
-        Schema $schema,
-        bool $required,
-        bool $dependent = false,
-    ): void {
+    private static function entriesOf(array $byLabel): array
+    {
+        $entries = [];
+
+        foreach ($byLabel as $label => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (! in_array((string) $label, $entries[$keyword] ?? [], true)) {
+                    $entries[$keyword][] = (string) $label;
+                }
+            }
+        }
+
+        assert($entries !== [], 'A gap names at least one keyword.');
+
+        return $entries;
+    }
+
+    /**
+     * What a field the rule set drops states and nothing enforces: as the field would be read if it were kept, its
+     * presence, the `dependentRequired` that asks for it, its type, then every keyword a rule could have come from.
+     *
+     * @param  bool  $required  whether the rule set would have asked for the field, which the caller decides: never for
+     *                          a `readOnly` property or a top-level name of a `PATCH`, as for a field it keeps
+     * @param  bool  $dependent  whether `dependentRequired` asks for it
+     * @return list<string>
+     */
+    private static function droppedKeywords(Schema $schema, bool $required, bool $dependent = false): array
+    {
+        $keywords = [];
+
         if ($required) {
-            $walk->leaveUnenforced('required', $label);
+            $keywords[] = 'required';
         }
 
         if ($dependent) {
-            $walk->leaveUnenforced('dependentRequired', $label);
+            $keywords[] = 'dependentRequired';
         }
 
-        foreach (self::statedKeywords($schema, []) as $keyword) {
-            $walk->leaveUnenforced($keyword, $label);
+        if ($schema->types !== []) {
+            $keywords[] = 'type';
         }
+
+        return array_values(array_unique([...$keywords, ...self::statedKeywords($schema, [])]));
+    }
+
+    /**
+     * Whether the contract asks for a property the rule set drops, read as a field the rule set keeps is: not a
+     * `readOnly` property, which only a response has to carry, and not a top-level name of a `PATCH`, whose body is a
+     * partial update.
+     */
+    private static function askedWhenDropped(RuleWalk $walk, Schema $property, bool $required, bool $topLevel): bool
+    {
+        return $required && ! ($topLevel && $walk->patchBody) && ! self::statesReadOnly($property);
+    }
+
+    /**
+     * Whether `dependentRequired` asks for a property the rule set drops, read as a kept trigger would ask: the
+     * dependent is not `readOnly`, and not one the object already asks for (a top-level name of a `PATCH` is not asked
+     * for, so the dependency still is).
+     */
+    private static function askedByDependency(RuleWalk $walk, Schema $property, bool $required, bool $topLevel, bool $dependent): bool
+    {
+        return $dependent
+            && ! self::statesReadOnly($property)
+            && ! ($required && ! ($topLevel && $walk->patchBody));
+    }
+
+    /**
+     * Whether a property, or a branch of its `allOf`, says `readOnly`. Read without folding the `allOf`: a field the
+     * rule set drops gets no rules, so a contradiction between its branches is not refused here (it was not before the
+     * rule set read what a dropped field states).
+     */
+    private static function statesReadOnly(Schema $property): bool
+    {
+        if ($property->readOnly) {
+            return true;
+        }
+
+        foreach ($property->allOf as $branch) {
+            if (self::statesReadOnly($branch)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -3160,6 +3347,7 @@ final readonly class RuleSetBuilder
             static fn (string $keyword): string => match ($keyword) {
                 'isFilePart' => $schema->contentMediaType === null ? 'format' : 'contentMediaType',
                 'additionalPropertiesSchema' => 'additionalProperties',
+                'recursesTo' => '$ref',
                 default => $keyword,
             },
             $stated,
@@ -3189,28 +3377,43 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether a written schema, or any `allOf` branch of it, states a value constraint besides its type: an `enum` (a
-     * `const` is a one-value enum), or a keyword the package does not read that constrains a value. `default`,
+     * The value constraints a written schema, or any `allOf` branch of it, states besides its type: an `enum` (a
+     * `const` is a one-value enum), and each keyword the package does not read that constrains a value. `default`,
      * `deprecated`, `$defs` and `$anchor` are the ones that do not: they annotate or name, and accept every value.
      *
      * Read on the written schema, never the merged one: the merge drops a branch's ignored keywords. An `enum` counts
      * because `Rule::in()` compares `(string) $value`, so an untyped `[1, 2, 3]` accepts `"1"` and `true`.
+     *
+     * @return list<string>
      */
-    private static function writesAKeyword(Schema $written): bool
+    private static function writtenKeywords(Schema $written): array
     {
-        $constraints = array_diff_key($written->ignored, array_flip(['default', 'deprecated', '$defs', '$anchor']));
-
-        if ($constraints !== [] || $written->enum !== null) {
-            return true;
-        }
+        $keywords = $written->enum === null ? [] : ['enum'];
+        array_push($keywords, ...array_keys(array_diff_key($written->ignored, array_flip(['default', 'deprecated', '$defs', '$anchor']))));
 
         foreach ($written->allOf as $branch) {
-            if (self::writesAKeyword($branch)) {
-                return true;
-            }
+            array_push($keywords, ...self::writtenKeywords($branch));
         }
 
-        return false;
+        return array_values(array_unique($keywords));
+    }
+
+    /**
+     * Whether an untyped field is read from text, and writes nothing but an `enum` (or a `const`) of numbers and
+     * strings.
+     *
+     * Why: `Rule::in()` compares `(string) $value` and refuses an array, so it accepts exactly the texts of its values,
+     * which is how a query string or a form writes a number. It is a standard reading, as a text boolean's `"1"` is. In
+     * a JSON body `"1"` and `true` pass for `1`, and a boolean or a `null` among the values has no text of its own.
+     *
+     * @param  list<string>  $keywords  what {@see self::writtenKeywords()} found on the written schema
+     */
+    private static function isTextEnumeration(Schema $merged, array $keywords, RuleWalk $walk): bool
+    {
+        return $walk->textSource !== null
+            && $keywords === ['enum']
+            && $merged->enum !== null
+            && array_filter($merged->enum, static fn (mixed $value): bool => ! is_int($value) && ! is_float($value) && ! is_string($value)) === [];
     }
 
     /**
@@ -3224,17 +3427,23 @@ final readonly class RuleSetBuilder
     /**
      * What the body's own root says that a rule set cannot act on, or that a reader would not guess from the rules.
      *
-     * @return list<string>
+     * A root that is not an object records what it states, on `The body itself`, and an optional form body records the
+     * names it asks only beside another key. The `PATCH` reading and the empty form are information, like the `PUT`
+     * one. Each finding is written as the kind it is, in the order the body reads.
      */
-    private static function rootFindings(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): array
+    private static function rootFindings(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): void
     {
-        $findings = [];
-
         if (! self::isObjectBody($schema)) {
-            $findings[] = 'The body\'s own schema is not an object, so no rule is derived from it. '
-                .'A rule key is a field name, and a body that is a bare value has none.';
+            $keywords = self::droppedKeywords($schema, $body->required);
 
-            return $findings;
+            if (self::holdsValueSchema($schema)) {
+                $keywords[] = 'additionalProperties';
+            }
+
+            self::dropFields($walk, 'The body\'s own schema is not an object, so no rule is derived from it. '
+                .'A rule key is a field name, and a body that is a bare value has none.', ['The body itself' => $keywords]);
+
+            return;
         }
 
         // Why: the one place a request is stricter than the contract by design. Matching
@@ -3242,31 +3451,34 @@ final readonly class RuleSetBuilder
         // that has no field for a rule to sit on. A form cannot send a non-object, so only
         // a body read as JSON is stricter.
         if ($schema->types === [] && $walk->jsonBody) {
-            $findings[] = 'The body names `properties` and no `type`, so it is read as an object, and a JSON '
+            $walk->stricter('The body names `properties` and no `type`, so it is read as an object, and a JSON '
                 .'body that is not one (the string `"Ada"` is valid against this schema) is refused. That is '
                 .'stricter than the contract, since the request cannot accept an object or anything else at '
-                .'the root. Add `type: object` to the schema to make the reading the contract\'s own.';
-            $walk->stricter[] = $findings[array_key_last($findings)];
+                .'the root. Add `type: object` to the schema to make the reading the contract\'s own.');
         }
 
         // The request refuses an empty content for a required body whatever its type, bar a form,
         // which it cannot read that way.
         if ($body->required && $walk->formBody) {
-            $findings[] = self::EMPTY_FORM_FINDING;
+            // Why: an empty form is how a form writes `{}`, which the schema accepts when no required key refuses it, so
+            // the sentence only tells a reader of the file what the request accepts.
+            $walk->information(self::EMPTY_FORM_FINDING);
         }
 
         if ($operation->method === HttpMethod::Patch && $schema->required !== []) {
-            $findings[] = sprintf(
+            // Why: a partial update is what `PATCH` means (RFC 5789), so the sentence says what the request reads and
+            // loses no constraint.
+            $walk->information(sprintf(
                 'A `PATCH` is a partial update, so the schema\'s required list (%s) is read as '
                     .'empty here. Every property is `sometimes`.',
                 self::list($schema->required),
-            );
+            ));
         } elseif (! $body->required && $schema->required !== [] && $walk->formBody) {
             // Why: a JSON body is not named here, since the request reads its raw content and refuses `{}` itself.
             // A form is the one it cannot read that way: its fields need not show in the content.
             $alone = count(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required])) === 1;
 
-            $findings[] = sprintf(
+            $walk->unenforced(sprintf(
                 'The body may be absent entirely while its schema requires %s%s. A rule cannot tell a body that is not '
                     .'sent from a form that sends none of the body\'s keys, since both leave every key out of the data, '
                     .'so the form is accepted, which the contract refuses.',
@@ -3276,24 +3488,21 @@ final readonly class RuleSetBuilder
                     : (count($schema->required) === 1
                         ? ', so it is required only when another key of the body is sent'
                         : ', so each is required only when another key of the body is sent'),
-            );
+            ), ['required' => array_map(static fn (string $name): string => '`'.$name.'`', $schema->required)]);
         }
 
         if ($operation->method === HttpMethod::Put) {
             $optional = array_values(array_diff(array_map('strval', array_keys($schema->properties)), $schema->required));
 
             if ($optional !== []) {
-                $findings[] = sprintf(
+                $walk->information(sprintf(
                     'A `PUT` whose schema leaves %s optional. Nothing fills an absent field from a '
                         .'schema default, so a field the client omitted keeps its stored value. '
                         .'Override `update()` on your controller for replacement semantics.',
                     self::list($optional),
-                );
-                $walk->information[] = $findings[array_key_last($findings)];
+                ));
             }
         }
-
-        return $findings;
     }
 
     /**
@@ -3452,6 +3661,23 @@ final readonly class RuleSetBuilder
             }
         }
 
+        // What each name leaves unenforced once no rule is emitted for it, as the field would be read if it kept its rule.
+        $dropped = static function (array $members) use ($schema, $walk, $dependent): array {
+            $entries = [];
+
+            foreach ($members as $member) {
+                $property = $schema->properties[$member] ?? new Schema;
+                $label = '`'.$member.'`';
+                $entries[$label] = self::droppedKeywords(
+                    $property,
+                    self::askedWhenDropped($walk, $property, in_array($member, $schema->required, true), true),
+                    self::askedByDependency($walk, $property, in_array($member, $schema->required, true), true, in_array($member, $dependent, true)),
+                );
+            }
+
+            return $entries;
+        };
+
         $declared = array_values(array_unique([...array_map('strval', array_keys($schema->properties)), ...$schema->required, ...$dependedOn]));
         $names = array_values(array_filter(
             $declared,
@@ -3507,11 +3733,11 @@ final readonly class RuleSetBuilder
             if ($key === null) {
                 $walk->unchecked[$name] = 'PHP delivers nothing under that name';
                 $walk->withheld[$name] = true;
-                $walk->findings[] = sprintf(
+                self::dropFields($walk, sprintf(
                     '`%s` is a property of a form body that PHP delivers under no name, so no rule is emitted for it, and '
                         .'neither its type nor its presence is enforced.',
                     $name,
-                );
+                ), $dropped([$name]));
 
                 continue;
             }
@@ -3550,13 +3776,13 @@ final readonly class RuleSetBuilder
 
             self::withhold($members, $walk, $collided);
 
-            $walk->findings[] = sprintf(
+            self::dropFields($walk, sprintf(
                 '%s reach Laravel under one name, `%s`, which a form delivers them as, so no rule can tell them apart. '
                     .'None is emitted for them, and neither their type nor their presence is enforced, nor do they '
                     .'take part in `required_with` or `dependentRequired`.',
                 self::list($members),
                 $key,
-            );
+            ), $dropped($members));
         }
 
         $shaped = [];
@@ -3565,7 +3791,7 @@ final readonly class RuleSetBuilder
             // Beside JSON, a name PHP rewrites is sent under one key by a JSON client and another by a form client, so no
             // one shape check holds both.
             if ($walk->mixedBody && self::phpRewrites($other)) {
-                $walk->findings[] = sprintf(
+                self::dropFields($walk, sprintf(
                     '`%1$s` is delivered by a form as `%2$s`, below the key `%3$s` that `%4$s` uses, and `%4$s` is a name PHP '
                         .'rewrites: a JSON client sends `%4$s` under that key and a form client as `%3$s`, so no one shape check '
                         .'holds both. None is emitted for either, and neither their type nor their presence is enforced, nor do '
@@ -3574,7 +3800,7 @@ final readonly class RuleSetBuilder
                     $key,
                     $head,
                     $other,
-                );
+                ), $dropped([$name, $other]));
 
                 self::withhold([$name, $other], $walk, $collided);
 
@@ -3584,7 +3810,7 @@ final readonly class RuleSetBuilder
             $type = self::arrayOrObject($schema, $other, $walk);
 
             if ($type !== null) {
-                $walk->findings[] = sprintf(
+                self::dropFields($walk, sprintf(
                     '`%1$s` is delivered by a form as `%2$s`, below the key `%3$s` that `%4$s` uses. `%4$s` is typed `%5$s`, so its '
                         .'own value may be an array, and no rule can tell their values apart. None is emitted for either, and '
                         .'neither their type nor their presence is enforced, nor do they take part in `required_with` or '
@@ -3594,7 +3820,7 @@ final readonly class RuleSetBuilder
                     $head,
                     $other,
                     $type,
-                );
+                ), $dropped([$name, $other]));
 
                 self::withhold([$name, $other], $walk, $collided);
 
@@ -3674,7 +3900,7 @@ final readonly class RuleSetBuilder
                     : ' when '.self::enumerate(array_map(static fn (string $trigger): string => '`'.$trigger.'`', array_values(array_unique($triggers[$name])))).' is sent';
 
                 $walk->unchecked[$name] = 'the body is also JSON, and one rule set cannot hold both the name the contract writes and the one PHP gives it';
-                $walk->findings[] = sprintf(
+                self::dropFields($walk, sprintf(
                     '`%1$s` is a property of a body that is JSON and a form at once. Its rule keeps the name the contract '
                         .'writes, which a JSON client sends. A form client sends it as `%1$s`, which PHP delivers %2$s, '
                         .'so its value is not checked there.%3$s',
@@ -3686,7 +3912,7 @@ final readonly class RuleSetBuilder
                             .'and `rules()` does not branch on the media type, so a JSON body that '
                             .($when === '' ? 'leaves it out' : 'sends the trigger and leaves it out').' is accepted, which the contract refuses.'
                         : '',
-                );
+                ), $dropped([$name]));
 
                 if ($path !== null) {
                     $walk->deliveredKeys[$name] = self::pathKey($path);
@@ -3773,14 +3999,14 @@ final readonly class RuleSetBuilder
             if (! $walk->mixedBody) {
                 $walk->scalarNames[] = $name;
             } else {
-                $walk->findings[] = sprintf(
+                $walk->unenforced(sprintf(
                     '`%1$s` is judged by shape in a body that is JSON and a form: its rules judge a value that is not an array, '
                         .'and the array a form builds for the names nested under it passes and is left out of the validated data. '
                         .'One rule set serves both clients and `rules()` does not branch on the media type, so a JSON client\'s '
                         .'array under `%1$s` (`{"%1$s": [1]}`) passes and is left out of the validated data too, which the '
                         .'contract refuses.',
                     $name,
-                );
+                ), ['type' => ['`'.$name.'`']]);
             }
 
             // Why: the array a form builds for the names below stands in for the name, so a form can send the body
@@ -3911,7 +4137,10 @@ final readonly class RuleSetBuilder
      * step by step, and a name PHP appends to claims the path above its appended step. No finding: it has its rules. A
      * plain name is still refused beside a body key, whether or not it loses its rule.
      *
-     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, shapedBy: list<string>, ruledBelow: bool, findings: list<string>}>
+     * A finding carries the index of each name it is about: the sentence about two names is written on the first of
+     * them, and says as much about the second.
+     *
+     * @return array<int, array{key: string|null, head: string, plain: bool, shaped: bool, shapedBy: list<string>, ruledBelow: bool, findings: list<array{text: string, names: list<int>}>}>
      */
     private static function planQueryNames(Operation $operation, RuleWalk $walk): array
     {
@@ -3939,7 +4168,7 @@ final readonly class RuleSetBuilder
             }
 
             if ($finding !== null) {
-                $findings[$index][] = $finding;
+                $findings[$index][] = ['text' => $finding, 'names' => [$index]];
 
                 if (($appended ?? $path) !== null) {
                     $claims[$index] = $appended ?? $path;
@@ -3953,7 +4182,7 @@ final readonly class RuleSetBuilder
                 $plain[$index] = true;
                 $candidates[] = $index;
             } elseif (in_array($path[0], $walk->bodyKeys, true)) {
-                $findings[$index][] = self::queryNameUnderBodyKey($name, $path[0]);
+                $findings[$index][] = ['text' => self::queryNameUnderBodyKey($name, $path[0]), 'names' => [$index]];
             } else {
                 $keys[$index] = self::pathKey($path);
                 $heads[$index] = $path[0];
@@ -3978,20 +4207,26 @@ final readonly class RuleSetBuilder
 
                     // Two candidates share one finding, written on the first of them.
                     if ($other > $index || ! in_array($other, $candidates, true)) {
-                        $findings[$index][] = self::queryNamesShareKey(
-                            $operation->queryParameters[$index]->name,
-                            $operation->queryParameters[$other]->name,
-                            self::pathKey($mine),
-                        );
+                        $findings[$index][] = [
+                            'text' => self::queryNamesShareKey(
+                                $operation->queryParameters[$index]->name,
+                                $operation->queryParameters[$other]->name,
+                                self::pathKey($mine),
+                            ),
+                            'names' => [$index, $other],
+                        ];
                     }
                 } elseif ($otherAppends && self::isBelow($mine, $claim)) {
                     $keys[$index] = null;
-                    $findings[$index][] = self::queryNameBelowAppend(
-                        $operation->queryParameters[$index]->name,
-                        $operation->queryParameters[$other]->name,
-                        self::pathKey($claim),
-                        self::pathKey($mine),
-                    );
+                    $findings[$index][] = [
+                        'text' => self::queryNameBelowAppend(
+                            $operation->queryParameters[$index]->name,
+                            $operation->queryParameters[$other]->name,
+                            self::pathKey($claim),
+                            self::pathKey($mine),
+                        ),
+                        'names' => [$index, $other],
+                    ];
                 } elseif (self::isBelow($claim, $mine) || ($otherAppends && $mine === $claim)) {
                     $shaped[$index][] = $operation->queryParameters[$other]->name;
                 }
