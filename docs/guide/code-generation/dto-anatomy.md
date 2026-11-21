@@ -418,11 +418,12 @@ where it now stores `2026-12-02 00:00:00`. The app timezone is `date_default_tim
 which Laravel sets from `config('app.timezone')` at boot. It is the one Eloquent reads stored dates in and `now()` uses.
 `toArray()` never converts: it writes the value the property holds, so `$dto->starts_at` and
 `$dto->toArray()['starts_at']` always agree. Through the query builder, pass the property
-(`insert(['starts_at' => $dto->starts_at])`) rather than the string, since a database reads an offset in a datetime
-string its own way. The client's offset is not on the DTO: what the client sent stays on `$request->input('starts_at')`
-and `validated()`. A `query` or path parameter is the string as sent, since none becomes a `CarbonImmutable`, and a
-`date` is a calendar day and does not change. One limit stays Eloquent's: in a timezone with daylight saving time, the
-hour that repeats in the fall is stored as the same clock time twice. The reasoning is in
+(`insert(['starts_at' => $dto->starts_at])`) rather than the string: Laravel formats a date it binds as a `datetime`
+cast does, in the value's own timezone, which is the app's. The string reaches the database as written, and a database
+may keep it as text, drop its offset, or refuse it. The client's offset is not on the DTO: what the client sent stays on
+`$request->input('starts_at')` and `validated()`. A `query` or path parameter is the string as sent, since none becomes
+a `CarbonImmutable`, and a `date` is a calendar day and does not change. One limit stays Eloquent's: in a timezone with
+daylight saving time, the hour that repeats in the fall is stored as the same clock time twice. The reasoning is in
 [ADR 0025](../../project/decisions/0025-set-a-request-date-time-to-the-app-timezone.md).
 
 **A `date-time` is written back with its fraction.** `toRfc3339String()` drops it, and the request rule set accepts a
