@@ -169,17 +169,23 @@ tags: [versions, conventions, planning]
 - **A closed form body that declares two names under one bracketed key now refuses an undeclared key beside them, where
   it used to accept it.** PHP delivers `a[c]` and `a[c]x` both as `a.c` (it drops what follows a closing bracket), and
   the level above is now closed (`a` takes only `c`), where the key check accepted anything under `a`. A body that also
-  declares `a` itself closes it too, in the array branch of `a`'s shape check (`['array:c', 'exclude']`), but a level
-  two below `a` (`a[b][c]` beside `a[b][c]x`) stays open, which the generated file says. A request that sent `a[evil]=1`
-  to such a body and got a `200` now gets a `422` to a client that asks for JSON (see
+  declares `a` itself closes it too, in the array branch of `a`'s shape check (`['array:c', 'exclude']`), and so is a
+  level two or more below `a` (`a[b][c]` beside `a[b][c]x`): its key check is written before the rule of `a`, since the
+  `exclude` of that branch drops the array for every rule written after it. A request that sent `a[evil]=1` to such a
+  body and got a `200` now gets a `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   The shared key itself is still not checked, as the generated file says: `a[c]=abc` and `a[c][evil]=1` pass, and what
-  was sent there is left out of `validated()`. A body that declares nothing else under `a` now gets `a` empty there
-  (`['a' => []]`) where it got nothing, one that declares `a` itself gets nothing, and one that declares another name
-  under `a` gets only that name. When a name is declared below the shared key (`a[c][d]`), the key takes only that name,
-  so `a[c][evil]=1` is still refused (unless a `*`, comma or appended key sits below it, which the file names: it
-  answers `200` then), and a value that is not an array (`a[c]=5`), which used to be refused, passes and is left out.
-  This is a breaking change: drop the key, or declare it.
+  was sent there is left out of `validated()` (except when a `*` name sits below it, as `a[c][*]` does: `validated()`
+  keeps what was sent there then). A body that declares nothing else under `a` now gets `a` empty there (`['a' => []]`)
+  where it got nothing, one that declares `a` itself gets nothing, and one that declares another name under `a` gets
+  only that name. When a name is declared below the shared key (`a[c][d]`), the key takes only that name, so
+  `a[c][evil]=1` is still refused (unless a `*`, comma or appended key sits below it, which the file names: it answers
+  `200` then, and with a `*` name `validated()` keeps the key), and a value that is not an array (`a[c]=5`), which used
+  to be refused, passes and is left out. A closed form body that declares a name typed `object` or `array` beside a name
+  below it (`p` beside `p[s]`, `ids` beside `ids[]`) now gets a finding in the generated file, which says the key check
+  accepts the level the name is delivered at, and the doctor counts `additionalProperties` as one more gap there, where
+  nothing was said. Nothing is refused or accepted differently for it. This is a breaking change: drop the key, or
+  declare it.
 - **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it
   used to accept it.** The body is closed to its declared names, but the level `page` is delivered at was left open for
   the value of `page` itself, so `page[evil]=1` and `page[size]=3&page[evil]=1` were accepted (the second kept only

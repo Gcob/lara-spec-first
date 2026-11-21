@@ -3020,8 +3020,9 @@ it('leaves out of validated() a key of a closed form level that no rule judges',
 // A declared `a` above names that collide below it (`a[c]` and `a[c]x`, both `a.c`): the level `a` is the one the key check
 // has to close, so `a[evil]=1` is refused instead of passing. `a`'s own value is judged as before (`a=5`), and what is sent
 // at the shared key is left out of `validated()`. Beside a ruled name (`a[d]`), the contract's `a[c]=abc&a[d]=5` passes and
-// keeps only `d`. The `object` rows pin only `validated()` and the level above: the rule loss below the object is another
-// card's. Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
+// keeps only `d`. A level two or three below `a` is refused too, since its key check is written before the rule that drops `a`.
+// The `object` rows pin only `validated()` and the level above: the rule loss below the object is #221's. Payloads are
+// what PHP delivers: `Request::create()` does not parse a wire string.
 it('refuses an undeclared key beside a declared name and the names that collide below it', function (
     string $mediaType,
     string $names,
@@ -3053,9 +3054,9 @@ it('refuses an undeclared key beside a declared name and the names that collide 
     // TODO (#221): the key below `x[b]` is not judged yet, so this row answers 200 for what 0.2.0 refused.
     'above a name typed object, below it' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['evil' => '1']]], 200, []],
     'two levels below a declared name, an undeclared key at the first' => ['a a[b][c] a[b][c]x', '', ['a' => ['evil' => '1']], 422, ['a']],
-    // TODO, a follow-up card not opened yet (rules that run below the `exclude` of a declared name's array branch): the
-    // level `a.b` is never judged there, so this row answers 200 for an undeclared key. The generated file now says so.
-    'two levels below a declared name, an undeclared key at the second' => ['a a[b][c] a[b][c]x', '', ['a' => ['b' => ['evil' => '1']]], 200, []],
+    'two levels below a declared name, an undeclared key at the second' => ['a a[b][c] a[b][c]x', '', ['a' => ['b' => ['evil' => '1']]], 422, ['a.b']],
+    'two levels below a declared name, the shared key' => ['a a[b][c] a[b][c]x', '', ['a' => ['b' => ['c' => 'abc']]], 200, []],
+    'three levels below a declared name, an undeclared key at the third' => ['a a[b][c][d] a[b][c][d]x', '', ['a' => ['b' => ['c' => ['evil' => '1']]]], 422, ['a.b.c']],
 ]);
 
 // A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a

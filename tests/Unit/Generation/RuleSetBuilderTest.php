@@ -5307,10 +5307,10 @@ it('says a closed form body accepts the key a name typed array or object is deli
     ],
 ]);
 
-// Why: the array branch of a declared `a` ends in `exclude`, which removes `a` from the data before a level below it is
-// judged, so a rule written for `a.b` would never run. The names below `a` are reported as what the key check accepts
-// instead of being given a rule that does nothing.
-it('says a closed form body accepts the level below a declared name whose array branch drops it', function (): void {
+// Why: the array branch of a declared `a` ends in `exclude`, which removes `a` from the data before a rule written after it
+// judges a level below it. Laravel judges the rules in the order they are written, so the key check of `a.b` is written
+// before the rule of `a`: it still runs, and the body has nothing left unchecked below `a`.
+it('writes the key check of a level below a declared name before the rule that drops it', function (): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
         properties: [
@@ -5322,10 +5322,26 @@ it('says a closed form body accepts the level below a declared name whose array 
     )]), new RuleSetOptions);
 
     expect($set->dropsArray)->toBe(['a'])
-        ->and($set->rules)->not->toHaveKey('a.b')
+        ->and($set->rules['a.b'])->toBe(['sometimes', 'array:c'])
         ->and($set->rules)->not->toHaveKey('a.b.c')
-        ->and(implode("\n", $set->findings))->toContain('so the key check accepts `a.b`')
-        ->and($set->unenforced['additionalProperties'])->toBe(['The body itself']);
+        ->and(array_keys($set->rules))->toBe(['a.b', 'a'])
+        ->and(implode("\n", $set->findings))->not->toContain('so the key check accepts `a.b`')
+        ->and($set->unenforced['additionalProperties'] ?? [])->toBe([]);
+});
+
+// Every level below a dropped one is written before it, in the order the levels go down.
+it('writes every level below a declared name before the rule that drops it', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'a' => new Schema(types: [SchemaType::Integer]),
+            'a[b][c][d]' => new Schema(types: [SchemaType::Integer]),
+            'a[b][c][d]x' => new Schema(types: [SchemaType::Integer]),
+        ],
+        additionalProperties: false,
+    )]), new RuleSetOptions);
+
+    expect(array_keys($set->rules))->toBe(['a.b', 'a.b.c', 'a']);
 });
 
 // With every collided name untyped, nothing else is left unchecked once the level is closed and the shared key is

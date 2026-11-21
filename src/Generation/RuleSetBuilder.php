@@ -1141,16 +1141,15 @@ final readonly class RuleSetBuilder
         foreach ($steps as $level => $below) {
             $level = (string) $level;
 
-            // Why: the array branch of a level ends in `exclude`, which removes the level from the data before a level
-            // below it is judged, so a rule written for that level would never run. The key check accepts what is sent
-            // there, and the finding below says so.
+            // Why: `$steps` lists a level before the levels below it (a name inserts its levels from the top down), so a
+            // level that drops its array is already in `$dropped` when the levels below it are read.
+            $underDropped = false;
+
             foreach ($dropped as $droppedLevel) {
                 if (str_starts_with($level, $droppedLevel.'.')) {
-                    foreach (array_keys($below) as $name) {
-                        $accepted[(string) $name] = $level;
-                    }
+                    $underDropped = true;
 
-                    continue 2;
+                    break;
                 }
             }
 
@@ -1198,13 +1197,50 @@ final readonly class RuleSetBuilder
             }
 
             $walk->rules[$level] = ['sometimes', 'array:'.implode(',', $keys)];
-            $kept[] = $level;
+
+            // The array branch above removes everything below it, so there is nothing left for `exclude` to drop.
+            if (! $underDropped) {
+                $kept[] = $level;
+            }
+        }
+
+        // Why: Laravel judges the rules in the order they are written, and `exclude` takes the array out of the data for
+        // every rule written after it. The key check of a level below a dropped one goes before the rule that drops it,
+        // or it would never run and the level would accept any key.
+        foreach ($dropped as $droppedLevel) {
+            $below = array_filter(
+                $walk->rules,
+                static fn (array $rules, int|string $ruleKey): bool => str_starts_with((string) $ruleKey, $droppedLevel.'.'),
+                ARRAY_FILTER_USE_BOTH,
+            );
+
+            if ($below === []) {
+                continue;
+            }
+
+            $ordered = [];
+
+            foreach ($walk->rules as $ruleKey => $rules) {
+                if (isset($below[$ruleKey])) {
+                    continue;
+                }
+
+                if ((string) $ruleKey === $droppedLevel) {
+                    $ordered += $below;
+                }
+
+                $ordered[$ruleKey] = $rules;
+            }
+
+            $walk->rules = $ordered;
         }
 
         // Why: Laravel's `validated()` keeps a whole array under a rule that is not a bare `array`, so a level kept
         // closed (`array:c`) hands back everything under its keys. A key no rule judges is left out after the key
         // check of its level. A key a ruled name sits below is judged by shape instead: a value that is not an array is
         // left out, and the array holds the keys declared below it (which closes the level that key opened).
+        // `$kept` grows while it is walked: a key opened for its value becomes a kept level of its own, and a level is
+        // always added after the one above it, so its keys are reached later in this same loop.
         for ($i = 0; $i < count($kept); $i++) {
             $level = $kept[$i];
 
