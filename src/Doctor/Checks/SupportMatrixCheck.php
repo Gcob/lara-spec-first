@@ -337,11 +337,11 @@ final readonly class SupportMatrixCheck
                 $keyword === 'content'
                     ? sprintf(
                         '%s declares a media type this package does not read: %s. Nothing in the generated request '.
-                        'comes from it, so a client that sends it is not checked against the schema. See '.
-                        'docs/guide/openapi-support.md, "%s". This is a fact about this package, not a defect '.
-                        'in your contract.',
+                        'comes from it, so %s See docs/guide/openapi-support.md, "%s". This is a fact about this '.
+                        'package, not a defect in your contract.',
                         $operation->label(),
                         implode(', ', $fields),
+                        self::unreadMediaTypeConsequence($operation),
                         self::UNENFORCED_SECTIONS[$keyword],
                     )
                     : sprintf(
@@ -354,12 +354,58 @@ final readonly class SupportMatrixCheck
                         self::UNENFORCED_NAMES[$keyword] ?? '`'.$keyword.'`',
                         implode(', ', $fields),
                         $keyword,
-                        self::UNENFORCED_SECTIONS[$keyword] ?? 'Schemas',
+                        self::sectionsOf($keyword, $fields),
                     ),
             );
         }
 
         return [...$findings, ...$untyped];
+    }
+
+    /**
+     * What happens to a client that sends a media type the package does not read: nothing judges it when no media type
+     * of the body is read, and the rules of the ones that are read judge it on an empty body when one is, since the
+     * generated request reads the JSON body or the form, and an XML body leaves both empty.
+     */
+    private static function unreadMediaTypeConsequence(Operation $operation): string
+    {
+        $read = array_values(array_intersect($operation->requestBody?->mediaTypes() ?? [], RuleSetBuilder::READ_MEDIA_TYPES));
+
+        if ($read === []) {
+            return 'a client that sends it is not checked against the schema.';
+        }
+
+        return sprintf(
+            'a client that sends it is judged by the rules of %s on an empty body: a field the schema requires '.
+            'answers `422`, though your contract accepts the request.',
+            implode(', ', array_map(static fn (string $mediaType): string => '`'.$mediaType.'`', $read)),
+        );
+    }
+
+    /**
+     * The sections of the support matrix that rate a keyword left unenforced on these fields. `required` on the body
+     * itself comes from `requestBody.required`, which the matrix rates with the bodies; any other field's keyword is a
+     * schema's.
+     *
+     * @param  list<string>  $fields
+     */
+    private static function sectionsOf(string $keyword, array $fields): string
+    {
+        $sections = [];
+
+        if (isset(self::UNENFORCED_SECTIONS[$keyword])) {
+            $sections[] = self::UNENFORCED_SECTIONS[$keyword];
+        } else {
+            if ($keyword === 'required' && in_array('The body itself', $fields, true)) {
+                $sections[] = 'Parameters, bodies, responses';
+            }
+
+            if ($keyword !== 'required' || array_diff($fields, ['The body itself']) !== []) {
+                $sections[] = 'Schemas';
+            }
+        }
+
+        return implode('" and "', $sections);
     }
 
     /**

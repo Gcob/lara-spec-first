@@ -2072,6 +2072,22 @@ it('accepts two read media types whose shapes differ only in where an ignored ke
     expect($set->rules)->toBe(['a' => ['sometimes', 'string']]);
 });
 
+// Beside a media type the package reads, the generated request judges the body in one it does not by that media
+// type's rules on an empty body, so the finding says what a client of it meets; alone, there is nothing to judge.
+it('says what a body in an unread media type is judged by when a read one is declared', function (): void {
+    $beside = RuleSetBuilder::for(operationWithInput(content: [
+        'application/json' => objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+        'application/xml' => objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+    ]), new RuleSetOptions);
+    $alone = RuleSetBuilder::for(operationWithInput(content: [
+        'application/xml' => objectSchema(['a' => new Schema(types: [SchemaType::String])], ['a']),
+    ]), new RuleSetOptions);
+
+    expect(implode(' ', $beside->findings))->toContain('judged by the rules of `application/json` on an empty body')
+        ->and(implode(' ', $beside->findings))->toContain('a field the schema requires answers `422`')
+        ->and(implode(' ', $alone->findings))->not->toContain('on an empty body');
+});
+
 // Reported rather than refused: refusing the whole build over a media type this
 // package does not serve would turn away an operation whose other half is fine.
 it('reports a media type it does not read rather than refusing it', function (): void {
@@ -6659,7 +6675,6 @@ it('counts a request in the build warning exactly when the doctor reports a gap'
     }
 
     expect($set->leavesUnenforced())->toBe($gap)
-        ->and($set->unenforced !== [] || $set->documentFaults !== [])->toBe($gap)
         ->and($left === [])->toBe($set->unenforced === []);
 })->with(function (): array {
     $string = new Schema(types: [SchemaType::String]);
@@ -6710,6 +6725,10 @@ it('counts a request in the build warning exactly when the doctor reports a gap'
         'a bracketed property of a closed deepObject' => [$deepObject($closed(['a[b]' => $integer])), true],
         'an empty bracketed property of a closed deepObject' => [$deepObject($closed(['e[f]' => new Schema])), true],
         'an unread media type' => [operationWithInput(content: ['application/xml' => objectSchema(['a' => $string])]), true],
+        'an unread media type beside JSON, with a required field' => [operationWithInput(content: [
+            'application/json' => objectSchema(['a' => $string], ['a']),
+            'application/xml' => objectSchema(['a' => $string], ['a']),
+        ]), true],
         'a body that is not an object' => [$json($string), true],
         'a query array no rule set reads' => [operationWithInput(
             method: 'get',

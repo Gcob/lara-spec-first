@@ -271,13 +271,7 @@ final readonly class RuleSetBuilder
             $closedKeys = self::bodyRules($operation, $body, $walk);
         }
 
-        if ($walk->fileBody !== null) {
-            [$at, $finding, $keywords] = $walk->fileBody;
-            // The parts the walk read recorded their own labels. A part it did not reach is still in the body, so the
-            // gap falls back to the body itself rather than go without an entry.
-            $recorded = array_intersect_key($walk->unenforcedEntries(), array_flip($keywords));
-            $walk->unenforced($finding, $recorded !== [] ? $recorded : array_fill_keys($keywords, ['The body itself']), $at);
-        }
+        $walk->flushDeferredGap();
 
         // A query string carries no file, so the parameters below are never read
         // as one, whatever the body is.
@@ -530,10 +524,19 @@ final readonly class RuleSetBuilder
             // is a contract this package does not serve, and refusing the whole
             // build over it would turn away an operation whose other half is
             // perfectly readable.
+            $readTypes = array_values(array_intersect($body->mediaTypes(), self::READ_MEDIA_TYPES));
+
+            // Why: the generated request reads the JSON body or the form, and a body in another media type leaves
+            // both empty, so the rules of the media types it reads judge it on an empty body.
             $walk->unenforced(sprintf(
                 'The body declares %s, which this package does not read. Nothing in the rule set '
-                    .'comes from it.',
+                    .'comes from it.%s',
                 self::list($unread),
+                $readTypes === [] ? '' : sprintf(
+                    ' A client that sends it is judged by the rules of %s on an empty body: a field the schema '
+                        .'requires answers `422`, though the contract accepts the request.',
+                    self::list($readTypes),
+                ),
             ), ['content' => array_map(static fn (string $mediaType): string => '`'.$mediaType.'`', $unread)]);
         }
 
@@ -560,8 +563,8 @@ final readonly class RuleSetBuilder
             if ($fileKeywords !== []) {
                 // A gap: a multipart upload of a file meets `string` and is refused, so it loses a constraint. Its
                 // entries are the parts' own, recorded when each is read, so the sentence is written after the walk.
-                $walk->fileBody = [$walk->findingCount(), $finding.' A part the schema marks as a file is then read as a string, because a '
-                    .'JSON or form-encoded body cannot carry one and no rule serves both.', $fileKeywords];
+                $walk->deferGap($finding.' A part the schema marks as a file is then read as a string, because a '
+                    .'JSON or form-encoded body cannot carry one and no rule serves both.', $fileKeywords);
             } else {
                 $walk->information($finding);
             }

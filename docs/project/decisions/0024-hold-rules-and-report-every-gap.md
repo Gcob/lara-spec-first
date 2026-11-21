@@ -108,7 +108,8 @@ way:
 
 - **A gap** (`unenforced()`): the request enforces less than the contract. It takes at least one entry, a keyword and
   the fields it is left unenforced on, and its type is a non-empty list, so Larastan refuses a call with none. The build
-  counts it and the doctor reports it.
+  counts it and the doctor reports it. A gap whose entries the walk records only after its sentence's place has passed
+  (the file parts of a body that is also JSON or a form) is held and written later, as the same kind.
 - **Stricter** (`stricter()`): the cases above. The build does not count it.
 - **Information** (`information()`): a reading of the contract that loses no constraint, written so that a reader of the
   file knows what the request accepts. The build does not count it and the doctor does not report it.

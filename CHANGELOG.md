@@ -462,18 +462,19 @@ tags: [versions, conventions, planning]
   and the integer, number and boolean of a body that is JSON and a form (`type`), a field with no type and an `enum` or
   a `const` in a JSON body, or holding a boolean or a `null` in a query or a form (`enum`), and a recursion through a
   schema with no name (`$ref`). It names what a body or a `query` parameter the request reads only in part states: a
-  body in a media type this package does not read (`content`, on the media type), a body whose root is not an object
-  (`type`, what it states, and `required` for a required body), the names an optional form body asks only beside another
-  key (`required`), a `query` array or object whose serialization the request does not read (`type` and what it states,
-  and `required` for an object whose own name is not sent), an array inside a `deepObject` under
-  `query.deep_object_arrays: any` (`type` and each of `items`, `minItems`, `maxItems` and `uniqueItems` it states), and
-  a `deepObject` property named with a bracket, with the closed object around it, which no longer refuses undeclared
-  keys (`additionalProperties`). A keyword the package does not read on a field with no type is still reported once, as
-  `Ignored`, as it was. The generated file's findings are the same, except that a `*` trigger no longer says its `*`
-  twice, and says what it no longer asks for. This is a breaking change: a contract that exited `0` can exit `2`, so a
-  green CI step may turn red. Fix the contract where the finding says how, or let the CI step accept exit `2` until the
-  acknowledgement config is built. The reasoning, and what counts as a gap and what as a standard reading, is in
-  [ADR 0024](./docs/project/decisions/0024-hold-rules-and-report-every-gap.md). This ships
+  body in a media type this package does not read (`content`, on the media type: beside JSON or a form, the generated
+  request judges it by their rules on an empty body, so a required field answers `422`, and the doctor says so), a body
+  whose root is not an object (`type`, what it states, and `required` for a required body), the names an optional form
+  body asks only beside another key (`required`), a `query` array or object whose serialization the request does not
+  read (`type` and what it states, and `required` for an object whose own name is not sent), an array inside a
+  `deepObject` under `query.deep_object_arrays: any` (`type` and each of `items`, `minItems`, `maxItems` and
+  `uniqueItems` it states), and a `deepObject` property named with a bracket, with the closed object around it, which no
+  longer refuses undeclared keys (`additionalProperties`). A keyword the package does not read on a field with no type
+  is still reported once, as `Ignored`, as it was. The generated file's findings are the same, except that a `*` trigger
+  no longer says its `*` twice, and says what it no longer asks for. This is a breaking change: a contract that exited
+  `0` can exit `2`, so a green CI step may turn red. Fix the contract where the finding says how, or let the CI step
+  accept exit `2` until the acknowledgement config is built. The reasoning, and what counts as a gap and what as a
+  standard reading, is in [ADR 0024](./docs/project/decisions/0024-hold-rules-and-report-every-gap.md). This ships
   [#119](https://github.com/Gcob/lara-spec-first/issues/119) and closes its `0.2.0` `Known limits` item.
 
 ### Fixed

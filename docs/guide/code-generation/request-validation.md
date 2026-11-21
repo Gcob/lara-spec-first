@@ -493,7 +493,10 @@ own.
 
 **Any other media type is reported rather than guessed at.** A body declaring `application/xml` is a contract this
 package does not serve, and a `format: byte` string inside a JSON body is
-[a string nothing decodes](../uploads.md#a-base64-part-is-a-string).
+[a string nothing decodes](../uploads.md#a-base64-part-is-a-string). Alone, a client that sends it is not checked
+against the schema. Beside JSON or a form, the generated request reads the JSON body or the form, and an XML body leaves
+both empty, so the rules judge it as an empty body: a field the schema requires answers `422`, though the contract
+accepts the request. `spec:doctor` and the generated file's findings say which of the two applies.
 
 ### Arrays inside a deepObject
 

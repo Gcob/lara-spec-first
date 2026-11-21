@@ -18,9 +18,10 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
  * together here, for the length of one {@see RuleSetBuilder::for()} call and no longer.
  *
  * **Every finding is written through one of four methods, and each is a kind:** a gap ({@see self::unenforced()}, with
- * its entries), a request stricter than the contract ({@see self::stricter()}), information
- * ({@see self::information()}) or a fault in the document ({@see self::fault()}). The records behind them are private,
- * so a finding cannot be written as none of the four, and the build and the doctor read the same one.
+ * its entries, written later by {@see self::flushDeferredGap()} when {@see self::deferGap()} held it), a request
+ * stricter than the contract ({@see self::stricter()}), information ({@see self::information()}) or a fault in the
+ * document ({@see self::fault()}). The records behind them are private, so a finding cannot be written as none of the
+ * four, and the build and the doctor read the same one.
  *
  * @internal Not public API — the accumulator of one build of one rule set.
  */
@@ -60,7 +61,8 @@ final class RuleWalk
      * Every finding the walk wrote, in the order it wrote them, whatever its kind. Written only through
      * {@see self::unenforced()}, {@see self::stricter()}, {@see self::information()} and {@see self::fault()}, so each
      * one is exactly one of the four kinds: a gap with at least one entry, a request stricter than the contract, a
-     * piece of information, or a fault in the document.
+     * piece of information, or a fault in the document. A gap held by {@see self::deferGap()} is written later, as a
+     * gap, by {@see self::flushDeferredGap()}.
      *
      * @var list<string>
      */
@@ -139,11 +141,11 @@ final class RuleWalk
     /**
      * Where the sentence about the file parts of a body that is multipart and also JSON or a form goes in the findings,
      * what it says, and the keywords the parts state: the entries of that gap are the parts' own, which the walk of the
-     * fields records, so the sentence is written once it has.
+     * fields records, so the sentence is written once it has, by {@see self::flushDeferredGap()}.
      *
      * @var array{int, string, non-empty-list<string>}|null
      */
-    public ?array $fileBody = null;
+    private ?array $deferredGap = null;
 
     /**
      * Whether `multipart/form-data` is the only media type the rule set is read from, which is the one body a part can
@@ -515,14 +517,6 @@ final class RuleWalk
     }
 
     /**
-     * How many findings are written, which is where the next one goes.
-     */
-    public function findingCount(): int
-    {
-        return count($this->findings);
-    }
-
-    /**
      * Record a gap: a finding in the generated file that says the request enforces less than the contract, and the
      * keywords it leaves unenforced on the fields it names, which is what the build counts and the doctor reports.
      *
@@ -531,18 +525,53 @@ final class RuleWalk
      * nothing) writes information instead.
      *
      * @param  non-empty-array<string, non-empty-list<string>>  $entries  the labels of the fields, by keyword
-     * @param  int|null  $at  where in the findings the sentence goes, from {@see self::findingCount()}, when its
-     *                        entries are known only after the sentence's place has passed; the end otherwise
      */
-    public function unenforced(string $finding, array $entries, ?int $at = null): void
+    public function unenforced(string $finding, array $entries): void
     {
-        array_splice($this->findings, $at ?? count($this->findings), 0, [$finding]);
+        $this->writeGap($finding, $entries, count($this->findings));
+    }
+
+    /**
+     * @param  non-empty-array<string, non-empty-list<string>>  $entries
+     */
+    private function writeGap(string $finding, array $entries, int $at): void
+    {
+        array_splice($this->findings, $at, 0, [$finding]);
 
         foreach ($entries as $keyword => $labels) {
             foreach ($labels as $label) {
                 $this->leaveUnenforced($keyword, $label);
             }
         }
+    }
+
+    /**
+     * Hold a gap whose entries the walk of the fields has not recorded yet, at the place its sentence goes in the
+     * findings: {@see self::flushDeferredGap()} writes it as a gap once the walk is over.
+     *
+     * @param  non-empty-list<string>  $keywords  the keywords the gap is about, whose entries are the walk's own
+     */
+    public function deferGap(string $finding, array $keywords): void
+    {
+        $this->deferredGap = [count($this->findings), $finding, $keywords];
+    }
+
+    /**
+     * Write the gap {@see self::deferGap()} held, if one is: with the entries the walk recorded for its keywords, and
+     * when it reached none of them, on the body itself, since a gap with no entry would be read as nothing by the build
+     * and the doctor.
+     */
+    public function flushDeferredGap(): void
+    {
+        if ($this->deferredGap === null) {
+            return;
+        }
+
+        [$at, $finding, $keywords] = $this->deferredGap;
+        $this->deferredGap = null;
+        $recorded = array_intersect_key($this->unenforced, array_flip($keywords));
+
+        $this->writeGap($finding, $recorded !== [] ? $recorded : array_fill_keys($keywords, ['The body itself']), $at);
     }
 
     /**

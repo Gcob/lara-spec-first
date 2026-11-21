@@ -682,6 +682,51 @@ it('names a media type the rule set does not read', function (): void {
         ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
 });
 
+// Beside a media type the package reads, a body in one it does not is judged by that media type's rules on an empty
+// body (the generated request reads the form bag, which an XML body leaves empty), so a required field answers 422:
+// the request is stricter than the contract for it, and "not checked" would be false. Alone, nothing judges it.
+it('says a body in an unread media type beside a read one is judged on an empty body', function (): void {
+    $schema = new Schema(types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])], required: ['name']);
+
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest([
+        'application/json' => $schema,
+        'application/xml' => $schema,
+    ])], new RuleSetOptions);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->message)->toContain('judged by the rules of `application/json` on an empty body')
+        ->and($findings[0]->message)->toContain('a field the schema requires answers `422`')
+        ->and($findings[0]->message)->not->toContain('is not checked against the schema')
+        ->and(supportMatrixReport($findings)->exitCode())->toBe(2);
+});
+
+it('keeps saying a body in an unread media type alone is not checked', function (): void {
+    $schema = new Schema(types: [SchemaType::Object], properties: ['name' => new Schema(types: [SchemaType::String])], required: ['name']);
+
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest(['application/xml' => $schema])], new RuleSetOptions);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->message)->toContain('a client that sends it is not checked against the schema')
+        ->and($findings[0]->message)->not->toContain('422');
+});
+
+// `required` on the body itself comes from `requestBody.required`, which the matrix rates with the bodies.
+it('points a required body at the section of the matrix that rates bodies', function (): void {
+    $findings = SupportMatrixCheck::requestSchemas([supportMatrixRequest([
+        'application/json' => new Schema(types: [SchemaType::String]),
+    ])], new RuleSetOptions);
+
+    $required = array_values(array_filter(
+        $findings,
+        static fn (Finding $finding): bool => str_contains($finding->message, 'where the generated request does not enforce it') && str_contains($finding->message, 'writes `required`'),
+    ));
+
+    expect($required)->toHaveCount(1)
+        ->and($required[0]->message)->toContain('The body itself')
+        ->and($required[0]->message)->toContain('docs/guide/openapi-support.md, "Parameters, bodies, responses"')
+        ->and($required[0]->message)->not->toContain('"Schemas"');
+});
+
 // The matrix rates `enum` as honored, and a `const` is read as a one-value `enum`: the sentence says both, so a reader
 // who wrote a `const` finds it.
 it('says a const is read as a one-value enum when it names an enum', function (): void {
