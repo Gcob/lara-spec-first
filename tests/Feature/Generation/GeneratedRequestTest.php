@@ -3017,6 +3017,43 @@ it('leaves out of validated() a key of a closed form level that no rule judges',
     'a name typed object with a name below it, beside a ruled name' => ['x[b] x[b][c] x[d]', 'x[b]', ['x' => ['b' => ['evil' => '1'], 'd' => '5']], 200, ['x' => ['d' => '5']]],
 ]);
 
+// A declared `a` above names that collide below it (`a[c]` and `a[c]x`, both `a.c`): the level `a` is the one the key check
+// has to close, so `a[evil]=1` is refused instead of passing. `a`'s own value is judged as before (`a=5`), and what is sent
+// at the shared key is left out of `validated()`. Beside a ruled name (`a[d]`), the contract's `a[c]=abc&a[d]=5` passes and
+// keeps only `d`. The `object` rows pin only `validated()` and the level above: the rule loss below the object is another
+// card's. Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
+it('refuses an undeclared key beside a declared name and the names that collide below it', function (
+    string $mediaType,
+    string $names,
+    string $objects,
+    array $parameters,
+    int $status,
+    array $answer,
+): void {
+    $class = emittedRequestClass(postWithBracketedNames(
+        $mediaType,
+        explode(' ', $names),
+        true,
+        objects: $objects === '' ? [] : explode(' ', $objects),
+    ));
+
+    [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: $parameters);
+
+    expect($answered)->toBe($status)
+        ->and($status === 422 ? array_keys($body['errors']) : $body)->toBe($answer);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with([
+    'an undeclared key beside a declared name' => ['a a[c] a[c]x', '', ['a' => ['evil' => '1']], 422, ['a']],
+    'the declared name' => ['a a[c] a[c]x', '', ['a' => '5'], 200, ['a' => '5']],
+    'the declared name, not a number' => ['a a[c] a[c]x', '', ['a' => 'abc'], 422, ['a']],
+    'the shared key' => ['a a[c] a[c]x', '', ['a' => ['c' => 'abc']], 200, []],
+    'the shared key and an undeclared one' => ['a a[c] a[c]x', '', ['a' => ['c' => '1', 'evil' => '1']], 422, ['a']],
+    'beside a ruled name, both sent' => ['a a[c] a[c]x a[d]', '', ['a' => ['c' => 'abc', 'd' => '5']], 200, ['a' => ['d' => '5']]],
+    'beside a ruled name, an undeclared key' => ['a a[c] a[c]x a[d]', '', ['a' => ['evil' => '1']], 422, ['a']],
+    'above a name typed object, an undeclared key' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['evil' => '1']], 422, ['x']],
+    // TODO (#221): the key below `x[b]` is not judged yet, so this row answers 200 for what 0.2.0 refused.
+    'above a name typed object, below it' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['evil' => '1']]], 200, []],
+]);
+
 // A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a
 // rule there, but the array a form builds for them still stands in for `page`. The contract wants a `page` the form
 // never sent (a stated gap, as for every required name a form nests other names under), so `validated()` has no `page`

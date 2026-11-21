@@ -156,17 +156,17 @@ tags: [versions, conventions, planning]
   [#168](https://github.com/Gcob/lara-spec-first/issues/168).
 - **A closed form body that declares two names under one bracketed key now refuses an undeclared key beside them, where
   it used to accept it.** PHP delivers `a[c]` and `a[c]x` both as `a.c` (it drops what follows a closing bracket), and
-  the level above is now closed (`a` takes only `c`), where the key check accepted anything under `a`. A request that
+  the level above is now closed (`a` takes only `c`), where the key check accepted anything under `a`. A body that also
+  declares `a` itself closes it too, in the array branch of `a`'s shape check (`['array:c', 'exclude']`). A request that
   sent `a[evil]=1` to such a body and got a `200` now gets a `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   The shared key itself is still not checked, as the generated file says: `a[c]=abc` and `a[c][evil]=1` pass, and what
   was sent there is left out of `validated()`. A body that declares nothing else under `a` now gets `a` empty there
-  (`['a' => []]`) where it got nothing, and one that declares another name under `a` gets only that name. When a name is
-  declared below the shared key (`a[c][d]`), the key takes only that name, so `a[c][evil]=1` is still refused (unless a
-  `*`, comma or appended key sits below it, which the file names: it answers `200` then), and a value that is not an
-  array (`a[c]=5`), which used to be refused, passes and is left out. A body that also declares `a` itself is not closed
-  yet: it still accepts `a[evil]=1` ([#206](https://github.com/Gcob/lara-spec-first/issues/206)). This is a breaking
-  change: drop the key, or declare it.
+  (`['a' => []]`) where it got nothing, one that declares `a` itself gets nothing, and one that declares another name
+  under `a` gets only that name. When a name is declared below the shared key (`a[c][d]`), the key takes only that name,
+  so `a[c][evil]=1` is still refused (unless a `*`, comma or appended key sits below it, which the file names: it
+  answers `200` then), and a value that is not an array (`a[c]=5`), which used to be refused, passes and is left out.
+  This is a breaking change: drop the key, or declare it.
 - **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it
   used to accept it.** The body is closed to its declared names, but the level `page` is delivered at was left open for
   the value of `page` itself, so `page[evil]=1` and `page[size]=3&page[evil]=1` were accepted (the second kept only

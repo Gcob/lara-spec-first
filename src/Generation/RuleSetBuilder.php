@@ -1042,9 +1042,15 @@ final readonly class RuleSetBuilder
 
             $closed[] = $delivered;
 
-            // A name that collided has its own finding, and the key its value arrives under is a declared name
-            // too, so the contract does not refuse it. In a closed body its key is left out of the validated data.
-            if (isset($walk->withheld[$name]) && in_array($delivered, $declared, true)) {
+            // A name that collided has its own finding, and a name delivered at a declared top-level key (`user.name` at
+            // `user_name`) is that key, which the contract does not refuse. In a closed body its key is left out of the
+            // validated data. A bracketed name in a body read only as a form still closes the levels below its head, or
+            // the file would say the key check accepts them; a body that is JSON as well never closes a level.
+            if (
+                isset($walk->withheld[$name])
+                && in_array($delivered, $declared, true)
+                && ($walk->mixedBody || count(self::deliveredPath($name) ?? []) === 1)
+            ) {
                 continue;
             }
 

@@ -307,18 +307,20 @@ key beside it), because a value can sit there and `array:` would refuse it. A na
 level in its own array branch (below). For a name with no bracket (`user.name`), nothing tells `user_name` apart from
 it: the key check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a
 bracketed name in a body that is JSON too, whose head is not closed. A name that collides with another (below) is
-already named by the collision finding, and when the key it arrives under is one the contract declares, the closed body
-says nothing more about it. A bracketed name below another closes the levels above it like any other: `filter[a]`,
-`filter[a][b]` and `filter[c]` give `'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and
-`filter[a]` closes `filter.a` in its own array branch (`['array:b']`), so `filter[a][evil]=1` is refused too. Two names
-a form delivers under one bracketed key (`a[c]` beside `a[c]x`, both `a.c`, since PHP drops what follows a closing
-bracket) close `a` to `c`; the shared key has no rule, so what arrives under it is not checked, and a closed body leaves
-it out of `validated()` with `'a.c' => ['exclude']`, after the key check of `a`. Any key of a closed level that no rule
-judges is left out the same way, such as the key of a name typed `object` beside a name below it. When a ruled name sits
-below that key (`a[c][d]` beside the pair), the key is judged by shape instead,
-`Rule::when(..., ['exclude'], ['array:d'])`: a value that is not an array is left out, and the array holds only the keys
-declared below it, so `a[c][evil]=1` is refused, unless a `*`, comma or appended key sits below it, which the file names
-(`a[c][evil]=1` answers 200 then).
+already named by the collision finding, and when it is delivered at a top-level key the contract declares (`user.name`
+at `user_name`), the closed body says nothing more about it. In a body read only as a form, a bracketed name withheld
+below a declared name typed `array` or `object` (`p[s]` beside a `p` typed `object`, `ids[]` beside an `ids` typed
+`array`) leaves the level it is delivered at open, and the file says the key check accepts it. A bracketed name below
+another closes the levels above it like any other: `filter[a]`, `filter[a][b]` and `filter[c]` give
+`'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and `filter[a]` closes `filter.a` in its own
+array branch (`['array:b']`), so `filter[a][evil]=1` is refused too. Two names a form delivers under one bracketed key
+(`a[c]` beside `a[c]x`, both `a.c`, since PHP drops what follows a closing bracket) close `a` to `c`; the shared key has
+no rule, so what arrives under it is not checked, and a closed body leaves it out of `validated()` with
+`'a.c' => ['exclude']`, after the key check of `a`. Any key of a closed level that no rule judges is left out the same
+way, such as the key of a name typed `object` beside a name below it. When a ruled name sits below that key (`a[c][d]`
+beside the pair), the key is judged by shape instead, `Rule::when(..., ['exclude'], ['array:d'])`: a value that is not
+an array is left out, and the array holds only the keys declared below it, so `a[c][evil]=1` is refused, unless a `*`,
+comma or appended key sits below it, which the file names (`a[c][evil]=1` answers 200 then).
 
 **A name a form body declares beside the names a form nests under it is judged by shape, as a query name is.** `page`
 beside `page[size]`, `filter[a]` beside `filter[a][b]`, at any depth, and `ids` beside `ids[]`, which a form reads as
@@ -343,17 +345,17 @@ nobody checked in `validated()`. **In a closed body the array branch holds the k
 name:** `page` beside `page[size]` gives `['array:size']`, so `page[evil]=1` and `page[size]=3&page[evil]=1` answer 422,
 as the contract refuses them, while `page=2` and `page[size]=3` still pass. A branch that drops the array holds the keys
 too, in front of the `exclude` (`['array:b', 'exclude']` for `filter[a]` beside an object `filter[a][b]` that has a name
-below it, so both are withheld), so `filter[a][evil]=1` is refused there too, where that level stayed open. **Open
-(#206):** the trio `a`, `a[c]` and `a[c]x` in a closed body is not refused yet: its branch is `['exclude']` alone, so
-`a[evil]=1` passes. A key `array:` cannot name keeps `['array']`, and the generated file says the key check accepts it:
-a comma in a key, and the key of a `*` name (`page[*]` beside `page[size]`), which Laravel hides behind a placeholder,
-so `array:size,*` would refuse the `page[*]=5` the contract declares. That level accepts `page[evil]=1` too. A
-comparison is step by step, so `filter[a]` is no ancestor of `filter[ab][c]`. **`dto()` reads the name only when it is
-not an array:** the request lists such names (not those whose array branch is `exclude`, which `validated()` never
-holds) in a `SCALAR_NAMES` constant, and `contractNames()` drops the array once it has read each nested name out of it,
-because `from()` casts what it reads and `(int)` of an array is `1`. So `page[size]=3` reaches the DTO as `page[size]`
-and `page` is `Optional`, which is what a required `page` is there: the array stands in for it, and the file says so.
-The key that two names deliver under one is in the list too, when a name below it has a rule. The reasoning is in
+below it, so both are withheld), so `filter[a][evil]=1` is refused there too, where that level stayed open. So is
+`a[evil]=1` beside `a`, `a[c]` and `a[c]x`, whose branch is `['array:c', 'exclude']`. A key `array:` cannot name keeps
+`['array']`, and the generated file says the key check accepts it: a comma in a key, and the key of a `*` name
+(`page[*]` beside `page[size]`), which Laravel hides behind a placeholder, so `array:size,*` would refuse the
+`page[*]=5` the contract declares. That level accepts `page[evil]=1` too. A comparison is step by step, so `filter[a]`
+is no ancestor of `filter[ab][c]`. **`dto()` reads the name only when it is not an array:** the request lists such names
+(not those whose array branch is `exclude`, which `validated()` never holds) in a `SCALAR_NAMES` constant, and
+`contractNames()` drops the array once it has read each nested name out of it, because `from()` casts what it reads and
+`(int)` of an array is `1`. So `page[size]=3` reaches the DTO as `page[size]` and `page` is `Optional`, which is what a
+required `page` is there: the array stands in for it, and the file says so. The key that two names deliver under one is
+in the list too, when a name below it has a rule. The reasoning is in
 [ADR 0012](../../project/decisions/0012-judge-plain-form-names-by-shape.md).
 
 **The shape check cannot tell a `page` the client left out from the names it sent instead, when the contract asks for
