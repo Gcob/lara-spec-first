@@ -37,7 +37,8 @@ tags: [decisions, code-generation, openapi, compatibility]
 >   silent on those gaps. It moves `spec:doctor`'s exit code from `0` to `2` for a contract that has one, as the
 >   CHANGELOG says.
 
-**Status:** Accepted · **Card:** [#119](https://github.com/Gcob/lara-spec-first/issues/119)
+**Status:** Accepted · **Card:** [#119](https://github.com/Gcob/lara-spec-first/issues/119) · **Pull request:**
+[#240](https://github.com/Gcob/lara-spec-first/pull/240)
 
 ## Context
 
@@ -64,6 +65,12 @@ Naming every gap raised a second question, which the rule alone does not answer.
 `"1"` and `"0"`, though the contract writes `true` and `false`, and every client of a query string or a form sends them.
 A `PATCH` reads `required` as empty because a partial update is what the method means. Exiting `2` on those would fail a
 pipeline on what a client following HTTP does, and nothing in the contract is wrong.
+
+[ADR 0007](./0007-keep-json-scalars-strict.md) decided that a text boolean accepts the four spellings, and ADR 0006
+listed its `"1"` and `"0"` among the gaps where the request is looser. The decision stands and ADR 0007's status does
+not change. What moves is the class of that reading: it is a standard reading, so it is information and no longer a gap
+the build counts or the doctor reports. A field with no type whose `enum` or `const` holds numbers or strings, read from
+a query string or a form, is the same kind of reading: every value there is text, so `"1"` stands for `1`.
 
 ## Decision
 
@@ -246,7 +253,9 @@ is not. [ADR 0005](./0005-read-default-content-type-by-latest-patch.md) states i
   line points here. [ADR 0019](./0019-judge-a-json-integer-by-its-value.md),
   [ADR 0022](./0022-read-a-deep-object-query-by-its-brackets.md) and
   [ADR 0023](./0023-read-an-array-in-a-deep-object-as-the-app-declares.md) stay as they were written, and what they say
-  about the doctor is replaced by this record.
+  about the doctor is replaced by this record. ADR 0019 says the finding on a scalar of a body that is JSON and a form
+  is never `unenforced`, so the doctor stays silent: the doctor now reports that field's `type`. ADR 0007's text boolean
+  is still the rule, now read as information.
 - **What the decision leaves open** is [#133](https://github.com/Gcob/lara-spec-first/issues/133),
   [#146](https://github.com/Gcob/lara-spec-first/issues/146),
   [#157](https://github.com/Gcob/lara-spec-first/issues/157),

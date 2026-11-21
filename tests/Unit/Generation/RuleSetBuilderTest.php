@@ -1278,6 +1278,48 @@ it('reports a bracketed property name inside a deepObject', function (bool $clos
     'a closed object' => [true],
 ]);
 
+// A bracketed property of a deepObject that a trigger asks for is read as a kept dependent would be: not asked when it is
+// `readOnly`, and not asked a second time when the object already requires it.
+it('records dependentRequired on a bracketed deepObject property only where a kept dependent would be asked', function (array $properties, array $required, array $expected): void {
+    $set = deepObjectRuleSet(
+        new Schema(
+            types: [SchemaType::Object],
+            properties: ['ok' => new Schema(types: [SchemaType::String]), ...$properties],
+            required: array_values($required),
+            dependentRequired: ['ok' => ['a[b]']],
+        ),
+        false,
+    );
+
+    expect($set->unenforced)->toEqual($expected);
+})->with([
+    'a plain property' => [
+        ['a[b]' => new Schema(types: [SchemaType::String])],
+        [],
+        ['dependentRequired' => ['`filter[a[b]]`'], 'type' => ['`filter[a[b]]`']],
+    ],
+    'a readOnly property' => [
+        ['a[b]' => new Schema(types: [SchemaType::String], readOnly: true)],
+        [],
+        ['type' => ['`filter[a[b]]`']],
+    ],
+    'a property the object requires' => [
+        ['a[b]' => new Schema(types: [SchemaType::String])],
+        ['a[b]'],
+        ['required' => ['`filter[a[b]]`'], 'type' => ['`filter[a[b]]`']],
+    ],
+    'a name no property declares' => [
+        [],
+        [],
+        ['dependentRequired' => ['`filter[a[b]]`']],
+    ],
+    'a name no property declares, and the object requires' => [
+        [],
+        ['a[b]'],
+        ['required' => ['`filter[a[b]]`']],
+    ],
+]);
+
 // The guard that spares a map's declared names compares them with the keys PHP delivers, and PHP delivers `a[b]` as `a[b`.
 // It cannot spare a name it will never see, so the map's values stay reported rather than refusing a key the contract declares.
 it('leaves the values of a deepObject map unvalidated beside a bracketed property name', function (): void {
@@ -5456,6 +5498,16 @@ it('records no required for a dropped name nothing asks for', function (string $
     'a top-level name of a PATCH body' => ['patch', new Schema],
 ]);
 
+// A `readOnly` an `allOf` branch states counts as the property's own: the name is not asked for, so no `required` is
+// recorded. What the dropped field states stays reported, and the `allOf` is one such keyword.
+it('records no required for a dropped name whose readOnly comes from an allOf branch', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(
+        content: ['application/json' => objectSchema(['a*b' => new Schema(allOf: [new Schema(readOnly: true)])], ['a*b'])],
+    ), new RuleSetOptions);
+
+    expect($set->unenforced)->toBe(['allOf' => ['`a*b`']]);
+});
+
 // A contract that builds when its field is kept or optional builds when the request drops the field: reading what a
 // dropped field states is not the place to refuse its `allOf`. The refusal belongs to a field that gets rules.
 it('builds a required field the rule set drops whose allOf contradicts itself', function (Operation $operation, array $expected): void {
@@ -5527,7 +5579,7 @@ it('records dependentRequired on a dependent only where a kept trigger would ask
         ],
         'a form trigger PHP delivers nowhere, a dependent the object requires' => [
             $formBody(['[x]' => $string, 'email' => $string], ['email'], ['[x]' => ['email']]),
-            ['type' => ['`[x]`']],
+            ['required' => ['`email`'], 'type' => ['`[x]`']],
         ],
         'a form trigger PHP delivers nowhere, a plain dependent' => [
             $formBody(['[x]' => $string, 'email' => $string], [], ['[x]' => ['email']]),

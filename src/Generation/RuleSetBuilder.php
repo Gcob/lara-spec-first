@@ -24,7 +24,7 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
  * matches: accepting a payload the contract refuses is a wrong answer where a report is a missing one, and only the
  * second is recoverable. Nor is a rule emitted that is stricter than the contract, refusing what it accepts, unless
  * matching it exactly would be far too complex in Laravel, and then a finding says so. Where this class falls short of
- * the first rule today, the gap is listed with its card or stated limit in ADR 0006, never taken as an exception.
+ * the first rule today, the gap is listed with its card or stated limit in ADR 0024, never taken as an exception.
  *
  * **What it translates is the whole table** in request-validation.md: types, nullability and presence, the bounds on
  * strings, numbers and arrays, the `format` values Laravel has a rule of the same meaning for, enumerations, patterns
@@ -1467,7 +1467,7 @@ final readonly class RuleSetBuilder
             if ($unescapable !== null) {
                 self::dropFields($walk, $unescapable, [$childLabel => self::droppedKeywords(
                     $property,
-                    self::askedWhenDropped($walk, $property, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
+                    self::askedWhenDropped($walk, $property, in_array($name, $schema->required, true), $prefix === ''),
                     self::askedByDependency($walk, $property, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
                 )]);
 
@@ -1477,8 +1477,8 @@ final readonly class RuleSetBuilder
             if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
                 self::dropFields($walk, self::bracketedNameFinding($childLabel, $closed), [$childLabel => self::droppedKeywords(
                     $property,
-                    self::askedWhenDropped($walk, $property, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
-                    isset($dependents[$name]),
+                    self::askedWhenDropped($walk, $property, in_array($name, $schema->required, true), $prefix === ''),
+                    self::askedByDependency($walk, $property, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
                 )], $closed ? $parentLabel ?? '`'.rtrim($prefix, '.').'`' : null);
 
                 continue;
@@ -1546,7 +1546,7 @@ final readonly class RuleSetBuilder
             if ($unescapable !== null) {
                 self::dropFields($walk, $unescapable, [$childLabel => self::droppedKeywords(
                     new Schema,
-                    self::askedWhenDropped($walk, new Schema, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
+                    self::askedWhenDropped($walk, new Schema, in_array($name, $schema->required, true), $prefix === ''),
                     self::askedByDependency($walk, new Schema, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
                 )]);
 
@@ -1556,8 +1556,8 @@ final readonly class RuleSetBuilder
             if ($walk->textSource === 'query string' && self::holdsBracket($name)) {
                 self::dropFields($walk, self::bracketedNameFinding($childLabel, $closed), [$childLabel => self::droppedKeywords(
                     new Schema,
-                    self::askedWhenDropped($walk, new Schema, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
-                    isset($dependents[$name]),
+                    self::askedWhenDropped($walk, new Schema, in_array($name, $schema->required, true), $prefix === ''),
+                    self::askedByDependency($walk, new Schema, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
                 )], $closed ? $parentLabel ?? '`'.rtrim($prefix, '.').'`' : null);
 
                 continue;
@@ -1951,7 +1951,7 @@ final readonly class RuleSetBuilder
                                     .'presence is not enforced.',
                                 $label,
                                 $name,
-                            ), [$named => self::askedWhenDropped($walk, $property, $named, true, false) ? ['required'] : []]);
+                            ), [$named => self::askedWhenDropped($walk, $property, true, false) ? ['required'] : []]);
 
                             continue;
                         }
@@ -3276,7 +3276,7 @@ final readonly class RuleSetBuilder
      * `readOnly` property, which only a response has to carry, and not a top-level name of a `PATCH`, whose body is a
      * partial update.
      */
-    private static function askedWhenDropped(RuleWalk $walk, Schema $property, string $label, bool $required, bool $topLevel): bool
+    private static function askedWhenDropped(RuleWalk $walk, Schema $property, bool $required, bool $topLevel): bool
     {
         return $required && ! ($topLevel && $walk->patchBody) && ! self::statesReadOnly($property);
     }
@@ -3656,7 +3656,7 @@ final readonly class RuleSetBuilder
                 $label = '`'.$member.'`';
                 $entries[$label] = self::droppedKeywords(
                     $property,
-                    self::askedWhenDropped($walk, $property, $label, in_array($member, $schema->required, true), true),
+                    self::askedWhenDropped($walk, $property, in_array($member, $schema->required, true), true),
                     self::askedByDependency($walk, $property, in_array($member, $schema->required, true), true, in_array($member, $dependent, true)),
                 );
             }
