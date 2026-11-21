@@ -105,3 +105,4 @@ filter[venue]: Olympic Stadium
 HTTP 422
 [Asserts]
 jsonpath "$.errors.filter" exists
+jsonpath "$.message" == "The filter field must be an array."

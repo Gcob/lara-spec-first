@@ -115,8 +115,8 @@ HTTP 200
 jsonpath "$.title" == "Montreal PHP meetup"
 jsonpath "$.*" count == 5
 
-# An id nobody created is a 404. The package does not check a path parameter
-# yet, so this answer is the controller's, not the contract's.
+# An id nobody created is a 404. 0.3.0 does not check a path parameter, so this
+# answer is the controller's, not the contract's.
 GET {{host}}/events/999999
 Accept: application/json
 HTTP 404

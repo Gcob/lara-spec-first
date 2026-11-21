@@ -37,7 +37,7 @@ What is new is in the controllers: each one returns the response DTO of its oper
   scenario sends `filter[city]`, `filter[from]` and both together, and the code reads them with
   `validated('filter.city')` and `validated('filter.from')`, nested as the client wrote them. `filter[from]=yesterday`
   is a `422` on `filter.from`. The contract closes `filter`, so `filter[venue]` is a `422` on `filter`, with Laravel's
-  own message for an array that has keys it does not allow: `The filter field must be an array.`. A `starts_at` sent
+  own message for an array that has keys it does not allow: `The filter field must be an array.` A `starts_at` sent
   with an offset is the same instant as its UTC time, so the filter and the answer agree on the day.
 - **`04-upload-a-cover.hurl`:** `uploadEventCover` takes a `multipart/form-data` body with one file part. A PNG is
   stored and the answer is a `CoverDto`. A text file, or a form with no `cover`, is a `422` on `cover`. A file with a PHP
@@ -67,8 +67,8 @@ The contract is the same, except for the list's query. What changed is the code 
   Laravel adds a trace to a thrown error.
 - **No `$hidden`:** 0.2 hid `created_at`, `updated_at` and `event_id` on the models. The DTO now decides the fields of an
   answer, so the models say nothing about it.
-- **No UTC conversion:** 0.2's `createEvent` converted `starts_at` to UTC by hand. The request's DTO now holds it in the
-  app's timezone, and the model stores it as it is.
+- **No UTC conversion:** 0.2's `Event` model converts `starts_at` to UTC in a mutator. 0.3 needs none, because the
+  request's DTO now holds it in the app's timezone, and the model stores it as it is.
 - **The list's query:** 0.2 read `?city=` and `?from=`. 0.3 reads `filter[city]` and `filter[from]`, one `deepObject`
   parameter that the contract closes (`additionalProperties: false`). A client that still sends `?city=` now gets every
   event, since a query name the contract does not declare is ignored, as Laravel does. On purpose, this demo
