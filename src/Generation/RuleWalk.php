@@ -17,6 +17,12 @@ use Gcob\LaraSpecFirst\Validation\WholeNumber;
  * Threading two arrays by reference through every method would say the same thing with more noise, so they travel
  * together here, for the length of one {@see RuleSetBuilder::for()} call and no longer.
  *
+ * **Every finding is written through one of four methods, and each is a kind:** a gap ({@see self::unenforced()}, with
+ * its entries, written later by {@see self::flushDeferredGap()} when {@see self::deferGap()} held it), a request
+ * stricter than the contract ({@see self::stricter()}), information ({@see self::information()}) or a fault in the
+ * document ({@see self::fault()}). The records behind them are private, so a finding cannot be written as none of the
+ * four, and the build and the doctor read the same one.
+ *
  * @internal Not public API — the accumulator of one build of one rule set.
  */
 final class RuleWalk
@@ -52,9 +58,15 @@ final class RuleWalk
     public array $arrayKeys = [];
 
     /**
+     * Every finding the walk wrote, in the order it wrote them, whatever its kind. Written only through
+     * {@see self::unenforced()}, {@see self::stricter()}, {@see self::information()} and {@see self::fault()}, so each
+     * one is exactly one of the four kinds: a gap with at least one entry, a request stricter than the contract, a
+     * piece of information, or a fault in the document. A gap held by {@see self::deferGap()} is written later, as a
+     * gap, by {@see self::flushDeferredGap()}.
+     *
      * @var list<string>
      */
-    public array $findings = [];
+    private array $findings = [];
 
     /**
      * The findings that say the request is stricter than the contract, not looser: the same sentences as in
@@ -62,19 +74,21 @@ final class RuleWalk
      *
      * @var list<string>
      */
-    public array $stricter = [];
+    private array $stricter = [];
 
     /**
      * The findings that lose no constraint: the same sentences as in {@see self::$findings}, which stays whole. They
      * say what a reader of the file would otherwise not see: a body key a `query` parameter shadows, a name a form
      * rewrites, a `readOnly` field that is required, two media types over one schema, the optional fields of a `PUT`, a
      * required name no `properties` declares, an untyped field that states nothing else, a boolean read as text (a
-     * query parameter, a form field, or an item of a boolean list in the query string) and an untyped `enum` of numbers
-     * or strings read as text. Nothing is unenforced by them, so the build does not count them.
+     * query parameter, a form field, or an item of a boolean list in the query string), an untyped `enum` of numbers or
+     * strings read as text, a `PATCH` whose required list is read as empty, a required form body that accepts an empty
+     * form, and an empty bracketed property of an open `deepObject`. Nothing is unenforced by them, so the build does
+     * not count them.
      *
      * @var list<string>
      */
-    public array $information = [];
+    private array $information = [];
 
     /**
      * The rule keys written under the wildcard of a map that sits beside declared properties, by the names each step of
@@ -107,12 +121,13 @@ final class RuleWalk
 
     /**
      * Each keyword the walk read and enforced nothing for, by the fields it was left unenforced on: a keyword mapped to
-     * the labels of those fields, in the order they were met. The data behind the findings that are about a keyword,
-     * and none of the ones that are only worth saying.
+     * the labels of those fields, in the order they were met. The record of the gaps: each one written by
+     * {@see self::unenforced()} adds at least one, and nothing else is a gap, so the request is left unenforced exactly
+     * when this is not empty (or a fault was written).
      *
-     * @var array<string, list<string>>
+     * @var array<string, non-empty-list<string>>
      */
-    public array $unenforced = [];
+    private array $unenforced = [];
 
     /**
      * What the document writes that is wrong, and the walk read nothing from: the sentences of the findings that are a
@@ -121,7 +136,16 @@ final class RuleWalk
      *
      * @var list<string>
      */
-    public array $faults = [];
+    private array $faults = [];
+
+    /**
+     * Where the sentence about the file parts of a body that is multipart and also JSON or a form goes in the findings,
+     * what it says, and the keywords the parts state: the entries of that gap are the parts' own, which the walk of the
+     * fields records, so the sentence is written once it has, by {@see self::flushDeferredGap()}.
+     *
+     * @var array{int, string, non-empty-list<string>}|null
+     */
+    private ?array $deferredGap = null;
 
     /**
      * Whether `multipart/form-data` is the only media type the rule set is read from, which is the one body a part can
@@ -443,6 +467,114 @@ final class RuleWalk
     }
 
     /**
+     * Every finding the walk wrote so far, whatever its kind.
+     *
+     * @return list<string>
+     */
+    public function findings(): array
+    {
+        return $this->findings;
+    }
+
+    /**
+     * The findings that say the request is stricter than the contract, which are in {@see self::findings()} too.
+     *
+     * @return list<string>
+     */
+    public function stricterFindings(): array
+    {
+        return $this->stricter;
+    }
+
+    /**
+     * The findings that lose no constraint, which are in {@see self::findings()} too.
+     *
+     * @return list<string>
+     */
+    public function informationFindings(): array
+    {
+        return $this->information;
+    }
+
+    /**
+     * The findings that are a fault in the document, which are in {@see self::findings()} too.
+     *
+     * @return list<string>
+     */
+    public function faultFindings(): array
+    {
+        return $this->faults;
+    }
+
+    /**
+     * Each keyword left unenforced, by the labels of the fields it was left unenforced on.
+     *
+     * @return array<string, non-empty-list<string>>
+     */
+    public function unenforcedEntries(): array
+    {
+        return $this->unenforced;
+    }
+
+    /**
+     * Record a gap: a finding in the generated file that says the request enforces less than the contract, and the
+     * keywords it leaves unenforced on the fields it names, which is what the build counts and the doctor reports.
+     *
+     * **A gap has at least one entry.** A sentence with none would be written in the file and read as nothing by both,
+     * so the entries are required, and the one caller that may have none (a field the rule set drops that states
+     * nothing) writes information instead.
+     *
+     * @param  non-empty-array<string, non-empty-list<string>>  $entries  the labels of the fields, by keyword
+     */
+    public function unenforced(string $finding, array $entries): void
+    {
+        $this->writeGap($finding, $entries, count($this->findings));
+    }
+
+    /**
+     * @param  non-empty-array<string, non-empty-list<string>>  $entries
+     */
+    private function writeGap(string $finding, array $entries, int $at): void
+    {
+        array_splice($this->findings, $at, 0, [$finding]);
+
+        foreach ($entries as $keyword => $labels) {
+            foreach ($labels as $label) {
+                $this->leaveUnenforced($keyword, $label);
+            }
+        }
+    }
+
+    /**
+     * Hold a gap whose entries the walk of the fields has not recorded yet, at the place its sentence goes in the
+     * findings: {@see self::flushDeferredGap()} writes it as a gap once the walk is over.
+     *
+     * @param  non-empty-list<string>  $keywords  the keywords the gap is about, whose entries are the walk's own
+     */
+    public function deferGap(string $finding, array $keywords): void
+    {
+        $this->deferredGap = [count($this->findings), $finding, $keywords];
+    }
+
+    /**
+     * Write the gap {@see self::deferGap()} held, if one is: with the entries the walk recorded for its keywords, and
+     * when it reached none of them, on the body itself, since a gap with no entry would be read as nothing by the build
+     * and the doctor.
+     */
+    public function flushDeferredGap(): void
+    {
+        if ($this->deferredGap === null) {
+            return;
+        }
+
+        [$at, $finding, $keywords] = $this->deferredGap;
+        $this->deferredGap = null;
+        $recorded = array_intersect_key($this->unenforced, array_flip($keywords));
+
+        $this->writeGap($finding, $recorded !== [] ? $recorded : array_fill_keys($keywords, ['The body itself']), $at);
+    }
+
+    /**
      * Record a finding that says the request is stricter than the contract: in the generated file like any other, and
      * apart so the build does not count it as a constraint left unenforced.
      */
@@ -472,7 +604,17 @@ final class RuleWalk
     }
 
     /**
-     * Record that a keyword was read on a field and nothing enforces it, once per field.
+     * Take a finding that loses no constraint out of the record, once the walk knows a rule makes it untrue.
+     */
+    public function withdrawInformation(string $message): void
+    {
+        $this->findings = array_values(array_filter($this->findings, static fn (string $finding): bool => $finding !== $message));
+        $this->information = array_values(array_filter($this->information, static fn (string $finding): bool => $finding !== $message));
+    }
+
+    /**
+     * Record that a keyword was read on a field and nothing enforces it, once per field: the entry of a field whose
+     * sentence is written elsewhere (the second name of two a `query` string delivers under one key).
      */
     public function leaveUnenforced(string $keyword, string $label): void
     {

@@ -61,3 +61,36 @@ paths:
       responses:
         '200':
           description: OK
+  /partial-update:
+    patch:
+      operationId: patchPartialUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a, b]
+              properties:
+                a:
+                  type: string
+                b:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /empty-form:
+    post:
+      operationId: postEmptyForm
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+      responses:
+        '200':
+          description: OK

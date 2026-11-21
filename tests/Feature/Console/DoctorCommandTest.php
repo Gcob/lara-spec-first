@@ -363,7 +363,7 @@ it('exits 2 for a gap the generated file used to name alone', function (): void 
     $partial = doctorSupportFindings($report, 'partial');
 
     expect($exit)->toBe(2)
-        ->and($partial)->toHaveCount(5)
+        ->and($partial)->toHaveCount(15)
         ->and($partial[0]['message'])->toContain('post /nowhere writes `type`')
         ->and($partial[0]['message'])->toContain('`[x]`')
         ->and($partial[1]['message'])->toContain('post /collision writes `type`')
@@ -373,11 +373,27 @@ it('exits 2 for a gap the generated file used to name alone', function (): void 
         ->and($partial[3]['message'])->toContain('post /untyped-enum writes `enum` (or a `const`, read as a one-value `enum`)')
         ->and($partial[3]['message'])->toContain('`level`')
         ->and($partial[4]['message'])->toContain('post /dotted writes `additionalProperties`')
-        ->and($partial[4]['message'])->toContain('`options`');
+        ->and($partial[4]['message'])->toContain('`options`')
+        ->and($partial[5]['message'])->toContain('post /xml declares a media type this package does not read: `application/xml`')
+        ->and(array_slice(array_column($partial, 'message'), 6, 4))->each->toContain('post /root writes')
+        ->and($partial[6]['message'])->toContain('writes `required`')
+        ->and($partial[7]['message'])->toContain('writes `type`')
+        ->and($partial[8]['message'])->toContain('writes `maxItems`')
+        ->and($partial[9]['message'])->toContain('writes `items`')
+        ->and($partial[9]['message'])->toContain('The body itself')
+        ->and($partial[10]['message'])->toContain('get /tags writes `type`')
+        ->and($partial[11]['message'])->toContain('get /tags writes `items`')
+        ->and($partial[12]['message'])->toContain('get /bracketed writes `additionalProperties`')
+        ->and($partial[12]['message'])->toContain('`filter`')
+        ->and($partial[13]['message'])->toContain('get /bracketed writes `type`')
+        ->and($partial[13]['message'])->toContain('`filter[a[b]]`')
+        ->and($partial[14]['message'])->toContain('post /optional-form writes `required`')
+        ->and($partial[14]['message'])->toContain('`a`');
 });
 
-// What a client of a query string or a form sends for a boolean, and for a number written as text, is what the generated
-// request accepts. The generated file says so as information, and neither the build warning nor the doctor counts it.
+// What a client of a query string or a form sends for a boolean, and for a number written as text, a partial update
+// through `PATCH`, and an empty form for a required form body, are what the generated request accepts. The generated file
+// says so as information, and neither the build warning nor the doctor counts it.
 it('exits 0 for a standard reading the request accepts', function (): void {
     [$exit, $report] = doctorJson('doctor-standard-readings.yaml');
 
@@ -386,10 +402,26 @@ it('exits 0 for a standard reading the request accepts', function (): void {
 
     $operations = extractFixture('doctor-standard-readings.yaml');
 
-    expect($operations)->toHaveCount(4);
+    expect($operations)->toHaveCount(6);
 
     foreach ($operations as $operation) {
         expect(RuleSetBuilder::for($operation, new RuleSetOptions)->leavesUnenforced())->toBeFalse();
+    }
+});
+
+// A `readOnly` property that is required and the optional fields of a `PUT` are said in the generated file and lose no
+// constraint: the build has no warning for them, and the doctor has nothing to report.
+it('exits 0 for a contract whose findings lose no constraint', function (): void {
+    [$exit, $report] = doctorJson('informational-findings.yaml');
+
+    expect($exit)->toBe(0)
+        ->and(doctorSupportFindings($report, 'partial'))->toBe([]);
+
+    foreach (extractFixture('informational-findings.yaml') as $operation) {
+        $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+
+        expect($set->findings)->not->toBe([])
+            ->and($set->leavesUnenforced())->toBeFalse();
     }
 });
 
