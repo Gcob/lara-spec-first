@@ -49,7 +49,9 @@ tags: [versions, conventions, planning]
   list the key reads as written, which the doctor counts. The generated request's sentence about the emptied list now
   names the key. `spec:build` reads it, so a change takes another build, and `spec:doctor` reads it too, so it reports
   the generated requests as drifted until that build. Any other value stops `spec:build`, `spec:make` and `spec:doctor`
-  with a message that names the key. This ships [#217](https://github.com/Gcob/lara-spec-first/issues/217).
+  with a message that names the key. The reasoning is in
+  [ADR 0026](./docs/project/decisions/0026-read-a-patch-body-by-its-media-type-then-the-app.md). This ships
+  [#217](https://github.com/Gcob/lara-spec-first/issues/217).
 - **`spec:build` names a custom controller whose `routeAction` no longer fits the parent it regenerated.** When the
   contract gains or loses a request or a path parameter, a child that still declares the old list is a class PHP refuses
   to load at its first request. The build now prints one header and one line per such child, with the signature to paste
@@ -518,7 +520,8 @@ tags: [versions, conventions, planning]
   `+json` media type the package doesn't read beside one it reads, JSON or a form. This is a breaking change: the
   generated controller's `routeAction` gains the request parameter, so a custom controller of such an operation must
   take it; a client that sent a value the schema refuses, or a JSON Patch beside a merge patch, now gets a `422`; and
-  `spec:doctor` exits `0` where it exited `2` for a flat merge patch.
+  `spec:doctor` exits `0` where it exited `2` for a flat merge patch. The reasoning is in
+  [ADR 0026](./docs/project/decisions/0026-read-a-patch-body-by-its-media-type-then-the-app.md).
 - **The partial DTO's findings no longer name the method.** "A `PATCH` reads it" is now "A partial update reads it", and
   the full type of "a body that only a `PATCH` or an optional body sends" says "a partial update", which stays true for
   a merge patch. A generated input DTO changes by that line on the next `spec:build`.

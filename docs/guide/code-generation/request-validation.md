@@ -856,6 +856,9 @@ written, a merge patch is held to the same list (see below). `spec:build`, `spec
 so a change takes another `spec:build`, and the doctor reports the generated requests as drifted until then. Any other
 value stops all three with a message that names the key.
 
+[ADR 0026](../../project/decisions/0026-read-a-patch-body-by-its-media-type-then-the-app.md) holds the reasoning for the
+media type, the key and the cases below, and what was turned down.
+
 **Which is what "`PUT` requires the full body" means here, and it is narrower than it sounds.** It does not mean every
 declared property becomes required: a property the schema left out of `required` is optional on a `PUT` too, because the
 contract said so, and a generated class that demanded it anyway would be the code contradicting the document. So a field
