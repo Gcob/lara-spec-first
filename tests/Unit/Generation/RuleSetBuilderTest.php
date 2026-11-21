@@ -5127,6 +5127,26 @@ it('names the delivered key of the name below a shaped one in an optional body',
 // `dependentRequired: {page: [other]}` gives `other` `present_with:page`, and a form that sends only `page[size]` delivers
 // an array under `page`, which `present_with` counts as `page` sent: `other` is asked for where the contract never sees
 // `page`. Stricter than the contract, and said so; dropping the dependency would let `page=2` pass without `other`.
+// A trigger the contract requires, or a dependent it already requires, makes the contract refuse that request too: nothing
+// is stricter there.
+it('does not call a shaped name\'s dependency stricter when the contract refuses the request too', function (array $required): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'page' => new Schema(types: [SchemaType::String]),
+            'page[b]' => new Schema(types: [SchemaType::String]),
+            'other' => new Schema(types: [SchemaType::String]),
+        ],
+        required: array_values($required),
+        dependentRequired: ['page' => ['other']],
+    )]), new RuleSetOptions);
+
+    expect($set->stricter)->toBe([]);
+})->with([
+    'a required trigger' => [['page']],
+    'a required dependent' => [['other']],
+]);
+
 it('keeps the dependency a shaped name triggers and says it is stricter than the contract', function (string $trigger, string $key): void {
     $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
         types: [SchemaType::Object],
@@ -5871,6 +5891,15 @@ it('says what the array of the names nested under an object stands in for, and w
     expect($trigger->unenforced)->toBe([RuleWalk::STRICTER_REQUIRED => ['`y`']])
         ->and(implode("\n", $trigger->findings))->toContain('`x[b]` would make `y` required')
         ->and($trigger->stricter)->toBe([]);
+
+    // The contract refuses a request that leaves out a required object, or a dependent it already requires, so the
+    // dependency asks for nothing more there. A partial body asks for no presence, so its names count again.
+    expect($built($plain, required: ['x[b]'], dependentRequired: ['x[b]' => ['y']], more: ['y' => $integer])->unenforced)->toBe([])
+        ->and($built($plain, required: ['y'], dependentRequired: ['x[b]' => ['y']], more: ['y' => $integer])->unenforced)->toBe([])
+        ->and($built($plain, required: ['y'], dependentRequired: ['x[b]' => ['y', 'z']], more: ['y' => $integer, 'z' => $integer])->unenforced)
+        ->toBe([RuleWalk::STRICTER_REQUIRED => ['`z`']])
+        ->and($built($plain, required: ['x[b]', 'y'], dependentRequired: ['x[b]' => ['y']], method: 'patch', more: ['y' => $integer])->unenforced)
+        ->toBe([RuleWalk::STRICTER_REQUIRED => ['`y`']]);
 
     $keys = $built($requiring);
 

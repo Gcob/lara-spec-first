@@ -1949,18 +1949,32 @@ final readonly class RuleSetBuilder
                 continue;
             }
 
+            // Why: the contract refuses a request that leaves out a required trigger, or a dependent it already requires,
+            // so the dependency asks for nothing more there. A partial body asks for no presence at its top level.
+            $asked = [];
+
+            if ($prefix === '' && ! (in_array($trigger, $schema->required, true) && ! $walk->partialBody)) {
+                foreach ($names as $name) {
+                    $name = (string) $name;
+
+                    if (! (in_array($name, $schema->required, true) && ! $walk->partialBody)) {
+                        $asked[] = $name;
+                    }
+                }
+            }
+
             // Why: a form that sends only the names nested under an object trigger delivers an array under it, which
             // `present_with` counts as the trigger sent, though the contract never sees the trigger. The request asks for
             // names the contract lets a client leave out, so the gap is counted as that, and the doctor says so.
-            if ($prefix === '' && $names !== [] && isset($walk->objectHolders[$trigger])) {
+            if ($asked !== [] && isset($walk->objectHolders[$trigger])) {
                 $walk->unenforced(sprintf(
                     '`%1$s` would make %2$s required, and a form that sends only the names nested under `%1$s` delivers an '
                         .'array under it, which `present_with` counts as `%1$s` sent: %2$s asked for although the contract '
                         .'never sees `%1$s`. The request is stricter than the contract there.',
                     $trigger,
-                    self::list(array_map('strval', $names)),
-                ), [RuleWalk::STRICTER_REQUIRED => array_map(static fn (string $name): string => '`'.$name.'`', array_map('strval', $names))]);
-            } elseif ($prefix === '' && isset($walk->shaped[$trigger])) {
+                    self::list($asked),
+                ), [RuleWalk::STRICTER_REQUIRED => array_map(static fn (string $name): string => '`'.$name.'`', $asked)]);
+            } elseif ($asked !== [] && isset($walk->shaped[$trigger])) {
                 // Why: the same for a shaped trigger: the array of the names nested under it counts as the trigger sent.
                 $walk->stricter(sprintf(
                     '`%1$s` would make %2$s required, and a form that sends only the names nested under `%1$s` delivers an '
@@ -1968,7 +1982,7 @@ final readonly class RuleSetBuilder
                         .'never sees `%1$s`. The request is stricter than the contract there; leaving the dependency out would '
                         .'accept `%1$s` without %2$s, which the contract refuses.',
                     $trigger,
-                    self::list(array_map('strval', $names)),
+                    self::list($asked),
                 ));
             }
 
