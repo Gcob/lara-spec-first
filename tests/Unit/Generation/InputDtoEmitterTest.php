@@ -130,10 +130,24 @@ it('converts a list by what its elements are', function (): void {
     expect(emittedDto('NewUserInputDto'))
         ->toContain("array_values(array_map(intval(...), \$payload['ids']))")
         ->toContain("array_values(array_map(NewUserRolesItemInputDto::from(...), \$payload['roles']))")
-        ->toContain("array_values(array_map(CarbonImmutable::parse(...), \$payload['visits']))")
+        ->toContain("array_values(array_map(static fn (mixed \$item): CarbonImmutable => CarbonImmutable::parse(\$item)->setTimezone(date_default_timezone_get()), \$payload['visits']))")
         ->toContain('array_values(array_map(static fn (mixed $item): ?array => $item === null ? null : array_values(array_map(intval(...), $item)), $payload[\'matrix\']))')
         // Strings go in as they are, and so do files.
         ->toContain("tags: array_key_exists('tags', \$payload) ? \$payload['tags'] : new Optional,");
+});
+
+// Why: Eloquent's `datetime` cast keeps the clock digits of a value and drops its offset, so a request `date-time` that
+// kept the client's offset was stored hours off. `from()` sets it to the app timezone, at every depth, and a `date` is
+// a calendar day, which has no timezone to set (card #241, ADR 0025).
+it('sets a request date-time to the app timezone when it is built', function (): void {
+    $seenAt = "seen_at: array_key_exists('seen_at', \$payload) ? CarbonImmutable::parse(\$payload['seen_at'])->setTimezone(date_default_timezone_get()) : new Optional,";
+
+    expect(emittedDto('NewUserInputDto'))
+        ->toContain($seenAt)
+        ->toContain("array_values(array_map(static fn (mixed \$item): CarbonImmutable => CarbonImmutable::parse(\$item)->setTimezone(date_default_timezone_get()), \$payload['visits']))")
+        ->toContain("born_on: \$payload['born_on'] === null ? null : CarbonImmutable::parse(\$payload['born_on']),")
+        ->and(emittedDto('NewUserPartialInputDto'))->toContain($seenAt);
+    expect(emittedDto('NewUserInputDto'))->not->toContain("CarbonImmutable::parse(\$payload['born_on'])->setTimezone");
 });
 
 it('writes the contract\'s keys back out', function (): void {
@@ -346,7 +360,7 @@ it('writes the conversion of each value of a map property both ways', function (
         ->toContain("array_map(PetInputDto::from(...), \$payload['pets'])")
         ->toContain('array_map(static fn (PetInputDto $item): array => $item->toArray(), $this->pets)')
         ->toContain('@param  Optional|array<array-key, CarbonImmutable>  $seen')
-        ->toContain("array_map(CarbonImmutable::parse(...), \$payload['seen'])")
+        ->toContain("array_map(static fn (mixed \$item): CarbonImmutable => CarbonImmutable::parse(\$item)->setTimezone(date_default_timezone_get()), \$payload['seen'])")
         ->toContain("array_map(static fn (CarbonImmutable \$item): string => \$item->format('Y-m-d\\TH:i:s.uP'), \$this->seen)")
         ->toContain('use Carbon\\CarbonImmutable;')
         ->toContain('@param  Optional|array<array-key, list<int>>  $scores')

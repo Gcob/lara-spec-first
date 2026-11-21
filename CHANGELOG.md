@@ -83,6 +83,18 @@ tags: [versions, conventions, planning]
 
 ### Changed
 
+- **A request DTO's `date-time` is in the app timezone, and `toArray()` writes that same value.** `from()` sets each
+  `date-time` to the app timezone at the same instant, wherever it sits: a property, a nested object, a list or a map.
+  The app timezone is PHP's default, `date_default_timezone_get()`, which Laravel sets from `config('app.timezone')` at
+  boot. It is the one Eloquent reads stored dates in and `now()` uses. `toArray()` writes the value the property holds,
+  so `Event::create($request->dto()->toArray())` stores the right instant through a `datetime` cast, which keeps a
+  value's clock digits and drops its offset: `2026-12-01T19:00:00-05:00` was stored as `2026-12-01 19:00:00` in a UTC
+  app, five hours off, and is now stored as `2026-12-02 00:00:00`. A `date`, a response DTO, and `query` and path
+  parameters (the string as sent) don't change. This is a breaking change: the property no longer carries the client's
+  offset, and `toArray()` writes the app's (`+00:00` in a UTC app). What the client sent is still on `$request->input()`
+  and `validated()`. The reasoning is in
+  [ADR 0025](./docs/project/decisions/0025-set-a-request-date-time-to-the-app-timezone.md), and this ships
+  [#241](https://github.com/Gcob/lara-spec-first/issues/241).
 - **A generated `routeAction` now returns the DTO of the operation's success statuses, and the generated parent sends
   the status the contract declares.** `GET /users/{id}` with a `200` that is a `User` generates
   `routeAction(string $id): UserDto`, where it was `mixed`. A list is `array` (a `@return list<UserDto>` says of what),
