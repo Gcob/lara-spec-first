@@ -1064,3 +1064,12 @@ it('reads query.deep_object_arrays in spec:make', function (): void {
     expect($output)->toContain('lara-spec-first.query.deep_object_arrays')
         ->and(scaffoldedFiles())->toBe([]);
 });
+
+it('reads requests.patch in spec:make', function (): void {
+    config()->set('lara-spec-first.requests.patch', 'as-written');
+
+    $output = make(['operation' => 'showUser'], 1);
+
+    expect($output)->toContain('lara-spec-first.requests.patch')
+        ->and(scaffoldedFiles())->toBe([]);
+});

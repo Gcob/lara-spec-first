@@ -21,30 +21,50 @@ final readonly class RuleSetOptions
 {
     private const string DEEP_OBJECT_ARRAYS = 'lara-spec-first.query.deep_object_arrays';
 
+    private const string PATCH = 'lara-spec-first.requests.patch';
+
     public function __construct(
         public DeepObjectArrays $deepObjectArrays = DeepObjectArrays::Brackets,
+        public PatchReading $patchReading = PatchReading::Partial,
     ) {}
 
     /**
      * A missing or `null` value is the default. Any other value the package has no reading for is refused, because a
-     * typo would otherwise quietly mean `brackets`.
+     * typo would otherwise quietly mean the default.
      *
      * @throws UnusableSettingException
      */
     public static function fromConfiguration(Repository $config): self
     {
-        $value = $config->get(self::DEEP_OBJECT_ARRAYS);
+        return new self(
+            self::reading($config, self::DEEP_OBJECT_ARRAYS, DeepObjectArrays::class, DeepObjectArrays::Brackets, 'one of "brackets", "comma" or "any"'),
+            self::reading($config, self::PATCH, PatchReading::class, PatchReading::Partial, 'one of "partial" or "as_written"'),
+        );
+    }
+
+    /**
+     * @template T of \BackedEnum
+     *
+     * @param  class-string<T>  $enum
+     * @param  T  $default
+     * @return T
+     *
+     * @throws UnusableSettingException
+     */
+    private static function reading(Repository $config, string $key, string $enum, \BackedEnum $default, string $expected): \BackedEnum
+    {
+        $value = $config->get($key);
 
         if ($value === null) {
-            return new self;
+            return $default;
         }
 
-        $reading = is_string($value) ? DeepObjectArrays::tryFrom($value) : null;
+        $reading = is_string($value) ? $enum::tryFrom($value) : null;
 
         if ($reading === null) {
-            throw UnusableSettingException::setting(self::DEEP_OBJECT_ARRAYS, 'one of "brackets", "comma" or "any"');
+            throw UnusableSettingException::setting($key, $expected);
         }
 
-        return new self($reading);
+        return $reading;
     }
 }

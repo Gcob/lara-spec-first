@@ -122,6 +122,10 @@ final readonly class RuleSet
      *                                                                                           keys and the names a
      *                                                                                           `*` step spares: what
      *                                                                                           the request splits
+     * @param  bool  $partialBody  whether the body is read as a partial update, a `PATCH` or a merge patch (a JSON
+     *                             merge patch is partial whatever the method): its top-level names are all `sometimes`,
+     *                             so `dto()` reads the partial type, since a full one's `from()` would read a name the
+     *                             rules let through absent
      */
     public function __construct(
         public array $rules = [],
@@ -148,6 +152,7 @@ final readonly class RuleSet
         public array $arrayKeys = [],
         public array $undeclaredKeys = [],
         public array $commaLists = [],
+        public bool $partialBody = false,
     ) {}
 
     /**

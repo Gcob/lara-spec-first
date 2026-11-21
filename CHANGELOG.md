@@ -42,6 +42,16 @@ tags: [versions, conventions, planning]
   with a message that names the key. The reasoning is in
   [ADR 0023](./docs/project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md). This ships
   [#218](https://github.com/Gcob/lara-spec-first/issues/218).
+- **`requests.patch` says how a `PATCH` body's required list is read when its media type does not.** `partial`, the
+  default, reads it as empty, as before; `as_written` reads it as written, so a `PATCH` that leaves out a required field
+  answers `422` and `dto()` returns the full type. It applies to `application/json` and to a form; a body sent as
+  `application/merge-patch+json` stays partial whatever the key says, and beside `application/json` it is held to the
+  list the key reads as written, which the doctor counts. The generated request's sentence about the emptied list now
+  names the key. `spec:build` reads it, so a change takes another build, and `spec:doctor` reads it too, so it reports
+  the generated requests as drifted until that build. Any other value stops `spec:build`, `spec:make` and `spec:doctor`
+  with a message that names the key. The reasoning is in
+  [ADR 0026](./docs/project/decisions/0026-read-a-patch-body-by-its-media-type-then-the-app.md). This ships
+  [#217](https://github.com/Gcob/lara-spec-first/issues/217).
 - **`spec:build` names a custom controller whose `routeAction` no longer fits the parent it regenerated.** When the
   contract gains or loses a request or a path parameter, a child that still declares the old list is a class PHP refuses
   to load at its first request. The build now prints one header and one line per such child, with the signature to paste
@@ -181,11 +191,11 @@ tags: [versions, conventions, planning]
   only that name. When a name is declared below the shared key (`a[c][d]`), the key takes only that name, so
   `a[c][evil]=1` is still refused (unless a `*`, comma or appended key sits below it, which the file names: it answers
   `200` then, and with a `*` name `validated()` keeps the key), and a value that is not an array (`a[c]=5`), which used
-  to be refused, passes and is left out. A closed form body that declares a name typed `object` or `array` beside a name
-  below it (`p` beside `p[s]`, `ids` beside `ids[]`) now gets a finding in the generated file, which says the key check
-  accepts the level the name is delivered at, and the doctor counts `additionalProperties` as one more gap there, where
-  nothing was said. Nothing is refused or accepted differently for it. This is a breaking change: drop the key, or
-  declare it.
+  to be refused, passes and is left out. This is a breaking change: drop the key, or declare it. A closed form body that
+  declares a name typed `object` or `array` beside a name below it (`p` beside `p[s]`, `ids` beside `ids[]`) now gets a
+  finding in the generated file, which says the key check accepts the level the name is delivered at, and the doctor
+  counts `additionalProperties` as one more gap there, where nothing was said. Nothing is refused or accepted
+  differently for it.
 - **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it
   used to accept it.** The body is closed to its declared names, but the level `page` is delivered at was left open for
   the value of `page` itself, so `page[evil]=1` and `page[size]=3&page[evil]=1` were accepted (the second kept only
@@ -499,6 +509,24 @@ tags: [versions, conventions, planning]
   accept exit `2` until the acknowledgement config is built. The reasoning, and what counts as a gap and what as a
   standard reading, is in [ADR 0024](./docs/project/decisions/0024-hold-rules-and-report-every-gap.md). This ships
   [#119](https://github.com/Gcob/lara-spec-first/issues/119) and closes its `0.2.0` `Known limits` item.
+- **A body declared as `application/merge-patch+json` is read as JSON, with its required list read as empty.** A JSON
+  merge patch (RFC 7396) is a partial document, so every top-level property is `sometimes` on any method, and `dto()`
+  returns the partial type. Until now the media type was not read: the operation had no request class, nothing was
+  checked, and `spec:doctor` counted it. Beside `application/json` or a form over one schema, the other media type
+  decides, and where it reads the list as written, so does the one rule set, and the build and the doctor count it. Over
+  another schema than theirs, the merge patch stays unread and counted, as before. A nested object keeps its required
+  list, counted the same way, and the doctor says what is true of both: the request asks for names a merge patch may
+  leave out, so it is stricter than the contract, not looser (the build's warning now reads "do not enforce as the
+  contract states it"). `application/json-patch+json` is still not read, and beside a merge patch it is now judged as
+  JSON on its real content, so a JSON Patch document answers `422`; the generated file and the doctor say so for any
+  `+json` media type the package doesn't read beside one it reads, JSON or a form. This is a breaking change: the
+  generated controller's `routeAction` gains the request parameter, so a custom controller of such an operation must
+  take it; a client that sent a value the schema refuses, or a JSON Patch beside a merge patch, now gets a `422`; and
+  `spec:doctor` exits `0` where it exited `2` for a flat merge patch. The reasoning is in
+  [ADR 0026](./docs/project/decisions/0026-read-a-patch-body-by-its-media-type-then-the-app.md).
+- **The partial DTO's findings no longer name the method.** "A `PATCH` reads it" is now "A partial update reads it", and
+  the full type of "a body that only a `PATCH` or an optional body sends" says "a partial update", which stays true for
+  a merge patch. A generated input DTO changes by that line on the next `spec:build`.
 
 ### Fixed
 
@@ -590,6 +618,22 @@ tags: [versions, conventions, planning]
   server's `precision` setting). So `1e99999999999999999999` is a multiple of 2, and passes. The reasoning is in
   [ADR 0021](./docs/project/decisions/0021-judge-multipleof-from-the-digits.md), and this ships
   [#214](https://github.com/Gcob/lara-spec-first/issues/214).
+
+### Known limits
+
+- **A nested object of a merge patch keeps its required list,** though RFC 7396 merges it into the stored object: the
+  request is stricter than the contract, and the doctor counts it.
+  [#254](https://github.com/Gcob/lara-spec-first/issues/254) closes it.
+- **A merge patch declared beside a media type read as written** (`application/json` on a `POST` or a `PUT`, or on a
+  `PATCH` under `requests.patch` set to `as_written`) is held to the full required list, since one rule set reads it one
+  way; the doctor counts it. Declare the merge patch alone to read it as a partial document; on a `PATCH`,
+  `requests.patch` set to `partial` lifts it too.
+- **A JSON Patch beside a merge patch is judged by the merge patch's rules, so a JSON Patch document answers `422`;**
+  the doctor counts it. Reading, skipping or refusing a body in a media type the package doesn't read, beside one it
+  reads, is [#247](https://github.com/Gcob/lara-spec-first/issues/247)'s.
+- **A merge patch declared over another schema than its JSON or form sibling is not read,** and is judged by the
+  sibling's rules on its real content; the doctor counts it. Describe both media types with one schema.
+  [#247](https://github.com/Gcob/lara-spec-first/issues/247) decides whether it should be judged that way at all.
 
 ## [0.2.0] - 2026-11-15
 

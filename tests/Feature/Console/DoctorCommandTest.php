@@ -425,6 +425,58 @@ it('exits 0 for a contract whose findings lose no constraint', function (): void
     }
 });
 
+// A merge patch is read, as a partial body, so the doctor no longer counts it as a media type nothing reads, and the
+// three readings of the fixture lose nothing.
+it('exits 0 for a merge patch it read as a partial body', function (string $fixture): void {
+    [$exit, $report] = doctorJson($fixture);
+
+    expect($exit)->toBe(0)
+        ->and(doctorSupportFindings($report, 'partial'))->toBe([])
+        ->and(doctorSupportFindings($report, 'ignored'))->toBe([]);
+
+    $operations = extractFixture($fixture);
+
+    expect($operations)->toHaveCount(3);
+
+    foreach ($operations as $operation) {
+        expect(RuleSetBuilder::for($operation, new RuleSetOptions)->leavesUnenforced())->toBeFalse();
+    }
+})->with(['merge-patch.yaml', 'merge-patch-3.0.yaml']);
+
+// One operation per merge patch reading the request holds to more than the contract, each counted with its keyword.
+it('exits 2 for each merge patch reading it counts', function (string $fixture): void {
+    [$exit, $report] = doctorJson($fixture);
+
+    $partial = doctorSupportFindings($report, 'partial');
+    $messages = array_column($partial, 'message', 'pointer');
+
+    expect($exit)->toBe(2)
+        ->and($partial)->toHaveCount(4)
+        ->and($messages['#/paths/~1orders/post'])->toContain('post /orders asks for names a JSON merge patch (RFC 7396) may leave out: `reference`.')
+        ->and($messages['#/paths/~1orders/post'])->not->toContain('`id`')
+        ->and($messages['#/paths/~1profiles/patch'])->toContain('patch /profiles asks for names a JSON merge patch (RFC 7396) may leave out: `address.city`, `address.street`')
+        ->and($messages['#/paths/~1notes/patch'])->toContain('patch /notes declares a media type this package does not read: `application/merge-patch+json`')
+        ->and($messages['#/paths/~1notes/patch'])->toContain('is read as JSON, since Laravel reads every `+json` type as JSON')
+        ->and($messages['#/paths/~1documents/patch'])->toContain('patch /documents declares a media type this package does not read: `application/json-patch+json`')
+        ->and($messages['#/paths/~1documents/patch'])->toContain('on its real content: a body that is not a JSON object (a JSON Patch is a list) answers `422`');
+
+    // The merge patch of `/notes` is over another schema and unread, so the `oneOf` it writes alone is not reported.
+    expect(doctorSupportFindings($report, 'ignored'))->toBe([])
+        ->and(json_encode($report['findings']))->not->toContain('oneOf');
+
+    // The request enforces more than the contract here, and the line says so: a client that leaves one of the names out
+    // answers `422`, so no line of it may say the request does not enforce `required`.
+    foreach (['~1orders/post', '~1profiles/patch'] as $operation) {
+        expect($messages['#/paths/'.$operation])->toContain('a merge patch that leaves one out answers `422`, though the contract accepts it')
+            ->and($messages['#/paths/'.$operation])->toContain('stricter than the contract, not looser')
+            ->and($messages['#/paths/'.$operation])->not->toContain('does not enforce');
+    }
+
+    foreach (extractFixture($fixture) as $operation) {
+        expect(RuleSetBuilder::for($operation, new RuleSetOptions)->leavesUnenforced())->toBeTrue();
+    }
+})->with(['merge-patch-gaps.yaml', 'merge-patch-gaps-3.0.yaml']);
+
 // `encoding` narrows a file part, so the doctor owes nothing for it. A `contentType` on a part the request does not
 // read as a file is left out of the rules, and that is a package limit it names: a keyword the matrix rates as honored
 // in general. Its own section is "Parameters, bodies, responses", not "Schemas". The type OpenAPI gives a part anyway
@@ -951,3 +1003,73 @@ it('reads query.deep_object_arrays in spec:build and spec:doctor, and stops both
     expect(array_keys($decoded))->toBe(['error'])
         ->and($decoded['error'])->toContain('lara-spec-first.query.deep_object_arrays');
 });
+
+// --- The key that says how a PATCH body's required list is read ---
+
+/**
+ * The generated tree of `merge-patch.yaml` (or its 3.0 twin), written by the real build under the given reading.
+ */
+function buildMergePatch(string $reading, string $fixture = 'merge-patch.yaml'): void
+{
+    exec('rm -rf '.escapeshellarg(doctorTree()));
+
+    config()->set('lara-spec-first.spec.path', specFixturePath($fixture));
+    config()->set('lara-spec-first.requests.patch', $reading);
+
+    expect(app(Kernel::class)->call('spec:build', [], new BufferedOutput))->toBe(0);
+}
+
+// The `PATCH` that declares JSON and a merge patch over one schema is read by the key, so the request the build wrote
+// is another file under each value: a doctor that read another value than the build did would call it drifted.
+it('reads requests.patch in spec:build and spec:doctor', function (string $built, string $doctored, bool $drifted): void {
+    buildMergePatch($built);
+    config()->set('lara-spec-first.requests.patch', $doctored);
+
+    [, $text] = doctor();
+
+    expect(str_contains($text, 'has drifted'))->toBe($drifted)
+        ->and(str_contains($text, 'PatchTaskRequest'))->toBe($drifted);
+})->with([
+    'built as partial, read as partial' => ['partial', 'partial', false],
+    'built as written, read as written' => ['as_written', 'as_written', false],
+    'built as partial, changed to as_written and not rebuilt' => ['partial', 'as_written', true],
+    'built as written, changed to partial and not rebuilt' => ['as_written', 'partial', true],
+]);
+
+it('reads requests.patch in spec:build and spec:doctor, and stops both on a value it cannot use', function (): void {
+    buildMergePatch('partial');
+    config()->set('lara-spec-first.requests.patch', 'as-written');
+
+    $build = new BufferedOutput;
+    $text = new BufferedOutput;
+    $json = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $build))->toBe(1)
+        ->and($build->fetch())->toContain('lara-spec-first.requests.patch')
+        ->and(app(Kernel::class)->call('spec:doctor', [], $text))->toBe(1)
+        ->and($text->fetch())->toContain('lara-spec-first.requests.patch');
+
+    expect(app(Kernel::class)->call('spec:doctor', ['--json' => true], $json))->toBe(1);
+
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode($json->fetch(), true);
+
+    expect(array_keys($decoded))->toBe(['error'])
+        ->and($decoded['error'])->toContain('lara-spec-first.requests.patch');
+});
+
+// Under `as_written` the `PATCH` that declares a merge patch beside JSON holds the merge patch to the full list, which the
+// doctor counts; under `partial` both are partial and nothing is left unenforced.
+it('counts the merge patch held to the list requests.patch as_written reads, and only then', function (string $reading, int $exit, string $fixture): void {
+    buildMergePatch($reading, $fixture);
+
+    [$code, $text] = doctor();
+
+    expect($code)->toBe($exit)
+        ->and(str_contains($text, 'patch /tasks/{id} asks for names a JSON merge patch (RFC 7396) may leave out'))->toBe($exit === 2);
+})->with([
+    'partial' => ['partial', 0, 'merge-patch.yaml'],
+    'as_written' => ['as_written', 2, 'merge-patch.yaml'],
+    'partial, 3.0' => ['partial', 0, 'merge-patch-3.0.yaml'],
+    'as_written, 3.0' => ['as_written', 2, 'merge-patch-3.0.yaml'],
+]);

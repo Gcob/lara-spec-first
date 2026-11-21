@@ -21,6 +21,7 @@ use Gcob\LaraSpecFirst\Generation\ResponsePlan;
 use Gcob\LaraSpecFirst\Generation\RuleSet;
 use Gcob\LaraSpecFirst\Generation\RuleSetBuilder;
 use Gcob\LaraSpecFirst\Generation\RuleSetOptions;
+use Gcob\LaraSpecFirst\Generation\RuleWalk;
 use Gcob\LaraSpecFirst\Generation\UntypedResponseCause;
 use Gcob\LaraSpecFirst\Parsing\ParsableSpecDocument;
 use Gcob\LaraSpecFirst\Parsing\ReadOutcome;
@@ -334,8 +335,8 @@ final readonly class SupportMatrixCheck
                 self::SECTION,
                 SupportLevel::Partial,
                 DocumentPointer::forOperation($operation),
-                $keyword === 'content'
-                    ? sprintf(
+                match ($keyword) {
+                    'content' => sprintf(
                         '%s declares a media type this package does not read: %s. Nothing in the generated request '.
                         'comes from it, so %s See docs/guide/openapi-support.md, "%s". This is a fact about this '.
                         'package, not a defect in your contract.',
@@ -343,8 +344,17 @@ final readonly class SupportMatrixCheck
                         implode(', ', $fields),
                         self::unreadMediaTypeConsequence($operation),
                         self::UNENFORCED_SECTIONS[$keyword],
-                    )
-                    : sprintf(
+                    ),
+                    // Why: the request enforces more here, so "does not enforce" would send a reader to a gap that is not one.
+                    RuleWalk::STRICTER_REQUIRED => sprintf(
+                        '%s asks for names a JSON merge patch (RFC 7396) may leave out: %s. The request is stricter than the '.
+                        'contract, not looser: a merge patch that leaves one out answers `422`, though the contract accepts '.
+                        'it. The findings in the generated file say which. See docs/guide/openapi-support.md, "Schemas". '.
+                        'This is a fact about this package, not a defect in your contract.',
+                        $operation->label(),
+                        implode(', ', $fields),
+                    ),
+                    default => sprintf(
                         '%s writes %s where the generated request does not enforce it, or enforces only part of it: %s. '.
                         'The support matrix may rate `%s` as honored in general, and on these fields the rules leave it out '.
                         'or hold only part of it: the findings in the generated file say which. See '.
@@ -356,6 +366,7 @@ final readonly class SupportMatrixCheck
                         $keyword,
                         self::sectionsOf($keyword, $fields),
                     ),
+                },
             );
         }
 
@@ -364,22 +375,33 @@ final readonly class SupportMatrixCheck
 
     /**
      * What happens to a client that sends a media type the package does not read: nothing judges it when no media type
-     * of the body is read, and the rules of the ones that are read judge it on an empty body when one is, since the
-     * generated request reads the JSON body or the form, and an XML body leaves both empty.
+     * of the body is read, and the rules of the ones that are read judge it when one is. An XML body leaves the JSON
+     * body and the form empty, so it is judged on an empty body; a `+json` body is read as JSON, as Laravel does, so it
+     * is judged on its real content.
      */
     private static function unreadMediaTypeConsequence(Operation $operation): string
     {
-        $read = array_values(array_intersect($operation->requestBody?->mediaTypes() ?? [], RuleSetBuilder::READ_MEDIA_TYPES));
+        $body = $operation->requestBody;
 
-        if ($read === []) {
+        if ($body === null || ($read = RuleSetBuilder::readMediaTypes($body)) === []) {
             return 'a client that sends it is not checked against the schema.';
         }
 
-        return sprintf(
-            'a client that sends it is judged by the rules of %s on an empty body: a field the schema requires '.
-            'answers `422`, though your contract accepts the request.',
-            implode(', ', array_map(static fn (string $mediaType): string => '`'.$mediaType.'`', $read)),
-        );
+        $unread = array_values(array_diff($body->mediaTypes(), $read));
+        $json = array_values(array_filter($unread, RuleSetBuilder::isJsonSuffixed(...)));
+        $other = array_values(array_diff($unread, $json));
+        $clauses = [];
+
+        // Named when both kinds are there: "it" would not say which one a clause is about.
+        if ($other !== []) {
+            $clauses[] = RuleSetBuilder::unreadConsequence($other, $read, 'your contract', $json !== []);
+        }
+
+        if ($json !== []) {
+            $clauses[] = RuleSetBuilder::unreadConsequence($json, $read, 'your contract', true);
+        }
+
+        return implode('; ', $clauses).'.';
     }
 
     /**
@@ -574,8 +596,10 @@ final readonly class SupportMatrixCheck
         $schemas = [];
 
         if ($operation->requestBody !== null) {
+            $read = RuleSetBuilder::readMediaTypes($operation->requestBody);
+
             foreach ($operation->requestBody->content as $mediaType => $schema) {
-                if (in_array($mediaType, RuleSetBuilder::READ_MEDIA_TYPES, true)) {
+                if (in_array($mediaType, $read, true)) {
                     $schemas[] = $schema;
                 }
             }

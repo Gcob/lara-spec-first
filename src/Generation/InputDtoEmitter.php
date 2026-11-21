@@ -120,7 +120,7 @@ final readonly class InputDtoEmitter extends DtoEmitter
 
         if ($dto->partial) {
             $findings[] = 'The partial type: every property is `Optional`, and `toArray()` leaves out the '
-                .'ones the client did not send. A `PATCH` reads it, and so does a body that may be '
+                .'ones the client did not send. A partial update reads it, and so does a body that may be '
                 .'absent entirely.';
         }
 
@@ -130,7 +130,7 @@ final readonly class InputDtoEmitter extends DtoEmitter
                     .'that adding or removing a `required` property never creates or deletes a name '
                     .'somebody has already imported.'
                 : 'No operation reads this type directly: it is the type of a property of another DTO, or '
-                    .'the full type of a body that only a `PATCH` or an optional body sends.')
+                    .'the full type of a body that only a partial update or an optional body sends.')
             : 'Read by '.implode(', ', array_map(
                 static fn (string $label): string => '`'.CommentText::safe($label).'`',
                 $dto->readers,

@@ -15,6 +15,7 @@ use Gcob\LaraSpecFirst\Generation\InputDtoPlan;
 use Gcob\LaraSpecFirst\Generation\InputDtoPlanner;
 use Gcob\LaraSpecFirst\Generation\InputDtoProperty;
 use Gcob\LaraSpecFirst\Generation\InputDtoType;
+use Gcob\LaraSpecFirst\Generation\PatchReading;
 use Gcob\LaraSpecFirst\Generation\PlannedInputDto;
 use Gcob\LaraSpecFirst\Generation\PlannedRequest;
 use Gcob\LaraSpecFirst\Generation\RequestName;
@@ -60,13 +61,13 @@ function dtoOperation(
  *
  * @param  list<Operation>  $operations
  */
-function planDtos(array $operations): InputDtoPlan
+function planDtos(array $operations, RuleSetOptions $options = new RuleSetOptions): InputDtoPlan
 {
-    $requests = array_map(static function (Operation $operation): PlannedRequest {
+    $requests = array_map(static function (Operation $operation) use ($options): PlannedRequest {
         $name = RequestName::for($operation);
         assert($name !== null);
 
-        return new PlannedRequest($operation, $name, RuleSetBuilder::for($operation, new RuleSetOptions), 'Controller');
+        return new PlannedRequest($operation, $name, RuleSetBuilder::for($operation, $options), 'Controller');
     }, $operations);
 
     return (new InputDtoPlanner)->plan($requests);
@@ -197,6 +198,51 @@ it('reads the type each method\'s rule set describes', function (string $method,
     'a PATCH' => ['patch', true, 'DoThingPartialInputDto'],
     'a body that may be absent' => ['post', false, 'DoThingPartialInputDto'],
 ]);
+
+// A JSON merge patch is a partial document by its media type, so the rules let `{}` through on any method and the full
+// type's `from()` would read a name that is absent.
+it('reads the partial type for a merge patch on every method', function (string $method): void {
+    $plan = planDtos([dtoOperation('doThing', ['application/merge-patch+json' => dtoSchema(['a' => dtoString()], ['a'])], $method)]);
+
+    expect($plan->readBy[$method.' /things'])->toBe('DoThingPartialInputDto');
+})->with(['post' => 'post', 'put' => 'put', 'patch' => 'patch']);
+
+// The key is the one place the rules and the DTO read the application's answer: a required `PATCH` body read as written
+// is a full document, so its type is the full one, and a body that may be absent stays partial under either value.
+it('reads the type requests.patch says for a PATCH body', function (PatchReading $reading, bool $required, string $expected): void {
+    $plan = planDtos(
+        [dtoOperation('doThing', ['application/json' => dtoSchema(['a' => dtoString()], ['a'])], 'patch', $required)],
+        new RuleSetOptions(patchReading: $reading),
+    );
+
+    expect($plan->readBy['patch /things'])->toBe($expected);
+})->with([
+    'a required body, partial' => [PatchReading::Partial, true, 'DoThingPartialInputDto'],
+    'a required body, as_written' => [PatchReading::AsWritten, true, 'DoThingInputDto'],
+    'a body that may be absent, partial' => [PatchReading::Partial, false, 'DoThingPartialInputDto'],
+    'a body that may be absent, as_written' => [PatchReading::AsWritten, false, 'DoThingPartialInputDto'],
+]);
+
+it('reads the partial type for a merge patch whatever requests.patch says', function (): void {
+    $plan = planDtos(
+        [dtoOperation('doThing', ['application/merge-patch+json' => dtoSchema(['a' => dtoString()], ['a'])], 'patch')],
+        new RuleSetOptions(patchReading: PatchReading::AsWritten),
+    );
+
+    expect($plan->readBy['patch /things'])->toBe('DoThingPartialInputDto');
+});
+
+// A merge patch over another schema than the JSON one is left unread, so the DTO is the JSON schema's and its position
+// is where that schema is written.
+it('points a merge patch of another schema beside JSON at the JSON schema', function (): void {
+    $plan = planDtos([dtoOperation('doThing', [
+        'application/merge-patch+json' => dtoSchema(['other' => dtoString()]),
+        'application/json' => dtoSchema(['a' => dtoString()], ['a']),
+    ], 'patch')]);
+
+    expect(dtoNamed($plan, 'DoThingPartialInputDto')->position)->toBe('#/paths/~1things/patch/requestBody/content/application~1json/schema')
+        ->and(array_map(static fn ($property): string => $property->name, dtoNamed($plan, 'DoThingPartialInputDto')->properties))->toBe(['a']);
+});
 
 it('lists no reader for the partial type nobody reads', function (): void {
     $plan = planDtos([dtoOperation('doThing', ['application/json' => dtoSchema(['a' => dtoString()])])]);
