@@ -3,16 +3,17 @@ title: Request Validation
 audience: Users
 covers: >
     How one operation becomes one `FormRequest`: which parts of the contract the rule set is derived from and which
-    parameter locations stay the router's, what a name declared twice does to a build, why a partial update (a `PATCH`,
-    or a merge patch) is `PUT` with the required list emptied and why nothing fills an absent field from a schema
-    `default`, which JSON Schema constraint becomes which Laravel rule and what happens to the ones that map to nothing,
-    why nothing rewrites the rule set at request time, why the generated request is `final` and where the three things a
-    developer would extend it for already live, why the validated payload reaches the controller as a DTO, what an
-    absent field is in it and how a map or open-object body is carried whole, where each field is read from (the body
-    for a body field, the query string for a declared `query` parameter), what a client gets when its request is refused
-    and how an application makes every refusal a JSON `422`, how deep a recursive schema is validated and what a deeper
-    payload gets, which media types are read and why one operation declares one of them, what an operation with nothing
-    to validate gets, and how the request reaches `routeAction` without changing what a custom child may override.
+    parameter locations stay the router's, what a name declared twice does to a build, why a partial update (a merge
+    patch, or a `PATCH` under the default of `requests.patch`) is `PUT` with the required list emptied and why nothing
+    fills an absent field from a schema `default`, which JSON Schema constraint becomes which Laravel rule and what
+    happens to the ones that map to nothing, why nothing rewrites the rule set at request time, why the generated
+    request is `final` and where the three things a developer would extend it for already live, why the validated
+    payload reaches the controller as a DTO, what an absent field is in it and how a map or open-object body is carried
+    whole, where each field is read from (the body for a body field, the query string for a declared `query` parameter),
+    what a client gets when its request is refused and how an application makes every refusal a JSON `422`, how deep a
+    recursive schema is validated and what a deeper payload gets, which media types are read and why one operation
+    declares one of them, what an operation with nothing to validate gets, and how the request reaches `routeAction`
+    without changing what a custom child may override.
 read_before: >
     Implementing the `FormRequest` emitter, or changing what `routeAction` declares.
 tags: [code-generation, openapi, decisions, scope, laravel]
@@ -35,8 +36,8 @@ tags: [code-generation, openapi, decisions, scope, laravel]
 >   so in [its exception handling](#what-a-client-gets-when-a-request-is-refused).
 > - A body field is read from the body and a `query` parameter from the query string, never from each other: the request
 >   overrides `validationData()` so the URL cannot satisfy a body field, nor the body a query parameter.
-> - A partial update (a `PATCH`, or a body sent as a JSON merge patch) is `PUT` with the required list emptied, and no
->   generated class ever fills an absent field from a schema `default`.
+> - A partial update (a `PATCH`, unless `requests.patch` says `as_written`, or a body sent as a JSON merge patch) is
+>   `PUT` with the required list emptied, and no generated class ever fills an absent field from a schema `default`.
 > - A request whose body is an object has `dto()`, which returns the body as
 >   [a generated input DTO](#the-payload-arrives-as-a-dto) built from `validated()` (or `null` for a `null` body), and
 >   `validated()` itself keeps returning Laravel's array.
@@ -828,29 +829,51 @@ request is not where a project extends anything, which is [why it is `final`](#t
 ## A partial update empties the required list
 
 **The schema's `required` list decides what a body must carry, and the method and the media type decide whether that
-list is read.** `PUT` reads it as written; `PATCH` treats it as empty, and so does a body sent as
+list is read.** `PUT` reads it as written; `PATCH` treats it as empty by default, and so does a body sent as
 `application/merge-patch+json`, on any method. One line of difference in the rule set, and everything else in it is
 identical between the two. What it does to the generated type is
 [a type of its own](#a-partial-update-takes-the-partial-type).
+
+**The media type answers first, and the app answers where the media type does not.** OpenAPI gives `PATCH` no meaning of
+its own, and `application/json` says nothing about whether a document is partial, so `requests.patch` in
+`config/lara-spec-first.php` says how a `PATCH` body is read:
+
+```php
+'requests' => [
+    'patch' => 'partial',
+],
+```
+
+- **`partial`, the default.** The list is read as empty, as a `PATCH` is (RFC 5789).
+- **`as_written`.** The list is read as written, as a `PUT` reads it: a `PATCH` that leaves out a required field answers
+  `422`, and `dto()` returns [the full type](#a-partial-update-takes-the-partial-type). Nothing is written about the
+  list, since nothing is emptied.
+
+The key applies to `application/json` and to a form (`multipart/form-data` or `application/x-www-form-urlencoded`). A
+body sent as `application/merge-patch+json` is partial whatever the key says, since that media type is the contract's
+own answer, and `application/json-patch+json` is not read at all. Beside another media type that the key reads as
+written, a merge patch is held to the same list (see below). `spec:build`, `spec:make` and `spec:doctor` read the key,
+so a change takes another `spec:build`, and the doctor reports the generated requests as drifted until then. Any other
+value stops all three with a message that names the key.
 
 **Which is what "`PUT` requires the full body" means here, and it is narrower than it sounds.** It does not mean every
 declared property becomes required: a property the schema left out of `required` is optional on a `PUT` too, because the
 contract said so, and a generated class that demanded it anyway would be the code contradicting the document. So a field
 that is not required carries `sometimes` under either method, and its remaining rules run only when it is sent.
 
-**The sentence the generated file writes about the emptied list is information.** A partial update is what `PATCH` means
-and what a merge patch is, so the request reads the list as the method or the media type says and loses no constraint:
-neither the build warning nor `spec:doctor` counts it. A top-level name of a partial body that the rule set drops is not
-recorded as `required`, for the same reason. A merge patch on a `PUT` writes no sentence about the optional fields
-keeping their stored value, since a merge patch is not a replacement.
+**The sentence the generated file writes about the emptied list is information, and it names the key.** A partial update
+is what `PATCH` means by default and what a merge patch is, so the request reads the list as the method or the media
+type says and loses no constraint: neither the build warning nor `spec:doctor` counts it. A top-level name of a partial
+body that the rule set drops is not recorded as `required`, for the same reason. A merge patch on a `PUT` writes no
+sentence about the optional fields keeping their stored value, since a merge patch is not a replacement.
 
 **What each half of a schema becomes under the two methods:**
 
-| Declared            | `PUT`                                                                               | `PATCH`, a merge patch    |
-| ------------------- | ----------------------------------------------------------------------------------- | ------------------------- |
-| In `required`       | `present`, or `required` for an integer, a number or a boolean that is not nullable | `sometimes`               |
-| Not in `required`   | `sometimes`                                                                         | `sometimes`               |
-| Every other keyword | [Mapped as below](#every-constraint-maps-or-reports)                                | The same rules, unchanged |
+| Declared            | `PUT`, and `PATCH` under `as_written`                                               | `PATCH` under `partial`, a merge patch |
+| ------------------- | ----------------------------------------------------------------------------------- | -------------------------------------- |
+| In `required`       | `present`, or `required` for an integer, a number or a boolean that is not nullable | `sometimes`                            |
+| Not in `required`   | `sometimes`                                                                         | `sometimes`                            |
+| Every other keyword | [Mapped as below](#every-constraint-maps-or-reports)                                | The same rules, unchanged              |
 
 **A JSON merge patch is partial by its media type, whatever the method.** RFC 7396 defines the document, not the method,
 and a document that leaves a key out leaves it as it is, so a body sent as `application/merge-patch+json` has every
@@ -864,9 +887,10 @@ stay stricter than the contract, and the generated file and `spec:doctor` count 
   whole value and is not counted, and neither is the nested object of an `application/json` `PATCH`, which is the app's
   own reading.
 - **A merge patch declared beside a media type read as written is held to the full list.** Beside `application/json` on
-  a `POST` or a `PUT`, one rule set reads the list one way, so the merge patch that leaves out a required name answers
-  `422`. Declare the merge patch alone to read it as a partial document. Beside a media type that reads the list as
-  empty (`application/json` on a `PATCH`), both are partial.
+  a `POST` or a `PUT`, or on a `PATCH` under `requests.patch` set to `as_written`, one rule set reads the list one way,
+  so the merge patch that leaves out a required name answers `422`. Declare the merge patch alone to read it as a
+  partial document. Beside a media type that reads the list as empty (`application/json` on a `PATCH` under `partial`),
+  both are partial.
 
 **A `readOnly` property is never asked for, whatever the list says.** OpenAPI 3.0 reads `required` on a `readOnly`
 property as a promise about responses, so `POST /users` without an `id` is valid. 3.1 dropped that sentence and defers
@@ -1661,6 +1685,9 @@ all. Conflating the two is what turns a field the contract requires into a type 
 | In `required`, nullable         | `?string $name`                | `Optional\|string\|null $name` |
 | Not in `required`, not nullable | `Optional\|string $name`       | `Optional\|string $name`       |
 | Not in `required`, nullable     | `Optional\|string\|null $name` | `Optional\|string\|null $name` |
+
+**A `PATCH` under `requests.patch` set to `as_written` reads the first column**, so a required body takes the full type,
+and a body that may be absent still takes the partial one, since there every property may be absent.
 
 **Only the first two rows differ, and they are the whole reason a partial update gets its own type.** It validates
 against [a different rule set](#a-partial-update-empties-the-required-list), so a type shared with the `PUT` would have

@@ -280,9 +280,11 @@ final readonly class RuleSetBuilder
         $walk->mergePatch = in_array(self::MERGE_PATCH, $read, true);
         $walk->mergePatchAlone = $read === [self::MERGE_PATCH];
         // Why: decided once, before the body is walked, because the rules and the input DTO must answer the same
-        // question. A merge patch read alone is a partial document by its media type. Beside another read type that
-        // type decides (one rule set cannot read the list two ways), and the method does: a `PATCH` is partial.
-        $walk->partialBody = $read !== [] && ($walk->mergePatchAlone || $operation->method === HttpMethod::Patch);
+        // question. A merge patch read alone is a partial document by its media type, whatever `requests.patch` says.
+        // Beside another read type that type decides (one rule set cannot read the list two ways), and for a `PATCH`
+        // the application's key does.
+        $walk->partialBody = $read !== [] && ($walk->mergePatchAlone
+            || ($operation->method === HttpMethod::Patch && $walk->options->patchReading === PatchReading::Partial));
 
         if ($body !== null) {
             $closedKeys = self::bodyRules($operation, $body, $walk);
@@ -3710,13 +3712,14 @@ final readonly class RuleSetBuilder
             $walk->information($walk->mergePatchAlone
                 ? sprintf(
                     'The body is a JSON merge patch (`%s`, RFC 7396), so the schema\'s required list (%s) is read as '
-                        .'empty here. Every top-level property is `sometimes`.',
+                        .'empty here, whatever `requests.patch` says. Every top-level property is `sometimes`.',
                     self::MERGE_PATCH,
                     self::list($schema->required),
                 )
                 : sprintf(
                     'A `PATCH` is a partial update, so the schema\'s required list (%s) is read as '
-                        .'empty here. Every property is `sometimes`.',
+                        .'empty here. Every property is `sometimes`. `requests.patch` set to `as_written` reads it '
+                        .'as written.',
                     self::list($schema->required),
                 ));
         } elseif (! $body->required && $schema->required !== [] && $walk->formBody) {

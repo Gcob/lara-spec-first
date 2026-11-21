@@ -161,3 +161,9 @@ it('defaults a rate limit mapping to a single unnamed window', function (): void
 it('defaults query.deep_object_arrays to brackets', function (): void {
     expect(config('lara-spec-first.query.deep_object_arrays'))->toBe('brackets');
 });
+
+// Read by the same three commands: an application that never published the key still reads a `PATCH` body's required
+// list as empty.
+it('defaults requests.patch to partial', function (): void {
+    expect(config('lara-spec-first.requests.patch'))->toBe('partial');
+});

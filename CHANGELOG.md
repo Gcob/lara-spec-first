@@ -42,6 +42,14 @@ tags: [versions, conventions, planning]
   with a message that names the key. The reasoning is in
   [ADR 0023](./docs/project/decisions/0023-read-an-array-in-a-deep-object-as-the-app-declares.md). This ships
   [#218](https://github.com/Gcob/lara-spec-first/issues/218).
+- **`requests.patch` says how a `PATCH` body's required list is read when its media type does not.** `partial`, the
+  default, reads it as empty, as before; `as_written` reads it as written, so a `PATCH` that leaves out a required field
+  answers `422` and `dto()` returns the full type. It applies to `application/json` and to a form; a body sent as
+  `application/merge-patch+json` stays partial whatever the key says, and beside `application/json` it is held to the
+  list the key reads as written, which the doctor counts. The generated request's sentence about the emptied list now
+  names the key. `spec:build` reads it, so a change takes another build, and `spec:doctor` reads it too, so it reports
+  the generated requests as drifted until that build. Any other value stops `spec:build`, `spec:make` and `spec:doctor`
+  with a message that names the key. This ships [#217](https://github.com/Gcob/lara-spec-first/issues/217).
 - **`spec:build` names a custom controller whose `routeAction` no longer fits the parent it regenerated.** When the
   contract gains or loses a request or a path parameter, a child that still declares the old list is a class PHP refuses
   to load at its first request. The build now prints one header and one line per such child, with the signature to paste
@@ -609,10 +617,12 @@ tags: [versions, conventions, planning]
 ### Known limits
 
 - **A nested object of a merge patch keeps its required list,** though RFC 7396 merges it into the stored object: the
-  request is stricter than the contract, and the doctor counts it. A follow-up card closes it.
-- **A merge patch declared beside a media type read as written** (`application/json` on a `POST` or a `PUT`) is held to
-  the full required list, since one rule set reads it one way; the doctor counts it. Declare the merge patch alone to
-  read it as a partial document.
+  request is stricter than the contract, and the doctor counts it.
+  [#254](https://github.com/Gcob/lara-spec-first/issues/254) closes it.
+- **A merge patch declared beside a media type read as written** (`application/json` on a `POST` or a `PUT`, or on a
+  `PATCH` under `requests.patch` set to `as_written`) is held to the full required list, since one rule set reads it one
+  way; the doctor counts it. Declare the merge patch alone to read it as a partial document; on a `PATCH`,
+  `requests.patch` set to `partial` lifts it too.
 - **A JSON Patch beside a merge patch is judged by the merge patch's rules, so a JSON Patch document answers `422`;**
   the doctor counts it. Reading, skipping or refusing a body in a media type the package doesn't read, beside one it
   reads, is not decided yet.

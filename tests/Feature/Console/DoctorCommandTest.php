@@ -997,3 +997,71 @@ it('reads query.deep_object_arrays in spec:build and spec:doctor, and stops both
     expect(array_keys($decoded))->toBe(['error'])
         ->and($decoded['error'])->toContain('lara-spec-first.query.deep_object_arrays');
 });
+
+// --- The key that says how a PATCH body's required list is read ---
+
+/**
+ * The generated tree of `merge-patch.yaml`, written by the real build under the given reading.
+ */
+function buildMergePatch(string $reading): void
+{
+    exec('rm -rf '.escapeshellarg(doctorTree()));
+
+    config()->set('lara-spec-first.spec.path', specFixturePath('merge-patch.yaml'));
+    config()->set('lara-spec-first.requests.patch', $reading);
+
+    expect(app(Kernel::class)->call('spec:build', [], new BufferedOutput))->toBe(0);
+}
+
+// The `PATCH` that declares JSON and a merge patch over one schema is read by the key, so the request the build wrote
+// is another file under each value: a doctor that read another value than the build did would call it drifted.
+it('reads requests.patch in spec:build and spec:doctor', function (string $built, string $doctored, bool $drifted): void {
+    buildMergePatch($built);
+    config()->set('lara-spec-first.requests.patch', $doctored);
+
+    [, $text] = doctor();
+
+    expect(str_contains($text, 'has drifted'))->toBe($drifted)
+        ->and(str_contains($text, 'PatchTaskRequest'))->toBe($drifted);
+})->with([
+    'built as partial, read as partial' => ['partial', 'partial', false],
+    'built as written, read as written' => ['as_written', 'as_written', false],
+    'built as partial, changed to as_written and not rebuilt' => ['partial', 'as_written', true],
+    'built as written, changed to partial and not rebuilt' => ['as_written', 'partial', true],
+]);
+
+it('reads requests.patch in spec:build and spec:doctor, and stops both on a value it cannot use', function (): void {
+    buildMergePatch('partial');
+    config()->set('lara-spec-first.requests.patch', 'as-written');
+
+    $build = new BufferedOutput;
+    $text = new BufferedOutput;
+    $json = new BufferedOutput;
+
+    expect(app(Kernel::class)->call('spec:build', [], $build))->toBe(1)
+        ->and($build->fetch())->toContain('lara-spec-first.requests.patch')
+        ->and(app(Kernel::class)->call('spec:doctor', [], $text))->toBe(1)
+        ->and($text->fetch())->toContain('lara-spec-first.requests.patch');
+
+    expect(app(Kernel::class)->call('spec:doctor', ['--json' => true], $json))->toBe(1);
+
+    /** @var array<string, mixed> $decoded */
+    $decoded = json_decode($json->fetch(), true);
+
+    expect(array_keys($decoded))->toBe(['error'])
+        ->and($decoded['error'])->toContain('lara-spec-first.requests.patch');
+});
+
+// Under `as_written` the `PATCH` that declares a merge patch beside JSON holds the merge patch to the full list, which the
+// doctor counts; under `partial` both are partial and nothing is left unenforced.
+it('counts the merge patch held to the list requests.patch as_written reads, and only then', function (string $reading, int $exit): void {
+    buildMergePatch($reading);
+
+    [$code, $text] = doctor();
+
+    expect($code)->toBe($exit)
+        ->and(str_contains($text, 'patch /tasks/{id} writes `required`'))->toBe($exit === 2);
+})->with([
+    'partial' => ['partial', 0],
+    'as_written' => ['as_written', 2],
+]);
