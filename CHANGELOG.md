@@ -451,20 +451,21 @@ tags: [versions, conventions, planning]
   to `2`.** A form field PHP delivers under no name or under another's key, and the form side of a name PHP rewrites in
   a body that is JSON and a form, were told in the generated file's findings only. The doctor now reports each one's
   `type`, its `required` and every keyword it states, one finding per keyword and per operation, and reports
-  `dependentRequired` on each name a trigger with a `*` or with no rule no longer asks for. A field the request drops
+  `dependentRequired` on each name a trigger with a `*` or with no rule no longer asks for, except a `readOnly` name and
+  one the object already requires, which a trigger the request keeps does not ask for either. A field the request drops
   and the doctor already reported (a `*` name, a `query` name PHP appends to or delivers under no name) gains its
-  `type`, and loses its `required` when it is `readOnly` or a top-level name of a `PATCH`, as it does for a field the
-  request keeps: one that was only that no longer counts, so a contract that exited `2` for it can exit `0`. It also
-  names what no Laravel rule can hold, on the field that states it: a required name with a dot or a comma (`required`),
-  a closed object that declares such a name, or a closed form body that accepts the key a rewritten name is delivered at
-  (`additionalProperties`), a field of more than one type or typed only `null`, and the integer, number and boolean of a
-  body that is JSON and a form (`type`), a field with no type and an `enum` or a `const` in a JSON body, or holding a
-  boolean or a `null` in a query or a form (`enum`), a keyword the package does not read on a field with no type, and a
-  recursion through a schema with no name (`$ref`). The generated file's findings are the same, except that a `*`
-  trigger no longer says its `*` twice, and says what it no longer asks for. This is a breaking change: a contract that
-  exited `0` can exit `2`, so a green CI step may turn red. Fix the contract where the finding says how, or let the CI
-  step accept exit `2` until the acknowledgement config is built. This starts
-  [#119](https://github.com/Gcob/lara-spec-first/issues/119).
+  `type`. A `*` name loses its `required` when it is `readOnly` or a top-level name of a `PATCH`, as it does for a field
+  the request keeps (a `query` name keeps its `required`): one that was only that no longer counts, so a contract that
+  exited `2` for it can exit `0`. It also names what no Laravel rule can hold, on the field that states it: a required
+  name with a dot or a comma (`required`), a closed object that declares such a name, or a closed form body that accepts
+  the key a rewritten name is delivered at (`additionalProperties`), a field of more than one type or typed only `null`,
+  and the integer, number and boolean of a body that is JSON and a form (`type`), a field with no type and an `enum` or
+  a `const` in a JSON body, or holding a boolean or a `null` in a query or a form (`enum`), and a recursion through a
+  schema with no name (`$ref`). A keyword the package does not read on a field with no type is still reported once, as
+  `Ignored`, as it was. The generated file's findings are the same, except that a `*` trigger no longer says its `*`
+  twice, and says what it no longer asks for. This is a breaking change: a contract that exited `0` can exit `2`, so a
+  green CI step may turn red. Fix the contract where the finding says how, or let the CI step accept exit `2` until the
+  acknowledgement config is built. This starts [#119](https://github.com/Gcob/lara-spec-first/issues/119).
 
 ### Fixed
 

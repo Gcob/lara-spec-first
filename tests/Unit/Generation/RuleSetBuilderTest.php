@@ -5439,6 +5439,117 @@ it('records no required for a dropped name nothing asks for', function (string $
     'a top-level name of a PATCH body' => ['patch', new Schema],
 ]);
 
+// A contract that builds when its field is kept or optional builds when the request drops the field: reading what a
+// dropped field states is not the place to refuse its `allOf`. The refusal belongs to a field that gets rules.
+it('builds a required field the rule set drops whose allOf contradicts itself', function (Operation $operation, array $expected): void {
+    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+
+    expect($set->unenforced)->toBe($expected);
+})->with(function (): array {
+    $form = 'application/x-www-form-urlencoded';
+    $conflict = new Schema(types: [SchemaType::String], allOf: [new Schema(pattern: '^a'), new Schema(pattern: 'b$')]);
+
+    return [
+        'a star name' => [
+            operationWithInput(content: ['application/json' => objectSchema(['a*b' => $conflict], ['a*b'])]),
+            ['required' => ['`a*b`'], 'type' => ['`a*b`'], 'allOf' => ['`a*b`']],
+        ],
+        'a form name PHP delivers nowhere' => [
+            operationWithInput(content: [$form => objectSchema(['[x]' => $conflict], ['[x]'])]),
+            ['required' => ['`[x]`'], 'type' => ['`[x]`'], 'allOf' => ['`[x]`']],
+        ],
+    ];
+});
+
+// The JSON side of a name PHP rewrites keeps its rule, so there the refusal stays, as it always was.
+it('still refuses a required field the rule set keeps whose allOf contradicts itself', function (string $name, array $media): void {
+    $conflict = new Schema(types: [SchemaType::String], allOf: [new Schema(pattern: '^a'), new Schema(pattern: 'b$')]);
+
+    expect(fn () => RuleSetBuilder::for(operationWithInput(
+        content: array_fill_keys($media, objectSchema([$name => $conflict], [$name])),
+    ), new RuleSetOptions))->toThrow(ConflictingInputException::class);
+})->with([
+    'a JSON name' => ['x', ['application/json']],
+    'a name PHP rewrites, kept by its JSON rule' => ['a.b', ['application/json', 'application/x-www-form-urlencoded']],
+]);
+
+// A dropped trigger asks for its dependent only where a kept trigger would: a `readOnly` dependent is a promise about
+// responses, and one the object already requires has the dependency on top of its own presence.
+it('records dependentRequired on a dependent only where a kept trigger would ask for it', function (Operation $operation, array $expected): void {
+    $set = RuleSetBuilder::for($operation, new RuleSetOptions);
+
+    expect($set->unenforced)->toBe($expected)
+        ->and($set->leavesUnenforced())->toBe($expected !== []);
+})->with(function (): array {
+    $form = 'application/x-www-form-urlencoded';
+    $string = new Schema(types: [SchemaType::String]);
+    $readOnly = new Schema(types: [SchemaType::String], readOnly: true);
+    $json = static fn (array $properties, array $required, array $dependent): Operation => operationWithInput(content: [
+        'application/json' => new Schema(types: [SchemaType::Object], properties: $properties, required: array_values($required), dependentRequired: $dependent),
+    ]);
+    $formBody = static fn (array $properties, array $required, array $dependent): Operation => operationWithInput(content: [
+        $form => new Schema(types: [SchemaType::Object], properties: $properties, required: array_values($required), dependentRequired: $dependent),
+    ], bodyRequired: false);
+
+    return [
+        'a star trigger, a plain dependent' => [
+            $json(['email' => $string], [], ['a*b' => ['email']]),
+            ['dependentRequired' => ['`email`']],
+        ],
+        'a star trigger, a readOnly dependent' => [
+            $json(['email' => $readOnly], [], ['a*b' => ['email']]),
+            [],
+        ],
+        'a star trigger, a dependent the object requires' => [
+            $json(['email' => $string], ['email'], ['a*b' => ['email']]),
+            [],
+        ],
+        'a form trigger PHP delivers nowhere, a readOnly dependent' => [
+            $formBody(['[x]' => $string, 'email' => $readOnly], [], ['[x]' => ['email']]),
+            ['type' => ['`[x]`']],
+        ],
+        'a form trigger PHP delivers nowhere, a dependent the object requires' => [
+            $formBody(['[x]' => $string, 'email' => $string], ['email'], ['[x]' => ['email']]),
+            ['type' => ['`[x]`']],
+        ],
+        'a form trigger PHP delivers nowhere, a plain dependent' => [
+            $formBody(['[x]' => $string, 'email' => $string], [], ['[x]' => ['email']]),
+            ['type' => ['`[x]`'], 'dependentRequired' => ['`email`']],
+        ],
+        'a kept trigger, a plain star dependent' => [
+            $json(['a' => $string, 'b*' => $string], [], ['a' => ['b*']]),
+            ['dependentRequired' => ['`b*`'], 'type' => ['`b*`']],
+        ],
+        'a kept trigger, a readOnly star dependent' => [
+            $json(['a' => $string, 'b*' => $readOnly], [], ['a' => ['b*']]),
+            ['type' => ['`b*`']],
+        ],
+        'a kept trigger, a star dependent the object requires' => [
+            $json(['a' => $string, 'b*' => $string], ['b*'], ['a' => ['b*']]),
+            ['required' => ['`b*`'], 'type' => ['`b*`']],
+        ],
+        'a kept trigger, a form dependent PHP delivers nowhere' => [
+            $formBody(['a' => $string, '[x]' => $readOnly], [], ['a' => ['[x]']]),
+            ['type' => ['`[x]`']],
+        ],
+    ];
+});
+
+// A name only a `dependentRequired` value names is walked when its own trigger has a rule, and not before: its `*`
+// sentence is written once either way, by the walk of the names or by the trigger that has no rule.
+it('writes the star sentence of a name only a dependentRequired value names once', function (array $properties, array $dependent): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['application/json' => new Schema(
+        types: [SchemaType::Object],
+        properties: $properties,
+        dependentRequired: $dependent,
+    )]), new RuleSetOptions);
+
+    expect(substr_count(implode("\n", $set->findings), '`b*` carries a `*`'))->toBe(1);
+})->with([
+    'a trigger no rule holds' => [[], ['a*' => ['b*'], 'b*' => ['c']]],
+    'a trigger a rule holds' => [['a' => new Schema(types: [SchemaType::String])], ['a' => ['b*'], 'b*' => ['c']]],
+]);
+
 // The sentence of a dropped field that states nothing is information: it says what a reader of the file would not
 // otherwise see, and counts for neither the build nor the doctor.
 it('writes the finding of a field the rule set drops that states nothing as information', function (Operation $operation, string $finding): void {

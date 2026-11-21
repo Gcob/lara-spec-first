@@ -1470,7 +1470,7 @@ final readonly class RuleSetBuilder
                 self::dropFields($walk, $unescapable, [$childLabel => self::droppedKeywords(
                     $property,
                     self::askedWhenDropped($walk, $property, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
-                    isset($dependents[$name]),
+                    self::askedByDependency($walk, $property, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
                 )]);
 
                 continue;
@@ -1545,7 +1545,7 @@ final readonly class RuleSetBuilder
                 self::dropFields($walk, $unescapable, [$childLabel => self::droppedKeywords(
                     new Schema,
                     self::askedWhenDropped($walk, new Schema, $childLabel, in_array($name, $schema->required, true), $prefix === ''),
-                    isset($dependents[$name]),
+                    self::askedByDependency($walk, new Schema, in_array($name, $schema->required, true), $prefix === '', isset($dependents[$name])),
                 )]);
 
                 continue;
@@ -1658,13 +1658,15 @@ final readonly class RuleSetBuilder
                 $lost = [];
 
                 foreach ($names as $name) {
-                    $lost[self::bracketLabel($walk, $parentLabel, (string) $name) ?? '`'.$prefix.$name.'`'] = ['dependentRequired'];
+                    $name = (string) $name;
+                    $asked = self::askedByDependency($walk, $schema->properties[$name] ?? new Schema, in_array($name, $schema->required, true), $prefix === '', true);
+                    $lost[self::bracketLabel($walk, $parentLabel, $name) ?? '`'.$prefix.$name.'`'] = $asked ? ['dependentRequired'] : [];
                 }
 
                 // The name itself was reported when the names were planned, or is reported by the walk of the
-                // properties below, which writes the `*` sentence for a name `properties` or `required` declares. A `*`
-                // trigger nothing declares has no other place to say it.
-                if ($unescapable !== null && ! self::declaresName($schema, $trigger)) {
+                // properties below, which writes the `*` sentence for a name `properties` or `required` declares, or
+                // that a trigger with a rule makes required. A `*` trigger nothing declares has no other place to say it.
+                if ($unescapable !== null && ! self::declaresName($schema, $trigger, $walk, $prefix)) {
                     self::dropFields($walk, $unescapable, $lost);
                 }
 
@@ -1703,17 +1705,21 @@ final readonly class RuleSetBuilder
     }
 
     /**
-     * Whether the walk of an object's names reaches this one: it is a property, or a name the object requires or makes
-     * required, and so gets the finding for a name it drops.
+     * Whether the walk of an object's names reaches this one: it is a property, or a name the object requires, or a
+     * name a trigger that has a rule makes required, and so gets the finding for a name it drops.
      */
-    private static function declaresName(Schema $schema, string $name): bool
+    private static function declaresName(Schema $schema, string $name, RuleWalk $walk, string $prefix): bool
     {
         if (isset($schema->properties[$name]) || in_array($name, $schema->required, true)) {
             return true;
         }
 
-        foreach ($schema->dependentRequired as $names) {
-            if (in_array($name, array_map('strval', $names), true)) {
+        foreach ($schema->dependentRequired as $trigger => $names) {
+            if (
+                in_array($name, array_map('strval', $names), true)
+                && self::unescapableKey((string) $trigger) === null
+                && self::triggerKeys((string) $trigger, $walk, $prefix) !== []
+            ) {
                 return true;
             }
         }
@@ -3237,12 +3243,42 @@ final readonly class RuleSetBuilder
      * Whether the contract asks for a property the rule set drops, read as a field the rule set keeps is: not a
      * `readOnly` property, which only a response has to carry, and not a top-level name of a `PATCH`, whose body is a
      * partial update.
-     *
-     * @throws ConflictingInputException
      */
     private static function askedWhenDropped(RuleWalk $walk, Schema $property, string $label, bool $required, bool $topLevel): bool
     {
-        return $required && ! ($topLevel && $walk->patchBody) && ! self::isReadOnly($property, $walk, $label);
+        return $required && ! ($topLevel && $walk->patchBody) && ! self::statesReadOnly($property);
+    }
+
+    /**
+     * Whether `dependentRequired` asks for a property the rule set drops, read as a kept trigger would ask: the
+     * dependent is not `readOnly`, and not one the object already asks for (a top-level name of a `PATCH` is not asked
+     * for, so the dependency still is).
+     */
+    private static function askedByDependency(RuleWalk $walk, Schema $property, bool $required, bool $topLevel, bool $dependent): bool
+    {
+        return $dependent
+            && ! self::statesReadOnly($property)
+            && ! ($required && ! ($topLevel && $walk->patchBody));
+    }
+
+    /**
+     * Whether a property, or a branch of its `allOf`, says `readOnly`. Read without folding the `allOf`: a field the
+     * rule set drops gets no rules, so a contradiction between its branches is not refused here (it was not before the
+     * rule set read what a dropped field states).
+     */
+    private static function statesReadOnly(Schema $property): bool
+    {
+        if ($property->readOnly) {
+            return true;
+        }
+
+        foreach ($property->allOf as $branch) {
+            if (self::statesReadOnly($branch)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -3583,7 +3619,7 @@ final readonly class RuleSetBuilder
                 $entries[$label] = self::droppedKeywords(
                     $property,
                     self::askedWhenDropped($walk, $property, $label, in_array($member, $schema->required, true), true),
-                    in_array($member, $dependent, true),
+                    self::askedByDependency($walk, $property, in_array($member, $schema->required, true), true, in_array($member, $dependent, true)),
                 );
             }
 
