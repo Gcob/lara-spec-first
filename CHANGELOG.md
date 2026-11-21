@@ -192,19 +192,38 @@ tags: [versions, conventions, planning]
   `a[c][evil]=1` is still refused (unless a `*`, comma or appended key sits below it, which the file names: it answers
   `200` then, and with a `*` name `validated()` keeps the key), and a value that is not an array (`a[c]=5`), which used
   to be refused, passes and is left out. This is a breaking change: drop the key, or declare it. A closed form body that
-  declares a name typed `object` or `array` beside a name below it (`p` beside `p[s]`, `ids` beside `ids[]`) now gets a
-  finding in the generated file, which says the key check accepts the level the name is delivered at, and the doctor
-  counts `additionalProperties` as one more gap there, where nothing was said. Nothing is refused or accepted
-  differently for it.
+  declares a name typed `array` beside a name below it (`ids` beside `ids[]`) now gets a finding in the generated file,
+  which says the key check accepts the level the name is delivered at, and the doctor counts `additionalProperties` as
+  one more gap there, where nothing was said. Nothing is refused or accepted differently for it.
+- **A form body that declares a name typed `object` beside a name a form nests under it now judges both, where it judged
+  neither at the top level.** `p` typed `object` beside `p[s]`, and `x[b]` beside `x[b][c]` at any depth: a form
+  delivers an object only as an array, so the object keeps the rules it has alone and the nested name keeps its own
+  (`'p' => ['sometimes', 'array']`, `'p.s' => ['sometimes', 'integer']`). Requests that answered `200` now answer `422`
+  to a client that asks for JSON (see
+  [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)):
+  `p=abc` and `p[s]=abc`, a required top-level `p` left out of an open or a closed body (`q=1` alone), a required nested
+  object left out of a closed body, and a required key of the object. Below the top level the names had rules before,
+  but a closed body closed the object's level to the nested names in place of the object's own rule, and a closed object
+  did not take them: an open object now accepts another key (`x[b][evil]=1`), a closed one takes its own properties
+  beside the nested names (`x[b][d]=5&x[b][c]=5`), and a closed object in an open body takes the nested names
+  (`x[b][c]=5`), which were refused. The array of the nested names stands in for the object, so a required object is
+  satisfied by `x[b][c]=5` alone, as the generated file says (a form cannot send an empty object). A `dependentRequired`
+  the object triggers and the required keys of an optional object are asked for when only the nested names are sent,
+  which is stricter than the contract: the file says so, and `spec:doctor` counts them, with a line that says the
+  request asks for names the contract lets a client leave out (the line it writes for a merge patch is unchanged). The
+  two names themselves are no longer reported as unchecked. An object that declares the key a nested name arrives at, a
+  map object (one whose `additionalProperties` is a schema), a name typed `array`, and an object in a body that is JSON
+  as well keep both names unchecked, with a finding that says why. This is a breaking change: send values the contract
+  describes, or loosen the contract. This ships [#221](https://github.com/Gcob/lara-spec-first/issues/221).
 - **A closed form body that declares `page` beside `page[size]` now refuses an undeclared key below `page`, where it
   used to accept it.** The body is closed to its declared names, but the level `page` is delivered at was left open for
   the value of `page` itself, so `page[evil]=1` and `page[size]=3&page[evil]=1` were accepted (the second kept only
   `size` in `validated()`). The array branch of `page`'s shape check now holds the keys the contract declares below it
   (`['array:size']`), and `page=2` and `page[size]=3` still pass. It holds at any depth: `filter[a]` beside
   `filter[a][b]` gives `filter[a][evil]=1` the same refusal, and so does a `filter[a]` whose nested names are all
-  withheld (`filter[a][b]` typed `object` with `filter[a][b][c]` below it), where the level stayed open because its
-  array branch drops the array (`exclude`): it now holds the keys first (`['array:b', 'exclude']`). Requests that
-  answered `200` now answer `422` to a client that asks for JSON (see
+  withheld (`filter[a][b]` typed `array` with `filter[a][b][c]` below it), where the level stayed open because its array
+  branch drops the array (`exclude`): it now holds the keys first (`['array:b', 'exclude']`). Requests that answered
+  `200` now answer `422` to a client that asks for JSON (see
   [What a client gets when a request is refused](./docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
   A level whose key `array:` cannot name stays open, and the generated file says so: a comma in a key, and a `*` name
   (`page[*]` beside `page[size]`), whose key Laravel hides behind a placeholder, so `page[*]=5` passes and so does
@@ -634,6 +653,10 @@ tags: [versions, conventions, planning]
 - **A merge patch declared over another schema than its JSON or form sibling is not read,** and is judged by the
   sibling's rules on its real content; the doctor counts it. Describe both media types with one schema.
   [#247](https://github.com/Gcob/lara-spec-first/issues/247) decides whether it should be judged that way at all.
+- **A form body that declares an object beside the names a form nests under it asks for the object's required keys, and
+  for what the object makes required through `dependentRequired`, when a form sends only the nested names,** though the
+  contract never sees the object then: the request is stricter than the contract, and the doctor counts it.
+  [#257](https://github.com/Gcob/lara-spec-first/issues/257) closes it.
 
 ## [0.2.0] - 2026-11-15
 

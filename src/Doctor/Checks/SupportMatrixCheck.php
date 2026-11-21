@@ -346,14 +346,31 @@ final readonly class SupportMatrixCheck
                         self::UNENFORCED_SECTIONS[$keyword],
                     ),
                     // Why: the request enforces more here, so "does not enforce" would send a reader to a gap that is not one.
-                    RuleWalk::STRICTER_REQUIRED => sprintf(
-                        '%s asks for names a JSON merge patch (RFC 7396) may leave out: %s. The request is stricter than the '.
-                        'contract, not looser: a merge patch that leaves one out answers `422`, though the contract accepts '.
-                        'it. The findings in the generated file say which. See docs/guide/openapi-support.md, "Schemas". '.
-                        'This is a fact about this package, not a defect in your contract.',
-                        $operation->label(),
-                        implode(', ', $fields),
-                    ),
+                    // Two causes ask for names the contract lets a client leave out: a merge patch, and a form that sends only
+                    // the names nested under an object. An operation reads one or the other (a merge patch beside a form is a
+                    // mixed body, where no object holds names), as `readMediaTypes()` says, not the declared types.
+                    RuleWalk::STRICTER_REQUIRED => $operation->requestBody !== null && in_array(
+                        RuleSetBuilder::MERGE_PATCH,
+                        RuleSetBuilder::readMediaTypes($operation->requestBody),
+                        true,
+                    )
+                        ? sprintf(
+                            '%s asks for names a JSON merge patch (RFC 7396) may leave out: %s. The request is stricter than the '.
+                            'contract, not looser: a merge patch that leaves one out answers `422`, though the contract accepts '.
+                            'it. The findings in the generated file say which. See docs/guide/openapi-support.md, "Schemas". '.
+                            'This is a fact about this package, not a defect in your contract.',
+                            $operation->label(),
+                            implode(', ', $fields),
+                        )
+                        : sprintf(
+                            '%s asks for names a form may leave out when it sends only the names nested under an object: %s. '.
+                            'The request is stricter than the contract, not looser: such a form answers `422`, though the '.
+                            'contract accepts it. The findings in the generated file say which. See '.
+                            'docs/guide/code-generation/request-validation.md, "One rule set, body and query". This is a '.
+                            'fact about this package, not a defect in your contract.',
+                            $operation->label(),
+                            implode(', ', $fields),
+                        ),
                     default => sprintf(
                         '%s writes %s where the generated request does not enforce it, or enforces only part of it: %s. '.
                         'The support matrix may rate `%s` as honored in general, and on these fields the rules leave it out '.

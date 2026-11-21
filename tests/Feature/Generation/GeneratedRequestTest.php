@@ -2881,8 +2881,9 @@ it('keeps what a shaped name triggers, and what makes it required', function (st
  * @param  list<string>  $names
  * @param  list<string>  $strings
  * @param  list<string>  $objects
+ * @param  list<string>  $arrays  typed `array`, with no `items`
  */
-function postWithBracketedNames(string $mediaType, array $names, bool $closed, array $strings = [], array $objects = []): Operation
+function postWithBracketedNames(string $mediaType, array $names, bool $closed, array $strings = [], array $objects = [], array $arrays = []): Operation
 {
     return new Operation(
         index: 0,
@@ -2895,6 +2896,7 @@ function postWithBracketedNames(string $mediaType, array $names, bool $closed, a
                 static fn (string $name): Schema => new Schema(types: [match (true) {
                     in_array($name, $strings, true) => SchemaType::String,
                     in_array($name, $objects, true) => SchemaType::Object,
+                    in_array($name, $arrays, true) => SchemaType::Array,
                     default => SchemaType::Integer,
                 }]),
                 array_combine($names, $names),
@@ -2978,22 +2980,24 @@ it('reads a[c] and a[c]x from a form body as the same key', function (): void {
 });
 
 // Laravel's `validated()` keeps a whole array under a rule that is not a bare `array`, so a closed level (`array:c,d`)
-// hands back everything under it. A key of that level no rule judges (the shared key of a pair, a name typed `object`)
+// hands back everything under it. A key of that level no rule judges (the shared key of a pair, a name typed `array`)
 // is left out with `exclude`, and a key a ruled name sits below is judged by shape: a value that is not an array is left
 // out, and the array holds only the keys declared below it. Names are space-separated, and the second column holds the
-// ones typed `object`. Payloads are what PHP delivers.
+// ones typed `object`. The ones typed `array` are the last column, when a row has one. Payloads are what PHP delivers.
 it('leaves out of validated() a key of a closed form level that no rule judges', function (
     string $names,
     string $objects,
     array $parameters,
     int $status,
     array $answer,
+    string $arrays = '',
 ): void {
     $class = emittedRequestClass(postWithBracketedNames(
         'application/x-www-form-urlencoded',
         explode(' ', $names),
         true,
         objects: $objects === '' ? [] : explode(' ', $objects),
+        arrays: $arrays === '' ? [] : explode(' ', $arrays),
     ));
 
     [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: $parameters);
@@ -3012,18 +3016,18 @@ it('leaves out of validated() a key of a closed form level that no rule judges',
     'a ruled name below the shared key, an undeclared key below it' => ['a[c] a[c]x a[c][d]', '', ['a' => ['c' => ['evil' => '1']]], 422, ['a.c']],
     'a ruled name below the shared key, an undeclared key beside the ruled name' => ['a[c] a[c]x a[c][d]', '', ['a' => ['c' => ['d' => '5', 'evil' => '1']]], 422, ['a.c']],
     'a ruled name and a * name below the shared key' => ['a[c] a[c]x a[c][d] a[c][*]', '', ['a' => ['c' => ['*' => '5']]], 200, ['a' => ['c' => ['*' => '5']]]],
-    // TODO (#221): a name typed `object` loses its rules below it, so these two rows answer 200 for what 0.2.0 refused.
-    // They pin only what `validated()` holds.
-    'a name typed object with a name below it' => ['x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['c' => 'abc', 'evil' => '1']]], 200, ['x' => []]],
-    'a name typed object with a name below it, beside a ruled name' => ['x[b] x[b][c] x[d]', 'x[b]', ['x' => ['b' => ['evil' => '1'], 'd' => '5']], 200, ['x' => ['d' => '5']]],
+    // A name typed `array` keeps no rule below it, so these two rows pin only what `validated()` holds.
+    'a name typed array with a name below it' => ['x[b] x[b][c]', '', ['x' => ['b' => ['c' => 'abc', 'evil' => '1']]], 200, ['x' => []], 'x[b]'],
+    'a name typed array with a name below it, beside a ruled name' => ['x[b] x[b][c] x[d]', '', ['x' => ['b' => ['evil' => '1'], 'd' => '5']], 200, ['x' => ['d' => '5']], 'x[b]'],
 ]);
 
 // A declared `a` above names that collide below it (`a[c]` and `a[c]x`, both `a.c`): the level `a` is the one the key check
 // has to close, so `a[evil]=1` is refused instead of passing. `a`'s own value is judged as before (`a=5`), and what is sent
 // at the shared key is left out of `validated()`. Beside a ruled name (`a[d]`), the contract's `a[c]=abc&a[d]=5` passes and
 // keeps only `d`. A level two or three below `a` is refused too, since its key check is written before the rule that drops `a`.
-// The `object` rows pin only `validated()` and the level above: the rule loss below the object is #221's. Payloads are
-// what PHP delivers: `Request::create()` does not parse a wire string.
+// A name typed `object` holds the names below it, so `x[b][evil]=1` is its own open level's key, and `x[b][c]=abc` is
+// refused. A name typed `array` keeps the collision: the level below it holds no rule, and the `array` rows pin only
+// `validated()` and the level above. Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
 it('refuses an undeclared key beside a declared name and the names that collide below it', function (
     string $mediaType,
     string $names,
@@ -3031,12 +3035,14 @@ it('refuses an undeclared key beside a declared name and the names that collide 
     array $parameters,
     int $status,
     array $answer,
+    string $arrays = '',
 ): void {
     $class = emittedRequestClass(postWithBracketedNames(
         $mediaType,
         explode(' ', $names),
         true,
         objects: $objects === '' ? [] : explode(' ', $objects),
+        arrays: $arrays === '' ? [] : explode(' ', $arrays),
     ));
 
     [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: $parameters);
@@ -3052,15 +3058,146 @@ it('refuses an undeclared key beside a declared name and the names that collide 
     'beside a ruled name, both sent' => ['a a[c] a[c]x a[d]', '', ['a' => ['c' => 'abc', 'd' => '5']], 200, ['a' => ['d' => '5']]],
     'beside a ruled name, an undeclared key' => ['a a[c] a[c]x a[d]', '', ['a' => ['evil' => '1']], 422, ['a']],
     'above a name typed object, an undeclared key' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['evil' => '1']], 422, ['x']],
-    // TODO (#221): the key below `x[b]` is not judged yet, so this row answers 200 for what 0.2.0 refused.
-    'above a name typed object, below it' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['evil' => '1']]], 200, []],
+    'above a name typed object, below it' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['evil' => '1']]], 200, ['x' => ['b' => ['evil' => '1']]]],
+    'above a name typed object, its nested name' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['c' => 'abc']]], 422, ['x.b.c']],
+    'above a name typed array, an undeclared key' => ['x x[b] x[b][c]', '', ['x' => ['evil' => '1']], 422, ['x'], 'x[b]'],
+    'above a name typed array, below it' => ['x x[b] x[b][c]', '', ['x' => ['b' => ['evil' => '1']]], 200, [], 'x[b]'],
     'two levels below a declared name, an undeclared key at the first' => ['a a[b][c] a[b][c]x', '', ['a' => ['evil' => '1']], 422, ['a']],
     'two levels below a declared name, an undeclared key at the second' => ['a a[b][c] a[b][c]x', '', ['a' => ['b' => ['evil' => '1']]], 422, ['a.b']],
     'two levels below a declared name, the shared key' => ['a a[b][c] a[b][c]x', '', ['a' => ['b' => ['c' => 'abc']]], 200, []],
     'three levels below a declared name, an undeclared key at the third' => ['a a[b][c][d] a[b][c][d]x', '', ['a' => ['b' => ['c' => ['evil' => '1']]]], 422, ['a.b.c']],
 ]);
 
-// A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a
+// A form delivers an object only as an array, so a name typed `object` and the names a form nests under it are judged
+// by one array without contradiction: the object keeps its own rules, and the nested name keeps the rule keyed by the
+// path PHP delivers it under. The object's level is its own (an open object accepts another key, as it does alone, and a
+// closed one takes its properties and the keys below it). A map object keeps the collision: its rule for every other key
+// would judge the nested name too, and a body that is JSON as well does too. Payloads are what PHP delivers.
+it('judges a name typed object and the names a form nests under it', function (
+    string $mediaType,
+    Schema $schema,
+    array $parameters,
+    int $status,
+    array $answer,
+    bool $alsoJson = false,
+): void {
+    $content = [$mediaType => $schema] + ($alsoJson ? ['application/json' => $schema] : []);
+    $class = emittedRequestClass(new Operation(
+        index: 0,
+        method: HttpMethod::Post,
+        path: PathTemplate::fromString('/held'),
+        operationId: 'sendHeld',
+        requestBody: new RequestBody($content, true),
+    ));
+
+    [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: $parameters);
+
+    expect($answered)->toBe($status)
+        ->and($status === 422 ? array_keys($body['errors']) : $body)->toBe($answer);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with(function (): Generator {
+    $integer = new Schema(types: [SchemaType::Integer]);
+    $string = new Schema(types: [SchemaType::String]);
+    $object = new Schema(types: [SchemaType::Object]);
+    /**
+     * @param  array<string, Schema>  $properties
+     * @param  list<string>  $required
+     * @param  array<string, list<string>>  $dependentRequired
+     */
+    $body = static fn (array $properties, bool $closed = true, array $required = [], array $dependentRequired = []): Schema => new Schema(
+        types: [SchemaType::Object],
+        properties: $properties,
+        required: array_values($required),
+        dependentRequired: $dependentRequired,
+        additionalProperties: $closed ? false : null,
+    );
+    $nested = $body(['x[b]' => $object, 'x[b][c]' => $integer]);
+    $top = $body(['p' => $object, 'p[s]' => $integer]);
+    $withD = new Schema(types: [SchemaType::Object], properties: ['d' => $integer], additionalProperties: false);
+    $map = new Schema(types: [SchemaType::Object], additionalPropertiesSchema: $integer);
+
+    yield 'the nested name, not a number' => [$nested, ['x' => ['b' => ['c' => 'abc']]], 422, ['x.b.c']];
+    yield 'the object, not an array' => [$nested, ['x' => ['b' => 'abc']], 422, ['x.b']];
+    yield 'the nested name' => [$nested, ['x' => ['b' => ['c' => '5']]], 200, ['x' => ['b' => ['c' => '5']]]];
+    yield 'another key of an open object' => [$nested, ['x' => ['b' => ['evil' => '1']]], 200, ['x' => ['b' => ['evil' => '1']]]];
+    yield 'another key of an open object, beside a ruled name' => [
+        $body(['x[b]' => $object, 'x[b][c]' => $integer, 'x[d]' => $integer]),
+        ['x' => ['b' => ['evil' => '1'], 'd' => '5']],
+        200,
+        ['x' => ['b' => ['evil' => '1'], 'd' => '5']],
+    ];
+    yield 'an undeclared key beside the object' => [$nested, ['x' => ['evil' => '1']], 422, ['x']];
+    yield 'the nested name, not a number, in an open body' => [$body(['x[b]' => $object, 'x[b][c]' => $integer], closed: false), ['x' => ['b' => ['c' => 'abc']]], 422, ['x.b.c']];
+    yield 'the object, not an array, in an open body' => [$body(['x[b]' => $object, 'x[b][c]' => $integer], closed: false), ['x' => ['b' => 'abc']], 422, ['x.b']];
+    yield 'at the top level, the object' => [$top, ['p' => 'abc'], 422, ['p']];
+    yield 'at the top level, the nested name, not a number' => [$top, ['p' => ['s' => 'abc']], 422, ['p.s']];
+    yield 'at the top level, the nested name' => [$top, ['p' => ['s' => '5']], 200, ['p' => ['s' => '5']]];
+    yield 'a closed object, its property and the nested name' => [
+        $body(['x[b]' => $withD, 'x[b][c]' => $integer]),
+        ['x' => ['b' => ['d' => '5', 'c' => '5']]],
+        200,
+        ['x' => ['b' => ['d' => '5', 'c' => '5']]],
+    ];
+    yield 'a closed object, another key' => [$body(['x[b]' => $withD, 'x[b][c]' => $integer]), ['x' => ['b' => ['evil' => '1']]], 422, ['x.b']];
+    yield 'a closed object in an open body, the nested name' => [
+        $body(['x[b]' => $withD, 'x[b][c]' => $integer], closed: false),
+        ['x' => ['b' => ['c' => '5']]],
+        200,
+        ['x' => ['b' => ['c' => '5']]],
+    ];
+    yield 'a closed object, a collided pair below it' => [
+        $body(['x[b]' => $withD, 'x[b][c]' => $integer, 'x[b][c]x' => $integer]),
+        ['x' => ['b' => ['c' => 'abc', 'd' => '5']]],
+        200,
+        ['x' => ['b' => ['d' => '5']]],
+    ];
+    yield 'a required object left out' => [$body(['x[b]' => $object, 'x[b][c]' => $integer], required: ['x[b]']), [], 422, ['x.b']];
+    yield 'a required object, the nested name alone' => [
+        $body(['x[b]' => $object, 'x[b][c]' => $integer], required: ['x[b]']),
+        ['x' => ['b' => ['c' => '5']]],
+        200,
+        ['x' => ['b' => ['c' => '5']]],
+    ];
+    yield 'a required object at the top level left out, closed body' => [
+        $body(['p' => $object, 'p[s]' => $integer, 'q' => $integer], required: ['p']),
+        ['q' => '1'],
+        422,
+        ['p'],
+    ];
+    yield 'a required object at the top level left out, open body' => [
+        $body(['p' => $object, 'p[s]' => $integer, 'q' => $integer], closed: false, required: ['p']),
+        ['q' => '1'],
+        422,
+        ['p'],
+    ];
+    // Stricter than the contract, and the generated file and the doctor say so: the contract never sees `x[b]` here.
+    yield 'an optional object that requires a key, the nested name alone' => [
+        $body(['x[b]' => new Schema(types: [SchemaType::Object], properties: ['d' => $integer], required: ['d']), 'x[b][c]' => $integer], closed: false),
+        ['x' => ['b' => ['c' => '5']]],
+        422,
+        ['x.b'],
+    ];
+    yield 'an object that makes a name required, the nested name alone' => [
+        $body(['x[b]' => $object, 'x[b][c]' => $integer, 'y' => $integer], closed: false, dependentRequired: ['x[b]' => ['y']]),
+        ['x' => ['b' => ['c' => '5']]],
+        422,
+        ['y'],
+    ];
+    yield 'beside JSON, the collision stays' => [$top, ['p' => ['s' => 'abc']], 200, [], true];
+    yield 'a map object keeps the collision, open body' => [
+        $body(['x[b]' => $map, 'x[b][c]' => $string], closed: false),
+        ['x' => ['b' => ['c' => 'abc']]],
+        200,
+        [],
+    ];
+    yield 'a map object keeps the collision, closed body' => [
+        $body(['x[b]' => $map, 'x[b][c]' => $string]),
+        ['x' => ['b' => ['c' => 'abc']]],
+        200,
+        ['x' => []],
+    ];
+});
+
+// A required `page` beside `page[x]` (an array) and `page[x][y]`: every name below `page` is withheld, so nothing has a
 // rule there, but the array a form builds for them still stands in for `page`. The contract wants a `page` the form
 // never sent (a stated gap, as for every required name a form nests other names under), so `validated()` has no `page`
 // and `dto()` must not read one: it answers 200 where it threw an `ErrorException` (a 500) before. `main` answered 200
@@ -3070,7 +3207,7 @@ it('lets dto read a required name whose nested names are all withheld, when a fo
         types: [SchemaType::Object],
         properties: [
             'page' => new Schema(types: [SchemaType::Integer]),
-            'page[x]' => new Schema(types: [SchemaType::Object]),
+            'page[x]' => new Schema(types: [SchemaType::Array]),
             'page[x][y]' => new Schema(types: [SchemaType::Integer]),
         ],
         required: ['page'],
@@ -3139,7 +3276,7 @@ it('keeps the plain rule of a name beside only a star name in a closed form body
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
 // A shaped name whose nested names are all withheld drops the array too (`exclude`), and its level closes the same way
-// in front of the `exclude`: `filter[a]` has no rule below it (`filter[a][b]` is an object, so it and `filter[a][b][c]`
+// in front of the `exclude`: `filter[a]` has no rule below it (`filter[a][b]` is an array, so it and `filter[a][b][c]`
 // are withheld), and the keys the contract declares below `filter[a]` are the one (`b`). `filter[a][evil]=1` was a 200
 // on this branch before, and on `main`, where nothing in the level had a rule.
 it('refuses an undeclared key beside the withheld names below a shaped name in a closed form body', function (string $mediaType): void {
@@ -3147,7 +3284,7 @@ it('refuses an undeclared key beside the withheld names below a shaped name in a
         types: [SchemaType::Object],
         properties: [
             'filter[a]' => new Schema(types: [SchemaType::Integer]),
-            'filter[a][b]' => new Schema(types: [SchemaType::Object]),
+            'filter[a][b]' => new Schema(types: [SchemaType::Array]),
             'filter[a][b][c]' => new Schema(types: [SchemaType::Integer]),
         ],
         additionalProperties: false,
