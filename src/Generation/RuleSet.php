@@ -78,17 +78,19 @@ final readonly class RuleSet
      *                                                   rule cannot see `{}`, so the request reads the raw content
      * @param  array<string, list<string>>  $whenNotArray  the rule keys of a `query` name or a form body's that sits
      *                                                     above names PHP nests under it (`page` above `page[size]`),
-     *                                                     each with the path PHP delivers it under: the request judges
-     *                                                     them only when their value is not an array, which is what the
-     *                                                     nested names are
+     *                                                     or the key of a closed form level that no rule judges but a
+     *                                                     name below it, each with the path PHP delivers it under: the
+     *                                                     request judges them only when their value is not an array,
+     *                                                     which is what the nested names are
      * @param  list<string>  $dropsArray  the keys of `$whenNotArray` with no rule on any name below them: the request
      *                                    drops the array (`exclude`) where it would keep it (`array`) beside a rule
      * @param  array<string, list<string>>  $arrayKeys  the keys of `$whenNotArray` whose array branch holds the keys
-     *                                                  the contract declares below the name, for a closed body: the
-     *                                                  branch is `array:size` (`array:b`, then `exclude`, when the
-     *                                                  array is dropped), so an undeclared key beside the nested names
-     *                                                  is refused. A key not here keeps `array` (or `exclude`): a level
-     *                                                  with a key `array:` cannot name, such as a `*` name's
+     *                                                  the contract declares below the name (or below that key), for a
+     *                                                  closed body: the branch is `array:size` (`array:b`, then
+     *                                                  `exclude`, when the array is dropped), so an undeclared key
+     *                                                  beside the nested names is refused. A key not here keeps `array`
+     *                                                  (or `exclude`): a level with a key `array:` cannot name, such as
+     *                                                  a `*` name's
      * @param  list<string>  $information  the findings that lose no constraint, which are in `findings` too: a body key
      *                                     a `query` parameter shadows, a name a form rewrites, a `readOnly` field that
      *                                     is required, two media types over one schema, the optional fields of a `PUT`,

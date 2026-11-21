@@ -302,17 +302,23 @@ and `page=abc` are refused as the contract refuses them. A name with more bracke
 `'filter.created' => ['sometimes', 'array:gte']`, so `filter[evil]=1`, `filter=abc` and `filter[created][lt]=5` are
 refused. Only two kinds of level stay open, and the generated file says the key check accepts them: one whose key
 `array:` cannot name (a comma in it), and the key a declared name is delivered at when that name keeps no shape check
-(one typed `array` or `object`, or one in a collision, below), because a value can sit there and `array:` would refuse
-it. A name that is judged by shape closes its level in its own array branch (below). For a name with no bracket
-(`user.name`), nothing tells `user_name` apart from it: the key check accepts a `user_name` the contract does not
-declare, and the generated file says so, as it does for a bracketed name in a body that is JSON too, whose head is not
-closed. A name that collides with another (below) is already named by the collision finding, and when the key it arrives
-under is one the contract declares, the closed body says nothing more about it. A bracketed name below another closes
-the levels above it like any other: `filter[a]`, `filter[a][b]` and `filter[c]` give
-`'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and `filter[a]` closes `filter.a` in its own
-array branch (`['array:b']`), so `filter[a][evil]=1` is refused too. Two names a form delivers under one bracketed key
-(`a[c]` beside `a[c]x`, both `a.c`, since PHP drops what follows a closing bracket) close `a` to `c`; the shared key has
-no rule, so what arrives under it is not checked, and a closed body's `validated()` carries it.
+(one typed `array` or `object`, or one in a collision, below, unless a ruled name sits below it with no `*` or appended
+key beside it), because a value can sit there and `array:` would refuse it. A name that is judged by shape closes its
+level in its own array branch (below). For a name with no bracket (`user.name`), nothing tells `user_name` apart from
+it: the key check accepts a `user_name` the contract does not declare, and the generated file says so, as it does for a
+bracketed name in a body that is JSON too, whose head is not closed. A name that collides with another (below) is
+already named by the collision finding, and when the key it arrives under is one the contract declares, the closed body
+says nothing more about it. A bracketed name below another closes the levels above it like any other: `filter[a]`,
+`filter[a][b]` and `filter[c]` give `'filter' => ['sometimes', 'array:a,c']`, so `filter[evil]=1` is refused, and
+`filter[a]` closes `filter.a` in its own array branch (`['array:b']`), so `filter[a][evil]=1` is refused too. Two names
+a form delivers under one bracketed key (`a[c]` beside `a[c]x`, both `a.c`, since PHP drops what follows a closing
+bracket) close `a` to `c`; the shared key has no rule, so what arrives under it is not checked, and a closed body leaves
+it out of `validated()` with `'a.c' => ['exclude']`, after the key check of `a`. Any key of a closed level that no rule
+judges is left out the same way, such as the key of a name typed `object` beside a name below it. When a ruled name sits
+below that key (`a[c][d]` beside the pair), the key is judged by shape instead,
+`Rule::when(..., ['exclude'], ['array:d'])`: a value that is not an array is left out, and the array holds only the keys
+declared below it, so `a[c][evil]=1` is refused, unless a `*`, comma or appended key sits below it, which the file names
+(`a[c][evil]=1` answers 200 then).
 
 **A name a form body declares beside the names a form nests under it is judged by shape, as a query name is.** `page`
 beside `page[size]`, `filter[a]` beside `filter[a][b]`, at any depth, and `ids` beside `ids[]`, which a form reads as

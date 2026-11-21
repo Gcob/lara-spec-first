@@ -34,7 +34,8 @@ final class RuleWalk
 
     /**
      * The rule keys a `query` name or a form body's name judges only when its value is not an array, with the path PHP
-     * delivers each under: the names PHP nests under them carry the array.
+     * delivers each under: the names PHP nests under them carry the array. Also the key of a closed form level that no
+     * rule judges but a name below it (`a[c][d]` below the shared key of `a[c]` and `a[c]x`).
      *
      * @var array<string, list<string>>
      */
@@ -49,9 +50,9 @@ final class RuleWalk
     public array $dropsArray = [];
 
     /**
-     * The keys of {@see self::$whenNotArray} whose array branch holds the keys the contract declares below the name, in
-     * a closed body: `array:size` instead of `array`, in front of `exclude` when the array is dropped. See
-     * {@see RuleSet::$arrayKeys}.
+     * The keys of {@see self::$whenNotArray} whose array branch holds the keys the contract declares below the name (or
+     * below that key), in a closed body: `array:size` instead of `array`, in front of `exclude` when the array is
+     * dropped. See {@see RuleSet::$arrayKeys}.
      *
      * @var array<string, list<string>>
      */

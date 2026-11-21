@@ -1015,6 +1015,7 @@ final readonly class RuleSetBuilder
         // receives. A body that is JSON too keeps the one the contract writes beside it.
         $closed = [];
         $steps = [];
+        $levelPaths = [];
         $starLevels = [];
         $appended = [];
         $accepted = [];
@@ -1042,7 +1043,7 @@ final readonly class RuleSetBuilder
             $closed[] = $delivered;
 
             // A name that collided has its own finding, and the key its value arrives under is a declared name
-            // too, so the contract does not refuse it.
+            // too, so the contract does not refuse it. In a closed body its key is left out of the validated data.
             if (isset($walk->withheld[$name]) && in_array($delivered, $declared, true)) {
                 continue;
             }
@@ -1081,6 +1082,7 @@ final readonly class RuleSetBuilder
             for ($level = 1; $level < count($path); $level++) {
                 $levelKey = self::pathKey(array_slice($path, 0, $level));
                 $steps[$levelKey][$name] = $path[$level];
+                $levelPaths[$levelKey] = array_slice($path, 0, $level);
 
                 if ($appendsAt !== null && count($appendsAt) === $level) {
                     $appended[$levelKey] = true;
@@ -1126,6 +1128,9 @@ final readonly class RuleSetBuilder
             $deliveredAt[$level] = true;
         }
 
+        $kept = [];
+        $openForValue = [];
+
         foreach ($steps as $level => $below) {
             $level = (string) $level;
             $keys = array_values(array_unique(array_values($below)));
@@ -1135,6 +1140,11 @@ final readonly class RuleSetBuilder
             // Why: a value can sit at the key a declared name is delivered at (`filter[a]=x`), and `array:` would
             // refuse it, so that level stays open and the finding below names what the key check accepts.
             if (isset($deliveredAt[$level]) || isset($starHeld[$level]) || $commas) {
+                // Only the value at its key keeps it open: no `*` name below, no comma, no appended key.
+                if (! isset($starHeld[$level]) && ! isset($starLevels[$level]) && ! $commas && ! isset($appended[$level])) {
+                    $openForValue[$level] = $below;
+                }
+
                 foreach (array_keys($below) as $name) {
                     $accepted[(string) $name] = $level;
                 }
@@ -1157,10 +1167,53 @@ final readonly class RuleSetBuilder
 
                 $walk->arrayKeys[$level] = $keys;
 
+                if (! in_array($level, $walk->dropsArray, true)) {
+                    $kept[] = $level;
+                }
+
                 continue;
             }
 
             $walk->rules[$level] = ['sometimes', 'array:'.implode(',', $keys)];
+            $kept[] = $level;
+        }
+
+        // Why: Laravel's `validated()` keeps a whole array under a rule that is not a bare `array`, so a level kept
+        // closed (`array:c`) hands back everything under its keys. A key no rule judges is left out after the key
+        // check of its level. A key a ruled name sits below is judged by shape instead: a value that is not an array is
+        // left out, and the array holds the keys declared below it (which closes the level that key opened).
+        for ($i = 0; $i < count($kept); $i++) {
+            $level = $kept[$i];
+
+            foreach (array_values(array_unique(array_values($steps[$level]))) as $key) {
+                $child = $level.'.'.self::ruleKey($key);
+
+                if (isset($walk->rules[$child])) {
+                    continue;
+                }
+
+                $walk->rules[$child] = ['exclude'];
+
+                if (array_filter(array_keys($walk->rules), static fn (int|string $ruleKey): bool => str_starts_with((string) $ruleKey, $child.'.')) === []) {
+                    continue;
+                }
+
+                $walk->whenNotArray[$child] = [...$levelPaths[$level], $key];
+
+                if (! isset($openForValue[$child])) {
+                    continue;
+                }
+
+                $walk->arrayKeys[$child] = array_values(array_unique(array_values($openForValue[$child])));
+
+                foreach (array_keys($openForValue[$child]) as $name) {
+                    if (($accepted[(string) $name] ?? null) === $child) {
+                        unset($accepted[(string) $name]);
+                    }
+                }
+
+                $kept[] = $child;
+            }
         }
 
         if ($accepted !== []) {
@@ -3624,7 +3677,7 @@ final readonly class RuleSetBuilder
      *
      * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name and a declared
      * one that is equal to what it becomes (`user.name` and `user_name`). Neither gets a rule, and one finding names
-     * them; a name below them keeps its own.
+     * them, and a closed form body leaves their key out of the validated data; a name below them keeps its own.
      *
      * **A name above the names a form nests under it is judged by shape** (`page` beside `page[size]`, `filter[a]`
      * beside `filter[a][b]` at any depth, `ids` beside `ids[]`): its rules judge the value only when it is not an

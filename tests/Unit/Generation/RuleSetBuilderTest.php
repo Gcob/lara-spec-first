@@ -5204,15 +5204,66 @@ it('closes the levels above two names delivered under one bracketed key', functi
         types: [SchemaType::Object],
         properties: array_map(
             static fn (): Schema => new Schema(types: [SchemaType::Integer]),
-            array_flip(['a.b[c]', 'a_b[c]']),
+            array_flip(['a[c]', 'a[c]x']),
         ),
         additionalProperties: false,
     )]), new RuleSetOptions);
 
-    expect($set->rules)->toEqual(['a_b' => ['sometimes', 'array:c']])
-        ->and($set->closedKeys)->toBe(['a_b'])
-        ->and(implode("\n", $set->findings))->toContain('`a.b[c]` and `a_b[c]` reach Laravel under one name, `a_b.c`')
+    expect($set->rules)->toEqual(['a' => ['sometimes', 'array:c'], 'a.c' => ['exclude']])
+        ->and($set->whenNotArray)->toBe([])
+        ->and($set->closedKeys)->toBe(['a'])
+        ->and(implode("\n", $set->findings))->toContain('`a[c]` and `a[c]x` reach Laravel under one name, `a.c`')
         ->and(implode("\n", $set->findings))->not->toContain('closed to its declared names');
+});
+
+// Why: `a.c` has a rule below it (`a.c.d`), so `exclude` alone would drop the array `a[c][d]` arrives as. It is judged by
+// shape instead: a value that is not an array is left out, and the array holds the keys declared below it, which is
+// what closes the level the shared key opened.
+it('judges by shape a key of a closed form level that only a name below it has a rule for', function (): void {
+    $built = static fn (array $names): RuleSet => RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: array_map(
+            static fn (): Schema => new Schema(types: [SchemaType::Integer]),
+            array_flip($names),
+        ),
+        additionalProperties: false,
+    )]), new RuleSetOptions);
+
+    $set = $built(['a[c]', 'a[c]x', 'a[c][d]']);
+
+    expect($set->rules['a.c'])->toBe(['exclude'])
+        ->and($set->whenNotArray['a.c'])->toBe(['a', 'c'])
+        ->and($set->arrayKeys['a.c'])->toBe(['d'])
+        ->and($set->dropsArray)->not->toContain('a.c')
+        ->and(implode("\n", $set->findings))->not->toContain('so the key check accepts `a.c`')
+        ->and($set->unenforced['additionalProperties'] ?? [])->toBe([]);
+
+    // A dot in the key is escaped in the rule key, and the path stays the one PHP delivers.
+    $dotted = $built(['b[x.y][c]', 'b[x.y][c]x', 'b[x.y][c][d]']);
+
+    expect($dotted->whenNotArray['b.x\.y.c'])->toBe(['b', 'x.y', 'c']);
+
+    // A `*` name below the shared key has no key `array:` can name, so that level stays open and the file says so.
+    $star = $built(['a[c]', 'a[c]x', 'a[c][d]', 'a[c][*]']);
+
+    expect($star->arrayKeys)->not->toHaveKey('a.c')
+        ->and(implode("\n", $star->findings))->toContain('so the key check accepts `a.c`');
+});
+
+// With every collided name untyped, nothing else is left unchecked once the level is closed and the shared key is
+// dropped, so the doctor has nothing to report where it used to report the key check.
+it('leaves nothing unenforced when a closed form body drops the shared key a name below it judges', function (): void {
+    $set = RuleSetBuilder::for(operationWithInput(content: ['multipart/form-data' => new Schema(
+        types: [SchemaType::Object],
+        properties: [
+            'a[c]' => new Schema,
+            'a[c]x' => new Schema,
+            'a[c][d]' => new Schema(types: [SchemaType::Integer]),
+        ],
+        additionalProperties: false,
+    )]), new RuleSetOptions);
+
+    expect($set->unenforced)->not->toHaveKey('additionalProperties');
 });
 
 // `user.name` and `user_name` are one key once PHP has delivered them, so the closed root takes the
