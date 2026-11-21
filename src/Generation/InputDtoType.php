@@ -18,6 +18,9 @@ namespace Gcob\LaraSpecFirst\Generation;
  * why only the request casts: a response DTO has no such guarantee, so {@see DtoMode} tells every method here which way
  * the value is travelling, and a response converts a date and nothing else.
  *
+ * A request also sets a `date-time` to the app timezone (`date_default_timezone_get()`) at the same instant, so the
+ * property and `toArray()` agree and a `datetime` cast stores the right instant. A response leaves it as it arrived.
+ *
  * **Every expression takes the value as a PHP expression.** A nullable value is checked for `null` before anything
  * converts it, because `CarbonImmutable::parse(null)` is the current time and `(int) null` is `0`.
  *
@@ -50,6 +53,9 @@ final readonly class InputDtoType
     public const MAP = 'map';
 
     public const LIST = 'list';
+
+    /** What sets a request's `date-time` to the timezone PHP, and so Eloquent, reads stored dates in. */
+    private const APP_TIMEZONE = '->setTimezone(date_default_timezone_get())';
 
     /** A file part, which exists on the request side only. */
     public const FILE = 'file';
@@ -238,7 +244,12 @@ final readonly class InputDtoType
             // `filter_var`, since `(bool) 'false'` is `true`: a query string, a form and a
             // multipart body write a boolean as text, and the rule set accepts that text.
             self::BOOL => 'filter_var('.$value.', FILTER_VALIDATE_BOOL)',
-            self::DATE, self::DATE_TIME => 'CarbonImmutable::parse('.$value.')',
+            self::DATE => 'CarbonImmutable::parse('.$value.')',
+            // Why: Eloquent's `datetime` cast keeps the clock digits of a value and drops its offset, so a client's
+            // `-05:00` stored as it came is five hours off. `parse()`'s timezone argument would not help: it is
+            // ignored for a string that carries an offset, and the contract requires one. See
+            // docs/project/decisions/0025-set-a-request-date-time-to-the-app-timezone.md
+            self::DATE_TIME => 'CarbonImmutable::parse('.$value.')'.($mode === DtoMode::Request ? self::APP_TIMEZONE : ''),
             self::DTO => $this->class.'::from('.$value.')',
             self::LIST => $this->buildList($value, $mode),
             self::MAP => $this->buildMap($value, $mode),
@@ -284,7 +295,13 @@ final readonly class InputDtoType
                 case self::FLOAT:
                     return 'floatval(...)';
                 case self::DATE:
+                    return 'CarbonImmutable::parse(...)';
                 case self::DATE_TIME:
+                    // A request's date-time is also set to the app timezone, which a first-class callable cannot say.
+                    if ($mode === DtoMode::Request) {
+                        break;
+                    }
+
                     return 'CarbonImmutable::parse(...)';
                 case self::DTO:
                     return $this->class.'::from(...)';

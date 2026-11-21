@@ -271,7 +271,7 @@ version wrote the document:
 | `integer`                                                                    | `int`                                                                                  | `(int)`, request side only                                                                          | Writes it                            |
 | `number`                                                                     | `float`                                                                                | `(float)`, request side only                                                                        | Writes it                            |
 | `boolean`                                                                    | `bool`                                                                                 | `filter_var()`, request side only                                                                   | Writes it                            |
-| `string`, `format: date-time`                                                | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`                                                                          | `format()`, `toJSON()` on a response |
+| `string`, `format: date-time`                                                | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`, set to the app timezone on the request side                             | `format()`, `toJSON()` on a response |
 | `string`, `format: date`                                                     | `CarbonImmutable`                                                                      | `CarbonImmutable::parse()`                                                                          | `toDateString()`                     |
 | `enum`                                                                       | Its scalar type                                                                        | Reads it, or casts it as its type does                                                              | Writes it                            |
 | `object` with `properties`, via `$ref`                                       | The DTO named after the schema                                                         | `::from()`                                                                                          | `->toArray()`                        |
@@ -409,6 +409,20 @@ what lets a multipart body's `"1"` into an `int`, and the rule set has already r
 enumeration. The allowed values are still written, in words, in the description of the `@param` (`one of 1, 2`), so a
 person or a tool reading the class sees the domain at once. A string enumeration is read as it came, so its literal
 union is true and stays.
+
+**A request `date-time` arrives in the app timezone.** `from()` keeps the instant and sets the timezone, so
+`2026-12-01T19:00:00-05:00` in a UTC app is a `CarbonImmutable` at `2026-12-02T00:00:00+00:00`, and `toArray()` writes
+`2026-12-02T00:00:00.000000+00:00`. The reason is Eloquent's `datetime` cast, which keeps the clock digits of a value
+and drops its offset: `Event::create($dto->toArray())` would store `2026-12-01 19:00:00` for that value, five hours off,
+where it now stores `2026-12-02 00:00:00`. The app timezone is `date_default_timezone_get()`, which Laravel sets from
+`config('app.timezone')` at boot, which Eloquent reads stored dates in, and which `now()` uses. `toArray()` never
+converts: it writes the value the property holds, so `$dto->starts_at` and `$dto->toArray()['starts_at']` always agree.
+Through the query builder, pass the property (`insert(['starts_at' => $dto->starts_at])`) rather than the string, since
+a database reads an offset in a datetime string its own way. The client's offset is not on the DTO: what the client sent
+stays on `$request->input('starts_at')` and `validated()`. A `query` or path parameter is the string as sent, since none
+becomes a `CarbonImmutable`, and a `date` is a calendar day and does not change. One limit stays Eloquent's: in a
+timezone with daylight saving time, the hour that repeats in the fall is stored as the same clock time twice. The
+reasoning is in [ADR 0025](../../project/decisions/0025-set-a-request-date-time-to-the-app-timezone.md).
 
 **A `date-time` is written back with its fraction.** `toRfc3339String()` drops it, and the request rule set accepts a
 fraction of any length (Go sends up to nine digits, .NET seven), so a `toArray()` built on it would lose the sub-second

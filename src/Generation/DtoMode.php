@@ -19,7 +19,7 @@ namespace Gcob\LaraSpecFirst\Generation;
  */
 enum DtoMode
 {
-    /** An input DTO: `from()` casts, `toArray()` writes what the request carried. */
+    /** An input DTO: `from()` casts and sets a `date-time` to the app timezone, `toArray()` writes what the DTO holds. */
     case Request;
 
     /** A response DTO's `from()` and `toArray()`: nothing cast, a date written as Laravel's `toJSON()` does. */
