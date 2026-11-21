@@ -4277,11 +4277,13 @@ final readonly class RuleSetBuilder
 
             // Why: a closed object closes its level with `array:`, which cannot name the keys a `*` name or an appended name
             // is delivered at (Laravel hides a `*` in a data key behind a placeholder, and `array:0` refuses a second
-            // appended value), so it would refuse a request the contract accepts. Its level stays open, and its rule says so.
+            // appended value), so it would refuse a request the contract accepts. A name that holds a `*` anywhere below the
+            // object does it, whatever its key at the object's level (`p[a*b]`, `p[a][*]`: the key `a` is not one the object
+            // can name either). Its level stays open, and its rule says so.
             $holderPath = $paths[(string) $holder];
 
             foreach ($claimed as $claimedName => $claimedPath) {
-                if ($holderPath !== null && self::isBelow($claimedPath, $holderPath) && ($claimedPath[count($holderPath)] ?? null) === '*') {
+                if ($holderPath !== null && self::isBelow($claimedPath, $holderPath)) {
                     $unnameable[$holderKey][] = (string) $claimedName;
                 }
             }

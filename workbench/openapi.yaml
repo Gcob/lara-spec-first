@@ -265,8 +265,7 @@ paths:
         # none. `filter=abc` and `filter[status]=oops` answer 422, and
         # `filter[status]=draft&filter[anything]=1` passes, since `filter` is open.
         # `sort` is closed: its level takes `by` and `dir`
-        # (`array:by,dir`), so `sort[evil]=1` answers 422. Run `spec:doctor` and
-        # read the stricter findings for the keys an object requires.
+        # (`array:by,dir`), so `sort[evil]=1` answers 422.
         post:
             operationId: filterPosts
             summary: Filter and sort posts from a form

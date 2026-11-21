@@ -5837,7 +5837,12 @@ it('keeps the level of a closed object open when a name below it is a * name or 
         ->and($set->unenforced['additionalProperties'])->toContain('`p`')
         ->and(implode("\n", $set->findings))
         ->toContain('`p` forbids undeclared keys, but a form delivers `'.$below.'` at a key of it that Laravel cannot name in `array:`');
-})->with(['a * name' => 'p[*]', 'an appended name' => 'p[]'])->with(['an open body' => false, 'a closed body' => true]);
+})->with([
+    'a * name' => 'p[*]',
+    'an appended name' => 'p[]',
+    'a name with a * inside a key' => 'p[a*b]',
+    'a * name below another key' => 'p[a][*]',
+])->with(['an open body' => false, 'a closed body' => true]);
 
 it('leaves out the shared key of a collided pair below a closed object in a closed body', function (): void {
     $integer = new Schema(types: [SchemaType::Integer]);
